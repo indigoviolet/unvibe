@@ -11,8 +11,8 @@ describe("store migrations", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-db-"));
     const db = openDatabase(path.join(dir, "test.db"));
     try {
-      expect(migrate(db)).toEqual([1, 2]);
-      expect(currentVersion(db)).toBe(2);
+      expect(migrate(db)).toEqual([1, 2, 3]);
+      expect(currentVersion(db)).toBe(3);
       expect(migrate(db)).toEqual([]);
       db.prepare("INSERT INTO repos (id, owner, name, local_path) VALUES (?, ?, ?, ?)").run(
         "r1",

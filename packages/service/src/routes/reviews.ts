@@ -177,11 +177,12 @@ export async function registerReviews(
 
   app.post("/api/reviews/:id/update", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const snapshot = ctx.reviews.getSnapshot(id);
-    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    // Unwired stays 501 like the other milestone stubs (server.test pins this).
     if (!deps.jobs || !deps.baseRunner) {
       return reply.code(501).send({ error: "not implemented: update pass not wired (no job queue / base runner)" });
     }
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
     const parser = deps.parser ?? new JsonBlockReplyParser();
     let provider = "main";
     let model = "main-model";
