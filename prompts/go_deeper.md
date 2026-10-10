@@ -18,9 +18,9 @@ the review. It tells you what the card must cover and why it matters.
 
 ## Rules
 
-- One card: two to five paragraphs, then at most three follow-up
-  suggestions as a plain list. Follow the direction; do not write a
-  different card.
+- One card: two to five paragraphs, then a `### Follow-ups` section with
+  at most three follow-up suggestions. Follow the direction; do not write
+  a different card.
 - Every paragraph that states something about the change carries its
   citations. Fetch what you need with `get_hunk` or `get_code` first.
 - End with the trailing JSON block carrying the card's `title`.

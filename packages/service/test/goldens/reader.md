@@ -77,6 +77,22 @@ Then a **hidden concept pass**: for each domain concept the guide will need
 `concept:` slug, a title, one line of meaning, and where it is mentioned.
 These stay hidden until first opened.
 
+## Output shape
+
+Stream one `## Title` card at a time, in the order above: the problem
+card, then the central-change card, then stop. The Go deeper directions
+and the hidden concept pass travel in the trailing `json` block, not as
+cards:
+
+```json
+{"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
+ "concepts": [{"slug": "obs-fold", "title": "...", "summary": "..."}]}
+```
+
+Concept slugs are short kebab-case (`obs-fold`). Linking an unknown slug
+later creates its hidden candidate page, so name a concept only when it
+genuinely needs its own page.
+
 ## Rules
 
 - Restatement only. Your judgements about risks or mistakes belong to the

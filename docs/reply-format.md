@@ -160,14 +160,16 @@ Metadata goes in the trailing JSON block:
   "hunk": {"summary": "…", "hiddenReason": "imports"},
   "depth": {"level": "simple", "cardId": "central"},
   "anchor": {"quote": "raw CRLF", "host": "card:problem#b1"},
-  "secondOpinion": {"verdict": "agrees", "model": "…"}
+  "secondOpinion": {"verdict": "agrees", "reasoning": "…", "missed": "…"}
 }
 ```
 
 All fields are optional; unknown fields are kept, never rejected. For
 depth/example/diagram replies, `depth`/`title` say which card and level
 the body belongs to. For hunk-pass replies, `hunk` carries the summary
-and the one-line `hiddenReason` (absent when the hunk is interesting).
+and the one-line `hiddenReason` (null when the hunk is interesting — in
+particular never hide a hunk cited by the guide, a one-line functional
+change, or anything unsure).
 The `anchor.quote` must be a real substring of its host block.
 
 ## 10. The trailing JSON block

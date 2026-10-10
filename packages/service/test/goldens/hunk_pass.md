@@ -29,15 +29,14 @@ Adds a fast path that skips values without CRLF.
 ```
 
 ```json
-{"summary": "Adds a fast path that skips values without CRLF.",
- "uninteresting": false, "reason": ""}
+{"hunk": {"summary": "Adds a fast path that skips values without CRLF.", "hiddenReason": null}}
 ```
 
-Set `uninteresting` true only for generated files, import-only changes, or
-docs/config churn — with a one-line `reason` saying why it is skippable
-(e.g. `"import-only change"`). Never mark uninteresting: a hunk cited by
-the guide, a hunk with a one-line functional change, or anything you are
-unsure about. When unsure, it is interesting.
+Set `hiddenReason` to a one-line reason only for generated files,
+import-only changes, or docs/config churn (e.g. `"import-only change"`);
+otherwise null. Never mark uninteresting: a hunk cited by the guide, a
+hunk with a one-line functional change, or anything you are unsure about.
+When unsure, it is interesting.
 
 Citations: use `[[...]]` tokens only for IDs that appear in the hunk text
 above. Never invent one.

@@ -42,3 +42,5 @@ Why does this matter for Set-Cookie?
   line instead of explaining.
 - A reader who disagrees with the card should get the honest alternative,
   not a defence of the card.
+- End with the trailing `json` block carrying the `anchor` (the selected
+  `quote` and the host block's ID).

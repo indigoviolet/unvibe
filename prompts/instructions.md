@@ -22,8 +22,8 @@ judgements as separate, checkable findings.
   restatement paragraph; put it on a finding page with evidence.
 - Every piece of evidence is cited. A paragraph that states something about
   the change ends with the citations that support it.
-- Three depth levels exist for every card: simpler, standard, first
-  principles. Rewrites move one level at a time.
+- Three depth levels exist for every card: simple, standard, deep (first
+  principles). Rewrites move one level at a time.
 - Hunk summaries are one line: what the hunk does, not how it does it.
 
 ## IDs and link tokens
@@ -64,38 +64,56 @@ already in front of you.
   is a finding, not a restatement sentence.
 - Do not summarise code you have not seen. Fetch it first.
 
-<!-- REPLY-FORMAT-BEGIN: provisional conventions, PRD §10 plus supervisor notes. -->
-<!-- RECONCILE-WITH: docs/reply-format.md (content agent). This section is -->
-<!-- the only part of this template that the supervisor may need to merge. -->
+<!-- REPLY-FORMAT-BEGIN: normative reply conventions. Source of truth is -->
+<!-- docs/reply-format.md (content layer, packages/shared/src/content/): -->
+<!-- a model following this section produces exactly what splitReply and -->
+<!-- parseCards accept. -->
+<!-- RECONCILED-WITH: docs/reply-format.md. -->
 
 ## Reply format
 
 - The reply is a Markdown body with inline `[[...]]` tokens, followed by
-  exactly one trailing fenced block. Nothing comes after that block.
-- Cards are delimited by `##` headings (`## The problem`). Blocks inside a
-  card are paragraphs, lists, tables, fenced code, or fenced `mermaid`
-  diagrams. Citation tokens may appear in running text and in mermaid node
-  labels.
-- The trailing block is fenced `json` and holds the structured fields. The
-  app removes it before display. Include only the keys your task needs:
-  - `title`: the new card or page title, when you create one.
-  - `contribute`: at most 1–3 items, usually empty, only what is not
-    already in this session's context (see below). Omit when empty.
-  - `finding`: for the critic — `confidence` (`low`, `medium` or `high`),
-    a one-line `summary`, and a `suggested_comment` with a `diff:` anchor
-    and draft `text`. The comment is a draft; it is never marked for the PR.
-  - `second_opinion`: for second opinions — `verdict` (`agrees`, `partly`
-    or `disagrees`), `reasoning`, and `missed` (anything the card missed).
-  - `depth`: for depth rewrites — the `level` written (`simpler`,
-    `standard` or `deep`).
-- Depth rewrites are requested one level at a time. A rewrite covers the
-  whole card at the new level; at the deepest level it may add one
-  "Underlying principle" block.
+  one trailing fenced `json` block holding the structured fields. The app
+  removes that block before display. Trailing whitespace — and nothing
+  else — may follow it.
+- Cards are delimited by `## Title` headings. Text before the first `##`
+  is one untitled card (normal for single-card replies).
+- A paragraph's citations are the `diff:`/`code:`/`desc:` tokens it
+  contains; they render as one `<>` marker and need no label. Inline
+  `concept:`/`page:`/`card:` tokens render as dotted links and need a
+  `|label`. Inline code uses backticks and is never scanned for tokens.
+- Per-depth text: the paragraph itself is the standard version. A
+  `::: simple` / `::: deep` container immediately after it carries that
+  level's rewrite.
+- Asides: `::: example`, `::: diagram`, or `::: principle` containers
+  become Example / Diagram / Underlying-principle inserts after the
+  paragraph they relate to.
+- Diagrams are fenced `mermaid` blocks; citation tokens may appear in node
+  labels. A `Caption: …` paragraph right after the fence becomes the
+  caption, so never start an ordinary paragraph with `Caption:`.
+- Follow-up suggestions are a `### Follow-ups` heading plus a list. Items
+  are `Label` or `Label | ask: pre-baked question`.
+- `Finding: [[page:<finding-page>]]` alone on a line renders as the orange
+  finding reference card.
+- Tables use GitHub Markdown syntax; lists may be ordered or unordered,
+  one item per line.
+- The trailing block holds only the keys the task needs (`title`,
+  `finding`, `contribute`, `depth`, `hunk`, `secondOpinion`, `concepts`,
+  `pendingCards`, `anchor`):
+  - `finding`: `confidence` (`low`, `medium` or `high`), a one-line
+    `summary`, and `suggestedComment` with the draft `text` and its
+    `diff:` anchor. The comment is a draft; it is never marked for the PR.
+  - `secondOpinion`: `verdict` (`agrees`, `partly` or `disagrees`),
+    `reasoning`, and `missed` (anything the card missed).
+  - `depth`: the `level` written (`simple`, `standard` or `deep`) and the
+    `cardId`.
+  - `hunk`: `summary` plus `hiddenReason` (a one-line reason, or null when
+    the hunk is interesting).
 - Example shape:
 
   ```markdown
   ## The problem
-  Old servers split one header across lines. [[desc:d-intro]]
+  Old servers split one header across lines. [[desc:d-p1]]
   ...
   ```json
   {"title": "The problem", "contribute": {"facts": []}}

@@ -31,8 +31,16 @@ cannot tie to cited evidence.
   unchecked behaviour or maintainer intent — say which), `low` (worth a
   look, thin evidence).
 - A suggested comment: a draft on the relevant diff line, with a `diff:`
-  anchor and the draft text, in the trailing JSON block's `finding`
-  object. It is a draft for the reader, never marked for the PR.
+  anchor and the draft text, in the trailing JSON block:
+  `{"finding": {"confidence": ..., "summary": ..., "suggestedComment":
+  {"text": ..., "diff": "diff:<fileKey>:<line>"}}}`. It is a draft for
+  the reader, never marked for the PR.
+
+## Output shape
+
+Each finding is one reply: a `## Evidence` card per the instructions
+above, then a `## Assessment` card, then the trailing `json` block. One
+finding per reply; usually one to three replies.
 
 ## Rules
 

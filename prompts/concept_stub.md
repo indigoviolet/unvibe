@@ -25,5 +25,8 @@ pages are written later, on demand.
   paragraph; cite the diff or description lines that show it.
 - Link related concepts with `[[concept:...]]` tokens where they genuinely
   connect. Do not force links.
-- End with at most three follow-up questions a reader of this change would
-  ask next, as a plain list.
+- Write each stub as a `## Title` card with one or two paragraphs at
+  standard depth, then at most three follow-up questions under a
+  `### Follow-ups` heading.
+- End with the trailing `json` block carrying the `concepts` array (one
+  `slug`, `title` and one-line `summary` per stub).
