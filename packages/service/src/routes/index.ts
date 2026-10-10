@@ -35,7 +35,7 @@ export async function registerRoutes(
   await registerReviews(app, ctx, deps);
   await registerHunks(app, full as unknown as ServiceContext, full as unknown as RouteDeps);
   await registerComments(app, ctx);
-  await registerContributions(app, ctx);
+  await registerContributions(app, full as unknown as ServiceContext);
   await registerDescription(app, ctx);
   await registerSubmit(app, ctx);
   await registerSettings(app, deps);

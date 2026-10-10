@@ -17,6 +17,7 @@ import type { McpRegistry } from "../mcp/index.js";
 import type { Pipeline } from "../pipeline/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore, ModelCatalog } from "../settings/index.js";
+import type { SharedContextService } from "../sharedctx/service.js";
 import type { DatabaseSync } from "../store/db.js";
 
 export interface RouteDeps {
@@ -31,6 +32,8 @@ export interface RouteDeps {
   agents?: AgentRunner;
   /** Session manager (base/fork). */
   sessions?: SessionManager;
+  /** M5 shared context (log, contributions, base stats). */
+  sharedctx?: SharedContextService;
   promptsDir?: string;
   fixturesDir?: string;
 }

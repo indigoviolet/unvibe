@@ -21,7 +21,18 @@ export async function registerJobs(app: FastifyInstance, deps: RouteDeps = {}): 
     const q = req.query as Record<string, string | undefined>;
     const review = q["review"];
     if (!review) return reply.code(400).send({ error: "missing ?review=" });
-    return { jobs: deps.jobs.listByReview(review) };
+    const jobs = deps.jobs.listByReview(review);
+    // M5 shared context (PRD §4.14): per-base size, appended tokens,
+    // superseded ratio, last rebuild reason and cache-hit rate ride along
+    // so the Settings page can show them next to job usage.
+    if (deps.sharedctx) {
+      try {
+        return { jobs, sharedContext: deps.sharedctx.statsForReview(review) };
+      } catch {
+        // fall through without stats
+      }
+    }
+    return { jobs };
   });
 
   app.get("/api/jobs/:id", async (req, reply) => {
