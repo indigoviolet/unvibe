@@ -1,0 +1,10 @@
+/**
+ * Public surface of the ACP module. Only this directory may import
+ * `@agentclientprotocol/*` (enforced by eslint no-restricted-imports + a
+ * unit test that greps the tree).
+ */
+export { AcpAgentRunner, type AcpRunnerOptions } from "./runner.js";
+export { type ModelInfo, type ThinkingInfo, type AcpStartOptions, PROVIDERS } from "./types.js";
+export { aggregateTurnUsage, cacheReadShare, deltaTurnUsage, emptyUsage, type TurnUsage } from "./usage.js";
+export { isRetryableError, errorMessage } from "./errors.js";
+export { decidePermission, isOurMcpTool } from "./permissions.js";
