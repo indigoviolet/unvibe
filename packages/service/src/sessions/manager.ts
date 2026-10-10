@@ -179,18 +179,12 @@ export class SessionManager {
         await this.closeQuietly(closed.session);
       }
     }
-    const session = await this.runner.start({
-      provider: build.key.provider,
-      model: build.key.model,
-      cwd: build.cwd,
-      systemPrompt: build.systemPrompt,
-      mcpServers: build.mcpServers,
-    });
-    const { text } = await this.sendText(session, build.pack, build.signal);
-    if (!/ready/i.test(text)) {
-      await this.closeQuietly(session);
-      throw new Error("SessionManager: base session did not acknowledge ready");
-    }
+    const session = await this.openBaseSession(
+      { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
+      build.pack,
+      build.signal,
+      build.key,
+    );
     const record: BaseRecord = {
       key: build.key,
       keyString: baseKeyString(build.key),
@@ -204,6 +198,28 @@ export class SessionManager {
     this.bases.set(record.keyString, record);
     this.persistBase(record);
     return record;
+  }
+
+  /** Start a session and send the base pack, waiting for "ready". */
+  private async openBaseSession(
+    build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[] },
+    pack: string,
+    signal: AbortSignal | undefined,
+    key: BaseKey,
+  ): Promise<Session> {
+    const session = await this.runner.start({
+      provider: key.provider,
+      model: key.model,
+      cwd: build.cwd,
+      systemPrompt: build.systemPrompt,
+      mcpServers: build.mcpServers,
+    });
+    const { text } = await this.sendText(session, pack, signal);
+    if (!/ready/i.test(text)) {
+      await this.closeQuietly(session);
+      throw new Error("SessionManager: base session did not acknowledge ready");
+    }
+    return session;
   }
 
   /**
@@ -243,9 +259,7 @@ export class SessionManager {
     const keyString = typeof baseKey === "string" ? baseKey : baseKeyString(baseKey);
     const base = this.bases.get(keyString);
     if (!base) throw new Error(`SessionManager: unknown base ${keyString}`);
-    if (!base.live) {
-      throw new Error(`SessionManager: base ${keyString} is closed; getBase() first`);
-    }
+    await this.ensureBaseLive(base);
     base.lastUsedAt = this.clock.now();
 
     let session: Session;
@@ -325,13 +339,12 @@ export class SessionManager {
         await this.closeQuietly(record.session);
       }
       const base = this.bases.get(record.baseKey);
-      if (base?.live) {
-        const rebuilt = record.viaFork && typeof this.runner.fork === "function"
-          ? await this.runner.fork(base.session)
-          : await this.fallbackSession(base);
-        if (!record.viaFork || typeof this.runner.fork !== "function") {
-          await this.drainEvents(rebuilt, base.pack);
-        }
+      if (base) {
+        await this.ensureBaseLive(base);
+        const rebuilt =
+          record.viaFork && typeof this.runner.fork === "function"
+            ? await this.runner.fork(base.session)
+            : await this.fallbackSession(base);
         record.session = rebuilt;
         record.live = true;
         record.lastUsedAt = this.clock.now();
@@ -441,6 +454,24 @@ export class SessionManager {
     });
     await this.drainEvents(session, base.pack);
     return session;
+  }
+
+  /** Bring a closed base record back to live: `load`, else rebuild. */
+  private async ensureBaseLive(base: BaseRecord): Promise<void> {
+    if (base.live) return;
+    try {
+      base.session = await this.runner.load(base.session.id);
+      base.live = true;
+      base.lastUsedAt = this.clock.now();
+      this.persistBase(base);
+      return;
+    } catch {
+      await this.closeQuietly(base.session);
+    }
+    base.session = await this.openBaseSession(base.build, base.pack, undefined, base.key);
+    base.live = true;
+    base.lastUsedAt = this.clock.now();
+    this.persistBase(base);
   }
 
   private async drainEvents(session: Session, text: string, signal?: AbortSignal): Promise<void> {
