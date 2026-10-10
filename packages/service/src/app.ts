@@ -164,7 +164,8 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   const fixturesDir = opts.fixturesDir ?? resolveFixturesDir();
 
   // Default runner: ACP (real claude/codex subprocesses). Replay only when
-  // UNVIBE_AGENT=replay (demo/tests) or when tests inject `agents` directly.
+  // UNVIBE_AGENT=replay (demo/tests) or when tests inject `agents` directly;
+  // UNVIBE_AGENT=none disables the pipeline (comments/diff/versions tests).
   const agents = opts.agents ?? createAgentRunner({ fixturesDir, delayMs: 5 });
   const models = opts.models ?? new AcpModelCatalog(agents);
 

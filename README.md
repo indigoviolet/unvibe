@@ -44,7 +44,11 @@ mise run start      # run the built service (after `mise run build`)
 ```
 
 The service binds `127.0.0.1` only (port `UNVIBE_PORT`, default `4517`; data
-dir `UNVIBE_DATA_DIR`, default `~/.local/share/unvibe`). On start it prints a
+dir `UNVIBE_DATA_DIR`, default `~/.local/share/unvibe`). Agent behaviour is
+selected with `UNVIBE_AGENT`: `replay` (recorded fixture sessions, for the
+demo and agent-behaviour tests), `none` (pipeline disabled, for tests that
+do not exercise agents), or unset/anything else (the real ACP runner). On
+start it prints a
 URL containing the per-install token, e.g.
 `http://127.0.0.1:4517/?token=…`. The web app reads the token from the URL
 once, then keeps it in `localStorage` (+ cookie for asset loads).

@@ -122,9 +122,10 @@ async function startService(dataDir: string, fakeBin: string): Promise<RunningSe
       UNVIBE_DATA_DIR: dataDir,
       UNVIBE_PORT: "0",
       UNVIBE_REPO_ROOTS: "",
-      // Never start real agents in tests: the service defaults to ACP and
-      // runs the pipeline on review creation (AGENTS.md).
-      UNVIBE_AGENT: "replay",
+      // Never start real agents in tests: the pipeline is disabled
+      // (`UNVIBE_AGENT=none`), so no background job mutates the review
+      // while comments are created (AGENTS.md).
+      UNVIBE_AGENT: "none",
       SHELL: fakeShell,
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}`,
     },
@@ -273,7 +274,15 @@ test.describe("comments over the real service", () => {
     await page.locator('.cmenu [data-cmf="pr"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     await draft.fill("Why 2 and not 3? Please explain.");
-    await page.waitForTimeout(900);
+    // The draft autosaves through PATCH (debounced): wait for the save
+    // response, not a fixed timeout, before closing the menu.
+    await page.waitForResponse(
+      (resp) =>
+        resp.url().includes(`/comments/`) &&
+        resp.request().method() === "PATCH" &&
+        resp.ok(),
+      { timeout: 10_000 },
+    );
     await page.keyboard.press("Escape");
     // Submit from the top-bar panel.
     await page.locator("#submitSlot [data-submit]").click();
