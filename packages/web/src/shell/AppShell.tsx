@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePage } from "../guide/GuidePage.js";
+import { REVEAL_EVENT } from "../source/reveal.js";
 import { SourcePane } from "../source/SourcePane.js";
 import { TopBar } from "./TopBar.js";
 
@@ -38,6 +39,19 @@ export function AppShell({ reviewId }: { reviewId: string }) {
     const onResize = (): void => setTick((t) => t + 1);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // `revealSource` (guide citations): switch to the right tab and open the
+  // pane. The diff pane scrolls/highlights once its handler lands.
+  useEffect(() => {
+    const onReveal = (e: Event): void => {
+      const ref = (e as CustomEvent<{ ref: string }>).detail?.ref;
+      if (typeof ref !== "string") return;
+      setTab(ref.startsWith("desc:") ? "desc" : "diff");
+      setSourceOpen(true);
+    };
+    window.addEventListener(REVEAL_EVENT, onReveal);
+    return () => window.removeEventListener(REVEAL_EVENT, onReveal);
   }, []);
 
   const onPointerDown = useCallback(
