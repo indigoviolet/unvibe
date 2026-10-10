@@ -21,7 +21,7 @@ import type {
   VersionHunkRef,
 } from "@unvibe/shared";
 
-export const CHANGED_SIMILARITY_THRESHOLD = 0.35;
+export const CHANGED_SIMILARITY_THRESHOLD = 0.3;
 export const CROSS_FILE_SIMILARITY_THRESHOLD = 0.8;
 
 export function hunkId(fileKey: string, contentHash: string): string {
