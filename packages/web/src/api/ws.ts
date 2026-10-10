@@ -19,6 +19,12 @@ function wsUrl(reviewId: string): string {
 
 /** Connect; returns a disconnect function. Reconnects on drop. */
 export function connectEvents(opts: WsOptions): () => void {
+  // Mock mode: the in-memory API applies mutations through the store's patch
+  // path directly, so there is no socket to open.
+  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK === "1") {
+    opts.onStatus?.(true);
+    return () => {};
+  }
   let socket: WebSocket | null = null;
   let closed = false;
   let attempt = 0;

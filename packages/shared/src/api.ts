@@ -169,6 +169,11 @@ export interface UpdateHunkRequest {
   reviewed?: boolean;
   /** Set to change the note; explicit null clears it (M1 addition). */
   note?: string | null;
+  /**
+   * Set/replace the agent summary, or delete it with `null`.
+   * Added for M1-web (hunk cards carry Delete for the summary).
+   */
+  summary?: string | null;
 }
 
 export interface SummarizeHunkResponse {

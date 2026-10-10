@@ -11,6 +11,19 @@ description = "Run service + Vite dev server together"
 run = "node ./scripts/dev.mjs"
 sources = ["packages/service/src/**/*.ts", "packages/web/src/**/*", "packages/shared/src/**/*"]
 
+[tasks."dev:mock"]
+description = "Run the web UI against the in-memory mock API (no service needed)"
+run = "VITE_MOCK=1 npm run dev --workspace @unvibe/web --if-present"
+sources = ["packages/web/src/**/*", "packages/shared/src/**/*"]
+
+[tasks."test:e2e"]
+description = "Playwright behaviour tests against mock mode (needs browsers: mise run playwright-install)"
+run = "npm run test:e2e --workspace @unvibe/web --if-present"
+
+[tasks."playwright-install"]
+description = "Install Playwright browsers for e2e tests"
+run = "npx --workspace @unvibe/web playwright install chromium"
+
 [tasks.build]
 description = "Build shared, service and web"
 run = "npm run build --workspaces --if-present && npm run build --workspace @unvibe/web --if-present"

@@ -9,7 +9,6 @@
  */
 import { randomBytes } from "node:crypto";
 import type {
-  Hunk,
   Review,
   ReviewDescription,
   ReviewFile,
@@ -17,13 +16,10 @@ import type {
 } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 import type { CommandRunner } from "../exec/index.js";
-import { classifyFile } from "./classify.js";
+import { buildReviewFiles } from "@unvibe/shared";
 import { renderCommitMessages, renderMarkdownBlocks } from "./description.js";
-import { hashHunkLines } from "./hash.js";
-import { fileKeyForPath } from "./classify.js";
 import { parseUnifiedDiff } from "./diff.js";
 import { resolveSource, type IngestSource } from "./source.js";
-import { uninterestingReason } from "./uninteresting.js";
 import { splitRawBlocks } from "../submit/description.js";
 
 export type { IngestSource };
@@ -31,6 +27,7 @@ export { parseUnifiedDiff } from "./diff.js";
 export { hashHunkLines, hunkHashInput, normaliseHunkLine } from "./hash.js";
 export { classifyFile, fileKeyForPath } from "./classify.js";
 export { uninterestingReason } from "./uninteresting.js";
+export { buildReviewFiles } from "@unvibe/shared";
 export { renderCommitMessages, renderMarkdownBlocks, renderInline } from "./description.js";
 export { resolveHead, resolveSource } from "./source.js";
 
@@ -97,44 +94,9 @@ export async function ingestReview(
     parsed.map((f) => f.path),
   );
 
-  const files: ReviewFile[] = parsed.map((f) => {
-    const category = classifyFile(f.path, { linguistGenerated: gen });
-    const fileKey = fileKeyForPath(f.path);
-    const hunks: Hunk[] = f.hunks.map((h) => {
-      const contentHash = hashHunkLines(h.lines);
-      return {
-        contentHash,
-        header: h.header,
-        ...(h.context !== undefined ? { context: h.context } : {}),
-        newStart: h.newStart,
-        newEnd: h.newEnd,
-        oldStart: h.oldStart,
-        oldEnd: h.oldEnd,
-        added: h.added,
-        removed: h.removed,
-        lines: h.lines.map((l) => ({ ...l })),
-        ...(h.noNewline ? { noNewline: true as const } : {}),
-        ...(() => {
-          const reason = uninterestingReason(h, {
-            category,
-            generatedFlag: gen.has(f.path),
-          });
-          return reason !== undefined ? { hiddenReason: reason } : {};
-        })(),
-      };
-    });
-    return {
-      fileKey,
-      path: f.path,
-      category,
-      hunks,
-      ...(f.oldPath !== undefined ? { oldPath: f.oldPath } : {}),
-      ...(f.isNew ? { isNew: true as const } : {}),
-      ...(f.isDeleted ? { isDeleted: true as const } : {}),
-      ...(f.isRename ? { isRename: true as const } : {}),
-      ...(f.isBinary ? { isBinary: true as const } : {}),
-    };
-  });
+  // classify → key → hash → hidden_reason via the shared pure pipeline
+  // (the web mock fixture builds its files through this same function).
+  const files: ReviewFile[] = buildReviewFiles(parsed, { linguistGenerated: gen });
 
   const now = Date.now();
   const prNumber = resolved.prNumber;
