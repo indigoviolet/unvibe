@@ -756,3 +756,118 @@ export function parseCardsPartial(buffer: string, opts?: ParseOptions): ParsedCa
     return { title: s.title, blocks: parsePartial(s.markdown, opts), finished: false };
   });
 }
+
+/** Decode the entities `escapeHtml`/`renderInline` produce. */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&");
+}
+
+function stripInlineTags(s: string): string {
+  return s.replace(/<[^>]*>/g, "");
+}
+
+/** Render stored inline HTML back to Markdown with `[[…]]` tokens. */
+function inlineToMarkdown(html: string): string {
+  let s = html.replace(
+    /<code>([\s\S]*?)<\/code>/g,
+    (_m, code: string) => `\`${decodeEntities(code)}\``,
+  );
+  s = s.replace(
+    /<a class="cx" data-link="([^"]+)">([\s\S]*?)<\/a>/g,
+    (_m, target: string, label: string) => `[[${target}|${decodeEntities(stripInlineTags(label))}]]`,
+  );
+  return decodeEntities(stripInlineTags(s));
+}
+
+function withCitations(text: string, citations: Citation[]): string {
+  const trimmed = text.trim();
+  if (citations.length === 0) return trimmed;
+  return `${trimmed} ${citations.map((c) => `[[${c.target}]]`).join(" ")}`;
+}
+
+/** Render a stored `<table>` back to a GitHub pipe table. */
+function tableToMarkdown(html: string): string {
+  const rows: string[][] = [];
+  for (const row of html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)) {
+    const cells = [...row[1].matchAll(/<t[hd]>([\s\S]*?)<\/t[hd]>/g)].map((c) =>
+      inlineToMarkdown(c[1]).replace(/\|/g, "\\|"),
+    );
+    rows.push(cells);
+  }
+  if (rows.length === 0) return html;
+  const width = Math.max(...rows.map((r) => r.length));
+  const pad = (r: string[]): string[] => {
+    const out = r.slice();
+    while (out.length < width) out.push("");
+    return out;
+  };
+  const head = `| ${pad(rows[0]).join(" | ")} |`;
+  const delim = `|${" --- |".repeat(width)}`;
+  const body = rows.slice(1).map((r) => `| ${pad(r).join(" | ")} |`);
+  return [head, delim, ...body].join("\n");
+}
+
+/**
+ * Render blocks back to the reply Markdown format (`parseBlocks` accepts
+ * the output, modulo block IDs). Used where rendered prose must travel as
+ * Markdown again, e.g. the context builder's guide input.
+ */
+export function renderMarkdown(blocks: Block[]): string {
+  const parts: string[] = [];
+  for (const b of blocks) {
+    switch (b.type) {
+      case "paragraph":
+        parts.push(withCitations(inlineToMarkdown(b.text.standard), b.citations));
+        if (b.text.simple) parts.push(`::: simple\n${inlineToMarkdown(b.text.simple)}\n:::`);
+        if (b.text.deep) parts.push(`::: deep\n${inlineToMarkdown(b.text.deep)}\n:::`);
+        break;
+      case "list":
+        b.items.forEach((it, i) => {
+          const marker = b.ordered ? `${i + 1}.` : "-";
+          parts.push(`${marker} ${withCitations(inlineToMarkdown(it.html), it.citations)}`);
+        });
+        for (const c of b.citations) {
+          if (!b.items.some((it) => it.citations.some((ic) => ic.target === c.target))) {
+            parts.push(`[[${c.target}]]`);
+          }
+        }
+        break;
+      case "table":
+        parts.push(withCitations(tableToMarkdown(b.html), b.citations));
+        break;
+      case "code":
+        parts.push(`\`\`\`${b.language ?? ""}\n${b.code}\n\`\`\``);
+        break;
+      case "diagram":
+        parts.push(`\`\`\`mermaid\n${b.mermaid}\n\`\`\``);
+        // Block citations cover node-label tokens (kept verbatim above)
+        // plus caption tokens; re-parsing dedupes them back to this set.
+        if (b.caption) parts.push(`Caption: ${withCitations(inlineToMarkdown(b.caption), b.citations)}`);
+        break;
+      case "finding-link":
+        parts.push(`Finding: [[page:${b.pageId}]]`);
+        break;
+      case "follow-up":
+        parts.push("### Follow-ups");
+        parts.push("");
+        for (const it of b.items) {
+          parts.push(it.ask ? `- ${it.label} | ask: ${it.ask}` : `- ${it.label}`);
+        }
+        break;
+      case "aside": {
+        const name = b.kind === "Example" ? "example" : b.kind === "Diagram" ? "diagram" : "principle";
+        parts.push(`::: ${name}`);
+        parts.push(renderMarkdown(b.inner).trim());
+        parts.push(":::");
+        break;
+      }
+    }
+    parts.push("");
+  }
+  return `${parts.join("\n").trim()}\n`;
+}

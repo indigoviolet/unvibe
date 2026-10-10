@@ -54,7 +54,7 @@ export interface ReplyData {
   /** Hunk-pass result for one hunk. */
   hunk?: { summary?: string; hiddenReason?: string | null };
   /** Second-opinion verdict. */
-  secondOpinion?: { verdict?: string; model?: string };
+  secondOpinion?: { verdict?: string; reasoning?: string; missed?: string | string[]; model?: string };
   /** Quoted anchor for explain/ask replies (validated as a substring). */
   anchor?: { quote?: string; host?: string };
   /** "Go deeper" placeholder directions (reader replies). */

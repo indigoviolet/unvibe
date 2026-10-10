@@ -21,6 +21,7 @@ export {
   parsePartial,
   parseReply,
   renderInline,
+  renderMarkdown,
   splitCardSections,
 } from "./parse.js";
 export type { CollectedTargets, ParsedReply, RenderedInline } from "./parse.js";

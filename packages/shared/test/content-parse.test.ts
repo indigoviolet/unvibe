@@ -6,6 +6,7 @@ import {
   parseCardsPartial,
   parsePartial,
   parseReply,
+  renderMarkdown,
 } from "../src/content/parse.js";
 
 const GOLDEN = `## The problem
@@ -146,6 +147,38 @@ describe("parseBlocks golden", () => {
     expect(blocks[0].type).toBe("paragraph");
     if (blocks[0].type !== "paragraph") return;
     expect(blocks[0].citations).toEqual([{ target: "bogus:1" }]);
+  });
+
+  it("round-trips blocks through renderMarkdown", () => {
+    // Citation tokens are block-level: rendering appends them at the end,
+    // so interior spacing may differ while structure stays identical.
+    // Compare with prose whitespace-normalised (code/mermaid/tables exact).
+    const normText = (s: string): string => s.replace(/\s+/g, " ").trim();
+    const norm = (blocks: import("../src/entities.js").Block[]): unknown =>
+      blocks.map((b) => {
+        if (b.type === "paragraph") {
+          return {
+            ...b,
+            text: {
+              standard: normText(b.text.standard),
+              ...(b.text.simple ? { simple: normText(b.text.simple) } : {}),
+              ...(b.text.deep ? { deep: normText(b.text.deep) } : {}),
+            },
+          };
+        }
+        if (b.type === "list") {
+          return { ...b, items: b.items.map((it) => ({ ...it, html: normText(it.html) })) };
+        }
+        if (b.type === "aside") {
+          return { ...b, inner: norm(b.inner) };
+        }
+        if (b.type === "diagram" && b.caption) {
+          return { ...b, caption: normText(b.caption) };
+        }
+        return b;
+      });
+    const blocks = parseCards(GOLDEN)[0].blocks;
+    expect(norm(parseBlocks(renderMarkdown(blocks)))).toEqual(norm(blocks));
   });
 });
 
