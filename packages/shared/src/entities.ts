@@ -393,6 +393,12 @@ export type ContributionStatus = "pending" | "accepted" | "dismissed" | "merged"
 export interface Contribution {
   id: string;
   sourceSession: string;
+  /**
+   * M5 shared context (PRD §9.5, §4.14 "Shared context"): the thread the
+   * contribution came from, shown in the Settings view. Absent on pre-M5
+   * snapshots and on contributions without a thread.
+   */
+  sourceThread?: string;
   items: ContributionItem[];
   /** ID of an earlier contribution this supersedes. */
   replaces?: string;
@@ -461,7 +467,8 @@ export type JobKind =
   | "go-deeper"
   | "second-opinion"
   | "update-pass"
-  | "summarize";
+  | "summarize"
+  | "consolidate";
 
 export type JobState = "queued" | "running" | "backing-off" | "done" | "error" | "cancelled";
 
