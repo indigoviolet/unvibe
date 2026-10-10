@@ -161,6 +161,23 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 3,
+    name: "003-version-files",
+    up: `
+      -- Per-version diff files (M5): older versions stay viewable via
+      -- GET /api/reviews/:id?version=n. One row per (review, version)
+      -- holding the ReviewFile[] JSON for that version's diff. The live
+      -- snapshot keeps the current version's files; this table keeps every
+      -- version ever fetched.
+      CREATE TABLE IF NOT EXISTS review_version_files (
+        review_id TEXT NOT NULL,
+        n INTEGER NOT NULL,
+        files_json JSON NOT NULL DEFAULT '[]',
+        PRIMARY KEY (review_id, n)
+      );
+    `,
+  },
 ];
 
 export function currentVersion(db: DatabaseSync): number {
