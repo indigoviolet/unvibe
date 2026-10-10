@@ -181,11 +181,11 @@ async function verifyInstall({ prefix, port, label, full }) {
   assert(fs.existsSync(UNVIBE), `${label}: unvibe bin linked in the prefix`);
   const installedPkg = path.join(prefix, "lib", "node_modules", "unvibe");
   assert(fs.existsSync(path.join(installedPkg, "package.json")), `${label}: installed package dir exists`);
-  // npm ≥11 links (rather than copies) global installs from a git URL when
+  // npm 11 links (rather than copies) global installs from a git URL when
   // the package has a `prepare` script, then removes the clone's working
   // tree — leaving a dangling symlink (reproducible with a trivial
-  // package; not specific to this repo). Fail loudly with the diagnosis
-  // instead of running a broken install.
+  // package; npm-side). The git phase installs with `--install-links`,
+  // which forces a real copy; this assertion verifies the fix holds.
   {
     const st = fs.lstatSync(installedPkg, { throwIfNoEntry: false });
     const isLink = !!st?.isSymbolicLink();
@@ -280,14 +280,17 @@ async function phaseTarball() {
   assert(!!tarball, `tarball produced (${tarball ?? "none"})`);
   if (!tarball) return;
   console.log(`tarball: ${tarball} (${mb(fs.statSync(path.join(TMP, tarball)).size)})`);
-  const inst = spawnSync("npm", ["install", "-g", path.join(TMP, tarball), "--prefix", PREFIX], {
+  // --allow-scripts=unvibe lets our postinstall prune the bundled agent
+  // platform binaries (npm 11 blocks install scripts by default); without it
+  // the install works but stays ~700 MB heavier.
+  const inst = spawnSync("npm", ["install", "-g", "--allow-scripts=unvibe", path.join(TMP, tarball), "--prefix", PREFIX], {
     cwd: os.tmpdir(),
     env: ENV,
     encoding: "utf8",
     timeout: 300_000,
   });
   if (inst.status !== 0) console.error(inst.stdout, inst.stderr);
-  assert(inst.status === 0, "npm install -g <tarball> --prefix");
+  assert(inst.status === 0, "npm install -g --allow-scripts=unvibe <tarball> --prefix");
   await verifyInstall({ prefix: PREFIX, port: PORT, label: "tarball", full: true });
 }
 
@@ -312,15 +315,21 @@ async function phaseGit() {
   const ENV = { ...process.env, PATH: `${path.join(PREFIX, "bin")}${path.delimiter}${process.env.PATH ?? ""}` };
   // `prepare` builds from source inside the cloned tree (needs devDeps +
   // build tools there) — this is the step the tarball phase skips.
+  // npm 11 links (rather than copies) global installs from a git URL when
+  // the package has a `prepare` script, then removes the clone's working
+  // tree — leaving a dangling symlink. `--install-links` forces a real copy
+  // with `prepare` run and a working bin (verified on npm 11.19.1; harmless
+  // on npm 10, where the same command also works). This is the documented
+  // install flag (README, macos-testing.md).
   const inst = spawnSync(
     "npm",
-    ["install", "-g", `git+file://${BARE}#${branch}`, "--prefix", PREFIX],
+    ["install", "-g", "--install-links", "--allow-scripts=unvibe", `git+file://${BARE}#${branch}`, "--prefix", PREFIX],
     { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 600_000 },
   );
   if (inst.status !== 0) console.error((inst.stdout ?? "").slice(-3000), (inst.stderr ?? "").slice(-3000));
-  assert(inst.status === 0, `npm install -g git+file://<bare>#${branch} --prefix`);
+  assert(inst.status === 0, `npm install -g --install-links --allow-scripts=unvibe git+file://<bare>#${branch} --prefix`);
   if (inst.status !== 0) return;
-  await verifyInstall({ prefix: PREFIX, port: GIT_PORT, label: "git", full: false });
+  await verifyInstall({ prefix: PREFIX, port: GIT_PORT, label: "git", full: true });
 }
 
 const main = async () => {
