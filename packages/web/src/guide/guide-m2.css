@@ -1,0 +1,71 @@
+/* M2 guide additions. Everything else comes from styles/prototype.css. */
+
+/*
+ * Shell fix (supervisor: belongs in styles/prototype.css or the shell):
+ * React mounts into #root, so without a height the `.app` grid grows with
+ * its content and the *window* scrolls. Constraining #root restores the
+ * prototype's per-pane scrolling (guide and source scroll independently).
+ */
+#root {
+  height: 100%;
+}
+
+/* Inline rich-text wrapper: no layout of its own. */
+.rt {
+  display: contents;
+}
+
+/* Unverified citations (PRD §4.5): dimmed, with a native tooltip. */
+.lk.unverified {
+  opacity: 0.38;
+}
+
+.lk.unverified:hover {
+  opacity: 0.9;
+  color: var(--muted);
+  background: var(--sunk);
+}
+
+/* Stale card banner (PRD §8): cited hunks changed, update available. */
+.stale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12.5px;
+}
+
+/* Outdated thread preview in the hover popover (PRD §8). */
+.pv.outdated {
+  border-left-color: var(--warn);
+  margin-bottom: 6px;
+}
+
+.pv.outdated .snip {
+  font: 11px/1.4 var(--mono);
+  color: var(--muted);
+  white-space: pre-wrap;
+  margin: 2px 0 4px;
+}
+
+/* Narrow panes (PRD §4.1): the card control row wraps instead of clipping. */
+.ctl {
+  row-gap: 6px;
+}
+
+@media (max-width: 560px) {
+  .card {
+    padding: 10px 14px;
+  }
+
+  .prose,
+  .lst li {
+    font-size: 16px;
+  }
+}
+

@@ -8,7 +8,7 @@
  * dots: select them with `[id="…"]` (a `#…` selector would parse the dots
  * as class names).
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 declare global {
   interface Window {
@@ -27,6 +27,16 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator(connFile)).toBeVisible();
 });
 
+/**
+ * Hunk bodies below the fold render lazily (headers mount, bodies on
+ * IntersectionObserver), so scroll the pane to the bottom before counting
+ * hidden rows. (Without the `#root` height fix the whole page scrolled and
+ * every body rendered upfront.)
+ */
+async function scrollDiffToBottom(page: Page): Promise<void> {
+  await page.evaluate(() => document.querySelector("#right")?.scrollTo(0, 1e9));
+}
+
 test("fold and unfold a hunk", async ({ page }) => {
   const conn = page.locator(connFile);
   await conn.getByRole("button", { name: "Fold code" }).first().click();
@@ -43,6 +53,7 @@ test("mark reviewed advances the hunks-reviewed progress", async ({ page }) => {
 });
 
 test("hide uninteresting collapses runs to one row per run", async ({ page }) => {
+  await scrollDiffToBottom(page);
   await expect(page.locator("button.hid")).toHaveCount(2);
   await expect(page.getByText(/Hunks 1–2 of 3 hidden · imports/)).toBeVisible();
   await page.getByRole("button", { name: "Hide uninteresting" }).click();
@@ -69,6 +80,7 @@ test("files filter narrows the visible files", async ({ page }) => {
 });
 
 test("revealSource unhides a hidden hunk and highlights the line", async ({ page }) => {
+  await scrollDiffToBottom(page);
   await expect(page.locator("button.hid")).toHaveCount(2);
   const ok = await page.evaluate((key) => window.__revealSource?.(`diff:${key}:5`), TCONN);
   expect(ok).toBe(true);

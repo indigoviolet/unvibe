@@ -34,6 +34,8 @@ function blockText(block: Block): string {
       return [block.mermaid, block.caption ?? ""].join("\n");
     case "finding-link":
       return block.pageId;
+    case "comment-link":
+      return block.diffRef;
     case "follow-up":
       return block.items.map((i) => (i.ask ? `${i.label} ${i.ask}` : i.label)).join("\n");
     case "aside":

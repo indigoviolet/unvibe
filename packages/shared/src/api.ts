@@ -146,6 +146,7 @@ export type ReviewAction =
   | { kind: "read"; cardId: string; read: boolean }
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
+  | { kind: "bookmark"; pageId: string; saved: boolean }
   | { kind: "second_opinion"; cardId: string; mode: "blind" | "check" }
   | { kind: "promote"; annotationId: string }
   | { kind: "close"; annotationId: string }

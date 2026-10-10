@@ -9,6 +9,12 @@ import type { Job, ReviewEvent, ReviewSnapshot, StatePatchOp } from "@unvibe/sha
 interface ReviewState {
   snapshot: ReviewSnapshot | null;
   connected: boolean;
+  /**
+   * Streamed text per card (`text` events carry `cardId`). Cards show the
+   * tail as progress while their job runs; patches/snapshots materialize
+   * the content and clear the streams.
+   */
+  streams: Record<string, string>;
   setSnapshot: (snapshot: ReviewSnapshot) => void;
   setConnected: (connected: boolean) => void;
   applyEvent: (event: ReviewEvent) => void;
@@ -56,6 +62,7 @@ export function applyOp(root: unknown, op: StatePatchOp): unknown {
 export const useReview = create<ReviewState>()((set) => ({
   snapshot: null,
   connected: false,
+  streams: {},
   setSnapshot: (snapshot) => set({ snapshot }),
   setConnected: (connected) => set({ connected }),
   applyEvent: (event) =>
@@ -63,19 +70,24 @@ export const useReview = create<ReviewState>()((set) => ({
       if (!s.snapshot) return s;
       switch (event.type) {
         case "snapshot":
-          return { snapshot: event.snapshot };
+          return { snapshot: event.snapshot, streams: {} };
         case "patch": {
           if (event.baseRev !== s.snapshot.rev) return s; // drifted: wait for resync
           let root: unknown = s.snapshot;
           for (const op of event.ops) root = applyOp(root, op);
-          return { snapshot: { ...(root as ReviewSnapshot), rev: event.headRev } };
+          return { snapshot: { ...(root as ReviewSnapshot), rev: event.headRev }, streams: {} };
         }
         case "job": {
           const jobs = s.snapshot.jobs.map((j) => (j.id === event.job.id ? event.job : j));
           return { snapshot: { ...s.snapshot, jobs } };
         }
+        case "text": {
+          if (!event.cardId) return s;
+          const prev = s.streams[event.cardId] ?? "";
+          return { streams: { ...s.streams, [event.cardId]: (prev + event.delta).slice(-4000) } };
+        }
         default:
-          return s; // text/error handled by streaming views later
+          return s; // error handled by streaming views later
       }
     }),
   updateJob: (job) =>
@@ -84,5 +96,5 @@ export const useReview = create<ReviewState>()((set) => ({
         ? { snapshot: { ...s.snapshot, jobs: s.snapshot.jobs.map((j) => (j.id === job.id ? job : j)) } }
         : s,
     ),
-  clear: () => set({ snapshot: null }),
+  clear: () => set({ snapshot: null, streams: {} }),
 }));
