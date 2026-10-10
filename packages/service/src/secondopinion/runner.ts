@@ -294,10 +294,12 @@ export async function buildSecondOpinionPrompt(
     codeExcerpts: allExcerpts,
     citedIds: target.citedIds,
   });
-  // `citedCode` is the "## Cited code" section of the isolated context
-  // (the per-request part that goes in the turn). Rebuilt from the same
-  // helper so excerpt rendering stays identical.
-  const citedCode = ctx.text.slice((instructions + "\n" + sourceText + "\n").length).trim() || "(no cited code available)";
+  // `citedCode` is the excerpt list of the isolated context (the
+  // per-request part that goes in the turn's `{{cited_code}}`). The
+  // template already carries the `## Cited code` header, so strip the
+  // helper's header here to avoid duplicating it.
+  let citedCode = ctx.text.slice((instructions + "\n" + sourceText + "\n").length).trim();
+  citedCode = citedCode.replace(/^## Cited code\s*\n+/, "").trim() || "(no cited code available)";
   const topic = mode === "blind" ? deriveBlindTopic({ citedIds: target.citedIds, filePaths: target.filePaths }) : "";
   const claim = mode === "check" ? target.claimText : "";
   const turn =
@@ -454,13 +456,20 @@ export async function requestSecondOpinion(
         let finalData = split.ok ? split.data : null;
         let finalValidation = validation;
         if (validation.needsRepairTurn) {
-          const repairPrompt =
+          let repairPrompt =
             `Some citations in your previous reply could not be verified:\n` +
             validation.tokens
               .filter((t) => t.status === "unverified")
               .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
               .join("\n") +
             `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
+          if (isReplayRunner(deps.runner)) {
+            const replayKey =
+              target.kind === "finding" && target.page.id.startsWith("f-")
+                ? `${target.page.id}:${req.mode}`
+                : `${req.cardId}:${req.mode}`;
+            repairPrompt = withReplayMark(repairPrompt, { kind: "second-opinion", key: replayKey });
+          }
           const repair = await collectStreaming(deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
             ctx.reportText(d),
           );
