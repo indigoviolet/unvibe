@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { registerMcp } from "../mcp/index.js";
 import type { ServiceContext } from "./context.js";
 import { registerComments } from "./comments.js";
+import { registerContributions } from "./contributions.js";
 import { registerDescription } from "./description.js";
 import type { RouteDeps } from "./deps.js";
 import { registerEvents } from "./events.js";
@@ -27,6 +28,7 @@ export async function registerRoutes(
   await registerReviews(app, ctx, deps);
   await registerHunks(app, ctx);
   await registerComments(app, ctx);
+  await registerContributions(app, ctx);
   await registerDescription(app, ctx);
   await registerSubmit(app, ctx);
   await registerSettings(app, deps);

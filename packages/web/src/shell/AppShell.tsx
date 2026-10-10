@@ -110,6 +110,7 @@ export function AppShell({ reviewId }: { reviewId: string }) {
         pendingCount={0}
         sourceOpen={open}
         onToggleSource={() => setSourceOpen(!open)}
+        reviewId={reviewId}
       />
       <div
         className="cols"

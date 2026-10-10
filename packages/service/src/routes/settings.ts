@@ -34,6 +34,16 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     const q = req.query as Record<string, string | undefined>;
     const provider = q["provider"];
     if (!provider) return reply.code(400).send({ error: "missing ?provider=" });
-    return { provider, models: await deps.models.listModels(provider) };
+    const models = await deps.models.listModels(provider);
+    if (models.length === 0) {
+      // No silent empty list (PRD §4.14): the adapter is not installed or
+      // the provider is not logged in — say so plainly.
+      return reply.code(404).send({
+        error: `no models for provider "${provider}": adapter not installed or not logged in`,
+        provider,
+        models: [],
+      });
+    }
+    return { provider, models };
   });
 }
