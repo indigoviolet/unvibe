@@ -15,6 +15,7 @@ import type {
   LogEntry,
   Page,
   Review,
+  ReviewDescription,
   ReviewFile,
   Repo,
   Version,
@@ -72,6 +73,8 @@ export interface ReviewSnapshot {
   logTail: LogEntry[];
   /** Monotonic revision of this snapshot; WS patches carry baseRev/headRev. */
   rev: number;
+  /** PR description tab (PRD §4.11). Absent until ingest fills it in. */
+  description?: ReviewDescription | null;
 }
 
 export type ReviewResponse = ReviewSnapshot;
@@ -98,6 +101,7 @@ export type ReviewAction =
   | { kind: "read"; cardId: string; read: boolean }
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
+  | { kind: "bookmark"; pageId: string; saved: boolean }
   | { kind: "second_opinion"; cardId: string; mode: "blind" | "check" }
   | { kind: "promote"; annotationId: string }
   | { kind: "close"; annotationId: string }

@@ -88,8 +88,11 @@ export interface Page {
   id: string;
   kind: PageKind;
   title: string;
-  /** Bookmark state. Concept pages default to saved (see prototype). */
-  saved: boolean;
+  /**
+   * Bookmark state. Absent means "default": concept pages default to saved,
+   * PR-specific pages to unsaved (prototype `isSaved`).
+   */
+  saved?: boolean;
   /** Parent page id for the breadcrumb trail; absent on root. */
   parent?: string;
   /** Finding-only: confidence label shown as "Agent finding · <confidence>". */
@@ -128,6 +131,14 @@ export interface CardSnapshot {
 export interface PendingCard {
   label: string;
   why: string;
+  /**
+   * Mock/seed only: key into the "Go deeper" generated-content table
+   * (the prototype's `GEN`), used by mock mode to fill the card.
+   * The service resolves generation through jobs instead.
+   */
+  genKey?: string;
+  /** Progress lines shown while the card generates (prototype `status`). */
+  statusSteps?: string[];
 }
 
 export type BlockType =
@@ -137,8 +148,10 @@ export type BlockType =
   | "code"
   | "diagram"
   | "finding-link"
+  | "comment-link"
   | "follow-up"
-  | "aside";
+  | "aside"
+  | "html";
 
 /** Text variants per depth level (PRD §4.4). Standard is the stored default. */
 export interface DepthText {
@@ -203,6 +216,20 @@ export interface FindingLinkBlock {
   citations: Citation[];
 }
 
+/**
+ * Link from a finding page to the agent's suggested comment on a diff line
+ * (PRD §4.9). Hover previews the thread, click jumps to it via revealSource.
+ */
+export interface CommentLinkBlock {
+  type: "comment-link";
+  id: string;
+  /** Diff target, e.g. `diff:conn:82`. */
+  diffRef: string;
+  /** Thread id in `ReviewSnapshot.annotations` holding the suggested comment. */
+  threadId: string;
+  citations: Citation[];
+}
+
 export interface FollowUpItem {
   label: string;
   /** Pre-baked agent question this follow-up asks. */
@@ -226,6 +253,18 @@ export interface AsideBlock {
   citations: Citation[];
 }
 
+/**
+ * Trusted pre-rendered HTML (code samples, canned agent content).
+ * Producers must sanitize agent HTML before storing it here; the web
+ * renders it as-is.
+ */
+export interface HtmlBlock {
+  type: "html";
+  id: string;
+  html: string;
+  citations: Citation[];
+}
+
 export type Block =
   | ParagraphBlock
   | ListBlock
@@ -233,8 +272,10 @@ export type Block =
   | CodeBlock
   | DiagramBlock
   | FindingLinkBlock
+  | CommentLinkBlock
   | FollowUpBlock
-  | AsideBlock;
+  | AsideBlock
+  | HtmlBlock;
 
 export type AnnotationType = "expansion" | "thread" | "link";
 
@@ -341,6 +382,29 @@ export interface Job {
   usage?: TokenUsage;
   cacheHitRate?: number;
   error?: string;
+  /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
+  cardId?: string;
+  /** Latest human-readable progress line, shown on the card while running. */
+  progress?: string;
+}
+
+/** PR description tab content (PRD §4.11). Read-only in M2; editing is M4. */
+export interface ReviewDescription {
+  /** GitHub login of the PR author. */
+  author: string;
+  /** True once merged: description is never editable. */
+  merged: boolean;
+  /** True when the viewer is the PR author (gates the editing seam). */
+  isAuthor: boolean;
+  /** Author HTML with stable paragraph ids (`desc:` citation targets). */
+  html: string;
+  /** "Restated →" links: description paragraph → guide block. */
+  restated: { paragraphId: string; cardId: string; blockId: string }[];
+  /**
+   * Branch without a PR: commit messages instead of a description.
+   * Present (and `html` empty) when there is no PR.
+   */
+  commits?: { sha: string; subject: string }[];
 }
 
 export type LogScope = { scope: "global" } | { scope: "card"; cardId: string };
