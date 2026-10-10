@@ -1,0 +1,1551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Unvibe Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+/* Layout: guided page (left, primary) | description + files + diff (right, resizable). */
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --sunk: #eef0f3; --ink: #1b1f27; --muted: #5c6472; --line: #dde1e7;
+  --accent: #0b6e78; --accent-soft: #e2f1f2;
+  --note: #9a6412; --note-soft: #fbf0d9; --note-mark: #f6e2b0;
+  --add: #e5f4e9; --add-ink: #1d6b34; --del: #fbeaea; --del-ink: #9b2c2c; --warn: #a33b16; --warn-soft: #fbe8de;
+  --ok: #2f7a3f;
+  --serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --sans: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121519; --surface: #191d23; --sunk: #20252d; --ink: #e5e8ed; --muted: #98a1b0; --line: #2b313b;
+  --accent: #56c2cb; --accent-soft: #15333a; --note: #e2b257; --note-soft: #2f2716; --note-mark: #54421a;
+  --add: #15301f; --add-ink: #8fd6a2; --del: #3a1d20; --del-ink: #f0a3a3; --warn: #f29a72; --warn-soft: #3a2218;
+  --ok: #8fd6a2; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121519; --surface: #191d23; --sunk: #20252d; --ink: #e5e8ed; --muted: #98a1b0; --line: #2b313b;
+  --accent: #56c2cb; --accent-soft: #15333a; --note: #e2b257; --note-soft: #2f2716; --note-mark: #54421a;
+  --add: #15301f; --add-ink: #8fd6a2; --del: #3a1d20; --del-ink: #f0a3a3; --warn: #f29a72; --warn-soft: #3a2218;
+  --ok: #8fd6a2; color-scheme: dark; }
+html, body { height: 100%; }
+/* Elements toggled with the hidden attribute must stay hidden even when their own rule sets display. */
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { cursor: default; opacity: .35; }
+button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: .86em; }
+.sp { flex: 1; }
+.ic { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -2px; }
+.ib { display: inline-grid; place-items: center; width: 26px; height: 24px; border: 1px solid transparent; background: none; border-radius: 6px; color: var(--muted); padding: 0; }
+.ib:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
+.ib[aria-pressed="true"] { color: var(--ok); }
+.ib.bd { border-color: var(--line); }
+.app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
+.top { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.top .pr { display: flex; gap: 8px; align-items: baseline; min-width: 0; flex: 1; }
+.top .pr b { min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top .pr .num { font-family: var(--mono); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.pill { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
+.tbtn { border: 1px solid var(--line); background: var(--surface); padding: 3px 10px; border-radius: 6px; font-size: 13px; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.tbtn[aria-pressed="true"], .tbtn[aria-expanded="true"] { background: var(--sunk); }
+.count { background: var(--note); color: var(--surface); border-radius: 99px; padding: 0 6px; font-size: 11px; }
+.cols { display: grid; min-height: 0; }
+.col { overflow: auto; min-width: 0; min-height: 0; }
+#right { background: var(--surface); }
+#handle { cursor: col-resize; background: var(--line); width: 6px; touch-action: none; }
+#handle:hover, #handle.drag { background: var(--accent); }
+.col.hide { display: none; }
+.col.overlay { position: fixed; top: 50px; bottom: 0; right: 0; width: min(680px, 100vw); z-index: 25; box-shadow: 0 0 28px rgb(0 0 0 / .18); }
+@media (max-width: 600px) { .top .pill { display: none; } }
+.hint { font-size: 12px; color: var(--muted); }
+.btn { border: 1px solid var(--ink); background: var(--ink); color: var(--surface); border-radius: 6px; padding: 3px 10px; font-size: 12.5px; font-weight: 500; }
+.btn.ghost { background: none; color: var(--ink); border-color: var(--line); }
+.mini { border: 0; background: none; color: var(--muted); font-size: 11.5px; padding: 2px 5px; border-radius: 4px; }
+.mini:hover { background: var(--sunk); color: var(--ink); }
+.postchk { font-size: 11.5px; border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 0 8px; white-space: nowrap; height: 22px; }
+.postchk[aria-pressed="true"] { background: var(--note); color: var(--surface); border-color: var(--note); }
+.x { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 2px 10px; font-size: 12px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+.x:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); font-size: 12px; padding: 2px 9px; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 0 8px; font-size: 11.5px; color: var(--muted); height: 22px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.chip span { opacity: .7; margin-left: 3px; }
+.av { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9.5px; font-weight: 600; flex: none; }
+.av.you { background: var(--note-soft); color: var(--note); }
+.av.ai { background: var(--accent-soft); color: var(--accent); }
+.hl { background: var(--note-mark) !important; }
+.composer { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.composer textarea { min-width: 0; resize: vertical; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px/1.4 var(--sans); background: var(--surface); color: var(--ink); }
+.composer .row { display: flex; gap: 6px; justify-content: flex-end; }
+.msg { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; margin: 5px 0; }
+.msg .who { font-size: 11px; color: var(--muted); }
+.msg p { margin: 1px 0 4px; }
+.tfoot { display: flex; gap: 2px; align-items: center; margin-top: 2px; flex-wrap: wrap; }
+
+/* ---------- right pane ---------- */
+.rstick { position: sticky; top: 0; z-index: 4; background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs { display: flex; gap: 2px; padding: 6px 12px 0; }
+.tab { border: 0; background: none; padding: 6px 10px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; }
+.tab[aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
+.dtool { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 12px 8px; position: relative; }
+.files { border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.frow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.files input[type="search"] { flex: 1 1 160px; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font: 12.5px var(--sans); background: var(--surface); color: var(--ink); }
+.prog { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.bar { flex: 1; height: 4px; background: var(--sunk); border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--ok); }
+.flist { max-height: 34vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 3px 0; }
+.fr { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; text-align: left; padding: 2px 10px; font: 12.5px/1.5 var(--sans); white-space: nowrap; }
+.fr:hover { background: var(--sunk); }
+.fr .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.fr.dir { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+.fr .st, .fr .rv { font: 11px var(--mono); color: var(--muted); flex: none; }
+.fr .rv.done { color: var(--ok); }
+.st .a { color: var(--add-ink); } .st .d { color: var(--del-ink); }
+.gtag { font-size: 9.5px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; flex: none; }
+.cmenu { position: absolute; right: 12px; top: calc(100% - 4px); width: min(380px, calc(100% - 24px)); max-height: 60vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 8px; z-index: 6; display: flex; flex-direction: column; gap: 6px; }
+.ci { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; padding: 6px; border-radius: 6px; }
+.ci:hover { background: var(--sunk); }
+.cj { border: 0; background: none; text-align: left; padding: 0; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cj .cw { font: 11px var(--mono); color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cj .cx2 { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ci textarea { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 4px; font: 12.5px/1.4 var(--sans); padding: 5px; resize: vertical; min-height: 56px; background: var(--surface); color: var(--ink); }
+.prtag { font-size: 10.5px; color: var(--note); border: 1px solid var(--note); border-radius: 99px; padding: 0 6px; white-space: nowrap; }
+.confirm { background: var(--sunk); border-radius: 6px; padding: 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 8px; }
+.desc { padding: 16px 20px 40px; font-size: 13.5px; }
+.desc.editing { outline: 2px solid var(--accent); outline-offset: -8px; border-radius: 10px; background: var(--surface); }
+.dbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 20px 0; font-size: 12.5px; }
+.desc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+.desc p, .desc li { margin: 6px 0; }
+.desc .para { border-radius: 4px; padding: 2px 6px; margin-inline: -6px; transition: background .4s; }
+.desc .back { font-size: 11.5px; color: var(--accent); background: none; border: 0; padding: 0; margin-left: 4px; }
+.desc table, .md table { border-collapse: collapse; font-size: 12.5px; margin: 8px 0; }
+.desc th, .desc td, .md th, .md td { border: 1px solid var(--line); padding: 4px 7px; text-align: left; vertical-align: top; }
+.desc th, .md th { background: var(--sunk); font-weight: 600; }
+.author { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+.dfile { margin: 0 0 18px; }
+.dfile-h { background: var(--sunk); padding: 4px 8px; font-family: var(--mono); font-size: 12px; display: flex; gap: 6px; align-items: center; border-block: 1px solid var(--line); }
+.dfile-h .path { display: flex; min-width: 0; flex: 1; white-space: nowrap; }
+.dfile-h .path .dir { overflow: hidden; text-overflow: ellipsis; color: var(--muted); min-width: 0; }
+.dfile-h .path b { font-weight: 500; flex: none; }
+.dfile-h .st { flex: none; }
+.revc { font: 11px var(--mono); color: var(--muted); flex: none; }
+/* Diff tables scroll sideways; .pin rows stay the pane's width so their controls never scroll out of view. */
+.dwrap { overflow-x: auto; container-type: inline-size; }
+.pin { position: sticky; left: 0; width: 100cqw; box-sizing: border-box; }
+table.diff { border-collapse: collapse; font-family: var(--mono); font-size: 11.5px; line-height: 1.55; min-width: 100%; }
+table.diff td { padding: 0 8px; white-space: pre; vertical-align: top; }
+/* Split view: two equal halves, long lines wrap inside their half instead of widening it. */
+table.diff.split { table-layout: fixed; width: 100%; }
+table.diff.split col.cn { width: 3.6em; }
+table.diff.split td.c { white-space: pre-wrap; overflow-wrap: anywhere; }
+table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select: none; opacity: .75; }
+table.diff td.n.new { cursor: pointer; }
+table.diff td.n.new:hover { color: var(--note); opacity: 1; text-decoration: underline; }
+table.diff td.n.hc { color: var(--note); opacity: 1; }
+table.diff td.n.hc .ic { width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
+table.diff td.add, table.diff tr.add td { background: var(--add); }
+table.diff td.del, table.diff tr.del td { background: var(--del); }
+table.diff td.empty { background: var(--sunk); }
+table.diff .cm { color: var(--muted); font-style: italic; }
+table.diff tr.hl td { background: var(--note-mark) !important; }
+table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans); }
+.hh { display: flex; align-items: center; gap: 4px; padding: 3px 6px; background: var(--sunk); border-top: 1px solid var(--line); }
+.hh .hl2 { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.hh .hl2 b { color: var(--ink); font-weight: 500; }
+.hh.rev .hl2 { opacity: .6; }
+.fwrap { padding: 6px 10px; background: var(--bg); }
+.fcard { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.fcard.rev { background: var(--sunk); border-color: transparent; opacity: .65; }
+.fsum { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.fsum p { margin: 0; }
+.hid { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; border: 0; border-top: 1px solid var(--line); background: var(--bg); color: var(--muted); font: 11.5px var(--sans); padding: 1px 8px; text-align: left; }
+.hid:hover { color: var(--ink); }
+.hid .ic { align-self: center; }
+.hid .hidl { flex: none; white-space: nowrap; }
+.hid .hidb { min-width: 12em; flex: 1; font-style: italic; }
+.hid .hidb code { font-style: normal; font-size: 10.5px; }
+.x[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.folded { border: 0; background: var(--bg); color: var(--muted); font: 12px var(--sans); padding: 3px 10px; text-align: left; width: 100%; }
+.folded:hover { color: var(--ink); }
+
+/* ---------- guided page ---------- */
+#page { padding: 24px clamp(16px, 4vw, 48px) 140px; }
+.doc { max-width: 760px; margin: 0 auto; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+.crumbs button { border: 0; background: none; padding: 0; color: var(--muted); }
+.crumbs button:hover { color: var(--ink); text-decoration: underline; }
+.eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.eyebrow.find { color: var(--warn); }
+.ib.save { width: 22px; height: 20px; }
+.ib.save[aria-pressed="true"] { color: var(--accent); }
+.ib.save[aria-pressed="true"] .ic { fill: currentColor; }
+h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3vw, 33px); line-height: 1.18; margin: 6px 0 10px; text-wrap: balance; }
+.meta { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 6px; }
+.prov { font-family: var(--mono); font-size: 11px; color: var(--muted); margin: 2px 0 6px; }
+.prov::before { content: "agent · "; color: var(--accent); }
+.know { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 1px 9px; font-size: 12px; letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--ink); }
+.know[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.toc { margin: 14px 0 4px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; font-size: 13px; background: var(--surface); }
+.toc-h { display: flex; align-items: center; gap: 6px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-left: -6px; }
+.toc-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 24px; margin-top: 4px; }
+.toc h3 { font-size: 11px; color: var(--muted); font-weight: 600; margin: 6px 0 2px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li button { border: 0; background: none; padding: 2px 0; text-align: left; display: flex; gap: 6px; align-items: baseline; width: 100%; font-size: 13px; }
+.toc li button:hover .tt { text-decoration: underline; }
+.toc .kd { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); width: 1.4em; flex: none; }
+.toc .rd { color: var(--ok); margin-left: auto; flex: none; }
+.toc .rd.new { color: var(--muted); font-size: 11px; }
+.toc .done .tt { color: var(--muted); }
+.divider { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 30px 0 4px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 20px; margin: 14px 0; position: relative; }
+.chead { display: flex; align-items: center; gap: 4px; margin-left: -10px; }
+.chead h2.ct { font-family: var(--serif); font-size: 21px; font-weight: 600; margin: 0; text-wrap: balance; flex: 1; min-width: 0; }
+.card.collapsed { padding-block: 8px; }
+.card.collapsed h2.ct { font-size: 18px; }
+.cprev { flex: 1; min-width: 0; margin: 0; font-family: var(--serif); font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card.read { background: var(--sunk); border-color: transparent; }
+/* A finding's own page carries the same warning accent as its card in the guide. */
+.doc.finding > .card { border-left: 3px solid var(--warn); }
+.card.read > :not(.ctl):not(.chead), .card.read .chead h2, .card.read .chead .cprev { opacity: .55; transition: opacity .2s; }
+.card.read:hover > :not(.ctl):not(.chead), .card.read:hover .chead h2 { opacity: .9; }
+.card.child { margin: 8px 0 14px 10px; border-left: 3px solid var(--accent); padding: 8px 14px; }
+.card.child.collapsed .exp-b, .card.child.collapsed .ctl { display: none; }
+.card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
+.card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
+.card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+.card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }
+.card.pend .go { grid-row: 1 / span 2; grid-column: 2; border: 1px solid var(--accent); color: var(--accent); background: var(--surface); border-radius: 6px; padding: 5px 12px; font-weight: 500; }
+.card.pend .go:hover { background: var(--accent-soft); }
+.ctl { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin: 4px 0 4px; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
+.card.child .ctl { border: 0; padding-bottom: 0; }
+.depth { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 99px; overflow: hidden; margin-right: 4px; height: 24px; }
+.depth button { border: 0; background: none; width: 24px; height: 22px; font-size: 14px; line-height: 1; color: var(--muted); }
+.depth button:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
+.depth .dl { display: inline-flex; align-items: center; padding: 0 8px; border-inline: 1px solid var(--line); height: 22px; }
+.pips { display: inline-flex; gap: 2px; } .pips i { width: 5px; height: 5px; border-radius: 50%; background: var(--line); } .pips i.on { background: var(--accent); }
+.blk { position: relative; }
+.prose, .lst li { font-family: var(--serif); font-size: 17px; line-height: 1.62; }
+.prose { margin: 10px 0; }
+.card.child .prose { font-size: 16px; }
+.lst { padding-left: 22px; margin: 8px 0; }
+.lst li { margin: 6px 0; }
+.md { overflow-x: auto; }
+.md td, .md th { font-size: 14px; line-height: 1.45; }
+.card code { background: var(--sunk); padding: 1px 4px; border-radius: 3px; }
+.card h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 2px; }
+a.cx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
+a.cx:hover { color: var(--accent); }
+a.cx.known { text-decoration-color: var(--line); }
+a.cx.known::after { content: " ✓"; font-size: .7em; color: var(--muted); }
+a.cx.pg { text-decoration-style: solid; color: var(--accent); }
+.src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 4px; padding: 0 4px; }
+.src:hover { text-decoration: underline; }
+/* Linkouts: small markers at the end of a block; hover previews, click opens. */
+.lo { display: inline-flex; gap: 2px; margin-left: 4px; vertical-align: 1px; }
+.lo-row { display: flex; justify-content: flex-end; margin-top: -4px; }
+.lk { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--muted); opacity: .55; padding: 0 3px; border-radius: 4px; font: 10.5px var(--mono); height: 18px; }
+.lk .ic { width: 12px; height: 12px; }
+.lk:hover, .lk.on { opacity: 1; color: var(--accent); background: var(--accent-soft); }
+.lk.cm { color: var(--note); opacity: .8; }
+.lk.cm:hover, .lk.cm.on { color: var(--note); background: var(--note-soft); }
+.gut { position: absolute; left: -22px; top: 6px; opacity: 0; transition: opacity .15s; }
+.blk:hover > .gut, .gut:focus-visible { opacity: 1; }
+mark.anc { background: var(--note-mark); color: inherit; border-radius: 2px; padding: 0 1px; cursor: pointer; }
+mark.anc.ex { background: var(--accent-soft); }
+/* Collapsed expansion: dotted link on the anchor text; hover previews it, click expands it. */
+mark.anc.exl { background: none; color: inherit; padding: 0; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; }
+mark.anc.exl:hover { color: var(--accent); }
+mark.anc.exl.on { outline: none; }
+#pop .xprev { max-width: 400px; max-height: 50vh; overflow: auto; font-size: 13px; }
+#pop .xprev .prose { font-size: 14px; margin: 4px 0; }
+#pop .xprev .dg svg { min-width: 0; }
+#pop .xprev pre.code { font-size: 11.5px; }
+mark.anc.on { outline: 2px solid var(--note); }
+.ithread { background: var(--note-soft); border: 1px solid transparent; border-left: 3px solid var(--note); border-radius: 10px; padding: 8px 14px; margin: 8px 0 14px 10px; font-size: 13.5px; }
+.dann { margin-top: 6px; }
+.dann .card.child, .dann .ithread { margin-left: 0; }
+.thd { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.thd .kind { color: var(--note); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; flex: none; }
+.ib.pr[aria-pressed="true"] { color: var(--note); }
+.ib.pr[aria-pressed="true"] .ic { fill: currentColor; }
+#page .ithread.on { border-color: var(--note); }
+.cthr { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; border-left: 3px solid var(--note); background: var(--note-soft); border-radius: 6px; padding: 3px 10px; font: 12.5px var(--sans); color: var(--ink); text-align: left; }
+.cthr .ic { color: var(--note); }
+.cthr .n { font: 11px var(--mono); color: var(--note); }
+.cthr .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.ithread .mq { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.exp-h .kind { color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.exp-h q { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.linkstub { margin: 4px 0 10px 10px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.linkstub button { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.gen-aside { margin: 6px 0 14px; padding: 2px 0 2px 14px; border-left: 2px dashed var(--accent); }
+.gen-aside .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: 600; margin-top: 4px; }
+.clink { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; border-left: 3px solid var(--note); background: var(--note-soft); border-radius: 8px; padding: 8px 12px; margin: 10px 0; font-size: 14px; color: var(--ink); }
+.clink .ic { color: var(--note); }
+.clink:hover { color: var(--note); }
+.findref { display: grid; gap: 2px; width: 100%; text-align: left; border: 1px solid transparent; background: var(--warn-soft); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+.findref:hover { border-color: var(--warn); }
+.findref.read { opacity: .55; }
+.findref .ftag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--warn); font-weight: 600; }
+.findref .ft { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+.findref .fs { font-size: 13.5px; color: var(--muted); }
+.findref .fo { font-size: 12.5px; color: var(--warn); }
+.suggest { background: var(--note-soft); border-radius: 8px; padding: 10px 14px; margin: 8px 0; font-size: 14px; }
+.suggest p { margin: 4px 0 8px; }
+.stag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--note); font-weight: 600; }
+.follow { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; align-items: center; }
+.follow .k { font-size: 12px; color: var(--muted); }
+.follow button { border: 1px dashed var(--accent); background: none; color: var(--accent); border-radius: 99px; padding: 2px 10px; font-size: 12.5px; }
+.follow button:hover { background: var(--accent-soft); }
+.working { margin: 6px 0; padding: 10px 12px; border-radius: 8px; background: var(--sunk); font-size: 13px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+.card.pend .working { grid-column: 1 / -1; margin: 0; }
+.dots { display: inline-flex; gap: 3px; } .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: blink 1s infinite; } .dots i:nth-child(2) { animation-delay: .15s } .dots i:nth-child(3) { animation-delay: .3s }
+@keyframes blink { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
+.fresh { animation: rise .4s ease-out; }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .fresh, .dots i { animation: none; } }
+.dg { overflow-x: auto; margin: 12px 0 4px; }
+.dg svg { display: block; min-width: 540px; width: 100%; height: auto; }
+.dg-cap { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
+.dg-box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+.dg-box.ok { stroke: var(--accent); } .dg-box.bad { stroke: var(--warn); }
+.dg-t { fill: var(--ink); font: 600 12.5px var(--sans); }
+.dg-s { fill: var(--muted); font: 11px var(--mono); }
+.dg-a { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+.dg-ah { fill: var(--muted); }
+.dg-l { fill: var(--muted); font: 11.5px var(--sans); }
+.dg-l.ok { fill: var(--accent); } .dg-l.bad { fill: var(--warn); }
+pre.code { background: var(--sunk); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.55 var(--mono); margin: 10px 0; }
+pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
+
+/* floating: selection bar, hover popover, tooltip, toast */
+#selbar { position: fixed; z-index: 30; display: flex; width: max-content; white-space: nowrap; gap: 2px; padding: 3px; border-radius: 8px; background: var(--ink); box-shadow: 0 6px 18px rgb(0 0 0 / .2); }
+#selbar button { border: 0; background: none; color: var(--surface); font-size: 12.5px; padding: 4px 9px; border-radius: 5px; }
+#selbar button:hover { background: rgb(255 255 255 / .14); }
+#selbar .sep { width: 1px; background: rgb(255 255 255 / .2); margin: 3px 2px; }
+#pop { position: fixed; z-index: 35; width: max-content; max-width: min(420px, calc(100vw - 16px)); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 8px 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
+.cite { display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left; border: 0; background: none; padding: 2px 6px; border-radius: 4px; }
+.cite:hover { background: var(--sunk); }
+.cite .loc { font: 11px var(--mono); color: var(--accent); }
+.cite .snip { font: 11px/1.4 var(--mono); color: var(--muted); white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
+.pv { border-left: 2px solid var(--note); padding-left: 8px; }
+.pv .q { color: var(--note); font-style: italic; font-size: 11.5px; }
+#pop ul { margin: 0; padding-left: 16px; }
+#tip { position: fixed; z-index: 40; background: var(--ink); color: var(--surface); font-size: 11.5px; padding: 3px 7px; border-radius: 5px; pointer-events: none; white-space: nowrap; }
+#submitSlot { position: relative; }
+.submit { position: absolute; right: 0; top: calc(100% + 6px); width: min(420px, calc(100vw - 24px)); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 12px; z-index: 30; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.submit ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow: auto; }
+.submit .cw { font: 11px var(--mono); color: var(--accent); }
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 7px 14px; border-radius: 8px; font-size: 13px; z-index: 40; max-width: calc(100vw - 32px); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="pr"><span class="num">urllib3/urllib3#5020</span><b>Unfold obsolete folded response header values</b></div>
+    <span class="pill">Prototype · canned agent</span>
+    <button class="tbtn" data-popkey="tips">Tips</button>
+    <span id="submitSlot"></span>
+    <button class="tbtn" id="toggleRight" aria-pressed="true">Source</button>
+  </header>
+  <div class="cols" id="cols">
+    <main class="col" id="page"></main>
+    <div id="handle" role="separator" aria-orientation="vertical" aria-label="Resize source pane" tabindex="0"></div>
+    <section class="col" id="right" aria-label="Description, files and diff"></section>
+  </div>
+</div>
+<div id="toast" role="status" hidden></div>
+<div id="pop" hidden></div>
+<div id="tip" hidden></div>
+<div id="selbar" hidden>
+  <button data-act="explain">Explain</button>
+  <span class="sep"></span>
+  <button data-act="ask">Ask…</button>
+  <button data-act="note">Note</button>
+</div>
+
+<script type="application/json" id="diffs">[{"key": "conn", "path": "src/urllib3/connection.py", "gen": false, "diff": "diff --git a/src/urllib3/connection.py b/src/urllib3/connection.py\nindex 443cb01be1..bdcc1e493e 100644\n--- a/src/urllib3/connection.py\n+++ b/src/urllib3/connection.py\n@@ -77,6 +77,37 @@ class BaseSSLError(BaseException):  # type: ignore[no-redef]\n RECENT_DATE = datetime.date(2025, 1, 1)\n \n _CONTAINS_CONTROL_CHAR_RE = re.compile(r\"[^-!#$%&'*+.^_`|~0-9a-zA-Z]\")\n+# Starting the optional OWS match at the beginning of a whitespace run avoids\n+# quadratic backtracking for long header values.\n+_OBSOLETE_FOLD_RE = re.compile(r\"(?:(?<![ \\t])[ \\t]+)?\\r\\n[ \\t]+\")\n+\n+\n+def _normalize_header_value(value: str) -> str:\n+    if \"\\r\\n\" not in value:\n+        return value\n+    return _OBSOLETE_FOLD_RE.sub(\" \", value)\n+\n+\n+def _normalize_header_values(\n+    message: http.client.HTTPMessage,\n+) -> list[tuple[str, str]]:\n+    header_items = message.items()\n+    headers_changed = False\n+    for index, (name, value) in enumerate(header_items):\n+        normalized_value = _normalize_header_value(value)\n+        if normalized_value != value:\n+            header_items[index] = (name, normalized_value)\n+            headers_changed = True\n+\n+    if headers_changed:\n+        # Keep the original message in sync for downstream consumers such as\n+        # cookie jars while preserving its identity and header ordering.\n+        for name, _ in header_items:\n+            del message[name]\n+        for name, value in header_items:\n+            message[name] = value\n+\n+    return header_items\n \n \n class HTTPConnection(_HTTPConnection):\n@@ -616,7 +647,8 @@ def getresponse(  # type: ignore[override]\n                 exc_info=True,\n             )\n \n-        headers = HTTPHeaderDict(httplib_response.msg.items())\n+        header_items = _normalize_header_values(httplib_response.msg)\n+        headers = HTTPHeaderDict(header_items)\n \n         response = HTTPResponse(\n             body=httplib_response,\n"}, {"key": "tconn", "path": "test/test_connection.py", "gen": false, "diff": "diff --git a/test/test_connection.py b/test/test_connection.py\nindex 783a1aed6a..12806072d8 100644\n--- a/test/test_connection.py\n+++ b/test/test_connection.py\n@@ -3,7 +3,7 @@\n import datetime\n import socket\n import typing\n-from http.client import ResponseNotReady\n+from http.client import HTTPMessage, ResponseNotReady\n from unittest import mock\n \n import pytest\n@@ -14,6 +14,8 @@\n     HTTPConnection,\n     HTTPSConnection,\n     _match_hostname,\n+    _normalize_header_value,\n+    _normalize_header_values,\n     _url_from_connection,\n     _wrap_proxy_error,\n )\n@@ -209,6 +211,43 @@ def test_recent_date(self) -> None:\n         two_years = datetime.timedelta(days=365 * 2)\n         assert RECENT_DATE > (datetime.datetime.today() - two_years).date()\n \n+    @pytest.mark.parametrize(\n+        (\"value\", \"expected\"),\n+        [\n+            (\"ordinary\\tvalue\", \"ordinary\\tvalue\"),\n+            (\"before \\t\\r\\n\\t  after\", \"before after\"),\n+            (\"one\\r\\n two\\t\\r\\n\\tthree\", \"one two three\"),\n+            (\"one\\r\\n \\r\\n\\tthree\", \"one  three\"),\n+        ],\n+    )\n+    def test_normalize_header_value(self, value: str, expected: str) -> None:\n+        assert _normalize_header_value(value) == expected\n+\n+    def test_normalize_header_values_preserves_message(self) -> None:\n+        message = HTTPMessage()\n+        message[\"X-First\"] = \"one\"\n+        message[\"Set-Cookie\"] = \"a=1 \\r\\n two\"\n+        message[\"X-Second\"] = \"three\"\n+        message[\"Set-Cookie\"] = \"b=2\"\n+        message.set_payload(\"payload\")\n+        defects = message.defects\n+        policy = message.policy\n+\n+        header_items = _normalize_header_values(message)\n+\n+        expected = [\n+            (\"X-First\", \"one\"),\n+            (\"Set-Cookie\", \"a=1 two\"),\n+            (\"X-Second\", \"three\"),\n+            (\"Set-Cookie\", \"b=2\"),\n+        ]\n+        assert header_items == expected\n+        assert message.items() == expected\n+        assert message.get_all(\"Set-Cookie\") == [\"a=1 two\", \"b=2\"]\n+        assert message.get_payload() == \"payload\"\n+        assert message.defects is defects\n+        assert message.policy is policy\n+\n     def test_HTTPSConnection_default_socket_options(self) -> None:\n         conn = HTTPSConnection(\"not.a.real.host\", port=443)\n         assert conn.socket_options == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]\n"}, {"key": "tsock", "path": "test/with_dummyserver/test_socketlevel.py", "gen": false, "diff": "diff --git a/test/with_dummyserver/test_socketlevel.py b/test/with_dummyserver/test_socketlevel.py\nindex cd7df323c1..54a2989cd7 100644\n--- a/test/with_dummyserver/test_socketlevel.py\n+++ b/test/with_dummyserver/test_socketlevel.py\n@@ -37,6 +37,7 @@\n from urllib3 import (\n     BaseHTTPResponse,\n     HTTPConnectionPool,\n+    HTTPResponse,\n     HTTPSConnectionPool,\n     ProxyManager,\n     util,\n@@ -88,6 +89,62 @@ def multicookie_response_handler(listener: socket.socket) -> None:\n             assert r.headers == {\"set-cookie\": \"foo=1, bar=1\"}\n             assert r.headers.getlist(\"set-cookie\") == [\"foo=1\", \"bar=1\"]\n \n+    def test_obsolete_line_folding_is_unfolded(self) -> None:\n+        def folded_cookie_response_handler(listener: socket.socket) -> None:\n+            with listener.accept()[0] as sock:\n+                buf = b\"\"\n+                while not buf.endswith(b\"\\r\\n\\r\\n\"):\n+                    buf += sock.recv(65536)\n+\n+                sock.sendall(\n+                    b\"HTTP/1.1 200 OK\\r\\n\"\n+                    b\"Set-Cookie: ___utmvbtouVBFmB=gZg\\r\\n\"\n+                    b\"    XbNOjalT: Lte; path=/; Max-Age=900\\r\\n\"\n+                    b\"Set-Cookie: ordinary=1; Path=/\\r\\n\"\n+                    b\"Fold-Space-Space: before \\r\\n\"\n+                    b\" after\\r\\n\"\n+                    b\"Fold-Space-Tab: before \\r\\n\"\n+                    b\"\\tafter\\r\\n\"\n+                    b\"Fold-Tab-Space: before\\t\\r\\n\"\n+                    b\" after\\r\\n\"\n+                    b\"Fold-Tab-Tab: before\\t\\r\\n\"\n+                    b\"\\tafter\\r\\n\"\n+                    b\"Fold-Mixed-Repeated: one \\t\\r\\n\"\n+                    b\"\\t  two\\t \\r\\n\"\n+                    b\" \\tthree\\r\\n\"\n+                    b\"Ordinary: one\\t two\\r\\n\"\n+                    b\"Content-Length: 0\\r\\n\"\n+                    b\"\\r\\n\"\n+                )\n+\n+        self._start_server(folded_cookie_response_handler)\n+        with HTTPConnectionPool(self.host, self.port) as pool:\n+            r = pool.request(\"GET\", \"/\", retries=0)\n+\n+            assert r.headers.getlist(\"set-cookie\") == [\n+                \"___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900\",\n+                \"ordinary=1; Path=/\",\n+            ]\n+            assert r.headers[\"fold-space-space\"] == \"before after\"\n+            assert r.headers[\"fold-space-tab\"] == \"before after\"\n+            assert r.headers[\"fold-tab-space\"] == \"before after\"\n+            assert r.headers[\"fold-tab-tab\"] == \"before after\"\n+            assert r.headers[\"fold-mixed-repeated\"] == \"one two three\"\n+            assert r.headers[\"ordinary\"] == \"one\\t two\"\n+            assert r.headers[\"content-length\"] == \"0\"\n+            assert all(\n+                \"\\r\" not in value and \"\\n\" not in value for value in r.headers.values()\n+            )\n+\n+            assert isinstance(r, HTTPResponse)\n+            assert r._original_response is not None\n+            assert r._original_response.headers is r._original_response.msg\n+            assert r._original_response.msg.get_all(\"set-cookie\") == [\n+                \"___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900\",\n+                \"ordinary=1; Path=/\",\n+            ]\n+            assert r._original_response.msg[\"fold-mixed-repeated\"] == \"one two three\"\n+\n \n class TestSNI(SocketDummyServerTestCase):\n     def test_hostname_in_first_request_packet(self) -> None:\n"}, {"key": "log", "path": "changelog/1362.bugfix.rst", "gen": false, "diff": "diff --git a/changelog/1362.bugfix.rst b/changelog/1362.bugfix.rst\nnew file mode 100644\nindex 0000000000..ef105d137d\n--- /dev/null\n+++ b/changelog/1362.bugfix.rst\n@@ -0,0 +1,3 @@\n+Fixed response header handling to replace obsolete folded header lines\n+(`obs-fold`) with spaces in accordance with RFC 9112, preventing raw\n+CRLF sequences from appearing in header values such as ``Set-Cookie``.\n"}]</script>
+<script>
+"use strict";
+// ================================================================ helpers
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const byId = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tick = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+let _uid = 0; const uid = p => (p || "b") + (++_uid);
+const clone = x => JSON.parse(JSON.stringify(x));
+const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const wait = ms => new Promise(r => setTimeout(r, RM ? 0 : ms));
+const dotsHtml = `<span class="dots"><i></i><i></i><i></i></span>`;
+let toastT;
+function toast(msg) { const t = byId("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
+const ICONS = {
+  down: `<path d="M4 6l4 4 4-4"/>`, right: `<path d="M6 4l4 4-4 4"/>`,
+  check: `<circle cx="8" cy="8" r="6"/><path d="M5.5 8.2l1.8 1.8 3.3-3.6"/>`,
+  spark: `<path d="M8 2l1.4 4.6L14 8l-4.6 1.4L8 14l-1.4-4.6L2 8l4.6-1.4z"/>`,
+  note: `<path d="M3 13l.8-3L10.5 3.3l2.2 2.2L6 12.2z"/>`, trash: `<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/>`,
+  undo: `<path d="M5.5 3.5L2.5 6.5l3 3"/><path d="M2.5 6.5H10a3.5 3.5 0 010 7H7.5"/>`,
+  bulb: `<path d="M6 13.5h4M6.3 11.2h3.4M8 2.2a4 4 0 00-2.5 7.1v1.9h5V9.3A4 4 0 008 2.2z"/>`,
+  diagram: `<rect x="2" y="2.5" width="5" height="4" rx="1"/><rect x="9" y="9.5" width="5" height="4" rx="1"/><path d="M4.5 6.5v3.5h4.5"/>`,
+  comment: `<path d="M2.5 3h11v7.5h-6.2L4.5 13v-2.5h-2z"/>`, code: `<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/>`,
+  x: `<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>`, open: `<path d="M9 2.5h4.5V7M13.5 2.5L7.5 8.5M11.5 9.5v4h-9v-9h4"/>`,
+  send: `<path d="M2.5 7.5L13.5 2.5 9 13.5 7.5 9z"/><path d="M7.5 9L13.5 2.5"/>`,
+  bookmark: `<path d="M4.5 2.5h7v11L8 10.5l-3.5 3z"/>`,
+  reply: `<path d="M6.5 4L3 7.5 6.5 11"/><path d="M3 7.5h6.5a3.5 3.5 0 013.5 3.5v1"/>`, hide: `<path d="M4 10l4-4 4 4"/>`
+};
+const icon = n => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${ICONS[n]}</svg>`;
+const ib = (n, tip, attrs = "", cls = "") => `<button class="ib ${cls}" data-tip="${esc(tip)}" aria-label="${esc(tip)}" ${attrs}>${icon(n)}</button>`;
+
+// ================================================================ diff data
+const FILES = JSON.parse(byId("diffs").textContent);
+const CATS = [{ k: "source", l: "Source .py" }, { k: "tests", l: "Tests" }, { k: "docs", l: "Docs" }, { k: "config", l: "Config" }, { k: "generated", l: "Generated" }];
+FILES.forEach(f => {
+  f.name = f.path.split("/").pop();
+  f.cat = f.gen ? "generated" : /(^|\/)tests?\//.test(f.path) ? "tests" : /\.(md|rst)$|(^|\/)(changelog|docs)\//.test(f.path) ? "docs" : f.path.endsWith(".py") ? "source" : "config";
+  f.hunks = []; let o = 0, n = 0, h = null;
+  for (const line of f.diff.split("\n")) {
+    const m = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@ ?(.*)$/);
+    if (m) { o = +m[1]; n = +m[2]; h = { hdr: line, ctx: m[3], rows: [], ns: n, ne: n, a: 0, d: 0 }; f.hunks.push(h); continue; }
+    if (!h || line.startsWith("\\")) continue;
+    const s = line[0], c = line.slice(1);
+    if (s === "+") { h.rows.push({ k: "add", n, c }); h.ne = n++; h.a++; }
+    else if (s === "-") { h.rows.push({ k: "del", o: o++, c }); h.d++; }
+    else if (s === " ") { h.rows.push({ k: "ctx", o: o++, n, c }); h.ne = n++; }
+  }
+  f.hunks.forEach(h => { const m = h.ctx.match(/(?:def|class)\s+(\w+)/); h.fn = m ? m[1] : null; });
+  f.a = f.hunks.reduce((s, h) => s + h.a, 0); f.d = f.hunks.reduce((s, h) => s + h.d, 0);
+});
+const FILE = Object.fromEntries(FILES.map(f => [f.key, f]));
+const LINES = {};
+FILES.forEach(f => f.hunks.forEach(h => h.rows.forEach(r => { if (r.n) LINES[`${f.key}:${r.n}`] = r.c; })));
+
+function srcLabel(ref) {
+  const [kind, a, b] = ref.split(":");
+  if (kind === "desc") return "PR description";
+  return b ? `${FILE[a].name}:${b.replace("-", "–")}` : FILE[a].name;
+}
+const S = (...refs) => refs.map(r => `<button class="src" data-src="${r}" data-refs="${r}">${esc(srcLabel(r))}</button>`).join(" ");
+const C = (id, text) => `<a class="cx" data-node="${id}">${text}</a>`;
+
+// ================================================================ diagrams
+const ARROW = `<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="dg-ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>`;
+const box = (x, y, w, h, t, s, cls = "") => `<rect class="dg-box ${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/><text class="dg-t" x="${x + w / 2}" y="${y + (s ? h / 2 - 3 : h / 2 + 4)}" text-anchor="middle">${t}</text>${s ? `<text class="dg-s" x="${x + w / 2}" y="${y + h / 2 + 13}" text-anchor="middle">${s}</text>` : ""}`;
+const arr = (x1, y1, x2, y2) => `<path class="dg-a" d="M${x1},${y1} L${x2},${y2}" marker-end="url(#ah)"/>`;
+const lbl = (x, y, t, cls = "", anchor = "middle") => `<text class="dg-l ${cls}" x="${x}" y="${y}" text-anchor="${anchor}">${t}</text>`;
+const mono = (x, y, t, cls = "") => `<text class="dg-s ${cls}" x="${x}" y="${y}">${t}</text>`;
+const DIAGRAMS = {
+  path: { cap: "Where a response's headers go after parsing, and the one place they are now unfolded.",
+    svg: `<svg viewBox="0 0 790 215" role="img" aria-label="Header data flow from the socket to HTTPHeaderDict and HTTPMessage">${ARROW}
+      ${box(10, 30, 120, 52, "Server", "folded header")}${box(150, 30, 140, 52, "http.client", "parse_headers")}
+      ${box(310, 30, 150, 52, "HTTPMessage", "value keeps CRLF", "bad")}${box(480, 30, 190, 52, "_normalize_header_values", "OWS CRLF RWS → SP", "ok")}
+      ${arr(130, 56, 148, 56)}${arr(290, 56, 308, 56)}${arr(460, 56, 478, 56)}
+      ${box(400, 145, 170, 52, "HTTPHeaderDict", "r.headers", "ok")}${box(600, 145, 180, 52, "HTTPMessage (same object)", "Requests' cookie jar", "ok")}
+      ${arr(560, 82, 495, 143)}${arr(600, 82, 680, 143)}
+      ${lbl(505, 118, "new dict", "", "end")}${lbl(650, 118, "rebuilt in place", "", "start")}</svg>` },
+  fold: { cap: "An obs-fold on the wire, and the value urllib3 now hands to callers.",
+    svg: `<svg viewBox="0 0 760 170" role="img" aria-label="A folded Set-Cookie header and its unfolded value">${ARROW}
+      <rect class="dg-box bad" x="10" y="20" width="330" height="92" rx="6"/>${lbl(20, 40, "On the wire", "", "start")}
+      ${mono(20, 66, "Set-Cookie: a=1; path=/ ␍␊")}${mono(20, 88, "␠␠␠␠Max-Age=900␍␊")}
+      ${arr(345, 66, 403, 66)}
+      <rect class="dg-box ok" x="410" y="20" width="340" height="92" rx="6"/>${lbl(420, 40, "After unfolding", "", "start")}
+      ${mono(420, 66, "Set-Cookie: a=1; path=/ Max-Age=900")}
+      ${lbl(175, 140, "the fold: optional spaces, CRLF, then 1+ spaces or tabs", "bad")}${lbl(580, 140, "replaced by a single space", "ok")}</svg>` }
+};
+const dg = (k, src) => ({ t: "diagram", key: k, src });
+
+// ================================================================ canned agent knowledge
+const KB = [
+  { re: /obs-fold|fold|unfold|continuation|line folding/i, diagram: "fold",
+    explain: `HTTP/1.1 originally let a server continue a header value on the next line, as long as that line started with a space or tab. That's <em>line folding</em>. RFC 9112 now calls it <code>obs-fold</code> (obsolete folding): servers must not send it, and a client that receives it must replace each fold with one or more spaces before using the value. Python's <code>http.client</code> doesn't do that; it keeps the CRLF and the leading whitespace inside the value.`,
+    simple: `Some servers split one long header across two lines, starting the second line with spaces. The modern rule is: treat that split as a single space. Python keeps the line break instead, so urllib3 has to clean it up.`,
+    deep: `A fold is a property of the <em>encoding</em>, not of the value: the same value can be sent folded or not. A parser that keeps the fold leaks its input format into the semantic value, so every consumer must either re-implement unfolding or carry a raw line break further. RFC 9112 §5.2 resolves it at the recipient, before interpretation or forwarding.`,
+    example: `<pre class="code">Set-Cookie: a=1; path=/ <span class="d">\\r\\n</span>
+<span class="d">    </span>Max-Age=900\\r\\n
+
+# http.client keeps:   'a=1; path=/ \\r\\n    Max-Age=900'
+# urllib3 now returns: 'a=1; path=/ Max-Age=900'</pre>` },
+  { re: /HTTPHeaderDict|HTTPMessage|http\.client|email\.message|headers object/i,
+    explain: `A urllib3 response carries its headers twice. <code>r.headers</code> is urllib3's <code>HTTPHeaderDict</code>, a case-insensitive dict that keeps repeated headers. <code>r._original_response.msg</code> is the <code>HTTPMessage</code> that <code>http.client</code> built while parsing, based on Python's email message class. urllib3 builds the first from the second, but some libraries, notably Requests for cookies, read the second directly. Fixing only one would leave them disagreeing.`,
+    simple: `There are two copies of the headers: urllib3's own, and the one Python's HTTP library made. Other libraries read different copies, so both need the same clean values.`,
+    deep: `Two representations of one fact are a consistency hazard. The PR chooses <em>normalize the source, then derive</em>: it rewrites the <code>HTTPMessage</code> in place (keeping the object's identity, defects and policy) and builds <code>HTTPHeaderDict</code> from the same normalized list, so both views are equal by construction.`,
+    example: `<pre class="code">r = pool.request("GET", "/")
+r.headers.getlist("set-cookie")              # urllib3's HTTPHeaderDict
+r._original_response.msg.get_all("set-cookie")  # http.client's HTTPMessage
+# Requests' cookie jar reads the second one.</pre>` },
+  { re: /inject|CRLF|response splitting|line break|smuggl|re-emit/i, diagram: "path",
+    explain: `HTTP separates headers with CRLF. If a header value itself contains CRLF and some code later writes that value back out, for example a cookie jar sending a stored cookie on the next request, the line break ends the header early and whatever follows becomes a new header. That's <em>header injection</em>. Here the risk is that a folded <code>Set-Cookie</code> could be re-sent with a raw CRLF inside it.`,
+    simple: `A hidden line break inside a header can split one header into two when the value is sent again. Removing line breaks from values prevents that.`,
+    deep: `The invariant is simple: no CR or LF in a field value after parsing. Code that serializes headers trusts that invariant, so it must hold at the boundary where external bytes become values. Enforcing it once in <code>getresponse()</code> protects every downstream serializer, as long as the enforcement covers every line terminator the parser accepts.`,
+    example: `<pre class="code"># stored cookie value with a raw fold:
+"session=abc \\r\\n X-Injected: 1"
+# re-sent as a request header:
+Cookie: session=abc
+ X-Injected: 1        &lt;- a server may read this as a new header</pre>` },
+  { re: /regex|backtrack|ReDoS|quadratic|lookbehind|linear/i,
+    explain: `The pattern is <code>(?:(?&lt;![ \\t])[ \\t]+)?\\r\\n[ \\t]+</code>: optional spaces or tabs, then CRLF, then at least one space or tab. The <code>(?&lt;![ \\t])</code> lookbehind lets the optional whitespace match start only at the <em>beginning</em> of a run of spaces. Without it, a long run of spaces that isn't followed by CRLF makes the engine try every starting position and rescan the whole run from each one, which takes quadratic time.`,
+    simple: `The pattern finds "spaces, line break, spaces". A small extra check stops it re-reading the same spaces over and over, so very long header values can't make it slow.`,
+    deep: `Regex engines that backtrack retry at each start position. With <code>[ \\t]*\\r\\n</code>, a run of <i>n</i> spaces costs <i>n − i</i> steps from position <i>i</i>, which is O(n²) in total. The lookbehind fails in O(1) everywhere inside a run, so only the run's first character starts the expensive scan, which brings the total to O(n). It's the same idea as anchoring a token to its leftmost position.`,
+    example: `<pre class="code">value = " " * 100_000 + "x"
+re.sub(r"[ \\t]*\\r\\n[ \\t]+", " ", value)                # O(n²): slow
+re.sub(r"(?:(?&lt;![ \\t])[ \\t]+)?\\r\\n[ \\t]+", " ", value)  # O(n)</pre>` },
+  { re: /cookie|Set-Cookie|comma/i,
+    explain: `<code>Set-Cookie</code> is the one header that can't be combined into a comma-separated list, because cookie attributes such as <code>Expires=Wed, 21 Oct 2026 …</code> contain commas themselves. urllib3's <code>HTTPHeaderDict</code> still keeps each <code>Set-Cookie</code> line separately (<code>getlist</code>), and the PR has to preserve that, along with the order of duplicate headers, when it rewrites the message.`,
+    simple: `Each cookie has to stay as its own header line, because cookies contain commas. The fix keeps every cookie separate and in order.`,
+    deep: `Set-Cookie breaks the general rule that repeated fields are equivalent to one comma-joined field (RFC 9110 §5.3 calls this out explicitly). Any header normalization therefore has to work on the list of (name, value) pairs, never on a joined map, which is why the helper takes <code>message.items()</code> and writes them back in order.`,
+    example: `<pre class="code">r.headers["set-cookie"]          # 'foo=1, bar=1'   (joined: lossy)
+r.headers.getlist("set-cookie")  # ['foo=1', 'bar=1'] (kept apart)</pre>` },
+  { re: /OWS|RWS|whitespace|\bSP\b|HTAB|tab/i,
+    explain: `HTTP's grammar names its whitespace. <code>OWS</code> is optional whitespace (zero or more spaces or tabs) and <code>RWS</code> is required whitespace (at least one). A fold is <code>OWS CRLF RWS</code>: maybe some spaces, the line break, then at least one space or tab starting the next line. That's exactly the shape of the PR's regex.`,
+    simple: `"Optional spaces, a line break, then at least one space": that's what a fold looks like, and that's what the code searches for.` },
+  { re: /RFC|9112|9110|obsolete|spec/i,
+    explain: `RFC 9112 (HTTP/1.1 message syntax) deprecates line folding. A sender must not generate it. A recipient must either reject the message or replace each fold with one or more spaces before interpreting or forwarding it. urllib3 takes the replace option, with exactly one space per fold.`,
+    simple: `The HTTP standard says: don't send folded headers, and if you receive one, turn each fold into a space. That's what this PR does.` },
+  { re: /requests|downstream|consumer|cookie jar|_original_response/i,
+    explain: `Requests builds its cookie jar from <code>response._original_response.msg</code>, the <code>http.client</code> message, not from urllib3's <code>r.headers</code>. That's why the PR rewrites the original message in place instead of only cleaning the dict it builds. The socket-level test checks both views and that the message is still the same object.`,
+    simple: `Requests reads cookies from Python's own copy of the headers, so that copy has to be fixed too, not just urllib3's.` },
+  { re: /fast path|common case|"\\r\\n" not in/i,
+    explain: `<code>_normalize_header_value</code> first checks <code>"\\r\\n" not in value</code> and returns the value untouched if there's no CRLF. Almost no real header is folded, so nearly every value skips the regex entirely. The message is only rewritten if at least one value actually changed.`,
+    simple: `Most headers have no line break, so the code checks for one first and skips the work when there isn't any.` }
+];
+const KP = (i, src) => ({ t: "p", html: KB[i].explain, v: { simple: KB[i].simple, deep: KB[i].deep }, src });
+const ASK = [
+  { re: /\blf\b|bare|\\n|newline only/i, a: `Not with this PR. The fast path checks for <code>"\\r\\n"</code> (${S("diff:conn:86")}) and the pattern requires <code>\\r\\n</code> (${S("diff:conn:82")}). <code>http.client</code> also accepts header lines that end in a bare LF: parsing <code>Set-Cookie: a=1\\n b=2</code> gives <code>'a=1\\n b=2'</code>, which passes through unchanged. The tests only send CRLF folds (${S("diff:tsock:99-118")}). See the finding about bare LF folds.` },
+  { re: /order|ordering|duplicate/i, a: `Order and duplicates are preserved. The helper works on <code>message.items()</code>, a list of pairs, deletes every header from the message, then re-adds the list in its original order (${S("diff:conn:102-108")}). The unit test checks this with two <code>Set-Cookie</code> lines separated by other headers (${S("diff:tconn:238-246")}).` },
+  { re: /identity|same object|in place|copy/i, a: `It mutates the existing <code>HTTPMessage</code> rather than replacing it, so anything holding a reference sees the clean values. The tests assert the message's <code>defects</code> and <code>policy</code> objects are unchanged (${S("diff:tconn:248-249")}) and that <code>r._original_response.headers is r._original_response.msg</code> (${S("diff:tsock:141")}).` },
+  { re: /cost|slow|performance|O\(|quadratic|speed/i, a: `Cheap in practice. Values without CRLF skip the regex (${S("diff:conn:86-87")}), and the message is only rewritten when something changed (${S("diff:conn:102")}). The rewrite deletes headers by name, which scans the message each time, so it's quadratic in the number of headers. That only happens for folded responses, which are rare. The regex itself is linear in value length (${S("diff:conn:80-82")}).` },
+  { re: /test|cover/i, a: `Two levels. Unit tests cover the value helper (whitespace on both sides, multiple folds, two adjacent folds, a tab inside an ordinary value) (${S("diff:tconn:214-224")}) and the message helper (order, duplicates, payload, defects, policy) (${S("diff:tconn:226-249")}). A socket-level test sends a real folded response through a pool and checks both header views (${S("diff:tsock:92-146")}). Nothing exercises bare LF folds or a very long value.` },
+  { re: /two spaces|double space|adjacent|one  three/i, a: `Yes. RFC 9112 allows replacing each fold with <em>one or more</em> spaces, and the helper replaces each fold with exactly one. <code>"one\\r\\n \\r\\n\\tthree"</code> contains two folds back to back, so it becomes two spaces (${S("diff:tconn:220")}). Collapsing them further would change whitespace the server actually sent.` },
+  { re: /cookie|set-cookie/i, a: `The folded cookie in the socket test becomes one value, <code>___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900</code>, and the second cookie stays separate (${S("diff:tsock:124-127")}). The continuation line looks like a header (<code>XbNOjalT: Lte</code>), which is exactly why a raw CRLF here is dangerous when the cookie is re-sent.` },
+  { re: /regex|lookbehind|pattern/i, a: `The lookbehind <code>(?&lt;![ \\t])</code> makes the optional leading whitespace match start only at the first space of a run (${S("diff:conn:80-82")}). That stops the engine from rescanning long runs of spaces from every position, so the time is linear in the value's length.` },
+  { re: /name|colon|before the colon/i, a: `Out of scope. The description says the separate issue of whitespace before the colon in a header name, also discussed in #1362, is intentionally not addressed (${S("desc:d-scope")}).` },
+  { re: /reject|rfc|safer/i, a: `RFC 9112 lets a recipient either reject a message with folded headers or replace each fold with spaces. Rejecting is stricter but breaks the rare legacy servers that still fold, and urllib3 has generally favoured compatibility. Unfolding is safe as long as it covers every line ending the parser accepts, which is the gap in the bare-LF finding.` },
+  { re: /forward|proxy/i, a: `RFC 9112 asks a recipient to unfold before interpreting <em>or forwarding</em>. urllib3 isn't a proxy, but its callers might forward headers, so cleaning them at parse time also covers that case.` }
+];
+const fallbackExplain = q => `<p class="prose">There's no canned explanation for <em>“${esc(q)}”</em> in this prototype. To see a canned one, select a term such as <b>obs-fold</b>, <b>HTTPHeaderDict</b>, <b>CRLF</b>, <b>regex</b>, <b>Set-Cookie</b>, <b>OWS</b>, <b>RFC 9112</b> or <b>Requests</b>.</p>`;
+const fallbackAsk = `The live agent would answer this from the repo and the PR. This prototype has canned answers for questions that mention bare LF, order or duplicates, identity, cost, tests, two spaces, cookies, the regex, header names, or forwarding.`;
+const HSUM = {
+  "conn:0": "Adds `_OBSOLETE_FOLD_RE` and two helpers. `_normalize_header_value` turns each fold into one space, with a fast path for values without CRLF. `_normalize_header_values` applies it to every header and, if anything changed, rewrites the original `HTTPMessage` in place, keeping order and duplicates.",
+  "conn:1": "`getresponse()` now builds `HTTPHeaderDict` from the normalized header list instead of the raw `HTTPMessage` items. This is the only call site.",
+  "tconn:0": "Imports `HTTPMessage` for the new unit test.",
+  "tconn:1": "Imports the two new helpers.",
+  "tconn:2": "Unit tests: the value helper on four inputs (including two adjacent folds), and the message helper preserving order, duplicates, payload, defects and policy.",
+  "tsock:0": "Imports `HTTPResponse` for an isinstance check.",
+  "tsock:1": "Socket-level test: a real response with folded `Set-Cookie` and every SP/HTAB combination around CRLF, checked through both `r.headers` and the original message.",
+  "log:0": "Changelog entry for the fix."
+};
+
+// ================================================================ content
+const P = (html, src, v, id) => ({ t: "p", html, src, v, id });
+const card = (id, title, blocks, x = {}) => ({ id, title, blocks, ...x });
+const pend = (id, label, why, status, gen) => ({ id, pending: true, label, why, status, gen, blocks: [] });
+const NODES = {
+  root: { kind: "Guided review", title: "Unfold obsolete folded response headers",
+    cards: [
+      card("problem", "The problem", [
+        P(`HTTP/1.1 used to let a server continue a header value on the next line by starting that line with a space or tab. That's ${C("c-fold", "obsolete line folding")}. Python's <code>http.client</code> keeps the folded value as it arrived, with the raw CRLF inside it, and urllib3 copied those values straight into its ${C("c-hdict", "HTTPHeaderDict")}. A header such as <code>Set-Cookie</code> could therefore contain a line break.`, ["desc:d-intro", "diff:conn:650-651"],
+          { simple: `Old servers sometimes split one header across two lines. Python keeps the line break inside the header's value, and urllib3 passed it along unchanged, so some header values contained hidden line breaks.`,
+            deep: `<b>A parser leaking its input format.</b> A fold is an encoding detail: one value written across lines. RFC 9112 requires a recipient to replace each fold with spaces before interpreting the value. Keeping the CRLF lets the wire format leak into the value itself, and every consumer then has to unfold it again, or carries the line break further.` }, "problem-1"),
+        P(`The line break isn't just untidy. Libraries that copy cookies from the response, such as Requests, read <code>http.client</code>'s own message object and can send the value back out with the raw CRLF in it. That can split one header into two on the next request: ${C("c-inject", "header injection")}. Issue #1362 tracked the original report.`, ["desc:d-sync", "desc:d-intro"],
+          { simple: `Worse, other libraries copy these values into the next request, and the hidden line break can turn one header into two.`,
+            deep: `<b>A safety property.</b> A header value must never contain CR or LF once it leaves the parser, because anything that writes it out again treats the line break as the end of the header. Normalizing at the one point where urllib3 turns the parsed response into its own types fixes every consumer at once, as long as the original message is fixed too.` }, "problem-2")
+      ]),
+      card("central", "The central change", [
+        P(`urllib3 now unfolds header values right after <code>http.client</code> parses the response. A new helper replaces each fold (optional whitespace, CRLF, then at least one space or tab) with a single space. It updates both urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code>, so code reading either one sees the same clean values.`, ["diff:conn:91-110", "diff:conn:650-651"],
+          { simple: `Right after a response arrives, urllib3 now turns every split header back into one line, in both copies of the headers.`,
+            deep: `<b>Normalize the source, then derive.</b> The fix rewrites the <code>HTTPMessage</code> in place (same object, same order, same duplicates) and builds <code>HTTPHeaderDict</code> from the same normalized list. Both views are equal by construction, and nothing downstream has to know folding ever existed.` }, "p-central"),
+        { t: "table", id: "p-table", html: `<table><tr><th>Raw value</th><th>After</th></tr>
+          <tr><td><code>before \\t\\r\\n\\t  after</code></td><td><code>before after</code></td></tr>
+          <tr><td><code>one\\r\\n two\\t\\r\\n\\tthree</code></td><td><code>one two three</code></td></tr>
+          <tr><td><code>one\\r\\n \\r\\n\\tthree</code></td><td><code>one  three</code> (two folds give two spaces)</td></tr>
+          <tr><td><code>ordinary\\tvalue</code></td><td>unchanged</td></tr></table>`, src: ["diff:tconn:214-222"] },
+        { t: "findref", node: "f-lf" },
+        P(`The rule behind it: a parsed header value must never contain a line break. The pattern starts its optional whitespace match only at the beginning of a run of spaces, which keeps it ${C("c-redos", "linear-time")} on long values, and a fast path skips any value without CRLF, which is almost all of them.`, ["diff:conn:80-88"],
+          { simple: `No header value should contain a line break after parsing. The code also stays fast, even for very long or unusual values.`,
+            deep: `Two properties are enforced together: a semantic one (no CR or LF in values) and a performance one (cost linear in input). The second matters because response headers are attacker-controlled input; a pattern that backtracks quadratically would turn a cleanup step into a ${C("c-redos", "denial-of-service")} vector.` }, "p-rule")
+      ]),
+      { id: "dv1", divider: "Go deeper", blocks: [] },
+      pend("g-flow", "Data flow: from the socket to HTTPHeaderDict", "Follows a folded header from http.client through the new helpers to both header views.", ["Reading connection.py", "Subagent: finding readers of _original_response.msg", "Drawing the flow"], "flow"),
+      pend("g-design", "Design: why the original HTTPMessage is rewritten too", "Two copies of the headers, who reads which, and how identity and order are kept.", ["Reading the message helper", "Checking the unit and socket tests", "Drafting"], "design"),
+      pend("g-regex", "The pattern: why the lookbehind matters", "What each part of the regex matches, and the backtracking it avoids.", ["Reading _OBSOLETE_FOLD_RE", "Working through the backtracking case", "Drafting"], "regex"),
+      pend("g-check", "Review checklist", "Concrete things to verify, each linked to the line that answers it.", ["Cross-checking the description against the code", "Reading the tests", "Drafting"], "check")
+    ] },
+  "c-fold": { kind: "Concept", title: "Obsolete line folding (obs-fold)", cards: [card("cc-fold", null, [
+    KP(0, ["desc:d-intro"]), dg("fold"), { t: "raw", html: KB[0].example, kbx: "e0" },
+    P(`RFC 9112 allows a recipient to reject a folded message or unfold it. urllib3 unfolds, using one space per fold. Whitespace is one of the ${C("c-ows", "OWS and RWS")} rules.`)
+  ])] },
+  "c-ows": { kind: "Concept", title: "OWS and RWS: whitespace in HTTP", cards: [card("cc-ows", null, [KP(5, ["diff:conn:82"])])] },
+  "c-hdict": { kind: "Concept", title: "HTTPHeaderDict and HTTPMessage", cards: [card("cc-hd", null, [
+    KP(1, ["diff:conn:650-651"]), { t: "raw", html: KB[1].example, kbx: "e1" },
+    P(`Repeated headers matter here, especially ${C("c-cookie", "Set-Cookie")}, which can't be joined into one value.`)
+  ])] },
+  "c-inject": { kind: "Concept", title: "Header injection through raw line breaks", cards: [card("cc-inj", null, [
+    KP(2, ["desc:d-sync"]), { t: "raw", html: KB[2].example, kbx: "e2" },
+    P(`Requests is one such consumer: it reads cookies from ${C("c-requests", "the original message")}.`)
+  ])] },
+  "c-redos": { kind: "Concept", title: "Regex backtracking and linear-time patterns", cards: [card("cc-re", null, [KP(3, ["diff:conn:80-82"]), { t: "raw", html: KB[3].example, kbx: "e3" }])] },
+  "c-cookie": { kind: "Concept", title: "Why Set-Cookie lines stay separate", cards: [card("cc-ck", null, [KP(4, ["diff:tsock:124-127"]), { t: "raw", html: KB[4].example, kbx: "e4" }])] },
+  "c-requests": { kind: "Concept", title: "Requests reads the original HTTPMessage", cards: [card("cc-rq", null, [KP(7, ["diff:tsock:139-146"])])] },
+  "f-lf": { kind: "Finding", conf: "medium", loc: "diff:conn:82",
+    title: "Folds that end in a bare LF are not unfolded",
+    summary: "http.client accepts header lines ending in LF alone, but the new code only looks for CRLF.",
+    cards: [
+      card("flf-ev", "Evidence", [
+        P(`<b>Code:</b> the fast path returns early unless the value contains <code>"\\r\\n"</code>, and the pattern requires <code>\\r\\n</code>.`, ["diff:conn:86-88", "diff:conn:82"]),
+        P(`<b>Parser:</b> <code>http.client</code> accepts header lines ending in a bare LF. Checked locally: parsing <code>Set-Cookie: a=1\\n b=2</code> returns the value <code>'a=1\\n b=2'</code>, which these helpers leave unchanged.`),
+        P(`<b>Tests:</b> every fold in the socket test and the unit tests uses CRLF.`, ["diff:tsock:99-118", "diff:tconn:214-222"])
+      ]),
+      card("flf-as", "Assessment", [
+        P(`The invariant the PR states, no raw line breaks in header values, still fails for a folded value whose lines end in a bare LF. That's the same ${C("c-inject", "header injection")} risk through LF instead of CRLF. RFC 9112 lets recipients accept a bare LF as a line terminator, and <code>http.client</code> does. Broadening the pattern and fast path to <code>\\r?\\n</code>, plus one test, would close it. Confidence is medium: the maintainers may have left LF out deliberately, and it depends on <code>http.client</code>'s behaviour.`, [],
+          { simple: `A rarer kind of split header, using only LF, still keeps its line break. A small change to the pattern would cover it.`,
+            deep: `A sanitizer is only as strong as its coverage of the parser it follows: whatever line terminators the parser accepts, the sanitizer must also recognize. Here the parser is more permissive (CRLF or LF) than the sanitizer (CRLF only), so there's a gap between "accepted" and "cleaned".` }),
+        { t: "clink", thread: "t-sglf" },
+        { t: "follow", items: [{ label: "Would rejecting folds be safer than unfolding?", ask: "rfc" }] }
+      ])
+    ] },
+  "f-perf": { kind: "Finding", conf: "high", loc: "diff:conn:80",
+    title: "The linear-time claim has no test",
+    summary: "The description and a comment rely on the pattern being linear-time, but nothing would catch a regression.",
+    cards: [
+      card("fpf-ev", "Evidence", [
+        P(`<b>Description:</b> it says the normalization uses a linear-time pattern for long field values.`, ["desc:d-norm"]),
+        P(`<b>Code:</b> a comment explains that starting the whitespace match at the beginning of a run avoids quadratic backtracking.`, ["diff:conn:80-82"]),
+        P(`<b>Tests:</b> no test uses a long value or a long run of spaces.`, ["diff:tconn:214-222"])
+      ]),
+      card("fpf-as", "Assessment", [
+        P(`The pattern is correct today, but the property that makes it safe (the lookbehind) is easy to "simplify" away later, and response headers are untrusted input. A test that normalizes a value with a very long run of spaces, kept within a generous time limit, would protect it. This is a test gap, not a bug.`),
+        { t: "clink", thread: "t-sgperf" }
+      ])
+    ] }
+};
+// Annotations made on the PR description live on this hidden node (never shown in the main pane).
+NODES.desc = { kind: "Description", title: "PR description", hidden: true, cards: [card("desc-c", null, [])] };
+const GEN = {
+  flow: { prov: "", blocks: [
+    dg("path", ["diff:conn:650-651", "diff:tsock:139-146"]),
+    { t: "ol", items: [
+      [`<code>http.client</code> parses the response headers into an <code>HTTPMessage</code>. A folded value keeps its CRLF and leading whitespace.`, []],
+      [`<code>getresponse()</code> passes that message to <code>_normalize_header_values</code> instead of reading <code>.items()</code> directly.`, ["diff:conn:650"]],
+      [`Each value goes through <code>_normalize_header_value</code>: values without CRLF return at once, folded ones are rewritten with the pattern.`, ["diff:conn:85-88"]],
+      [`If any value changed, the message is rewritten in place: every header is deleted, then the normalized list is added back in the same order.`, ["diff:conn:102-108"]],
+      [`<code>HTTPHeaderDict</code> is built from the same normalized list, so <code>r.headers</code> and <code>r._original_response.msg</code> agree.`, ["diff:conn:651", "diff:tsock:139-146"]]
+    ] },
+    { t: "follow", items: [{ label: "What happens to a fold that ends in a bare LF?", ask: "bare lf" }, { label: "Does unfolding change header order?", ask: "order" }] }
+  ] },
+  design: { prov: "", blocks: [
+    P(`A response's headers exist twice: urllib3's <code>HTTPHeaderDict</code> and <code>http.client</code>'s <code>HTTPMessage</code>. Requests reads cookies from the second, so cleaning only the first would leave the raw CRLF where it does harm.`, ["desc:d-sync"]),
+    P(`The helper therefore rewrites the original message <b>in place</b>. It keeps the object's identity (the socket test checks <code>headers is msg</code>), its <code>defects</code> and <code>policy</code>, its payload, and the order of every header, including duplicate <code>Set-Cookie</code> lines.`, ["diff:tconn:226-249", "diff:tsock:141"]),
+    P(`The alternative, building a new message, would break anything already holding a reference to the old one. Normalizing the list once and deriving both views from it makes them equal by construction.`),
+    { t: "follow", items: [{ label: "Is mutating the message in place safe?", ask: "identity" }, { label: "What does this cost per response?", ask: "cost" }] }
+  ] },
+  regex: { prov: "", blocks: [
+    P(`<code>_OBSOLETE_FOLD_RE = (?:(?&lt;![ \\t])[ \\t]+)?\\r\\n[ \\t]+</code>`, ["diff:conn:82"]),
+    { t: "ul", items: [
+      [`<code>(?:…)?</code>: optional whitespace before the line break, the <code>OWS</code> in <code>OWS CRLF RWS</code>.`, []],
+      [`<code>(?&lt;![ \\t])</code>: that optional whitespace may only start where the previous character isn't a space or tab, i.e. at the start of a run.`, ["diff:conn:80-81"]],
+      [`<code>\\r\\n</code>: the line break itself.`, []],
+      [`<code>[ \\t]+</code>: at least one space or tab starting the continuation line, the <code>RWS</code>.`, []]
+    ] },
+    P(`Without the lookbehind, a long run of spaces that isn't followed by CRLF makes the engine try every start position and rescan the run each time, which is quadratic. With it, positions inside a run fail at once, so the scan is linear.`, ["diff:conn:80-81"]),
+    { t: "follow", items: [{ label: "Why isn't this tested?", ask: "test" }] }
+  ] },
+  check: { prov: "", blocks: [
+    { t: "ul", items: [
+      [`✓ Unfolds exactly the RFC shape: optional whitespace, CRLF, at least one space or tab.`, ["diff:conn:82"]],
+      [`⚠ ${C("f-lf", "Folds that end in a bare LF are not unfolded")}.`, ["diff:conn:82", "diff:conn:86"]],
+      [`✓ Order and duplicate headers are preserved when the message is rewritten.`, ["diff:tconn:238-246"]],
+      [`✓ The original message keeps its identity, payload, defects and policy.`, ["diff:tconn:247-249", "diff:tsock:141"]],
+      [`? ${C("f-perf", "The linear-time claim has no test")}.`, ["diff:conn:80-82"]],
+      [`✓ Tabs inside ordinary values are left alone.`, ["diff:tconn:217", "diff:tsock:133"]],
+      [`✓ Two adjacent folds give two spaces, which RFC 9112 allows.`, ["diff:tconn:220"]]
+    ] },
+    { t: "follow", items: [{ label: "Is the double space intended?", ask: "two spaces" }] }
+  ] }
+};
+
+// ================================================================ state
+const state = {
+  cur: "root", visited: new Set(["root"]), parent: {}, known: new Set(), tocOpen: true,
+  rtab: "diff", view: "unified", rightOpen: null, rw: null, // null = follow the window width until the user changes it
+  filesOpen: false, fq: "", cats: new Set(CATS.map(c => c.k)), hideReviewed: false, dirOpen: {},
+  fileFold: {}, hunks: {}, diffThreads: {}, diffExps: {},
+  cmOpen: false, cmFilter: "all", confirm: false, posted: false, hideBoring: true
+};
+const H = (key, i) => (state.hunks[`${key}:${i}`] ??= {});
+const ANN = new Set(["exp", "thread", "link"]);
+
+// ================================================================ registry
+function eachCard(fn) { for (const [nid, n] of Object.entries(NODES)) for (const c of n.cards) if (fn(c, n, nid) === true) return; }
+function findCard(id) { let r = null; eachCard((c, n, nid) => { if (c.id === id) { r = { card: c, node: n, nid }; return true; } }); return r; }
+function findBlock(id) {
+  let r = null;
+  eachCard((c, n, nid) => { const i = c.blocks.findIndex(b => b.id === id); if (i >= 0) { r = { card: c, node: n, nid, i, b: c.blocks[i] }; return true; } });
+  if (r) return r;
+  const t = [...Object.values(state.diffThreads), ...Object.values(state.diffExps)].find(t => t.id === id);
+  return t ? { diff: t, b: t } : null;
+}
+function insertInto(list, topId, block) {
+  let i = list.findIndex(b => b.id === topId);
+  if (i < 0) { list.push(block); return; }
+  while (list[i + 1] && ANN.has(list[i + 1].t) && list[i + 1].top === topId) i++;
+  list.splice(i + 1, 0, block);
+}
+
+// ================================================================ history + transforms (per card / expansion)
+function initHist(doc) {
+  if (doc.hist) return;
+  doc.level ??= "standard";
+  doc.hist = [{ blocks: clone(doc.blocks.filter(b => !ANN.has(b.t))), level: doc.level }]; doc.hi = 0;
+}
+function setContent(doc, content) {
+  const ann = doc.blocks.filter(b => ANN.has(b.t)); const out = clone(content);
+  ann.forEach(a => insertInto(out, a.top, a)); doc.blocks = out;
+}
+function pushHist(doc, content, level) {
+  doc.hist = doc.hist.slice(0, doc.hi + 1); doc.hist.push({ blocks: clone(content), level }); doc.hi++;
+  doc.level = level; setContent(doc, content);
+}
+function undo(doc) { doc.hi--; const s = doc.hist[doc.hi]; doc.level = s.level; setContent(doc, s.blocks); doc.hist.length = doc.hi + 1; }
+const pick = (b, lv) => (b.v && b.v[lv]) || b.html;
+const plain = s => String(s).replace(/<[^>]+>/g, "");
+function principleFor(text) {
+  if (/regex|backtrack|linear|pattern/i.test(text)) return `When a step processes untrusted input, make its cost depend only on the input's length. Patterns that can retry from many positions turn long, odd values into a slowdown an attacker controls.`;
+  if (/HTTPHeaderDict|HTTPMessage|copies|views/i.test(text)) return `When two representations of the same data exist, normalize the source and derive the others from it, so they agree by construction instead of by careful syncing.`;
+  return `Convert wire encodings into one canonical value at the boundary where data enters, so nothing downstream has to know how the bytes were laid out, or can be tricked by it.`;
+}
+function docOf(key) { const [k, id] = key.split(":"); return k === "card" ? findCard(id).card : findBlock(id).b; }
+function transform(key, kind) {
+  const doc = docOf(key); initHist(doc);
+  const content = clone(doc.blocks.filter(b => !ANN.has(b.t)));
+  let level = doc.level, changed = 0;
+  const text = b => plain(b.t === "p" ? pick(b, level) : b.t === "ol" || b.t === "ul" ? b.items.map(x => x[0]).join(" ") : b.html || "");
+  if (kind === "simpler" || kind === "deeper") {
+    const order = ["simple", "standard", "deep"]; const ni = order.indexOf(level) + (kind === "simpler" ? -1 : 1);
+    if (ni >= 0 && ni < 3) { const nl = order[ni]; changed = content.filter(b => b.t === "p" && pick(b, nl) !== pick(b, level)).length; if (changed) level = nl; }
+    if (!changed && kind === "deeper" && !content.some(b => b.kbx === "principle")) {
+      content.push({ t: "aside", id: uid(), kind: "Underlying principle", kbx: "principle", inner: [P(principleFor(content.map(text).join(" ")))] }); changed = 1;
+    }
+  } else {
+    const used = new Set(content.filter(b => b.kbx).map(b => b.kbx));
+    content.filter(b => b.t === "diagram").forEach(b => used.add("d" + b.key));
+    for (let i = 0; i < content.length; i++) {
+      const b = content[i]; if (!["p", "ol", "ul"].includes(b.t)) continue;
+      const k = KB.find(k => k.re.test(text(b))); if (!k) continue; const ki = KB.indexOf(k);
+      if (kind === "examples" && k.example && !used.has("e" + ki)) { content.splice(i + 1, 0, { t: "aside", id: uid(), kind: "Example", kbx: "e" + ki, inner: [{ t: "raw", html: k.example }] }); used.add("e" + ki); changed++; i++; }
+      if (kind === "diagrams" && k.diagram && !used.has("d" + k.diagram)) { content.splice(i + 1, 0, { t: "aside", id: uid(), kind: "Diagram", kbx: "d" + k.diagram, inner: [dg(k.diagram)] }); used.add("d" + k.diagram); changed++; i++; }
+    }
+  }
+  if (!changed) { toast(kind === "simpler" ? "This is the simplest canned version of this card." : "Nothing more to add to this card in the prototype."); return; }
+  pushHist(doc, content, level); rerender();
+}
+
+// ================================================================ seed: show the tool mid-use on first load
+(function seed() {
+  Object.values(NODES).forEach(n => n.cards.forEach(c => c.blocks.forEach(b => { b.id ??= uid(); })));
+  const prob = findCard("problem").card, cen = findCard("central").card;
+  insertInto(prob.blocks, "problem-1", { t: "exp", id: "x-seed", kind: "example", quote: "raw CRLF", top: "problem-1", blocks: [{ t: "raw", id: uid(), html: KB[0].example, kbx: "e0" }] });
+  insertInto(cen.blocks, "p-rule", { t: "thread", id: "t-seed", top: "p-rule", quote: "fast path", msgs: [
+    { who: "you", text: "Does the fast path still catch a fold that uses a bare LF?" },
+    { who: "ai", html: ASK.find(a => a.re.test("bare lf")).a }] });
+  // Agent findings draft their suggested review comment directly on the diff line; the finding links to it.
+  state.diffThreads["conn:82"] = { id: "t-sglf", file: "conn", line: 82, msgs: [{ who: "ai", suggested: true, text: "http.client also accepts header lines that end in a bare LF, so a fold like `a=1\\n b=2` keeps its line break: both the `\"\\r\\n\" not in value` fast path and this pattern only look for CRLF. Would `\\r?\\n` here (and in the fast path), plus a test, make sense?" }] };
+  state.diffThreads["conn:80"] = { id: "t-sgperf", file: "conn", line: 80, msgs: [{ who: "ai", suggested: true, text: "Could we add a test that normalizes a value with a very long run of spaces, so a later simplification of this pattern can't bring back the quadratic case?" }] };
+  state.diffThreads["tconn:220"] = { id: "t-diff", file: "tconn", line: 220, msgs: [
+    { who: "you", text: "Is the double space here intended?" }, { who: "ai", html: ASK.find(a => a.re.test("two spaces")).a }] };
+  Object.assign(H("tconn", 2), { reviewed: true, folded: true });
+  Object.assign(H("conn", 1), { note: "Only call site; everything else is the helper." });
+  eachCard(c => { if (!c.pending && !c.divider) initHist(c); });
+})();
+
+// ================================================================ guided page
+function knownCls(html) {
+  return html.replace(/<a class="cx" data-node="([^"]+)">/g, (m, id) => NODES[id] && pageRead(NODES[id]) ? `<a class="cx known" data-node="${id}">` : m);
+}
+function citeHtml(ref) {
+  const [k, a, b] = ref.split(":");
+  const snip = k === "desc" ? DSNIP[a] : b ? (() => { const [s, e = s] = b.split("-").map(Number); const ls = []; for (let i = s; i <= Math.min(e, s + 3); i++) if (LINES[`${a}:${i}`] != null) ls.push(LINES[`${a}:${i}`]); return ls.join("\n"); })() : FILE[a].path;
+  return `<button class="cite" data-src="${ref}"><span class="loc">${esc(srcLabel(ref))}</span><span class="snip">${esc(snip || "")}</span></button>`;
+}
+// Linkout markers at the end of a block: sources and comment count. Hover previews, click opens.
+function markers(refs, th) {
+  refs = refs || []; th = th || [];
+  const r = refs.length ? `<button class="lk" data-refs="${refs.join("|")}" data-src="${refs[0]}" aria-label="Sources">${icon("code")}${refs.length > 1 ? refs.length : ""}</button>` : "";
+  const c = th.length ? `<button class="lk cm" data-threads="${th.map(t => t.id).join("|")}" aria-label="Comments">${icon("comment")}${th.length}</button>` : "";
+  return r || c ? `<span class="lo">${r}${c}</span>` : "";
+}
+const openThreads = th => (th || []).filter(t => t.open).map(renderThread).join("");
+const gut = id => `<span class="gut">${ib("comment", "Comment on this block", `data-comment="${id}"`)}</span>`;
+function ctl(key, doc) {
+  initHist(doc);
+  const order = ["simple", "standard", "deep"], i = order.indexOf(doc.level);
+  return `<div class="ctl"><span class="depth" role="group" aria-label="Depth">
+      <button data-xf="simpler" data-doc="${key}" data-tip="Simpler" aria-label="Simpler" ${i === 0 ? "disabled" : ""}>−</button>
+      <span class="dl" data-tip="Depth"><span class="pips">${order.map((_, j) => `<i class="${j <= i ? "on" : ""}"></i>`).join("")}</span></span>
+      <button data-xf="deeper" data-doc="${key}" data-tip="Deeper" aria-label="Deeper">+</button></span>
+    ${ib("bulb", "Use examples", `data-xf="examples" data-doc="${key}"`)}
+    ${ib("diagram", "Add diagram", `data-xf="diagrams" data-doc="${key}"`)}
+    ${ib("undo", "Undo", `data-undo="${key}" ${doc.hi > 0 ? "" : "disabled"}`)}
+    <span class="sp"></span>
+    ${ib("check", doc.read ? "Mark unread" : "Mark read", `data-read="${key}" aria-pressed="${!!doc.read}"`)}</div>`;
+}
+function renderInner(x, lv, top) {
+  switch (x.t) {
+    case "p": return `<p class="prose sel" data-top="${top}">${knownCls(pick(x, lv))}</p>`;
+    case "raw": return `<div class="sel" data-top="${top}">${x.html}</div>`;
+    case "h4": return `<h4>${esc(x.text)}</h4>`;
+    case "diagram": { const d = DIAGRAMS[x.key]; return `<div class="dg">${d.svg}</div><p class="dg-cap">${esc(d.cap)}</p>`; }
+  }
+  return "";
+}
+function threadMap(blocks) {
+  const ids = new Set(blocks.map(b => b.id)); const m = {};
+  blocks.filter(b => b.t === "thread").forEach(t => (m[ids.has(t.top) ? t.top : "__orphan"] ||= []).push(t));
+  return m;
+}
+function renderBlock(b, lv, th) {
+  const id = "B-" + b.id;
+  switch (b.t) {
+    case "p": return `<div class="blk" id="${id}">${gut(b.id)}<p class="prose sel" data-top="${b.id}">${knownCls(pick(b, lv))}${markers(b.src, th)}</p></div>${openThreads(th)}`;
+    case "raw": case "table": return `<div class="blk" id="${id}">${gut(b.id)}<div class="${b.t === "table" ? "md " : ""}sel" data-top="${b.id}">${b.html}</div><div class="lo-row">${markers(b.src, th)}</div></div>${openThreads(th)}`;
+    case "diagram": return `<div class="blk" id="${id}">${renderInner(b, lv, b.id)}<div class="lo-row">${markers(b.src, th)}</div></div>${openThreads(th)}`;
+    case "h4": return `<h4 id="${id}">${esc(b.text)}</h4>`;
+    case "ol": case "ul": return `<${b.t} class="lst">${b.items.map(([h, s], i) => `<li id="${id}-${i}"><span class="sel" data-top="${b.id}">${knownCls(h)}</span>${markers(s, i === 0 ? th : [])}</li>`).join("")}</${b.t}>${openThreads(th)}`;
+    case "clink": { const tt = findBlock(b.thread)?.b; if (!tt) return ""; return `<div class="blk" id="${id}"><button class="clink" data-cjump="${tt.id}" data-cprev="${tt.id}">${icon("comment")}<span>Suggested review comment on <b>${esc(FILE[tt.file].name)}:${tt.line}</b></span><span class="sp"></span>${tt.post ? `<span class="prtag">For PR</span>` : ""}→</button></div>`; }
+    case "findref": { const f = NODES[b.node]; return `<div class="blk" id="${id}"><button class="findref ${pageRead(f) ? "read" : ""}" data-node="${b.node}"><span class="ftag">Agent finding · ${f.conf} confidence</span><span class="ft">${esc(f.title)}</span><span class="fs">${esc(f.summary)}</span><span class="fo">Open →</span></button></div>`; }
+    case "suggest": {
+      const t = Object.values(state.diffThreads).find(x => x.fromSuggest === b.id);
+      const act = (t ? `<button class="btn ghost" data-src="${b.loc}">Show in diff</button>${t.post ? ` <span class="prtag">For PR</span>` : ""}` : `<button class="btn" data-suggest="${b.id}">Add to diff as PR comment</button>`)
+        ;
+      return `<div class="blk" id="${id}"><div class="suggest"><div class="stag">Suggested review comment · ${esc(srcLabel(b.loc))}</div><p>${tick(b.text)}</p>${act}${markers([], th)}</div></div>${openThreads(th)}`; }
+    case "aside": return `<div class="blk gen-aside fresh" id="${id}"><div class="tag">${esc(b.kind)}</div>${b.inner.map(x => renderInner(x, lv, b.id)).join("")}${markers([], th)}</div>${openThreads(th)}`;
+    case "follow": return b.items.length ? `<div class="follow"><span class="k">Follow up:</span>${b.items.map((f, i) => `<button data-follow="${b.id}" data-i="${i}">${esc(f.label)}</button>`).join("")}</div>` : "";
+    case "exp": return renderExp(b, th);
+    case "link": return `<div class="linkstub" data-fallback="${b.id}" hidden>↳ <button data-node="${b.node}">${esc(NODES[b.node].title)}</button><span class="hint">opened as its own page</span></div>`;
+  }
+  return "";
+}
+const KIND = { explain: "Explain", example: "Example", diagram: "Diagram", answer: "Answer" };
+function renderExp(b, th) {
+  if (b.collapsed) return `<div data-fallback="${b.id}" hidden>${renderExpCard(b, th)}</div>${openThreads(th)}`;
+  return renderExpCard(b, th);
+}
+function renderExpCard(b, th) {
+  const body = b.busy ? `<div class="working">${dotsHtml}${esc(b.busy)}</div>` : b.blocks.map(x => renderInner(x, b.level, b.id)).join("");
+  return `<section class="card child ${b.collapsed ? "collapsed" : ""} ${b.read ? "read" : ""}" id="B-${b.id}">
+    <div class="exp-h">${b.collapsed ? ib("right", "Expand", `data-collapse="${b.id}"`) : ""}<q>${esc(b.quote)}</q>${markers([], th)}
+      ${ib("open", "Open as page", `data-promote="${b.id}"`)}${ib("trash", "Delete", `data-remove="${b.id}"`)}${b.collapsed ? "" : ib("x", "Close", `data-collapse="${b.id}"`)}</div>
+    ${b.busy ? "" : ctl("exp:" + b.id, b)}<div class="exp-b">${body}</div></section>${openThreads(th)}`;
+}
+function renderMsgs(msgs) {
+  return msgs.map(m => `<div class="msg"><span class="av ${m.who === "you" ? "you" : "ai"}">${m.who === "you" ? "Me" : "AI"}</span><div><div class="who">${m.who === "you" ? "You" : m.suggested ? "Agent · suggested comment" : "Agent"}</div><p>${m.busy ? `${dotsHtml} ${esc(m.busy)}` : m.html || tick(m.text)}</p></div></div>`).join("");
+}
+// Actions sit top right; the reply box is always there (drafts survive re-renders via t.reply).
+// Page threads start closed (shown via their marker); diff and description threads start open.
+const threadShown = t => t.file || t.desc ? !t.collapsed : !!t.open;
+function setThreadShown(t, v) { if (t.file || t.desc) t.collapsed = !v; else t.open = v; }
+function renderThread(t) {
+  const isNew = !t.msgs.length;
+  // Diff comments collapse to a one-line row in place; page comments close back to their marker.
+  if (!threadShown(t)) return "";
+  // Same header language as expansion cards: kind label, quote, icon actions top right.
+  return `<div class="ithread" id="${t.id}"><div class="thd"><span class="mq">${t.quote ? `“${esc(t.quote)}”` : t.file ? `${esc(FILE[t.file].name)}:${t.line}` : ""}</span>
+      ${isNew ? "" : ib("send", t.post ? "Marked for the PR · click to unmark" : "Mark for the PR", `data-post="${t.id}" aria-pressed="${!!t.post}"`, "pr")}
+      ${ib("trash", "Delete", `data-remove="${t.id}"`)}${isNew ? "" : ib("x", "Close", `data-closethr="${t.id}"`)}</div>
+    ${renderMsgs(t.msgs)}
+    <div class="composer"><textarea id="ta-${t.id}" rows="${isNew ? 3 : 1}" placeholder="${isNew ? (t.note ? "Write a note…" : "Ask the agent, or draft a review comment…") : "Reply…"}">${esc(t.reply || "")}</textarea>
+      <div class="row"><button class="btn ghost" data-discard="${t.id}" data-tip="${isNew ? "Discard this comment" : "Clear the reply"}">Discard</button><button class="btn" data-send="${t.id}">${t.note ? "Save" : isNew ? "Ask" : "Reply"}</button></div></div></div>`;
+}
+function preview(c) {
+  const b = c.blocks.find(b => b.t === "p" || b.t === "ol" || b.t === "ul" || b.t === "suggest");
+  const s = !b ? "" : b.t === "p" ? pick(b, c.level) : b.t === "suggest" ? b.text : b.items[0][0];
+  return plain(s).replace(/\s+/g, " ").trim();
+}
+// Concept pages are saved to the repo by default; PR-specific pages only when you save them.
+const isSaved = n => n.saved ?? n.kind === "Concept";
+const readable = n => n.cards.filter(c => !c.pending && !c.divider);
+const readCount = n => readable(n).filter(c => c.read).length;
+const pageRead = n => readable(n).length > 0 && readCount(n) === readable(n).length;
+function renderCard(c) {
+  if (c.divider) return `<div class="divider">${esc(c.divider)}</div>`;
+  if (c.pending) return `<section class="card pend" id="C-${c.id}">${c.busy ? `<div class="working">${dotsHtml}<span>${esc(c.busy)}</span></div>` : `<div class="pl">${esc(c.label)}</div><div class="why">${esc(c.why)}</div><button class="go" data-gen="${c.id}">Generate</button>`}</section>`;
+  const tm = threadMap(c.blocks), key = "card:" + c.id;
+  const chev = ib(c.collapsed ? "right" : "down", c.collapsed ? "Expand" : "Collapse", `data-ccol="${key}" aria-expanded="${!c.collapsed}"`);
+  // Collapsed: just the title row (untitled cards show their first line instead).
+  if (c.collapsed) return `<section class="card collapsed ${c.read ? "read" : ""}" id="C-${c.id}"><div class="chead">${chev}
+    ${c.title ? `<h2 class="ct">${esc(c.title)}</h2>` : `<p class="cprev">${esc(preview(c))}</p>`}
+    ${c.read ? ib("check", "Mark unread", `data-read="${key}" aria-pressed="true"`) : ""}</div></section>`;
+  return `<section class="card ${c.fresh ? "fresh" : ""} ${c.read ? "read" : ""}" id="C-${c.id}"><div class="chead">${chev}${c.title ? `<h2 class="ct">${esc(c.title)}</h2>` : ""}</div>
+    ${ctl(key, c)}${c.blocks.filter(b => b.t !== "thread").map(b => renderBlock(b, c.level, tm[b.id] || [])).join("")}${(tm.__orphan || []).map(renderThread).join("")}</section>`;
+}
+function crumbs() {
+  const chain = []; let n = state.cur;
+  while (n) { chain.unshift(n); n = state.parent[n]; }
+  return `<nav class="crumbs" aria-label="Trail">${chain.map((id, i) => i === chain.length - 1 ? `<span>${esc(NODES[id].title)}</span>` : `<button data-node="${id}">${esc(NODES[id].title)}</button><span>›</span>`).join("")}</nav>`;
+}
+const kd = n => ({ "Guided review": "PR", Concept: "C", Finding: "F" })[n.kind] || "X";
+function linkedPages(n) {
+  const ids = new Set(); const scan = s => { for (const m of String(s || "").matchAll(/data-node="([^"]+)"/g)) ids.add(m[1]); };
+  const walk = b => { scan(b.html); if (b.v) Object.values(b.v).forEach(scan); b.items?.forEach(x => scan(x[0])); if (b.node) ids.add(b.node); b.blocks?.forEach(walk); b.inner?.forEach(walk); };
+  n.cards.forEach(c => c.blocks.forEach(walk));
+  ids.delete(state.cur); return [...ids].filter(id => NODES[id]);
+}
+// Contents: this page's cards plus the pages it links to, with read / opened state.
+function tocHtml(n) {
+  const cards = n.cards.filter(c => !c.divider), linked = linkedPages(n);
+  const head = `<div class="toc-h">${ib(state.tocOpen ? "down" : "right", state.tocOpen ? "Hide contents" : "Show contents", "data-toc")}<span>Contents</span></div>`;
+  if (!state.tocOpen) return `<nav class="toc" aria-label="Contents">${head}</nav>`;
+  // Read items are shown muted; nothing else is annotated.
+  const cardLi = c => `<li class="${c.read ? "done" : ""}"><button data-tocard="${c.id}"><span class="tt">${esc(c.title || c.label || preview(c).slice(0, 70))}</span></button></li>`;
+  const linkLi = id => { const p = NODES[id]; return `<li class="${pageRead(p) ? "done" : ""}"><button data-node="${id}"><span class="tt">${esc(p.title)}</span></button></li>`; };
+  return `<nav class="toc" aria-label="Contents">${head}<div class="toc-g"><div><h3>On this page</h3><ul>${cards.map(cardLi).join("")}</ul></div>
+    ${linked.length ? `<div><h3>Linked pages</h3><ul>${linked.map(linkLi).join("")}</ul></div>` : ""}</div></nav>`;
+}
+function renderPage() {
+  const n = NODES[state.cur], isF = n.kind === "Finding";
+  const head = `${state.cur !== "root" ? crumbs() : ""}
+    <div class="eyebrow ${isF ? "find" : ""}">${state.cur === "root" ? "Guided review" : isF ? `Agent finding · ${n.conf} confidence` : ""}${ib("bookmark", isSaved(n) ? "Saved to this repo · click to unsave" : "Save to this repo", `data-save="${state.cur}" aria-pressed="${isSaved(n)}"`, "save")}</div>
+    <h1 class="title">${esc(n.title)}</h1>
+    ${isF ? `<div class="meta">${esc(n.summary)}</div>` : ""}`;
+  $("#page").innerHTML = `<div class="doc ${isF ? "finding" : ""}">${head}${tocHtml(n)}${n.cards.map(renderCard).join("")}</div>`;
+  n.cards.forEach(c => { c.fresh = false; if (!c.pending && !c.divider && !c.collapsed) applyAnchors(c); });
+}
+function applyAnchors(c, root = $("#page")) {
+  c.blocks.filter(b => ANN.has(b.t) && b.top && b.quote).forEach(b => {
+    const make = b.t === "link"
+      ? () => { const a = document.createElement("a"); a.className = "cx pg"; a.dataset.node = b.node; a.title = "Opened as its own page"; return a; }
+      : () => expMark(b);
+    let ok = false;
+    for (const el of $$(`[data-top="${b.top}"]`, root)) if ((ok = markText(el, b.quote, make))) break;
+    if (!ok && (b.t === "link" || (b.t === "exp" && b.collapsed))) { const s = $(`[data-fallback="${b.id}"]`); if (s) s.hidden = false; }
+    // A highlighted comment needs no second indicator: drop it from the end-of-paragraph marker.
+    if (ok && b.t === "thread") dropFromMarker(root, b.id);
+  });
+}
+function dropFromMarker(root, id) {
+  $$(".lk.cm", root).forEach(btn => {
+    const ids = btn.dataset.threads.split("|"); if (!ids.includes(id)) return;
+    const rest = ids.filter(x => x !== id);
+    if (!rest.length) { const lo = btn.closest(".lo"); btn.remove(); if (lo && !lo.children.length) lo.remove(); }
+    else { btn.dataset.threads = rest.join("|"); btn.lastChild.textContent = rest.length; }
+  });
+}
+function expMark(b) {
+  const m = document.createElement("mark");
+  if (b.t !== "exp") { m.className = "anc"; m.dataset.thr = b.id; return m; }
+  m.className = b.collapsed ? "anc exl" : "anc ex"; m.dataset.jump = b.id;
+  return m;
+}
+function markText(el, quote, make) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let t; (t = walker.nextNode());) {
+    if (t.parentElement.closest(".lo")) continue;
+    const i = t.data.indexOf(quote); if (i < 0) continue;
+    const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + quote.length);
+    r.surroundContents(make()); return true;
+  }
+  return false;
+}
+
+// ================================================================ right: description + files + diff
+const DESC = `<div class="desc">
+  <p class="para" id="d-intro" data-top="d-intro">Addresses the original obs-fold response-header case discussed in #1362. Python's <code>http.client</code> preserves obsolete folded response header lines in <code>HTTPMessage</code> values. This change replaces each RFC 9112 <code>OWS CRLF RWS</code> sequence with a single space before urllib3 or downstream consumers interpret the value. <button class="back" data-back="problem-1">Restated →</button></p>
+  <h3>The normalization</h3>
+  <ul class="para" id="d-norm" data-top="d-norm">
+  <li id="d-sync" data-top="d-sync">keeps urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> synchronized, preventing cookie consumers such as Requests from re-emitting raw CRLF;</li>
+  <li>preserves header names, ordering, duplicate fields, and parser state;</li>
+  <li>uses a common-case fast path and a linear-time pattern for long field values. <button class="back" data-back="p-central">Restated →</button></li></ul>
+  <h3>Tests</h3>
+  <p class="para" id="d-tests" data-top="d-tests">The socket regression covers the original folded <code>Set-Cookie</code>, duplicate cookies, every SP/HTAB combination around CRLF, mixed and repeated whitespace, multiple folds, and ordinary headers. Focused unit coverage also verifies adjacent folds and preservation of the original message's order, duplicates, payload, policy, and defects.</p>
+  <p class="para" id="d-scope" data-top="d-scope">This intentionally does not address the separate whitespace-before-colon/header name validation scope discussed on #1362.</p>
+  <h3>Validation performed</h3>
+  <ul class="para" id="d-valid" data-top="d-valid"><li>full local suite: 2,279 passed, 333 skipped, 4 xfailed;</li><li>focused strict nox sessions on Python 3.12, 3.13, and 3.14;</li><li>pyupgrade, Black, isort, and flake8;</li><li>towncrier changelog validation;</li><li>source distribution and wheel builds;</li><li>end-to-end Requests cookie extraction and subsequent request serialization.</li></ul>
+</div>`;
+// A public PR you didn't write: description editing is off. The prototype switch shows author mode.
+const PR = { author: "adityawrk", viewer: "you", merged: true };
+const canEditDesc = () => PR.author === PR.viewer && !PR.merged;
+// Edits keep the paragraph ids, so citations and annotations on the description still resolve.
+const cleanDesc = el => el.outerHTML.replace(/ contenteditable="(true|false)"| id="descEdit"| spellcheck="true"/g, "").replace('class="desc editing"', 'class="desc"').replace(/<div class="author">.*?<\/div>/, "");
+function descView() {
+  // While editing, the live draft survives re-renders triggered elsewhere on the page.
+  const html = (state.descEditing && state.descDraft) || (state.descHtml ?? DESC);
+  const bar = !canEditDesc() ? `<div class="dbar"><span class="hint">You're reviewing someone else's PR, so the description is read-only.</span><span class="sp"></span><button class="x" data-asauthor>Prototype: view as the author</button></div>` : (state.descEditing
+    ? `<div class="dbar"><span class="hint">Editing the description. Type directly in the text below.</span><span class="sp"></span>
+        <button class="btn ghost" data-descdiscard>Discard</button><button class="btn" data-descsave>Save</button></div>`
+    : `<div class="dbar"><span class="hint">${state.descHtml ? "Edited · goes to GitHub when you submit the review" : "Prototype: viewing as the author of an open PR"}</span><span class="sp"></span>
+        ${state.descHtml ? `<button class="x" data-descrevert>Revert edits</button>` : ""}<button class="x" data-descedit>${icon("note")}Edit description</button></div>`);
+  const author = `<div class="author"><span class="av ai">${PR.author.slice(0, 2).toUpperCase()}</span>${PR.author} opened this · ${PR.merged ? "merged into main" : "open"}</div>`;
+  const body = state.descEditing ? html.replace('<div class="desc">', '<div class="desc editing" contenteditable="true" id="descEdit" spellcheck="true">').replace(/<button class="back"/g, '<button class="back" contenteditable="false"') : html;
+  return bar + body.replace('<div class="desc"', `<div class="desc"`).replace(/(<div class="desc[^>]*>)/, `$1${author}`);
+}
+const DSNIP = (() => { const d = new DOMParser().parseFromString(DESC, "text/html"); const o = {}; $$("[id]", d).forEach(e => o[e.id] = e.textContent.replace(/Restated →/g, "").replace(/\s+/g, " ").trim().slice(0, 140)); return o; })();
+const revCount = f => f.hunks.filter((_, i) => H(f.key, i).reviewed).length;
+const visibleFiles = () => FILES.filter(f => state.cats.has(f.cat) && f.path.toLowerCase().includes(state.fq.toLowerCase())
+  && !(state.hideReviewed && revCount(f) === f.hunks.length));
+const codeSpan = r => `<span${/^\s*#/.test(r.c) ? ` class="cm"` : ""}>${esc((state.view === "unified" ? (r.k === "add" ? "+" : r.k === "del" ? "-" : " ") : "") + r.c)}</span>`;
+function sideCell(r, side, fkey) {
+  if (!r) return `<td class="n empty"></td><td class="c empty"></td>`;
+  const num = side === "o" ? r.o : r.n, cls = r.k === "ctx" ? "" : r.k;
+  const line = side === "n" && num ? lineAttrs(fkey, num) : "";
+  return `<td class="n ${line ? "new" : ""} ${line && state.diffThreads[`${fkey}:${num}`] ? "hc" : ""} ${cls}"${line}>${line ? lineMark(fkey, num) : ""}${num ?? ""}</td><td class="c ${cls}">${codeSpan(r)}</td>`;
+}
+const lineAttrs = (fkey, n) => ` data-line="${fkey}:${n}" data-tip="${state.diffThreads[`${fkey}:${n}`] ? "Show comment" : `Comment on line ${n}`}"`;
+const lineMark = (fkey, n) => state.diffThreads[`${fkey}:${n}`] ? icon("comment") : "";
+const pinRow = (N, inner) => `<tr class="pr"><td colspan="${N}">${inner}</td></tr>`;
+function lineRows(f, h) {
+  const N = state.view === "split" ? 4 : 3, out = [];
+  const thread = n => {
+    if (!n) return "";
+    const ex = state.diffExps[`${f.key}:${n}`], t = state.diffThreads[`${f.key}:${n}`];
+    const box = html => pinRow(N, `<div class="pin" style="padding:6px 10px 6px 34px;background:var(--bg)">${html}</div>`);
+    return (ex ? box(renderExp(ex, [])) : "") + (t && threadShown(t) ? box(renderThread(t)) : "");
+  };
+  if (state.view === "unified") {
+    h.rows.forEach(r => out.push(`<tr class="${r.k}" ${r.n ? `id="L-${f.key}-${r.n}"` : ""}><td class="n">${r.o ?? ""}</td><td class="n ${r.n ? "new" : ""} ${r.n && state.diffThreads[`${f.key}:${r.n}`] ? "hc" : ""}" ${r.n ? lineAttrs(f.key, r.n) : ""}>${r.n ? lineMark(f.key, r.n) : ""}${r.n ?? ""}</td><td class="c">${codeSpan(r)}</td></tr>` + thread(r.n)));
+    return out.join("");
+  }
+  const rows = h.rows;
+  for (let i = 0; i < rows.length;) {
+    if (rows[i].k === "ctx") { const r = rows[i++]; out.push(`<tr id="L-${f.key}-${r.n}">${sideCell(r, "o", f.key)}${sideCell(r, "n", f.key)}</tr>` + thread(r.n)); continue; }
+    const D = [], A = [];
+    while (rows[i] && rows[i].k === "del") D.push(rows[i++]);
+    while (rows[i] && rows[i].k === "add") A.push(rows[i++]);
+    for (let j = 0; j < Math.max(D.length, A.length); j++) out.push(`<tr ${A[j] ? `id="L-${f.key}-${A[j].n}"` : ""}>${sideCell(D[j], "o", f.key)}${sideCell(A[j], "n", f.key)}</tr>` + thread(A[j]?.n));
+  }
+  return out.join("");
+}
+// A hunk's card (agent summary, your note, reviewed state) exists independently of folding,
+// which only hides the code underneath it.
+function hunkCard(f, h, i, hs) {
+  const k = `${f.key}:${i}`;
+  return `<div class="fcard ${hs.reviewed ? "rev" : ""}">
+    ${hs.summary ? `<div class="fsum"><span class="av ai">AI</span><p>${tick(hs.summary)}</p>${ib("trash", "Delete summary", `data-hsumdel="${k}"`)}</div>` : ""}
+    ${hs.note && !hs.noteEditing ? `<div class="fsum"><span class="av you">Me</span><p>${esc(hs.note)}</p>${ib("trash", "Delete note", `data-hnotedel="${k}"`)}</div>` : ""}
+    ${hs.noteEditing ? `<div class="composer"><textarea id="hn-${k}" rows="2" placeholder="Your note on this hunk…">${esc(hs.note || "")}</textarea>
+      <div class="row"><button class="btn ghost" data-hndiscard="${k}">Discard</button><button class="btn" data-hnsave="${k}">Save</button></div></div>` : ""}</div>`;
+}
+function hunkHtml(f, h, i) {
+  const hs = H(f.key, i), k = `${f.key}:${i}`, N = state.view === "split" ? 4 : 3;
+  if (state.hideReviewed && hs.reviewed) return "";
+  const label = `<b>Hunk ${i + 1} of ${f.hunks.length}</b> · lines ${h.ns}–${h.ne}${h.fn ? ` · in ${esc(h.fn)}` : ""} · <span class="st"><span class="a">+${h.a}</span> <span class="d">−${h.d}</span></span>`;
+  const acts = hs.busy ? `<span class="hint">${dotsHtml}</span>` :
+    (hs.summary ? "" : ib("spark", "Summarize with agent", `data-hsum="${k}"`)) +
+    ib("note", hs.note ? "Edit note" : "Add note", `data-hnote="${k}"`) +
+    ib("check", hs.reviewed ? "Mark not reviewed" : "Mark reviewed", `data-hrev="${k}" aria-pressed="${!!hs.reviewed}"`);
+  let out = pinRow(N, `<div class="pin hh ${hs.reviewed ? "rev" : ""}">${ib(hs.folded ? "right" : "down", hs.folded ? "Show code" : "Fold code", `data-hfold="${k}"`)}<span class="hl2" data-tip="${esc(h.hdr)}">${label}</span>${acts}</div>`);
+  if (hs.summary || hs.note || hs.noteEditing) out += pinRow(N, `<div class="pin fwrap">${hunkCard(f, h, i, hs)}</div>`);
+  out += hs.folded ? pinRow(N, `<button class="pin folded" data-hfold="${k}">${h.a + h.d} changed lines folded · show</button>`) : lineRows(f, h);
+  return out;
+}
+function hunksHtml(f) {
+  const out = []; let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    const N = state.view === "split" ? 4 : 3, why = [...new Set(run.map(i => autoReason(f, f.hunks[i])))].join(", ");
+    const a = run.reduce((s, i) => s + f.hunks[i].a, 0), d = run.reduce((s, i) => s + f.hunks[i].d, 0);
+    const label = run.length === 1 ? `Hunk ${run[0] + 1} of ${f.hunks.length}` : `Hunks ${run[0] + 1}–${run.at(-1) + 1} of ${f.hunks.length}`;
+    out.push(pinRow(N, `<button class="pin hid" data-unhide="${f.key}:${run.join(",")}" data-tip="Show these hunks">${icon("right")}<span class="hidl">${label} hidden · ${esc(why)} · +${a} −${d}</span><span class="hidb">${tick(briefFor(f, run))}</span></button>`));
+    run = [];
+  };
+  f.hunks.forEach((h, i) => { if (isHidden(f, h, i)) run.push(i); else { flush(); out.push(hunkHtml(f, h, i)); } });
+  flush();
+  return out.join("");
+}
+function fileHtml(f) {
+  const r = revCount(f), done = r === f.hunks.length, folded = state.fileFold[f.key];
+  const dir = f.path.slice(0, -f.name.length);
+  return `<div class="dfile" id="F-${f.key}"><div class="dfile-h">
+      ${ib(folded ? "right" : "down", folded ? "Expand file" : "Collapse file", `data-ffold="${f.key}"`)}
+      <span class="path" title="${esc(f.path)}"><span class="dir">${esc(dir)}</span><b>${esc(f.name)}</b></span>${f.gen ? `<span class="gtag">generated</span>` : ""}
+      <span class="st"><span class="a">+${f.a}</span> <span class="d">−${f.d}</span></span>
+      <span class="revc">${r}/${f.hunks.length}</span>${ib("check", done ? "Mark file not reviewed" : "Mark file reviewed", `data-frev="${f.key}" aria-pressed="${done}"`)}</div>
+    ${folded ? "" : `<div class="dwrap"><table class="diff ${state.view}">${state.view === "split" ? `<colgroup><col class="cn"><col><col class="cn"><col></colgroup>` : ""}${hunksHtml(f)}</table></div>`}</div>`;
+}
+function fileTree(files) {
+  const root = { kids: {}, files: [] };
+  files.forEach(f => { let n = root; f.path.split("/").slice(0, -1).forEach(p => { n = n.kids[p] ||= { kids: {}, files: [] }; }); n.files.push(f); });
+  const rows = [];
+  const walk = (n, label, depth, path) => {
+    while (label && Object.keys(n.kids).length === 1 && !n.files.length) { const [k, v] = Object.entries(n.kids)[0]; label += "/" + k; path += "/" + k; n = v; }
+    let d = depth;
+    if (label) {
+      const open = state.dirOpen[path] ?? true;
+      rows.push(`<button class="fr dir" style="padding-left:${10 + depth * 14}px" data-dir="${esc(path)}" aria-expanded="${open}">${icon(open ? "down" : "right")}<span class="nm" title="${esc(path)}">${esc(label)}</span></button>`);
+      if (!open) return; d++;
+    }
+    Object.entries(n.kids).forEach(([k, v]) => walk(v, k, d, path ? `${path}/${k}` : k));
+    n.files.forEach(f => { const r = revCount(f), t = f.hunks.length; rows.push(`<button class="fr" style="padding-left:${10 + d * 14 + 20}px" data-jumpfile="${f.key}" title="${esc(f.path)}"><span class="nm">${esc(f.name)}</span>${f.gen ? `<span class="gtag">gen</span>` : ""}<span class="st"><span class="a">+${f.a}</span> <span class="d">−${f.d}</span></span><span class="rv ${r === t ? "done" : ""}">${r === t ? "✓" : `${r}/${t}`}</span></button>`); });
+  };
+  walk(root, "", 0, "");
+  return rows.join("");
+}
+function filesPanel() {
+  const total = FILES.reduce((s, f) => s + f.hunks.length, 0), rev = FILES.reduce((s, f) => s + revCount(f), 0), vis = visibleFiles();
+  return `<div class="files">
+    <div class="frow"><input type="search" id="fq" placeholder="Filter files by name" value="${esc(state.fq)}" aria-label="Filter files by name">
+      <button class="chip" data-hiderev aria-pressed="${state.hideReviewed}">Hide reviewed</button></div>
+    <div class="frow" role="group" aria-label="File types">${CATS.map(c => `<button class="chip" data-cat="${c.k}" aria-pressed="${state.cats.has(c.k)}">${c.l}<span>${FILES.filter(f => f.cat === c.k).length}</span></button>`).join("")}</div>
+    <div class="prog"><span>${rev}/${total} hunks reviewed</span><span class="bar"><i style="width:${Math.round(100 * rev / total)}%"></i></span></div>
+    <div class="flist">${vis.length ? fileTree(vis) : `<p class="hint" style="padding:4px 10px;margin:0">No files match.</p>`}</div>
+  </div>`;
+}
+function allComments() {
+  const out = [];
+  eachCard((c, n, nid) => c.blocks.forEach(t => { if (t.t === "thread" && t.msgs.length) out.push({ t, nid, where: `${n.title.length > 34 ? n.title.slice(0, 33) + "…" : n.title}${c.title ? ` › ${c.title}` : ""}` }); }));
+  Object.values(state.diffThreads).forEach(t => t.msgs.length && out.push({ t, where: `${FILE[t.file].name}:${t.line}` }));
+  return out;
+}
+function prLocation(t) {
+  if (t.file) return `${FILE[t.file].name}:${t.line}`;
+  const host = findBlock(t.top)?.b || {};
+  const refs = host.src || (host.items ? host.items.flatMap(x => x[1] || []) : []);
+  const d = t.loc || refs.find(s => s.startsWith("diff:"));
+  return d ? srcLabel(d).split("–")[0] : "General PR comment";
+}
+function commentsMenu() {
+  const all = allComments(), pr = all.filter(x => x.t.post), list = state.cmFilter === "pr" ? pr : all;
+  const items = list.map(({ t, where }) => `<div class="ci"><button class="cj" data-cjump="${t.id}"><span class="cw">${esc(state.cmFilter === "pr" ? `${prLocation(t)} · from ${where}` : where)}</span><span class="cx2">${esc(plain(t.msgs[0].text || t.msgs[0].html || ""))}</span></button>${t.post ? `<span class="prtag">For PR</span>` : ""}
+    ${state.cmFilter === "pr" ? `<textarea id="ob-${t.id}" aria-label="Draft PR comment">${esc(t.draft ?? (t.msgs.find(m => m.who === "you") || t.msgs.find(m => m.suggested) || {}).text ?? "")}</textarea>` : ""}</div>`).join("");
+  const post = state.cmFilter === "pr" && pr.length ? `<span class="hint">These are drafts. Nothing reaches GitHub until you use Submit review.</span>` : "";
+  return `<div class="cmenu" role="dialog" aria-label="Comments"><div class="frow"><span class="seg"><button data-cmf="all" aria-pressed="${state.cmFilter === "all"}">All ${all.length}</button><button data-cmf="pr" aria-pressed="${state.cmFilter === "pr"}">For PR ${pr.length}</button></span><span class="sp"></span>${ib("x", "Close", "data-cm")}</div>
+    ${items || `<p class="hint" style="margin:4px">${state.cmFilter === "pr" ? "Nothing marked for the PR yet. Use “For PR” on any comment." : "No comments yet. Select text and choose Ask or Note."}</p>`}${post}</div>`;
+}
+// Everything that would change the PR on GitHub, gathered for one submit.
+function pending() { return { comments: allComments().filter(x => x.t.post), desc: !!state.descHtml }; }
+function renderSubmit() {
+  const p = pending(), n = p.comments.length + (p.desc ? 1 : 0);
+  const panel = !state.submitOpen ? "" : `<div class="submit" role="dialog" aria-label="Submit review">
+    ${state.submitted ? `<b>Prototype: nothing was posted.</b><span class="hint">The live version would create one GitHub review with the comments below${p.desc ? " and update the description" : ""}.</span><button class="btn ghost" data-submitclose>OK</button>`
+      : `<b>Submit review on urllib3/urllib3#5020</b>
+        ${n ? `<ul>${p.comments.map(({ t }) => `<li><span class="cw">${esc(prLocation(t))}</span> ${esc(plain(t.draft ?? (t.msgs.find(m => m.who === "you") || t.msgs.find(m => m.suggested) || {}).text ?? "").slice(0, 90))}</li>`).join("")}${p.desc ? `<li><span class="cw">PR description</span> updated text</li>` : ""}</ul>` : `<span class="hint">Nothing pending. Mark comments “For PR” or edit the description first.</span>`}
+        <div class="frow" style="justify-content:flex-end"><button class="btn ghost" data-submitclose>Cancel</button>${n ? `<button class="btn" data-submitgo>Submit</button>` : ""}</div>`}</div>`;
+  byId("submitSlot").innerHTML = `<button class="tbtn" data-submit aria-expanded="${!!state.submitOpen}">Submit review${n ? ` <span class="count">${n}</span>` : ""}</button>${panel}`;
+}
+function renderRight() {
+  const el = byId("right"), sc = el.scrollTop, all = allComments(), pr = all.filter(x => x.t.post).length;
+  const tool = state.rtab === "diff" ? `<div class="dtool">
+      <button class="tbtn" data-files aria-expanded="${state.filesOpen}">${icon(state.filesOpen ? "down" : "right")}Files <span class="hint">${visibleFiles().length}/${FILES.length}</span></button>
+      <span class="seg" role="group" aria-label="Diff view"><button data-view="unified" aria-pressed="${state.view === "unified"}">Unified</button><button data-view="split" aria-pressed="${state.view === "split"}">Split</button></span>
+      <button class="x" data-hideboring aria-pressed="${state.hideBoring}" data-tip="Collapse generated, import-only, docs and config hunks to one line">${state.hideBoring ? "✓ " : ""}Hide uninteresting</button>
+      <button class="x" data-foldall data-tip="Summarize every hunk with the agent, then fold the code">${icon("spark")}Fold all</button>
+      <button class="x" data-unfoldall data-tip="Show code for every folded hunk; summaries stay">Unfold all</button></div>` : "";
+  el.innerHTML = `<div class="rstick"><div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-rtab="desc" aria-selected="${state.rtab === "desc"}">PR description</button>
+      <button class="tab" role="tab" data-rtab="diff" aria-selected="${state.rtab === "diff"}">Diff</button>
+      <span class="sp"></span><button class="tbtn" data-cm aria-expanded="${state.cmOpen}" style="margin-bottom:4px">${icon("comment")}Comments ${all.length}${pr ? ` <span class="count">${pr} for PR</span>` : ""}</button></div>
+      ${tool}${state.cmOpen ? commentsMenu() : ""}</div>` +
+    (state.rtab === "desc" ? descView() : (state.filesOpen ? filesPanel() : "") + visibleFiles().map(fileHtml).join("") || `<p class="hint" style="padding:16px">No files match the current filters.</p>`);
+  if (state.rtab === "desc" && !state.descEditing) renderDescAnnotations();
+  if (state.rtab === "diff") Object.values(state.diffExps).forEach(e => { if (e.quote) markDiffQuote(e); });
+  el.scrollTop = sc;
+  renderSubmit();
+}
+function renderDescAnnotations() {
+  const c = DESC_CARD(), groups = {};
+  c.blocks.forEach(b => (groups[b.top] ||= []).push(b));
+  Object.entries(groups).forEach(([top, bs]) => { const closed = bs.filter(b => b.t === "thread" && !threadShown(b) && b.msgs.length); const para = byId(top); if (closed.length && para) para.insertAdjacentHTML("beforeend", markers([], closed)); });
+  Object.entries(groups).forEach(([top, bs]) => {
+    const html = bs.map(b => b.t === "exp" ? renderExp(b, []) : b.t === "thread" ? renderThread(b) : renderBlock(b, "standard", [])).join("");
+    const para = byId(top), exp = byId("B-" + top);
+    if (para) para.insertAdjacentHTML("beforeend", `<div class="dann">${html}</div>`);
+    else if (exp) exp.insertAdjacentHTML("afterend", html);
+  });
+  applyAnchors(c, byId("right"));
+}
+// Highlight the selected code text inside its diff row.
+function markDiffQuote(e) {
+  const row = byId(`L-${e.dkey.replace(":", "-")}`);
+  const ok = row && $$("td.c", row).some(td => markText(td, e.quote, () => expMark(e)));
+  if (!ok && e.collapsed) { const s = $(`[data-fallback="${e.id}"]`); if (s) s.hidden = false; }
+}
+function showSource(ref) {
+  const [kind, a, b] = ref.split(":");
+  state.rtab = kind === "desc" ? "desc" : "diff"; state.cmOpen = false;
+  let range = null;
+  if (kind === "diff") {
+    const f = FILE[a]; state.cats.add(f.cat); state.fileFold[a] = false;
+    if (!f.path.toLowerCase().includes(state.fq.toLowerCase())) state.fq = "";
+    if (b) { const [s, e = s] = b.split("-").map(Number); range = [s, e]; f.hunks.forEach((h, i) => { if (s <= h.ne && e >= h.ns) Object.assign(H(a, i), { folded: false, unhidden: true }); }); }
+  }
+  openRight(); renderRight();
+  let els = [];
+  if (kind === "desc") els = [byId(a)];
+  else if (range) for (let i = range[0]; i <= range[1]; i++) els.push(byId(`L-${a}-${i}`));
+  else els = [byId(`F-${a}`)];
+  els = els.filter(Boolean); if (!els.length) return;
+  els.forEach(e => e.classList.add("hl"));
+  els[0].scrollIntoView({ block: "center", behavior: RM ? "auto" : "smooth" });
+  setTimeout(() => els.forEach(e => e.classList.remove("hl")), 2600);
+}
+
+// ================================================================ layout (columns, overlay, resize)
+const rightOpen = () => state.rightOpen ?? innerWidth >= 900;
+function applyCols() {
+  const w = innerWidth, R = byId("right"), ro = rightOpen();
+  state.rw ??= Math.max(400, Math.min(820, Math.round(w * 0.42)));
+  const dock = w >= 900 && ro;
+  R.className = "col" + (dock ? "" : ro ? " overlay" : " hide");
+  byId("handle").hidden = !dock;
+  byId("cols").style.gridTemplateColumns = dock ? `minmax(0, 1fr) 6px ${state.rw}px` : "minmax(0, 1fr)";
+  byId("toggleRight").setAttribute("aria-pressed", ro);
+}
+function openRight() { if (!rightOpen()) { state.rightOpen = true; applyCols(); } }
+(function resizer() {
+  const h = byId("handle"); let x0 = null, w0;
+  const clamp = v => Math.max(320, Math.min(innerWidth - 420, v));
+  h.addEventListener("pointerdown", e => { x0 = e.clientX; w0 = state.rw; h.setPointerCapture(e.pointerId); h.classList.add("drag"); });
+  h.addEventListener("pointermove", e => { if (x0 == null) return; state.rw = clamp(w0 + (x0 - e.clientX)); applyCols(); });
+  h.addEventListener("pointerup", () => { x0 = null; h.classList.remove("drag"); });
+  h.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { state.rw = clamp(state.rw + (e.key === "ArrowLeft" ? 40 : -40)); applyCols(); } });
+})();
+addEventListener("resize", applyCols);
+
+// ================================================================ actions
+function go(id) {
+  if (!NODES[id]) return;
+  if (!state.visited.has(id)) { state.visited.add(id); if (id !== "root") state.parent[id] ??= state.cur; }
+  state.cur = id; renderPage(); $("#page").scrollTop = 0;
+}
+const kbFor = q => KB.find(k => k.re.test(q));
+const answerFor = q => (ASK.find(a => a.re.test(q)) || {}).a || fallbackAsk;
+// host is { top } for page/description text, or { dkey: "file:line" } for diff code.
+const DESC_CARD = () => NODES.desc.cards[0];
+function resolveHost(host) {
+  if (host.dkey) return host;
+  const fb = findBlock(host.top);
+  if (fb?.diff) return { dkey: fb.b.dkey || `${fb.b.file}:${fb.b.line}` };
+  if (fb) return { top: host.top, card: fb.card };
+  if (byId(host.top)?.closest("#right .desc")) return { top: host.top, card: DESC_CARD() };
+  return null;
+}
+function revealDiffLine(dkey) {
+  const [key, n] = dkey.split(":"); const f = FILE[key];
+  f.hunks.forEach((h, i) => { if (+n >= h.ns && +n <= h.ne) Object.assign(H(key, i), { folded: false, unhidden: true }); });
+}
+async function expand(kind, quote, host) {
+  host = resolveHost(host); if (!host) return;
+  const id = uid("x");
+  const e = { t: "exp", id, kind, quote, top: host.top, busy: kind === "diagram" ? "Drawing…" : "Reading the diff and PR body…", blocks: [] };
+  if (host.dkey) { e.dkey = host.dkey; state.diffExps[host.dkey] = e; revealDiffLine(host.dkey); }
+  else insertInto(host.card.blocks, host.top, e);
+  rerender();
+  byId("B-" + id)?.scrollIntoView({ block: "nearest", behavior: RM ? "auto" : "smooth" });
+  await wait(900);
+  const k = kbFor(quote);
+  if (kind === "diagram") e.blocks = [dg(k?.diagram || "path")];
+  else if (kind === "example") e.blocks = k?.example ? [{ t: "raw", html: k.example, kbx: "e" + KB.indexOf(k) }] : k ? [KP(KB.indexOf(k))] : [{ t: "raw", html: fallbackExplain(quote) }];
+  else e.blocks = k ? [KP(KB.indexOf(k))] : [{ t: "raw", html: fallbackExplain(quote) }];
+  e.blocks.forEach(b => b.id ??= uid());
+  e.busy = null; rerender();
+}
+function openThread(host, quote, note) {
+  host = resolveHost(host); if (!host) return;
+  let id = uid("t");
+  if (host.dkey) {
+    const [file, line] = host.dkey.split(":");
+    const ex = state.diffThreads[host.dkey];
+    if (ex) { id = ex.id; ex.collapsed = false; } else state.diffThreads[host.dkey] = { id, file, line: +line, quote, note, msgs: [], composing: true };
+    revealDiffLine(host.dkey);
+  } else insertInto(host.card.blocks, host.top, { t: "thread", id, top: host.top, quote, note, msgs: [], composing: true, open: true, desc: host.card === DESC_CARD() });
+  rerender(); byId("ta-" + id)?.focus();
+}
+function rerender() { renderPage(); renderRight(); }
+async function send(id) {
+  const t = findBlock(id).b;
+  const text = byId("ta-" + id).value.trim(); if (!text) return;
+  t.msgs.push({ who: "you", text }); t.reply = "";
+  if (t.note) { rerender(); return; }
+  const m = { who: "ai", busy: "Reading connection.py…" }; t.msgs.push(m); rerender();
+  await wait(1000); m.busy = null; m.html = answerFor(text + " " + (t.quote || "")); rerender();
+}
+function removeThread(id) {
+  const fb = findBlock(id);
+  if (fb.diff) { if (fb.b.t === "exp") delete state.diffExps[fb.b.dkey]; else delete state.diffThreads[`${fb.diff.file}:${fb.diff.line}`]; }
+  else fb.card.blocks.splice(fb.i, 1);
+}
+async function generate(id) {
+  const c = findCard(id).card;
+  for (const s of c.status) { c.busy = s + "…"; renderPage(); await wait(650); }
+  const g = GEN[c.gen];
+  Object.assign(c, { pending: false, busy: null, title: c.label, prov: g.prov, blocks: clone(g.blocks).map(b => ({ ...b, id: uid() })), fresh: true });
+  initHist(c); renderPage();
+}
+async function follow(fid, idx) {
+  const fb = findBlock(fid); const item = fb.b.items.splice(idx, 1)[0];
+  const e = { t: "exp", id: uid("x"), kind: item.ask ? "answer" : "explain", quote: item.label, top: fid, busy: "Thinking…", blocks: [] };
+  fb.card.blocks.splice(fb.i, 0, e); renderPage(); await wait(800);
+  e.blocks = item.ask ? [P(answerFor(item.ask), null, null, uid())] : [{ ...KP(KB.indexOf(kbFor(item.explain))), id: uid() }];
+  e.busy = null; renderPage();
+}
+function promote(id) {
+  const fb = findBlock(id), { card: c, i, b } = fb;
+  const nid = uid("n");
+  NODES[nid] = { kind: KIND[b.kind], title: b.quote.length > 60 ? b.quote.slice(0, 58) + "…" : b.quote,
+    cards: [card(uid("c"), null, clone(b.blocks), { level: b.level || "standard" })] };
+  initHist(NODES[nid].cards[0]);
+  state.visited.add(nid); state.parent[nid] = state.cur;
+  if (fb.diff) { delete state.diffExps[b.dkey]; go(nid); renderRight(); return; }
+  c.blocks.splice(i, 1, { t: "link", id: uid(), node: nid, top: b.top, quote: b.quote });
+  rerender();
+}
+async function summarize(k) {
+  const hs = state.hunks[k] ??= {};
+  hs.busy = true; renderRight(); await wait(800);
+  hs.busy = false; hs.summary = HSUM[k] || "Summary unavailable in the prototype."; renderRight();
+}
+function autoReason(f, h) {
+  if (f.gen) return "generated";
+  if (f.cat === "docs" || f.cat === "config") return "docs / config";
+  const changed = h.rows.filter(r => r.k !== "ctx").map(r => r.c.trim()).filter(Boolean);
+  if (changed.length && changed.every(c => /^(from |import |\)|[A-Za-z_]+,$)/.test(c))) return "imports";
+  return null;
+}
+// One-line reasons shown on hidden rows: why a reviewer can skip these.
+const BRIEF = {
+  "tconn:0": "Imports `HTTPMessage` for the new unit test.",
+  "tconn:1": "Imports the two new helpers for testing.",
+  "tsock:0": "Imports `HTTPResponse` for an isinstance check.",
+  "log:0": "Changelog entry describing the fix; no code."
+};
+// Whole-file reasons replace per-hunk ones when every hunk in the run comes from that file.
+const FILE_BRIEF = {};
+function briefFor(f, run) {
+  if (FILE_BRIEF[f.key] && run.length === f.hunks.length) return FILE_BRIEF[f.key];
+  return [...new Set(run.map(i => BRIEF[`${f.key}:${i}`] || HSUM[`${f.key}:${i}`] || ""))].filter(Boolean).join(" ");
+}
+const isHidden = (f, h, i) => state.hideBoring && !H(f.key, i).unhidden && autoReason(f, h);
+async function foldAll() {
+  const hits = [];
+  visibleFiles().forEach(f => f.hunks.forEach((h, i) => { if (!isHidden(f, h, i)) hits.push([f.key, i]); }));
+  hits.forEach(([key, i]) => H(key, i).busy = true); renderRight(); await wait(900);
+  hits.forEach(([key, i]) => { const hs = H(key, i); Object.assign(hs, { busy: false, folded: true, summary: hs.summary || HSUM[`${key}:${i}`] }); });
+  renderRight();
+  toast(`Summarized and folded ${hits.length} hunks.`);
+}
+function jumpToComment(id) {
+  const fb = findBlock(id); state.cmOpen = false;
+  if (fb.diff) { fb.b.collapsed = false; showSource(`diff:${fb.diff.file}:${fb.diff.line}`); return; }
+  if (fb.nid === "desc") { fb.b.collapsed = false; state.rtab = "desc"; openRight(); renderRight(); byId(id)?.scrollIntoView({ block: "center" }); return; }
+  fb.b.open = true; fb.card.collapsed = false;
+  if (state.cur !== fb.nid) go(fb.nid); else renderPage();
+  renderRight();
+  const el = byId(id); el?.scrollIntoView({ block: "center", behavior: RM ? "auto" : "smooth" });
+  el?.classList.add("on"); setTimeout(() => el?.classList.remove("on"), 1600);
+}
+
+// ================================================================ hover: tooltips + linkout previews
+const TIPS = `<b>Using the reader</b><ul>
+  <li>Select text to Explain it, Ask about it, or add a Note. An explanation is a card: use its controls for examples, diagrams and depth.</li>
+  <li>Each card: − / + changes depth; add examples or a diagram; Undo; mark read (collapses it).</li>
+  <li>Small markers at the end of a paragraph: <code>&lt;&gt;</code> shows the cited code, the speech bubble shows comments. Hover to preview, click to open.</li>
+  <li>Orange cards are the agent's own observations about the PR. Open one to see the evidence.</li>
+  <li>Diff: filter files; Hide uninteresting collapses generated, import-only and docs hunks to one line; Fold all summarizes and folds every hunk. Per hunk: fold, summarize, note, mark reviewed. Click a line number to comment.</li>
+  <li>Comments menu (top right of the source pane) lists every comment. “For PR” comments and description edits stay drafts until you click Submit review.</li></ul>`;
+let popAnchor = null, popT = null;
+function previewThread(t) {
+  if (!t) return "";
+  return `<div class="pv">${t.quote ? `<div class="q">“${esc(t.quote)}”</div>` : ""}${renderMsgs(t.msgs.slice(0, 2))}${t.msgs.length > 2 ? `<span class="hint">+${t.msgs.length - 2} more</span>` : ""}</div>`;
+}
+function popFor(el) {
+  if (el.dataset.refs) return el.dataset.refs.split("|").map(citeHtml).join("");
+  if (el.dataset.threads) return el.dataset.threads.split("|").map(id => previewThread(findBlock(id)?.b)).join("") + `<span class="hint">Click to open</span>`;
+  if (el.dataset.cprev) return previewThread(findBlock(el.dataset.cprev)?.b) + `<span class="hint">Click to go to it in the diff</span>`;
+  if (el.dataset.thr) return previewThread(findBlock(el.dataset.thr)?.b) + `<span class="hint">Click to open</span>`;
+  if (el.matches("a.cx[data-node]")) {
+    const n = NODES[el.dataset.node]; if (!n) return "";
+    const c = n.cards.find(c => !c.pending && !c.divider), b = c?.blocks.find(b => b.t === "p" || b.t === "raw");
+    return `<b>${esc(n.title)}</b>${b ? `<div class="xprev">${renderInner(b, c.level, "")}</div>` : ""}<span class="hint">Click to open</span>`;
+  }
+  if (el.matches("mark.exl")) { const b = findBlock(el.dataset.jump)?.b; return b ? `<div class="xprev">${b.blocks.map(x => renderInner(x, b.level, "")).join("")}</div><span class="hint">Click to expand</span>` : ""; }
+  if (el.dataset.popkey === "tips") return TIPS;
+  return "";
+}
+function showPop(anchor, html) {
+  const p = byId("pop"); p.innerHTML = html; p.hidden = false;
+  const r = anchor.getBoundingClientRect(), w = p.offsetWidth, h = p.offsetHeight;
+  let top = r.bottom + 6; if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  p.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + "px"; p.style.top = top + "px";
+  popAnchor = anchor;
+}
+function hidePop() { byId("pop").hidden = true; popAnchor = null; }
+// After a scroll, ignore hover until the pointer really moves: content sliding under a
+// stationary cursor fires mouseover too, which used to re-open the card right away.
+let scrollQuiet = false, openT = null, overAnchor = null;
+document.addEventListener("pointermove", e => { if (e.movementX || e.movementY) scrollQuiet = false; }, true);
+document.addEventListener("mouseover", e => {
+  if (scrollQuiet) return;
+  const tipEl = e.target.closest("[data-tip]"), tip = byId("tip");
+  if (tipEl && !e.target.closest("#pop")) {
+    tip.textContent = tipEl.dataset.tip; tip.hidden = false;
+    const r = tipEl.getBoundingClientRect(); let top = r.top - tip.offsetHeight - 6; if (top < 4) top = r.bottom + 6;
+    tip.style.left = Math.max(4, Math.min(innerWidth - tip.offsetWidth - 4, r.left + r.width / 2 - tip.offsetWidth / 2)) + "px"; tip.style.top = top + "px";
+  } else tip.hidden = true;
+  if (e.target.closest("#pop")) { clearTimeout(popT); return; }
+  const pa = e.target.closest("[data-refs], [data-threads], mark[data-thr], mark.exl, a.cx[data-node], [data-cprev], [data-popkey]");
+  clearTimeout(openT); overAnchor = pa;
+  if (pa) { clearTimeout(popT); if (pa !== popAnchor) openT = setTimeout(() => { if (scrollQuiet || !pa.isConnected || overAnchor !== pa) return; const h = popFor(pa); if (h) showPop(pa, h); }, 180); }
+  else if (popAnchor) { clearTimeout(popT); popT = setTimeout(hidePop, 220); }
+  $$("#page .on").forEach(x => x.classList.remove("on"));
+  const m = e.target.closest("mark[data-thr], mark[data-jump]");
+  if (m) { m.classList.add("on"); (byId(m.dataset.thr || "") || byId("B-" + m.dataset.jump))?.classList.add("on"); }
+  const th = e.target.closest("#page .ithread");
+  if (th) { th.classList.add("on"); $$(`mark[data-thr="${th.id}"]`).forEach(x => x.classList.add("on")); }
+});
+
+// ================================================================ events
+document.addEventListener("click", e => {
+  byId("tip").hidden = true;
+  if (!e.target.closest("#pop")) hidePop();
+  const el = e.target.closest("button, a, td.n.new, mark"); if (!el) { if (state.cmOpen && !e.target.closest(".cmenu")) { state.cmOpen = false; renderRight(); } return; }
+  const d = el.dataset;
+  if (d.node) { e.preventDefault(); go(d.node); }
+  else if (d.src) showSource(d.src);
+  else if (d.threads) { const ids = d.threads.split("|"), show = !threadShown(findBlock(ids[0]).b); ids.forEach(id => setThreadShown(findBlock(id).b, show)); rerender(); if (show) byId(ids[0])?.scrollIntoView({ block: "nearest" }); }
+  else if (d.thr) { const t = findBlock(d.thr).b; setThreadShown(t, !threadShown(t)); rerender(); }
+  else if (d.jump) { const b = findBlock(d.jump)?.b; if (b?.collapsed) { b.collapsed = false; b.read = false; rerender(); } byId("B-" + d.jump)?.scrollIntoView({ block: "center", behavior: RM ? "auto" : "smooth" }); }
+  else if (d.closethr) { setThreadShown(findBlock(d.closethr).b, false); rerender(); }
+  else if (d.rtab) { state.rtab = d.rtab; renderRight(); }
+  else if ("files" in d) { state.filesOpen = !state.filesOpen; renderRight(); if (state.filesOpen) byId("right").scrollTop = 0; }
+  else if ("cm" in d) { state.cmOpen = !state.cmOpen; state.confirm = false; renderRight(); }
+  else if (d.cmf) { state.cmFilter = d.cmf; state.confirm = false; renderRight(); }
+  else if (d.cjump) jumpToComment(d.cjump);
+  else if (d.view) { state.view = d.view; if (d.view === "split" && state.rw < innerWidth * 0.48) { state.rw = Math.min(innerWidth - 420, Math.round(innerWidth * 0.52)); applyCols(); } renderRight(); }
+  else if (d.cat) { state.cats.has(d.cat) ? state.cats.delete(d.cat) : state.cats.add(d.cat); renderRight(); }
+  else if ("hiderev" in d) { state.hideReviewed = !state.hideReviewed; renderRight(); }
+  else if (d.dir) { state.dirOpen[d.dir] = !(state.dirOpen[d.dir] ?? true); renderRight(); }
+  else if (d.jumpfile) { state.rtab = "diff"; state.fileFold[d.jumpfile] = false; openRight(); renderRight(); const t = byId("F-" + d.jumpfile); if (t) byId("right").scrollTop += t.getBoundingClientRect().top - $(".rstick").getBoundingClientRect().bottom; }
+  else if (d.ffold) { state.fileFold[d.ffold] = !state.fileFold[d.ffold]; renderRight(); }
+  else if (d.frev) { const f = FILE[d.frev], all = revCount(f) === f.hunks.length; f.hunks.forEach((_, i) => Object.assign(H(f.key, i), { reviewed: !all, folded: !all })); renderRight(); }
+  else if (d.hfold) { const hs = state.hunks[d.hfold] ??= {}; hs.folded = !hs.folded; renderRight(); }
+  else if (d.hsum) summarize(d.hsum);
+  else if (d.hsumdel) { state.hunks[d.hsumdel].summary = null; renderRight(); }
+  else if (d.hnote) { (state.hunks[d.hnote] ??= {}).noteEditing = true; renderRight(); byId("hn-" + d.hnote)?.focus(); }
+  else if (d.hnsave) { const hs = state.hunks[d.hnsave]; hs.note = byId("hn-" + d.hnsave).value.trim(); hs.noteEditing = false; renderRight(); }
+  else if (d.hndiscard) { state.hunks[d.hndiscard].noteEditing = false; renderRight(); }
+  else if (d.hnotedel) { state.hunks[d.hnotedel].note = ""; renderRight(); }
+  else if (d.hrev) { const hs = state.hunks[d.hrev] ??= {}; hs.reviewed = !hs.reviewed; hs.folded = hs.reviewed; renderRight(); }
+  else if ("hideboring" in d) { state.hideBoring = !state.hideBoring; if (state.hideBoring) Object.values(state.hunks).forEach(h => h.unhidden = false); renderRight(); }
+  else if ("foldall" in d) foldAll();
+  else if (d.unhide) { const [key, list] = d.unhide.split(":"); list.split(",").forEach(i => H(key, +i).unhidden = true); renderRight(); }
+  else if ("unfoldall" in d) { Object.values(state.hunks).forEach(h => h.folded = false); state.fileFold = {}; renderRight(); }
+  else if (d.gen) generate(d.gen);
+  else if (d.follow) follow(d.follow, +d.i);
+  else if (d.xf) transform(d.doc, d.xf);
+  else if (d.undo) { undo(docOf(d.undo)); rerender(); }
+  else if (d.read) { const doc = docOf(d.read); doc.read = !doc.read; doc.collapsed = doc.read; rerender(); }
+  else if (d.ccol) { const doc = docOf(d.ccol); doc.collapsed = !doc.collapsed; renderPage(); }
+  else if ("toc" in d) { state.tocOpen = !state.tocOpen; renderPage(); }
+  else if (d.tocard) { const c = findCard(d.tocard).card; c.collapsed = false; renderPage(); byId("C-" + d.tocard)?.scrollIntoView({ block: "start", behavior: RM ? "auto" : "smooth" }); }
+  else if (d.promote) promote(d.promote);
+  else if (d.collapse) { const b = findBlock(d.collapse).b; b.collapsed = !b.collapsed; rerender(); }
+  else if (d.remove) { const fb = findBlock(d.remove); if (fb.b.t === "thread" || fb.diff) removeThread(d.remove); else fb.card.blocks.splice(fb.i, 1); rerender(); }
+  else if (d.discard) { const t = findBlock(d.discard).b; if (!t.msgs.length) removeThread(d.discard); else t.reply = ""; rerender(); }
+  else if (d.comment) { const host = $(`#page [data-top="${d.comment}"]`); openThread({ top: d.comment }, (host?.textContent || "").trim().slice(0, 60) + "…"); }
+  else if (d.send) send(d.send);
+  else if (d.post) { const t = findBlock(d.post).b; t.post = !t.post; state.confirm = false; rerender(); }
+  else if (d.suggest) {
+    // Lands on the cited diff line; if that line already has a thread, the suggestion joins it.
+    const s = findBlock(d.suggest).b, [, file, line] = s.loc.split(":"), key = `${file}:${line}`;
+    const ex = state.diffThreads[key];
+    if (ex) { ex.msgs.push({ who: "you", text: s.text }); Object.assign(ex, { post: true, fromSuggest: s.id, collapsed: false }); }
+    else state.diffThreads[key] = { id: uid("t"), file, line: +line, post: true, fromSuggest: s.id, msgs: [{ who: "you", text: s.text }] };
+    renderPage(); showSource(s.loc);
+  }
+  else if ("submit" in d) { state.submitOpen = !state.submitOpen; state.submitted = false; renderSubmit(); }
+  else if ("submitclose" in d) { state.submitOpen = false; state.submitted = false; renderSubmit(); }
+  else if ("submitgo" in d) { state.submitted = true; renderSubmit(); }
+  else if ("asauthor" in d) { PR.viewer = PR.author; PR.merged = false; renderRight(); }
+  else if ("descedit" in d) { state.descEditing = true; state.descConfirm = false; renderRight(); byId("descEdit")?.focus(); }
+  else if ("descdiscard" in d) { state.descEditing = false; state.descDraft = null; renderRight(); }
+  else if ("descsave" in d) { state.descHtml = cleanDesc(byId("descEdit")); state.descDraft = null; state.descEditing = false; rerender(); }
+  else if ("descrevert" in d) { state.descHtml = null; rerender(); }
+  else if (d.save) { const n = NODES[d.save]; n.saved = !isSaved(n); renderPage(); toast(n.saved ? "Saved to this repo" : "Removed from saved pages"); }
+  else if (d.line) { const [file, line] = d.line.split(":"); state.diffThreads[d.line] ??= { id: uid("t"), file, line: +line, msgs: [], composing: true }; state.diffThreads[d.line].collapsed = false; renderRight(); byId("ta-" + state.diffThreads[d.line].id)?.focus(); }
+  else if (d.back) { go("root"); const host = $(`#page [data-top="${d.back}"]`); host?.scrollIntoView({ block: "center" }); host?.classList.add("hl"); setTimeout(() => host?.classList.remove("hl"), 2000); }
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "fq") { const v = e.target.value; state.fq = v; renderRight(); const f = byId("fq"); f.focus(); f.setSelectionRange(v.length, v.length); return; }
+  if (e.target.closest?.("#descEdit")) { state.descDraft = cleanDesc(byId("descEdit")); return; }
+  if (e.target.id?.startsWith("ob-")) findBlock(e.target.id.slice(3)).b.draft = e.target.value;
+  if (e.target.id?.startsWith("ta-")) { const fb = findBlock(e.target.id.slice(3)); if (fb) fb.b.reply = e.target.value; }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && e.target.id?.startsWith("ta-")) send(e.target.id.slice(3));
+  if (e.key === "Escape") { byId("selbar").hidden = true; hidePop(); if (state.cmOpen) { state.cmOpen = false; renderRight(); } }
+});
+byId("toggleRight").onclick = () => { state.rightOpen = !rightOpen(); applyCols(); };
+
+// selection toolbar
+let pendingSel = null;
+// Selections always cover whole words: grow a partial word at either end to its boundary.
+const WORD = /[\p{L}\p{N}_'’]/u;
+function snapToWords(sel) {
+  if (!sel.rangeCount || sel.isCollapsed) return;
+  const r = sel.getRangeAt(0).cloneRange();
+  let { startContainer: sc, startOffset: so, endContainer: ec, endOffset: eo } = r;
+  if (sc.nodeType === 3) { while (so < sc.data.length && /\s/.test(sc.data[so])) so++; while (so > 0 && WORD.test(sc.data[so - 1]) && WORD.test(sc.data[so] ?? "")) so--; }
+  if (ec.nodeType === 3) { while (eo > 0 && /\s/.test(ec.data[eo - 1])) eo--; while (eo < ec.data.length && WORD.test(ec.data[eo]) && WORD.test(ec.data[eo - 1] ?? "")) eo++; }
+  try { r.setStart(sc, so); r.setEnd(ec, eo); } catch { return; }
+  if (r.collapsed) return;
+  sel.removeAllRanges(); sel.addRange(r);
+}
+function selHost(node) {
+  const p = node.closest("#page [data-top], #right [data-top]");
+  if (p) return { top: p.dataset.top };
+  const td = node.closest("#right table.diff td.c"); if (!td) return null;
+  // Rows without a new-side line number (pure deletions) anchor to the nearest numbered row.
+  const tr = td.closest("tr"); let r = tr;
+  while (r && !r.id?.startsWith("L-")) r = r.nextElementSibling;
+  if (!r) { r = tr; while (r && !r.id?.startsWith("L-")) r = r.previousElementSibling; }
+  const m = r?.id.match(/^L-(\w+)-(\d+)$/);
+  return m ? { dkey: `${m[1]}:${m[2]}` } : null;
+}
+document.addEventListener("mouseup", e => {
+  if (e.target.closest("#selbar")) return;
+  if (!e.target.closest("#page, #right .desc:not(.editing), #right table.diff") || e.target.closest("button, a, input, textarea")) { byId("selbar").hidden = true; return; }
+  setTimeout(() => {
+    const sel = getSelection(), bar = byId("selbar");
+    snapToWords(sel);
+    const q = sel.toString().trim().replace(/\s+/g, " ");
+    const node = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+    const host = node && selHost(node);
+    if (!q || q.length < 2 || q.length > 300 || !host) { bar.hidden = true; return; }
+    pendingSel = { q, host };
+    const r = sel.getRangeAt(0).getBoundingClientRect();
+    bar.hidden = false;
+    bar.style.left = Math.max(8, Math.min(innerWidth - bar.offsetWidth - 8, r.left + r.width / 2 - bar.offsetWidth / 2)) + "px";
+    bar.style.top = (r.top - bar.offsetHeight - 8 < 56 ? r.bottom + 8 : r.top - bar.offsetHeight - 8) + "px";
+  }, 0);
+});
+byId("selbar").addEventListener("mousedown", e => e.preventDefault());
+byId("selbar").addEventListener("click", e => {
+  const act = e.target.dataset.act; if (!act || !pendingSel) return;
+  byId("selbar").hidden = true; getSelection().removeAllRanges();
+  const { q, host } = pendingSel; pendingSel = null;
+  if (act === "ask" || act === "note") openThread(host, q, act === "note"); else expand(act, q, host);
+});
+// Floating UI (hover card, tooltip, selection bar) dismisses on any scroll, outside press, focus loss or resize.
+const dismissFloating = () => { clearTimeout(openT); clearTimeout(popT); hidePop(); byId("tip").hidden = true; byId("selbar").hidden = true; };
+document.addEventListener("scroll", e => { if (e.target.closest?.("#pop")) return; scrollQuiet = true; dismissFloating(); }, true);
+document.addEventListener("wheel", e => { if (!e.target.closest?.("#pop")) { scrollQuiet = true; dismissFloating(); } }, { capture: true, passive: true });
+document.addEventListener("pointerdown", e => {
+  byId("tip").hidden = true;
+  if (!e.target.closest("#pop")) hidePop();
+  if (!e.target.closest("#selbar")) byId("selbar").hidden = true;
+}, true);
+document.documentElement.addEventListener("mouseleave", () => { hidePop(); byId("tip").hidden = true; });
+addEventListener("blur", dismissFloating);
+addEventListener("resize", dismissFloating);
+document.addEventListener("selectionchange", () => { if (getSelection().isCollapsed) byId("selbar").hidden = true; });
+
+applyCols(); renderPage(); renderRight();
+</script>
+</body>
+</html>
