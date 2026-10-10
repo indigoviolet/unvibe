@@ -10,15 +10,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePage } from "../guide/GuidePage.js";
 import { SourcePane } from "../source/SourcePane.js";
+import { WIDEN_EVENT } from "../source/diff/DiffView.js";
 import { TopBar } from "./TopBar.js";
 
 const DOCK_WIDTH = 900;
+const PANE_WIDTH_KEY = "unvibe.paneWidth";
 
 function clampWidth(v: number): number {
   return Math.max(320, Math.min(window.innerWidth - 420, v));
 }
 
 function defaultWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(PANE_WIDTH_KEY));
+    if (Number.isFinite(saved) && saved >= 320) return clampWidth(saved);
+  } catch {
+    // Private mode: fall through to the default.
+  }
   const w = window.innerWidth;
   return Math.max(400, Math.min(820, Math.round(w * 0.42)));
 }
@@ -38,6 +46,25 @@ export function AppShell({ reviewId }: { reviewId: string }) {
     const onResize = (): void => setTick((t) => t + 1);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Persist the pane width (a diff view preference, PRD §4.13).
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANE_WIDTH_KEY, String(paneWidth));
+    } catch {
+      // Private mode: ignore.
+    }
+  }, [paneWidth]);
+
+  // Choosing Split in a narrow pane widens it (prototype rule).
+  useEffect(() => {
+    const onWiden = (): void =>
+      setPaneWidth((w) =>
+        w < window.innerWidth * 0.48 ? clampWidth(Math.round(window.innerWidth * 0.52)) : w,
+      );
+    window.addEventListener(WIDEN_EVENT, onWiden);
+    return () => window.removeEventListener(WIDEN_EVENT, onWiden);
   }, []);
 
   const onPointerDown = useCallback(

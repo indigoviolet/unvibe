@@ -1,19 +1,45 @@
 {
   "name": "unvibe",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "workspaces": [
     "packages/*"
   ],
+  "description": "Reader for code changes: localhost service + installable web app (PRD §14).",
+  "bin": {
+    "unvibe": "./packages/service/dist/index.js"
+  },
+  "files": [
+    "package.json",
+    "packages/service/dist/**",
+    "packages/web/dist/**",
+    "prompts/**",
+    "fixtures/urllib3-5020/**",
+    "README.md"
+  ],
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.89.0",
+    "@agentclientprotocol/codex-acp": "2.2.2",
+    "@agentclientprotocol/sdk": "1.8.0",
+    "@fastify/static": "^8.0.0",
+    "@fastify/websocket": "^11.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "fastify": "^5.2.0",
+    "immer": "^11.1.21",
+    "ws": "^8.22.0"
+  },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check": "npm run lint && npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present"
+    "check": "npm run lint && npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present",
+    "prepare": "node scripts/prepare.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",
+    "esbuild": "^0.25.12",
     "eslint": "^9.14.0",
     "prettier": "^3.3.3",
     "typescript": "^5.6.3",

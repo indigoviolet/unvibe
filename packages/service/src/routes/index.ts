@@ -33,9 +33,9 @@ export async function registerRoutes(
   await registerRepos(app, ctx);
   await registerReviews(app, ctx, deps);
   await registerHunks(app, full as unknown as ServiceContext, full as unknown as RouteDeps);
-  await registerComments(app);
-  await registerDescription(app);
-  await registerSubmit(app);
+  await registerComments(app, ctx);
+  await registerDescription(app, ctx);
+  await registerSubmit(app, ctx);
   await registerSettings(app, deps);
   await registerPrompts(app, {
     snapshots: {

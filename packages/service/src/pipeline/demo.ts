@@ -7,8 +7,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Review, ReviewDescription, ReviewFile, Version } from "@unvibe/shared";
-import { classifyFile, fileKeyForPath, hashHunkLines, parseUnifiedDiff, renderMarkdownBlocks, uninterestingReason } from "../ingest/index.js";
+import { buildReviewFiles, parseUnifiedDiff } from "@unvibe/shared";
+import { renderMarkdownBlocks } from "../ingest/index.js";
 import { newReviewId } from "../ingest/index.js";
 
 export interface DemoIngested {
@@ -22,11 +24,21 @@ export interface DemoIngested {
 
 export function fixturesDirDefault(explicit?: string): string {
   if (explicit) return explicit;
-  const fromCwd = path.resolve(process.cwd(), "fixtures", "urllib3-5020");
-  if (fs.existsSync(fromCwd)) return fromCwd;
-  // packages/service/dist/pipeline/demo.js → repo fixtures
-  const here = path.dirname(new URL(import.meta.url).pathname);
-  return path.resolve(here, "..", "..", "..", "..", "fixtures", "urllib3-5020");
+  // Module-relative first (bundle + global install outside the repo),
+  // then the repo cwd (dev/tests). Bundle: dist/index.js → ../../../fixtures.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  for (const c of [
+    path.resolve(here, "..", "..", "..", "..", "fixtures", "urllib3-5020"),
+    path.resolve(here, "..", "..", "..", "fixtures", "urllib3-5020"),
+    path.resolve(process.cwd(), "fixtures", "urllib3-5020"),
+  ]) {
+    try {
+      if (fs.existsSync(path.join(c, "manifest.json"))) return c;
+    } catch {
+      // try next
+    }
+  }
+  return path.resolve(process.cwd(), "fixtures", "urllib3-5020");
 }
 
 export function isDemoRequest(body: { repoId?: string; demo?: boolean | string }): boolean {
@@ -52,38 +64,9 @@ export function ingestDemo(fixturesDir: string, reviewId: string = newReviewId()
   };
   const diffEntries = JSON.parse(read("diff.json")) as { diff: string }[];
   const diffText = diffEntries.map((e) => e.diff).join("\n");
-  const parsed = parseUnifiedDiff(diffText);
-  const files: ReviewFile[] = parsed.map((f) => {
-    const category = classifyFile(f.path);
-    return {
-      fileKey: fileKeyForPath(f.path),
-      path: f.path,
-      category,
-      hunks: f.hunks.map((h) => {
-        const contentHash = hashHunkLines(h.lines);
-        const reason = uninterestingReason(h, { category });
-        return {
-          contentHash,
-          header: h.header,
-          ...(h.context !== undefined ? { context: h.context } : {}),
-          newStart: h.newStart,
-          newEnd: h.newEnd,
-          oldStart: h.oldStart,
-          oldEnd: h.oldEnd,
-          added: h.added,
-          removed: h.removed,
-          lines: h.lines.map((l) => ({ ...l })),
-          ...(h.noNewline ? { noNewline: true as const } : {}),
-          ...(reason !== undefined ? { hiddenReason: reason } : {}),
-        };
-      }),
-      ...(f.oldPath !== undefined ? { oldPath: f.oldPath } : {}),
-      ...(f.isNew ? { isNew: true as const } : {}),
-      ...(f.isDeleted ? { isDeleted: true as const } : {}),
-      ...(f.isRename ? { isRename: true as const } : {}),
-      ...(f.isBinary ? { isBinary: true as const } : {}),
-    };
-  });
+  // Shared diff pipeline (moved to `packages/shared/src/diff.ts`):
+  // service `ingest/*` are re-export shims over the same functions.
+  const files: ReviewFile[] = buildReviewFiles(parseUnifiedDiff(diffText));
   const now = Date.now();
   const review: Review = {
     id: reviewId,

@@ -119,8 +119,13 @@ describe("pipeline demo e2e (replay)", () => {
         expect(a.post).toBe(false);
         expect(a.type).toBe("thread");
       }
-      const tlf = snap.annotations.find((a) => a.id === "t-sglf");
-      expect(tlf?.messages[0]?.text).toContain("bare LF");
+      // threads.ts assigns `ann_` ids (not the fixture seed ids); match
+      // the bare-LF draft by its suggested text instead.
+      const tlf = snap.annotations.find((a) =>
+        a.messages.some((m) => m.suggested && (m.text ?? "").includes("bare LF")),
+      );
+      expect(tlf).toBeDefined();
+      expect(tlf?.anchor.host).toMatchObject({ kind: "diff-line" });
 
       // Hunk summaries + hidden reasons match the recordings.
       expect(snap.hunkStates).toHaveLength(8);

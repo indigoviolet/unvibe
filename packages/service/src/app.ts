@@ -1,21 +1,35 @@
 /**
- * Composition root (M3): one place that constructs everything.
+ * Composition root: one place that constructs everything.
  *
  * Builds db, bus, stores, command runner, settings, job queue with
- * recovery, agent runner (replay or ACP seam), session manager, MCP
- * registry with a real `ReviewReader` over `ReviewStore` + worktree paths,
- * pipeline, and the update-pass runner — then hands route modules one
- * unified context.
+ * recovery, agent runner (ACP default, replay for demo/tests), session
+ * manager, MCP registry with a real `ReviewReader` over `ReviewStore` +
+ * worktree paths, pipeline, and the update-pass runner — then hands route
+ * modules one unified context. `serve()` uses this and nothing else.
  *
  * Unification: `ServiceContext` (core stores) + `RouteDeps` (optional M3
  * singletons) + `ReviewsRouteDeps` (update wiring) are merged into
  * `AppContext`. Route modules take `(app, ctx)` where `ctx` is the full
  * context; tests construct it with fakes easily (see `createApp` overrides
  * in `server.ts`).
+ *
+ * Runner notes (see `docs/acp-runner.md`):
+ * - Usage accounting: the ACP runner already normalises (Claude reports
+ *   session-cumulative counters, Codex per-turn) into per-turn `usage`
+ *   events, so the pipeline just sums them.
+ * - Read-only posture: ACP sessions start `readOnly` by default (file
+ *   reads + our MCP tools only; edits/shell/network denied). Codex uses
+ *   `workspace-write` mode (not `read-only`, which refuses MCP calls, and
+ *   not `agent`, which skips permission prompts) with a deny-by-default
+ *   handler. The pipeline never opts out.
+ * - Codex MCP-refusal flake ("I can't access that tool" without
+ *   attempting) is treated as retryable in the pipeline (see
+ *   `pipeline/runner.ts: isMcpRefusal`).
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentRunner } from "@unvibe/shared";
 import type { DatabaseSync } from "./store/db.js";
 import { EventBus } from "./events.js";
@@ -29,7 +43,7 @@ import { ReviewStore } from "./state/store.js";
 import { SettingsStore, StaticModelCatalog, type ModelCatalog } from "./settings/index.js";
 import { SessionManager } from "./sessions/manager.js";
 import { SessionStore } from "./sessions/store.js";
-import { createAgentRunner, isReplayRunner } from "./agent/factory.js";
+import { createAgentRunner, resolveFixturesDir } from "./agent/factory.js";
 import { Pipeline } from "./pipeline/index.js";
 import { resolvePromptsDir } from "./prompts/index.js";
 
@@ -68,6 +82,54 @@ export interface BuildAppOptions {
   mcp?: McpRegistry;
 }
 
+/**
+ * Model catalog backed by the real runner's `listModels(provider)` with a
+ * static fallback (so Settings renders pickers offline and in tests).
+ * Replaces `StaticModelCatalog` whenever a real runner is present.
+ */
+export class AcpModelCatalog implements ModelCatalog {
+  constructor(
+    private readonly runner: AgentRunner,
+    private readonly fallback: ModelCatalog = new StaticModelCatalog(),
+  ) {}
+
+  async listModels(provider: string): Promise<string[]> {
+    const list = (this.runner as unknown as { listModels?: (p: string) => Promise<{ id: string }[]> }).listModels;
+    if (typeof list !== "function") return this.fallback.listModels(provider);
+    try {
+      const models = await list.call(this.runner, provider);
+      const ids = models.map((m) => m.id).filter(Boolean);
+      if (ids.length > 0) return ids;
+    } catch {
+      // Adapter subprocess down / provider unknown: fall back to static.
+    }
+    return this.fallback.listModels(provider);
+  }
+}
+
+/**
+ * Locate `prompts/` relative to the module when possible (so the esbuild
+ * bundle + global install find it outside the repo), falling back to
+ * `resolvePromptsDir()` (env / cwd walk-up) for dev/tests.
+ */
+export function resolvePromptsDirForBundle(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // dist layout: packages/service/dist/app.js → root prompts/
+  // src layout:  packages/service/src/app.ts → root prompts/
+  const candidates = [
+    path.resolve(here, "..", "..", "..", "prompts"),
+    path.resolve(here, "..", "prompts"),
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(path.join(c, "instructions.md"))) return c;
+    } catch {
+      // try next
+    }
+  }
+  return resolvePromptsDir() ?? path.resolve(process.cwd(), "prompts");
+}
+
 export function buildApp(opts: BuildAppOptions): AppContext {
   const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
   const runner = opts.runner ?? new RealCommandRunner();
@@ -75,7 +137,6 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   const repos = new RepoStore(opts.db);
   const reviews = new ReviewStore(opts.db, bus);
   const settings = opts.settings ?? new SettingsStore(opts.db);
-  const models = opts.models ?? new StaticModelCatalog();
   const jobStore = new JobStore(opts.db);
   const jobs =
     opts.jobs ??
@@ -95,33 +156,13 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     if (recovered.length > 0) jobs.recover(recovered);
   }
 
-  const promptsDir = opts.promptsDir ?? resolvePromptsDir() ?? path.resolve(process.cwd(), "prompts");
-  const fixturesDir =
-    opts.fixturesDir ??
-    (() => {
-      const fromCwd = path.resolve(process.cwd(), "fixtures", "urllib3-5020");
-      if (fs.existsSync(fromCwd)) return fromCwd;
-      return path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..", "fixtures", "urllib3-5020");
-    })();
+  const promptsDir = opts.promptsDir ?? resolvePromptsDirForBundle();
+  const fixturesDir = opts.fixturesDir ?? resolveFixturesDir();
 
-  const agents =
-    opts.agents ??
-    (() => {
-      try {
-        return createAgentRunner({ fixturesDir, delayMs: 5 });
-      } catch {
-        // ACP not merged yet: fall back to replay when fixtures exist so
-        // `mise run start` works out of the box; otherwise rethrow the
-        // helpful ACP error.
-        if (fs.existsSync(path.join(fixturesDir, "manifest.json"))) {
-          process.env.UNVIBE_AGENT = "replay";
-          return createAgentRunner({ fixturesDir, delayMs: 5 });
-        }
-        throw new Error(
-          "ACP AgentRunner not yet merged. Run with UNVIBE_AGENT=replay for the recorded demo.",
-        );
-      }
-    })();
+  // Default runner: ACP (real claude/codex subprocesses). Replay only when
+  // UNVIBE_AGENT=replay (demo/tests) or when tests inject `agents` directly.
+  const agents = opts.agents ?? createAgentRunner({ fixturesDir, delayMs: 5 });
+  const models = opts.models ?? new AcpModelCatalog(agents);
 
   const reader = new StoreReviewReader({ reviews, dataDir });
   const mcp =
@@ -154,7 +195,6 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     fixturesDir,
   });
 
-  void isReplayRunner;
   return {
     db: opts.db,
     dataDir,

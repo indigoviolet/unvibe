@@ -39,7 +39,8 @@ import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot } from "./lookup.js";
-import { criticApply, readerApply, suggestedAnnotation } from "./apply.js";
+import { createSuggestedCommentInDraft } from "../comments/threads.js";
+import { criticApply, readerApply } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import type { RunInForkOptions, RunInForkResult, RunSmallOptions } from "./types.js";
 
@@ -87,6 +88,20 @@ async function collectStreaming(
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Codex MCP-refusal flake (docs/acp-runner.md quirk 6): the model answers
+ * "I can't access that tool" without attempting an MCP call. Our sessions
+ * must call MCP tools, so treat it as retryable (a fresh retry usually
+ * attempts the tool). Only checked on MCP-capable turns (reader, forks,
+ * update); small-model hunk jobs carry no MCP servers.
+ */
+const MCP_REFUSAL_RE = /can'?t access (that )?tool/i;
+function throwIfMcpRefusal(text: string): void {
+  if (MCP_REFUSAL_RE.test(text)) {
+    throw new RetryableError("codex MCP refusal flake (no tool attempt); retrying");
+  }
 }
 
 function aliasesForReview(snapshot: ReviewSnapshot, fixturesDir?: string): Record<string, string> {
@@ -188,6 +203,7 @@ export class Pipeline {
                 }
               },
             );
+            throwIfMcpRefusal(text);
             const first = this.parseAndValidate(o.reviewId, text);
             let finalText = text;
             let finalCards = first.cards;
@@ -209,6 +225,7 @@ export class Pipeline {
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedTokens += repair.usage.cachedTokens;
               usage.outputTokens += repair.usage.outputTokens;
+              throwIfMcpRefusal(repair.text);
               finalText = repair.text;
               const second = this.parseAndValidate(o.reviewId, repair.text);
               finalCards = second.cards;
@@ -428,6 +445,7 @@ export class Pipeline {
           ctx.reportText(d),
         );
         ctx.reportUsage(usage);
+        throwIfMcpRefusal(text);
         await this.recordUsage(reviewId, usage);
         const { cards, data, validation } = this.parseAndValidate(reviewId, text);
         const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
@@ -748,6 +766,7 @@ export class Pipeline {
             }
           });
           ctx.reportUsage(usage);
+          throwIfMcpRefusal(text);
           await this.recordUsage(reviewId, usage);
           const { cards, data, validation } = this.parseAndValidate(reviewId, text);
           let finalCards = cards;
@@ -768,6 +787,7 @@ export class Pipeline {
             usage.cachedTokens += repair.usage.cachedTokens;
             usage.outputTokens += repair.usage.outputTokens;
             ctx.reportUsage(repair.usage);
+            throwIfMcpRefusal(repair.text);
             await this.recordUsage(reviewId, repair.usage);
             const second = this.parseAndValidate(reviewId, repair.text);
             finalCards = second.cards;
@@ -968,6 +988,7 @@ export class Pipeline {
               ctx.reportText(d),
             );
             ctx.reportUsage(usage);
+            throwIfMcpRefusal(text);
             await this.recordUsage(reviewId, usage);
             const { cards, data, validation } = this.parseAndValidate(reviewId, text);
             const applied = criticApply(
@@ -999,27 +1020,39 @@ export class Pipeline {
                 })),
               });
               if (applied.suggestedComment) {
-                const live = draft as unknown as ReviewSnapshot;
-                const aliases = aliasesForReview(live, this.opts.fixturesDir);
-                const ann = suggestedAnnotation(
-                  `t-sg${applied.pageId === "f-lf" ? "lf" : applied.pageId === "f-perf" ? "perf" : applied.pageId.slice(0, 4)}`,
-                  applied.suggestedComment.text,
-                  applied.suggestedComment.diff,
-                  draft.version.n,
-                  aliases,
-                  (fk, line) => {
-                    for (const f of draft.files) {
-                      if (f.fileKey !== fk) continue;
-                      for (const h of f.hunks) {
-                        for (const row of h.lines) {
-                          if (row.newLine === line) return row.text;
-                        }
+                // Suggested comments go through comments/threads.ts (M6):
+                // buildAnchor derives prefix/suffix/position from the diff.
+                const parsed = parseId(applied.suggestedComment.diff);
+                if (parsed?.kind === "diff") {
+                  const before = this.opts.reviews.getSnapshot(reviewId);
+                  const aliases = aliasesForReview(
+                    before ?? (draft as unknown as ReviewSnapshot),
+                    this.opts.fixturesDir,
+                  );
+                  const fileKey = aliases[parsed.fileKey] ?? parsed.fileKey;
+                  let quote = "";
+                  for (const f of draft.files) {
+                    if (f.fileKey !== fileKey) continue;
+                    for (const h of f.hunks) {
+                      for (const row of h.lines) {
+                        if (row.newLine === parsed.start) quote = row.text;
                       }
                     }
-                    return null;
-                  },
-                );
-                if (ann && !draft.annotations.some((a) => a.id === ann.id)) draft.annotations.push(ann);
+                  }
+                  try {
+                    createSuggestedCommentInDraft(
+                      draft,
+                      before ?? (draft as unknown as ReviewSnapshot),
+                      {
+                        anchor: { where: "diff-line", fileKey, line: parsed.start },
+                        quote,
+                        suggestionText: applied.suggestedComment.text,
+                      },
+                    );
+                  } catch {
+                    // Unknown file/line: keep the finding, skip the draft.
+                  }
+                }
               }
               const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
               draft.logTail.push({
@@ -1064,6 +1097,7 @@ export class Pipeline {
             ctx.reportText(d),
           );
           ctx.reportUsage(usage);
+          throwIfMcpRefusal(text);
           await this.recordUsage(reviewId, usage);
           const { data } = this.parseAndValidate(reviewId, text);
           const concepts = ((data?.["concepts"] as { slug?: string; title?: string; summary?: string }[] | undefined) ?? []).filter(
@@ -1242,6 +1276,7 @@ export class Pipeline {
     ctx?.setSessionId(forked.session.id);
     const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, signal, onText);
     ctx?.reportUsage(usage);
+    throwIfMcpRefusal(text);
     await this.recordUsage(reviewId, usage);
     const { cards, data, validation } = this.parseAndValidate(reviewId, text);
     const blocks = this.withValidation(
@@ -1279,6 +1314,7 @@ export class Pipeline {
     void base;
     const forked = await this.forkFor(reviewId);
     const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, undefined, () => {});
+    throwIfMcpRefusal(text);
     await this.recordUsage(reviewId, usage);
     const { cards, data, validation } = this.parseAndValidate(reviewId, text);
     const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
@@ -1533,6 +1569,7 @@ export class Pipeline {
                   (d) => ctx.reportText(d),
                 );
                 ctx.reportUsage(usage);
+                throwIfMcpRefusal(text);
                 await this.recordUsage(opts.reviewId, usage);
                 resolveText(text);
                 return;

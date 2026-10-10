@@ -1,10 +1,15 @@
 /**
  * Source pane: `PR description` / `Diff` tabs plus the Comments menu slot.
  * Diff and description bodies live in their own directories for parallel owners.
+ *
+ * `revealSource("diff:…")` (see `source/diff/revealSource.ts`) switches to
+ * the Diff tab from anywhere: this pane listens for its window event.
  */
+import { useEffect } from "react";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { DescriptionView } from "./description/DescriptionView.js";
 import { DiffView } from "./diff/DiffView.js";
+import { REVEAL_EVENT } from "./diff/revealSource.js";
 
 export type SourceTab = "desc" | "diff";
 
@@ -15,6 +20,12 @@ interface Props {
 }
 
 export function SourcePane({ reviewId, tab, onTab }: Props) {
+  useEffect(() => {
+    const onReveal = (): void => onTab("diff");
+    window.addEventListener(REVEAL_EVENT, onReveal);
+    return () => window.removeEventListener(REVEAL_EVENT, onReveal);
+  }, [onTab]);
+
   return (
     <>
       <div className="rstick">

@@ -1,23 +1,28 @@
 /**
- * AgentRunner factory (M3 pipeline).
+ * AgentRunner factory (M3 pipeline + ACP default).
  *
- * Runner selection: `UNVIBE_AGENT=replay` (or the `UNVIBE_AGENT` env set to
- * `replay`) uses the recorded-session runner over
- * `fixtures/urllib3-5020/`, so the whole product runs without tokens in
- * tests and demo mode. Any other value selects the real ACP runner.
+ * Runner selection: `UNVIBE_AGENT=replay` uses the recorded-session runner
+ * over `fixtures/urllib3-5020/`, so the whole product runs without tokens
+ * in tests and demo mode. The default (unset or anything else) is the real
+ * ACP runner (`src/agent/acp/`, via `createAcpRunner()`): one subprocess
+ * per provider (claude/codex), multiplexing all sessions.
  *
- * ACP SEAM (not yet merged): the real branch lives in `src/agent/acp/` and
- * is owned by a parallel agent. This factory deliberately does NOT import
- * ACP. When that branch merges, replace `acpNotMerged` with
- * `new AcpAgentRunner(...)` (it will also expose `listModels(provider)` for
- * Settings → Models; see `settings/models.ts`). Until then, non-replay
- * selection fails with a helpful error instead of a missing-import crash.
+ * Provider + model per role come from settings (main, small, second
+ * opinion); the pipeline passes them to `runner.start({provider, model,
+ * ...})` and the ACP runner selects them via `session/set_config_option`.
+ * `listModels(provider)` is wired into the settings model catalog (see
+ * `src/app.ts: AcpModelCatalog`).
+ *
+ * This module never imports `@agentclientprotocol/*` directly
+ * (lint-enforced): it goes through `./acp-runner.js`, which re-exports the
+ * runner built inside `acp/`.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRunner } from "@unvibe/shared";
 import { ReplayAgentRunner } from "../replay/runner.js";
+import { createAcpRunner } from "./acp-runner.js";
 
 export interface CreateRunnerOptions {
   env?: NodeJS.ProcessEnv;
@@ -30,53 +35,65 @@ export interface CreateRunnerOptions {
 }
 
 export function defaultFixturesDir(): string {
+  return resolveFixturesDir();
+}
+
+/**
+ * Locate `fixtures/urllib3-5020` relative to the module when possible (so
+ * the esbuild bundle + global install find it outside the repo), falling
+ * back to the cwd (dev/tests running from the repo root).
+ */
+export function resolveFixturesDir(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const fromDist = path.resolve(here, "..", "..", "..", "..", "fixtures", "urllib3-5020");
-  if (fs.existsSync(fromDist)) return fromDist;
-  return path.resolve(process.cwd(), "fixtures", "urllib3-5020");
+  // src layout:  packages/service/src/agent/ → ../../../../fixtures
+  // dist bundle: packages/service/dist/index.js → ../../../fixtures
+  // (esbuild bundles to a single dist/index.js, so 3 ups reach the root).
+  const candidates = [
+    path.resolve(here, "..", "..", "..", "..", "fixtures", "urllib3-5020"),
+    path.resolve(here, "..", "..", "..", "fixtures", "urllib3-5020"),
+    path.resolve(process.cwd(), "fixtures", "urllib3-5020"),
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(path.join(c, "manifest.json"))) return c;
+    } catch {
+      // try next
+    }
+  }
+  return candidates[0];
 }
 
 export function isReplayEnv(env: NodeJS.ProcessEnv = process.env): boolean {
   return (env.UNVIBE_AGENT ?? "").toLowerCase() === "replay";
 }
 
-function acpNotMerged(): never {
-  throw new Error(
-    "ACP AgentRunner not yet merged (branch `acp-runner` owns src/agent/acp/). " +
-      "Run with UNVIBE_AGENT=replay for the recorded demo, or wait for the ACP branch. " +
-      "When it merges, this factory returns the ACP runner (with listModels(provider)) instead of throwing.",
-  );
-}
-
 /**
  * Create the configured AgentRunner. Tests inject fakes directly and never
- * call this; production (`src/index.ts`) and `createApp` call it when no
- * explicit runner is provided.
+ * call this; `buildApp` calls it when no explicit runner is provided.
  */
 export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
   const env = opts.env ?? process.env;
   if (isReplayEnv(env)) {
-    const dir =
-      opts.fixturesDir ??
-      (() => {
-        const here = path.dirname(fileURLToPath(import.meta.url));
-        const fromDist = path.resolve(here, "..", "..", "..", "..", "fixtures", "urllib3-5020");
-        if (fs.existsSync(fromDist)) return fromDist;
-        const fromCwd = path.resolve(process.cwd(), "fixtures", "urllib3-5020");
-        if (fs.existsSync(fromCwd)) return fromCwd;
-        return fromDist;
-      })();
+    const dir = opts.fixturesDir ?? resolveFixturesDir();
     return new ReplayAgentRunner({
       fixturesDir: dir,
       ...(opts.chunkChars !== undefined ? { chunkChars: opts.chunkChars } : {}),
       ...(opts.delayMs !== undefined ? { delayMs: opts.delayMs } : { delayMs: 5 }),
     });
   }
-  return acpNotMerged();
+  return createAcpRunner();
 }
 
 /** True when the runner serves recordings (replay/demo path). */
 export function isReplayRunner(runner: AgentRunner): boolean {
   // ReplayAgentRunner has a `resolve(prompt)` method; the interface does not.
   return typeof (runner as unknown as { resolve?: unknown }).resolve === "function";
+}
+
+/** True when the runner is the real ACP runner (has listModels/dispose). */
+export function isAcpRunner(
+  runner: AgentRunner,
+): runner is AgentRunner & { listModels: (p: string) => Promise<unknown[]>; dispose: () => Promise<void> } {
+  const r = runner as unknown as { listModels?: unknown; dispose?: unknown };
+  return typeof r.listModels === "function" && typeof r.dispose === "function";
 }

@@ -39,14 +39,11 @@ describe("HTTP auth gate", () => {
   it("every PRD §14.1 endpoint is registered and gated", async () => {
     const { app } = await createApp("test-token");
     const authed = { authorization: "Bearer test-token" };
-    // Still unwired (other milestones own these).
-    const stubs: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string }[] = [
-      { method: "PATCH", url: "/api/reviews/r1/comments/c1" },
-      { method: "PUT", url: "/api/reviews/r1/description" },
-      { method: "POST", url: "/api/reviews/r1/submit" },
-    ];
-    // M1 service + M3 pipeline implement these (functional status, not 501).
-    const live: { method: "GET" | "POST" | "PATCH"; url: string; status: number }[] = [
+    // All milestones landed: nothing stays 501 on this branch.
+    const stubs: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string }[] = [];
+    // M1 service + M3 pipeline + M6 comments/description/submit: functional
+    // statuses, not 501.
+    const live: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string; status: number }[] = [
       { method: "GET", url: "/api/repos", status: 200 },
       { method: "POST", url: "/api/repos", status: 400 },
       { method: "GET", url: "/api/repos/r1/changes", status: 404 },
@@ -61,6 +58,9 @@ describe("HTTP auth gate", () => {
       { method: "PATCH", url: "/api/reviews/r1/hunks/abc", status: 400 },
       { method: "GET", url: "/api/settings", status: 200 },
       { method: "GET", url: "/api/jobs", status: 400 },
+      { method: "PATCH", url: "/api/reviews/r1/comments/c1", status: 400 },
+      { method: "PUT", url: "/api/reviews/r1/description", status: 400 },
+      { method: "POST", url: "/api/reviews/r1/submit", status: 404 },
     ];
     try {
       for (const c of [...stubs, ...live]) {
