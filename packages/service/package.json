@@ -6,7 +6,7 @@
     "unvibe": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm run build --workspace @unvibe/shared && esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/index.js --sourcemap --log-level=warning --external:fastify --external:@fastify/static --external:@fastify/websocket --external:@modelcontextprotocol/sdk --external:immer --external:ws",
     "dev": "node --watch ./dist/index.js",
     "test": "vitest run",
     "lint": "eslint src test",
