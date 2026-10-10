@@ -8,7 +8,8 @@
  * dots: select them with `[id="…"]` (a `#…` selector would parse the dots
  * as class names).
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "./network-guard.js";
+import type { Page } from "@playwright/test";
 
 declare global {
   interface Window {
@@ -102,8 +103,8 @@ test("revealSource unfolds a folded hunk and highlights the range", async ({ pag
 
 test("start page opens a review", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Open a review")).toBeVisible();
-  await expect(page.getByText("urllib3/urllib3")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(page.getByText("urllib3/urllib3").first()).toBeVisible();
   await page.getByText("Unfold obsolete folded response header values").first().click();
   await expect(page).toHaveURL(/\/review\/demo/);
   await expect(page.locator(connFile)).toBeVisible();

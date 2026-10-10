@@ -261,7 +261,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
           {thread.postedUrl ? (
             <>
               {" · "}
-              <a href={thread.postedUrl} target="_blank" rel="noreferrer">
+              <a href={thread.postedUrl} target="_blank" rel="noreferrer noopener">
                 view on GitHub
               </a>
             </>

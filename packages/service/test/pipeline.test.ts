@@ -25,7 +25,10 @@ const fixturesDir = path.resolve(
 const authed = { authorization: "Bearer tok" };
 
 function replay(): ReplayAgentRunner {
-  return new ReplayAgentRunner({ fixturesDir, chunkChars: 256, delayMs: 0 });
+  // Small streaming delay so the patch-order assertion below sees the
+  // pipeline stream (with delayMs 0 the replay finishes inside the create
+  // inject on fast hardware and the post-create subscriber sees nothing).
+  return new ReplayAgentRunner({ fixturesDir, chunkChars: 256, delayMs: 5 });
 }
 
 async function waitFor(

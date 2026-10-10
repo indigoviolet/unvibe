@@ -20,6 +20,7 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { AgentRunner } from "@unvibe/shared";
 import { hasValidToken } from "./auth.js";
+import { CONTENT_SECURITY_POLICY } from "./security/csp.js";
 import type { CommandRunner } from "./exec/index.js";
 import { DEFAULT_IDLE_MS, IdleMonitor } from "./lifecycle/index.js";
 import { MCP_ROUTE_PREFIX } from "./mcp/index.js";
@@ -84,9 +85,11 @@ const PUBLIC_STATIC_EXACT = new Set([
   "/manifest.webmanifest",
   "/sw.js",
   "/start.html",
+  "/start.js",
   "/icon.svg",
   "/icon-192.png",
   "/icon-512.png",
+  "/icon-512-maskable.png",
   "/apple-touch-icon.png",
   "/favicon.ico",
 ]);
@@ -192,6 +195,27 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     const url = req.url;
     if (url === "/api/health" || url.startsWith("/api/health?")) return;
     lastHttpAt = Date.now();
+  });
+
+  // Strict CSP on every HTML shell response (PRD §16). API/WS stay JSON;
+  // static assets are unaffected (the header is harmless on them, but we
+  // scope to HTML to keep the policy tight and the tests precise).
+  app.addHook("onSend", async (req, reply, payload) => {
+    try {
+      const ct = String(reply.getHeader("content-type") ?? "");
+      const url = String(req.url ?? "");
+      const pathname = urlPathname(url);
+      const isHtml =
+        ct.includes("text/html") ||
+        pathname === "/" ||
+        pathname === "/index.html" ||
+        pathname === "/start.html" ||
+        (!pathname.startsWith("/api/") && !pathname.startsWith("/assets/") && !pathname.includes("."));
+      if (isHtml) reply.header("content-security-policy", CONTENT_SECURITY_POLICY);
+    } catch {
+      // Never break a response for a header.
+    }
+    return payload;
   });
 
   app.get("/api/health", async () => ({ ok: true, version: SERVICE_VERSION }));

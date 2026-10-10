@@ -3,7 +3,8 @@
  * guide/diff/description, the Comments menu with For-PR drafts,
  * description editing, and the Submit panel.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "./network-guard.js";
+import type { Page } from "@playwright/test";
 
 const CONN = "src-urllib3-connection.py";
 

@@ -134,6 +134,67 @@ export interface ReviewSnapshot {
 
 export type ReviewResponse = ReviewSnapshot;
 
+/**
+ * Front screen (PRD §4.2): every review opened before, across ALL repos,
+ * most recent first. Served by `GET /api/reviews`.
+ */
+export interface ReviewSummary {
+  id: string;
+  repoId: string;
+  repoOwner: string;
+  repoName: string;
+  /** PR title or branch name. */
+  title: string;
+  branch: string;
+  prNumber?: number;
+  createdAt: number;
+  /** Epoch ms the review was last opened (snapshot updated_at). */
+  lastOpened: number;
+  versionCount: number;
+  currentVersion: number;
+  /** Head moved since fetch ("new commits · Update"). */
+  stale: boolean;
+  totalHunks: number;
+  reviewedHunks: number;
+  /** Threads marked For PR and not yet posted. */
+  pendingComments: number;
+  /** Guide generation state (reader/base/critic pipeline). */
+  guideStatus: "ready" | "running" | "error" | "idle" | "disabled";
+  guideDetail?: string;
+}
+
+export interface ReviewsListResponse {
+  reviews: ReviewSummary[];
+}
+
+// --- readiness -----------------------------------------------------------
+
+/**
+ * Front-screen readiness (callouts + Settings → Environment).
+ * Served by `GET /api/readiness` (`?force=1` bypasses the brief cache).
+ */
+export type ReadinessStatus = "ok" | "warning" | "error";
+
+export interface ReadinessCheck {
+  /** e.g. "git" | "gh" | "agent:main" | "agent:small" | "agent:second-opinion" | "agents-distinct". */
+  id: string;
+  label: string;
+  status: ReadinessStatus;
+  /** One-line human explanation. */
+  summary: string;
+  /** How to fix it. */
+  fix: string;
+  /** Settings section anchor the front screen links to (e.g. "#environment", "#models"). */
+  settingsAnchor?: string;
+}
+
+export interface ReadinessResponse {
+  checks: ReadinessCheck[];
+  generatedAt: number;
+  /** True when served from the brief cache (not a fresh probe). */
+  cached: boolean;
+}
+
 export interface RefreshResponse {
   review: Review;
   /**

@@ -61,7 +61,47 @@ mise run lint       # eslint
 mise run typecheck  # tsc --noEmit per workspace
 mise run check      # lint + typecheck + test
 mise run build      # build shared → service → web
+mise run test:e2e   # Playwright behaviour tests (mock + real service)
 ```
+
+## Network and privacy
+
+Data stays on the machine (PRD §16). The only things that talk to the
+outside are the user's own tools that Unvibe launches:
+
+- `gh` (GitHub, with `GITHUB_TOKEN` unset) and `git` (fetching from the
+  repo's remote);
+- the coding-agent CLIs/adapters (provider calls, through the user's own
+  Claude/Codex logins).
+
+Unvibe's own code — the service process and the web app in the browser —
+contacts nothing but `127.0.0.1`. Fonts are self-hosted (`@fontsource/*`,
+latin subsets bundled by Vite), Mermaid is bundled (no CDN, no remote
+fonts/styles at runtime), and links the user clicks to github.com are
+navigations (marked `rel="noreferrer noopener"`), not subresource loads.
+
+What enforces it:
+
+- Browser: the service serves a strict `Content-Security-Policy` on the
+  HTML shell (mirrored as a `<meta>` in `public/start.html` for the offline
+  page); a shared Playwright fixture fails the whole e2e suite on any
+  non-local request, plus a dedicated spec walks the front screen, a review
+  with guide + diff + Mermaid diagram, and settings asserting zero
+  non-local requests and zero CSP violations.
+- Service: the vitest setup makes non-loopback sockets fail suite-wide
+  (`net`/`tls`/`dns`/`fetch` wrapped); an end-to-end test boots the app,
+  creates the demo review with the replay runner, runs actions, and asserts
+  no non-loopback attempt.
+- Static: a guard test finds no fetchable `http(s)://` URL to a non-local
+  host in shipped web assets (`public/`, `dist/` after build) and no
+  `fetch`/`http`/`https`/`net`/`tls`/`dgram`/`dns`/WebSocket-client use in
+  `packages/service/src` outside the allowlist in the test (loopback
+  clients, the 127.0.0.1-only server, ACP stdio adapters).
+- Subprocesses: a guard test asserts the service spawns only `git`, `gh`,
+  the login shell, the agent adapters/CLIs, and the `unvibe setup` helpers
+  (`osacompile`, `lsregister`, `xdg-mime`, `open`/`xdg-open`).
+
+Installing/updating (`npm install -g`) naturally uses the network.
 
 ## Layout
 

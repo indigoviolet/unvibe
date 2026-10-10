@@ -241,7 +241,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
                 {state.descriptionUpdated ? " and the description update" : ""} reached GitHub.
               </span>
               {state.reviewUrl ? (
-                <a href={state.reviewUrl} target="_blank" rel="noreferrer">
+                <a href={state.reviewUrl} target="_blank" rel="noreferrer noopener">
                   View on GitHub
                 </a>
               ) : null}
@@ -257,7 +257,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
               <b>Review posted, description failed</b>
               <span className="hint">{state.error}</span>
               {state.reviewUrl ? (
-                <a href={state.reviewUrl} target="_blank" rel="noreferrer">
+                <a href={state.reviewUrl} target="_blank" rel="noreferrer noopener">
                   View on GitHub
                 </a>
               ) : null}

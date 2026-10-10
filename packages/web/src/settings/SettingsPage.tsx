@@ -11,6 +11,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import type { Settings } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { ContributionsSection } from "./ContributionsSection.js";
+import { EnvironmentSection } from "./EnvironmentSection.js";
 import { JobsSection } from "./JobsSection.js";
 import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
@@ -33,6 +34,22 @@ export function SettingsPage(): React.JSX.Element {
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       });
+    // Front-screen callouts link to /settings#environment / #models:
+    // scroll the anchored section into view after first paint.
+    try {
+      const hash = window.location.hash;
+      if (hash) {
+        const t = window.setTimeout(() => {
+          document.querySelector(hash)?.scrollIntoView({ block: "start" });
+        }, 50);
+        return () => {
+          cancelled = true;
+          window.clearTimeout(t);
+        };
+      }
+    } catch {
+      // Ignore.
+    }
     return () => {
       cancelled = true;
     };
@@ -64,6 +81,7 @@ export function SettingsPage(): React.JSX.Element {
           {settings ? (
             <>
               <ModelsSection settings={settings} onSaved={setSettings} />
+              <EnvironmentSection />
               <PromptsSection reviewId={reviewId} />
               <LimitsSection settings={settings} onSaved={setSettings} />
               <JobsSection reviewId={reviewId} />

@@ -4,7 +4,8 @@
  * on cards), run → verdict shows, disagreement uses warn styling, re-run
  * and remove work.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "./network-guard.js";
+import type { Page } from "@playwright/test";
 
 async function gotoReview(page: Page): Promise<void> {
   await page.goto("/review/demo");

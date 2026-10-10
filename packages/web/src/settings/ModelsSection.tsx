@@ -7,7 +7,7 @@
  * different one).
  */
 import { useEffect, useState } from "react";
-import type { ModelPick, Settings } from "@unvibe/shared";
+import type { ModelPick, ReadinessCheck, Settings } from "@unvibe/shared";
 import { api } from "../api/client.js";
 
 type Role = "main" | "small" | "secondOpinion";
@@ -27,16 +27,48 @@ export function ModelsSection({
   settings: Settings;
   onSaved: (next: Settings) => void;
 }): React.JSX.Element {
+  // Same agent status as the front-screen callouts, shown inline per picker
+  // (fills in after render; never blocks the pickers).
+  const [statusByRole, setStatusByRole] = useState<Record<string, ReadinessCheck | undefined>>({});
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .readiness()
+      .then((r) => {
+        if (cancelled) return;
+        const map: Record<string, ReadinessCheck | undefined> = {};
+        for (const c of r.checks) {
+          if (c.id.startsWith("agent:")) map[c.id.slice("agent:".length)] = c;
+        }
+        setStatusByRole(map);
+      })
+      .catch(() => {
+        // Model pickers stay usable without status.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
-    <section aria-label="Models">
+    <section aria-label="Models" id="models" style={{ scrollMarginTop: 12 }}>
       <div className="divider">Models</div>
       {ROLES.map(({ role, label, blurb }) => (
-        <ModelPicker key={role} role={role} label={label} blurb={blurb} settings={settings} onSaved={onSaved} />
+        <ModelPicker
+          key={role}
+          role={role}
+          label={label}
+          blurb={blurb}
+          settings={settings}
+          onSaved={onSaved}
+          status={statusByRole[role]}
+        />
       ))}
-      {settings.secondOpinion.model === settings.main.model ? (
+      {settings.secondOpinion.provider === settings.main.provider &&
+      settings.secondOpinion.model === settings.main.model ? (
         <p className="warnline" role="status">
-          Second opinion uses the same model as main ({settings.main.model}) — pick a different one so the
-          second opinion is actually independent.
+          Second opinion uses the same model as main ({settings.main.provider}/{settings.main.model})
+          — pick a different one so the second opinion is actually independent.
         </p>
       ) : null}
     </section>
@@ -49,12 +81,14 @@ function ModelPicker({
   blurb,
   settings,
   onSaved,
+  status,
 }: {
   role: Role;
   label: string;
   blurb: string;
   settings: Settings;
   onSaved: (next: Settings) => void;
+  status?: ReadinessCheck;
 }): React.JSX.Element {
   const pick: ModelPick = settings[role];
   const [provider, setProvider] = useState(pick.provider);
@@ -151,6 +185,21 @@ function ModelPicker({
           {saveError ? (
             <span className="err" role="alert">
               {saveError}
+            </span>
+          ) : null}
+          {status && status.status !== "ok" ? (
+            <span
+              className={status.status === "warning" ? "warnline" : "err"}
+              role="status"
+              data-testid={`model-${role}-status`}
+            >
+              {status.summary}
+              {status.fix ? ` — ${status.fix}` : ""}
+            </span>
+          ) : null}
+          {status?.status === "ok" ? (
+            <span className="hint" data-testid={`model-${role}-status`}>
+              {status.summary}
             </span>
           ) : null}
         </div>
