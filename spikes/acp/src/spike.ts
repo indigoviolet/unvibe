@@ -249,8 +249,8 @@ async function main(): Promise<void> {
           try {
             await client.prompt(ctx, forkId, "Reply with exactly the word FORKED and nothing else.", { timeoutMs: 300_000 });
             return "direct-prompt-ok";
-          } catch (e) {
-            const msg = String(e).slice(0, 200);
+          } catch (e: any) {
+            const msg = `${String(e)} ${JSON.stringify(e?.data ?? {})}`.slice(0, 500);
             if (/session not found/i.test(msg)) {
               await ctx.request("session/resume", { sessionId: forkId, cwd, mcpServers });
               resumeNeeded = true;
