@@ -60,7 +60,13 @@ export interface SetupPaths {
 
 /** Real launcher paths. `homeDir` is injectable for tests (fake HOME). */
 export function resolveSetupPaths(homeDir: string = os.homedir()): SetupPaths {
-  const fallbackCli = fileURLToPath(new URL("../../index.js", import.meta.url));
+  // Bundled CLI (dist/index.js): the module itself is the entry point.
+  // Under vitest/ts-src the module is src/cli/setup/index.ts, so the
+  // entry is two levels up instead.
+  const here = fileURLToPath(import.meta.url);
+  const fallbackCli = here.includes(`${path.sep}src${path.sep}`)
+    ? fileURLToPath(new URL("../../index.js", import.meta.url))
+    : here;
   return {
     homeDir,
     nodePath: process.execPath,

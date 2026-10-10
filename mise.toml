@@ -35,3 +35,19 @@ run = "mise run lint && mise run typecheck && mise run test"
 [tasks.start]
 description = "Run the built service"
 run = "node packages/service/dist/index.js"
+
+[tasks.setup]
+description = "Build, then run unvibe setup (token + unvibe:// handler)"
+run = "mise run build && node packages/service/dist/index.js setup"
+
+[tasks.doctor]
+description = "Build, then run unvibe doctor (environment checks)"
+run = "mise run build && node packages/service/dist/index.js doctor"
+
+[tasks.e2e]
+description = "Linux end-to-end: setup, handler start, reuse, idle exit, uninstall"
+run = "mise run build && node scripts/e2e-linux.mjs"
+
+[tasks.check-global-install]
+description = "Pack + global-install a tarball into a temp prefix, run doctor/start/stop outside the repo"
+run = "mise run build && node scripts/global-install-check.mjs"

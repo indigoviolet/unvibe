@@ -1,3 +1,4 @@
+/*global console Buffer */
 // Generates the PWA icons (packages/web/public/*.png) with zero
 // dependencies: raw RGBA -> zlib -> PNG. Run: node scripts/gen-icons.mjs
 // Design: teal rounded square with a white "U" (block letter, drawn with

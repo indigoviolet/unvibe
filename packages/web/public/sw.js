@@ -1,4 +1,5 @@
-/**
+/*global self caches fetch Response URL */
+ /**
  * Unvibe app-shell service worker (PRD §14).
  *
  * Caches ONLY the app shell (start page, offline page, manifest, icons,
