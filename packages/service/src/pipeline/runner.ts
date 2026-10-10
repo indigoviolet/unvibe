@@ -30,8 +30,7 @@ import { RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
 import { isReplayRunner } from "../agent/factory.js";
-import { toPromptSnapshot } from "../routes/prompts.js";
-import { buildBasePack, buildDiffSection, buildSourceBlurb } from "../context/index.js";
+import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildDiffSection, buildSourceBlurb } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
@@ -42,6 +41,8 @@ import { lookupForSnapshot } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
 import { criticApply, readerApply } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
+import { changeListVariable, ingestAgentTurn } from "./sharedctx-wire.js";
+import type { SharedContextService } from "../sharedctx/service.js";
 import type { RunInForkOptions, RunInForkResult, RunSmallOptions } from "./types.js";
 
 export interface PipelineOptions {
@@ -56,6 +57,8 @@ export interface PipelineOptions {
   promptsDir?: string;
   mcpBaseUrl?: string;
   fixturesDir?: string;
+  /** M5 shared context (PRD §9.3–§9.5): change lists, contributions, growth. */
+  sharedctx?: SharedContextService;
 }
 
 type Session = { id: string; provider: string; model: string };
@@ -149,15 +152,81 @@ export class Pipeline {
     return this.opts.runner;
   }
 
+  /** M5 shared context: attach the service after construction (app.ts). */
+  setSharedContext(sharedctx: SharedContextService): void {
+    this.opts.sharedctx = sharedctx;
+  }
+
+  /** Deps for the shared-context wire module (PRD §9.3–§9.5). */
+  private wireDeps(): {
+    reviews: ReviewStore;
+    sessions: SessionManager;
+    settings: SettingsStore;
+    promptsDir: string;
+    sharedctx?: SharedContextService;
+  } {
+    return {
+      reviews: this.opts.reviews,
+      sessions: this.opts.sessions,
+      settings: this.opts.settings,
+      promptsDir: this.promptsDir,
+      ...(this.opts.sharedctx ? { sharedctx: this.opts.sharedctx } : {}),
+    };
+  }
+
+  /**
+   * Post-success bookkeeping for one agent turn (contributions, seen marker,
+   * base growth). Best-effort: never fails the job. Only call when the turn
+   * succeeded — failed turns must not advance the marker.
+   */
+  private async ingestTurn(
+    reviewId: string,
+    turn: {
+      sessionId: string;
+      threadId?: string;
+      conversationKey?: string;
+      cardId?: string;
+      hunkHash?: string;
+      data: ReplyData | null;
+    },
+  ): Promise<void> {
+    if (!this.opts.sharedctx) return;
+    try {
+      const snapshot = this.opts.reviews.getSnapshot(reviewId);
+      if (!snapshot) return;
+      const lookup = this.lookupWithAliases(snapshot);
+      await ingestAgentTurn(this.wireDeps(), reviewId, {
+        sessionId: turn.sessionId,
+        ...(turn.threadId ? { threadId: turn.threadId } : {}),
+        ...(turn.conversationKey ? { conversationKey: turn.conversationKey } : {}),
+        ...(turn.cardId ? { cardId: turn.cardId } : {}),
+        ...(turn.hunkHash ? { hunkHash: turn.hunkHash } : {}),
+        data: turn.data,
+        snapshot,
+        lookup,
+        appendToBase: (baseKey, batch) => this.opts.sessions.appendLogBatch(baseKey, batch),
+      });
+    } catch {
+      // best-effort
+    }
+  }
+
   // -- reusable seam --------------------------------------------------
 
   async runInFork(o: RunInForkOptions): Promise<RunInForkResult> {
     const snapshot = this.opts.reviews.getSnapshot(o.reviewId);
     if (!snapshot) throw new Error(`unknown review ${o.reviewId}`);
     const settings = this.opts.settings.get();
-    const template = this.render(o.template, o.variables);
-    const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     const base = await this.ensureBase(o.reviewId);
+    const baseLogSeq = this.opts.sessions.baseInfo(base.key)?.logSeq ?? 0;
+    const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
+      ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
+      ...(o.cardId ? { cardId: o.cardId } : {}),
+      ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
+      baseLogSeq,
+    });
+    const template = this.render(o.template, variables);
+    const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     const provider = settings.main.provider;
     const model = settings.main.model;
 
@@ -236,6 +305,14 @@ export class Pipeline {
             }
             ctx.reportUsage(usage);
             await this.recordUsage(o.reviewId, usage);
+            await this.ingestTurn(o.reviewId, {
+              sessionId: forked.session.id,
+              ...(o.threadId ? { threadId: o.threadId } : {}),
+              ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
+              ...(o.cardId ? { cardId: o.cardId } : {}),
+              ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
+              data: finalData,
+            });
             if (o.onPartial) {
               try {
                 await o.onPartial(finalCards);
@@ -372,6 +449,37 @@ export class Pipeline {
   }
 
   // -- pipeline stages ------------------------------------------------
+
+  /**
+   * M5 shared context (PRD §9.5): merge contributions on a base rebuild via
+   * the small model (`consolidate` template). Returns the model's verdict;
+   * the caller applies it with `applyConsolidation`. A small-model job, so
+   * it carries only the contribution list — never the review, never the log.
+   */
+  async runConsolidateTask(
+    reviewId: string,
+    contributionsText: string,
+  ): Promise<{ kept: { id: string }[]; dropped: { id: string; why: string }[] }> {
+    const res = await this.runSmall({
+      reviewId,
+      kind: "consolidate",
+      template: "consolidate",
+      variables: { contributions: contributionsText },
+      priority: JOB_PRIORITY.background,
+    });
+    const data = (res.data ?? {}) as Record<string, unknown>;
+    const kept = Array.isArray(data["kept"])
+      ? (data["kept"] as { id?: unknown }[])
+          .filter((k): k is { id: string } => typeof k?.id === "string")
+          .map((k) => ({ id: k.id }))
+      : [];
+    const dropped = Array.isArray(data["dropped"])
+      ? (data["dropped"] as { id?: unknown; why?: unknown }[])
+          .filter((d): d is { id: string; why: string } => typeof d?.id === "string")
+          .map((d) => ({ id: d.id, why: typeof d.why === "string" ? d.why : "dropped by consolidation" }))
+      : [];
+    return { kept, dropped };
+  }
 
   startReview(reviewId: string): void {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
@@ -669,7 +777,7 @@ export class Pipeline {
     const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
     const key = {
       reviewVersion: `v${snapshot.version.n}`,
-      guideRevision: `rev-${snapshot.rev}`,
+      guideRevision: guideRevisionForSnapshot(snapshot),
       provider: settings.main.provider,
       model: settings.main.model,
     };
@@ -682,6 +790,13 @@ export class Pipeline {
       mcpServers,
       pack: packText,
     });
+    if (handle.fresh) {
+      try {
+        this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack.tokens);
+      } catch {
+        // observability is best-effort
+      }
+    }
     this.setStage(reviewId, "base", "done");
     return { sessionId: handle.session.id, key: handle.key };
   }
@@ -700,7 +815,7 @@ export class Pipeline {
     const base = await this.opts.sessions.getBase({
       key: {
         reviewVersion: `v${snapshot.version.n}`,
-        guideRevision: `rev-${snapshot.rev}`,
+        guideRevision: guideRevisionForSnapshot(snapshot),
         provider: settings.main.provider,
         model: settings.main.model,
       },
@@ -817,6 +932,7 @@ export class Pipeline {
             finalValidation = second.validation;
           }
           await this.applyReaderResult(reviewId, finalCards, finalData, finalValidation);
+          await this.ingestTurn(reviewId, { sessionId: session.id, data: finalData });
           this.setStage(reviewId, "reader", "done");
           this.enqueueAfterReader(reviewId);
         } catch (err) {
@@ -1106,6 +1222,7 @@ export class Pipeline {
               });
             });
             await this.updateRestatedMapping(reviewId);
+            await this.ingestTurn(reviewId, { sessionId: forked.session.id, data });
             this.maybeMarkStageDone(reviewId, "critic", 2);
           } catch (err) {
             this.setStage(reviewId, "critic", "error", (err as Error).message);
@@ -1346,6 +1463,7 @@ export class Pipeline {
       });
     });
     await this.updateRestatedMapping(reviewId);
+    await this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data });
   }
 
   private async ensureConceptPageInner(reviewId: string, slug: string): Promise<void> {
