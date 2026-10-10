@@ -159,9 +159,13 @@ async function resolveNewBase(
   for (const base of candidates) {
     if (!base) continue;
     const mb = await runGit(runner, ["merge-base", base, newHead], repoPath);
-    if (mb.ok && mb.stdout.trim()) {
-      return { baseRef: base, mergeBaseSha: mb.stdout.trim().split("\n")[0] };
-    }
+    const sha = mb.ok ? mb.stdout.trim().split("\n")[0] : "";
+    if (!sha) continue;
+    // Degenerate self-base (remote-less fixture where baseRef == branch):
+    // merge-base(branch, head) == head yields an empty diff. Skip so the
+    // root-commit fallback below produces the real root..head diff.
+    if (sha === newHead) continue;
+    return { baseRef: base, mergeBaseSha: sha };
   }
   const root = await runGit(runner, ["rev-list", "--max-parents=0", newHead], repoPath);
   const rootSha = root.ok && root.stdout.trim() ? root.stdout.trim().split("\n")[0] : newHead;
@@ -269,8 +273,12 @@ export async function refreshReview(
     idMapping,
   };
   const summary = summarizeComparison(comparison);
+  // A rebase without conflicts comes out as "no change": the version is
+  // still recorded (with its ID mapping) but nothing is stale, so the UI
+  // shows no Update banner and the update pass reports nothing to do.
+  const hasChanges = summary.changedHunks + summary.newHunks + summary.removedHunks > 0;
   const versionStatus: VersionStatus = {
-    stale: true,
+    stale: hasChanges,
     fromVersion: oldVersion.n,
     toVersion: version.n,
     unchangedHunks: summary.unchangedHunks,

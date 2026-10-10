@@ -37,3 +37,4 @@ export async function registerRoutes(
 }
 
 export type { RouteDeps } from "./deps.js";
+export type { ReviewsRouteDeps, RegisterReviewsDeps } from "./reviews.js";
