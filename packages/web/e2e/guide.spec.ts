@@ -211,12 +211,14 @@ test("concept page renders the example aside", async ({ page }) => {
 test("narrow width keeps controls visible", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 900 });
   await gotoReview(page);
-  await expect(page.locator("#C-problem .ctl").first()).toBeVisible();
-  await expect(page.locator("#C-problem").getByRole("button", { name: "Mark read" })).toBeVisible();
+  await expect(page.locator("#C-problem > .ctl").first()).toBeVisible();
+  // The problem card seeds an expansion underneath; scope to the card's own
+  // control row so the expansion's Mark read does not match.
+  await expect(page.locator("#C-problem > .ctl").getByRole("button", { name: "Mark read" })).toBeVisible();
 });
 
 test("control tooltips use the shared Tooltip", async ({ page }) => {
   await gotoReview(page);
-  await hoverFresh(page, page.locator("#C-problem").getByRole("button", { name: "Mark read" }));
+  await hoverFresh(page, page.locator("#C-problem > .ctl").getByRole("button", { name: "Mark read" }));
   await expect(page.locator("#tip")).toContainText("Mark read", { timeout: 3000 });
 });

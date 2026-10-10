@@ -87,11 +87,13 @@ test("selection snaps to whole words and Ask creates a working thread", async ({
   await expect(thread.locator(".msg .av.ai")).toBeVisible();
 });
 
-test("Explain on 501 toasts without breaking", async ({ page }) => {
+test("Explain creates an expansion without breaking", async ({ page }) => {
   await gotoReview(page);
   await selectText(page, "#C-central", "optional");
   await page.locator('#selbar [data-act="explain"]').click();
-  await expect(page.locator("#toast")).toContainText(/service/i, { timeout: 5000 });
+  // No error toast: the mock fills the expansion like the service.
+  await expect(page.locator("#toast")).toBeHidden({ timeout: 5000 });
+  await expect(page.locator('#C-central [data-expansion]').first()).toBeVisible({ timeout: 5000 });
 });
 
 test("diff line click starts a comment; close leaves an icon; reopen works", async ({ page }) => {
