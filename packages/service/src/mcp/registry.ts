@@ -104,7 +104,13 @@ export class McpRegistry {
       }
     });
     this.sessions.set(secret, state);
-    const { server: _s, transport: _t, connected: _c, ...issued } = state;
+    const issued: IssuedSession = {
+      secret: state.secret,
+      path: state.path,
+      reviewId: state.reviewId,
+      sessionId: state.sessionId,
+      role: state.role,
+    };
     return issued;
   }
 

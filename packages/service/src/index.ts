@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   // merge; until then MCP tools report "unknown review".
   const mcp = new McpRegistry({
     reader: {
-      getReview: async (_reviewId: string): Promise<McpReviewData | null> => null,
+      getReview: async (): Promise<McpReviewData | null> => null,
       getWorktreePath: () => null,
     },
     commands: new RealCommandRunner(),

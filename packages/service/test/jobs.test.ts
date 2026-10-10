@@ -376,15 +376,11 @@ describe("persistence and restart recovery", () => {
     const db = makeDb();
     seedReview(db, "r1");
     const store = new JobStore(db);
-    const h1 = makeQueue({ persist: false });
-    void h1;
     const q1 = new JobQueue({ clock: new ManualClock(), persist: store });
     const gate = deferred();
     const running = q1.enqueue(
       spec({ reviewId: "r1", promptSnapshot: "P", run: () => gate.promise.then(() => {}) }),
     );
-    let capZero = true;
-    void capZero;
     await flush();
     expect(q1.get(running.id)?.state).toBe("running");
     expect(store.listByReview("r1").map((j) => j.id)).toContain(running.id);
