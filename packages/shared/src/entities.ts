@@ -291,13 +291,21 @@ export interface Annotation {
   note: boolean;
   /** Threads only: unsent reply-box content (survives re-renders). */
   reply?: string;
+  /**
+   * M6: posted marker set by Submit after the thread reaches GitHub.
+   * Threads with `postedAt` set are never posted twice (double-submit
+   * protection; retry after a partial failure skips them).
+   */
+  postedAt?: number;
+  /** M6: GitHub review URL the thread was posted in. */
+  postedUrl?: string;
 }
 
 /** Where an annotation is attached (PRD §7.1). */
 export type AnchorHost =
   | { kind: "block"; blockId: string }
   | { kind: "description"; paragraphId: string }
-  | { kind: "diff-line"; fileKey: string; line: number };
+  | { kind: "diff-line"; fileKey: string; line: number; endLine?: number; side?: "LEFT" | "RIGHT" };
 
 export interface Anchor {
   host: AnchorHost;
@@ -342,6 +350,33 @@ export interface ReviewDescription {
   source: "pr" | "commits";
   /** Editable only when the user authors an open PR (PRD §4.11). */
   editable: boolean;
+  /**
+   * M6: original PR body verbatim (for byte-for-byte round-trip of
+   * unedited paragraphs, PRD §15). Absent on pre-M6 snapshots.
+   */
+  baseMarkdown?: string;
+  /** M6: paragraph id → original Markdown source slice (verbatim). */
+  paragraphSources?: Record<string, string>;
+  /** M6: edited HTML awaiting submit (local only until Submit). */
+  pendingHtml?: string;
+  /** M6: edited Markdown converted from `pendingHtml`, awaiting submit. */
+  pendingMarkdown?: string;
+}
+
+/**
+ * M6: one existing PR review comment fetched read-only from GitHub
+ * (`gh api repos/{o}/{r}/pulls/{n}/comments`, PRD §15). Never posted to;
+ * the UI shows these alongside local threads.
+ */
+export interface ExistingReviewComment {
+  id: number;
+  path?: string;
+  line?: number;
+  side?: string;
+  body: string;
+  author?: string;
+  createdAt?: string;
+  htmlUrl?: string;
 }
 
 export type JobKind =
