@@ -1,16 +1,18 @@
 /**
  * Prompt template library: discovery + rendering (PRD §13).
  *
- * Templates live in `prompts/<name>.md` at the repo root. At runtime the
+ * Templates live in `prompts/<name>.md` at the package root. At runtime the
  * directory is located by `resolvePromptsDir` (env override
- * `UNVIBE_PROMPTS_DIR`, else walk up from the caller's directory to the
+ * `UNVIBE_PROMPTS_DIR`, else walk up from this module's directory to the
  * first ancestor containing `prompts/instructions.md`), so the same code
- * works from `dist/`, from tests, and from an installed location.
+ * works from `src/`, from the bundled `dist/`, and from an installed
+ * location.
  * Route and pipeline code should prefer passing an explicit directory in
  * tests and the resolved one in production.
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseTemplate, TemplateLoadError, type ParsedTemplate } from "./loader.js";
 
 export { TemplateLoadError, TEMPLATE_TIERS, type TemplateTier } from "./loader.js";
@@ -71,10 +73,19 @@ export function loadTemplatesDirSync(dir: string): TemplateLibrary {
 
 /**
  * Locate the prompts directory: `UNVIBE_PROMPTS_DIR` wins; otherwise walk
- * up from `startDir` (default: current working directory) to the first
- * ancestor containing `prompts/instructions.md`. Returns null when absent.
+ * up from `startDir` to the first ancestor containing
+ * `prompts/instructions.md`. Returns null when absent.
+ *
+ * The default starts at this module's own directory (not the cwd), so the
+ * service finds `prompts/` relative to the installed package — from
+ * `src/` in a checkout, from the esbuild bundle in `dist/`, and from a
+ * global `npm install -g`, which all share the `<root>/prompts` layout.
+ * An explicit `startDir` keeps the old walk-up behaviour for callers and
+ * tests.
  */
-export function resolvePromptsDir(startDir: string = process.cwd()): string | null {
+export function resolvePromptsDir(
+  startDir: string = path.dirname(fileURLToPath(import.meta.url)),
+): string | null {
   const override = process.env.UNVIBE_PROMPTS_DIR;
   if (override && fs.existsSync(path.join(override, "instructions.md"))) return override;
   let dir = path.resolve(startDir);
