@@ -151,7 +151,19 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
           draftState.annotations as Array<{ id: string; type: string; post: boolean; open: boolean; draft?: string; reply?: string }>
         ).find((a) => a.id === commentId);
         if (!found) throw new Error(`unknown comment ${commentId}`);
-        if (found.type !== "thread") throw new Error(`annotation ${commentId} is not a thread`);
+        // M4: `open` applies to expansions too (dotted-link click re-expands
+        // a closed expansion in place). Post/draft/reply stay thread-only.
+        if (open !== undefined && (found.type === "thread" || found.type === "expansion" || found.type === "link")) {
+          found.open = open;
+        } else if (open !== undefined) {
+          throw new Error(`annotation ${commentId} is not a thread`);
+        }
+        if (found.type !== "thread") {
+          if (post !== undefined || draft !== undefined || draft === null || replyBox !== undefined || replyBox === null) {
+            throw new Error(`annotation ${commentId} is not a thread`);
+          }
+          return;
+        }
         if (post !== undefined) {
           found.post = post;
           if (post) found.open = true;
@@ -161,7 +173,6 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
         } else if (draft !== undefined) {
           found.draft = draft;
         }
-        if (open !== undefined) found.open = open;
         if (replyBox === null) {
           delete found.reply;
         } else if (replyBox !== undefined) {

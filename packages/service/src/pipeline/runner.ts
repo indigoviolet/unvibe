@@ -573,6 +573,7 @@ export class Pipeline {
       model: settings.main.model,
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `concept:${slug}`, requestKind: "concept-page", baseVersion: `v${snapshot.version.n}` },
+      cardId: `cc-${slug}`,
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const forked = await this.forkFor(reviewId);
