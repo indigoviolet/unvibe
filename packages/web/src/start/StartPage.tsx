@@ -501,7 +501,7 @@ export function StartPage(): React.JSX.Element {
               <input
                 type="text"
                 aria-label="Open a PR by URL or number"
-                placeholder="https://github.com/owner/repo/pull/123 or 123"
+                placeholder="PR number (5020) or owner/repo pull URL"
                 value={prInput}
                 onChange={(e) => {
                   setPrInput(e.target.value);
