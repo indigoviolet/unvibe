@@ -29,7 +29,7 @@ import { canonicalizeTarget, JOB_PRIORITY, parseCards, parseCardsPartial, parseI
 import { RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
-import { isReplayRunner } from "../agent/factory.js";
+import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildDiffSection, buildSourceBlurb } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
@@ -484,6 +484,10 @@ export class Pipeline {
   startReview(reviewId: string): void {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+    // `UNVIBE_AGENT=none`: the pipeline is disabled. Enqueue nothing, so
+    // the review stays at its ingested snapshot and no background job
+    // mutates it (comments/diff/versions specs rely on this).
+    if (isNoneRunner(this.opts.runner)) return;
     this.ensurePipelineField(reviewId);
     this.setStage(reviewId, "reader", "pending");
     this.setStage(reviewId, "base", "pending");
@@ -496,6 +500,14 @@ export class Pipeline {
   async resumeReview(reviewId: string): Promise<{ jobIds: string[]; pendingStages: string[] }> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+    // `UNVIBE_AGENT=none`: nothing to resume; report the pending stages.
+    if (isNoneRunner(this.opts.runner)) {
+      const stages = this.stageStates(reviewId);
+      const pendingStages = Object.entries(stages)
+        .filter(([, v]) => v !== "done")
+        .map(([k]) => k);
+      return { jobIds: [], pendingStages };
+    }
     this.ensurePipelineField(reviewId);
     const stages = this.stageStates(reviewId);
     const jobIds: string[] = [];
