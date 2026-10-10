@@ -8,7 +8,8 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<StartPage />} />
-        <Route path="/review/:id" element={<ReviewRoute />} />
+        {/* Splat: the guide keeps its page in the URL (`/review/:id/page/:pageId`). */}
+        <Route path="/review/:id/*" element={<ReviewRoute />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </BrowserRouter>

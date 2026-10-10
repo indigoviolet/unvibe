@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePage } from "../guide/GuidePage.js";
+import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { SourcePane } from "../source/SourcePane.js";
 import { WIDEN_EVENT } from "../source/diff/DiffView.js";
 import { TopBar } from "./TopBar.js";
@@ -48,6 +49,17 @@ export function AppShell({ reviewId }: { reviewId: string }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // `revealSource` (guide citations): open the pane. Tab switching lives
+  // in `SourcePane` (it inspects the ref); the diff pane scrolls and
+  // highlights once mounted.
+  useEffect(() => {
+    const onReveal = (): void => {
+      setSourceOpen(true);
+    };
+    window.addEventListener(REVEAL_EVENT, onReveal);
+    return () => window.removeEventListener(REVEAL_EVENT, onReveal);
+  }, []);
+
   // Persist the pane width (a diff view preference, PRD §4.13).
   useEffect(() => {
     try {
@@ -66,7 +78,6 @@ export function AppShell({ reviewId }: { reviewId: string }) {
     window.addEventListener(WIDEN_EVENT, onWiden);
     return () => window.removeEventListener(WIDEN_EVENT, onWiden);
   }, []);
-
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       drag.current = { x0: e.clientX, w0: paneWidth };

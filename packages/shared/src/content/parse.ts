@@ -553,6 +553,7 @@ function citationsOf(block: Block): Citation[] {
     case "code":
     case "diagram":
     case "finding-link":
+    case "comment-link":
     case "follow-up":
       return block.citations;
     case "aside":

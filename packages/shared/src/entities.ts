@@ -193,6 +193,7 @@ export type BlockType =
   | "code"
   | "diagram"
   | "finding-link"
+  | "comment-link"
   | "follow-up"
   | "aside";
 
@@ -259,6 +260,20 @@ export interface FindingLinkBlock {
   citations: Citation[];
 }
 
+/**
+ * Link from a finding page to the agent's suggested comment on a diff line
+ * (PRD §4.9). Hover previews the thread, click jumps to it via revealSource.
+ */
+export interface CommentLinkBlock {
+  type: "comment-link";
+  id: string;
+  /** Diff target, e.g. `diff:conn:82`. */
+  diffRef: string;
+  /** Thread id in `ReviewSnapshot.annotations` holding the suggested comment. */
+  threadId: string;
+  citations: Citation[];
+}
+
 export interface FollowUpItem {
   label: string;
   /** Pre-baked agent question this follow-up asks. */
@@ -289,6 +304,7 @@ export type Block =
   | CodeBlock
   | DiagramBlock
   | FindingLinkBlock
+  | CommentLinkBlock
   | FollowUpBlock
   | AsideBlock;
 
@@ -463,6 +479,10 @@ export interface Job {
   /** Cache read share: cached/(input+cached). input counts uncached input only (M0). */
   cacheHitRate?: number;
   error?: string;
+  /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
+  cardId?: string;
+  /** Latest human-readable progress line, shown on the card while running. */
+  progress?: string;
   /**
    * Dedupe key (canonical `anchor|requestKind|depth|baseVersion`, see
    * `jobDedupeKeyString`): identical requests share one job/result (PRD §12).

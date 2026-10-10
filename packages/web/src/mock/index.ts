@@ -5,7 +5,8 @@
  *
  * - Serves a `ReviewSnapshot` fixture: the real urllib3/urllib3#5020 diff
  *   from `mock/diff.ts` + the guide fixture from `mock/guide.ts` (owned by
- *   the guide agent; currently empty pages/annotations).
+ *   the guide agent; pages/annotations/description from the generated
+ *   `fixtures/urllib3-5020/snapshot.json`).
  * - Applies mutations locally **through the same store path WS patches use**:
  *   every mutation bumps `rev` and emits `{ type: "patch", baseRev, headRev,
  *   ops }` via the zustand store's `applyEvent`, so views update exactly as
@@ -14,6 +15,7 @@
  *   delay, mimicking the async agent job.
  */
 import type {
+  ActionResponse,
   AddRepoRequest,
   ChangesFilter,
   CreateReviewRequest,
@@ -25,7 +27,7 @@ import type {
   RepoChangesResponse,
   ReposResponse,
   Review,
-  ReviewDescription,
+  ReviewAction,
   ReviewSnapshot,
   Settings,
   UpdateHunkRequest,
@@ -34,7 +36,7 @@ import type {
 import type { ApiClient } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
-import { MOCK_ANNOTATIONS, MOCK_PAGES } from "./guide.js";
+import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } from "./guide.js";
 
 export const MOCK_MODE: boolean =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK === "1";
@@ -115,27 +117,10 @@ function seedHunkStates(): Map<string, HunkState> {
 }
 
 /**
- * Static PR-description fixture in the service's `ReviewDescription` shape
- * (stable paragraph ids, PR source, read-only: someone else's merged PR).
- * Content follows the real urllib3#5020 description.
+ * Mock description: the generated fixture's description (stable paragraph
+ * ids, PR source, read-only). Owned by the guide agent in `mock/guide.ts`.
  */
-const MOCK_DESCRIPTION: ReviewDescription = {
-  html: [
-    '<div class="desc">',
-    '<p class="para" id="d-p1">Addresses the original obs-fold response-header case discussed in #1362. ' +
-      "Python's <code>http.client</code> preserves obsolete folded response header lines in " +
-      "<code>HTTPMessage</code> values.</p>",
-    '<p class="para" id="d-p2">This change replaces each RFC 9112 <code>OWS CRLF RWS</code> sequence with a ' +
-      "single space before urllib3 or downstream consumers interpret the value, keeping urllib3's " +
-      "<code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> synchronized.</p>",
-    '<p class="para" id="d-p3">This intentionally does not address the separate whitespace-before-colon ' +
-      "header name validation scope discussed on #1362.</p>",
-    "</div>",
-  ].join(""),
-  rev: "1",
-  source: "pr",
-  editable: false,
-};
+const MOCK_DESCRIPTION = guideDescription;
 
 let rev = 1;
 const hunkStates = seedHunkStates();
@@ -307,7 +292,41 @@ export const mockApi = {
     return { review: MOCK_REVIEW, newVersion: false };
   },
 
-  action: async () => ({ accepted: true, jobId: "mock-job-1" }),
+  action: async (_id: string, a: ReviewAction): Promise<ActionResponse> => {
+    // Guide instant state (PRD §4.3/§4.4) applies locally through the patch
+    // path; everything agent-driven answers `accepted: false` until the
+    // service implements it (the UI toasts).
+    if (a.kind !== "read" && a.kind !== "collapse" && a.kind !== "bookmark") {
+      return { accepted: false };
+    }
+    const snap = useReview.getState().snapshot;
+    if (!snap) return { accepted: false };
+    const action = a;
+    const pages = snap.pages.map((p) => {
+      if (action.kind === "bookmark") {
+        return p.id === action.pageId ? { ...p, saved: action.saved } : p;
+      }
+      return {
+        ...p,
+        cards: p.cards.map((c) => {
+          if (c.id !== action.cardId) return c;
+          if (action.kind === "read") {
+            return { ...c, read: action.read, collapsed: action.read ? true : c.collapsed };
+          }
+          return { ...c, collapsed: action.collapsed };
+        }),
+      };
+    });
+    const baseRev = rev;
+    rev += 1;
+    useReview.getState().applyEvent({
+      type: "patch",
+      baseRev,
+      headRev: rev,
+      ops: [{ op: "replace", path: "/pages", value: pages }],
+    });
+    return { accepted: true };
+  },
 
   // Mirrors the service PATCH semantics: null clears note/summary.
   updateHunk: async (_id: string, hash: string, body: UpdateHunkRequest): Promise<{ ok: boolean }> => {

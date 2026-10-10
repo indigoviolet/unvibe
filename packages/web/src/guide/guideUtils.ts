@@ -1,0 +1,239 @@
+/**
+ * Pure guide logic (web-guide owner): read roll-up, depth text selection,
+ * preview text, link discovery, contents model, concept resolution, anchor
+ * parsing. No DOM, no store — unit tested in `guideUtils.test.ts`.
+ *
+ * Inline dotted links come in two historical spellings: the prototype's
+ * `<a class="cx" data-node="…">` and the content parser's
+ * `<a class="cx" data-link="…">` (see `packages/shared/src/content/parse.ts`).
+ * Everything here accepts both.
+ */
+import type { Block, Card, DepthLevel, Job, Page } from "@unvibe/shared";
+
+const stripTags = (s: string): string => s.replace(/<[^>]+>/g, " ");
+
+/** Cards that count toward read state (prototype `readable`). */
+export function readableCards(page: Page): Card[] {
+  return page.cards.filter((c) => !c.pending);
+}
+
+/** A page is read when it has cards and all of them are read (PRD §4.4). */
+export function isPageRead(page: Page): boolean {
+  const cards = readableCards(page);
+  return cards.length > 0 && cards.every((c) => c.read);
+}
+
+export function readCount(page: Page): number {
+  return readableCards(page).filter((c) => c.read).length;
+}
+
+/** The per-depth text for a paragraph at the card's level (PRD §4.4). */
+export function depthText(text: { simple?: string; standard: string; deep?: string }, level: DepthLevel): string {
+  if (level === "simple") return text.simple ?? text.standard;
+  if (level === "deep") return text.deep ?? text.standard;
+  return text.standard;
+}
+
+/** Plain-text preview of a card (prototype `preview`). */
+export function cardPreview(card: Card): string {
+  const block = card.blocks.find(
+    (b) => b.type === "paragraph" || b.type === "list" || b.type === "code",
+  );
+  let raw = "";
+  if (!block) return raw;
+  if (block.type === "paragraph") raw = depthText(block.text, card.level);
+  else if (block.type === "list") raw = block.items[0]?.html ?? "";
+  else raw = block.code;
+  return stripTags(raw).replace(/\s+/g, " ").trim();
+}
+
+/** Plain-text preview of a page: title + first paragraph (PRD §4.5). */
+export function pagePreview(page: Page): string {
+  for (const card of page.cards) {
+    for (const block of card.blocks) {
+      if (block.type === "paragraph") {
+        const text = stripTags(depthText(block.text, card.level))
+          .replace(/\s+/g, " ")
+          .trim();
+        if (text) return text;
+      }
+      if (block.type === "code") {
+        const text = stripTags(block.code).replace(/\s+/g, " ").trim();
+        if (text) return text;
+      }
+    }
+  }
+  return "";
+}
+
+/** First-paragraph HTML of a page, for hover previews (PRD §4.5). */
+export function pagePreviewHtml(page: Page): string | null {
+  for (const card of page.cards) {
+    if (card.pending) continue;
+    for (const block of card.blocks) {
+      if (block.type === "paragraph") return depthText(block.text, card.level);
+    }
+  }
+  return null;
+}
+
+const NODE_ATTR = /data-(?:node|link)="([^"]+)"/g;
+
+/** All dotted-link targets inside an HTML string. */
+export function linkTargets(html: string | undefined): string[] {
+  if (!html) return [];
+  NODE_ATTR.lastIndex = 0;
+  return [...html.matchAll(NODE_ATTR)].map((m) => m[1]);
+}
+
+/** Resolve a dotted-link target to a page id, if it addresses a page. */
+export function pageIdForLinkTarget(
+  target: string,
+  lookup: (id: string) => Page | undefined,
+): string | null {
+  if (target.startsWith("page:")) {
+    const id = target.slice("page:".length);
+    return lookup(id) ? id : null;
+  }
+  if (target.startsWith("concept:")) {
+    const page = lookupConceptPage(lookup, target.slice("concept:".length));
+    return page ? page.id : null;
+  }
+  // Legacy bare page ids (prototype `data-node`).
+  return lookup(target) ? target : null;
+}
+
+/**
+ * Resolve a `concept:<slug>` link to its page. Concept pages carry ids of
+ * the form `c-<slug>` (see the replay snapshot builder); a page whose id
+ * is the slug itself also matches.
+ */
+export function lookupConceptPage(
+  lookup: (id: string) => Page | undefined,
+  slug: string,
+): Page | undefined {
+  return lookup(`c-${slug}`) ?? lookup(slug);
+}
+
+/** Pages linked from a page's blocks (prototype `linkedPages`). */
+export function linkedPages(page: Page, lookup: (id: string) => Page | undefined): Page[] {
+  const ids = new Set<string>();
+  const scan = (s: string | undefined): void => {
+    for (const t of linkTargets(s)) {
+      const id = pageIdForLinkTarget(t, lookup);
+      if (id) ids.add(id);
+    }
+  };
+  const walk = (b: Block): void => {
+    if (b.type === "paragraph") {
+      scan(b.text.standard);
+      scan(b.text.simple);
+      scan(b.text.deep);
+    } else if (b.type === "list") {
+      b.items.forEach((i) => scan(i.html));
+    } else if (b.type === "finding-link") {
+      ids.add(b.pageId);
+    } else if (b.type === "aside") {
+      b.inner.forEach(walk);
+    }
+  };
+  page.cards.forEach((c) => c.blocks.forEach(walk));
+  ids.delete(page.id);
+  const out: Page[] = [];
+  for (const id of ids) {
+    const p = lookup(id);
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+export interface ContentsEntry {
+  kind: "card" | "page";
+  id: string;
+  title: string;
+  read: boolean;
+}
+
+/**
+ * Contents box model (PRD §4.3): this page's cards (click to jump,
+ * expanding if needed) plus linked pages. Read items are muted.
+ */
+export function contentsModel(
+  page: Page,
+  lookup: (id: string) => Page | undefined,
+): { cards: ContentsEntry[]; links: ContentsEntry[] } {
+  const cards: ContentsEntry[] = page.cards
+    .filter((c) => !("divider" in c))
+    .map((c) => ({
+      kind: "card" as const,
+      id: c.id,
+      title: c.title || c.pending?.label || cardPreview(c).slice(0, 70),
+      read: c.read,
+    }));
+  const links: ContentsEntry[] = linkedPages(page, lookup).map((p) => ({
+    kind: "page" as const,
+    id: p.id,
+    title: p.title,
+    read: isPageRead(p),
+  }));
+  return { cards, links };
+}
+
+/**
+ * Mark links to fully read pages as known (prototype `knownCls`): adds the
+ * `known` class to `a.cx` anchors whose page is read. Accepts `page:`,
+ * `concept:` and legacy bare page ids.
+ */
+export function markKnownLinks(html: string, pages: Page[]): string {
+  const byId = new Map(pages.map((p) => [p.id, p]));
+  const lookup = (id: string): Page | undefined => byId.get(id);
+  return html.replace(
+    /<a class="cx" data-(node|link)="([^"]+)">/g,
+    (m, attr: string, target: string) => {
+      const pageId = pageIdForLinkTarget(target, lookup) ?? (byId.has(target) ? target : null);
+      if (pageId) {
+        const p = byId.get(pageId);
+        if (p && isPageRead(p)) return `<a class="cx known" data-${attr}="${target}">`;
+      }
+      return m;
+    },
+  );
+}
+
+/**
+ * Split an anchor block id of the form `cardId#blockId` (what the service
+ * stores) into its parts. Bare ids address a block on an unknown card.
+ */
+export function splitAnchorBlockId(blockId: string): { cardId: string | null; block: string } {
+  const hash = blockId.indexOf("#");
+  if (hash < 0) return { cardId: null, block: blockId };
+  return { cardId: blockId.slice(0, hash), block: blockId.slice(hash + 1) };
+}
+
+/** Does an annotation anchor address this card + block? */
+export function anchorMatchesBlock(anchorBlockId: string, cardId: string, blockId: string): boolean {
+  if (anchorBlockId === blockId) return true;
+  const split = splitAnchorBlockId(anchorBlockId);
+  return split.cardId === cardId && split.block === blockId;
+}
+
+/** The running/queued job for a card, if any (PRD §4.4 pending state). */
+export function jobForCard(jobs: Job[], cardId: string): Job | undefined {
+  return jobs.find(
+    (j) => j.cardId === cardId && (j.state === "running" || j.state === "queued"),
+  );
+}
+
+/** Citation targets of a block (paragraph/list/table/code/diagram). */
+export function blockCitations(block: Block): { target: string; unverified?: boolean }[] {
+  if (
+    block.type === "paragraph" ||
+    block.type === "list" ||
+    block.type === "table" ||
+    block.type === "code" ||
+    block.type === "diagram"
+  ) {
+    return block.citations;
+  }
+  return [];
+}
