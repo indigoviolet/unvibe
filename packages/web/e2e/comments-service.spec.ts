@@ -191,6 +191,7 @@ test.describe("comments over the real service", () => {
   let repoDir = "";
   let dataDir = "";
   let logDir = "";
+  let fakeBin = "";
   let svc: RunningService | null = null;
   let reviewId = "";
   const appKey = fileKeyForPath("src/app.py");
@@ -201,7 +202,7 @@ test.describe("comments over the real service", () => {
     repoDir = repo.dir;
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-m6-data-"));
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-m6-gh-"));
-    const fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-m6-bin-"));
+    fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-m6-bin-"));
     writeFakeGh(fakeBin, logDir, repo.headSha);
     svc = await startService(dataDir, fakeBin);
     // Register the repo and open a PR review through the real API.
@@ -223,6 +224,7 @@ test.describe("comments over the real service", () => {
     rmSync(repoDir, { recursive: true, force: true });
     rmSync(dataDir, { recursive: true, force: true });
     rmSync(logDir, { recursive: true, force: true });
+    rmSync(fakeBin, { recursive: true, force: true });
   });
 
   async function openReview(page: Page): Promise<void> {
