@@ -117,6 +117,13 @@ export async function registerReviews(
         : {}),
     }, id);
     if (!result.deleted) return reply.code(404).send({ error: "unknown review" });
+    // The review's agent sessions are gone: its MCP secrets die with it, so
+    // a stale agent URL can never reach another review's data.
+    try {
+      (deps as RouteDeps).mcp?.revokeForReview(id);
+    } catch {
+      // Best effort: secrets are process-local and die on restart anyway.
+    }
     return { ok: true };
   });
 
@@ -267,17 +274,18 @@ export async function registerReviews(
 
   app.post("/api/reviews/:id/refresh", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = readReviewRow(ctx.db, id);
-    // Demo reviews have no review row (snapshot is the source of truth);
-    // refresh is a no-op for them (no remote to fetch).
-    if (!row) {
-      const snap = ctx.reviews.getSnapshot(id);
-      if (snap?.review.repoId === "demo") {
-        const response: RefreshResponse = { review: snap.review, newVersion: false };
-        return response;
-      }
-      return reply.code(404).send({ error: "unknown review" });
+    // Demo reviews have no remote to fetch: refresh is a no-op (checked
+    // first — demo rows exist in the DB for jobs/refresh joins, so the
+    // row lookup below would otherwise fall through to a failing git fetch
+    // and a spurious 502 on every review open).
+    const first = ctx.reviews.getSnapshot(id);
+    if (!first) return reply.code(404).send({ error: "unknown review" });
+    if (first.review.repoId === "demo") {
+      const response: RefreshResponse = { review: first.review, newVersion: false };
+      return response;
     }
+    const row = readReviewRow(ctx.db, id);
+    if (!row) return reply.code(404).send({ error: "unknown review" });
     const repo = ctx.repos.get(row.repoId);
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
     const snapshot = ctx.reviews.getSnapshot(id);

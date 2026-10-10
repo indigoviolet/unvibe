@@ -262,3 +262,63 @@ describe("endpoint protection", () => {
     expect(gated.status).toBe(401);
   });
 });
+
+describe("secret lifecycle", () => {
+  it("secrets are unguessable 256-bit values scoped to one review", async () => {
+    const { registry } = makeRegistry();
+    const a = registry.issueSession("r1", "s-a", "session");
+    const b = registry.issueSession("r1", "s-b", "session");
+    expect(a.secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(b.secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(a.secret).not.toBe(b.secret);
+    expect(registry.liveSecretCount("r1")).toBe(2);
+    // A secret for another review cannot read this one: the registry
+    // scopes every tool call to the secret's own review.
+    const other = registry.issueSession("r2", "s-c", "session");
+    expect(registry.liveSecretCount("r1")).toBe(2);
+    expect(registry.liveSecretCount("r2")).toBe(1);
+    expect(registry.hasSession(other.secret)).toBe(true);
+    expect(registry.hasSession("0".repeat(64))).toBe(false);
+  });
+
+  it("revoked secrets stop working; revokeForReview kills a review's secrets", async () => {
+    const { registry } = makeRegistry();
+    const base = await serve(registry);
+    const issued = registry.issueSession("r1", "s-rev", "session");
+    const client = await connect(base, issued);
+    try {
+      const tools = await client.listTools();
+      expect(tools.tools.length).toBeGreaterThan(0);
+    } finally {
+      await client.close();
+    }
+    registry.revokeSession(issued.secret);
+    expect(registry.hasSession(issued.secret)).toBe(false);
+    const dead = await fetch(base + issued.path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+    });
+    expect(dead.status).toBe(404);
+
+    const s1 = registry.issueSession("r1", "s-1", "session");
+    const s2 = registry.issueSession("r1", "s-2", "reader");
+    const s3 = registry.issueSession("r9", "s-3", "session");
+    expect(registry.revokeForReview("r1")).toBe(2);
+    expect(registry.hasSession(s1.secret)).toBe(false);
+    expect(registry.hasSession(s2.secret)).toBe(false);
+    expect(registry.hasSession(s3.secret)).toBe(true);
+    expect(registry.liveSecretCount("r1")).toBe(0);
+    expect(registry.revokeForReview("r1")).toBe(0);
+  });
+
+  it("revokeBySessionId drops superseded session labels", () => {
+    const { registry } = makeRegistry();
+    registry.issueSession("r1", "base-r1", "session");
+    registry.issueSession("r1", "base-r1", "session");
+    const other = registry.issueSession("r1", "reader-r1", "reader");
+    expect(registry.revokeBySessionId("base-r1")).toBe(2);
+    expect(registry.liveSecretCount("r1")).toBe(1);
+    expect(registry.hasSession(other.secret)).toBe(true);
+  });
+});

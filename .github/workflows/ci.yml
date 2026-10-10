@@ -1,0 +1,57 @@
+# Unvibe CI: lint + typecheck + tests + build + behaviour suites.
+#
+# Runs on macOS and Linux (the two supported platforms, AGENTS.md). Live
+# agent tasks (`test:live:*`) never run here: they need user logins and
+# spend tokens. The global-install git phase is also excluded: npm's
+# handling of global git installs with prepare scripts is currently broken
+# upstream (dangling symlink; see docs/acceptance-audit.md) — the tarball
+# phase runs instead.
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Install workspace dependencies
+        run: mise run install
+
+      - name: Lint + typecheck + unit tests
+        run: mise run check
+
+      - name: Build (shared, service, web)
+        run: mise run build
+
+      - name: Playwright browsers
+        run: mise run playwright-install
+
+      - name: Playwright behaviour tests (mock + real service)
+        run: mise run test:e2e
+
+      - name: Linux shell end-to-end (setup, handler, reuse, idle, uninstall)
+        if: matrix.os == 'ubuntu-latest'
+        run: mise run e2e
+
+      - name: Global-install check (tarball phase)
+        if: matrix.os == 'ubuntu-latest'
+        run: node scripts/global-install-check.mjs --phases tarball
+
+      - name: Restart resilience (SIGKILL mid-stage + restart)
+        if: matrix.os == 'ubuntu-latest'
+        run: node scripts/restart-resilience.mjs

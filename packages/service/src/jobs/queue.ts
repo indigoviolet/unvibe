@@ -15,7 +15,7 @@
  * - Every state change, usage report and streamed-text delta is emitted
  *   as a shared `ReviewEvent` via `onEvent`, for the review's event bus.
  * - Jobs persist through `JobPersistence` so the Jobs view survives a
- *   restart; `recover()` marks interrupted jobs and re-queues orphans.
+ *   restart; `recover()` marks every open job interrupted (terminal).
  */
 import { randomUUID } from "node:crypto";
 import {
@@ -174,7 +174,14 @@ export class JobQueue {
     return [...this.entries.values()]
       .filter((e) => e.reviewId === reviewId)
       .sort((a, b) => a.seq - b.seq)
-      .map((e) => copy(e.job));
+      .map((e) => {
+        const job = copy(e.job);
+        // Prompt snapshots ride separately (`GET /api/jobs/:id/prompt`):
+        // lists stay small after hundreds of jobs (PRD §16 snapshot size).
+        // `get()` keeps the full job.
+        delete job.promptSnapshot;
+        return job;
+      });
   }
 
   /**
@@ -245,8 +252,9 @@ export class JobQueue {
   }
 
   /**
-   * Attach a `run` function to a job that lost it (queued jobs found at
-   * startup, see {@link recover}).
+   * Attach a `run` function to a job entry that lost it. `recover()` no
+   * longer produces such entries (open jobs come back interrupted), so
+   * this is only for hand-built queues in tests.
    */
   rebind(id: string, run: JobFn): Job {
     const entry = this.required(id);
@@ -258,44 +266,39 @@ export class JobQueue {
   // -- restart recovery -------------------------------------------------
 
   /**
-   * Reconcile jobs persisted by a previous process. Running/backing-off
-   * jobs are marked interrupted (terminal `error`, retryable via
-   * {@link retry}); queued jobs are re-queued as orphans until
-   * {@link rebind} supplies a fresh `run`.
+   * Reconcile jobs persisted by a previous process. Every open job —
+   * running, backing off, or still queued — is marked interrupted
+   * (terminal `error`, retryable by re-enqueueing). Queued jobs come back
+   * as interrupted rather than orphans: nothing in the service rebinds a
+   * persisted job to a fresh `run` (pipeline stages re-enqueue via
+   * `resumeReview`, on-demand turns rebuild via the action retry paths),
+   * so an orphan could never execute — and worse, its dedupe key would
+   * make a fresh re-enqueue silently attach to the dead job. The Jobs
+   * view keeps the interrupted rows as history.
    */
   recover(open: Job[]): { interrupted: Job[]; orphaned: Job[] } {
     const interrupted: Job[] = [];
     const orphaned: Job[] = [];
     for (const saved of open) {
       if (this.entries.has(saved.id)) continue;
-      if (saved.state === "running" || saved.state === "backing-off") {
-        const job: Job = {
-          ...saved,
-          state: "error",
-          error: INTERRUPTED_MESSAGE,
-          nextRetryAt: undefined,
-        };
-        this.entries.set(job.id, {
-          job,
-          run: undefined,
-          reviewId: job.reviewId ?? "",
-          seq: this.seq++,
-        });
-        const entry = this.entries.get(job.id)!;
-        this.save(entry);
-        this.emit(entry);
-        interrupted.push(copy(job));
-      } else {
-        const entry: Entry = {
-          job: { ...saved },
-          run: undefined,
-          reviewId: saved.reviewId ?? "",
-          seq: this.seq++,
-        };
-        this.entries.set(saved.id, entry);
-        if (saved.dedupeKey) this.dedupe.set(saved.dedupeKey, saved.id);
-        orphaned.push(copy(entry.job));
-      }
+      const job: Job = {
+        ...saved,
+        state: "error",
+        error: INTERRUPTED_MESSAGE,
+        nextRetryAt: undefined,
+      };
+      this.entries.set(job.id, {
+        job,
+        run: undefined,
+        reviewId: job.reviewId ?? "",
+        seq: this.seq++,
+      });
+      const entry = this.entries.get(job.id)!;
+      // The dead job must not block a fresh re-enqueue under the same key.
+      this.forgetDedupe(entry);
+      this.save(entry);
+      this.emit(entry);
+      interrupted.push(copy(job));
     }
     return { interrupted, orphaned };
   }

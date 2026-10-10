@@ -446,6 +446,8 @@ export interface SubmitPreview {
   /** Description update, when a pending edit exists. */
   description?: { fromRev: string; markdown: string; html: string };
   disabledReason?: string;
+  /** Hardening: a previous submit may still be in flight (lease present). */
+  inflight?: boolean;
 }
 
 export interface SubmitReviewResponse {
@@ -458,6 +460,10 @@ export interface SubmitReviewResponse {
   reviewUrl?: string;
   /** M6: true when the review posted but the description update failed. */
   partial?: boolean;
+  /** Hardening: true when a crashed submit was reconciled (no second post). */
+  recovered?: boolean;
+  /** Hardening: leased threads left pending (edited after the crash). */
+  stillPending?: number;
   /** M6: why submit is disabled / refused (branch without PR, head moved…). */
   reason?: string;
 }

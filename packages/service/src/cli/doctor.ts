@@ -12,6 +12,7 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
+import { isHealthOk } from "./lock.js";
 import { resolveLoginShellPath } from "../exec/shell-path.js";
 import {
   findOnPath as sharedFindOnPath,
@@ -129,11 +130,19 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
   }
 
   const taken = await portTaken(opts.port);
-  checks.push({
-    name: "port",
-    status: "ok",
-    detail: taken ? `${opts.port} is in use (service may already run: unvibe status)` : `${opts.port} is free`,
-  });
+  if (!taken) {
+    checks.push({ name: "port", status: "ok", detail: `${opts.port} is free` });
+  } else if (await isHealthOk(opts.port)) {
+    // Our own service (or another Unvibe with the same data dir layout):
+    // the default port stays stable so the installed PWA keeps working.
+    checks.push({ name: "port", status: "ok", detail: `${opts.port} is in use by an Unvibe service (unvibe status)` });
+  } else {
+    checks.push({
+      name: "port",
+      status: "warn",
+      detail: `${opts.port} is in use by something else; set UNVIBE_PORT to a free port (the installed web app is bound to its origin, so reinstall it after changing ports)`,
+    });
+  }
 
   return checks;
 }

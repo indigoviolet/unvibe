@@ -241,8 +241,7 @@ describe("submit", () => {
     }
   });
 
-  it("fetches existing PR comments read-only into the snapshot", async () => {
-    const runner = new FakeCommandRunner();
+  it("fetches existing PR comments read-only into the snapshot", async () => {    const runner = new FakeCommandRunner();
     const { app, ctx, reviewId } = await setupReview(runner);
     runner.enqueue({
       cmd: "gh",
@@ -264,6 +263,140 @@ describe("submit", () => {
       expect(body.comments).toHaveLength(1);
       expect(body.comments[0].body).toBe("already there");
       expect(ctx.reviews.getSnapshot(reviewId)?.existingComments).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("submit crash safety (in-flight lease)", () => {
+  it("retry after a crash reconciles the posted review instead of double-posting", async () => {
+    const runner = new FakeCommandRunner();
+    const { app, ctx, reviewId } = await setupReview(runner, {
+      annotations: [threadOnDiffLine("a-py", 2, "inline")],
+    });
+    const threadId = ctx.reviews.getSnapshot(reviewId)!.annotations[0].id;
+    // Simulate the crash window: the review POST reached GitHub, but the
+    // local posted-mark never ran. The lease is all the retry has.
+    const { writeSubmitLease } = await import("../src/submit/lease.js");
+    writeSubmitLease(ctx.db, {
+      reviewId,
+      startedAt: Date.now() - 5000,
+      commitId: HEAD_SHA,
+      body: "",
+      comments: [{ threadId, path: "a.py", line: 2, body: "inline" }],
+    });
+    runner.enqueue({
+      cmd: "gh",
+      args: ["pr", "view", String(PR_NUMBER), "--json", "headRefOid,state"],
+      stdout: JSON.stringify({ headRefOid: HEAD_SHA, state: "OPEN" }),
+      stderr: "",
+      code: 0,
+    });
+    runner.enqueue({
+      cmd: "gh",
+      args: ["api", `repos/${OWNER}/${REPO_NAME}/pulls/${PR_NUMBER}/reviews`],
+      stdout: JSON.stringify([{ id: 99, commit_id: HEAD_SHA, body: "", html_url: REVIEW_URL }]),
+      stderr: "",
+      code: 0,
+    });
+    runner.enqueue({
+      cmd: "gh",
+      args: ["api", `repos/${OWNER}/${REPO_NAME}/pulls/${PR_NUMBER}/reviews/99/comments`],
+      stdout: JSON.stringify([{ id: 5, path: "a.py", line: 2, body: "inline" }]),
+      stderr: "",
+      code: 0,
+    });
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/submit`,
+        headers: authed,
+        payload: {},
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ posted: true, recovered: true, commentCount: 1, reviewUrl: REVIEW_URL });
+      // No second POST: the only writes would carry --input.
+      expect(runner.calls.filter((c) => c.opts.args.includes("--input"))).toHaveLength(0);
+      const snap = ctx.reviews.getSnapshot(reviewId)!;
+      expect(snap.annotations[0].postedAt).toBeTruthy();
+      expect(snap.annotations[0].postedUrl).toBe(REVIEW_URL);
+      // Lease cleared: the next submit is a plain no-op, not a recovery.
+      const again = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/submit`,
+        headers: authed,
+        payload: {},
+      });
+      expect((again.json() as { reason: string }).reason).toMatch(/already submitted/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a fresh lease blocks a concurrent second submit (409), a stale one proceeds", async () => {
+    const runner = new FakeCommandRunner();
+    const { app, ctx, reviewId } = await setupReview(runner, {
+      annotations: [threadOnDiffLine("a-py", 2, "inline")],
+    });
+    const threadId = ctx.reviews.getSnapshot(reviewId)!.annotations[0].id;
+    const { writeSubmitLease } = await import("../src/submit/lease.js");
+    const leaseOf = (startedAt: number) => ({
+      reviewId,
+      startedAt,
+      commitId: HEAD_SHA,
+      body: "",
+      comments: [{ threadId, path: "a.py", line: 2, body: "inline" }],
+    });
+    const prView = {
+      cmd: "gh",
+      args: ["pr", "view", String(PR_NUMBER), "--json", "headRefOid,state"],
+      stdout: JSON.stringify({ headRefOid: HEAD_SHA, state: "OPEN" }),
+      stderr: "",
+      code: 0,
+    } as const;
+    const emptyReviews = {
+      cmd: "gh",
+      args: ["api", `repos/${OWNER}/${REPO_NAME}/pulls/${PR_NUMBER}/reviews`],
+      stdout: "[]",
+      stderr: "",
+      code: 0,
+    } as const;
+    try {
+      // Fresh lease + nothing on GitHub: in progress, do not post.
+      writeSubmitLease(ctx.db, leaseOf(Date.now()));
+      runner.enqueue({ ...prView });
+      runner.enqueue({ ...emptyReviews });
+      const busy = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/submit`,
+        headers: authed,
+        payload: {},
+      });
+      expect(busy.statusCode).toBe(409);
+      expect((busy.json() as { reason: string }).reason).toMatch(/in progress/);
+      expect(runner.calls.filter((c) => c.opts.args.includes("--input"))).toHaveLength(0);
+
+      // Stale lease + nothing on GitHub: the poster died; proceed.
+      writeSubmitLease(ctx.db, leaseOf(Date.now() - 3600_000));
+      runner.enqueue({ ...prView });
+      runner.enqueue({ ...emptyReviews });
+      runner.enqueue({
+        cmd: "gh",
+        args: ["api", `repos/${OWNER}/${REPO_NAME}/pulls/${PR_NUMBER}/reviews`, "-X", "POST", "--input", "-"],
+        stdout: JSON.stringify({ html_url: REVIEW_URL }),
+        stderr: "",
+        code: 0,
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/submit`,
+        headers: authed,
+        payload: {},
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ posted: true, commentCount: 1 });
+      expect(runner.calls.filter((c) => c.opts.args.includes("--input"))).toHaveLength(1);
     } finally {
       await app.close();
     }

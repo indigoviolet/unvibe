@@ -178,6 +178,23 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 4,
+    name: "004-submit-leases",
+    up: `
+      -- Submit in-flight leases (hardening): one row per review while a
+      -- GitHub review POST is in flight. A crash between the POST and the
+      -- local posted-mark would otherwise double-post on retry; the next
+      -- submit reconciles the lease against GitHub before posting again.
+      -- Payload JSON: { commitId, body, comments: [{threadId,path,line,body}] }.
+      CREATE TABLE IF NOT EXISTS submit_leases (
+        review_id TEXT PRIMARY KEY,
+        started_at INTEGER NOT NULL,
+        commit_id TEXT NOT NULL,
+        payload JSON NOT NULL DEFAULT '{}'
+      );
+    `,
+  },
 ];
 
 export function currentVersion(db: DatabaseSync): number {

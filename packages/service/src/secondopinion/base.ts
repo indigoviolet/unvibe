@@ -94,6 +94,10 @@ export async function ensureSecondOpinionBase(
     mcpServers,
     pack: packText,
   });
+  if (!handle.fresh) {
+    // Warm base: this call's MCP URL was never handed to any session.
+    deps.mcp.revokeSession(mcp.secret);
+  }
   return { session: handle.session, viaCache: !handle.fresh, version };
 }
 

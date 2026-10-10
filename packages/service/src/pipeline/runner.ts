@@ -533,6 +533,10 @@ export class Pipeline {
         if (stages.critic !== "done") jobIds.push(...this.enqueueCritic(reviewId).map((j) => j.id));
         if (stages.concepts !== "done") jobIds.push(...this.enqueueConcepts(reviewId).map((j) => j.id));
         if (stages["hunk-pass"] !== "done") jobIds.push(...this.enqueueHunkPass(reviewId).map((j) => j.id));
+        // Demo auto-fill is part of enqueueAfterReader, not a stage: a
+        // restart after the base finished would otherwise leave pending
+        // placeholders unfilled. No-op when nothing is pending.
+        jobIds.push(...this.enqueueDemoFill(reviewId).map((j) => j.id));
       }
     }
     const after = this.stageStates(reviewId);
@@ -817,6 +821,12 @@ export class Pipeline {
       mcpServers,
       pack: packText,
     });
+    if (!handle.fresh) {
+      // Warm base: the build params (including this call's MCP URL) were
+      // ignored, so the just-issued secret was never handed to any session.
+      // Revoke it immediately instead of leaking one secret per call.
+      this.opts.mcp.revokeSession(mcp.secret);
+    }
     if (handle.fresh) {
       try {
         this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack.tokens);
@@ -971,6 +981,8 @@ export class Pipeline {
           } catch {
             // ignore
           }
+          // The reader session is closed: its MCP secret dies with it.
+          this.opts.mcp.revokeSession(mcp.secret);
         }
       },
     });

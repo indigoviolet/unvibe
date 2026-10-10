@@ -4,6 +4,7 @@
  * GitHub (AGENTS.md).
  */
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 
 export interface RunOptions {
   args: string[];
@@ -26,6 +27,22 @@ export interface CommandRunner {
 /** Real implementation: spawn and collect stdio. */
 export class RealCommandRunner implements CommandRunner {
   async run(cmd: string, opts: RunOptions): Promise<RunResult> {
+    // A missing cwd surfaces from spawn as a bare ENOENT, which reads as
+    // "command not found". Say which directory is gone (usually a moved or
+    // deleted checkout) before spawning.
+    if (opts.cwd !== undefined) {
+      try {
+        const st = fs.statSync(opts.cwd);
+        if (!st.isDirectory()) throw new Error(`not a directory: ${opts.cwd}`);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code === "ENOENT" || /not a directory/.test((err as Error).message)) {
+          throw new Error(
+            `cannot run ${cmd}: directory not found: ${opts.cwd} (repository moved or deleted? remove and re-add it)`,
+          );
+        }
+        throw err;
+      }
+    }
     return new Promise((resolve, reject) => {
       const child = spawn(cmd, opts.args, {
         cwd: opts.cwd,

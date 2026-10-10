@@ -312,6 +312,20 @@ export async function replyAction(
 
   const sessionId = thread.sessionId;
   if (sessionId && sessions) {
+    // The conversation session may have died with a restart (agent
+    // subprocesses do not survive SIGKILL, and a fresh process has no live
+    // sessions). Probe it: when it cannot be reopened, drop the id so the
+    // fallback below forks fresh with the full thread history as L4 —
+    // same thread, same reply, no stuck error.
+    try {
+      await sessions.ensureConversation(sessionId);
+    } catch {
+      await reviews.mutate(reviewId, (draft) => {
+        const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
+        if (found) delete found.sessionId;
+      });
+      return { threadId, ...(await runAskFill(ctx, threadId, thread.anchor, { skipDedupe: true })) };
+    }
     return replyOnSession(ctx, threadId, sessionId);
   }
   // Fallback: fresh fork with the full thread history as L4.
