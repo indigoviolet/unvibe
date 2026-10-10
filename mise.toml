@@ -20,6 +20,10 @@ sources = ["packages/*/src/**/*", "packages/*/package.json"]
 description = "Run vitest across workspaces"
 run = "npm run build --workspace @unvibe/shared && npm run test --workspaces --if-present"
 
+[tasks."test:live"]
+description = "Live ACP adapter tests (needs claude/codex logins; small token spend)"
+run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 npm run test:live --workspace @unvibe/service"
+
 [tasks.lint]
 description = "Run ESLint"
 run = "npx eslint ."
