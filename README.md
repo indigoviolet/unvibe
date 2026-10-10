@@ -3,12 +3,37 @@
 Foundation for Unvibe (see `PRD.md`): npm workspaces, shared contracts, a
 token-gated localhost service, and a React shell ported from `prototype.html`.
 
-## Install
+## Install (users)
 
-Requires Node 24+ (`mise` pins it; `node:sqlite` must work without flags).
+Requires Node 24+ (`node:sqlite` must work without flags).
+
+```sh
+npm install -g github:<org>/unvibe   # install or update (same command)
+unvibe setup                          # per-install token + unvibe:// handler
+unvibe open                           # start the service, open the app
+```
+
+`unvibe setup` writes a small URL helper — `~/Applications/Unvibe.app`
+(macOS, generated locally with `osacompile` so Gatekeeper stays out of the
+way) or `~/.local/share/applications/unvibe-open.desktop` (Linux) — and
+registers the `unvibe://` scheme. When the service isn't running, the
+installed web app's offline page links to `unvibe://start`; the helper
+starts the service and the page reloads. Nothing starts at login
+(`unvibe setup --uninstall` removes the helper). The service exits after
+10 minutes with no open window and no running jobs
+(`UNVIBE_IDLE_MS`, `<=0` disables).
+
+Useful commands: `unvibe start` (reuses the running service), `unvibe stop`,
+`unvibe status`, `unvibe token` (print the token URL), `unvibe doctor`
+(environment checks: node, `git`, `gh` + auth, `claude`, `codex`,
+login-shell PATH, data dir, port).
+
+## Install (from a checkout)
 
 ```sh
 mise run install    # npm install across workspaces
+mise run setup      # build + unvibe setup
+mise run doctor     # build + unvibe doctor
 ```
 
 ## Run
@@ -46,6 +71,14 @@ mise run build      # build shared → service → web
   routes `/`, `/review/:id`, `/settings`, typed API/WS clients, zustand snapshot
   store updated by snapshot + state patches.
 - `prompts/` — prompt template stubs (PRD §13).
+- App shell (PRD §14): `packages/service/src/cli/` (`unvibe` commands,
+  single-instance lock, macOS/Linux `unvibe://` setup, doctor),
+  `packages/service/src/lifecycle/` (idle exit + shutdown hooks),
+  `packages/web/public/` (manifest, icons, service worker, offline
+  start page). The service ships as an esbuild bundle
+  (`packages/service/dist/index.js`, `@unvibe/shared` inlined) so
+  `npm install -g` works from a tarball; registry deps live in the root
+  `dependencies` — keep them in sync with `packages/service/package.json`.
 
 All product endpoints are stubbed (`501 not implemented`); parallel agents
 fill them in, one module each, changing the contract in `packages/shared` first.

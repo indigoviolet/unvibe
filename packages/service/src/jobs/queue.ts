@@ -172,6 +172,21 @@ export class JobQueue {
       .map((e) => copy(e.job));
   }
 
+  /**
+   * Jobs that are not yet terminal (queued, running, backing-off).
+   * Orphaned entries without a `run` function (found at startup, awaiting
+   * `rebind`) are skipped, matching {@link drain}'s definition of done —
+   * they can never execute, so they must not block idle exit.
+   */
+  activeCount(): number {
+    let n = 0;
+    for (const e of this.entries.values()) {
+      if (e.run === undefined) continue;
+      if (!isTerminal(e.job.state)) n += 1;
+    }
+    return n;
+  }
+
   // -- priority -------------------------------------------------------
 
   /** Raise (or lower) a job's priority; takes effect while queued. */
