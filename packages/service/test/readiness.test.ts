@@ -72,8 +72,9 @@ describe("readiness checks", () => {
     }
   });
 
-  it("agent roles report CLI missing / not logged in / model mismatch without prompts", async () => {
-    const calls: string[] = [];
+  // Spawns real `gh`/`git` subprocesses three times in sequence; the 5 s
+  // default is tight when workers compete for CPUs (shared box, CI).
+  it("agent roles report CLI missing / not logged in / model mismatch without prompts", { timeout: 60000 }, async () => {    const calls: string[] = [];
     // Unknown provider → error (no prompt sent).
     const rUnknown = await getReadiness(
       {
@@ -174,7 +175,7 @@ describe("readiness checks", () => {
     expect(forced.cached).toBe(false);
   });
 
-  it("GET /api/readiness is gated and forced re-check works", async () => {
+  it("GET /api/readiness is gated and forced re-check works", { timeout: 60000 }, async () => {
     const { app } = await createApp("tok", { runner: real, autoPipeline: false });
     try {
       const anon = await app.inject({ method: "GET", url: "/api/readiness" });
