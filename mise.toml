@@ -18,7 +18,7 @@ sources = ["packages/*/src/**/*", "packages/*/package.json"]
 
 [tasks.test]
 description = "Run vitest across workspaces"
-run = "npm run test --workspaces --if-present"
+run = "npm run build --workspace @unvibe/shared && npm run test --workspaces --if-present"
 
 [tasks.lint]
 description = "Run ESLint"
@@ -26,7 +26,7 @@ run = "npx eslint ."
 
 [tasks.typecheck]
 description = "Typecheck all workspaces"
-run = "npm run typecheck --workspaces --if-present"
+run = "npm run build --workspace @unvibe/shared && npm run typecheck --workspaces --if-present"
 
 [tasks.check]
 description = "lint + typecheck + test"
