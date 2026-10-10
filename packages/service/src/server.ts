@@ -19,7 +19,8 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { hasValidToken } from "./auth.js";
 import { EventBus } from "./events.js";
-import { registerRoutes } from "./routes/index.js";
+import { MCP_ROUTE_PREFIX } from "./mcp/index.js";
+import { registerRoutes, type RouteDeps } from "./routes/index.js";
 import type { ServiceConfig } from "./config.js";
 
 export const SERVICE_VERSION = "0.0.1";
@@ -27,6 +28,7 @@ export const SERVICE_VERSION = "0.0.1";
 export interface AppContext {
   app: FastifyInstance;
   bus: EventBus;
+  deps: RouteDeps;
 }
 
 function webDistDir(): string {
@@ -35,7 +37,7 @@ function webDistDir(): string {
   return path.resolve(here, "..", "..", "web", "dist");
 }
 
-export async function createApp(token: string): Promise<AppContext> {
+export async function createApp(token: string, deps: RouteDeps = {}): Promise<AppContext> {
   const app = Fastify({ logger: false });
   const bus = new EventBus();
 
@@ -47,6 +49,9 @@ export async function createApp(token: string): Promise<AppContext> {
     if (url === "/api/health" || url.startsWith("/api/health?")) return;
     // Static build assets carry no review data; the shell + API + WS are gated.
     if (url.startsWith("/assets/")) return;
+    // MCP sessions carry their own 256-bit secret in the URL (agent
+    // subprocesses present the secret, not the install token).
+    if (url.startsWith(MCP_ROUTE_PREFIX)) return;
     if (!hasValidToken({ headers: req.headers, query: req.query as Record<string, string> }, token)) {
       reply.code(401).send({ error: "missing or invalid token" });
     }
@@ -54,7 +59,7 @@ export async function createApp(token: string): Promise<AppContext> {
 
   app.get("/api/health", async () => ({ ok: true, version: SERVICE_VERSION }));
 
-  await registerRoutes(app, bus);
+  await registerRoutes(app, bus, deps);
 
   // Static web app with SPA fallback. The Vite build emits dist/index.html
   // plus dist/assets/* (hashed, no review data — served without a token so
@@ -74,7 +79,7 @@ export async function createApp(token: string): Promise<AppContext> {
     return reply.sendFile("index.html");
   });
 
-  return { app, bus };
+  return { app, bus, deps };
 }
 
 export async function listen(app: FastifyInstance, config: ServiceConfig): Promise<string> {
