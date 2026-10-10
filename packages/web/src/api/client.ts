@@ -25,6 +25,10 @@ import type {
   UpdateDescriptionRequest,
   UpdateHunkRequest,
 } from "@unvibe/shared";
+// Static import keeps mock timing deterministic in dev; the mock modules are
+// data + an in-memory client with no side effects on import, so bundlers can
+// drop them from production builds where VITE_MOCK is unset.
+import { mockApi } from "../mock/index.js";
 
 const TOKEN_KEY = "unvibe_token";
 const TOKEN_COOKIE = "__unvibe_token";
@@ -71,7 +75,14 @@ const get = <T>(path: string): Promise<T> => request<T>(path);
 const post = <T>(path: string, body?: unknown): Promise<T> =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
-export const api = {
+/**
+ * Mock mode (`VITE_MOCK=1`, `mise run dev:mock`): the API client is replaced
+ * by an in-memory implementation of the same typed interface, serving a
+ * `ReviewSnapshot` fixture and applying mutations through the WS-patch path.
+ */
+const MOCK = typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK === "1";
+
+const realApi = {
   health: (): Promise<HealthResponse> => fetch("/api/health").then((r) => r.json()),
 
   repos: (): Promise<ReposResponse> => get("/api/repos"),
@@ -119,3 +130,7 @@ export const api = {
   jobs: (reviewId?: string): Promise<JobsResponse> =>
     get(`/api/jobs${reviewId ? `?review=${encodeURIComponent(reviewId)}` : ""}`),
 };
+
+export type ApiClient = typeof realApi;
+
+export const api: ApiClient = MOCK ? mockApi : realApi;
