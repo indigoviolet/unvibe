@@ -1,7 +1,7 @@
 # Concept page
 
 Write the full concept page the reader opens from a stub or a concept link.
-Standard depth first: the page gains simpler and deeper versions later, one
+Standard depth first: the page gains simple and deep versions later, one
 level at a time.
 
 ## Concept
@@ -20,9 +20,9 @@ obs-fold — Obsolete line folding: a header value continued on the next line.
 2. Why it matters here: the decision, risk, or mechanism it explains.
 3. A concrete example: before/after values, a short trace, or a minimal
    snippet from the change. Prefer values from the actual code.
-4. Follow-up questions (at most three) a reader of this change would ask
-   next.
+4. A `### Follow-ups` section with at most three questions a reader of
+   this change would ask next.
 
 Keep it to what this review needs. If the concept deserves a diagram, say
 so in one line at the end instead of drawing it: diagrams are added on
-demand.
+demand. End with the trailing `json` block carrying the page `title`.

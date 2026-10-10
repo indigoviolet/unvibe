@@ -8,8 +8,9 @@
  *   layer, and the cached part set apart (`cached` flags + `cachedTokens`).
  *
  * Review data arrives through the narrow `SnapshotProvider` interface
- * (`getSnapshot(reviewId)`), which the supervisor wires to the
- * review-state module. Without a provider, `?review=` answers 501.
+ * (`getSnapshot(reviewId)`). `createApp` wires it to the real
+ * `ReviewStore` via `toPromptSnapshot`; without a provider, `?review=`
+ * answers 501.
  *
  * Expansion rules (documented for the settings UI):
  * - Base templates (reader, base_pack, critic, hunk_pass, concept_*,
@@ -27,11 +28,16 @@
 import type { FastifyInstance } from "fastify";
 import {
   PROMPT_TEMPLATE_NAMES,
+  collectTargets,
+  parseId,
+  renderMarkdown,
   tokenizeLinks,
+  type Block,
   type PromptExpanded,
   type PromptLayerSpan,
   type PromptsResponse,
   type PromptTemplate,
+  type ReviewSnapshot,
 } from "@unvibe/shared";
 import {
   buildConceptsSection,
@@ -47,6 +53,10 @@ import {
   formatHunk,
   hunkId,
   pinnedId,
+  type ConceptIndexEntry,
+  type ContextFile,
+  type FindingInput,
+  type GuideCardInput,
   type PromptReviewSnapshot,
 } from "../context/index.js";
 import {
@@ -60,6 +70,162 @@ import {
 /** Narrow interface the supervisor wires to review state. */
 export interface SnapshotProvider {
   getSnapshot(reviewId: string): Promise<PromptReviewSnapshot | null>;
+}
+
+/** True when a guide citation (diff range or hunk ID) touches this hunk. */
+function hunkIsCited(
+  fileKey: string,
+  hunk: { contentHash: string; newStart: number; newEnd: number },
+  cited: Set<string>,
+): boolean {
+  for (const target of cited) {
+    const parsed = parseId(target);
+    if (!parsed) continue;
+    if (parsed.kind === "h" && parsed.fileKey === fileKey && parsed.contentHash === hunk.contentHash) {
+      return true;
+    }
+    if (
+      parsed.kind === "diff" &&
+      parsed.fileKey === fileKey &&
+      parsed.start <= hunk.newEnd &&
+      parsed.end >= hunk.newStart
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Description HTML back to plain Markdown-ish text (context input). */
+function descToMarkdown(html: string): string {
+  let s = html
+    .replace(/<h3>([\s\S]*?)<\/h3>/gi, "### $1\n\n")
+    .replace(/<li>([\s\S]*?)<\/li>/gi, "- $1\n")
+    .replace(/<\/?(ul|ol|div|pre|p)[^>]*>/gi, "\n")
+    .replace(/<code>([\s\S]*?)<\/code>/gi, "`$1`")
+    .replace(/<[^>]+>/g, "");
+  s = s
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&");
+  return s
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function plainText(html: string, max = 160): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+/**
+ * Adapt a stored `ReviewSnapshot` to the context builder's narrow input so
+ * `GET /api/prompts?review=` expands against real review data. Block
+ * content travels back through the reply Markdown format (`renderMarkdown`,
+ * the inverse of the content parser); hunk summaries come from hunk state;
+ * `citedByGuide` is recomputed from the guide's citation targets.
+ */
+export function toPromptSnapshot(
+  snap: ReviewSnapshot,
+  opts?: { model?: string },
+): PromptReviewSnapshot {
+  const { review, version } = snap;
+  const states = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
+  const cited = new Set<string>();
+  for (const page of snap.pages) {
+    for (const card of page.cards) {
+      const targets = collectTargets(card.blocks);
+      for (const t of [...targets.citations, ...targets.links]) cited.add(t);
+    }
+  }
+
+  const files: ContextFile[] = snap.files.map((f) => ({
+    fileKey: f.fileKey,
+    path: f.path,
+    category: f.category,
+    hunks: f.hunks.map((h) => {
+      const summary = states.get(h.contentHash)?.summary;
+      return {
+        contentHash: h.contentHash,
+        fileKey: f.fileKey,
+        header: h.header,
+        ...(h.context !== undefined ? { context: h.context } : {}),
+        newStart: h.newStart,
+        oldStart: h.oldStart,
+        lines: h.lines.map((l) => ({ kind: l.kind, text: l.text })),
+        ...(h.hiddenReason !== undefined ? { hiddenReason: h.hiddenReason } : {}),
+        ...(summary !== undefined ? { summary } : {}),
+        ...(hunkIsCited(f.fileKey, h, cited) ? { citedByGuide: true as const } : {}),
+      };
+    }),
+  }));
+
+  const root = snap.pages.find((p) => p.kind === "root");
+  const cards: GuideCardInput[] = (root?.cards ?? []).map((c) => ({
+    id: c.id,
+    title: c.title,
+    level: c.level,
+    revision: c.revision,
+    markdown: renderMarkdown(c.blocks).trim(),
+  }));
+  const findings: FindingInput[] = snap.pages
+    .filter((p) => p.kind === "finding")
+    .map((p) => ({
+      pageId: p.id,
+      title: p.title,
+      confidence: p.confidence ?? "",
+      summary: p.summary ?? "",
+      markdown: p.cards
+        .map((c) => `### ${c.title ?? "Untitled"}\n\n${renderMarkdown(c.blocks).trim()}`)
+        .join("\n\n"),
+    }));
+  const concepts: ConceptIndexEntry[] = snap.pages
+    .filter((p) => p.kind === "concept")
+    .map((p) => {
+      const first = p.cards[0]?.blocks.find((b: Block) => b.type === "paragraph");
+      return {
+        slug: p.id.startsWith("c-") ? p.id.slice(2) : p.id,
+        title: p.title,
+        oneLine:
+          first && first.type === "paragraph" ? plainText(first.text.standard) : "",
+      };
+    });
+
+  const description = snap.description ? descToMarkdown(snap.description.html) : undefined;
+  return {
+    reviewId: review.id,
+    title:
+      review.prNumber !== undefined
+        ? `PR #${review.prNumber} on ${review.repoId}`
+        : `${review.repoId}@${review.branch}`,
+    repo: review.repoId,
+    branch: review.branch,
+    ...(review.prNumber !== undefined ? { prNumber: review.prNumber } : {}),
+    version: version.n,
+    headSha: version.headSha,
+    baseRef: version.baseRef,
+    guideRevision: `rev-${snap.rev}`,
+    model: opts?.model ?? "main",
+    sourceKind: review.prNumber !== undefined ? "pr" : "branch",
+    ...(description ? { description } : {}),
+    files,
+    pinnedCode: [],
+    cards,
+    findings,
+    concepts,
+    log: snap.logTail,
+  };
 }
 
 export interface PromptsRouteDeps {

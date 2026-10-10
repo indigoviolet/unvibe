@@ -32,5 +32,5 @@ claim you make, using `[[...]]` tokens in running text.
   the lines). A disagreement is stated plainly, first.
 - You may call `get_hunk` and `get_code` for nearby code. If the cited code
   is not enough, say what is missing instead of extrapolating.
-- End with the trailing fenced `json` block carrying `second_opinion`
+- End with the trailing fenced `json` block carrying `secondOpinion`
   (`verdict`, `reasoning`, `missed`), and nothing after it.

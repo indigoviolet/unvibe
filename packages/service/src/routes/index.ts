@@ -7,7 +7,7 @@ import type { RouteDeps } from "./deps.js";
 import { registerEvents } from "./events.js";
 import { registerHunks } from "./hunks.js";
 import { registerJobs } from "./jobs.js";
-import { registerPrompts } from "./prompts.js";
+import { registerPrompts, toPromptSnapshot } from "./prompts.js";
 import { registerRepos } from "./repos.js";
 import { registerReviews } from "./reviews.js";
 import { registerSettings } from "./settings.js";
@@ -29,7 +29,14 @@ export async function registerRoutes(
   await registerDescription(app);
   await registerSubmit(app);
   await registerSettings(app, deps);
-  await registerPrompts(app);
+  await registerPrompts(app, {
+    snapshots: {
+      getSnapshot: async (reviewId: string) => {
+        const snap = ctx.reviews.getSnapshot(reviewId);
+        return snap ? toPromptSnapshot(snap) : null;
+      },
+    },
+  });
   await registerJobs(app, deps);
   await registerEvents(app, ctx.bus);
   if (deps.mcp) await registerMcp(app, deps.mcp);

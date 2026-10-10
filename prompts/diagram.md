@@ -25,7 +25,8 @@ add one the card already has.
 - Citation tokens are allowed inside node labels, pointing at the code each
   step comes from.
 - After the block, two to four lines of prose walking the reader through
-  it, with citations.
-- Match the card's level: name the parts at `simpler`, use the code's own
+  it, with citations. Do not start that paragraph with `Caption:` — that
+  prefix would make it the diagram's caption instead of a walkthrough.
+- Match the card's level: name the parts at `simple`, use the code's own
   names at `standard`, show the invariant at `deep`.
 - Output the diagram block, the walkthrough, and the trailing JSON block.

@@ -26,6 +26,6 @@ claim, using `[[...]]` tokens in running text.
   extrapolating. You may call `get_hunk` and `get_code` for nearby code.
 - Structure: verdict first, then reasoning with citations, then anything
   the main analysis may have missed that the code shows.
-- End with the trailing fenced `json` block carrying `second_opinion`
+- End with the trailing fenced `json` block carrying `secondOpinion`
   (`verdict`: `agrees`, `partly` or `disagrees`; `reasoning`; `missed`),
   and nothing after it.
