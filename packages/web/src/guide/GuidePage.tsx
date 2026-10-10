@@ -10,7 +10,7 @@
  * sent by "Restated →" links in the description tab): opens the block's
  * page, expands its card, scrolls and highlights it.
  */
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
@@ -50,6 +50,32 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   }, [reviewId, versionParam, setSnapshot]);
 
   const pageId = pageIdFromSplat(splat);
+  const pageKey = pageId ?? "root";
+
+  // Reader state (M4): per-page scroll position restored on back/forward.
+  // Saved continuously on scroll; restored after the new page renders. The
+  // page never scrolls on its own while the user reads (no scroll on
+  // patches — only here, on navigation).
+  const scrollPos = useRef(new Map<string, number>());
+  useEffect(() => {
+    const el = document.getElementById("page");
+    if (!el) return;
+    const onScroll = (): void => {
+      scrollPos.current.set(pageKey, el.scrollTop);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [pageKey]);
+  useEffect(() => {
+    const saved = scrollPos.current.get(pageKey);
+    const el = document.getElementById("page");
+    if (!el) return;
+    // Restore after paint so the new page's height is committed.
+    const timer = window.setTimeout(() => {
+      el.scrollTop = saved ?? 0;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [pageKey]);
 
   const onOpenPage = useCallback(
     (next: string | null) => {

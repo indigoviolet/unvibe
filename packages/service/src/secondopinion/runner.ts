@@ -123,13 +123,15 @@ function lookupWithAliases(snapshot: ReviewSnapshot, fixturesDir?: string): Retu
 }
 
 interface ResolvedTarget {
-  kind: "card" | "finding";
+  kind: "card" | "finding" | "expansion";
   page: Page;
   card: Card | null;
   cards: Card[];
   citedIds: string[];
   filePaths: string[];
   claimText: string;
+  /** Set when the target is an expansion annotation (M4). */
+  expansionId?: string;
 }
 
 function filePathsFor(snapshot: ReviewSnapshot, citedIds: string[]): string[] {
@@ -187,6 +189,36 @@ export function resolveTarget(snapshot: ReviewSnapshot, cardId: string): Resolve
         claimText,
       };
     }
+  }
+  // M4: expansions are cards in their own right — resolve the annotation's
+  // embedded blocks so second opinions work there too and survive depth/undo
+  // (stored on the expansion body, outside the revisable blocks).
+  const expansion = snapshot.annotations.find(
+    (a) => a.id === cardId && a.type === "expansion" && a.expansion,
+  );
+  if (expansion?.expansion) {
+    const blocks = expansion.expansion.blocks;
+    const citedIds = [...new Set(collectTargets(blocks).citations)];
+    const markdown = renderMarkdown(blocks).trim();
+    const claimText = expansion.anchor.quotedText
+      ? `“${expansion.anchor.quotedText}”\n\n${markdown}`.trim()
+      : markdown;
+    // Parent page for the blind/check default + prompt context: the page
+    // hosting the anchor block when known, else root.
+    const hostPage =
+      snapshot.pages.find((p) => p.cards.some((c) => c.blocks.some((b) => `block:${b.id}` === `block:${expansion.anchor.host.kind === "block" ? expansion.anchor.host.blockId.split("#").pop() : ""}`))) ??
+      snapshot.pages.find((p) => p.kind === "root") ??
+      snapshot.pages[0];
+    return {
+      kind: "expansion",
+      page: hostPage,
+      card: null,
+      cards: [],
+      citedIds,
+      filePaths: filePathsFor(snapshot, citedIds),
+      claimText,
+      expansionId: expansion.id,
+    };
   }
   throw new Error(`unknown card ${cardId}`);
 }
@@ -517,7 +549,27 @@ export async function requestSecondOpinion(
         void finalText;
         // Store on the card (attached, not revisable): replace any entry
         // with the same mode (keep one per mode), keep the other mode.
+        // Expansions store on the expansion body so depth/undo leave the
+        // result attached (M4).
         await deps.reviews.mutate(req.reviewId, (draft) => {
+          if (target.expansionId) {
+            const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
+              (a) => a.id === target.expansionId,
+            );
+            if (!ann || ann.type !== "expansion" || !ann.expansion) {
+              throw new Error(`unknown card ${req.cardId}`);
+            }
+            const rest = (ann.expansion.secondOpinions ?? []).filter((s) => s.mode !== req.mode);
+            ann.expansion.secondOpinions = [...rest, { ...result, cardId: ann.id }];
+            const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
+            draft.logTail.push({
+              seq,
+              kind: "second-opinion",
+              payload: { cardId: req.cardId, mode: req.mode, verdict, model },
+              scope: { scope: "global" },
+            });
+            return;
+          }
           const pages = draft.pages;
           let stored = false;
           // Finding page target: attach to its first card (Evidence) so the
@@ -585,8 +637,43 @@ export async function removeSecondOpinion(
 ): Promise<void> {
   await deps.reviews.mutate(reviewId, (draft) => {
     let found = false;
+    // M4: expansions carry their results on the expansion body.
+    for (const a of draft.annotations as unknown as import("@unvibe/shared").Annotation[]) {
+      if (a.id !== cardId) continue;
+      if (a.type !== "expansion" || !a.expansion) continue;
+      const before = a.expansion.secondOpinions ?? [];
+      const after = before.filter((s) => {
+        if (opinionId && s.id === opinionId) return false;
+        if (opinionId && s.id !== opinionId) return true;
+        if (mode && s.mode === mode) return false;
+        if (!mode && !opinionId && s.cardId === cardId) return false;
+        return true;
+      });
+      if (after.length !== before.length) {
+        a.expansion.secondOpinions = after;
+        found = true;
+      }
+    }
+    // Opinion ids are globally unique (`so-<card>-…`): also match by id
+    // alone so `delete` with a stored `so-…` id works without a card.
+    if (opinionId && !found) {
+      for (const a of draft.annotations as unknown as import("@unvibe/shared").Annotation[]) {
+        if (a.type !== "expansion" || !a.expansion) continue;
+        const before = a.expansion.secondOpinions ?? [];
+        if (before.some((s) => s.id === opinionId)) {
+          a.expansion.secondOpinions = before.filter((s) => s.id !== opinionId);
+          found = true;
+          break;
+        }
+      }
+    }
     for (const p of draft.pages) {
       for (const c of p.cards) {
+        if (opinionId && (c.secondOpinions ?? []).some((s) => s.id === opinionId)) {
+          c.secondOpinions = (c.secondOpinions ?? []).filter((s) => s.id !== opinionId);
+          found = true;
+          continue;
+        }
         if (c.id !== cardId && p.id !== cardId) continue;
         const before = c.secondOpinions ?? [];
         const after = before.filter((s) => {

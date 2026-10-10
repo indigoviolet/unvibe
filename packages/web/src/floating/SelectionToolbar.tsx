@@ -236,10 +236,15 @@ export function SelectionToolbar() {
     api
       .action(reviewId, { kind: "explain", quote: current.quote, anchor: current.anchor })
       .then((res) => {
-        if (!res.accepted) toast("Needs the service: explanations run in a later milestone.");
+        if (!res.accepted) toast("Couldn't create the explanation.");
       })
       .catch((err: unknown) => {
-        toast(`Explain failed: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/no agent configured/i.test(msg)) {
+          toast("No agent configured — set up Claude or Codex in Settings → Models to generate explanations.");
+        } else {
+          toast(`Explain failed: ${msg}`);
+        }
       });
   };
 

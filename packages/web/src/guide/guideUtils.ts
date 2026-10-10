@@ -147,6 +147,19 @@ export function linkedPages(page: Page, lookup: (id: string) => Page | undefined
   return out;
 }
 
+/**
+ * Expansion-opened pages under this page (M4; PRD §4.7 "Open as page"):
+ * child pages (`parent === page.id`) of kind `opened-expansion`, listed in
+ * the Contents box under linked pages.
+ */
+export function expansionOpenedPages(
+  page: Page,
+  allPages: Page[] | undefined,
+): Page[] {
+  if (!allPages) return [];
+  return allPages.filter((p) => p.parent === page.id && p.kind === "opened-expansion");
+}
+
 export interface ContentsEntry {
   kind: "card" | "page";
   id: string;
@@ -157,10 +170,12 @@ export interface ContentsEntry {
 /**
  * Contents box model (PRD §4.3): this page's cards (click to jump,
  * expanding if needed) plus linked pages. Read items are muted.
+ * Expansion-opened child pages list under linked pages (M4).
  */
 export function contentsModel(
   page: Page,
   lookup: (id: string) => Page | undefined,
+  allPages?: Page[],
 ): { cards: ContentsEntry[]; links: ContentsEntry[] } {
   const cards: ContentsEntry[] = page.cards
     .filter((c) => !("divider" in c))
@@ -170,7 +185,16 @@ export function contentsModel(
       title: c.title || c.pending?.label || cardPreview(c).slice(0, 70),
       read: c.read,
     }));
-  const links: ContentsEntry[] = linkedPages(page, lookup).map((p) => ({
+  const linked = linkedPages(page, lookup);
+  const opened = allPages ? expansionOpenedPages(page, allPages) : [];
+  const seen = new Set(linked.map((p) => p.id));
+  for (const p of opened) {
+    if (!seen.has(p.id)) {
+      linked.push(p);
+      seen.add(p.id);
+    }
+  }
+  const links: ContentsEntry[] = linked.map((p) => ({
     kind: "page" as const,
     id: p.id,
     title: p.title,

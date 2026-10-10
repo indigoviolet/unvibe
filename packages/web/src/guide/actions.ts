@@ -82,7 +82,7 @@ export function scrollToBlock(
 
 function notAvailable(res: ActionResponse): boolean {
   if (!res.accepted) {
-    toast("Needs the service: generation runs in a later milestone.");
+    toast("That action needs the service — open this review against the real service to generate.");
     return true;
   }
   return false;
@@ -100,7 +100,8 @@ export async function performAction(
         cards: p.cards.map((c) => {
           if (c.id !== action.cardId) return c;
           if (action.kind === "read")
-            return { ...c, read: action.read, collapsed: action.read ? true : c.collapsed };
+            // Marking read greys + collapses; unmarking expands (PRD §4.4).
+            return { ...c, read: action.read, collapsed: action.read ? true : false };
           return { ...c, collapsed: action.collapsed };
         }),
       })),
@@ -116,9 +117,14 @@ export async function performAction(
   try {
     res = await api.action(reviewId, action);
   } catch (err) {
-    toast(`Action failed: ${err instanceof Error ? err.message : String(err)}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/no agent configured/i.test(msg)) {
+      toast("No agent configured — set up Claude or Codex in Settings → Models to generate.");
+    } else {
+      toast(`Action failed: ${msg}`);
+    }
     await resync(reviewId);
-    return { accepted: false };
+    throw err;
   }
   if (
     (action.kind === "read" || action.kind === "collapse" || action.kind === "bookmark") &&
@@ -133,8 +139,9 @@ export async function performAction(
 }
 
 /**
- * Follow-up chip click (PRD §4.3 "Go deeper"): asks the agent anchored on
- * the follow-up's block.
+ * Follow-up chip click (PRD §4.3 "Go deeper"): clicking a suggestion adds
+ * its answer (the `followup` action) and the suggestion disappears (the
+ * service consumes the item when it creates the answer expansion).
  */
 export function performFollowUp(
   reviewId: string,
@@ -143,16 +150,35 @@ export function performFollowUp(
   index: number,
 ): void {
   const snap = useReview.getState().snapshot;
-  const card = snap?.pages.flatMap((p) => p.cards).find((c) => c.id === cardId);
-  const block = card?.blocks.find((b) => b.id === blockId);
-  if (block?.type !== "follow-up") return;
-  const item = block.items[index];
-  if (!item) return;
-  void performAction(reviewId, {
-    kind: "ask",
-    quote: item.label,
-    anchor: { where: "block", blockId },
-    message: item.ask ?? item.label,
+  // Follow-ups may live on page cards or on expansion cards (cardId is an
+  // annotation id for the latter); fall back to a global block search when
+  // the addressed card does not carry the block (anchor drift).
+  const allCards = [
+    ...(snap?.pages.flatMap((p) => p.cards) ?? []),
+    ...((snap?.annotations ?? [])
+      .filter((a) => a.type === "expansion" && a.expansion)
+      .map((a) => ({ id: a.id, blocks: a.expansion!.blocks })) as never[] as { id: string; blocks: { id: string; type: string }[] }[]),
+  ];
+  const card = allCards.find((c) => c.id === cardId) as
+    | { blocks: { id: string; type: string; items?: { label: string }[] }[] }
+    | undefined;
+  let block = card?.blocks.find((b) => b.id === blockId);
+  if (!block || block.type !== "follow-up") {
+    // Global fallback: find the follow-up block anywhere by id.
+    outer: for (const c of allCards) {
+      for (const b of (c as { blocks: { id: string; type: string }[] }).blocks) {
+        if (b.id === blockId && b.type === "follow-up") {
+          block = b as never;
+          break outer;
+        }
+      }
+    }
+  }
+  if (!block || (block as { type: string }).type !== "follow-up") return;
+  const items = (block as { items: { label: string }[] }).items;
+  if (!items[index]) return;
+  void performAction(reviewId, { kind: "followup", cardId, blockId, index }).catch(() => {
+    // performAction already toasted; the chip stays so the user can retry.
   });
 }
 

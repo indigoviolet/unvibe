@@ -77,8 +77,33 @@ function pagePreview(page: Page): string {
   return `<b>${esc(page.title)}</b>${html ? `<div class="xprev">${html}</div>` : ""}`;
 }
 
+/** Closed expansion preview: quoted text + first paragraph (PRD §4.7). */
+function previewExpansion(expansion: Annotation | undefined): string {
+  if (!expansion) return "";
+  const blocks = expansion.expansion?.blocks ?? [];
+  const level = expansion.expansion?.level ?? "standard";
+  let first = "";
+  for (const b of blocks) {
+    if (b.type === "paragraph") {
+      const html =
+        level === "simple" ? (b.text.simple ?? b.text.standard) : level === "deep" ? (b.text.deep ?? b.text.standard) : b.text.standard;
+      if (html.trim()) {
+        first = html;
+        break;
+      }
+    }
+  }
+  const working = expansion.working ?? expansion.expansion?.working;
+  const body = first
+    ? `<div class="xprev">${first}</div>`
+    : working
+      ? `<span class="hint">${esc(working)}</span>`
+      : `<span class="hint">Explanation is filling…</span>`;
+  return `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`;
+}
+
 const ANCHOR_SELECTOR =
-  "[data-refs], [data-threads], a.cx[data-node], a.cx[data-link], [data-cprev], [data-cjump]";
+  "[data-refs], [data-threads], a.cx[data-node], a.cx[data-link], [data-cprev], [data-cjump], mark.anc[data-jump]";
 
 export function HoverPopover() {
   const [html, setHtml] = useState<string | null>(null);
@@ -130,6 +155,19 @@ export function HoverPopover() {
       content =
         previewThread(snap.annotations.find((a) => a.id === id)) +
         `<span class="hint">Click to go to it in the diff</span>`;
+    } else if (anchor instanceof HTMLElement && anchor.dataset.jump) {
+      const id = anchor.dataset.jump;
+      const found = snap.annotations.find((a) => a.id === id);
+      if (found && (found.type === "expansion" || found.type === "link")) {
+        if (found.promotedToPage) {
+          const page = lookup(found.promotedToPage);
+          content = page
+            ? `${pagePreview(page)}<span class="hint">Click to open</span>`
+            : `<b>${esc(found.anchor.quotedText)}</b><span class="hint">Click to open</span>`;
+        } else {
+          content = previewExpansion(found) + `<span class="hint">Click to expand in place</span>`;
+        }
+      }
     } else if (anchor.matches("a.cx[data-node], a.cx[data-link]")) {
       const target =
         (anchor as HTMLAnchorElement).dataset.link ??

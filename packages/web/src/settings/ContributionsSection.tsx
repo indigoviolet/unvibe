@@ -40,7 +40,7 @@ export function ContributionsSection({ reviewId }: { reviewId: string | null }):
   };
 
   return (
-    <section aria-label="Shared context">
+    <section aria-label="Shared context" id="shared-context">
       <div className="divider">Shared context</div>
       {!reviewId ? (
         <p className="hint">Open settings from a review (`/settings?review=:id`) to see its shared context.</p>

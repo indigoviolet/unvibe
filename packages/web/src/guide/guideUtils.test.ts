@@ -137,6 +137,14 @@ describe("linked pages", () => {
     );
     expect(found.map((p) => p.id).sort()).toEqual(["c-obs-fold", "c-other"]);
   });
+
+  it("lists expansion-opened child pages under linked pages", () => {
+    const root = mkPage("root", [mkCard("a", "root")], "root");
+    const opened = { ...mkPage("p-x", [mkCard("c", "p-x")]), kind: "opened-expansion" as const, parent: "root" };
+    const lookup = (id: string): Page | undefined => (id === "p-x" ? opened : undefined);
+    const { links } = contentsModel(root, lookup, [root, opened]);
+    expect(links.map((l) => l.id)).toContain("p-x");
+  });
 });
 
 describe("concept resolution", () => {
