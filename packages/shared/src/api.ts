@@ -10,6 +10,7 @@ import type {
   Annotation,
   Card,
   Contribution,
+  ExistingReviewComment,
   HunkState,
   Job,
   LogEntry,
@@ -90,6 +91,12 @@ export interface ReviewSnapshot {
    * them by content (`needsRepining` when not found again).
    */
   pinnedCode?: import("./versions.js").PinnedCode[];
+  /**
+   * M6: read-only cache of existing PR comments
+   * (`gh api …/pulls/{n}/comments`). Populated on demand by
+   * `GET /api/reviews/:id/pr-comments`; absent until first fetch.
+   */
+  existingComments?: ExistingReviewComment[];
 }
 
 export type ReviewResponse = ReviewSnapshot;
@@ -170,15 +177,62 @@ export interface SummarizeHunkResponse {
 
 // --- comments ------------------------------------------------------------
 
+/** PATCH /api/reviews/:id/comments/:commentId (M6 extends M3 contract). */
 export interface UpdateCommentRequest {
   post?: boolean;
-  draft?: string;
+  /** Editable draft of the text to post; explicit null clears it. */
+  draft?: string | null;
+  /** M6: open/closed in place. */
+  open?: boolean;
+  /** M6: unsent reply-box content (survives re-renders); null clears it. */
+  reply?: string | null;
+}
+
+/** POST /api/reviews/:id/comments — create a thread (M6). */
+export interface CreateCommentRequest {
+  anchor: ActionAnchor;
+  /** Quoted anchor text (highlighted in the UI). */
+  quote: string;
+  /** A few lines before the quote (anchor matching, PRD §8). */
+  prefix?: string;
+  /** A few lines after the quote. */
+  suffix?: string;
+  /** Best-effort position at creation (line/offset). */
+  position?: number;
+  /** True = Note (no agent reply); false = user's first Ask message. */
+  note?: boolean;
+  /** Initial user text (first message when present). */
+  text?: string;
+  /**
+   * Create an agent-suggested comment: first message is the agent's
+   * suggestion (`suggested: true`), never marked for the PR initially.
+   * Only valid on diff-line anchors.
+   */
+  suggested?: boolean;
+  /** Agent suggestion text (required when `suggested` is true). */
+  suggestionText?: string;
+}
+
+export interface CreateCommentResponse {
+  id: string;
+}
+
+/** POST /api/reviews/:id/comments/:commentId/replies — user reply (M6). */
+export interface ReplyCommentRequest {
+  text: string;
 }
 
 export interface ThreadMessage {
   who: "you" | "ai";
   text?: string;
   html?: string;
+  /** M6: agent-drafted suggested comment (first message, not for PR). */
+  suggested?: boolean;
+}
+
+/** GET /api/reviews/:id/pr-comments — read-only existing PR comments (M6). */
+export interface ExistingCommentsResponse {
+  comments: ExistingReviewComment[];
 }
 
 // --- description ---------------------------------------------------------
@@ -191,12 +245,59 @@ export interface UpdateDescriptionRequest {
 export interface SubmitReviewRequest {
   /** Optional client-side confirmation of what will be posted. */
   expectedCount?: number;
+  /** M6: return the preview without posting (Submit panel). */
+  dryRun?: boolean;
+}
+
+/** M6: where one For-PR thread lands on GitHub (PRD §4.8, §4.12). */
+export type SubmitCommentLocation =
+  | {
+      kind: "inline";
+      path: string;
+      line: number;
+      side: "LEFT" | "RIGHT";
+      startLine?: number;
+      startSide?: "LEFT" | "RIGHT";
+      /** Set when the anchor line wasn't commentable and we fell back. */
+      fallbackNote?: string;
+    }
+  | { kind: "general"; reason?: string };
+
+/** M6: one comment as it will be posted. */
+export interface SubmitPreviewComment {
+  threadId: string;
+  location: SubmitCommentLocation;
+  /** Exact text that will be posted (draft + fallback note). */
+  text: string;
+}
+
+/** M6: exactly what Submit will post (preview + dryRun response). */
+export interface SubmitPreview {
+  /** Threads marked For PR that are not yet posted. */
+  comments: SubmitPreviewComment[];
+  /** Threads already posted (skipped on retry). */
+  alreadyPosted: string[];
+  /** Review body (general comments joined), "" when none. */
+  reviewBody: string;
+  /** Pinned head SHA the review will carry as `commit_id`. */
+  commitId: string;
+  /** Description update, when a pending edit exists. */
+  description?: { fromRev: string; markdown: string; html: string };
+  disabledReason?: string;
 }
 
 export interface SubmitReviewResponse {
   posted: boolean;
   commentCount: number;
   descriptionUpdated: boolean;
+  /** M6: present on dryRun (preview without posting). */
+  preview?: SubmitPreview;
+  /** M6: GitHub review URL after a successful post. */
+  reviewUrl?: string;
+  /** M6: true when the review posted but the description update failed. */
+  partial?: boolean;
+  /** M6: why submit is disabled / refused (branch without PR, head moved…). */
+  reason?: string;
 }
 
 // --- settings ------------------------------------------------------------

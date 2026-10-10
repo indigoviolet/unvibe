@@ -44,15 +44,13 @@ describe("HTTP auth gate", () => {
       { method: "POST", url: "/api/reviews/r1/update" },
       { method: "POST", url: "/api/reviews/r1/actions" },
       { method: "POST", url: "/api/reviews/r1/hunks/abc/summarize" },
-      { method: "PATCH", url: "/api/reviews/r1/comments/c1" },
-      { method: "PUT", url: "/api/reviews/r1/description" },
-      { method: "POST", url: "/api/reviews/r1/submit" },
       { method: "GET", url: "/api/settings" },
       { method: "PUT", url: "/api/settings" },
       { method: "GET", url: "/api/jobs" },
     ];
     // M1 service implements these (functional status, not 501).
-    const live: { method: "GET" | "POST" | "PATCH"; url: string; status: number }[] = [
+    // M6 implements comments/description/submit (validation statuses, not 501).
+    const live: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string; status: number }[] = [
       { method: "GET", url: "/api/repos", status: 200 },
       { method: "POST", url: "/api/repos", status: 400 },
       { method: "GET", url: "/api/repos/r1/changes", status: 404 },
@@ -60,6 +58,9 @@ describe("HTTP auth gate", () => {
       { method: "GET", url: "/api/reviews/r1", status: 404 },
       { method: "POST", url: "/api/reviews/r1/refresh", status: 404 },
       { method: "PATCH", url: "/api/reviews/r1/hunks/abc", status: 400 },
+      { method: "PATCH", url: "/api/reviews/r1/comments/c1", status: 400 },
+      { method: "PUT", url: "/api/reviews/r1/description", status: 400 },
+      { method: "POST", url: "/api/reviews/r1/submit", status: 404 },
     ];
     try {
       for (const c of [...stubs, ...live]) {
