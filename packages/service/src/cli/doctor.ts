@@ -15,6 +15,12 @@ import net from "node:net";
 import { isHealthOk } from "./lock.js";
 import { resolveLoginShellPath } from "../exec/shell-path.js";
 import {
+  agentBinSpec,
+  meetsMinVersion,
+  parseVersion,
+  resolveAgentBin,
+} from "../exec/agent-bins.js";
+import {
   findOnPath as sharedFindOnPath,
   ghAuthStatus as sharedGhAuth,
   gitVersion as sharedGitVersion,
@@ -49,7 +55,8 @@ export function findOnPath(name: string, pathValue: string = process.env.PATH ??
 }
 
 async function toolVersion(cmd: string, args: string[]): Promise<string | null> {
-  if (!sharedFindOnPath(cmd)) return null;
+  // Absolute paths (resolved bins) run directly; bare names need a PATH hit.
+  if (!cmd.includes("/") && !sharedFindOnPath(cmd)) return null;
   const r = await execTimeout(cmd, args);
   if (r.code !== 0) return null;
   return r.stdout.split("\n")[0];
@@ -103,9 +110,43 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
     detail: gh.detail,
   });
 
-  for (const agent of ["claude", "codex"]) {
-    const v = await toolVersion(agent, ["--version"]);
-    checks.push({ name: agent, status: v ? "ok" : "warn", detail: v ?? `not on PATH (needed for ${agent} agent sessions)` });
+  // Agent CLIs: report the exact executable the adapter will run (path +
+  // version) and whether it meets the adapter's minimum. Missing → how to
+  // install (Unvibe never installs them). Login state is probed by readiness
+  // (listModels); doctor stays token-free and only checks presence+version.
+  const loginPathForAgents = (await resolveLoginShellPath().catch(() => null))?.merged ?? process.env.PATH ?? "";
+  for (const agent of ["claude", "codex"] as const) {
+    const spec = agentBinSpec(agent);
+    const bin = resolveAgentBin(agent, { pathValue: loginPathForAgents });
+    if (!bin) {
+      checks.push({
+        name: agent,
+        status: "warn",
+        detail: `not on login-shell PATH. ${spec.installHint}`,
+      });
+      continue;
+    }
+    const raw = await toolVersion(bin.path, ["--version"]);
+    const ver = raw ? parseVersion(raw) : null;
+    if (ver && !meetsMinVersion(agent, ver)) {
+      checks.push({
+        name: agent,
+        status: "warn",
+        detail: `${spec.cli} ${ver} at ${bin.path} (via ${bin.source}); Unvibe needs ≥ ${spec.minVersion}. ${spec.updateHint}`,
+      });
+    } else if (raw) {
+      checks.push({
+        name: agent,
+        status: "ok",
+        detail: `${raw} at ${bin.path} (via ${bin.source})`,
+      });
+    } else {
+      checks.push({
+        name: agent,
+        status: "warn",
+        detail: `found at ${bin.path} (via ${bin.source}) but --version failed; ensure ${spec.cli} runs and is logged in`,
+      });
+    }
   }
 
   try {
