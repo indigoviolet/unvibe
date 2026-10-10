@@ -18,7 +18,8 @@ const fixturesDir = path.resolve(
 describe("snapshot build", () => {
   it("builds urllib3#5020 with zero unverified citations", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
-    expect(counts).toHaveLength(51);
+    // 51 base recordings + 3 second-opinion recordings (blind ×2, check ×1).
+    expect(counts).toHaveLength(54);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],

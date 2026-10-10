@@ -1,3 +1,4 @@
+/*global console process fetch setTimeout clearTimeout */
 /**
  * Live second-opinion check (M6, authorized, keep it small).
  *

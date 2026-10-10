@@ -406,7 +406,6 @@ export async function requestSecondOpinion(
     turn = withReplayMark(turn, { kind: "second-opinion", key: replayKey });
   }
   const cardIdForJob = target.card ? target.card.id : target.page.id;
-  let jobId: string | undefined;
   const job = deps.jobs.enqueue({
     reviewId: req.reviewId,
     kind,
@@ -513,7 +512,7 @@ export async function requestSecondOpinion(
           ...(missed ? { missed } : {}),
           version,
           createdAt: now,
-          ...(jobId ? { jobId } : {}),
+          jobId: job.id,
         };
         void finalText;
         // Store on the card (attached, not revisable): replace any entry
@@ -573,7 +572,6 @@ export async function requestSecondOpinion(
       }
     },
   });
-  jobId = job.id;
   return job;
 }
 
