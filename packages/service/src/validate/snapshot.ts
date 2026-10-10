@@ -153,9 +153,23 @@ export function createSnapshotLookup(
         return descTexts[parsed.paragraph] ?? null;
       }
       if (parsed?.kind === "diff") {
-        // Snapshots carry hunks, not full line text: callers that need
-        // diff-line quotes provide them via `extra.hostTexts`.
-        return null;
+        // New-side line text from the hunk rows, so quoted anchors on diff
+        // lines check against the real cited content.
+        const key = resolveFileKey(parsed.fileKey);
+        if (key === null) return null;
+        const out: string[] = [];
+        for (const h of filesByKey.get(key)!.hunks) {
+          for (const row of h.lines) {
+            if (
+              row.newLine !== undefined &&
+              row.newLine >= parsed.start &&
+              row.newLine <= parsed.end
+            ) {
+              out.push(row.text);
+            }
+          }
+        }
+        return out.length > 0 ? out.join("\n") : null;
       }
       return null;
     },

@@ -97,13 +97,13 @@ describe("HTTP auth gate", () => {
       expect(res.statusCode).toBe(200);
       const body = res.json() as { templates: { name: string }[] };
       expect(body.templates.length).toBe(18);
-      // Review expansion is unwired by default (no snapshot provider).
+      // Review expansion is wired to the ReviewStore: unknown reviews 404.
       const review = await app.inject({
         method: "GET",
         url: "/api/prompts?review=r1",
         headers: { authorization: "Bearer test-token" },
       });
-      expect(review.statusCode).toBe(501);
+      expect(review.statusCode).toBe(404);
     } finally {
       await app.close();
     }
