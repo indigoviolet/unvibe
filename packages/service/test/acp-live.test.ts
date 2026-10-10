@@ -13,7 +13,7 @@
  * - read-only enforcement (write file / shell does not succeed)
  * - model + thinking listing
  */
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -137,16 +137,24 @@ function smallPack(): { message: string; factA: { q: string; need: string }; fac
 }
 
 describe.skipIf(!LIVE)("ACP live adapters", () => {
-  let mcp: HunkServer;
   let cwd: string;
 
   beforeAll(async () => {
-    mcp = await startHunkServer();
     cwd = mkdtempSync(join(tmpdir(), "unvibe-live-"));
     return async () => {
-      await mcp.close();
       rmSync(cwd, { recursive: true, force: true });
     };
+  });
+
+  // Fresh MCP server per test: the stateful transport (required for newer
+  // CLIs, see startHunkServer) must not be shared across tests/providers —
+  // sharing caused systematic codex MCP failures after the claude tests.
+  let mcp: HunkServer;
+  beforeEach(async () => {
+    mcp = await startHunkServer();
+  });
+  afterEach(async () => {
+    await mcp.close();
   });
 
   for (const provider of PROVIDERS) {
