@@ -1,0 +1,144 @@
+/**
+ * Versions + settings pure helpers (M8): token/cache-rate formatting, job
+ * list reduction from WS events, expanded-prompt layer splitting, and
+ * version-status copy. No DOM, no React — covered by vitest.
+ */
+import type { Job, ReviewEvent, VersionStatus } from "@unvibe/shared";
+
+/** Compact token counts: 412 → "412", 42500 → "42.5k", 1_200_000 → "1.2M". */
+export function formatTokens(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1_000_000) {
+    const k = n / 1000;
+    return `${k >= 100 ? Math.round(k) : Math.round(k * 10) / 10}k`;
+  }
+  const m = n / 1_000_000;
+  return `${m >= 100 ? Math.round(m) : Math.round(m * 10) / 10}M`;
+}
+
+/** Cache-hit rate 0..1 → "91.5%"; undefined/NaN → "—". */
+export function formatCacheRate(rate: number | undefined): string {
+  if (rate === undefined || !Number.isFinite(rate)) return "—";
+  return `${(Math.max(0, Math.min(1, rate)) * 100).toFixed(1)}%`;
+}
+
+/** Weighted cache-hit rate over jobs carrying usage (input-weighted). */
+export function pooledCacheRate(jobs: Job[]): number | undefined {
+  let input = 0;
+  let cached = 0;
+  for (const j of jobs) {
+    if (!j.usage) continue;
+    input += j.usage.inputTokens;
+    cached += j.usage.cachedTokens;
+  }
+  return input > 0 ? cached / input : undefined;
+}
+
+/** Total input/output/cached tokens over jobs carrying usage. */
+export function pooledTokens(jobs: Job[]): { input: number; output: number; cached: number } {
+  let input = 0;
+  let output = 0;
+  let cached = 0;
+  for (const j of jobs) {
+    if (!j.usage) continue;
+    input += j.usage.inputTokens;
+    output += j.usage.outputTokens;
+    cached += j.usage.cachedTokens;
+  }
+  return { input, output, cached };
+}
+
+/** "retry in 45s" / "retry in 2m" for a backing-off job; "—" when unknown. */
+export function formatRetryIn(nextRetryAt: number | undefined, now = Date.now()): string {
+  if (nextRetryAt === undefined || !Number.isFinite(nextRetryAt)) return "—";
+  const secs = Math.max(0, Math.round((nextRetryAt - now) / 1000));
+  if (secs < 60) return `retry in ${secs}s`;
+  return `retry in ${Math.round(secs / 60)}m`;
+}
+
+/**
+ * Job list reduction from WS events (PRD §4.14 "live through the WebSocket
+ * `job` events"): `job` events upsert by id (new jobs appended, so an
+ * update-pass job enqueued after the snapshot loaded still appears);
+ * every other event leaves the list alone. Pure so settings tests can
+ * drive it without a socket.
+ */
+export function reduceJobs(jobs: Job[], event: ReviewEvent): Job[] {
+  if (event.type !== "job") return jobs;
+  const i = jobs.findIndex((j) => j.id === event.job.id);
+  if (i < 0) return [...jobs, event.job];
+  if (jobs[i] === event.job) return jobs;
+  const next = [...jobs];
+  next[i] = event.job;
+  return next;
+}
+
+export interface LayerSection {
+  layer: string;
+  label: string;
+  tokens: number;
+  cached: boolean;
+  text: string;
+}
+
+const LAYER_OPEN =
+  /<!--\s*layer:([A-Za-z0-9]+)\s+label:(.+?)\s+tokens:(\d+)\s+cached:(yes|no)\s*-->/;
+const LAYER_CLOSE = /<!--\s*\/layer:([A-Za-z0-9]+)\s*-->/;
+
+/**
+ * Split an expanded prompt into its L0–L4 layer sections on the
+ * `<!-- layer:… -->` markers the service emits (see `assemble` in
+ * `packages/service/src/routes/prompts.ts`). Text outside markers is kept
+ * as an unmarked section so nothing is ever dropped.
+ */
+export function splitLayers(expanded: string): LayerSection[] {
+  const sections: LayerSection[] = [];
+  let rest = expanded;
+  let lead = "";
+  for (;;) {
+    const open = LAYER_OPEN.exec(rest);
+    if (!open) break;
+    const before = rest.slice(0, open.index);
+    if (lead === "" && before.trim() !== "") lead = before;
+    else if (before.trim() !== "") {
+      sections.push({ layer: "", label: "text", tokens: 0, cached: false, text: before.trim() });
+    }
+    const afterOpen = rest.slice(open.index + open[0].length);
+    const close = LAYER_CLOSE.exec(afterOpen);
+    const text = close ? afterOpen.slice(0, close.index) : afterOpen;
+    sections.push({
+      layer: open[1],
+      label: open[2],
+      tokens: Number(open[3]),
+      cached: open[4] === "yes",
+      // Markers sit on their own lines; drop the surrounding newlines only.
+      text: text.replace(/^\n/, "").replace(/\n+$/, ""),
+    });
+    rest = close ? afterOpen.slice(close.index + close[0].length) : "";
+    if (!close) break;
+  }
+  if (rest.trim() !== "") {
+    sections.push({ layer: "", label: "text", tokens: 0, cached: false, text: rest.trim() });
+  }
+  if (sections.length === 0 && expanded.trim() !== "") {
+    sections.push({ layer: "", label: "text", tokens: 0, cached: false, text: expanded.trim() });
+  }
+  if (lead !== "") sections.unshift({ layer: "", label: "text", tokens: 0, cached: false, text: lead.trim() });
+  return sections;
+}
+
+/** "1 changed · 2 new · 0 removed" for the update banner + start page. */
+export function versionCountsText(s: {
+  changedHunks: number;
+  newHunks: number;
+  removedHunks: number;
+}): string {
+  const part = (n: number, what: string): string => `${n} ${what}`;
+  return `${part(s.changedHunks, "changed")} · ${part(s.newHunks, "new")} · ${part(s.removedHunks, "removed")}`;
+}
+
+/** Banner headline for a stale review (PRD §8 "New commits on this branch"). */
+export function staleHeadline(status: VersionStatus): string {
+  return `New commits on this branch: v${status.fromVersion} → v${status.toVersion} (${versionCountsText(status)} hunks)`;
+}
