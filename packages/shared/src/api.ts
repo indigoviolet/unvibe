@@ -79,6 +79,17 @@ export interface ReviewSnapshot {
   logTail: LogEntry[];
   /** Monotonic revision of this snapshot; WS patches carry baseRev/headRev. */
   rev: number;
+  /**
+   * M5 (PRD §8): review-level staleness for the "New commits · Update"
+   * banner. Present once a refresh has created version n+1; cleared by a
+   * successful update pass. Absent on fresh reviews.
+   */
+  versionStatus?: import("./versions.js").VersionStatus;
+  /**
+   * M5: reader-pinned excerpts stored in the snapshot so refresh can remap
+   * them by content (`needsRepining` when not found again).
+   */
+  pinnedCode?: import("./versions.js").PinnedCode[];
 }
 
 export type ReviewResponse = ReviewSnapshot;
@@ -91,6 +102,25 @@ export interface RefreshResponse {
    * see the `M5 seam` marker in the service refresh route).
    */
   newVersion: boolean;
+  /**
+   * M5: hunk-level summary of what the fetch found (present when
+   * `newVersion` is true). `versionStatus` on the snapshot carries the
+   * same counts for the banner; `rangeDiff` is display-only.
+   */
+  comparison?: import("./versions.js").VersionComparisonSummary;
+  /** M5: new version number (equals `review.currentVersion` when created). */
+  version?: import("./entities.js").Version;
+}
+
+/**
+ * M5: `POST /api/reviews/:id/update` response — the enqueued update-pass
+ * job. The pass runs only when the user clicks Update; it sees only the
+ * changed and new hunks (PRD §8).
+ */
+export interface UpdateReviewResponse {
+  jobId: string;
+  /** New version the pass updates to (current version at enqueue time). */
+  toVersion: number;
 }
 
 // --- actions -------------------------------------------------------------
