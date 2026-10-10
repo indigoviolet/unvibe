@@ -7,20 +7,24 @@ import type {
   ActionResponse,
   AddRepoRequest,
   ChangesFilter,
+  CreateCommentRequest,
+  CreateCommentResponse,
   CreateReviewRequest,
+  ExistingCommentsResponse,
   HealthResponse,
   JobsResponse,
   PromptsResponse,
   RefreshResponse,
+  ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
   ReviewAction,
   ReviewSnapshot,
   Settings,
+  SubmitPreview,
   SubmitReviewRequest,
   SubmitReviewResponse,
   SummarizeHunkResponse,
-  ThreadMessage,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
   UpdateHunkRequest,
@@ -107,19 +111,36 @@ const realApi = {
   summarizeHunk: (id: string, hash: string): Promise<SummarizeHunkResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/hunks/${encodeURIComponent(hash)}/summarize`),
 
-  updateComment: (reviewId: string, commentId: string, body: UpdateCommentRequest): Promise<{ messages: ThreadMessage[] }> =>
+  createComment: (reviewId: string, body: CreateCommentRequest): Promise<CreateCommentResponse> =>
+    request(`/api/reviews/${encodeURIComponent(reviewId)}/comments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  replyComment: (reviewId: string, commentId: string, body: ReplyCommentRequest): Promise<{ ok: boolean }> =>
+    post(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}/replies`, body),
+  updateComment: (reviewId: string, commentId: string, body: UpdateCommentRequest): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  deleteComment: (reviewId: string, commentId: string): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}`, {
+      method: "DELETE",
+    }),
 
-  updateDescription: (id: string, body: UpdateDescriptionRequest): Promise<{ ok: boolean }> =>
+  updateDescription: (id: string, body: UpdateDescriptionRequest): Promise<{ ok: boolean; changed?: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}/description`, {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  revertDescription: (id: string): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/description`, { method: "DELETE" }),
   submit: (id: string, body: SubmitReviewRequest): Promise<SubmitReviewResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/submit`, body),
+  submitPreview: (id: string): Promise<{ preview: SubmitPreview }> =>
+    get(`/api/reviews/${encodeURIComponent(id)}/submit/preview`),
+  prComments: (id: string): Promise<ExistingCommentsResponse> =>
+    get(`/api/reviews/${encodeURIComponent(id)}/pr-comments`),
 
   settings: (): Promise<Settings> => get("/api/settings"),
   saveSettings: (body: Settings): Promise<Settings> =>

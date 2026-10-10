@@ -118,12 +118,61 @@ function seedHunkStates(): Map<string, HunkState> {
 
 /**
  * Mock description: the generated fixture's description (stable paragraph
- * ids, PR source, read-only). Owned by the guide agent in `mock/guide.ts`.
+ * ids, PR source). Owned by the guide agent in `mock/guide.ts`; the
+ * comments milestone presents author mode (editable) in mock so
+ * description editing is exercisable without a service.
  */
-const MOCK_DESCRIPTION = guideDescription;
+const MOCK_DESCRIPTION = { ...guideDescription, editable: true, source: "pr" as const };
+
+/** Canned Ask answers (prototype ASK, subset) for mock agent replies. */
+const MOCK_ASK: { re: RegExp; a: string }[] = [
+  {
+    re: /\blf\b|bare|newline only/i,
+    a: `Not with this PR. The fast path checks for <code>"\\r\\n"</code> and the pattern requires <code>\\r\\n</code>. <code>http.client</code> also accepts header lines that end in a bare LF, which passes through unchanged.`,
+  },
+  {
+    re: /order|ordering|duplicate/i,
+    a: `Order and duplicates are preserved. The helper works on <code>message.items()</code>, a list of pairs, then re-adds the list in its original order.`,
+  },
+  {
+    re: /cost|slow|performance|quadratic|speed/i,
+    a: `Cheap in practice. Values without CRLF skip the regex, and the message is only rewritten when something changed.`,
+  },
+  {
+    re: /test|cover/i,
+    a: `Two levels. Unit tests cover the value helper and the message helper (order, duplicates, defects, policy). A socket-level test sends a real folded response through a pool and checks both header views.`,
+  },
+  {
+    re: /two spaces|double space|adjacent/i,
+    a: `Yes. RFC 9112 allows replacing each fold with <em>one or more</em> spaces, and the helper replaces each fold with exactly one, so two adjacent folds give two spaces.`,
+  },
+];
+
+function mockAnswerFor(message: string, quote: string): string {
+  const found = MOCK_ASK.find((c) => c.re.test(`${message} ${quote}`));
+  if (found) return found.a;
+  const q = quote ? ` about <em>“${quote.replace(/</g, "&lt;")}”</em>` : "";
+  return `Mock answer${q}: the live agent would answer this from the repo and the PR. In mock mode this is a canned reply so threads can be exercised end to end.`;
+}
 
 let rev = 1;
 const hunkStates = seedHunkStates();
+let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
+  JSON.stringify(MOCK_ANNOTATIONS),
+) as import("@unvibe/shared").Annotation[];
+let description = { ...MOCK_DESCRIPTION };
+let existingComments: import("@unvibe/shared").ExistingReviewComment[] = [
+  {
+    id: 101,
+    path: "src/urllib3/connection.py",
+    line: 82,
+    side: "RIGHT",
+    body: "Already on GitHub: consider covering bare LF here too.",
+    author: "teammate",
+    createdAt: "2026-09-01T12:00:00Z",
+    htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r101",
+  },
+];
 
 /**
  * Test-only: reset hunk states and the snapshot revision to the seeded
@@ -132,6 +181,20 @@ const hunkStates = seedHunkStates();
 export function resetMockState(): void {
   hunkStates.clear();
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
+  annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
+  description = { ...MOCK_DESCRIPTION };
+  existingComments = [
+    {
+      id: 101,
+      path: "src/urllib3/connection.py",
+      line: 82,
+      side: "RIGHT",
+      body: "Already on GitHub: consider covering bare LF here too.",
+      author: "teammate",
+      createdAt: "2026-09-01T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r101",
+    },
+  ];
   rev = 1;
 }
 
@@ -140,14 +203,15 @@ function currentSnapshot(reviewId = "demo"): ReviewSnapshot {
     review: { ...MOCK_REVIEW, id: reviewId },
     version: MOCK_VERSION,
     files: MOCK_FILES,
-    description: MOCK_DESCRIPTION,
+    description,
     pages: MOCK_PAGES,
-    annotations: MOCK_ANNOTATIONS,
+    annotations,
     hunkStates: [...hunkStates.values()],
     jobs: [] as Job[],
     contributions: [],
     logTail: [],
     rev,
+    existingComments,
   };
 }
 
@@ -169,6 +233,95 @@ function findHunkKey(hash: string): string | null {
     if (idx >= 0) return `${f.fileKey}:${idx}`;
   }
   return null;
+}
+
+/** Emit the annotations list through the WS-patch path (drafts survive). */
+function emitAnnotations(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [{ op: "replace", path: "/annotations", value: JSON.parse(JSON.stringify(annotations)) }],
+  });
+}
+
+function emitDescription(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [{ op: "replace", path: "/description", value: JSON.parse(JSON.stringify(description)) }],
+  });
+}
+
+function emitExisting(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [{ op: "replace", path: "/existingComments", value: JSON.parse(JSON.stringify(existingComments)) }],
+  });
+}
+
+function stripMockHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mockPostText(thread: import("@unvibe/shared").Annotation): string {
+  if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
+  const you = thread.messages.find((m) => m.who === "you" && m.text);
+  if (you?.text) return you.text;
+  const suggested = thread.messages.find((m) => m.suggested && m.text);
+  if (suggested?.text) return suggested.text;
+  return thread.messages.find((m) => m.text)?.text ?? "";
+}
+
+/** Mock Submit preview: same shape as the service `buildPreview`. */
+function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
+  const pending = annotations.filter(
+    (a) => a.type === "thread" && (a as import("@unvibe/shared").Annotation).post && !(a as import("@unvibe/shared").Annotation).postedAt,
+  ) as import("@unvibe/shared").Annotation[];
+  const alreadyPosted = annotations
+    .filter((a) => a.type === "thread" && a.post && a.postedAt)
+    .map((a) => a.id);
+  const comments = pending.map((thread) => {
+    const host = thread.anchor.host;
+    let location: import("@unvibe/shared").SubmitCommentLocation;
+    if (host.kind === "diff-line") {
+      const file = MOCK_FILES.find((f) => f.fileKey === host.fileKey);
+      location = file
+        ? { kind: "inline", path: file.path, line: host.line, side: "RIGHT" }
+        : { kind: "general", reason: `unknown file ${host.fileKey}` };
+    } else {
+      location = { kind: "general", reason: host.kind === "block" ? "guide comment" : "description comment" };
+    }
+    return { threadId: thread.id, location, text: mockPostText(thread) };
+  });
+  const general = comments.filter((c) => c.location.kind !== "inline").map((c) => c.text);
+  return {
+    comments,
+    alreadyPosted,
+    reviewBody: general.filter((t) => t.trim() !== "").join("\n\n---\n\n"),
+    commitId: MOCK_VERSION.headSha,
+    ...(description.pendingMarkdown !== undefined
+      ? {
+          description: {
+            fromRev: description.rev,
+            markdown: description.pendingMarkdown,
+            html: description.pendingHtml ?? description.html,
+          },
+        }
+      : {}),
+  };
 }
 
 // --- mock client ---------------------------------------------------------
@@ -354,15 +507,160 @@ export const mockApi = {
     return { jobId: `mock-${hash}` };
   },
 
-  updateComment: async (): Promise<{ messages: [] }> => ({ messages: [] }),
+  createComment: async (
+    _id: string,
+    body: import("@unvibe/shared").CreateCommentRequest,
+  ): Promise<{ id: string }> => {
+    const anchor = body.anchor;
+    const host =
+      anchor.where === "block"
+        ? { kind: "block", blockId: anchor.blockId }
+        : anchor.where === "description"
+          ? { kind: "description", paragraphId: anchor.paragraphId }
+          : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+    const thread: import("@unvibe/shared").Annotation = {
+      id: `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`,
+      type: "thread",
+      anchor: {
+        host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
+        quotedText: body.quote ?? "",
+        prefix: body.prefix ?? "",
+        suffix: body.suffix ?? "",
+        position: body.position ?? 0,
+        version: 1,
+      },
+      open: host.kind === "block" ? false : true,
+      messages: body.text ? [{ who: "you", text: body.text }] : [],
+      post: false,
+      note: body.note ?? true,
+    };
+    if (body.suggested && body.suggestionText) {
+      thread.messages = [{ who: "ai", text: body.suggestionText, suggested: true }];
+      thread.note = false;
+    }
+    annotations.push(thread);
+    emitAnnotations();
+    // Ask threads (user's first message, not a Note) get a canned agent
+    // reply after a delay, through the same patch path as the service seam.
+    if (!thread.note && thread.messages.length > 0) {
+      const first = thread.messages[0]?.text ?? "";
+      const quote = thread.anchor.quotedText;
+      const tid = thread.id;
+      void wait(700).then(() => {
+        const target = annotations.find((a) => a.id === tid);
+        if (!target) return;
+        target.messages.push({ who: "ai", html: mockAnswerFor(first, quote) });
+        target.open = true;
+        emitAnnotations();
+      });
+    }
+    return { id: thread.id };
+  },
 
-  updateDescription: async (): Promise<{ ok: boolean }> => ({ ok: true }),
+  replyComment: async (_id: string, commentId: string, body: { text: string }) => {
+    const thread = annotations.find((a) => a.id === commentId);
+    if (!thread || thread.type !== "thread") throw new Error("unknown comment");
+    thread.messages.push({ who: "you", text: body.text });
+    delete thread.reply;
+    thread.open = true;
+    emitAnnotations();
+    if (!thread.note) {
+      const quote = thread.anchor.quotedText;
+      const text = body.text;
+      void wait(700).then(() => {
+        const target = annotations.find((a) => a.id === commentId);
+        if (!target) return;
+        target.messages.push({ who: "ai", html: mockAnswerFor(text, quote) });
+        emitAnnotations();
+      });
+    }
+    return { ok: true };
+  },
 
-  submit: async (): Promise<{ posted: boolean; commentCount: number; descriptionUpdated: boolean }> => ({
-    posted: true,
-    commentCount: 0,
-    descriptionUpdated: false,
-  }),
+  updateComment: async (_id: string, commentId: string, body: import("@unvibe/shared").UpdateCommentRequest) => {
+    const thread = annotations.find((a) => a.id === commentId);
+    if (!thread || thread.type !== "thread") throw new Error("unknown comment");
+    if (body.post !== undefined) {
+      thread.post = body.post;
+      if (body.post) thread.open = true;
+    }
+    if (body.draft === null) delete thread.draft;
+    else if (body.draft !== undefined) thread.draft = body.draft;
+    if (body.open !== undefined) thread.open = body.open;
+    if (body.reply === null) delete thread.reply;
+    else if (body.reply !== undefined) thread.reply = body.reply;
+    emitAnnotations();
+    return { ok: true };
+  },
+
+  deleteComment: async (_id: string, commentId: string) => {
+    const idx = annotations.findIndex((a) => a.id === commentId);
+    if (idx < 0) throw new Error("unknown comment");
+    annotations.splice(idx, 1);
+    emitAnnotations();
+    return { ok: true };
+  },
+
+  updateDescription: async (_id: string, body: { html: string }) => {
+    description = {
+      ...description,
+      pendingHtml: body.html,
+      pendingMarkdown: stripMockHtml(body.html),
+    };
+    emitDescription();
+    return { ok: true, changed: true };
+  },
+
+  revertDescription: async () => {
+    const { pendingHtml: _ph, pendingMarkdown: _pm, ...rest } = description as Record<string, unknown>;
+    void _ph;
+    void _pm;
+    description = rest as typeof description;
+    emitDescription();
+    return { ok: true };
+  },
+
+  submit: async (_id: string, body?: { dryRun?: boolean }) => {
+    const preview = buildMockPreview();
+    if (body?.dryRun) {
+      return { posted: false, commentCount: 0, descriptionUpdated: false, preview };
+    }
+    const at = Date.now();
+    for (const c of preview.comments) {
+      const thread = annotations.find((a) => a.id === c.threadId);
+      if (thread && thread.type === "thread") {
+        thread.postedAt = at;
+        thread.postedUrl = "https://github.com/urllib3/urllib3/pull/5020#discussion_r-mock";
+      }
+    }
+    const descriptionUpdated = description.pendingHtml !== undefined;
+    if (descriptionUpdated) {
+      description = {
+        ...description,
+        html: description.pendingHtml ?? description.html,
+        baseMarkdown: description.pendingMarkdown,
+      };
+      const { pendingHtml: _h, pendingMarkdown: _m, ...rest } = description as Record<string, unknown>;
+      void _h;
+      void _m;
+      description = rest as typeof description;
+    }
+    emitAnnotations();
+    emitDescription();
+    return {
+      posted: true,
+      commentCount: preview.comments.length,
+      descriptionUpdated,
+      reviewUrl: "https://github.com/urllib3/urllib3/pull/5020#pullrequestreview-mock",
+    };
+  },
+
+  submitPreview: async () => ({ preview: buildMockPreview() }),
+
+  prComments: async () => {
+    emitExisting();
+    return { comments: existingComments };
+  },
 
   settings: async (): Promise<Settings> => ({
     main: { provider: "claude", model: "mock-main" },
