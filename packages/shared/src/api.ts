@@ -380,6 +380,12 @@ export interface Settings {
   /** Base-rebuild thresholds (PRD §9.4). */
   rebuildSupersededRatio: number;
   rebuildAppendedTokens: number;
+  /**
+   * M5 shared context (PRD §9.3): log tokens accumulated before the batch
+   * is appended to the base session as a new turn. Optional for backwards
+   * compatibility (older clients omit it); the service defaults to 2000.
+   */
+  logBatchTokens?: number;
   /** Provider cache lifetime in ms: idle sessions close after this (PRD §12). */
   cacheLifetimeMs: number;
   /** Service exits after this many idle minutes (PRD §14; 0 = never). */
@@ -423,6 +429,12 @@ export interface PromptsResponse {
 
 export interface JobsResponse {
   jobs: Job[];
+  /**
+   * M5 shared context (PRD §4.14 "Shared context", §9.4): per-base
+   * observability for the review, so the Settings page can show it
+   * alongside job usage. Absent when the review has no bases yet.
+   */
+  sharedContext?: SharedContextBaseStats[];
 }
 
 /** GET /api/jobs/:id — one job. */
@@ -452,6 +464,51 @@ export interface ContributionsResponse {
 export interface DeleteContributionResponse {
   ok: true;
   deletedId: string;
+}
+
+/**
+ * M5 shared context (PRD §9.5): corrections are suggestions on the target
+ * card, never silent rewrites.
+ *
+ * - `POST /api/reviews/:id/contributions/:contributionId/accept` — accept a
+ *   pending correction: creates a new card revision (undoable like any
+ *   other card change). Answers 404 for an unknown review/contribution,
+ *   409 when the contribution is not a pending correction.
+ * - `POST /api/reviews/:id/contributions/:contributionId/dismiss` —
+ *   discard a pending correction. Same 404/409 rules.
+ */
+export interface AcceptContributionResponse {
+  ok: true;
+  acceptedId: string;
+  /** Card revision created by the accept. */
+  cardId: string;
+  revision: number;
+}
+
+export interface DismissContributionResponse {
+  ok: true;
+  dismissedId: string;
+}
+
+/**
+ * M5 shared context (PRD §4.14 "Shared context", §9.4): per-base
+ * observability served through the jobs API (`JobsResponse.sharedContext`).
+ */
+export interface SharedContextBaseStats {
+  /** Session-manager base key (`version|guideRevision|provider|model`). */
+  baseKey: string;
+  /** Base size in tokens when built. */
+  baseTokens: number;
+  /** Log-batch tokens appended since the base was built. */
+  appendedTokens: number;
+  /** Superseded share of the base (0–1). */
+  supersededRatio: number;
+  /** Last rebuild reason, or null when this base was built fresh. */
+  lastRebuildReason: string | null;
+  /** Cache read share for jobs on this base, when measurable. */
+  cacheHitRate?: number;
+  /** Epoch ms the base was last used (cache-expiry tracking, PRD §9.4). */
+  lastUsedAt: number;
 }
 
 // --- WebSocket events ----------------------------------------------------

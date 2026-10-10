@@ -97,7 +97,42 @@ function hunkIsCited(
 }
 
 /** Description HTML back to plain Markdown-ish text (context input). */
-function descToMarkdown(html: string): string {
+
+/**
+ * M5 shared context (PRD §9.2, §9.4): the guide revision keying the base.
+ *
+ * Derived from guide *content* (pages, cards, revisions, block ids) — not
+ * the snapshot rev, which bumps on every log append, contribution, or job
+ * update. Log growth must append batches to the live base, not invalidate
+ * it; only a regenerated guide (new cards, new revisions, rechecked
+ * findings) keys a new base. Deterministic FNV-1a hex, platform-independent.
+ */
+export function guideRevisionForSnapshot(snap: ReviewSnapshot): string {
+  const shape = snap.pages.map((p) => [
+    p.id,
+    p.kind,
+    p.title,
+    p.confidence ?? "",
+    p.summary ?? "",
+    p.cards.map((c) => [
+      c.id,
+      c.title,
+      c.level,
+      c.revision,
+      c.blocks.map((b) => [b.id, b.type]),
+    ]),
+  ]);
+  return `guide-${fnv1aHex(JSON.stringify(shape))}`;
+}
+
+function fnv1aHex(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}function descToMarkdown(html: string): string {
   let s = html
     .replace(/<h3>([\s\S]*?)<\/h3>/gi, "### $1\n\n")
     .replace(/<li>([\s\S]*?)<\/li>/gi, "- $1\n")
@@ -215,7 +250,7 @@ export function toPromptSnapshot(
     version: version.n,
     headSha: version.headSha,
     baseRef: version.baseRef,
-    guideRevision: `rev-${snap.rev}`,
+    guideRevision: guideRevisionForSnapshot(snap),
     model: opts?.model ?? "main",
     sourceKind: review.prNumber !== undefined ? "pr" : "branch",
     ...(description ? { description } : {}),

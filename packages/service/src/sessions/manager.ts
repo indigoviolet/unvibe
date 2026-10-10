@@ -244,6 +244,23 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Inspect a base without touching it (shared-context growth/rebuild
+   * decisions): its log seq (batches at or below are already in the base),
+   * last-use time (cache-expiry tracking, PRD §9.4), and liveness.
+   */
+  baseInfo(key: BaseKey | string): { logSeq: number; lastUsedAt: number; live: boolean } | null {
+    const keyString = typeof key === "string" ? key : baseKeyString(key);
+    const record = this.bases.get(keyString);
+    if (!record) return null;
+    return { logSeq: record.logSeq, lastUsedAt: record.lastUsedAt, live: record.live };
+  }
+
+  /** Every known base key (observability sweeps). */
+  baseKeys(): string[] {
+    return [...this.bases.keys()];
+  }
+
   // -- conversations ----------------------------------------------------
 
   /**

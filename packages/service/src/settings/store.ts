@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   inlineBudgetTokens: 40_000,
   rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10_000,
+  logBatchTokens: 2_000,
   cacheLifetimeMs: 5 * 60 * 1000,
   idleExitMinutes: 10,
 };
@@ -46,6 +47,7 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   int("sessionsPerProvider", 1, 32);
   int("inlineBudgetTokens", 1, 10_000_000);
   int("rebuildAppendedTokens", 1, 10_000_000);
+  int("logBatchTokens", 1, 10_000_000);
   int("cacheLifetimeMs", 1000, 24 * 60 * 60 * 1000);
   int("idleExitMinutes", 0, 24 * 60);
   const ratio = patch["rebuildSupersededRatio"];
