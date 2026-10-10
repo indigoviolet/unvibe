@@ -2,6 +2,7 @@
 /** `unvibe` entry: resolve config, ensure data dir + token, serve. */
 import { loadOrCreateToken } from "./auth.js";
 import { loadConfig } from "./config.js";
+import { RealCommandRunner } from "./exec/index.js";
 import { resolvePathFromLoginShell } from "./exec/index.js";
 import { createApp, listen } from "./server.js";
 import { dbFilePath } from "./store/index.js";
@@ -22,7 +23,11 @@ async function main(): Promise<void> {
   const db = openDatabase(dbFilePath(config.dataDir));
   migrate(db);
 
-  const { app } = await createApp(token);
+  const { app } = await createApp(token, {
+    db,
+    dataDir: config.dataDir,
+    runner: new RealCommandRunner(),
+  });
   const url = await listen(app, config);
   console.log(`Unvibe listening on ${url}/?token=${token}`);
 }

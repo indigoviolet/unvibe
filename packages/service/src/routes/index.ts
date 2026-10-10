@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { EventBus } from "../events.js";
+import type { ServiceContext } from "./context.js";
 import { registerComments } from "./comments.js";
 import { registerDescription } from "./description.js";
 import { registerEvents } from "./events.js";
@@ -11,16 +11,20 @@ import { registerReviews } from "./reviews.js";
 import { registerSettings } from "./settings.js";
 import { registerSubmit } from "./submit.js";
 
-/** One route module per area; each registers its PRD §14.1 endpoints. */
-export async function registerRoutes(app: FastifyInstance, bus: EventBus): Promise<void> {
-  await registerRepos(app);
-  await registerReviews(app);
-  await registerHunks(app);
+/**
+ * One route module per area; each registers its PRD §14.1 endpoints.
+ * M1 service modules (repos, reviews, hunks) take the service context;
+ * later milestones take it up the same way.
+ */
+export async function registerRoutes(app: FastifyInstance, ctx: ServiceContext): Promise<void> {
+  await registerRepos(app, ctx);
+  await registerReviews(app, ctx);
+  await registerHunks(app, ctx);
   await registerComments(app);
   await registerDescription(app);
   await registerSubmit(app);
   await registerSettings(app);
   await registerPrompts(app);
   await registerJobs(app);
-  await registerEvents(app, bus);
+  await registerEvents(app, ctx.bus);
 }
