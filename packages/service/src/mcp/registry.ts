@@ -1,0 +1,328 @@
+/**
+ * MCP registry: one shared HTTP mount, per-session secrets, fixed tool set.
+ *
+ * Design (PRD §10, §11.2):
+ * - The service mounts a single streamable-HTTP endpoint
+ *   `POST|GET|DELETE /api/mcp/:secret`. Each agent session is issued its
+ *   own unguessable secret (`issueSession`); the secret identifies the
+ *   (review, session, role) for attribution.
+ * - One SDK `Server` per issued session, all built from the same frozen
+ *   tool definitions. `ListTools` omits `pin_context` for non-readers,
+ *   and a direct `pin_context` call from a non-reader is refused — so one
+ *   server gives the reader session an extra tool while everyone else
+ *   sees an identical surface.
+ * - Protection: 127.0.0.1-only binding plus the per-session secret in
+ *   the URL (256-bit, revocable). The `/api/mcp/*` path is exempt from
+ *   the install-token gate for exactly this reason: agent subprocesses
+ *   present the secret, not the token. Documented in `routes.ts`.
+ */
+import { randomBytes } from "node:crypto";
+import path from "node:path";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  type CallToolResult,
+} from "@modelcontextprotocol/sdk/types.js";
+import { parseId } from "@unvibe/shared";
+import type { CommandRunner } from "../exec/runner.js";
+import type { McpReviewData, PinRecord, ReviewReader } from "./read.js";
+import { READER_TOOL, toolsForRole } from "./tools.js";
+
+export const MCP_SERVICE_NAME = "unvibe";
+export const MCP_SERVICE_VERSION = "0.0.1";
+
+export type McpRole = "reader" | "session";
+
+export interface IssuedSession {
+  secret: string;
+  /** Path the agent calls, e.g. `/api/mcp/<secret>`. */
+  path: string;
+  reviewId: string;
+  sessionId: string;
+  role: McpRole;
+}
+
+export interface McpRegistryOptions {
+  reader: ReviewReader;
+  commands: CommandRunner;
+  now?: () => number;
+  onPin?: (pin: PinRecord) => void;
+}
+
+interface SessionState extends IssuedSession {
+  server: Server;
+  transport: StreamableHTTPServerTransport;
+}
+
+function textResult(text: string): CallToolResult {
+  return { content: [{ type: "text", text }] };
+}
+
+function errorResult(text: string): CallToolResult {
+  return { content: [{ type: "text", text: `error: ${text}` }], isError: true };
+}
+
+export class McpRegistry {
+  private readonly sessions = new Map<string, SessionState>();
+  private readonly pins: PinRecord[] = [];
+
+  constructor(private readonly opts: McpRegistryOptions) {}
+
+  /** Issue a per-session secret + dedicated tool surface. */
+  issueSession(reviewId: string, sessionId: string, role: McpRole): IssuedSession {
+    const secret = randomBytes(32).toString("hex");
+    const server = new Server(
+      { name: MCP_SERVICE_NAME, version: MCP_SERVICE_VERSION },
+      { capabilities: { tools: {} } },
+    );
+    const state: SessionState = {
+      secret,
+      path: `/api/mcp/${secret}`,
+      reviewId,
+      sessionId,
+      role,
+      server,
+      transport: new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }),
+    };
+    server.setRequestHandler(ListToolsRequestSchema, () => ({
+      tools: toolsForRole(role),
+    }));
+    server.setRequestHandler(CallToolRequestSchema, async (req) => {
+      const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+      try {
+        return await this.dispatch(state, req.params.name, args);
+      } catch (err) {
+        return errorResult(err instanceof Error ? err.message : String(err));
+      }
+    });
+    this.sessions.set(secret, state);
+    const { server: _s, transport: _t, ...issued } = state;
+    return issued;
+  }
+
+  revokeSession(secret: string): void {
+    const state = this.sessions.get(secret);
+    if (!state) return;
+    this.sessions.delete(secret);
+    void state.transport.close().catch(() => {});
+  }
+
+  hasSession(secret: string): boolean {
+    return this.sessions.has(secret);
+  }
+
+  /** Pins recorded via `pin_context` (supervisor persists via `onPin`). */
+  listPins(reviewId?: string): PinRecord[] {
+    return reviewId ? this.pins.filter((p) => p.reviewId === reviewId) : [...this.pins];
+  }
+
+  /**
+   * Handle one HTTP call for a secret. `req`/`res` are the raw Node
+   * objects; `body` is the already-parsed JSON body (if any).
+   */
+  async handleRequest(
+    secret: string,
+    req: import("node:http").IncomingMessage,
+    res: import("node:http").ServerResponse,
+    body: unknown,
+  ): Promise<void> {
+    const state = this.sessions.get(secret);
+    if (!state) {
+      res.statusCode = 404;
+      res.end("unknown mcp session");
+      return;
+    }
+    await state.server.connect(state.transport);
+    await state.transport.handleRequest(req, res, body);
+  }
+
+  // -- dispatch ---------------------------------------------------------
+
+  private async dispatch(
+    state: SessionState,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<CallToolResult> {
+    switch (name) {
+      case "get_hunk":
+        return textResult(await this.getHunk(state, String(args["id"] ?? "")));
+      case "get_code":
+        return textResult(
+          await this.getCode(
+            state,
+            String(args["path"] ?? ""),
+            String(args["lines"] ?? ""),
+            args["sha"] === undefined ? undefined : String(args["sha"]),
+          ),
+        );
+      case "search_review":
+        return textResult(await this.searchReview(state, String(args["query"] ?? "")));
+      case "resolve":
+        return textResult(await this.resolve(state, String(args["description"] ?? "")));
+      case READER_TOOL.name:
+        if (state.role !== "reader") {
+          return errorResult("pin_context is only available to the reader session");
+        }
+        return textResult(
+          this.pinContext(
+            state,
+            String(args["path"] ?? ""),
+            String(args["lines"] ?? ""),
+            String(args["why"] ?? ""),
+          ),
+        );
+      default:
+        return errorResult(`unknown tool: ${name}`);
+    }
+  }
+
+  private async loadReview(state: SessionState): Promise<McpReviewData> {
+    const review = await this.opts.reader.getReview(state.reviewId);
+    if (!review) throw new Error(`unknown review: ${state.reviewId}`);
+    return review;
+  }
+
+  // -- tools --------------------------------------------------------------
+
+  private async getHunk(state: SessionState, id: string): Promise<string> {
+    const parsed = parseId(id);
+    if (parsed?.kind !== "h") throw new Error(`invalid hunk id: ${id}`);
+    const review = await this.loadReview(state);
+    const hunk = review.hunks.find(
+      (h) => h.fileKey === parsed.fileKey && h.contentHash === parsed.contentHash,
+    );
+    if (!hunk) throw new Error(`unknown hunk: ${id}`);
+    const lines = hunk.text.split("\n");
+    const numbered = lines.map((line, i) => `${hunk.newStart + i}: ${line}`);
+    return [`h:${hunk.fileKey}:${hunk.contentHash}`, `file: ${hunk.path}`, hunk.header, ...numbered].join(
+      "\n",
+    );
+  }
+
+  /**
+   * Refuse anything that isn't a repo-relative path inside the worktree:
+   * absolute paths, `..` escapes (including encoded ones, which never
+   * reach us decoded — we check the literal text too), and empty paths.
+   */
+  static checkPathInRepo(worktree: string, relPath: string): string {
+    if (!relPath || path.isAbsolute(relPath)) throw new Error(`path escapes repository: ${relPath}`);
+    if (relPath.split(/[\\/]/).includes("..")) throw new Error(`path escapes repository: ${relPath}`);
+    const abs = path.resolve(worktree, relPath);
+    const rel = path.relative(worktree, abs);
+    if (!rel || rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+      throw new Error(`path escapes repository: ${relPath}`);
+    }
+    return abs;
+  }
+
+  private parseLines(lines: string): { start: number; end: number } {
+    const m = lines.match(/^(\d+)(?:-(\d+))?$/);
+    if (!m) throw new Error(`invalid lines range: ${lines}`);
+    const start = Number(m[1]);
+    const end = m[2] === undefined ? start : Number(m[2]);
+    if (end < start) throw new Error(`invalid lines range: ${lines}`);
+    return { start, end };
+  }
+
+  private async getCode(state: SessionState, relPath: string, lines: string, sha?: string): Promise<string> {
+    const review = await this.loadReview(state);
+    const worktree = await this.opts.reader.getWorktreePath(state.reviewId);
+    if (!worktree) throw new Error(`no worktree for review: ${state.reviewId}`);
+    McpRegistry.checkPathInRepo(worktree, relPath);
+    const { start, end } = this.parseLines(lines);
+    const rev = sha ?? review.headSha;
+    const res = await this.opts.commands.run("git", {
+      args: ["show", `${rev}:${relPath}`],
+      cwd: worktree,
+    });
+    if (res.code !== 0) throw new Error(`git show failed: ${res.stderr.trim() || res.stdout.trim()}`);
+    const all = res.stdout.split("\n");
+    if (end > all.length) throw new Error(`lines ${lines} outside file (${all.length} lines)`);
+    const slice = all.slice(start - 1, end);
+    const id = `code:${relPath}:${start === end ? `${start}` : `${start}-${end}`}@${rev}`;
+    return [id, ...slice.map((line, i) => `${start + i}: ${line}`)].join("\n");
+  }
+
+  private async searchReview(state: SessionState, query: string): Promise<string> {
+    const review = await this.loadReview(state);
+    const q = query.toLowerCase();
+    if (!q) return "no matches";
+    const hits: string[] = [];
+    const push = (id: string, kind: string, text: string): void => {
+      if (hits.length >= 10) return;
+      const i = text.toLowerCase().indexOf(q);
+      const snippet =
+        i < 0 ? text.slice(0, 120) : text.slice(Math.max(0, i - 40), i + 80).replace(/\s+/g, " ");
+      hits.push(`${kind} ${id}: ${snippet}`);
+    };
+    for (const c of review.cards) {
+      if ((c.title ?? "").toLowerCase().includes(q) || c.text.toLowerCase().includes(q)) {
+        push(`card:${c.id}`, "card", `${c.title ?? ""} ${c.text}`);
+      }
+    }
+    for (const a of review.annotations) {
+      if (a.anchorSummary.toLowerCase().includes(q) || a.text.toLowerCase().includes(q)) {
+        push(`ann:${a.id}`, "annotation", `${a.anchorSummary} ${a.text}`);
+      }
+    }
+    for (const c of review.contributions) {
+      if (c.text.toLowerCase().includes(q)) push(c.id, "contribution", c.text);
+    }
+    for (const d of review.description) {
+      if (d.text.toLowerCase().includes(q)) push(`desc:${d.id}`, "description", d.text);
+    }
+    return hits.length > 0 ? hits.join("\n") : "no matches";
+  }
+
+  private async resolve(state: SessionState, description: string): Promise<string> {
+    const review = await this.loadReview(state);
+    const out: string[] = [];
+    // file paths with optional :line[-line]
+    for (const m of description.matchAll(/([\w./-]+\.\w+)(?::(\d+)(?:-(\d+))?)?/g)) {
+      const file = m[1];
+      const hunks = review.hunks.filter((h) => h.path.endsWith(file) || h.path === file);
+      for (const h of hunks.slice(0, 3)) {
+        out.push(`h:${h.fileKey}:${h.contentHash} (hunk in ${h.path}${m[2] ? ` near line ${m[2]}` : ""})`);
+      }
+      if (hunks.length === 0) {
+        const cards = review.cards.filter((c) => c.text.includes(file)).slice(0, 2);
+        for (const c of cards) out.push(`card:${c.id} (mentions ${file})`);
+      }
+    }
+    // quoted code → cards/annotations containing it
+    for (const m of description.matchAll(/"([^"]{4,})"|`([^`]{4,})`/g)) {
+      const quote = (m[1] ?? m[2] ?? "").trim();
+      if (!quote) continue;
+      for (const c of review.cards) {
+        if (c.text.includes(quote)) out.push(`card:${c.id} (quotes matched text)`);
+        if (out.length >= 10) break;
+      }
+    }
+    // bare card titles / slugs
+    const lower = description.toLowerCase();
+    for (const c of review.cards) {
+      if (c.title && lower.includes(c.title.toLowerCase())) out.push(`card:${c.id} (title match)`);
+      if (out.length >= 10) break;
+    }
+    return out.length > 0 ? [...new Set(out)].slice(0, 10).join("\n") : "no candidates";
+  }
+
+  private pinContext(state: SessionState, relPath: string, lines: string, why: string): string {
+    if (!relPath) throw new Error("path is required");
+    if (!why) throw new Error("why is required");
+    this.parseLines(lines);
+    const pin: PinRecord = {
+      reviewId: state.reviewId,
+      sessionId: state.sessionId,
+      path: relPath,
+      lines,
+      why,
+      pinnedAt: (this.opts.now ?? Date.now)(),
+    };
+    this.pins.push(pin);
+    this.opts.onPin?.(pin);
+    return `pinned code:${relPath}:${lines} (${why})`;
+  }
+}
