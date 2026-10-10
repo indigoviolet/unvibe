@@ -120,6 +120,11 @@ export interface UpdateHunkRequest {
   folded?: boolean;
   reviewed?: boolean;
   note?: string;
+  /**
+   * Set/replace the agent summary, or delete it with `null`.
+   * Added for M1-web (hunk cards carry Delete for the summary).
+   */
+  summary?: string | null;
 }
 
 export interface SummarizeHunkResponse {

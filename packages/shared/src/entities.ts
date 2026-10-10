@@ -54,6 +54,17 @@ export interface ReviewFile {
   hunks: Hunk[];
 }
 
+/** One rendered diff line inside a hunk. */
+export interface HunkLine {
+  kind: "add" | "del" | "ctx";
+  /** Old-side line number (absent for additions). */
+  oldLine?: number;
+  /** New-side line number (absent for deletions). */
+  newLine?: number;
+  /** Line content without the leading `+`/`-`/space marker. */
+  text: string;
+}
+
 /** One hunk: git's own run of changed lines + ≤3 context lines (PRD §4.13). */
 export interface Hunk {
   /** Stable content hash: ignores line numbers and whitespace (PRD §8). */
@@ -70,6 +81,12 @@ export interface Hunk {
   removed: number;
   /** Why "Hide uninteresting" hid this hunk, if it did. */
   hiddenReason?: string;
+  /**
+   * Rendered lines of the hunk, in order (added after Service M1 ingest;
+   * optional so older snapshots still typecheck — the web diff pane
+   * renders the header only when lines are absent).
+   */
+  lines?: HunkLine[];
 }
 
 /** Per-hunk UI + agent state, keyed by content hash so it survives versions. */
