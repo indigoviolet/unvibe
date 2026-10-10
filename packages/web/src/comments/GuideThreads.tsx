@@ -18,7 +18,7 @@
  */
 import { useEffect, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { onOpenBlockThread } from "../guide/annotations.js";
@@ -70,7 +70,7 @@ export function GuideThreadHooks() {
           return;
         }
         api.updateComment(reviewId, threadId, { open: true }).catch((err: unknown) => {
-          toast(`Couldn't open the comment: ${err instanceof Error ? err.message : String(err)}`);
+          toast(`Couldn't open the comment: ${friendlyError(err)}`);
         });
         window.setTimeout(() => {
           document.getElementById(threadId)?.scrollIntoView({ block: "nearest" });

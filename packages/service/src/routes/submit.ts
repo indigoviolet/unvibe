@@ -59,6 +59,8 @@ export async function registerSubmit(app: FastifyInstance, ctx?: ServiceContext)
     const { id } = req.params as { id: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
+    // Demo reviews have no git source: no GitHub comments exist.
+    if (snapshot.review.repoId === "demo") return { comments: [] };
     const row = readReviewRow(ctx.db, id);
     const prNumber = row?.prNumber ?? snapshot.review.prNumber;
     if (prNumber === null || prNumber === undefined) {

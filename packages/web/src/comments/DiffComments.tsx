@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { slotKey, type LineSlots } from "../source/diff/lineSlots.js";
 import { useReview } from "../state/store.js";
@@ -83,7 +83,7 @@ export function useDiffCommentBindings(reviewId: string): {
         if (closed.length > 0) {
           for (const thread of closed) {
             api.updateComment(review, thread.id, { open: true }).catch((err: unknown) => {
-              toast(`Couldn't open the comment: ${err instanceof Error ? err.message : String(err)}`);
+              toast(`Couldn't open the comment: ${friendlyError(err)}`);
             });
           }
         }

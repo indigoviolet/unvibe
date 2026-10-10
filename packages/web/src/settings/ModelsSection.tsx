@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ModelPick, ReadinessCheck, Settings } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 
 type Role = "main" | "small" | "secondOpinion";
 
@@ -112,7 +112,7 @@ function ModelPicker({
         if (!cancelled) setModels(r.models);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(modelsError(err));
+        if (!cancelled) setError(friendlyError(err));
       });
     return () => {
       cancelled = true;
@@ -132,7 +132,7 @@ function ModelPicker({
     try {
       onSaved(await api.saveSettings({ [role]: next }));
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(friendlyError(err));
     } finally {
       setSaving(false);
     }
@@ -224,18 +224,4 @@ function ModelPicker({
       </div>
     </div>
   );
-}
-
-function modelsError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  const body = msg.match(/\{.*\}$/)?.[0];
-  if (body) {
-    try {
-      const parsed = JSON.parse(body) as { error?: string };
-      if (parsed.error) return parsed.error;
-    } catch {
-      // Fall through to the raw message.
-    }
-  }
-  return msg;
 }

@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import type { PromptExpanded, PromptTemplate, PromptsResponse } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { formatTokens, splitLayers } from "../versions/versionUtils.js";
 
 export function PromptsSection({ reviewId }: { reviewId: string | null }): React.JSX.Element {
@@ -25,7 +25,7 @@ export function PromptsSection({ reviewId }: { reviewId: string | null }): React
         if (!cancelled) setData(r);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(friendlyError(err));
       });
     return () => {
       cancelled = true;

@@ -20,7 +20,7 @@ import type {
   RepoChange,
   ReviewSummary,
 } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 
 const REPO_KEY = "unvibe.start.repoId";
@@ -42,18 +42,57 @@ function timeAgo(ts: number): string {
   }
 }
 
+/** Plain-words guide state for a prior review row (no job-kind jargon). */
 function guideLabel(s: ReviewSummary): string {
   switch (s.guideStatus) {
     case "ready":
       return "Guide ready";
     case "running":
-      return s.guideDetail ?? "Guide running";
+      return runningLabel(s.guideDetail);
     case "error":
-      return s.guideDetail ? `Guide error · ${s.guideDetail}` : "Guide error";
+      return "Guide didn't finish";
     case "disabled":
-      return "Guide disabled";
+      return "Guide off";
     default:
       return "Guide not started";
+  }
+}
+
+/** Map the service's "Running: <job kinds>" detail to one short line. */
+function runningLabel(detail: string | undefined): string {
+  const kinds = (detail ?? "").replace(/^Running:\s*/i, "").split(",").map((k) => k.trim().toLowerCase());
+  const first = kinds.find((k) => k !== "");
+  switch (first) {
+    case "reader":
+      return "Reading the change…";
+    case "base":
+      return "Preparing shared context…";
+    case "critic":
+      return "Checking findings…";
+    case "concept":
+      return "Writing concepts…";
+    case "hunk-pass":
+      return "Summarizing code…";
+    case "go-deeper":
+      return "Filling deeper cards…";
+    case "explain":
+      return "Writing an explanation…";
+    case "ask":
+      return "Answering a question…";
+    case "depth":
+      return "Rewriting depth…";
+    case "examples":
+      return "Adding examples…";
+    case "diagram":
+      return "Drawing a diagram…";
+    case "second-opinion":
+      return "Getting a second opinion…";
+    case "update-pass":
+      return "Updating for new commits…";
+    case "summarize":
+      return "Summarizing…";
+    default:
+      return "Working…";
   }
 }
 
@@ -131,7 +170,7 @@ export function StartPage(): React.JSX.Element {
       setSessions(r.reviews);
       setSessionsError(null);
     } catch {
-      setSessionsError("Couldn't load prior sessions.");
+      setSessionsError("Couldn't load previous reviews.");
     }
   }, []);
 
@@ -214,8 +253,8 @@ export function StartPage(): React.JSX.Element {
         const snap = await api.createReview(body);
         await loadSessions();
         navigate(`/review/${snap.review.id}`);
-      } catch {
-        toast("Couldn't open review");
+      } catch (err) {
+        toast(`Couldn't open the review: ${friendlyError(err)}`);
       } finally {
         setOpening(null);
       }
@@ -232,8 +271,8 @@ export function StartPage(): React.JSX.Element {
       const added = r.repos.find((x) => x.localPath === trimmed) ?? r.repos[0];
       if (added) setSelectedId(added.id);
       setPath("");
-    } catch {
-      toast("Couldn't add repo");
+    } catch (err) {
+      toast(`Couldn't add that repo: ${friendlyError(err)}`);
     }
   }, [path]);
 
@@ -244,8 +283,8 @@ export function StartPage(): React.JSX.Element {
         await api.deleteReview(id);
         setSessions((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
         setConfirmDelete(null);
-      } catch {
-        toast("Couldn't remove review");
+      } catch (err) {
+        toast(`Couldn't remove the review: ${friendlyError(err)}`);
       } finally {
         setDeleting(null);
       }
@@ -258,8 +297,8 @@ export function StartPage(): React.JSX.Element {
     try {
       const r = await api.readiness(true);
       setReadiness(r.checks);
-    } catch {
-      toast("Couldn't re-check");
+    } catch (err) {
+      toast(`Couldn't re-check: ${friendlyError(err)}`);
     } finally {
       setChecking(false);
     }
@@ -338,11 +377,11 @@ export function StartPage(): React.JSX.Element {
             </div>
           ) : null}
 
-          {/* Prior sessions first. */}
+          {/* Prior reviews first. */}
           <div className="eyebrow">Unvibe</div>
           <h1 className="title">Reviews</h1>
           {sessions === null && !sessionsError ? (
-            <p className="hint">Loading prior sessions…</p>
+            <p className="hint">Loading previous reviews…</p>
           ) : sessionsError ? (
             <p className="hint" role="alert">
               {sessionsError}
@@ -361,7 +400,7 @@ export function StartPage(): React.JSX.Element {
               </button>
             </div>
           ) : (
-            <div aria-label="Prior sessions" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div aria-label="Prior reviews" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {sessions!.map((s) => (
                 <div key={s.id} className="ci" data-testid={`session-${s.id}`}>
                   <button

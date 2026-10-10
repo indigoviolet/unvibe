@@ -10,7 +10,7 @@
  * toasts that generation needs the service.
  */
 import type { ActionResponse, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 
@@ -121,7 +121,7 @@ export async function performAction(
     if (/no agent configured/i.test(msg)) {
       toast("No agent configured — set up Claude or Codex in Settings → Models to generate.");
     } else {
-      toast(`Action failed: ${msg}`);
+      toast(`Action failed: ${friendlyError(err)}`);
     }
     await resync(reviewId);
     throw err;
@@ -185,6 +185,6 @@ export function performFollowUp(
 /** Stale-card Update button (PRD §8): runs the service update pass. */
 export function performUpdate(reviewId: string): void {
   api.update(reviewId).catch((err: unknown) => {
-    toast(`Update failed: ${err instanceof Error ? err.message : String(err)}`);
+    toast(`Update failed: ${friendlyError(err)}`);
   });
 }

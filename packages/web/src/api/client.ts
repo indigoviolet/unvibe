@@ -69,6 +69,41 @@ export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+/**
+ * Plain-words error detail for toasts: what happened and what to do, never
+ * a method/path/status-code transport prefix and never raw JSON. Callers
+ * already say what they were doing ("Couldn't save the draft: …").
+ */
+export function friendlyError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/failed to fetch|networkerror|load failed|offline/i.test(raw)) {
+    return "you're offline — try again when connected";
+  }
+  const m = raw.match(/^[A-Z]+ \/\S+: (\d{3})?\s?([\s\S]*)$/);
+  const body = (m?.[2] ?? raw).trim();
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    if (typeof parsed.error === "string" && parsed.error.trim() !== "") {
+      return parsed.error.trim().slice(0, 220);
+    }
+  } catch {
+    // Not JSON: fall through to status-mapped copy.
+  }
+  switch (m?.[1]) {
+    case "401":
+      return "the service refused the token — reload the page";
+    case "404":
+      return "not found — it may have been removed";
+    case "409":
+      return body.slice(0, 220) || "conflicting change — refresh and try again";
+    case "500":
+    case "502":
+      return "the service couldn't reach the repo or the agent — try again";
+    default:
+      return body.slice(0, 220) || "something went wrong — try again";
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
   // Only claim JSON when there is a body: Fastify 400s a bodyless POST

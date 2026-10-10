@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { Job, VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { formatCacheRate, formatTokens, versionCountsText } from "./versionUtils.js";
 
 export interface BannerCounts {
@@ -142,7 +142,7 @@ export function VersionBanner({
 
 function updateError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (/501/.test(msg)) return "Update pass not available yet (service returns 501)";
+  if (/501/.test(msg)) return "Update isn't available in this build yet.";
   if (/409/.test(msg)) return "Already up to date";
-  return `Couldn't start the update: ${msg}`;
+  return `Couldn't start the update: ${friendlyError(err)}`;
 }

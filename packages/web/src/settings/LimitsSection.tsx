@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 import type { Settings } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 
 interface Field {
   key: keyof Settings;
@@ -124,5 +124,5 @@ export function putErrors(err: unknown): string[] {
       // Fall through.
     }
   }
-  return [msg];
+  return [friendlyError(err)];
 }

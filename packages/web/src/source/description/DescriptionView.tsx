@@ -26,7 +26,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Annotation } from "@unvibe/shared";
-import { api } from "../../api/client.js";
+import { api, friendlyError } from "../../api/client.js";
 import { markTextInElement } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../../comments/readOnly.js";
@@ -151,13 +151,13 @@ export function DescriptionView({ reviewId, editor }: Props) {
       .updateDescription(reviewId, { html: cleaned })
       .then(() => setEditing(false))
       .catch((err: unknown) => {
-        toast(`Saving the description failed: ${err instanceof Error ? err.message : String(err)}`);
+        toast(`Saving the description failed: ${friendlyError(err)}`);
       });
   };
 
   const revertEdits = (): void => {
     api.revertDescription(reviewId).catch((err: unknown) => {
-      toast(`Couldn't revert the description: ${err instanceof Error ? err.message : String(err)}`);
+      toast(`Couldn't revert the description: ${friendlyError(err)}`);
     });
   };
 
@@ -222,7 +222,7 @@ export function DescriptionView({ reviewId, editor }: Props) {
                     .updateDescription(reviewId, { html: next })
                     .then(() => setEditing(false))
                     .catch((err: unknown) => {
-                      toast(`Saving the description failed: ${err instanceof Error ? err.message : String(err)}`);
+                      toast(`Saving the description failed: ${friendlyError(err)}`);
                     });
                 },
                 onDiscard: () => setEditing(false),
@@ -334,7 +334,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
       return;
     }
     api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
-      toast(`Couldn't open the comment: ${err instanceof Error ? err.message : String(err)}`);
+      toast(`Couldn't open the comment: ${friendlyError(err)}`);
     });
   };
 

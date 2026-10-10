@@ -8,7 +8,7 @@
  */
 import { useMemo } from "react";
 import type { Page } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
@@ -133,7 +133,7 @@ export function openLinkTarget(
         if (/no agent configured/i.test(msg)) {
           toast("No agent configured — set up Claude or Codex in Settings → Models to write concept pages.");
         } else {
-          toast(`Couldn't open the concept: ${msg}`);
+          toast(`Couldn't open the concept: ${friendlyError(err)}`);
         }
       });
     // Optimistic navigation so the working state shows immediately.
