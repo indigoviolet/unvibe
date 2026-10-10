@@ -17,7 +17,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "./network-guard.js";
+import type { Page } from "@playwright/test";
 import { fileKeyForPath } from "@unvibe/shared";
 
 const exec = promisify(execFile);

@@ -14,7 +14,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "./network-guard.js";
+import type { Page } from "@playwright/test";
 import { fileKeyForPath } from "@unvibe/shared";
 
 const exec = promisify(execFile);
@@ -151,13 +152,13 @@ test.describe("real service", () => {
   async function openFeatureReview(page: Page): Promise<{ reviewId: string; hash: string }> {
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/?token=${svc.token}`);
-    await expect(page.getByText("Open a review")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     // Add this repo through the start page (PRD §4.2).
     await page.getByLabel("Add a repo by path").fill(repoDir);
     await page.getByRole("button", { name: "Add by path" }).click();
     await expect(page.getByText(`local/${path.basename(repoDir)}`).first()).toBeVisible();
     // Open a review of the scratch branch.
-    await page.locator(".ci button").filter({ hasText: "feature" }).first().click();
+    await page.locator("#new-review .ci button").filter({ hasText: "feature" }).first().click();
     await page.waitForURL(/\/review\/rv_[0-9a-f]+/, { timeout: 60_000 });
     const reviewId = page.url().match(/\/review\/([^/?#]+)/)?.[1] ?? "";
     expect(reviewId).toMatch(/^rv_[0-9a-f]+$/);

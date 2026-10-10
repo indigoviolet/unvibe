@@ -5,7 +5,7 @@
  * jobs with prompt links + cancel, shared-context delete, Tips popover,
  * and the stale-review banner with range-diff + version switching.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/settings?review=demo");

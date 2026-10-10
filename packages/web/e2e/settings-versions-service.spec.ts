@@ -15,7 +15,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "./network-guard.js";
+import type { Page } from "@playwright/test";
 import { fileKeyForPath } from "@unvibe/shared";
 
 const exec = promisify(execFile);
@@ -160,11 +161,11 @@ test.describe("settings + versions on the real service", () => {
   async function openFeatureReview(page: Page): Promise<string> {
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/?token=${svc.token}`);
-    await expect(page.getByText("Open a review")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     await page.getByLabel("Add a repo by path").fill(repoDir);
     await page.getByRole("button", { name: "Add by path" }).click();
     await expect(page.getByText(`local/${path.basename(repoDir)}`).first()).toBeVisible();
-    await page.locator(".ci button").filter({ hasText: "feature" }).first().click();
+    await page.locator("#new-review .ci button").filter({ hasText: "feature" }).first().click();
     await page.waitForURL(/\/review\/rv_[0-9a-f]+/, { timeout: 60_000 });
     const id = page.url().match(/\/review\/([^/?#]+)/)?.[1] ?? "";
     expect(id).toMatch(/^rv_[0-9a-f]+$/);

@@ -7,7 +7,8 @@
  * File keys are service-canonical path slugs, so element ids contain dots:
  * select them with `[id="…"]`.
  */
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test } from "./network-guard.js";
+import type { Locator, Page } from "@playwright/test";
 
 const CONN = "src-urllib3-connection.py";
 
