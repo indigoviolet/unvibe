@@ -138,6 +138,8 @@ async function main(): Promise<void> {
     log(`results written to ${out}`);
   };
 
+  const adapterStderr: string[] = [];
+
   try {
     await client.run(
       process.execPath,
@@ -237,6 +239,26 @@ async function main(): Promise<void> {
         };
 
         // ---- checks 3+4: fork twice, ask concurrently ----
+        // NOTE (claude-agent-acp 0.89.0): session/fork returns a new id but the
+        // adapter does not register a live session for it — prompting the fork
+        // fails with "Session not found" until session/resume (or load) is
+        // called on the forked id. attachFork() applies that workaround and
+        // records whether it was needed.
+        let resumeNeeded = false;
+        const attachFork = async (forkId: string): Promise<string> => {
+          try {
+            await client.prompt(ctx, forkId, "Reply with exactly the word FORKED and nothing else.", { timeoutMs: 300_000 });
+            return "direct-prompt-ok";
+          } catch (e) {
+            const msg = String(e).slice(0, 200);
+            if (/session not found/i.test(msg)) {
+              await ctx.request("session/resume", { sessionId: forkId, cwd, mcpServers });
+              resumeNeeded = true;
+              return "needed-resume";
+            }
+            throw e;
+          }
+        };
         const fork1 = await ctx.request("session/fork", { sessionId: baseId, cwd });
         const fork2 = await ctx.request("session/fork", { sessionId: baseId, cwd });
         const fork1Id = fork1.sessionId as string;
@@ -244,25 +266,32 @@ async function main(): Promise<void> {
         const forkedFresh = fork1Id !== baseId && fork2Id !== baseId && fork1Id !== fork2Id;
         check("3-fork", forkedFresh, `base=${baseId} fork1=${fork1Id} fork2=${fork2Id}`);
         (summary as any).forks = { fork1Id, fork2Id };
+        const [attach1, attach2] = await Promise.all([attachFork(fork1Id), attachFork(fork2Id)]);
+        log(`fork attach: fork1=${attach1} fork2=${attach2}`);
+        (summary as any).forks.attach = { fork1: attach1, fork2: attach2 };
 
         const [f0, f3] = [pack.facts[0], pack.facts[3]];
         const q1 = `Using ONLY the change pack in our conversation, answer this question in one short sentence, with no tools: ${f0.question} The fact id is ${f0.id}.`;
         const q2 = `Using ONLY the change pack in our conversation, answer this question in one short sentence, with no tools: ${f3.question} The fact id is ${f3.id}.`;
-        const [r1, r2] = await Promise.all([
-          client.prompt(ctx, fork1Id, q1, { timeoutMs: 900_000 }),
-          client.prompt(ctx, fork2Id, q2, { timeoutMs: 900_000 }),
-        ]);
-        const a1ok = r1.text.includes(f0.answerMustContain);
-        const a2ok = r2.text.includes(f3.answerMustContain);
-        check("4-fork-answers", a1ok && a2ok, `fork1 reply=${JSON.stringify(r1.text.slice(0, 200))} (need ${f0.answerMustContain}); fork2 reply=${JSON.stringify(r2.text.slice(0, 200))} (need ${f3.answerMustContain})`);
-        const u1 = usageLine("fork1", r1.response, r1.usageUpdates);
-        const u2 = usageLine("fork2", r2.response, r2.usageUpdates);
-        log(u1);
-        log(u2);
-        (summary as any).forkTurns = {
-          fork1: { reply: r1.text.slice(0, 500), usage: r1.response.usage, meta: r1.response._meta, usageUpdates: r1.usageUpdates, usageLine: u1 },
-          fork2: { reply: r2.text.slice(0, 500), usage: r2.response.usage, meta: r2.response._meta, usageUpdates: r2.usageUpdates, usageLine: u2 },
-        };
+        try {
+          const [r1, r2] = await Promise.all([
+            client.prompt(ctx, fork1Id, q1, { timeoutMs: 900_000 }),
+            client.prompt(ctx, fork2Id, q2, { timeoutMs: 900_000 }),
+          ]);
+          const a1ok = r1.text.includes(f0.answerMustContain);
+          const a2ok = r2.text.includes(f3.answerMustContain);
+          check("4-fork-answers", a1ok && a2ok, `fork1 reply=${JSON.stringify(r1.text.slice(0, 200))} (need ${f0.answerMustContain}); fork2 reply=${JSON.stringify(r2.text.slice(0, 200))} (need ${f3.answerMustContain})`);
+          const u1 = usageLine("fork1", r1.response, r1.usageUpdates);
+          const u2 = usageLine("fork2", r2.response, r2.usageUpdates);
+          log(u1);
+          log(u2);
+          (summary as any).forkTurns = {
+            fork1: { reply: r1.text.slice(0, 500), usage: r1.response.usage, meta: r1.response._meta, usageUpdates: r1.usageUpdates, usageLine: u1 },
+            fork2: { reply: r2.text.slice(0, 500), usage: r2.response.usage, meta: r2.response._meta, usageUpdates: r2.usageUpdates, usageLine: u2 },
+          };
+        } catch (e) {
+          check("4-fork-answers", false, `prompt on fork threw: ${String(e).slice(0, 500)}`);
+        }
 
         // ---- check 6: structured output reliability (10 replies on fork1) ----
         const schemaHint =
@@ -284,7 +313,13 @@ async function main(): Promise<void> {
         ];
         const structUsages: unknown[] = [];
         for (let i = 0; i < jsonQuestions.length; i++) {
-          const t = await client.prompt(ctx, fork1Id, `Using ONLY the change pack, no tools. ${jsonQuestions[i]}`, { timeoutMs: 900_000 });
+          let t;
+          try {
+            t = await client.prompt(ctx, fork1Id, `Using ONLY the change pack, no tools. ${jsonQuestions[i]}`, { timeoutMs: 900_000 });
+          } catch (e) {
+            failures.push(`turn${i + 1}: prompt threw: ${String(e).slice(0, 200)}`);
+            continue;
+          }
           structUsages.push(t.response.usage);
           const blocks = [...t.text.matchAll(/```json\s*([\s\S]*?)```/g)];
           if (blocks.length === 0) {
@@ -439,8 +474,10 @@ async function main(): Promise<void> {
         }
         log("done");
       },
+      { onStderr: (s) => adapterStderr.push(s) },
     );
   } finally {
+    (summary as any).adapterStderrTail = adapterStderr.join("").slice(-4000);
     finish();
     await mcp.close();
   }

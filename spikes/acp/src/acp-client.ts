@@ -108,13 +108,18 @@ export class SpikeClient {
     args: string[],
     env: Record<string, string | undefined>,
     op: (ctx: any) => Promise<T>,
+    opts?: { onStderr?: (data: string) => void },
   ): Promise<T> {
     this.proc = spawn(cmd, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...env },
     });
     const stderr: string[] = [];
-    this.proc.stderr?.on("data", (d) => stderr.push(d.toString()));
+    this.proc.stderr?.on("data", (d) => {
+      const s = d.toString();
+      stderr.push(s);
+      opts?.onStderr?.(s);
+    });
     this.proc.on("exit", (code) => {
       if (code !== 0 && code !== null) {
         console.error(`[adapter stderr tail]\n${stderr.join("").slice(-3000)}`);
@@ -282,10 +287,11 @@ export function fmtUsage(u: any): string {
   return parts.join(" ");
 }
 
-/** Cache-read share of input, when the adapter reports it. */
+/** Cache-read share of total input (input + cache-read + cache-write). */
 export function cacheShare(u: any): string {
-  if (!u || u.cachedReadTokens == null || u.inputTokens == null) return "n/a";
-  const denom = u.inputTokens + (u.cachedReadTokens ?? 0);
-  if (!denom) return "n/a";
-  return `${((100 * u.cachedReadTokens) / denom).toFixed(1)}%`;
+  if (!u || u.cachedReadTokens == null) return "n/a";
+  const total =
+    (u.inputTokens ?? 0) + (u.cachedReadTokens ?? 0) + (u.cachedWriteTokens ?? 0);
+  if (!total) return "n/a";
+  return `${((100 * u.cachedReadTokens) / total).toFixed(1)}%`;
 }
