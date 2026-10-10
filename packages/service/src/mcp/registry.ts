@@ -210,6 +210,19 @@ export class McpRegistry {
       await state.server.connect(state.transport);
       state.connected = true;
     }
+    // Newer claude CLIs (≥2.1.296, MCP protocol 2026-07-28) probe
+    // `server/discover` before `initialize`; our SDK (1.32.1) predates it and
+    // would answer HTTP 500 (fatal, tools unavailable). Answer JSON-RPC
+    // Method Not Found (HTTP 200) so the CLI falls back to `initialize`.
+    // (Live-test stub mirrors this in `test/acp-live.test.ts`.)
+    const method = (body as { method?: unknown } | null)?.method;
+    if (method === "server/discover") {
+      const rpcId = (body as { id?: unknown } | null)?.id ?? null;
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: rpcId, error: { code: -32601, message: "Method not found: server/discover" } }));
+      return;
+    }
     await state.transport.handleRequest(req, res, body);
   }
 
