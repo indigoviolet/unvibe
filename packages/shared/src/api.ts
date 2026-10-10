@@ -380,6 +380,24 @@ export interface JobPromptResponse {
   promptSnapshot: string;
 }
 
+// --- contributions -------------------------------------------------------
+/**
+ * M8 settings (PRD §4.14 "Shared context", §9.5): every automatic agent
+ * contribution, with the thread it came from, and delete for any item.
+ *
+ * - `GET /api/reviews/:id/contributions` — the review's contributions.
+ * - `DELETE /api/reviews/:id/contributions/:contributionId` — remove one
+ *   item (any status). Answers 404 when the id is unknown.
+ */
+export interface ContributionsResponse {
+  contributions: Contribution[];
+}
+
+export interface DeleteContributionResponse {
+  ok: true;
+  deletedId: string;
+}
+
 // --- WebSocket events ----------------------------------------------------
 /**
  * WS `/api/events?review=:id` event union: job progress, streamed text,
