@@ -6,9 +6,13 @@
  * switches tabs from anywhere: this pane listens for its window event and
  * opens the description tab for `desc:` refs, the diff tab otherwise.
  */
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
+import { performFollowUp } from "../guide/actions.js";
+import { useDiffExpansionBindings } from "../guide/expansions/DiffExpansions.js";
+import { useReview } from "../state/store.js";
 import { DescriptionView } from "./description/DescriptionView.js";
 import { DiffView } from "./diff/DiffView.js";
 import { REVEAL_EVENT } from "./diff/revealSource.js";
@@ -22,7 +26,25 @@ interface Props {
 }
 
 export function SourcePane({ reviewId, tab, onTab }: Props) {
+  const navigate = useNavigate();
+  const pages = useReview((s) => s.snapshot?.pages);
+  const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
+    pages?.find((p) => p.id === id);
+  const onOpenPage = (pageId: string): void => {
+    navigate(`/review/${reviewId}/page/${encodeURIComponent(pageId)}`);
+  };
+  const onFollowUp = (cardId: string, blockId: string, index: number): void => {
+    performFollowUp(reviewId, cardId, blockId, index);
+  };
   const diffComments = useDiffCommentBindings(reviewId);
+  const diffExpansions = useDiffExpansionBindings(reviewId, lookupPage, onOpenPage, onFollowUp);
+  const lineSlots = useMemo(
+    () => ({ ...diffExpansions.lineSlots, ...diffComments.lineSlots }),
+    [diffExpansions.lineSlots, diffComments.lineSlots],
+  );
+  // Line-number icons mark comment threads only (expansions use the dotted
+  // link); slot rows still render for both via `lineSlots`.
+  const commentedLines = diffComments.commentedLines;
   useEffect(() => {
     const onReveal = (e: Event): void => {
       const ref = (e as CustomEvent<{ ref?: unknown }>).detail?.ref;
@@ -63,8 +85,8 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
       ) : (
         <DiffView
           reviewId={reviewId}
-          lineSlots={diffComments.lineSlots}
-          commentedLines={diffComments.commentedLines}
+          lineSlots={lineSlots}
+          commentedLines={commentedLines}
           onLineClick={diffComments.onLineClick}
         />
       )}

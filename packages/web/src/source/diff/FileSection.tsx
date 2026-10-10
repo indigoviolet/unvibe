@@ -89,7 +89,11 @@ function hasComment(
   fileKey: string,
   line: number,
 ): boolean {
-  return commentedLines.has(slotKey(fileKey, line)) || slots[slotKey(fileKey, line)] != null;
+  // M4: the line-number icon marks comment threads only. Expansion slots
+  // render their own row without the icon; the dotted link on the quoted
+  // text is their indicator (PRD §4.7).
+  void slots;
+  return commentedLines.has(slotKey(fileKey, line));
 }
 
 function lineTip(

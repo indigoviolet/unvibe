@@ -6,8 +6,10 @@
  * pending cards. Finding pages get the rust-accent `.finding` class.
  */
 import { Fragment, useState } from "react";
+import { Link } from "react-router-dom";
 import type { Card, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
+import { useReview } from "../state/store.js";
 import { performAction, performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
@@ -50,7 +52,11 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   const [tocOpen, setTocOpen] = useState(true);
   const isFinding = page.kind === "finding";
   const saved = isSaved(page);
-  const { cards, links } = contentsModel(page, lookupPage);
+  const allPages = useReview((s) => s.snapshot?.pages);
+  const jobs = useReview((s) => s.snapshot?.jobs ?? []);
+  const streams = useReview((s) => s.streams);
+  const contributions = useReview((s) => s.snapshot?.contributions ?? []);
+  const { cards, links } = contentsModel(page, lookupPage, allPages);
 
   // Breadcrumb back to the root (PRD §4.3 trail), following parent links.
   const trail: Page[] = [];
@@ -72,6 +78,26 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
         : "";
 
   const goDeeperIndex = page.cards.findIndex((c) => c.pending);
+
+  // Concept pages are written on first open: while the `concept` job runs
+  // for an empty stub card, show the working state with streamed text.
+  const conceptWorking = (() => {
+    if (page.kind !== "concept" && page.kind !== "opened-expansion") return null;
+    const stub = page.cards[0];
+    if (!stub || stub.blocks.length > 0) return null;
+    const job = jobs.find(
+      (j) => (j.cardId === stub.id || j.dedupeKey?.includes(`concept:${page.id.slice(2)}`)) && (j.state === "running" || j.state === "queued"),
+    );
+    const stream = streams[stub.id];
+    if (!job && !stream) return null;
+    return job?.progress ?? (stream ? stream.slice(-160) : "Writing the concept page…");
+  })();
+
+  // Small unobtrusive indicator when a conversation contributed facts/open
+  // questions to shared context (PRD §9.5), linking to Settings.
+  const sharedCount = contributions.filter((c) =>
+    c.items.some((i) => i.kind === "fact" || i.kind === "open_question"),
+  ).length;
 
   const renderCard = (card: Card, index: number) => (
     // Fragment (not a div): `.doc.finding > .card` and other child
@@ -125,6 +151,24 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       <h1 className="title">{page.title}</h1>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />
+      {conceptWorking ? (
+        <div className="working" role="status">
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span>{conceptWorking}</span>
+        </div>
+      ) : null}
+      {sharedCount > 0 ? (
+        <p className="hint" data-shared-indicator>
+          {sharedCount} shared context {sharedCount === 1 ? "item" : "items"} from this review ·{" "}
+          <Link to={`/settings?review=${encodeURIComponent(reviewId)}#shared-context`}>
+            Settings → Shared context
+          </Link>
+        </p>
+      ) : null}
       <nav className="toc" aria-label="Contents">
         <div className="toc-h">
           <button

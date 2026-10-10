@@ -8,6 +8,7 @@
  */
 import { useMemo } from "react";
 import type { Page } from "@unvibe/shared";
+import { api } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
@@ -104,7 +105,39 @@ export function openLinkTarget(
     return;
   }
   if (target.startsWith("concept:")) {
-    toast("That concept page hasn't been written yet.");
+    // Concept pages are written on first open: fire the `concept` action
+    // (working state on the new page), then navigate to the stub. The stub
+    // creation is synchronous in the service, so the page exists by the
+    // time the action resolves; navigate optimistically and let patches
+    // fill it.
+    const slug = target.slice("concept:".length);
+    const reviewId = useReview.getState().snapshot?.review.id;
+    if (!reviewId) {
+      toast("The review hasn't loaded yet.");
+      return;
+    }
+    const stubId = `c-${slug}`;
+    // If the stub already exists (empty or full), open it at once so the
+    // working state is visible while the job fills it.
+    if (pages?.some((p) => p.id === stubId)) {
+      onOpenPage(stubId);
+    }
+    void api
+      .action(reviewId, { kind: "concept", slug })
+      .then((res) => {
+        if (res.accepted && res.pageId) onOpenPage(res.pageId);
+        else if (!res.accepted) toast("Needs the service to write this concept page.");
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/no agent configured/i.test(msg)) {
+          toast("No agent configured — set up Claude or Codex in Settings → Models to write concept pages.");
+        } else {
+          toast(`Couldn't open the concept: ${msg}`);
+        }
+      });
+    // Optimistic navigation so the working state shows immediately.
+    onOpenPage(stubId);
     return;
   }
   toast("That link can't be opened yet.");

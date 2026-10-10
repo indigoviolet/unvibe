@@ -24,6 +24,7 @@
  */
 import type { MutableRefObject, ReactNode } from "react";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Annotation } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { markTextInElement } from "../../comments/anchor.js";
@@ -34,7 +35,8 @@ import { useViewer } from "../../comments/viewer.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/SelectionToolbar.js";
 import { toast } from "../../floating/Toast.js";
 import { Icon } from "../../components/Icon.js";
-import { requestGuideBlock } from "../../guide/actions.js";
+import { requestGuideBlock, performFollowUp } from "../../guide/actions.js";
+import { DescriptionExpansions } from "../../guide/expansions/DescriptionExpansions.js";
 import { useReview } from "../../state/store.js";
 import { cleanEditedHtml, DescriptionEditor as DefaultEditor } from "./DescriptionEditor.js";
 import { canEditDescription } from "./canEdit.js";
@@ -267,6 +269,16 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   ref,
 ) {
   const innerRef = useRef<HTMLDivElement | null>(null);
+  const navigate = useNavigate();
+  const snapshot = useReview((s) => s.snapshot);
+  const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
+    snapshot?.pages.find((p) => p.id === id);
+  const onOpenPage = (pageId: string): void => {
+    navigate(`/review/${reviewId}/page/${encodeURIComponent(pageId)}`);
+  };
+  const onFollowUp = (cardId: string, blockId: string, index: number): void => {
+    performFollowUp(reviewId, cardId, blockId, index);
+  };
 
   // "Restated →" links from the snapshot mapping (paragraph → guide block
   // ids). Appended after the matching paragraph element; the click
@@ -342,6 +354,13 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
           openThread((mark as HTMLElement).dataset.thr ?? "");
           return;
         }
+        // Promoted expansion page links inside the description.
+        const pg = (e.target as HTMLElement).closest?.("a.cx.pg[data-node]");
+        if (pg) {
+          const target = (pg as HTMLElement).dataset.node ?? "";
+          if (target) onOpenPage(target);
+          return;
+        }
         const back = (e.target as HTMLElement).closest?.("button.back[data-back]");
         if (!back) return;
         const blockId = back.getAttribute("data-back") ?? "";
@@ -379,6 +398,15 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
                 <ThreadView reviewId={reviewId} thread={t} readOnly={readOnly} />
               </div>
             ))}
+            {seg.id ? (
+              <DescriptionExpansions
+                reviewId={reviewId}
+                paragraphId={seg.id}
+                lookupPage={lookupPage}
+                onOpenPage={onOpenPage}
+                onFollowUp={onFollowUp}
+              />
+            ) : null}
             {showPending && pending && !readOnly ? (
               <div className="dann">
                 <NewThreadComposer

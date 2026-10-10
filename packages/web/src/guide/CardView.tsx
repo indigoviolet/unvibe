@@ -1,25 +1,31 @@
 /**
- * Card rendering (web-guide owner; PRD §4.4 display side + §8 stale state).
+ * Card rendering (M4 interaction; PRD §4.4 display side + §8 stale state).
  *
- * Collapse chevron (collapsed shows the title row, or the first line if
- * untitled); control row (depth stepper with three dots, Use examples,
- * Add diagram, Undo, Second opinion with blind/check switch, Mark read)
- * wired to `POST /api/reviews/:id/actions`; read greys and collapses;
- * stale cards show the cited-hunks count with an Update button
- * (`POST /api/reviews/:id/update`); "Go deeper" placeholder cards with
- * Generate showing job progress; working dots whenever a job runs for the
- * card or streamed text arrives for it. Second-opinion results render
- * attached below the blocks (PRD §4.10; owned by the second-opinion
- * milestone, additive here).
+ * Collapse chevron first (title row when collapsed); control row (depth
+ * stepper with three dots, Use examples, Add diagram, Undo, Second opinion
+ * with blind/check switch, Mark read) wired to
+ * `POST /api/reviews/:id/actions`; read greys and collapses; stale cards
+ * show the cited-hunks count with an Update button; "Go deeper"
+ * placeholder cards with Generate showing job progress; working dots
+ * whenever a job runs for the card or streamed text arrives for it.
+ * Expansions render under their block via `ExpansionCard` (open ones in
+ * place; closed ones as dotted-link highlights with a hidden fallback
+ * stub); promoted links render as page-link stubs. Corrections show as
+ * suggestions on the target card with Accept/Dismiss.
  */
 import type { Annotation, Card, DepthLevel, Page } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { Icon } from "../components/Icon.js";
+import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { performAction, performUpdate } from "./actions.js";
-import { blockExpansions, blockThreads } from "./annotations.js";
+import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
+import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
+import { ExpansionCard } from "./expansions/ExpansionCard.js";
+import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
+import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
 import { cardPreview, jobForCard } from "./guideUtils.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
 
@@ -74,20 +80,59 @@ function Working({ text }: { text: string }) {
   );
 }
 
-/** Rendered content of an open expansion with something to show. */
-function ExpansionCard({ expansion }: { expansion: Annotation }) {
-  const html = expansion.messages
-    .map((m) => m.html ?? (m.text ? `<p>${m.text.replace(/</g, "&lt;")}</p>` : ""))
-    .join("");
-  if (!html.trim()) return null;
-  return (
-    <section className="card child" id={`B-${expansion.id}`}>
-      <div className="exp-h">
-        {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
-      </div>
-      <div className="exp-b" dangerouslySetInnerHTML={{ __html: html }} />
-    </section>
-  );
+function runCardAction(reviewId: string, action: Parameters<typeof performAction>[1]): void {
+  // performAction toasts + resyncs on failure; swallow here so callers stay
+  // fire-and-forget without double toasts.
+  void performAction(reviewId, action).catch(() => {});
+}
+
+/**
+ * Examples/diagrams insert blocks after the paragraphs they relate to and
+ * never duplicate one already there: when the service adds nothing, tell
+ * the user instead of leaving them wondering. The fill is async (jobId),
+ * so watch the card revision until that job settles; an unchanged revision
+ * means nothing was added.
+ */
+function runInsertAction(
+  reviewId: string,
+  cardId: string,
+  kind: "examples" | "diagram",
+  getRevision: () => number | undefined,
+): void {
+  const before = getRevision();
+  void performAction(reviewId, { kind, cardId } as Parameters<typeof performAction>[1])
+    .then((res) => {
+      if (!res.jobId || before === undefined) return;
+      const jobId = res.jobId;
+      const timer = window.setInterval(() => {
+        const snap = useReview.getState().snapshot;
+        const job = snap?.jobs.find((j) => j.id === jobId);
+        if (!job || job.state === "running" || job.state === "queued" || job.state === "backing-off") return;
+        window.clearInterval(timer);
+        if (job.state === "done") {
+          const after = getRevision();
+          if (after !== undefined && after === before) {
+            toast("Nothing more to add to this card.");
+          }
+        }
+      }, 500);
+      // Safety: stop watching after 2 minutes.
+      window.setTimeout(() => window.clearInterval(timer), 120_000);
+    })
+    .catch(() => {});
+}
+
+/** Current revision of a page card (for nothing-to-add detection). */
+function currentRevision(reviewId: string, cardId: string): number | undefined {
+  void reviewId;
+  const snap = useReview.getState().snapshot;
+  for (const p of snap?.pages ?? []) {
+    const card = p.cards.find((c) => c.id === cardId);
+    if (card) return card.revision;
+  }
+  const ann = snap?.annotations.find((a) => a.id === cardId);
+  if (ann?.type === "expansion" && ann.expansion) return ann.expansion.revision;
+  return undefined;
 }
 
 export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }: Props) {
@@ -95,6 +140,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const jobs = snapshot?.jobs ?? [];
   const annotations = snapshot?.annotations ?? [];
   const streams = useReview((s) => s.streams);
+  const contributions = snapshot?.contributions ?? [];
   const job = jobForCard(jobs, card.id);
   const streamText = streams[card.id];
   const progress = job?.progress ?? (streamText ? streamText.slice(-160) : undefined);
@@ -112,7 +158,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
               className="go"
               type="button"
               data-gen={card.id}
-              onClick={() => void performAction(reviewId, { kind: "generate", cardId: card.id })}
+              onClick={() => runCardAction(reviewId, { kind: "generate", cardId: card.id })}
             >
               Generate
             </button>
@@ -125,27 +171,65 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const depthIndex = DEPTH_ORDER.indexOf(card.level);
   const threadsFor = (blockId: string): Annotation[] =>
     blockThreads(annotations, card.id, blockId);
-  const expansionsFor = (blockId: string): Annotation[] =>
-    blockExpansions(annotations, card.id, blockId);
 
-  const blocks = card.blocks.map((block) => (
-    // Fragment (not a div): prototype.css child selectors (`.card.read > …`)
-    // depend on blocks being direct children of the section.
-    <Fragment key={block.id}>
-      <BlockView
-        block={block}
-        level={card.level}
-        threads={threadsFor(block.id)}
-        lookupPage={lookupPage}
-        onOpenPage={onOpenPage}
-        onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
-      />
-      <GuideBlockThreads reviewId={reviewId} cardId={card.id} blockId={block.id} />
-      {expansionsFor(block.id).map((e) => (
-        <ExpansionCard key={e.id} expansion={e} />
-      ))}
-    </Fragment>
-  ));
+  const blocks = card.blocks.map((block) => {
+    const exps = expansionsForBlock(annotations, card.id, block.id);
+    const open = exps.filter(isOpenExpansion);
+    const closed = exps.filter(isClosedExpansion);
+    const links = exps.filter(isPromotedLink);
+    return (
+      // Fragment (not a div): prototype.css child selectors (`.card.read > …`)
+      // depend on blocks being direct children of the section.
+      <Fragment key={block.id}>
+        <BlockView
+          block={block}
+          level={card.level}
+          threads={threadsFor(block.id)}
+          lookupPage={lookupPage}
+          onOpenPage={onOpenPage}
+          onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
+        />
+        <GuideBlockThreads reviewId={reviewId} cardId={card.id} blockId={block.id} />
+        {open.map((e) => (
+          <ExpansionCard
+            key={e.id}
+            reviewId={reviewId}
+            expansion={e}
+            lookupPage={lookupPage}
+            onOpenPage={onOpenPage}
+            onFollowUp={onFollowUp}
+          />
+        ))}
+        {closed.map((e) => (
+          <div key={e.id} className="linkstub" data-fallback={e.id} hidden>
+            ↳{" "}
+            <button
+              type="button"
+              onClick={() =>
+                runCardAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: false })
+              }
+            >
+              {e.anchor.quotedText || "Show explanation"}
+            </button>
+            <span className="hint">click the dotted link to expand</span>
+          </div>
+        ))}
+        {links.map((e) => (
+          <div key={e.id} className="linkstub" data-fallback={e.id} hidden>
+            ↳{" "}
+            <button
+              type="button"
+              data-node={e.promotedToPage ?? ""}
+              onClick={() => e.promotedToPage && onOpenPage(e.promotedToPage)}
+            >
+              {e.anchor.quotedText || "Opened as its own page"}
+            </button>
+            <span className="hint">opened as its own page</span>
+          </div>
+        ))}
+      </Fragment>
+    );
+  });
 
   if (card.collapsed) {
     return (
@@ -155,7 +239,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             icon="right"
             label="Expand"
             onClick={() =>
-              void performAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: false })
+              runCardAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: false })
             }
           />
           {card.title ? (
@@ -169,7 +253,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
               label="Mark unread"
               pressed
               onClick={() =>
-                void performAction(reviewId, { kind: "read", cardId: card.id, read: false })
+                runCardAction(reviewId, { kind: "read", cardId: card.id, read: false })
               }
             />
           ) : null}
@@ -185,7 +269,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           icon="down"
           label="Collapse"
           onClick={() =>
-            void performAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: true })
+            runCardAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: true })
           }
         />
         {card.title ? <h2 className="ct">{card.title}</h2> : null}
@@ -209,7 +293,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             aria-label="Simpler"
             disabled={depthIndex <= 0}
             onClick={() =>
-              void performAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
+              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
             }
           >
             −
@@ -226,7 +310,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             data-tip="Deeper"
             aria-label="Deeper"
             onClick={() =>
-              void performAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
+              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
             }
           >
             +
@@ -235,18 +319,22 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         <ControlButton
           icon="bulb"
           label="Use examples"
-          onClick={() => void performAction(reviewId, { kind: "examples", cardId: card.id })}
+          onClick={() =>
+            runInsertAction(reviewId, card.id, "examples", () => currentRevision(reviewId, card.id))
+          }
         />
         <ControlButton
           icon="diagram"
           label="Add diagram"
-          onClick={() => void performAction(reviewId, { kind: "diagram", cardId: card.id })}
+          onClick={() =>
+            runInsertAction(reviewId, card.id, "diagram", () => currentRevision(reviewId, card.id))
+          }
         />
         <ControlButton
           icon="undo"
           label="Undo"
           disabled={card.undoStack.length === 0}
-          onClick={() => void performAction(reviewId, { kind: "undo", cardId: card.id })}
+          onClick={() => runCardAction(reviewId, { kind: "undo", cardId: card.id })}
         />
         <SecondOpinionControl reviewId={reviewId} card={card} page={lookupPage(card.pageId)} />
         <span className="sp" />
@@ -255,12 +343,13 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           label={card.read ? "Mark unread" : "Mark read"}
           pressed={card.read}
           onClick={() =>
-            void performAction(reviewId, { kind: "read", cardId: card.id, read: !card.read })
+            runCardAction(reviewId, { kind: "read", cardId: card.id, read: !card.read })
           }
         />
       </div>
       {job || streamText ? <Working text={progress ?? "Working…"} /> : null}
       {blocks}
+      <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />
       {(card.secondOpinions ?? []).map((so) => (
         <SecondOpinionBlock
           key={so.id}

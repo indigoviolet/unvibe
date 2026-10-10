@@ -4,6 +4,7 @@
  * cookie so static loads authenticate). Sent as `Authorization: Bearer`.
  */
 import type {
+  AcceptContributionResponse,
   ActionResponse,
   AddRepoRequest,
   ChangesFilter,
@@ -12,6 +13,7 @@ import type {
   CreateCommentResponse,
   CreateReviewRequest,
   DeleteContributionResponse,
+  DismissContributionResponse,
   ExistingCommentsResponse,
   HealthResponse,
   Job,
@@ -189,6 +191,10 @@ const realApi = {
     request(`/api/reviews/${encodeURIComponent(reviewId)}/contributions/${encodeURIComponent(contributionId)}`, {
       method: "DELETE",
     }),
+  acceptContribution: (reviewId: string, contributionId: string): Promise<AcceptContributionResponse> =>
+    post(`/api/reviews/${encodeURIComponent(reviewId)}/contributions/${encodeURIComponent(contributionId)}/accept`),
+  dismissContribution: (reviewId: string, contributionId: string): Promise<DismissContributionResponse> =>
+    post(`/api/reviews/${encodeURIComponent(reviewId)}/contributions/${encodeURIComponent(contributionId)}/dismiss`),
 };
 
 export type ApiClient = typeof realApi;

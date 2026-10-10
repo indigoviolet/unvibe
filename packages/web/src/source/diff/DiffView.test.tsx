@@ -22,8 +22,8 @@ afterEach(() => {
   cleanup();
 });
 
-async function renderDiff(extra?: { lineSlots?: Record<string, React.ReactNode>; onLineClick?: (f: string, l: number) => void }) {
-  const r = render(<DiffView reviewId="demo" lineSlots={extra?.lineSlots} onLineClick={extra?.onLineClick} />);
+async function renderDiff(extra?: { lineSlots?: Record<string, React.ReactNode>; commentedLines?: ReadonlySet<string>; onLineClick?: (f: string, l: number) => void }) {
+  const r = render(<DiffView reviewId="demo" lineSlots={extra?.lineSlots} commentedLines={extra?.commentedLines} onLineClick={extra?.onLineClick} />);
   await screen.findByText("connection.py", {}, { timeout: 3000 });
   return r;
 }
@@ -103,7 +103,13 @@ describe("DiffView", () => {
 
   it("emits line-number clicks and renders slots with comment icons", async () => {
     const onLineClick = vi.fn();
-    await renderDiff({ lineSlots: { [`${CONN}:77`]: <span>inline thread</span> }, onLineClick });
+    // Comment threads provide both the slot and the commented-lines entry
+    // (M4: expansion slots render their row without the comment icon).
+    await renderDiff({
+      lineSlots: { [`${CONN}:77`]: <span>inline thread</span> },
+      commentedLines: new Set([`${CONN}:77`]),
+      onLineClick,
+    });
     const cell = document.querySelector(`[data-line="${CONN}:77"]`);
     expect(cell).not.toBeNull();
     expect(cell!.classList.contains("hc")).toBe(true);

@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import { api } from "./api/client.js";
 import { connectEvents } from "./api/ws.js";
 import { GuideThreadHooks } from "./comments/GuideThreads.js";
+import { ExpansionHighlights } from "./guide/expansions/ExpansionHighlights.js";
 import { HoverPopover } from "./floating/HoverPopover.js";
 import { SelectionToolbar } from "./floating/SelectionToolbar.js";
 import { Toast } from "./floating/Toast.js";
@@ -47,6 +48,7 @@ export function ReviewRoute() {
     <>
       <AppShell reviewId={reviewId} />
       <GuideThreadHooks />
+      <ExpansionHighlights />
       <HoverPopover />
       <Tooltip />
       <SelectionToolbar />
