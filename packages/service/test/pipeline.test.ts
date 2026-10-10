@@ -126,6 +126,21 @@ describe("pipeline demo e2e (replay)", () => {
       );
       expect(tlf).toBeDefined();
       expect(tlf?.anchor.host).toMatchObject({ kind: "diff-line" });
+      // Every finding page links its suggested comment (PRD §4.9): the
+      // Assessment card ends with a comment-link block whose thread is a
+      // suggested, unposted draft with a canonical diff target.
+      for (const fid of ["f-lf", "f-perf"]) {
+        const page = snap.pages.find((p) => p.id === fid)!;
+        const last = page.cards[page.cards.length - 1];
+        const link = last.blocks.find((b) => b.type === "comment-link");
+        expect(link, `${fid} links its suggested comment`).toBeDefined();
+        if (link?.type === "comment-link") {
+          const thread = snap.annotations.find((a) => a.id === link.threadId);
+          expect(thread?.messages.some((m) => m.suggested)).toBe(true);
+          expect(thread?.post).toBe(false);
+          expect(link.diffRef).not.toMatch(/:(conn|tconn|tsock|log):/);
+        }
+      }
 
       // Hunk summaries + hidden reasons match the recordings.
       expect(snap.hunkStates).toHaveLength(8);

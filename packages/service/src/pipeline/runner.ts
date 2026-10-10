@@ -25,7 +25,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { JOB_PRIORITY, parseCards, parseCardsPartial, parseId, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, JOB_PRIORITY, parseCards, parseCardsPartial, parseId, splitReply } from "@unvibe/shared";
 import { RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
@@ -129,6 +129,8 @@ function citationsOf(block: Block): string[] {
     case "finding-link":
     case "follow-up":
       return (block as { citations: { target: string }[] }).citations.map((c) => c.target);
+    case "comment-link":
+      return [...block.citations.map((c) => c.target), block.diffRef];
     case "aside":
       return [...block.citations.map((c) => c.target), ...block.inner.flatMap(citationsOf)];
   }
@@ -466,6 +468,7 @@ export class Pipeline {
               collapsed: false,
               revision: (page.cards[0]?.revision ?? 0) + 1,
               blocks: this.withValidation(
+                reviewId,
                 cards.flatMap((c) => c.blocks),
                 validation,
               ),
@@ -599,15 +602,28 @@ export class Pipeline {
     };
   }
 
-  private withValidation(blocks: Block[], validation: ReturnType<typeof validateReply>): Block[] {
+  private withValidation(
+    reviewId: string,
+    blocks: Block[],
+    validation: ReturnType<typeof validateReply>,
+  ): Block[] {
+    // Stored targets are canonical (real file keys): repaired tokens resolve
+    // to their fix, alias-form tokens (`diff:conn:…`) resolve through the
+    // lookup, and only truly unknown targets keep their raw form flagged.
+    // The web needs no alias table.
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    const resolve = snapshot
+      ? this.lookupWithAliases(snapshot).resolveFileKey.bind(this.lookupWithAliases(snapshot))
+      : () => null;
     const byTarget = new Map(validation.tokens.map((t) => [t.target, t]));
     const mark = (citations: { target: string; unverified?: boolean }[]): { target: string; unverified?: boolean }[] =>
       citations.map((c) => {
         const rep = byTarget.get(c.target);
-        if (!rep) return c;
-        if (rep.status === "repaired" && rep.repairedTo) return { target: rep.repairedTo };
-        if (rep.status === "unverified") return { target: c.target, unverified: true };
-        return { target: c.target };
+        if (rep?.status === "repaired" && rep.repairedTo) {
+          return { target: canonicalizeTarget(rep.repairedTo, resolve) };
+        }
+        if (rep?.status === "unverified") return { target: c.target, unverified: true };
+        return { target: canonicalizeTarget(c.target, resolve) };
       });
     return blocks.map((b) => {
       switch (b.type) {
@@ -625,8 +641,14 @@ export class Pipeline {
         case "finding-link":
         case "follow-up":
           return { ...b, citations: mark((b as { citations: { target: string }[] }).citations) };
+        case "comment-link":
+          return {
+            ...b,
+            diffRef: canonicalizeTarget(b.diffRef, resolve),
+            citations: mark(b.citations),
+          };
         case "aside":
-          return { ...b, inner: this.withValidation(b.inner, validation), citations: mark(b.citations) };
+          return { ...b, inner: this.withValidation(reviewId, b.inner, validation), citations: mark(b.citations) };
       }
     });
   }
@@ -821,7 +843,7 @@ export class Pipeline {
     if (!snapshot) return;
     const lookup = this.lookupWithAliases(snapshot);
     const validation = validateReply(blocks, lookup);
-    const fixed = this.withValidation(blocks, validation);
+    const fixed = this.withValidation(reviewId, blocks, validation);
     const provisionalId = index === 0 ? "problem" : index === 1 ? "central" : `reader-${index}`;
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
@@ -867,7 +889,7 @@ export class Pipeline {
         draft.pages.unshift(root);
       }
       for (const c of applied.cards) {
-        const fixed = this.withValidation(c.blocks, validation);
+        const fixed = this.withValidation(reviewId, c.blocks, validation);
         const existing = root.cards.find((x) => x.id === c.id);
         if (existing) {
           existing.title = c.title;
@@ -944,6 +966,7 @@ export class Pipeline {
       });
     });
     await this.persistPins(reviewId);
+    await this.updateRestatedMapping(reviewId);
   }
 
   // -- after reader ---------------------------------------------------
@@ -999,7 +1022,7 @@ export class Pipeline {
               (data ?? null) as Record<string, unknown> | null,
               key,
             );
-            const fixedCards = applied.cards.map((c) => ({ ...c, blocks: this.withValidation(c.blocks, validation) }));
+            const fixedCards = applied.cards.map((c) => ({ ...c, blocks: this.withValidation(reviewId, c.blocks, validation) }));
             await this.opts.reviews.mutate(reviewId, (draft) => {
               if (draft.pages.some((p) => p.id === applied.pageId)) return;
               draft.pages.push({
@@ -1043,7 +1066,7 @@ export class Pipeline {
                     }
                   }
                   try {
-                    createSuggestedCommentInDraft(
+                    const thread = createSuggestedCommentInDraft(
                       draft,
                       before ?? (draft as unknown as ReviewSnapshot),
                       {
@@ -1052,6 +1075,23 @@ export class Pipeline {
                         suggestionText: applied.suggestedComment.text,
                       },
                     );
+                    // Tie the thread back to the finding (PRD §4.9): a
+                    // comment-link block on the Assessment (last) card.
+                    // Hover previews the thread, click jumps to the diff.
+                    const page = draft.pages.find((p) => p.id === applied.pageId);
+                    const last = page?.cards[page.cards.length - 1];
+                    if (last) {
+                      const range =
+                        parsed.start === parsed.end ? `${parsed.start}` : `${parsed.start}-${parsed.end}`;
+                      const diffRef = `diff:${fileKey}:${range}`;
+                      last.blocks.push({
+                        type: "comment-link",
+                        id: "b-comment",
+                        diffRef,
+                        threadId: thread.id,
+                        citations: [{ target: diffRef }],
+                      });
+                    }
                   } catch {
                     // Unknown file/line: keep the finding, skip the draft.
                   }
@@ -1065,6 +1105,7 @@ export class Pipeline {
                 scope: { scope: "global" },
               });
             });
+            await this.updateRestatedMapping(reviewId);
             this.maybeMarkStageDone(reviewId, "critic", 2);
           } catch (err) {
             this.setStage(reviewId, "critic", "error", (err as Error).message);
@@ -1283,6 +1324,7 @@ export class Pipeline {
     await this.recordUsage(reviewId, usage);
     const { cards, data, validation } = this.parseAndValidate(reviewId, text);
     const blocks = this.withValidation(
+      reviewId,
       cards.flatMap((c) => c.blocks),
       validation,
     );
@@ -1303,6 +1345,7 @@ export class Pipeline {
         scope: { scope: "global" },
       });
     });
+    await this.updateRestatedMapping(reviewId);
   }
 
   private async ensureConceptPageInner(reviewId: string, slug: string): Promise<void> {
@@ -1338,6 +1381,7 @@ export class Pipeline {
           collapsed: false,
           revision: (page.cards[0]?.revision ?? 0) + 1,
           blocks: this.withValidation(
+            reviewId,
             cards.flatMap((c) => c.blocks),
             validation,
           ),
@@ -1434,6 +1478,36 @@ export class Pipeline {
         });
       }
     });
+  }
+
+  /**
+   * Recompute the description's "Restated →" mapping (PRD §4.11): paragraph
+   * id → guide block ids whose citations restate it. Derived from the root
+   * page's `desc:` citations; rerun as the guide grows (reader, critic
+   * findings cite description too, go-deeper fills).
+   */
+  private async updateRestatedMapping(reviewId: string): Promise<void> {
+    try {
+      await this.opts.reviews.mutate(reviewId, (draft) => {
+        if (!draft.description) return;
+        const map: Record<string, string[]> = {};
+        const root = draft.pages.find((p) => p.id === "root");
+        for (const card of root?.cards ?? []) {
+          for (const b of card.blocks) {
+            for (const t of citationsOf(b)) {
+              const parsed = parseId(t);
+              if (parsed?.kind === "desc") {
+                (map[parsed.paragraph] ??= []).push(b.id);
+              }
+            }
+          }
+        }
+        for (const k of Object.keys(map)) map[k] = [...new Set(map[k])];
+        draft.description!.restated = map;
+      });
+    } catch {
+      // best-effort
+    }
   }
 
   private async recordUsage(reviewId: string, usage: TokenUsage): Promise<void> {

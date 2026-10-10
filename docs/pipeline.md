@@ -68,9 +68,16 @@ snapshot ends up complete without clicks.
    is done. Key `(version, guideRevision, model)`; per-model caches.
 3. **Parallel forks** (`fanOut`): **critic** ×2 (findings as separate pages
    with Evidence/Assessment/confidence + drafted suggested comment as a
-   thread on a diff line, `suggested: true`, `post: false`; finding-link
-   block in the guide) and **concept stubs** ×1 (hidden candidates; full
-   pages via `ensureConceptPage`).
+   thread on a diff line via `comments/threads.ts`, `suggested: true`,
+   `post: false`; finding-link block in the guide plus a `comment-link`
+   block on the finding page tying it to the thread) and **concept stubs**
+   ×1 (hidden candidates; full pages via `ensureConceptPage`).
+
+Stored citation targets are canonical (real file keys): alias-form tokens
+(`diff:conn:…`) resolve through the lookup at parse/validate time, so the
+web needs no alias table. Ingest records the PR author/state on the
+description, and the pipeline maintains its `restated` mapping (paragraph
+→ guide block ids from `desc:` citations) as the guide grows.
 4. **Hunk pass** (small model, no fork, one prompt per hunk, background).
    Summary + `hiddenReason` per hunk, replacing the rule-based
    pre-classification. Never hide a hunk the guide cites (recomputed after

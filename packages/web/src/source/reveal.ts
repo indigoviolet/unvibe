@@ -2,8 +2,8 @@
  * `revealSource(target)` — jump from a guide citation to the source pane
  * (web-guide owner; thin adapter over the diff pane's implementation).
  *
- * - `diff:` / `h:` / `code:` targets are canonicalized through the active
- *   file-key aliases and handed to `source/diff/revealSource.ts`, which
+ * - `diff:` / `h:` / `code:` targets (canonical file keys, stored that
+ *   way by the pipeline) go to `source/diff/revealSource.ts`, which
  *   switches tabs, clears filters, unfolds, scrolls and highlights.
  * - `desc:` targets dispatch the same window event (the source pane opens
  *   the description tab) and then scroll to the paragraph in this module,
@@ -11,7 +11,6 @@
  * - Anything else toasts instead of failing silently.
  */
 import { toast } from "../floating/Toast.js";
-import { activeAliases } from "../guide/aliases.js";
 import { canonicalRevealTarget } from "../guide/citations.js";
 import { useReview } from "../state/store.js";
 import { REVEAL_EVENT, revealSource as diffReveal } from "./diff/revealSource.js";
@@ -32,9 +31,7 @@ function flashParagraph(paragraphId: string): void {
 
 export function revealSource(target: string): void {
   const snapshot = useReview.getState().snapshot;
-  const canonical = snapshot
-    ? canonicalRevealTarget(snapshot, target, activeAliases())
-    : target;
+  const canonical = snapshot ? canonicalRevealTarget(snapshot, target) : target;
   if (target.startsWith("desc:")) {
     window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref: target } }));
     flashParagraph(target.slice("desc:".length).split("@")[0]);

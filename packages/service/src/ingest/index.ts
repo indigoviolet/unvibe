@@ -133,6 +133,8 @@ export async function ingestReview(
       rev: "1",
       source: "pr",
       editable: resolved.descriptionEditable,
+      ...(resolved.descriptionAuthor !== undefined ? { author: resolved.descriptionAuthor } : {}),
+      ...(resolved.descriptionState !== undefined ? { state: resolved.descriptionState } : {}),
       baseMarkdown: resolved.descriptionMarkdown,
       paragraphSources,
     };

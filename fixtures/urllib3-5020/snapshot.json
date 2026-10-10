@@ -1090,7 +1090,17 @@
     "html": "<div class=\"desc\"><h3>Unfold obsolete folded response headers</h3><p class=\"para\" id=\"d-p1\">Addresses the original obs-fold response-header case discussed in #1362. Python's <code>http.client</code> preserves obsolete folded response header lines in <code>HTTPMessage</code> values. This change replaces each RFC 9112 <code>OWS CRLF RWS</code> sequence with a single space before urllib3 or downstream consumers interpret the value.</p><h3>The normalization</h3><ul class=\"para\" id=\"d-p2\"><li>keeps urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> synchronized, preventing cookie consumers such as Requests from re-emitting raw CRLF;</li><li>preserves header names, ordering, duplicate fields, and parser state;</li><li>uses a common-case fast path and a linear-time pattern for long field values.</li></ul><h3>Tests</h3><p class=\"para\" id=\"d-p3\">The socket regression covers the original folded <code>Set-Cookie</code>, duplicate cookies, every SP/HTAB combination around CRLF, mixed and repeated whitespace, multiple folds, and ordinary headers. Focused unit coverage also verifies adjacent folds and preservation of the original message's order, duplicates, payload, policy, and defects.</p><p class=\"para\" id=\"d-p4\">This intentionally does not address the separate whitespace-before-colon/header name validation scope discussed on #1362.</p><h3>Validation performed</h3><ul class=\"para\" id=\"d-p5\"><li>full local suite: 2,279 passed, 333 skipped, 4 xfailed;</li><li>focused strict nox sessions on Python 3.12, 3.13, and 3.14;</li><li>pyupgrade, Black, isort, and flake8;</li><li>towncrier changelog validation;</li><li>source distribution and wheel builds;</li><li>end-to-end Requests cookie extraction and subsequent request serialization.</li></ul></div>",
     "rev": "1",
     "source": "pr",
-    "editable": false
+    "editable": false,
+    "restated": {
+      "d-p1": [
+        "b1",
+        "b2"
+      ],
+      "d-p2": [
+        "b2",
+        "b1"
+      ]
+    }
   },
   "pages": [
     {
@@ -1121,7 +1131,7 @@
                   "target": "desc:d-p1"
                 },
                 {
-                  "target": "diff:conn:650-651"
+                  "target": "diff:src-urllib3-connection.py:650-651"
                 }
               ]
             },
@@ -1164,10 +1174,10 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:91-110"
+                  "target": "diff:src-urllib3-connection.py:91-110"
                 },
                 {
-                  "target": "diff:conn:650-651"
+                  "target": "diff:src-urllib3-connection.py:650-651"
                 }
               ]
             },
@@ -1193,7 +1203,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:80-88"
+                  "target": "diff:src-urllib3-connection.py:80-88"
                 }
               ]
             }
@@ -1215,10 +1225,10 @@
               "mermaid": "flowchart TB\n    sock[\"Server sends a folded header\"] --> client[\"http.client parses into HTTPMessage<br>value keeps CRLF [[diff:conn:650-651]]\"]\n    client --> norm[\"_normalize_header_values<br>OWS CRLF RWS becomes one space\"]\n    norm --> dict[\"HTTPHeaderDict<br>r.headers\"]\n    norm --> msg[\"HTTPMessage, same object<br>Requests' cookie jar [[diff:tsock:139-146]]\"]",
               "citations": [
                 {
-                  "target": "diff:conn:650-651"
+                  "target": "diff:src-urllib3-connection.py:650-651"
                 },
                 {
-                  "target": "diff:tsock:139-146"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
                 }
               ],
               "caption": "Where a response's headers go after parsing, and the one place they are now unfolded."
@@ -1236,7 +1246,7 @@
                   "html": "<code>getresponse()</code> passes that message to <code>_normalize_header_values</code> instead of reading <code>.items()</code> directly. ",
                   "citations": [
                     {
-                      "target": "diff:conn:650"
+                      "target": "diff:src-urllib3-connection.py:650"
                     }
                   ]
                 },
@@ -1244,7 +1254,7 @@
                   "html": "Each value goes through <code>_normalize_header_value</code>: values without CRLF return at once, folded ones are rewritten with the pattern. ",
                   "citations": [
                     {
-                      "target": "diff:conn:85-88"
+                      "target": "diff:src-urllib3-connection.py:85-88"
                     }
                   ]
                 },
@@ -1252,7 +1262,7 @@
                   "html": "If any value changed, the message is rewritten in place: every header is deleted, then the normalized list is added back in the same order. ",
                   "citations": [
                     {
-                      "target": "diff:conn:102-108"
+                      "target": "diff:src-urllib3-connection.py:102-108"
                     }
                   ]
                 },
@@ -1260,29 +1270,29 @@
                   "html": "<code>HTTPHeaderDict</code> is built from the same normalized list, so <code>r.headers</code> and <code>r._original_response.msg</code> agree.  ",
                   "citations": [
                     {
-                      "target": "diff:conn:651"
+                      "target": "diff:src-urllib3-connection.py:651"
                     },
                     {
-                      "target": "diff:tsock:139-146"
+                      "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
                     }
                   ]
                 }
               ],
               "citations": [
                 {
-                  "target": "diff:conn:650"
+                  "target": "diff:src-urllib3-connection.py:650"
                 },
                 {
-                  "target": "diff:conn:85-88"
+                  "target": "diff:src-urllib3-connection.py:85-88"
                 },
                 {
-                  "target": "diff:conn:102-108"
+                  "target": "diff:src-urllib3-connection.py:102-108"
                 },
                 {
-                  "target": "diff:conn:651"
+                  "target": "diff:src-urllib3-connection.py:651"
                 },
                 {
-                  "target": "diff:tsock:139-146"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
                 }
               ]
             },
@@ -1333,10 +1343,10 @@
               },
               "citations": [
                 {
-                  "target": "diff:tconn:226-249"
+                  "target": "diff:test-test_connection.py:226-249"
                 },
                 {
-                  "target": "diff:tsock:141"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:141"
                 }
               ]
             },
@@ -1383,7 +1393,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:82"
+                  "target": "diff:src-urllib3-connection.py:82"
                 }
               ]
             },
@@ -1400,7 +1410,7 @@
                   "html": "<code>(?&lt;![ \\t])</code>: that optional whitespace may only start where the previous character isn't a space or tab, i.e. at the start of a run. ",
                   "citations": [
                     {
-                      "target": "diff:conn:80-81"
+                      "target": "diff:src-urllib3-connection.py:80-81"
                     }
                   ]
                 },
@@ -1415,7 +1425,7 @@
               ],
               "citations": [
                 {
-                  "target": "diff:conn:80-81"
+                  "target": "diff:src-urllib3-connection.py:80-81"
                 }
               ]
             },
@@ -1427,7 +1437,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:80-81"
+                  "target": "diff:src-urllib3-connection.py:80-81"
                 }
               ]
             },
@@ -1463,7 +1473,7 @@
                   "html": "Unfolds exactly the RFC shape: optional whitespace, CRLF, at least one space or tab. ",
                   "citations": [
                     {
-                      "target": "diff:conn:82"
+                      "target": "diff:src-urllib3-connection.py:82"
                     }
                   ]
                 },
@@ -1471,10 +1481,10 @@
                   "html": "<a class=\"cx\" data-link=\"page:f-lf\">Folds that end in a bare LF are not unfolded</a>.  ",
                   "citations": [
                     {
-                      "target": "diff:conn:82"
+                      "target": "diff:src-urllib3-connection.py:82"
                     },
                     {
-                      "target": "diff:conn:86"
+                      "target": "diff:src-urllib3-connection.py:86"
                     }
                   ]
                 },
@@ -1482,7 +1492,7 @@
                   "html": "Order and duplicate headers are preserved when the message is rewritten. ",
                   "citations": [
                     {
-                      "target": "diff:tconn:238-246"
+                      "target": "diff:test-test_connection.py:238-246"
                     }
                   ]
                 },
@@ -1490,10 +1500,10 @@
                   "html": "The original message keeps its identity, payload, defects and policy.  ",
                   "citations": [
                     {
-                      "target": "diff:tconn:247-249"
+                      "target": "diff:test-test_connection.py:247-249"
                     },
                     {
-                      "target": "diff:tsock:141"
+                      "target": "diff:test-with_dummyserver-test_socketlevel.py:141"
                     }
                   ]
                 },
@@ -1501,7 +1511,7 @@
                   "html": "<a class=\"cx\" data-link=\"page:f-perf\">The linear-time claim has no test</a>. ",
                   "citations": [
                     {
-                      "target": "diff:conn:80-82"
+                      "target": "diff:src-urllib3-connection.py:80-82"
                     }
                   ]
                 },
@@ -1509,10 +1519,10 @@
                   "html": "Tabs inside ordinary values are left alone.  ",
                   "citations": [
                     {
-                      "target": "diff:tconn:217"
+                      "target": "diff:test-test_connection.py:217"
                     },
                     {
-                      "target": "diff:tsock:133"
+                      "target": "diff:test-with_dummyserver-test_socketlevel.py:133"
                     }
                   ]
                 },
@@ -1520,38 +1530,38 @@
                   "html": "Two adjacent folds give two spaces, which RFC 9112 allows. ",
                   "citations": [
                     {
-                      "target": "diff:tconn:220"
+                      "target": "diff:test-test_connection.py:220"
                     }
                   ]
                 }
               ],
               "citations": [
                 {
-                  "target": "diff:conn:82"
+                  "target": "diff:src-urllib3-connection.py:82"
                 },
                 {
-                  "target": "diff:conn:86"
+                  "target": "diff:src-urllib3-connection.py:86"
                 },
                 {
-                  "target": "diff:tconn:238-246"
+                  "target": "diff:test-test_connection.py:238-246"
                 },
                 {
-                  "target": "diff:tconn:247-249"
+                  "target": "diff:test-test_connection.py:247-249"
                 },
                 {
-                  "target": "diff:tsock:141"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:141"
                 },
                 {
-                  "target": "diff:conn:80-82"
+                  "target": "diff:src-urllib3-connection.py:80-82"
                 },
                 {
-                  "target": "diff:tconn:217"
+                  "target": "diff:test-test_connection.py:217"
                 },
                 {
-                  "target": "diff:tsock:133"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:133"
                 },
                 {
-                  "target": "diff:tconn:220"
+                  "target": "diff:test-test_connection.py:220"
                 }
               ]
             },
@@ -1597,10 +1607,10 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:86-88"
+                  "target": "diff:src-urllib3-connection.py:86-88"
                 },
                 {
-                  "target": "diff:conn:82"
+                  "target": "diff:src-urllib3-connection.py:82"
                 }
               ]
             },
@@ -1620,10 +1630,10 @@
               },
               "citations": [
                 {
-                  "target": "diff:tsock:99-118"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:99-118"
                 },
                 {
-                  "target": "diff:tconn:214-222"
+                  "target": "diff:test-test_connection.py:214-222"
                 }
               ]
             }
@@ -1659,6 +1669,17 @@
                 }
               ],
               "citations": []
+            },
+            {
+              "type": "comment-link",
+              "id": "b-comment",
+              "diffRef": "diff:src-urllib3-connection.py:82",
+              "threadId": "t-sglf",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:82"
+                }
+              ]
             }
           ],
           "undoStack": []
@@ -1703,7 +1724,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:80-82"
+                  "target": "diff:src-urllib3-connection.py:80-82"
                 }
               ]
             },
@@ -1715,7 +1736,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:tconn:214-222"
+                  "target": "diff:test-test_connection.py:214-222"
                 }
               ]
             }
@@ -1738,6 +1759,17 @@
                 "standard": "The pattern is correct today, but the property that makes it safe (the lookbehind) is easy to &quot;simplify&quot; away later, and response headers are untrusted input. A test that normalizes a value with a very long run of spaces, kept within a generous time limit, would protect it. This is a test gap, not a bug."
               },
               "citations": []
+            },
+            {
+              "type": "comment-link",
+              "id": "b-comment",
+              "diffRef": "diff:src-urllib3-connection.py:80",
+              "threadId": "t-sgperf",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80"
+                }
+              ]
             }
           ],
           "undoStack": []
@@ -1773,7 +1805,7 @@
                   "target": "desc:d-p1"
                 },
                 {
-                  "target": "diff:conn:80-82"
+                  "target": "diff:src-urllib3-connection.py:80-82"
                 }
               ]
             },
@@ -1830,7 +1862,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:650-651"
+                  "target": "diff:src-urllib3-connection.py:650-651"
                 }
               ]
             },
@@ -1944,7 +1976,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:80-82"
+                  "target": "diff:src-urllib3-connection.py:80-82"
                 }
               ]
             },
@@ -1992,7 +2024,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:conn:82"
+                  "target": "diff:src-urllib3-connection.py:82"
                 }
               ]
             }
@@ -2027,7 +2059,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:tsock:124-127"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:124-127"
                 }
               ]
             },
@@ -2075,7 +2107,7 @@
               },
               "citations": [
                 {
-                  "target": "diff:tsock:139-146"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
                 }
               ]
             }
