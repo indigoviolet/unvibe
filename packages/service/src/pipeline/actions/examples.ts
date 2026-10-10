@@ -15,6 +15,7 @@ import {
   targetLevel,
   findCardTarget,
 } from "../../interaction/index.js";
+import { cardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   baseVersionOf,
@@ -76,7 +77,19 @@ export async function examplesAction(
         markStaleAnchors(draft, cardId);
         added = out.added;
       });
-      if (added > 0) recordInteraction({ type: "examples.added", reviewId, cardId, count: added });
+      if (added > 0) {
+        try {
+          const live = getSnapshotOrThrow(reviews, reviewId);
+          await recordInteraction({
+            kind: "example-added",
+            reviewId,
+            cardId,
+            text: `Added ${added} example${added === 1 ? "" : "s"} to "${cardTitle(live, cardId)}"`,
+          });
+        } catch {
+          // Logging never fails the action.
+        }
+      }
     },
     async () => {
       // Job error is the visible failure; the card is unchanged.

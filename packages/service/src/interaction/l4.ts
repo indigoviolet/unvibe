@@ -165,26 +165,11 @@ export function threadTextFor(thread: Annotation): string {
 }
 
 /**
- * Change list for the turn. The shared-context agent owns the log; until
- * it wires its filter here, this renders the last few global log lines
- * so the shape is stable and prompts stay deterministic.
- */
-export function changeListTextFor(snapshot: ReviewSnapshot): string {
-  const tail = (snapshot.logTail ?? []).slice(-5);
-  if (tail.length === 0) return "(none)";
-  return tail
-    .map((e) => {
-      const scope = e.scope.scope === "global" ? "global" : `card:${e.scope.cardId}`;
-      const payload = typeof e.payload === "string" ? e.payload : JSON.stringify(e.payload);
-      return `- [${e.seq} ${e.kind} ${scope}] ${payload.slice(0, 160)}`;
-    })
-    .join("\n");
-}
-
-/**
  * Full L4 variable set for the explain/ask templates. `anchor.*` is
  * nested (`{{anchor.quote}}` resolves `values.anchor.quote`); the rest
- * are flat names.
+ * are flat names. `change_list` is deliberately absent: the pipeline's
+ * shared-context wire injects the filtered change list (global entries
+ * plus local ones for the conversation's card/hunk) at render time.
  */
 export function l4Variables(
   snapshot: ReviewSnapshot,
@@ -198,7 +183,6 @@ export function l4Variables(
     },
     card: cardTextFor(snapshot, anchor),
     thread: opts.thread ? threadTextFor(opts.thread) : "(none)",
-    change_list: changeListTextFor(snapshot),
     message: opts.message,
   };
 }

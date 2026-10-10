@@ -8,7 +8,7 @@
  */
 import { randomBytes } from "node:crypto";
 import type { Annotation, Block, Card } from "@unvibe/shared";
-import { findBlock, recordInteraction } from "../../interaction/index.js";
+import { findBlock } from "../../interaction/index.js";
 import { cancelAnnotationJob, getSnapshotOrThrow, type ActionContext } from "./common.js";
 
 export async function promoteAction(
@@ -61,6 +61,7 @@ export async function promoteAction(
     ann.promotedToPage = pageId;
     delete ann.expansion;
   });
-  recordInteraction({ type: "expansion.promoted", reviewId, annotationId, pageId });
+  // The content entered the log when the expansion filled (`new-card`);
+  // moving it to a page adds no new shared knowledge.
   return { annotationId, pageId };
 }

@@ -16,13 +16,12 @@ import { FakeAgentRunner } from "../src/agent/fake.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
 import { isValidMermaid } from "../src/interaction/mermaid.js";
-import { applyUndo, insertExamples } from "../src/interaction/cards.js";
+import { applyUndo, insertExamples, mergeDepthText, pushUndo } from "../src/interaction/cards.js";
 import {
-  noopRecorder,
-  recordInteraction,
-  setInteractionRecorder,
+  getInteractionHandler,
+  setInteractionHandler,
   type InteractionEvent,
-} from "../src/interaction/types.js";
+} from "../src/sharedctx/hooks.js";
 
 const fixturesDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -262,8 +261,13 @@ describe("M4 actions on the demo review (replay)", () => {
     try {
       const id = await createDemoReview(app);
       await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+      // Notes emit nothing at creation (no shared knowledge yet); they
+      // settle to one log line on close.
       const events: InteractionEvent[] = [];
-      setInteractionRecorder({ recordInteraction: (e) => events.push(e) });
+      const prev = getInteractionHandler();
+      setInteractionHandler(async (e) => {
+        events.push(e);
+      });
       try {
         const res = await postAction(app, id, {
           kind: "note",
@@ -276,11 +280,10 @@ describe("M4 actions on the demo review (replay)", () => {
         const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.threadId as string))!;
         expect(thread.note).toBe(true);
         expect(thread.messages).toHaveLength(1);
-        expect(events.some((e) => e.type === "note.created")).toBe(true);
+        expect(events).toHaveLength(0);
       } finally {
-        setInteractionRecorder(noopRecorder);
+        setInteractionHandler(prev);
       }
-      void recordInteraction;
     } finally {
       await app.close();
     }
@@ -480,6 +483,86 @@ describe("M4 actions on the demo review (replay)", () => {
       const deleted = await postAction(app, id, { kind: "delete", targetId: note2.json.threadId as string });
       expect(deleted.status).toBe(200);
       expect(ctx.reviews.getSnapshot(id)!.annotations.some((a) => a.id === (note2.json.threadId as string))).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("interaction log: explain/depth/example land with the right scope; closed threads settle", { timeout: 120000 }, async () => {
+    const { app, ctx } = await createApp("tok", { agents: replay() });
+    try {
+      const id = await createDemoReview(app);
+      await waitFor(() => {
+        const s = ctx.reviews.getSnapshot(id);
+        return !!s?.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "problem")?.blocks.length;
+      });
+      const myEntries = () =>
+        ctx
+          .reviews.getSnapshot(id)!
+          .logTail.filter(
+            (e) =>
+              (e.kind === "new-card" && JSON.stringify(e.payload).includes("raw CRLF")) ||
+              e.kind === "depth-rewrite" ||
+              e.kind === "example" ||
+              e.kind === "thread-summary",
+          );
+
+      // Explain → `new-card`, global scope.
+      const ex = await postAction(app, id, {
+        kind: "explain",
+        quote: "raw CRLF",
+        anchor: { where: "block", blockId: "b1" },
+      });
+      expect(ex.status).toBe(200);
+      await waitForJob(ctx, ex.json.jobId as string);
+      await waitFor(() => myEntries().some((e) => e.kind === "new-card"));
+      const newCard = myEntries().find((e) => e.kind === "new-card")!;
+      expect(newCard.scope).toEqual({ scope: "global" });
+
+      // Depth rewrite via agent → `depth-rewrite`, card scope. g-design
+      // only carries standard text, so the agent path runs.
+      const depth = await postAction(app, id, { kind: "depth", cardId: "g-design", direction: "simpler" });
+      expect(depth.status).toBe(200);
+      if (depth.json.jobId) await waitForJob(ctx, depth.json.jobId as string);
+      await waitFor(() => myEntries().some((e) => e.kind === "depth-rewrite"));
+      const rewrite = myEntries().find((e) => e.kind === "depth-rewrite")!;
+      expect(rewrite.scope).toEqual({ scope: "card", cardId: "g-design" });
+
+      // Examples → `example`, card scope.
+      const examples = await postAction(app, id, { kind: "examples", cardId: "central" });
+      expect(examples.status).toBe(200);
+      if (examples.json.jobId) await waitForJob(ctx, examples.json.jobId as string);
+      await waitFor(() => myEntries().some((e) => e.kind === "example"));
+      const example = myEntries().find((e) => e.kind === "example")!;
+      expect(example.scope).toEqual({ scope: "card", cardId: "central" });
+
+      // Ask + close → `thread-summary`, global scope (one line, once).
+      const ask = await postAction(app, id, {
+        kind: "ask",
+        quote: "fast path",
+        anchor: { where: "block", blockId: "central#b4" },
+        message: "Does the fast path still catch a fold that uses a bare LF?",
+      });
+      expect(ask.status).toBe(200);
+      await waitForJob(ctx, ask.json.jobId as string);
+      const threadId = ask.json.threadId as string;
+      const closed = await postAction(app, id, { kind: "close", annotationId: threadId });
+      expect(closed.status).toBe(200);
+      await waitFor(() =>
+        myEntries().some(
+          (e) =>
+            e.kind === "thread-summary" &&
+            (e.payload as { threadId?: string }).threadId === threadId,
+        ),
+      );
+      const summary = myEntries().find((e) => e.kind === "thread-summary")!;
+      expect(summary.scope).toEqual({ scope: "global" });
+
+      // UI state never lands in the log: read adds nothing.
+      const countBefore = myEntries().length;
+      await postAction(app, id, { kind: "read", cardId: "central", read: true });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(myEntries()).toHaveLength(countBefore);
     } finally {
       await app.close();
     }
@@ -725,5 +808,62 @@ describe("M4 interaction pure logic", () => {
     };
     expect(applyUndo({ kind: "page-card", pageId: "root", card } as never)).toBe(true);
     expect(card.blocks).toHaveLength(1);
+  });
+
+  it("second opinions and accepted corrections survive depth rewrites and undo", () => {
+    const para = (id: string, standard: string, extra: Record<string, string> = {}) => ({
+      type: "paragraph",
+      id,
+      text: { standard, ...extra },
+      citations: [],
+    });
+    const opinion = {
+      id: "so-central-check-test-test",
+      cardId: "central",
+      mode: "check",
+      provider: "test",
+      model: "test",
+      verdict: "agrees",
+      reasoning: "Looks right.",
+      blocks: [],
+      version: 1,
+      createdAt: 0,
+    };
+    const corr = para("b-corr-ct_1", "Accepted suggestion (from ct_1): use spaces.");
+    const card = {
+      id: "central",
+      pageId: "root",
+      title: "The central change",
+      level: "standard",
+      read: false,
+      collapsed: false,
+      revision: 2,
+      blocks: [para("b1", "Body one.", { simple: "Simple one." }), corr],
+      undoStack: [],
+      secondOpinions: [opinion],
+    };
+    const target = { kind: "page-card", pageId: "root", card } as never;
+
+    // Agent depth rewrite with a correction paragraph present: the merge
+    // fills per-level text positionally and never drops blocks; the
+    // second-opinion array lives beside blocks and is untouched.
+    const reply = [para("b1", "Ignored standard.", { simple: "Fresh simple one." })];
+    pushUndo(target as never, [...card.blocks] as never[], "standard");
+    const merged = mergeDepthText(card.blocks as never[], reply as never[], "simple") as typeof card.blocks;
+    card.blocks = merged;
+    card.level = "simple";
+    card.revision += 1;
+    expect(card.blocks.map((b: { id: string }) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
+    expect((card.blocks[0] as { text: { simple: string } }).text.simple).toBe("Fresh simple one.");
+    expect((card.blocks[1] as { text: { standard: string } }).text.standard).toContain("Accepted suggestion");
+    expect(card.secondOpinions).toHaveLength(1);
+    expect(card.secondOpinions[0].verdict).toBe("agrees");
+
+    // Undo restores the pre-rewrite blocks; opinions and corrections ride
+    // along (annotations live outside cards regardless).
+    expect(applyUndo(target)).toBe(true);
+    expect(card.level).toBe("standard");
+    expect(card.blocks.map((b: { id: string }) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
+    expect(card.secondOpinions).toHaveLength(1);
   });
 });

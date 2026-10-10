@@ -23,6 +23,7 @@ import {
   setTargetContent,
   stepLevel,
 } from "../../interaction/index.js";
+import { cardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   baseVersionOf,
@@ -63,6 +64,8 @@ export async function depthAction(
   }
 
   // Stored per block per level: switching back is instant, no agent call.
+  // The rewritten text entered the log when first generated; the switch
+  // itself is stepper state (`depth-state`, never logged).
   if (hasLevelText(blocks, next)) {
     const from = level;
     await reviews.mutate(reviewId, (draft) => {
@@ -73,8 +76,7 @@ export async function depthAction(
       setTargetContent(t, current, next);
       markStaleAnchors(draft, cardId);
     });
-    recordInteraction({ type: "depth.requested", reviewId, cardId, direction });
-    recordInteraction({ type: "depth.completed", reviewId, cardId, level: next, fromAgent: false });
+    await recordInteraction({ kind: "depth-state", reviewId, cardId, text: `Depth ${next}: "${cardTitle(getSnapshotOrThrow(reviews, reviewId), cardId)}"` });
     return { cardId, level: next };
   }
 
@@ -87,14 +89,13 @@ export async function depthAction(
   const active = findActiveJob(jobs, reviewId, key);
   if (active) return { cardId, jobId: active.id, deduplicated: true };
 
-  return depthViaAgent(ctx, cardId, next, direction);
+  return depthViaAgent(ctx, cardId, next);
 }
 
 async function depthViaAgent(
   ctx: ActionContext,
   cardId: string,
   target: "simple" | "standard" | "deep",
-  direction?: "simpler" | "deeper",
 ): Promise<{ cardId: string; jobId?: string; level?: string }> {
   const { pipeline, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
@@ -123,7 +124,6 @@ async function depthViaAgent(
     onJob: (job: Job) => capture.onJob(job),
   });
 
-  if (direction) recordInteraction({ type: "depth.requested", reviewId, cardId, direction });
   void done.then(
     async (res) => {
       const replyBlocks = res.cards.flatMap((c) => c.blocks) as Block[];
@@ -142,7 +142,19 @@ async function depthViaAgent(
         setTargetContent(t, merged, target);
         markStaleAnchors(draft, cardId);
       });
-      recordInteraction({ type: "depth.completed", reviewId, cardId, level: target, fromAgent: true });
+      // The rewritten text is card-local shared knowledge (PRD §9.3).
+      // Awaited so tests observe the entry once the rewrite settles.
+      try {
+        const live = getSnapshotOrThrow(reviews, reviewId);
+        await recordInteraction({
+          kind: "depth-rewrite",
+          reviewId,
+          cardId,
+          text: `Depth ${target}: "${cardTitle(live, cardId)}"`,
+        });
+      } catch {
+        // Logging never fails the action.
+      }
     },
     async () => {
       // No card-level error field: the job's error state (Jobs view) is

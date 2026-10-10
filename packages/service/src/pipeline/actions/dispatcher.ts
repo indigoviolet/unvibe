@@ -1,17 +1,19 @@
 /**
- * Actions dispatcher (M4): one file per action kind.
+ * Actions dispatcher (M4/M6): one file per action kind.
  *
- * `generate` (Go deeper) and every interaction kind route here; only
- * `second_opinion` stays 501 (owned by the second-opinion agent, which
- * adds `actions/second_opinion.ts` and its branch). Each action goes
- * through `ReviewStore.mutate` so the UI gets patches; each agent call
- * runs at user-requested priority with (anchor, kind, depth, base
- * version) dedupe and citation validation via the `runInFork` seam.
+ * `generate` (Go deeper) and every interaction kind route here, plus
+ * `second_opinion` via the isolated `secondopinion/` module (own base,
+ * blind/check modes). Each action goes through `ReviewStore.mutate` so
+ * the UI gets patches; each agent call runs at user-requested priority
+ * with (anchor, kind, depth, base version) dedupe and citation validation
+ * via the `runInFork` seam.
  */
 import type { FastifyReply } from "fastify";
 import type { ActionResponse, ReviewAction } from "@unvibe/shared";
 import type { JobQueue } from "../../jobs/index.js";
 import type { SessionManager } from "../../sessions/manager.js";
+import type { SettingsStore } from "../../settings/index.js";
+import type { SharedContextService } from "../../sharedctx/service.js";
 import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import { generateAction } from "./generate.js";
@@ -26,6 +28,7 @@ import { explainAction } from "./explain.js";
 import { followupAction } from "./followup.js";
 import { noteAction } from "./note.js";
 import { promoteAction } from "./promote.js";
+import { removeSecondOpinionAction, secondOpinionAction } from "./second_opinion.js";
 import { undoAction } from "./undo.js";
 import type { ActionContext } from "./common.js";
 
@@ -34,6 +37,8 @@ export interface ActionDeps {
   jobs?: JobQueue;
   reviews?: ReviewStore;
   sessions?: SessionManager;
+  settings?: SettingsStore;
+  sharedctx?: SharedContextService;
   fixturesDir?: string;
   promptsDir?: string;
 }
@@ -59,6 +64,8 @@ export async function dispatchAction(
     ...(deps.reviews ? { reviews: deps.reviews } : {}),
     reviewId: deps.reviewId,
     ...(deps.sessions ? { sessions: deps.sessions } : {}),
+    ...(deps.settings ? { settings: deps.settings } : {}),
+    ...(deps.sharedctx ? { sharedctx: deps.sharedctx } : {}),
     ...(deps.fixturesDir ? { fixturesDir: deps.fixturesDir } : {}),
     ...(deps.promptsDir ? { promptsDir: deps.promptsDir } : {}),
   } as ActionContext;
@@ -203,7 +210,29 @@ export async function dispatchAction(
       case "delete": {
         need(ctx);
         if (typeof action.targetId !== "string") return bad(reply, "targetId is required");
-        const res = await deleteAction(ctx, action.targetId);
+        // Second-opinion removal travels over the generic `delete` action:
+        // targetId `second-opinion:<cardId>:<mode>` or a stored `so-…`
+        // opinion id. All other targets are annotation ids (M4).
+        const target = action.targetId;
+        const soMatch = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
+        if (soMatch) {
+          try {
+            if (soMatch[1].startsWith("so-")) {
+              await removeSecondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, "", undefined, soMatch[1]);
+            } else {
+              const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
+              await removeSecondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, cardId, mode as "blind" | "check");
+            }
+            return { accepted: true } satisfies ActionResponse;
+          } catch (err) {
+            const msg = (err as Error).message;
+            if (/unknown second opinion|unknown card|unknown review/.test(msg)) {
+              return reply.code(404).send({ error: msg });
+            }
+            return reply.code(500).send({ error: msg });
+          }
+        }
+        const res = await deleteAction(ctx, target);
         return { accepted: true, annotationId: res.targetId } satisfies ActionResponse;
       }
       case "followup": {
@@ -226,15 +255,28 @@ export async function dispatchAction(
         if (res.deduplicated) out.deduplicated = true;
         return out;
       }
-      case "second_opinion":
-        // Owned by the second-opinion agent (actions/second_opinion.ts).
-        return reply.code(501).send({ error: "not implemented: M3 actions (second_opinion)" });
+      case "second_opinion": {
+        need(ctx);
+        if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
+        if (action.mode !== "blind" && action.mode !== "check") {
+          return bad(reply, "mode must be blind or check");
+        }
+        try {
+          const res = await secondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, action.cardId, action.mode);
+          return { accepted: true, jobId: res.jobId } satisfies ActionResponse;
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (/unknown review|unknown card/.test(msg)) return reply.code(404).send({ error: msg });
+          if (/different model|Settings/.test(msg)) return reply.code(400).send({ error: msg });
+          return reply.code(500).send({ error: msg });
+        }
+      }
       default:
         return reply.code(501).send({ error: `not implemented: M3 actions (${(action as { kind: string }).kind})` });
     }
   } catch (err) {
     const msg = (err as Error).message;
-    if (/unknown review|unknown card|unknown annotation|unknown comment|unknown follow-up|unknown page|unknown block|unknown file|unknown description|unknown thread/.test(msg)) {
+    if (/unknown review|unknown card|unknown annotation|unknown comment|unknown follow-up|unknown page|unknown block|unknown file|unknown description|unknown thread|unknown second opinion/.test(msg)) {
       return reply.code(404).send({ error: msg });
     }
     if (/required|must be|bad |invalid|no failed|cannot be retried|has a failed/.test(msg)) {

@@ -18,7 +18,7 @@
 import type { ActionAnchor, Anchor, Annotation, Block, ChatMessage, Job, ParsedCard } from "@unvibe/shared";
 import { JOB_PRIORITY, parseCards, splitReply } from "@unvibe/shared";
 import { appendAgentReplyInDraft, buildAnchor, createThreadInDraft, newAnnotationId } from "../../comments/threads.js";
-import { l4Variables, recordInteraction } from "../../interaction/index.js";
+import { l4Variables, recordInteraction, type InteractionEvent } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { RetryableError } from "../../jobs/errors.js";
 import { validateReply } from "../../validate/index.js";
@@ -38,6 +38,8 @@ import {
   type ActionContext,
 } from "./common.js";
 import { canonicalizeCitations } from "./validate-apply.js";
+import { hasOutOfBaseCitations } from "./events.js";
+import { changeListVariable, ingestAgentTurn } from "../sharedctx-wire.js";
 
 export interface AskRequest {
   quote: string;
@@ -83,7 +85,6 @@ export async function askAction(
     created.id = threadId;
     created.working = "Reading…";
   });
-  recordInteraction({ type: "ask.requested", reviewId, threadId });
 
   const res = await runAskFill(ctx, threadId, anchor, { dedupeKey: key });
   return { threadId, ...res };
@@ -138,6 +139,9 @@ export async function runAskFill(
     priority: JOB_PRIORITY.userRequested,
     dedupeKey: key,
     threadId,
+    // Persistent conversation: follow-up turns resume from this turn's
+    // cursor (the wire advances it only on success).
+    conversationKey: threadId,
     replay,
     onJob: (job: Job) => {
       capture.onJob(job);
@@ -168,9 +172,10 @@ export async function runAskFill(
         if (fixedCitations.length > 0) last.citations = fixedCitations;
       });
       // Remember the conversation session for follow-up turns.
+      let sessionId: string | undefined;
       try {
         const jobId = (await capture.wait())?.id;
-        const sessionId = jobId ? ctx.jobs.get(jobId)?.sessionId : undefined;
+        sessionId = jobId ? ctx.jobs.get(jobId)?.sessionId : undefined;
         if (sessionId) {
           await reviews.mutate(reviewId, (draft) => {
             const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
@@ -180,7 +185,24 @@ export async function runAskFill(
       } catch {
         // Session tracking is best-effort; replies fall back to a fork.
       }
-      recordInteraction({ type: "ask.replied", reviewId, threadId, unverified: res.validation.unverified });
+      // Answers citing fetched code (outside the base pack) are shared in
+      // full (PRD §9.3). Threads themselves settle later via close/idle.
+      // Awaited so tests observe the entry once the reply settles.
+      try {
+        if (hasOutOfBaseCitations(res.validation.tokens)) {
+          const event: InteractionEvent = {
+            kind: "out-of-base-answer",
+            reviewId,
+            text: body,
+            threadId,
+            citations: fixedCitations.map((c) => c.target),
+          };
+          if (sessionId) event.sessionId = sessionId;
+          await recordInteraction(event);
+        }
+      } catch {
+        // Logging never fails the action.
+      }
     },
     async (err: Error) => {
       if (await suppressFillError(ctx, threadId)) return;
@@ -191,7 +213,7 @@ export async function runAskFill(
         found.working = null;
         found.error = messageText;
       });
-      recordInteraction({ type: "ask.failed", reviewId, threadId, error: messageText });
+      // Failures produce no shared knowledge: visible error only, no log.
     },
   );
 
@@ -268,7 +290,6 @@ export async function replyAction(
     found.error = null;
     found.open = true;
   });
-  recordInteraction({ type: "thread.reply", reviewId, threadId });
 
   const sessionId = thread.sessionId;
   if (sessionId && sessions) {
@@ -298,7 +319,23 @@ async function replyOnSession(
   const tpl = lib.get("ask");
   if (!tpl) throw new Error("unknown prompt template ask");
   const lastUser = [...thread.messages].reverse().find((m) => m.who === "you" && m.text);
-  const variables = l4Variables(snapshot, thread.anchor, { thread, message: lastUser?.text ?? "" });
+  // Filtered change list since this conversation's cursor (the wire seeds
+  // it at the base seq on first use); falls back to "(no changes)" when
+  // the shared-context service is absent (tests).
+  const wireDeps =
+    ctx.settings && ctx.sessions
+      ? {
+          reviews,
+          sessions: ctx.sessions,
+          settings: ctx.settings,
+          promptsDir,
+          ...(ctx.sharedctx ? { sharedctx: ctx.sharedctx } : {}),
+        }
+      : null;
+  const l4 = l4Variables(snapshot, thread.anchor, { thread, message: lastUser?.text ?? "" });
+  const variables = wireDeps
+    ? changeListVariable(wireDeps, reviewId, "ask", l4, { conversationKey: threadId })
+    : { ...l4, change_list: "(no changes)" };
   let prompt = renderTemplate(tpl, variables);
   if (isReplayRunner(pipeline.runner)) prompt = withReplayMark(prompt, { kind: "ask" });
 
@@ -353,7 +390,49 @@ async function replyOnSession(
             const last = found.messages[found.messages.length - 1];
             if (fixedCitations.length > 0) last.citations = fixedCitations;
           });
-          recordInteraction({ type: "ask.replied", reviewId, threadId, unverified: parsed.validation.unverified });
+          // Same-session turns ingest contributions, advance the cursor and
+          // grow the base exactly like fork turns (best-effort).
+          if (wireDeps?.sharedctx && wireDeps.settings && wireDeps.sessions) {
+            try {
+              const lookup = lookupWithAliases(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
+              await ingestAgentTurn(
+                {
+                  reviews,
+                  sessions: wireDeps.sessions,
+                  settings: wireDeps.settings,
+                  promptsDir,
+                  sharedctx: wireDeps.sharedctx,
+                },
+                reviewId,
+                {
+                  sessionId,
+                  threadId,
+                  conversationKey: threadId,
+                  data: turnSplit.ok ? turnSplit.data : null,
+                  snapshot: getSnapshotOrThrow(reviews, reviewId),
+                  lookup,
+                  appendToBase: (baseKey, batch) => wireDeps.sessions.appendLogBatch(baseKey, batch),
+                },
+              );
+            } catch {
+              // best-effort
+            }
+          }
+          // Answers citing fetched code are shared in full (PRD §9.3).
+          try {
+            if (hasOutOfBaseCitations(parsed.validation.tokens)) {
+              await recordInteraction({
+                kind: "out-of-base-answer",
+                reviewId,
+                text: turnBody,
+                threadId,
+                citations: fixedCitations.map((c) => c.target),
+                sessionId,
+              });
+            }
+          } catch {
+            // Logging never fails the action.
+          }
           return;
         } catch (err) {
           if (err instanceof RetryableError && attempt < 3) {
@@ -369,7 +448,7 @@ async function replyOnSession(
               found.error = msg;
             }
           });
-          recordInteraction({ type: "ask.failed", reviewId, threadId, error: msg });
+          // Failures produce no shared knowledge: visible error only, no log.
           throw err;
         }
       }
@@ -465,7 +544,6 @@ export async function retryAction(
   if (!thread) throw new Error(`unknown comment ${threadId}`);
   if (!thread.error) throw new Error(`thread ${threadId} has no failed reply to retry`);
 
-  recordInteraction({ type: "thread.retried", reviewId, threadId });
   if (thread.type === "expansion") {
     const { runExplainFill } = await import("./explain.js");
     const res = await runExplainFill(ctx, threadId, thread.anchor, thread.anchor.quotedText, { skipDedupe: true });

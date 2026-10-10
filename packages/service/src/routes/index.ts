@@ -13,6 +13,7 @@ import { registerRepos } from "./repos.js";
 import { registerReviews, type ReviewsRouteDeps } from "./reviews.js";
 import { registerSettings } from "./settings.js";
 import { registerSubmit } from "./submit.js";
+import { registerViewer } from "./viewer.js";
 
 /**
  * One route module per area; each registers its PRD §14.1 endpoints.
@@ -35,9 +36,10 @@ export async function registerRoutes(
   await registerReviews(app, ctx, deps);
   await registerHunks(app, full as unknown as ServiceContext, full as unknown as RouteDeps);
   await registerComments(app, ctx);
-  await registerContributions(app, ctx);
+  await registerContributions(app, full as unknown as ServiceContext);
   await registerDescription(app, ctx);
   await registerSubmit(app, ctx);
+  await registerViewer(app, ctx);
   await registerSettings(app, deps);
   await registerPrompts(app, {
     snapshots: {

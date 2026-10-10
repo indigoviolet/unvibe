@@ -331,6 +331,8 @@ export async function registerReviews(
         reviews: ctx.reviews,
         reviewId: id,
         ...(routeDeps.sessions ? { sessions: routeDeps.sessions } : {}),
+        ...(routeDeps.settings ? { settings: routeDeps.settings } : {}),
+        ...(routeDeps.sharedctx ? { sharedctx: routeDeps.sharedctx } : {}),
         ...(routeDeps.fixturesDir ? { fixturesDir: routeDeps.fixturesDir } : {}),
         ...(routeDeps.promptsDir ? { promptsDir: routeDeps.promptsDir } : {}),
       },

@@ -2,16 +2,19 @@
  * Interaction pure logic (M4).
  *
  * The `actions` route and `pipeline/actions/*` handlers call into these
- * helpers; everything here is pure over snapshots/drafts except the
- * recorder hook (`types.ts`), which the shared-context agent owns.
+ * helpers; everything here is pure over snapshots/drafts. The interaction
+ * hook lives in `sharedctx/hooks.ts` (single home for `recordInteraction`);
+ * the canonical names are re-exported here so action modules have one
+ * import site.
  */
 export {
   recordInteraction,
-  setInteractionRecorder,
-  noopRecorder,
+  setInteractionHandler,
+  getInteractionHandler,
   type InteractionEvent,
-  type InteractionRecorder,
-} from "./types.js";
+  type InteractionEventKind,
+  type InteractionHandler,
+} from "../sharedctx/hooks.js";
 export {
   findCardTarget,
   findCardTargetInDraft,
@@ -39,7 +42,6 @@ export {
   cardTextFor,
   nearbyAnnotationsText,
   threadTextFor,
-  changeListTextFor,
   l4Variables,
   cardPromptText,
 } from "./l4.js";

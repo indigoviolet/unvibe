@@ -20,7 +20,16 @@ export interface RunInForkOptions {
   priority: number;
   dedupeKey?: { anchor: string; requestKind: string; depth?: string; baseVersion: string };
   cardId?: string;
-  /** M4: annotation the streamed text belongs to (ask replies, expansions). */
+  /**
+   * M5 shared context (PRD §9.3): persistent conversation the turn belongs
+   * to (e.g. a thread id). The next turn's L4 gets the filtered change list
+   * since this conversation's cursor, and the cursor advances only when the
+   * turn succeeds. Absent = one-shot fork (change list = unappended tail).
+   */
+  conversationKey?: string;
+  /** Hunk content hash the conversation is anchored on (change-list filter). */
+  hunkHash?: string;
+  /** Thread the turn replies in (contribution labelling; M4: WS correlation). */
   threadId?: string;
   /** Called with newly finished cards as they stream in. */
   onPartial?: (cards: ParsedCard[]) => void | Promise<void>;

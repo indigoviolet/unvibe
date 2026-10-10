@@ -41,7 +41,7 @@ export async function readAction(
       }
     }
   });
-  recordInteraction({ type: "read.changed", reviewId, cardId, read });
+  await recordInteraction({ kind: "read", reviewId, cardId, text: `Marked ${cardId} ${read ? "read" : "unread"}` });
   return { cardId };
 }
 
@@ -61,7 +61,7 @@ export async function collapseAction(
       t.annotation.expansion!.collapsed = collapsed;
     }
   });
-  recordInteraction({ type: "collapse.changed", reviewId, cardId, collapsed });
+  await recordInteraction({ kind: "collapse", reviewId, cardId, text: `${collapsed ? "Collapsed" : "Expanded"} ${cardId}` });
   return { cardId };
 }
 
@@ -77,6 +77,6 @@ export async function bookmarkAction(
     if (!page) throw new Error(`unknown page ${pageId}`);
     page.saved = saved;
   });
-  recordInteraction({ type: "bookmark.changed", reviewId, pageId, saved });
+  await recordInteraction({ kind: "bookmark", reviewId, pageId, text: `${saved ? "Saved" : "Unsaved"} page ${pageId}` });
   return { pageId };
 }

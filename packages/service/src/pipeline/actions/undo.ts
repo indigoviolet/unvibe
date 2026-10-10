@@ -20,6 +20,7 @@ export async function undoAction(
     undone = applyUndo(t);
     if (undone) markStaleAnchors(draft, cardId);
   });
-  if (undone) recordInteraction({ type: "undo.applied", reviewId, cardId });
+  // Undo is UI state (PRD §9.3): accepted, never logged.
+  if (undone) await recordInteraction({ kind: "undo", reviewId, cardId, text: `Undid last change on ${cardId}` });
   return { cardId, undone };
 }

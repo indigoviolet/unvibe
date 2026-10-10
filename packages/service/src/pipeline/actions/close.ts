@@ -10,6 +10,7 @@
 import type { Annotation } from "@unvibe/shared";
 import { recordInteraction } from "../../interaction/index.js";
 import { cancelAnnotationJob, getSnapshotOrThrow, type ActionContext } from "./common.js";
+import { deletionFor, wasShared } from "./events.js";
 
 export async function closeAction(
   ctx: ActionContext,
@@ -30,10 +31,17 @@ export async function closeAction(
     // Closing keeps content for the dotted-link preview; a working job
     // that finishes later still fills the (closed) expansion.
   });
-  if (found.type === "expansion") {
-    recordInteraction({ type: "expansion.closed", reviewId, annotationId });
+  // Close is UI state (never logged). A closed thread settles at once:
+  // one line in the log so other conversations see it (PRD §9.3).
+  if (found.type === "thread") {
+    await recordInteraction({ kind: "close", reviewId, threadId: annotationId, text: `Closed thread "${annotationId}"` });
+    try {
+      await ctx.sharedctx?.maybeSettleThread(reviewId, annotationId);
+    } catch {
+      // Settling is best-effort; the close itself already applied.
+    }
   } else {
-    recordInteraction({ type: "thread.closed", reviewId, threadId: annotationId });
+    await recordInteraction({ kind: "close", reviewId, text: `Closed ${annotationId}` });
   }
   return { annotationId };
 }
@@ -53,6 +61,10 @@ export async function deleteAction(
     if (idx < 0) throw new Error(`unknown annotation ${targetId}`);
     (draft.annotations as unknown as Annotation[]).splice(idx, 1);
   });
-  recordInteraction({ type: "annotation.deleted", reviewId, annotationId: targetId });
+  // A deleted item that had been shared leaves a one-line deletion entry
+  // (PRD §9.3); unshared working states simply vanish.
+  if (wasShared(found)) {
+    await recordInteraction(deletionFor(reviewId, found));
+  }
   return { targetId };
 }

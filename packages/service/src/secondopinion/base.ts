@@ -1,0 +1,138 @@
+/**
+ * Second-opinion base sessions (PRD §12).
+ *
+ * Its own base, never a fork of the main base: a fresh session on the
+ * second-opinion model containing L0 + L1. One base per (version, model)
+ * is reused across second opinions via fork or the byte-identical fallback
+ * (PRD §6), since L0 + L1 is common; the per-request part (topic or claim
+ * + cited code) goes in the turn.
+ *
+ * Isolation is structural: the base pack is built from L0 instructions +
+ * L1 source only. Guide text, findings, contributions, the log, and the
+ * main model's pinned code never enter — except cited excerpts, which
+ * travel in the turn, not the base.
+ */
+import path from "node:path";
+import type { AgentRunner, Session } from "@unvibe/shared";
+import { buildL1Source } from "../context/index.js";
+import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
+import { toPromptSnapshot } from "../routes/prompts.js";
+import type { McpRegistry } from "../mcp/index.js";
+import type { SessionManager } from "../sessions/manager.js";
+import type { ReviewStore } from "../state/store.js";
+import type { SettingsStore } from "../settings/index.js";
+import { RetryableError } from "../jobs/errors.js";
+
+export interface SecondOpinionBaseDeps {
+  reviews: ReviewStore;
+  sessions: SessionManager;
+  runner: AgentRunner;
+  mcp: McpRegistry;
+  settings: SettingsStore;
+  dataDir: string;
+  promptsDir: string;
+  mcpBaseUrl: string;
+}
+
+function worktreeOf(dataDir: string, reviewId: string): string {
+  return path.join(dataDir, "worktrees", reviewId);
+}
+
+function renderInstructions(promptsDir: string): string {
+  const lib = loadTemplatesDirSync(promptsDir);
+  const tpl = lib.get("instructions");
+  if (!tpl) throw new Error("missing instructions template");
+  return renderTemplate(tpl, {});
+}
+
+/**
+ * Build the common L0 + L1 base text for a review. Deterministic: same
+ * snapshot renders to the same bytes (provider caching).
+ */
+export function buildSecondOpinionBaseText(
+  deps: Pick<SecondOpinionBaseDeps, "reviews" | "settings" | "promptsDir">,
+  reviewId: string,
+): { instructions: string; sourceText: string; packText: string; version: number } {
+  const snapshot = deps.reviews.getSnapshot(reviewId);
+  if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+  const settings = deps.settings.get();
+  const promptSnap = toPromptSnapshot(snapshot, { model: settings.secondOpinion.model });
+  const l1 = buildL1Source(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
+  const instructions = renderInstructions(deps.promptsDir);
+  const sourceText = l1.text;
+  const packText =
+    `Read the review source below and reply with exactly \`ready\` and nothing else.\n\n` +
+    `${instructions}\n\n${sourceText}`;
+  return { instructions, sourceText, packText, version: snapshot.version.n };
+}
+
+/**
+ * Get (or build) the shared second-opinion base for (version, model).
+ * Keyed by reviewVersion + fixed "so" guideRevision + provider + model.
+ */
+export async function ensureSecondOpinionBase(
+  deps: SecondOpinionBaseDeps,
+  reviewId: string,
+): Promise<{ session: Session; viaCache: boolean; version: number }> {
+  const snapshot = deps.reviews.getSnapshot(reviewId);
+  if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+  const settings = deps.settings.get();
+  const { packText, version } = buildSecondOpinionBaseText(deps, reviewId);
+  const instructions = renderInstructions(deps.promptsDir);
+  const key = {
+    reviewVersion: `v${snapshot.version.n}`,
+    guideRevision: "so",
+    provider: settings.secondOpinion.provider,
+    model: settings.secondOpinion.model,
+  };
+  const mcp = deps.mcp.issueSession(reviewId, `so-base-${reviewId}-v${version}`, "second-opinion");
+  const mcpServers = [{ name: "unvibe", url: `${deps.mcpBaseUrl}${mcp.path}` }];
+  const handle = await deps.sessions.getBase({
+    key,
+    cwd: worktreeOf(deps.dataDir, reviewId),
+    systemPrompt: instructions,
+    mcpServers,
+    pack: packText,
+  });
+  return { session: handle.session, viaCache: !handle.fresh, version };
+}
+
+/**
+ * Fork the second-opinion base for one request, or fall back to a fresh
+ * session with a byte-identical base pack (PRD §6) when `fork` is
+ * unavailable. Returns the conversation session plus whether fork was used.
+ */
+export async function forkSecondOpinionBase(
+  deps: SecondOpinionBaseDeps,
+  reviewId: string,
+): Promise<{ session: Session; viaFork: boolean; version: number }> {
+  const snapshot = deps.reviews.getSnapshot(reviewId);
+  if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+  const settings = deps.settings.get();
+  const { packText, version } = buildSecondOpinionBaseText(deps, reviewId);
+  const instructions = renderInstructions(deps.promptsDir);
+  const base = await ensureSecondOpinionBase(deps, reviewId);
+  const runner = deps.runner;
+  if (typeof runner.fork === "function") {
+    try {
+      const session = await runner.fork(base.session);
+      return { session, viaFork: true, version };
+    } catch {
+      // fall through to fresh-session fallback
+    }
+  }
+  const mcp = deps.mcp.issueSession(reviewId, `so-fork-${Date.now()}`, "second-opinion");
+  const session = await runner.start({
+    provider: settings.secondOpinion.provider,
+    model: settings.secondOpinion.model,
+    cwd: worktreeOf(deps.dataDir, reviewId),
+    systemPrompt: instructions,
+    mcpServers: [{ name: "unvibe", url: `${deps.mcpBaseUrl}${mcp.path}` }],
+  });
+  // Byte-identical base pack first (caching still works).
+  for await (const ev of runner.prompt(session, packText)) {
+    if (ev.type === "error" && ev.retryable) throw new RetryableError(ev.message);
+    if (ev.type === "error") throw new Error(ev.message);
+  }
+  return { session, viaFork: false, version };
+}

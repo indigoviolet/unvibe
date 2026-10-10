@@ -21,6 +21,7 @@ import {
   type ActionContext,
 } from "./common.js";
 import { aliasCanonicalizer, remapAliasTargets } from "./validate-apply.js";
+import { newCardForExpansion } from "./events.js";
 
 export async function followupAction(
   ctx: ActionContext,
@@ -97,6 +98,7 @@ export async function followupAction(
     priority: JOB_PRIORITY.userRequested,
     dedupeKey: key,
     threadId: annotationId,
+    conversationKey: annotationId,
     replay: isReplayRunner(pipeline.runner) ? { kind: "ask" } : undefined,
     onJob: (job: Job) => {
       capture.onJob(job);
@@ -140,7 +142,17 @@ export async function followupAction(
         found.jobId = undefined;
         found.expansion.jobId = undefined;
       });
-      recordInteraction({ type: "followup.answered", reviewId, annotationId, cardId });
+      // Follow-up answers are new expansion content: log in full.
+      try {
+        const jobId = (await capture.wait())?.id;
+        const sessionId = jobId ? ctx.jobs.get(jobId)?.sessionId : undefined;
+        const live = getSnapshotOrThrow(reviews, reviewId);
+        const filled = live.annotations.find((a) => a.id === annotationId);
+        const event = filled ? newCardForExpansion(reviewId, live, filled, sessionId) : null;
+        if (event) await recordInteraction(event);
+      } catch {
+        // Logging never fails the action.
+      }
     },
     async (err: Error) => {
       const msg = err instanceof Error ? err.message : String(err);

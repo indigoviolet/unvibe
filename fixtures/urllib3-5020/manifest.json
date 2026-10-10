@@ -50,6 +50,9 @@
     {"kind": "ask", "key": "regex", "pattern": "regex|lookbehind|pattern", "file": "ask-regex.md"},
     {"kind": "ask", "key": "header-name", "pattern": "name|colon|before the colon", "file": "ask-header-name.md"},
     {"kind": "ask", "key": "reject-vs-unfold", "pattern": "reject|rfc|safer", "file": "ask-reject-vs-unfold.md"},
-    {"kind": "ask", "key": "forwarding", "pattern": "forward|proxy", "file": "ask-forwarding.md"}
+    {"kind": "ask", "key": "forwarding", "pattern": "forward|proxy", "file": "ask-forwarding.md"},
+    {"kind": "second-opinion", "key": "f-lf:blind", "file": "second-opinion-f-lf-blind.md"},
+    {"kind": "second-opinion", "key": "f-perf:blind", "file": "second-opinion-f-perf-blind.md"},
+    {"kind": "second-opinion", "key": "central:check", "file": "second-opinion-central-check.md"}
   ]
 }

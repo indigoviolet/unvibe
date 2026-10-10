@@ -7,7 +7,6 @@
  * pipeline fills it. Reopening an already-full page is instant (no job).
  */
 import type { Job } from "@unvibe/shared";
-import { recordInteraction } from "../../interaction/index.js";
 import { findActiveJob, getSnapshotOrThrow, type ActionContext } from "./common.js";
 
 export async function conceptAction(
@@ -59,17 +58,14 @@ export async function conceptAction(
       });
     });
   }
-  recordInteraction({ type: "concept.requested", reviewId, slug });
-
   const job: Job = await pipeline.ensureConceptPage(reviewId, slug);
   // `ensureConceptPage` returns a completed no-op job when the page
   // filled concurrently; a real fill job carries the dedupe key above.
+  // The pipeline logs the fill itself (`new-card`): no double emit here.
   const live = getSnapshotOrThrow(reviews, reviewId);
   const filled = live.pages.find((p) => p.id === pageId);
   if (filled && filled.cards.length > 0 && filled.cards[0].blocks.length > 1) {
-    recordInteraction({ type: "concept.completed", reviewId, slug, pageId });
     return { pageId };
   }
-  recordInteraction({ type: "concept.completed", reviewId, slug, pageId });
   return { pageId, jobId: job.id };
 }

@@ -12,6 +12,8 @@ import type { JobQueue } from "../../jobs/index.js";
 import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import type { SessionManager } from "../../sessions/manager.js";
+import type { SettingsStore } from "../../settings/index.js";
+import type { SharedContextService } from "../../sharedctx/service.js";
 import { findBlock, recordInteraction } from "../../interaction/index.js";
 
 function findBlockInSnapshot(snapshot: ReviewSnapshot, blockId: string): string | null {
@@ -28,6 +30,9 @@ export interface ActionContext {
   reviews: ReviewStore;
   reviewId: string;
   sessions?: SessionManager;
+  settings?: SettingsStore;
+  /** M5 shared context (log, settle checks, turn ingest). Absent in tests. */
+  sharedctx?: SharedContextService;
   fixturesDir?: string;
   promptsDir?: string;
 }

@@ -28,6 +28,7 @@ import {
   type ActionContext,
 } from "./common.js";
 import { aliasCanonicalizer, remapAliasTargets } from "./validate-apply.js";
+import { newCardForExpansion } from "./events.js";
 
 export interface ExplainRequest {
   quote: string;
@@ -56,7 +57,6 @@ export async function explainAction(
     const existing = before.annotations.find(
       (a) => a.type === "expansion" && a.anchor.quotedText === req.quote && a.jobId === active.id,
     );
-    recordInteraction({ type: "explain.requested", reviewId, annotationId: existing?.id ?? "", quote: req.quote });
     return {
       annotationId: existing?.id ?? "",
       jobId: active.id,
@@ -99,7 +99,6 @@ export async function explainAction(
       },
     } as unknown as Annotation);
   });
-  recordInteraction({ type: "explain.requested", reviewId, annotationId, quote: req.quote });
 
   const res = await runExplainFill(ctx, annotationId, anchor, req.quote, { dedupeKey: key });
   return { annotationId, ...res };
@@ -155,6 +154,9 @@ export async function runExplainFill(
     priority: JOB_PRIORITY.userRequested,
     dedupeKey: key,
     threadId: annotationId,
+    // Persistent conversation: the next turn's change list resumes from
+    // this turn's cursor (sharedctx wire advances it only on success).
+    conversationKey: annotationId,
     replay,
     onJob: (job: Job) => {
       capture.onJob(job);
@@ -210,12 +212,18 @@ export async function runExplainFill(
         found.jobId = undefined;
         found.expansion.jobId = undefined;
       });
-      recordInteraction({
-        type: "explain.completed",
-        reviewId,
-        annotationId,
-        unverified: res.validation.unverified,
-      });
+      // New expansion content enters the log in full (PRD §9.3 `new-card`).
+      // Awaited so tests observe the entry once the fill settles.
+      try {
+        const jobId = (await capture.wait())?.id;
+        const sessionId = jobId ? ctx.jobs.get(jobId)?.sessionId : undefined;
+        const live = getSnapshotOrThrow(reviews, reviewId);
+        const filled = live.annotations.find((a) => a.id === annotationId);
+        const event = filled ? newCardForExpansion(reviewId, live, filled, sessionId) : null;
+        if (event) await recordInteraction(event);
+      } catch {
+        // Logging never fails the action.
+      }
     },
     async (err: Error) => {
       if (await suppressFillError(ctx, annotationId)) return;
@@ -228,7 +236,7 @@ export async function runExplainFill(
         found.error = message;
         found.expansion.error = message;
       });
-      recordInteraction({ type: "explain.failed", reviewId, annotationId, error: message });
+      // Failures produce no shared knowledge: visible error only, no log.
     },
   );
 

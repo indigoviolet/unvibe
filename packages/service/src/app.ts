@@ -43,6 +43,8 @@ import { ReviewStore } from "./state/store.js";
 import { SettingsStore, StaticModelCatalog, type ModelCatalog } from "./settings/index.js";
 import { SessionManager } from "./sessions/manager.js";
 import { SessionStore } from "./sessions/store.js";
+import { SharedContextService, setInteractionHandler } from "./sharedctx/index.js";
+import { SharedContextStore } from "./sharedctx/store.js";
 import { createAgentRunner, resolveFixturesDir } from "./agent/factory.js";
 import { Pipeline } from "./pipeline/index.js";
 import { resolvePromptsDir } from "./prompts/index.js";
@@ -61,6 +63,8 @@ export interface AppContext {
   sessions: SessionManager;
   agents: AgentRunner;
   pipeline: Pipeline;
+  /** M5 shared context (PRD §9.3–§9.5): log, change lists, contributions. */
+  sharedctx: SharedContextService;
   promptsDir: string;
   fixturesDir: string;
   mcpBaseUrl: string;
@@ -195,6 +199,21 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     fixturesDir,
   });
 
+  // M5 shared context (PRD §9.3–§9.5): log taxonomy, change lists,
+  // contributions, base growth/rebuild, per-base observability. The pipeline
+  // calls into it (change-list injection, post-turn ingest); rebuild
+  // consolidation calls back into the pipeline's small-model task.
+  const sharedctxStore = new SharedContextStore(opts.db);
+  const sharedctx = new SharedContextService({
+    reviews,
+    sessions,
+    settings,
+    store: sharedctxStore,
+    runConsolidate: (reviewId, text) => pipeline.runConsolidateTask(reviewId, text),
+  });
+  pipeline.setSharedContext(sharedctx);
+  setInteractionHandler((event) => sharedctx.handleInteraction(event));
+
   return {
     db: opts.db,
     dataDir,
@@ -209,6 +228,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     sessions,
     agents,
     pipeline,
+    sharedctx,
     promptsDir,
     fixturesDir,
     mcpBaseUrl,
