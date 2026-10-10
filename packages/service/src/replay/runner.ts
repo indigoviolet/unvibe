@@ -65,6 +65,7 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   { re: /diagram|mermaid/i, kind: "diagram" },
   { re: /\bexplain\b/i, kind: "explain" },
   { re: /\bask\b|question|thread/i, kind: "ask" },
+  { re: /second opinion/i, kind: "second-opinion" },
 ];
 
 function guessKind(prompt: string): string | null {
@@ -257,6 +258,15 @@ function extractKey(kind: string, prompt: string): string | null {
     }
     case "critic":
       return /perf|linear/.test(lower) ? "f-perf" : /lf|bare/.test(lower) ? "f-lf" : null;
+    case "second-opinion": {
+      // Keys are `<card-or-finding-id>:<mode>` (e.g. `f-lf:blind`,
+      // `central:check`). Match the most specific one present.
+      const m = lower.match(/\b(f-lf|f-perf|central|problem|g-flow|g-design|g-regex|g-check|flf-ev|flf-as|fpf-ev|fpf-as)[-:](blind|check)\b/);
+      if (m) return `${m[1]}:${m[2]}`;
+      if (lower.includes("blind")) return "blind";
+      if (lower.includes("check this claim") || lower.includes("check")) return "check";
+      return null;
+    }
     default:
       return null;
   }

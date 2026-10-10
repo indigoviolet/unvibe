@@ -33,7 +33,18 @@ import { READER_TOOL, toolsForRole } from "./tools.js";
 export const MCP_SERVICE_NAME = "unvibe";
 export const MCP_SERVICE_VERSION = "0.0.1";
 
-export type McpRole = "reader" | "session";
+/**
+ * MCP session roles (PRD §10, §12).
+ *
+ * - `reader`: the main reader session (extra `pin_context` tool).
+ * - `session`: every other main-model conversation.
+ * - `second-opinion`: the isolated second-opinion role (PRD §12). Same
+ *   read-only tool surface as `session`, but `search_review` never returns
+ *   cards, annotations or contributions — only the description (which is
+ *   already in L1). This keeps guide text, other findings, contributions
+ *   and discussion out of the second-opinion session even via tools.
+ */
+export type McpRole = "reader" | "session" | "second-opinion";
 
 export interface IssuedSession {
   secret: string;
@@ -272,18 +283,24 @@ export class McpRegistry {
         i < 0 ? text.slice(0, 120) : text.slice(Math.max(0, i - 40), i + 80).replace(/\s+/g, " ");
       hits.push(`${kind} ${id}: ${snippet}`);
     };
-    for (const c of review.cards) {
-      if ((c.title ?? "").toLowerCase().includes(q) || c.text.toLowerCase().includes(q)) {
-        push(`card:${c.id}`, "card", `${c.title ?? ""} ${c.text}`);
+    // Second-opinion isolation (PRD §12): this role must not see guide
+    // text, other findings, contributions, or discussion — even via tools.
+    // Only the description is searchable (it is already in L1).
+    const restricted = state.role === "second-opinion";
+    if (!restricted) {
+      for (const c of review.cards) {
+        if ((c.title ?? "").toLowerCase().includes(q) || c.text.toLowerCase().includes(q)) {
+          push(`card:${c.id}`, "card", `${c.title ?? ""} ${c.text}`);
+        }
       }
-    }
-    for (const a of review.annotations) {
-      if (a.anchorSummary.toLowerCase().includes(q) || a.text.toLowerCase().includes(q)) {
-        push(`ann:${a.id}`, "annotation", `${a.anchorSummary} ${a.text}`);
+      for (const a of review.annotations) {
+        if (a.anchorSummary.toLowerCase().includes(q) || a.text.toLowerCase().includes(q)) {
+          push(`ann:${a.id}`, "annotation", `${a.anchorSummary} ${a.text}`);
+        }
       }
-    }
-    for (const c of review.contributions) {
-      if (c.text.toLowerCase().includes(q)) push(c.id, "contribution", c.text);
+      for (const c of review.contributions) {
+        if (c.text.toLowerCase().includes(q)) push(c.id, "contribution", c.text);
+      }
     }
     for (const d of review.description) {
       if (d.text.toLowerCase().includes(q)) push(`desc:${d.id}`, "description", d.text);
@@ -294,6 +311,7 @@ export class McpRegistry {
   private async resolve(state: SessionState, description: string): Promise<string> {
     const review = await this.loadReview(state);
     const out: string[] = [];
+    const restricted = state.role === "second-opinion";
     // file paths with optional :line[-line]
     for (const m of description.matchAll(/([\w./-]+\.\w+)(?::(\d+)(?:-(\d+))?)?/g)) {
       const file = m[1];
@@ -301,25 +319,28 @@ export class McpRegistry {
       for (const h of hunks.slice(0, 3)) {
         out.push(`h:${h.fileKey}:${h.contentHash} (hunk in ${h.path}${m[2] ? ` near line ${m[2]}` : ""})`);
       }
-      if (hunks.length === 0) {
+      // Second-opinion isolation: never return card candidates.
+      if (hunks.length === 0 && !restricted) {
         const cards = review.cards.filter((c) => c.text.includes(file)).slice(0, 2);
         for (const c of cards) out.push(`card:${c.id} (mentions ${file})`);
       }
     }
-    // quoted code → cards/annotations containing it
-    for (const m of description.matchAll(/"([^"]{4,})"|`([^`]{4,})`/g)) {
-      const quote = (m[1] ?? m[2] ?? "").trim();
-      if (!quote) continue;
+    if (!restricted) {
+      // quoted code → cards/annotations containing it
+      for (const m of description.matchAll(/"([^"]{4,})"|`([^`]{4,})`/g)) {
+        const quote = (m[1] ?? m[2] ?? "").trim();
+        if (!quote) continue;
+        for (const c of review.cards) {
+          if (c.text.includes(quote)) out.push(`card:${c.id} (quotes matched text)`);
+          if (out.length >= 10) break;
+        }
+      }
+      // bare card titles / slugs
+      const lower = description.toLowerCase();
       for (const c of review.cards) {
-        if (c.text.includes(quote)) out.push(`card:${c.id} (quotes matched text)`);
+        if (c.title && lower.includes(c.title.toLowerCase())) out.push(`card:${c.id} (title match)`);
         if (out.length >= 10) break;
       }
-    }
-    // bare card titles / slugs
-    const lower = description.toLowerCase();
-    for (const c of review.cards) {
-      if (c.title && lower.includes(c.title.toLowerCase())) out.push(`card:${c.id} (title match)`);
-      if (out.length >= 10) break;
     }
     return out.length > 0 ? [...new Set(out)].slice(0, 10).join("\n") : "no candidates";
   }

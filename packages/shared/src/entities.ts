@@ -5,6 +5,7 @@
  * per-review folders); web renders them. Nested shapes are stored as JSON
  * columns where noted in the service's migration 001.
  */
+import type { SecondOpinionMode } from "./prompts.js";
 
 /** A local checkout / GitHub repo the user can open reviews from. */
 export interface Repo {
@@ -173,6 +174,56 @@ export interface Card {
   stale?: boolean;
   staleChangedHunks?: number;
   staleHunks?: string[];
+  /**
+   * M6 second opinion (PRD §4.10): results attached to the card, not part
+   * of its revisable content. Depth changes and undo operate on `blocks` /
+   * `level` / `undoStack` only, so these survive both. Keep one per
+   * mode+model; re-running replaces the matching entry.
+   */
+  secondOpinions?: SecondOpinionResult[];
+}
+
+/**
+ * M6 second opinion (PRD §4.10, §12).
+ *
+ * Additive-only: new entity carried on `Card.secondOpinions`. The
+ * reasoning body is stored as validated `Block[]` so citation markers
+ * behave like all others (hover preview, click reveals). `missed` is the
+ * trailing-JSON "anything the card missed" string. `SecondOpinionMode`
+ * lives in `prompts.ts` (re-exported through the barrel); this module
+ * imports it for the result shape without re-defining it.
+ */
+export type SecondOpinionVerdict = "agrees" | "partly" | "disagrees";
+
+export interface SecondOpinionResult {
+  /** Stable id: `so-<cardId>-<mode>-<provider>-<model>` (slugified). */
+  id: string;
+  cardId: string;
+  mode: SecondOpinionMode;
+  /** Second-opinion model that produced this result (label in the UI). */
+  provider: string;
+  model: string;
+  verdict: SecondOpinionVerdict;
+  /** Reasoning text from the trailing JSON (plain text fallback). */
+  reasoning: string;
+  /** Validated reasoning blocks (citation markers render like all others). */
+  blocks: Block[];
+  /** Anything the card missed (trailing-JSON `missed`). */
+  missed?: string;
+  /** Review version the run executed against (dedupe + staleness). */
+  version: number;
+  createdAt: number;
+  /** Job that produced this result (for usage / prompt-snapshot links). */
+  jobId?: string;
+}
+
+/** Dedupe identity for a second-opinion request (PRD §12). */
+export interface SecondOpinionDedupe {
+  cardId: string;
+  mode: SecondOpinionMode;
+  provider: string;
+  model: string;
+  version: number;
 }
 
 /** A single undo entry: block list + depth level. No redo (PRD §4.4). */

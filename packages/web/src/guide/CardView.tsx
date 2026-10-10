@@ -3,11 +3,14 @@
  *
  * Collapse chevron (collapsed shows the title row, or the first line if
  * untitled); control row (depth stepper with three dots, Use examples,
- * Add diagram, Undo, Mark read) wired to `POST /api/reviews/:id/actions`;
- * read greys and collapses; stale cards show the cited-hunks count with an
- * Update button (`POST /api/reviews/:id/update`); "Go deeper" placeholder
- * cards with Generate showing job progress; working dots whenever a job
- * runs for the card or streamed text arrives for it.
+ * Add diagram, Undo, Second opinion with blind/check switch, Mark read)
+ * wired to `POST /api/reviews/:id/actions`; read greys and collapses;
+ * stale cards show the cited-hunks count with an Update button
+ * (`POST /api/reviews/:id/update`); "Go deeper" placeholder cards with
+ * Generate showing job progress; working dots whenever a job runs for the
+ * card or streamed text arrives for it. Second-opinion results render
+ * attached below the blocks (PRD §4.10; owned by the second-opinion
+ * milestone, additive here).
  */
 import type { Annotation, Card, DepthLevel, Page } from "@unvibe/shared";
 import { Fragment } from "react";
@@ -18,6 +21,7 @@ import { performAction, performUpdate } from "./actions.js";
 import { blockExpansions, blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { cardPreview, jobForCard } from "./guideUtils.js";
+import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
 
 const DEPTH_ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
@@ -244,6 +248,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           disabled={card.undoStack.length === 0}
           onClick={() => void performAction(reviewId, { kind: "undo", cardId: card.id })}
         />
+        <SecondOpinionControl reviewId={reviewId} card={card} page={lookupPage(card.pageId)} />
         <span className="sp" />
         <ControlButton
           icon="check"
@@ -256,6 +261,17 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       </div>
       {job || streamText ? <Working text={progress ?? "Working…"} /> : null}
       {blocks}
+      {(card.secondOpinions ?? []).map((so) => (
+        <SecondOpinionBlock
+          key={so.id}
+          reviewId={reviewId}
+          card={card}
+          result={so}
+          lookupPage={lookupPage}
+          onOpenPage={onOpenPage}
+          onFollowUp={(cardId, blockId, index) => onFollowUp(cardId, blockId, index)}
+        />
+      ))}
     </section>
   );
 }

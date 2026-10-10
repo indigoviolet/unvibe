@@ -13,3 +13,4 @@ export type { RunInForkOptions, RunInForkResult, RunSmallOptions, RunSmallResult
 export { ingestDemo, isDemoRequest, demoFixtureName, fixturesDirDefault } from "./demo.js";
 export { dispatchAction, type ActionDeps } from "./actions/dispatcher.js";
 export { generateAction } from "./actions/generate.js";
+export { removeSecondOpinionAction, secondOpinionAction } from "./actions/second_opinion.js";

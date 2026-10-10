@@ -80,3 +80,7 @@ run = "node ./scripts/live-submit.mjs"
 [tasks."test:live:pipeline"]
 description = "Live M3 pipeline smoke on real agents (claude+codex; token spend; never run by check)"
 run = "mise run build && node scripts/live-pipeline.mjs"
+
+[tasks."test:live:second-opinion"]
+description = "Live second-opinion check: blind on one finding with real agents (main=Claude, second=Codex; small token spend; never run by check)"
+run = "mise run build && node scripts/live-second-opinion.mjs"
