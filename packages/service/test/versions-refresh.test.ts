@@ -328,4 +328,29 @@ describe("refresh integration", () => {
       await app.close();
     }
   });
+
+  it("(f) demo refresh is a no-op (no remote to fetch, never a 502)", async () => {
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const dir = await initRepo();
+      try {
+        fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+        await git(dir, "add", ".");
+        await git(dir, "commit", "-m", "base");
+        const { id } = await openReview(app, dir, "main");
+        // Demo reviews carry DB rows (for jobs joins) but no remote: mark
+        // this one demo and refresh must short-circuit before git.
+        await ctx.reviews.mutate(id, (draft) => {
+          draft.review.repoId = "demo";
+        });
+        const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toMatchObject({ newVersion: false });
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    } finally {
+      await app.close();
+    }
+  });
 });
