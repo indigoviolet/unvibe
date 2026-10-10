@@ -16,7 +16,7 @@
  *   the install-token gate for exactly this reason: agent subprocesses
  *   present the secret, not the token. Documented in `routes.ts`.
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -54,6 +54,7 @@ export interface McpRegistryOptions {
 interface SessionState extends IssuedSession {
   server: Server;
   transport: StreamableHTTPServerTransport;
+  connected: boolean;
 }
 
 function textResult(text: string): CallToolResult {
@@ -84,7 +85,12 @@ export class McpRegistry {
       sessionId,
       role,
       server,
-      transport: new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }),
+      // Stateful (SDK-session) transport, one per issued MCP session: the
+      // SDK forbids reusing a *stateless* transport across HTTP requests,
+      // while a stateful one is built for exactly this. The MCP session id
+      // is an SDK concern; attribution still comes from our URL secret.
+      transport: new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() }),
+      connected: false,
     };
     server.setRequestHandler(ListToolsRequestSchema, () => ({
       tools: toolsForRole(role),
@@ -98,7 +104,7 @@ export class McpRegistry {
       }
     });
     this.sessions.set(secret, state);
-    const { server: _s, transport: _t, ...issued } = state;
+    const { server: _s, transport: _t, connected: _c, ...issued } = state;
     return issued;
   }
 
@@ -134,7 +140,10 @@ export class McpRegistry {
       res.end("unknown mcp session");
       return;
     }
-    await state.server.connect(state.transport);
+    if (!state.connected) {
+      await state.server.connect(state.transport);
+      state.connected = true;
+    }
     await state.transport.handleRequest(req, res, body);
   }
 
