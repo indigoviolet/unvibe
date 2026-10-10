@@ -5,10 +5,13 @@
   "type": "module",
   "description": "M0 ACP fork/cache spike (throwaway, not part of the build)",
   "scripts": {
-    "claude": "tsx src/claude-spike.ts",
-    "codex": "tsx src/codex-spike.ts",
-    "mcp": "tsx src/mcp-server.ts",
-    "pack": "tsx src/make-pack.ts"
+    "typecheck": "tsc --noEmit",
+    "probe": "tsx src/probe.ts",
+    "spike": "tsx src/spike.ts",
+    "spike:claude": "tsx src/spike.ts claude",
+    "spike:codex": "tsx src/spike.ts codex",
+    "codex:recache": "tsx src/codex-recache.ts",
+    "mcp": "tsx src/mcp-server.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.8.0",
