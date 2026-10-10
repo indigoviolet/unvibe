@@ -63,7 +63,7 @@ async function startService(dataDir: string): Promise<RunningService> {
       ...process.env,
       UNVIBE_DATA_DIR: dataDir,
       UNVIBE_PORT: "0",
-      UNVIBE_REPO_ROOTS: "",
+      UNVIBE_REPO_ROOTS: "", UNVIBE_AGENT: "replay",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

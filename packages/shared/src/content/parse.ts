@@ -608,6 +608,13 @@ export function collectTargets(blocks: Block[]): CollectedTargets {
           push(links, `page:${b.pageId}`);
           for (const c of b.citations) push(citations, c.target);
           break;
+        case "comment-link":
+          // Finding page → suggested-comment thread (PRD §4.9). The diff
+          // target travels in `citations` (canonical file key); the thread
+          // id is a link so the validator checks it exists.
+          push(links, `ann:${b.threadId}`);
+          for (const c of b.citations) push(citations, c.target);
+          break;
         case "follow-up":
           break;
         case "aside":
@@ -852,6 +859,12 @@ export function renderMarkdown(blocks: Block[]): string {
         break;
       case "finding-link":
         parts.push(`Finding: [[page:${b.pageId}]]`);
+        break;
+      case "comment-link":
+        // App-constructed (pipeline/builder attach it to the finding page
+        // next to the suggested comment). One-directional: re-parsing
+        // yields a paragraph; the snapshot is the source of truth.
+        parts.push(`Comment: [[ann:${b.threadId}]] [[${b.diffRef}]]`);
         break;
       case "follow-up":
         parts.push("### Follow-ups");

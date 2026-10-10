@@ -3,10 +3,8 @@
  *
  * Order: live snapshot rows first (real `HunkLine` rows), then the
  * description paragraphs, then nothing (unknown targets resolve to a bare
- * label, never a crash). Short fixture keys (`conn`, …) resolve through
- * the alias map the mock loader provides (`MOCK_KEY_ALIASES`); live
- * snapshots carry canonical keys. The snapshot itself should eventually
- * carry the alias map — see the integration report.
+ * label, never a crash). Snapshots store canonical file keys, so no alias
+ * map is needed.
  */
 import type { Citation, HunkLine, ReviewSnapshot } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";

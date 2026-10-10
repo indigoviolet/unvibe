@@ -19,6 +19,13 @@ import { api } from "../../api/client.js";
 import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
+import {
+  comparisonToBanner,
+  statusToBanner,
+  VersionBanner,
+  type BannerCounts,
+} from "../../versions/VersionBanner.js";
+import { useReviewVersion } from "../../versions/useReviewVersion.js";
 import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } from "./FileSection.js";
 import {
   buildFileTree,
@@ -110,9 +117,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [fileHighlight, setFileHighlight] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
-  const [updating, setUpdating] = useState(false);
+  const [banner, setBanner] = useState<BannerCounts | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [eagerFiles, setEagerFiles] = useState<ReadonlySet<string>>(new Set());
+  const versionParam = useReviewVersion();
   const [briefs, setBriefs] = useState<Record<string, string> | null>(null);
   const hlTimer = useRef<number | undefined>(undefined);
   const ctxSlots = useLineSlots();
@@ -127,12 +135,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
   }, [prefs]);
 
   // Snapshot: the guide column fetches it too; fetch here when absent so the
-  // diff pane works standalone (tests, deep links).
+  // diff pane works standalone (tests, deep links). `?version=n` views an
+  // older version read-only (PRD §8).
   useEffect(() => {
     if (snapshot) return;
     let cancelled = false;
     api
-      .review(reviewId)
+      .review(reviewId, versionParam)
       .then((snap) => {
         if (!cancelled) setSnapshot(snap);
       })
@@ -142,22 +151,59 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
     return () => {
       cancelled = true;
     };
-  }, [reviewId, snapshot, setSnapshot]);
+  }, [reviewId, versionParam, snapshot, setSnapshot]);
 
-  // Stale check: a cheap fetch-and-compare, no agent time (PRD §8). The
-  // update pass itself lands in a later milestone.
+  // Refresh on open: a cheap fetch-and-compare, no agent time (PRD §8).
+  // Skipped while viewing an older version. Counts come from the refresh
+  // `comparison`, or from `versionStatus` already on the snapshot.
   useEffect(() => {
+    if (versionParam !== undefined) return;
     let cancelled = false;
     api
       .refresh(reviewId)
       .then((r) => {
-        if (!cancelled) setStale(r.newVersion);
+        if (cancelled) return;
+        if (r.newVersion && r.comparison) {
+          const snap = useReview.getState().snapshot;
+          const current = snap?.review.currentVersion ?? r.comparison.newVersion;
+          setBanner(comparisonToBanner(r.comparison, current));
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [reviewId]);
+  }, [reviewId, versionParam]);
+
+  const doRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const r = await api.refresh(reviewId);
+      if (r.newVersion && r.comparison) {
+        const snap = useReview.getState().snapshot;
+        const current = snap?.review.currentVersion ?? r.comparison.newVersion;
+        setBanner(comparisonToBanner(r.comparison, current));
+        setSnapshot(await api.review(reviewId));
+      } else {
+        setBanner(null);
+        toast("Already up to date");
+      }
+    } catch {
+      toast("Couldn't refresh the review");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reviewId, setSnapshot]);
+
+  const onUpdated = useCallback(async () => {
+    setBanner(null);
+    try {
+      setSnapshot(await api.review(reviewId));
+      toast("Review updated");
+    } catch {
+      toast("Updated, but couldn't reload the review");
+    }
+  }, [reviewId, setSnapshot]);
 
   // Mock-only hidden-row brief copy (prototype BRIEF; M2's hunk pass
   // produces these per hunk). Code-split so production never loads it.
@@ -309,21 +355,35 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
 
   useEffect(() => () => window.clearTimeout(hlTimer.current), []);
 
+  // Older versions are view-only for user data (reviewed, notes,
+  // summaries): those writes are refused with a pointer back. Folding only
+  // hides code, so it stays allowed while browsing history.
+  const readOnly =
+    versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
+
   const patchHunk = useCallback(
     async (hash: string, body: UpdateHunkRequest) => {
+      if (readOnly && (body.reviewed !== undefined || body.note !== undefined || body.summary !== undefined)) {
+        toast("Viewing an older version — back to current to change state");
+        return;
+      }
       try {
         await api.updateHunk(reviewId, hash, body);
       } catch {
         toast("Couldn't save hunk state");
       }
     },
-    [reviewId],
+    [reviewId, readOnly],
   );
 
   const actions: HunkActions = useMemo(
     () => ({
       toggleFold: (hash, folded) => void patchHunk(hash, { folded: !folded }),
       summarize: (hash) => {
+        if (readOnly) {
+          toast("Viewing an older version — back to current to change state");
+          return;
+        }
         setBusy((prev) => ({ ...prev, [hash]: true }));
         api.summarizeHunk(reviewId, hash).catch(() => {
           toast("Couldn't summarize hunk");
@@ -371,6 +431,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
   );
 
   const foldAll = useCallback(async () => {
+    if (readOnly) {
+      toast("Viewing an older version — back to current to change state");
+      return;
+    }
     const snap = useReview.getState().snapshot;
     if (!snap) return;
     const st = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
@@ -400,41 +464,35 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
       if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
     }
     toast(`Summarized and folded ${targets.length} hunks.`);
-  }, [reviewId, fq, prefs, reviewedCount, unhidden, cited, actions]);
+  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions]);
 
   const unfoldAll = useCallback(async () => {
+    if (readOnly) {
+      toast("Viewing an older version — back to current to change state");
+      return;
+    }
     const snap = useReview.getState().snapshot;
     if (!snap) return;
     setFileFold({});
     await Promise.all(
-      snap.files.flatMap((f) => f.hunks.map((h) => api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {}))),
-    );
-  }, [reviewId]);
+        snap.files.flatMap((f) => f.hunks.map((h) => api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {}))),
+      );
+    }, [reviewId, readOnly]);
 
   const markFileReviewed = useCallback(
     (file: ReviewFile, allReviewed: boolean) => {
+      if (readOnly) {
+        toast("Viewing an older version — back to current to change state");
+        return;
+      }
       void Promise.all(
         file.hunks.map((h) =>
           api.updateHunk(reviewId, h.contentHash, { reviewed: !allReviewed, folded: !allReviewed }).catch(() => {}),
         ),
       ).catch(() => toast("Couldn't save hunk state"));
     },
-    [reviewId],
+    [reviewId, readOnly],
   );
-
-  const doUpdate = useCallback(async () => {
-    setUpdating(true);
-    try {
-      await api.update(reviewId);
-      setSnapshot(await api.review(reviewId));
-      setStale(false);
-      toast("Review updated");
-    } catch {
-      toast("Couldn't update the review");
-    } finally {
-      setUpdating(false);
-    }
-  }, [reviewId, setSnapshot]);
 
   if (!snapshot) {
     return (
@@ -448,6 +506,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
 
   const tree: TreeRow[] = prefs.filesOpen ? buildFileTree(visible) : [];
   const catCount = (k: string): number => snapshot.files.filter((f) => f.category === k).length;
+
+  // Update banner: the local refresh result wins; otherwise the snapshot's
+  // own `versionStatus` (set when a refresh created a newer version).
+  // Hidden while viewing an older version.
+  const bannerCounts: BannerCounts | null = readOnly
+    ? null
+    : (banner ?? (snapshot.versionStatus ? statusToBanner(snapshot.versionStatus) : null));
 
   return (
     <div>
@@ -505,15 +570,24 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
         >
           Unfold all
         </button>
+        <button
+          className="x"
+          type="button"
+          data-tip="Fetch and compare with the branch (no agent time)"
+          aria-label="Refresh"
+          disabled={refreshing || readOnly}
+          onClick={() => void doRefresh()}
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
       </div>
-      {stale ? (
-        <div className="dbar" data-testid="stale-banner">
-          <span className="hint">New commits on this branch</span>
-          <span className="sp" />
-          <button className="x" type="button" disabled={updating} onClick={() => void doUpdate()}>
-            Update
-          </button>
+      {readOnly ? (
+        <div className="dbar" role="status">
+          <span className="hint">Viewing v{versionParam} · read-only</span>
         </div>
+      ) : null}
+      {bannerCounts ? (
+        <VersionBanner reviewId={reviewId} counts={bannerCounts} onUpdated={() => void onUpdated()} />
       ) : null}
       {prefs.filesOpen ? (
         <div className="files">

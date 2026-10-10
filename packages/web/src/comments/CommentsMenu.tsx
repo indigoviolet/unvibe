@@ -20,12 +20,12 @@ import { parseId } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
-import { activeAliases } from "../guide/aliases.js";
 import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { requestGuideBlock } from "../guide/actions.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
+import { useIsReadOnlyVersion } from "./readOnly.js";
 import { threadPostText } from "./threads.js";
 
 const plain = (s: string): string => s.replace(/<[^>]+>/g, "");
@@ -36,14 +36,8 @@ function excerpt(thread: Annotation): string {
 }
 
 function resolveFilePath(snapshot: ReviewSnapshot, key: string): string | null {
-  const exact = snapshot.files.find((f) => f.fileKey === key);
-  if (exact) return exact.path;
-  const aliased = activeAliases()[key];
-  if (aliased) {
-    const file = snapshot.files.find((f) => f.fileKey === aliased);
-    if (file) return file.path;
-  }
-  return null;
+  // Snapshots store canonical file keys (no alias map).
+  return snapshot.files.find((f) => f.fileKey === key)?.path ?? null;
 }
 
 function shortDiffLabel(snapshot: ReviewSnapshot, target: string): string | null {
@@ -112,7 +106,15 @@ export function whereLabel(snapshot: ReviewSnapshot, thread: Annotation): string
 }
 
 /** Draft textarea: local state survives re-renders; saves debounce to the server. */
-function DraftArea({ reviewId, thread }: { reviewId: string; thread: Annotation }) {
+function DraftArea({
+  reviewId,
+  thread,
+  readOnly,
+}: {
+  reviewId: string;
+  thread: Annotation;
+  readOnly: boolean;
+}) {
   const serverDraft = thread.draft ?? threadPostText(thread);
   const [value, setValue] = useState(serverDraft);
   const timer = useRef<number | undefined>(undefined);
@@ -145,6 +147,8 @@ function DraftArea({ reviewId, thread }: { reviewId: string; thread: Annotation 
       id={`ob-${thread.id}`}
       aria-label="Draft PR comment"
       value={value}
+      readOnly={readOnly}
+      title={readOnly ? "Viewing an older version · read-only" : undefined}
       onChange={(e) => {
         setValue(e.target.value);
         window.clearTimeout(timer.current);
@@ -161,6 +165,7 @@ function DraftArea({ reviewId, thread }: { reviewId: string; thread: Annotation 
 
 export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const snapshot = useReview((s) => s.snapshot);
+  const readOnly = useIsReadOnlyVersion();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "pr">("all");
   const [fetchedExisting, setFetchedExisting] = useState<ExistingReviewComment[] | null>(null);
@@ -293,7 +298,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
                   <span className="cx2">{excerpt(thread)}</span>
                 </button>
                 {thread.post ? <span className="prtag">For PR</span> : null}
-                {filter === "pr" ? <DraftArea reviewId={reviewId} thread={thread} /> : null}
+                {filter === "pr" ? <DraftArea reviewId={reviewId} thread={thread} readOnly={readOnly} /> : null}
               </div>
             );
           })}

@@ -51,6 +51,9 @@ export interface ResolvedRecording {
 
 const KIND_HINTS: { re: RegExp; kind: string }[] = [
   { re: /replay-kind:\s*([\w-]+)/i, kind: "__explicit__" },
+  // Base pack (SessionManager.getBase): the pipeline prefixes it with an
+  // explicit "reply with exactly `ready`" instruction; answer "ready" (M3).
+  { re: /reply with exactly\s+`?ready`?/i, kind: "base" },
   { re: /\breader\b|guided review|central change/i, kind: "reader" },
   { re: /\bcritic\b|agent finding/i, kind: "critic" },
   { re: /concept[-_ ]stubs?|hidden concept/i, kind: "concept-stubs" },
@@ -189,7 +192,9 @@ export class ReplayAgentRunner extends FakeAgentRunner {
   ): AsyncIterable<AgentEvent> {
     this.prompts.push({ sessionId: session.id, text });
     const resolved = this.resolve(text);
-    const reply = resolved.file ? this.texts.get(resolved.file)! : this.placeholderText(resolved, text);
+    // Base pack: answer "ready" (SessionManager.getBase waits for it).
+    const reply =
+      resolved.kind === "base" ? "ready" : resolved.file ? this.texts.get(resolved.file)! : this.placeholderText(resolved, text);
     const chunks = chunkText(reply, this.chunkChars);
     for (const chunk of chunks) {
       if (signal?.aborted) {

@@ -158,6 +158,32 @@ test("For PR drafts live in the Comments menu and persist", async ({ page }) => 
   await expect(page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last()).toBeVisible();
 });
 
+test("older versions are read-only: no toolbar, threads, drafts or submit", async ({ page }) => {
+  await page.goto("/review/r-old?version=1");
+  await expect(page.locator("#page .doc h1.title")).toContainText(
+    "Unfold obsolete folded response headers",
+  );
+  await expect(page.locator('[data-testid="version-switcher"]').getByText("Viewing v1 · read-only")).toBeVisible();
+  // Selecting guide text offers no toolbar.
+  await page.evaluate(() => {
+    document.querySelector("#C-central")?.scrollIntoView({ block: "center" });
+  });
+  await page.waitForTimeout(350);
+  await selectText(page, "#C-central", "optional").catch(() => null);
+  await expect(page.locator("#selbar")).toBeHidden();
+  // Diff line clicks refuse with a toast and open no composer.
+  await page.locator(`[id="L-${CONN}-91"] td.n.new`).click();
+  await expect(page.locator("#toast")).toContainText(/read-only/i, { timeout: 5000 });
+  await expect(page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`)).toHaveCount(0);
+  // Submit explains it is disabled on the older version.
+  await page.locator("#submitSlot [data-submit]").click();
+  await expect(page.locator("#submitSlot .submit")).toContainText("older version", { timeout: 5000 });
+  await page.keyboard.press("Escape");
+  // Description editing is off on the older version.
+  await page.locator('#right [role="tab"]').getByText("PR description").click();
+  await expect(page.locator("#right [data-descedit]")).toHaveCount(0);
+});
+
 test("existing GitHub comments render read-only under their own heading", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#right [data-cm=""]').click();
@@ -194,6 +220,7 @@ test("submit panel previews and posts For-PR threads", async ({ page }) => {
   const panel = page.locator("#submitSlot .submit");
   await expect(panel).toContainText("connection.py:91", { timeout: 5000 });
   await expect(panel).toContainText("Please add a test");
+  await expect(panel.locator("[data-submitgo]")).toContainText("Submit as you");
   await panel.locator("[data-submitgo]").click();
   await expect(panel).toContainText("Review posted", { timeout: 5000 });
   // Posted threads show their posted state and leave the pending count.

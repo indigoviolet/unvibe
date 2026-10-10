@@ -57,11 +57,22 @@ export async function listAllRepos(ctx: ServiceContext): Promise<Repo[]> {
   return [...remembered, ...detected];
 }
 
+/** Demo repo for the start page (M3): synthetic, needs no checkout. */
+export const DEMO_REPO = {
+  id: "demo",
+  owner: "demo",
+  name: "urllib3-5020",
+  localPath: "",
+  lastOpened: 0,
+  detected: true,
+} as const;
+
 /** GET /api/repos · POST /api/repos · GET /api/repos/:id/changes */
 export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): Promise<void> {
   app.get("/api/repos", async () => {
     const repos = await listAllRepos(ctx);
-    return { repos } satisfies ReposResponse;
+    // Demo first so the start page shows it without tokens (M3).
+    return { repos: [{ ...DEMO_REPO }, ...repos] } satisfies ReposResponse;
   });
 
   app.post("/api/repos", async (req, reply) => {
@@ -95,7 +106,7 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
     ctx.repos.upsert(repo);
     ctx.repos.touch(repo.id);
     const repos = await listAllRepos(ctx);
-    return { repos } satisfies ReposResponse;
+    return { repos: [{ ...DEMO_REPO }, ...repos] } satisfies ReposResponse;
   });
 
   app.get("/api/repos/:id/changes", async (req, reply) => {
@@ -104,6 +115,20 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
     const rawFilter = query.filter ?? "all";
     if (!(FILTERS as string[]).includes(rawFilter)) {
       return reply.code(400).send({ error: `unknown filter: ${query.filter}` });
+    }
+    // Demo entry point (M3): repo-less `demo` change. The start page lists
+    // it without a checkout; creating a review with `repoId: "demo"` (or
+    // `{ demo: true }`) ingests the fixture and runs the same pipeline path.
+    if (id === "demo") {
+      return {
+        changes: [
+          {
+            kind: "demo",
+            title: "Demo: urllib3#5020 — Unfold obsolete folded response headers",
+            demo: "urllib3-5020",
+          },
+        ],
+      } satisfies RepoChangesResponse;
     }
     const filter = rawFilter as ChangesFilter;
     let repo = ctx.repos.get(id);

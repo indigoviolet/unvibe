@@ -122,6 +122,9 @@ async function startService(dataDir: string, fakeBin: string): Promise<RunningSe
       UNVIBE_DATA_DIR: dataDir,
       UNVIBE_PORT: "0",
       UNVIBE_REPO_ROOTS: "",
+      // Never start real agents in tests: the service defaults to ACP and
+      // runs the pipeline on review creation (AGENTS.md).
+      UNVIBE_AGENT: "replay",
       SHELL: fakeShell,
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}`,
     },
@@ -208,8 +211,11 @@ test.describe("comments over the real service", () => {
     // Register the repo and open a PR review through the real API.
     const repos = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", {
       path: repoDir,
-    })) as { repos: { id: string }[] };
-    const repoId = repos.repos[0].id;
+    })) as { repos: { id: string; localPath: string }[] };
+    // Main added a synthetic "demo" repo entry: match ours by path.
+    const registered = repos.repos.find((r) => r.localPath === repoDir);
+    if (!registered) throw new Error(`repo not registered: ${JSON.stringify(repos.repos)}`);
+    const repoId = registered.id;
     const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", {
       repoId,
       pr: 1,

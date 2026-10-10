@@ -1,4 +1,4 @@
-/*global console process setTimeout */
+/*global console process setTimeout Buffer */
  // Global-install check (PRD §14 install path), run as:
 //   node scripts/global-install-check.mjs [--port N]
 //
@@ -40,6 +40,9 @@ const ENV = {
   UNVIBE_DATA_DIR: DATA,
   UNVIBE_PORT: String(PORT),
   UNVIBE_IDLE_MS: "0",
+  // Demo review below runs the recorded pipeline (no tokens) from the
+  // installed copy: fixtures + prompts must resolve outside the repo.
+  UNVIBE_AGENT: "replay",
   PATH: `${path.join(PREFIX, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
 };
 
@@ -145,6 +148,68 @@ const main = async () => {
       .on("error", () => resolve(0));
   });
   assert(shell === 200, "web dist serves from the installed package");
+
+  // Demo review from the installed copy (recorded pipeline, no tokens).
+  const api = (method, apiPath, body) =>
+    new Promise((resolve) => {
+      const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+      const req = http.request(
+        {
+          host: "127.0.0.1",
+          port: PORT,
+          path: apiPath,
+          method,
+          headers: {
+            authorization: `Bearer ${token}`,
+            ...(payload ? { "content-type": "application/json", "content-length": payload.length } : {}),
+          },
+        },
+        (res) => {
+          let data = "";
+          res.on("data", (d) => (data += d));
+          res.on("end", () => resolve({ code: res.statusCode, body: data }));
+        },
+      );
+      req.on("error", () => resolve({ code: 0, body: "" }));
+      if (payload) req.write(payload);
+      req.end();
+    });
+  {
+    const created = await api("POST", "/api/reviews", { repoId: "demo" });
+    assert(created.code === 201, "installed copy creates the demo review");
+    let snap = null;
+    try {
+      snap = JSON.parse(created.body);
+    } catch {
+      snap = null;
+    }
+    const id = snap?.review?.id;
+    assert(typeof id === "string", "demo review has an id");
+    if (typeof id === "string") {
+      let done = false;
+      for (let i = 0; i < 40 && !done; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const got = await api("GET", `/api/reviews/${id}`);
+        try {
+          const s = JSON.parse(got.body);
+          const root = (s.pages ?? []).find((p) => p.id === "root");
+          done =
+            got.code === 200 &&
+            (root?.cards ?? []).length >= 6 &&
+            !(root?.cards ?? []).some((c) => c.pending) &&
+            (s.pages ?? []).filter((p) => p.kind === "finding").length >= 2;
+          if (done) {
+            assert(true, "demo pipeline completes from the installed copy");
+            const hunks = (s.hunkStates ?? []).filter((h) => h.summary).length;
+            assert(hunks >= 8, `demo hunk summaries present (${hunks})`);
+          }
+        } catch {
+          // keep polling
+        }
+      }
+      assert(done, "demo snapshot ends complete (60s budget)");
+    }
+  }
 
   const status = runInstalled(["status"]);
   assert(status.code === 0 && status.out.includes("running"), "status reports running");

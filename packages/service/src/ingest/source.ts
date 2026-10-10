@@ -48,6 +48,9 @@ export interface ResolvedSource {
   commits: CommitMessage[];
   /** M1 approximation of "user authors an open PR" (PRD §4.11). */
   descriptionEditable: boolean;
+  /** PR author login + gh state (OPEN/CLOSED/MERGED) for the author line. Absent on branches. */
+  descriptionAuthor?: string;
+  descriptionState?: string;
   worktreePath: string;
 }
 
@@ -214,6 +217,8 @@ export async function resolveSource(
   let headSha: string;
   let descriptionMarkdown = "";
   let descriptionEditable = false;
+  let descriptionAuthor: string | undefined;
+  let descriptionState: string | undefined;
 
   if (source.pr !== undefined) {
     const info = await fetchPrInfo(runner, repoPath, source.pr);
@@ -226,6 +231,8 @@ export async function resolveSource(
     // M1 approximation: editable when the PR is open. The author check
     // needs the viewer login (an extra `gh api user` call); M4 refines it.
     descriptionEditable = info.state === "OPEN";
+    descriptionAuthor = info.authorLogin || undefined;
+    descriptionState = info.state || undefined;
     await bestEffortFetch(runner, repoPath, info.headRefName);
     if (!headSha) {
       const local = await runGit(runner, ["rev-parse", info.headRefName], repoPath);
@@ -261,7 +268,7 @@ export async function resolveSource(
   const mergeBaseSha = mb.stdout.trim().split("\n")[0];
   return finishResolve(runner, {
     repoPath, title, branch, prNumber, baseRef, headSha, mergeBaseSha,
-    descriptionMarkdown, descriptionEditable, dataDir, reviewId,
+    descriptionMarkdown, descriptionEditable, descriptionAuthor, descriptionState, dataDir, reviewId,
   });
 }
 
@@ -277,6 +284,8 @@ async function finishResolve(
     mergeBaseSha: string;
     descriptionMarkdown: string;
     descriptionEditable: boolean;
+    descriptionAuthor?: string;
+    descriptionState?: string;
     dataDir: string;
     reviewId: string;
   },
@@ -300,6 +309,8 @@ async function finishResolve(
     descriptionMarkdown: r.descriptionMarkdown,
     commits,
     descriptionEditable: r.descriptionEditable,
+    ...(r.descriptionAuthor !== undefined ? { descriptionAuthor: r.descriptionAuthor } : {}),
+    ...(r.descriptionState !== undefined ? { descriptionState: r.descriptionState } : {}),
     worktreePath,
   };
 }

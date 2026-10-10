@@ -37,7 +37,7 @@ async function initRepo(): Promise<string> {
 
 async function openReview(app: Awaited<ReturnType<typeof createApp>>["app"], dir: string, branch: string): Promise<{ id: string; snap: ReviewSnapshot }> {
   const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
-  const repoId = (added.json() as { repos: { id: string }[] }).repos[0].id;
+  const repoId = (added.json() as { repos: { id: string; localPath?: string }[] }).repos.find((r) => r.id !== "demo")!.id;
   const created = await app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: { repoId, branch } });
   expect(created.statusCode).toBe(201);
   const snap = created.json() as ReviewSnapshot;
@@ -62,7 +62,7 @@ describe("refresh integration", () => {
     fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
     await git(dir, "commit", "-am", "change");
 
-    const { app, ctx } = await createApp("tok", { runner: real });
+    const { app, ctx } = await createApp("tok", {runner: real, autoPipeline: false});
     try {
       const { id, snap } = await openReview(app, dir, "feature");
       const { fileKey, hash } = hunkHashFor(snap, "a.py");
@@ -132,7 +132,7 @@ describe("refresh integration", () => {
     fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 9\n");
     await git(dir, "commit", "-am", "change");
 
-    const { app, ctx } = await createApp("tok", { runner: real });
+    const { app, ctx } = await createApp("tok", {runner: real, autoPipeline: false});
     try {
       const { id, snap } = await openReview(app, dir, "feature");
       // Two hunks? Force two by using two files: keep a.py change + b.py change.
@@ -215,7 +215,7 @@ describe("refresh integration", () => {
     fs.writeFileSync(path.join(dir, "a.py"), body + "tail = 1\n");
     await git(dir, "commit", "-am", "tail");
 
-    const { app, ctx } = await createApp("tok", { runner: real });
+    const { app, ctx } = await createApp("tok", {runner: real, autoPipeline: false});
     try {
       const { id, snap } = await openReview(app, dir, "feature");
       const { fileKey, hash } = hunkHashFor(snap, "a.py");
@@ -263,7 +263,7 @@ describe("refresh integration", () => {
     fs.writeFileSync(path.join(dir, "old.py"), "x = 1\ny = 2\nz = 3\n");
     await git(dir, "commit", "-am", "change");
 
-    const { app, ctx } = await createApp("tok", { runner: real });
+    const { app, ctx } = await createApp("tok", {runner: real, autoPipeline: false});
     try {
       const { id, snap } = await openReview(app, dir, "feature");
       const { fileKey, hash } = hunkHashFor(snap, "old.py");
@@ -309,7 +309,7 @@ describe("refresh integration", () => {
     await git(dir, "add", ".");
     await git(dir, "commit", "-m", "second (to drop)");
 
-    const { app, ctx } = await createApp("tok", { runner: real });
+    const { app, ctx } = await createApp("tok", {runner: real, autoPipeline: false});
     try {
       const { id } = await openReview(app, dir, "feature");
       const before = ctx.reviews.getSnapshot(id)!;

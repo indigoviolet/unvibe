@@ -114,6 +114,24 @@ export function parseId(input: string): ParsedId | null {
   }
 }
 
+/**
+ * Rewrite an alias-form target to its canonical form (real file key),
+ * preserving the short shape (no `@sha` is added). Non-file targets and
+ * unparseable inputs come back unchanged. The pipeline stores canonical
+ * targets at parse/validate time so the web needs no alias table.
+ */
+export function canonicalizeTarget(
+  target: string,
+  resolveFileKey: (key: string) => string | null,
+): string {
+  const parsed = parseId(target);
+  if (parsed?.kind !== "diff" && parsed?.kind !== "h") return target;
+  const canonical = resolveFileKey(parsed.fileKey);
+  if (canonical === null || canonical === parsed.fileKey) return target;
+  if (parsed.kind === "h") return `h:${canonical}:${parsed.contentHash}`;
+  return formatId({ ...parsed, fileKey: canonical });
+}
+
 /** Format a parsed ID back to its canonical (full) string form. */
 export function formatId(id: ParsedId, opts?: { short?: boolean }): string {
   const short = opts?.short ?? false;

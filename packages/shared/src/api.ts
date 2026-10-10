@@ -28,6 +28,16 @@ export interface HealthResponse {
   version: string;
 }
 
+/**
+ * M6: `GET /api/viewer` — the GitHub login behind `gh` (`gh api user`),
+ * cached server-side. The Submit panel says "Submit as <user>" and the
+ * description tab applies the "author + open PR" rule with it.
+ */
+export interface ViewerResponse {
+  /** GitHub login, or null when `gh` is not logged in. */
+  login: string | null;
+}
+
 // --- repos ---------------------------------------------------------------
 
 export interface ReposResponse {
@@ -42,7 +52,7 @@ export interface AddRepoRequest {
 export type ChangesFilter = "authoring" | "review-requested" | "branches" | "recent" | "all";
 
 export interface RepoChange {
-  kind: "pr" | "branch" | "review";
+  kind: "pr" | "branch" | "review" | "demo";
   title: string;
   prNumber?: number;
   branch?: string;
@@ -52,6 +62,8 @@ export interface RepoChange {
   reviewId?: string;
   /** Set for kind "review": head moved since the review was fetched. */
   stale?: boolean;
+  /** Set for kind "demo": fixture name, e.g. "urllib3-5020" (M3 pipeline). */
+  demo?: string;
 }
 
 export interface RepoChangesResponse {
@@ -64,6 +76,13 @@ export interface CreateReviewRequest {
   repoId: string;
   pr?: number;
   branch?: string;
+  /**
+   * M3 demo mode: when true (or a fixture name), ingest the bundled
+   * `fixtures/urllib3-5020/` diff + description instead of git/gh, and run
+   * the same pipeline code path against the replay recordings. `repoId`
+   * may be `"demo"`; the demo repo is synthetic and needs no checkout.
+   */
+  demo?: boolean | string;
 }
 
 export interface ReviewSnapshot {
@@ -80,6 +99,20 @@ export interface ReviewSnapshot {
   logTail: LogEntry[];
   /** Monotonic revision of this snapshot; WS patches carry baseRev/headRev. */
   rev: number;
+  /**
+   * M3 pipeline (PRD §16): per-review token totals + cache-hit rate.
+   * Updated by the pipeline after every job; absent on pre-M3 snapshots.
+   */
+  usageTotals?: ReviewUsageTotals;
+  /**
+   * M3 pipeline (PRD §11): which stages have completed. Absent on pre-M3
+   * snapshots (treated as all pending). Used by resume-after-restart.
+   */
+  pipeline?: {
+    stages: Record<PipelineStage, "pending" | "running" | "done" | "error">;
+    /** Last error per stage (when state is "error"). */
+    errors?: Partial<Record<PipelineStage, string>>;
+  };
   /**
    * M5 (PRD §8): review-level staleness for the "New commits · Update"
    * banner. Present once a refresh has created version n+1; cleared by a
@@ -179,6 +212,39 @@ export interface UpdateHunkRequest {
 
 export interface SummarizeHunkResponse {
   jobId: string;
+}
+
+/**
+ * M3 pipeline (PRD §11, §16): resume an interrupted pipeline.
+ * `POST /api/reviews/:id/resume` re-enqueues every pipeline stage that has
+ * not completed yet (idempotent; already-done stages are skipped).
+ */
+export interface ResumeReviewResponse {
+  resumed: boolean;
+  /** Job ids enqueued by this resume call (empty when nothing was missing). */
+  jobIds: string[];
+  /** Pipeline stages still incomplete after the resume. */
+  pendingStages: PipelineStage[];
+}
+
+/** Pipeline stages (PRD §11): reader → base → critic/concepts → hunk pass. */
+export type PipelineStage = "reader" | "base" | "critic" | "concepts" | "hunk-pass" | "go-deeper";
+
+/**
+ * M3 pipeline (PRD §16): per-review token totals + cache-hit rate.
+ * Computed from the review's jobs; served via `GET /api/reviews/:id` as
+ * `usageTotals` and via `GET /api/jobs?review=:id` per job.
+ */
+export interface ReviewUsageTotals {
+  inputTokens: number;
+  cachedTokens: number;
+  outputTokens: number;
+  /** Cache read share: cached/(input+cached). input counts uncached input only (M0). */
+  cacheHitRate?: number;
+  /** Epoch ms of the first card streamed (time-to-first-card, PRD §16). */
+  firstCardAt?: number;
+  /** Epoch ms the review was created (for time-to-first-card deltas). */
+  createdAt: number;
 }
 
 // --- comments ------------------------------------------------------------
@@ -378,6 +444,24 @@ export interface JobResponse {
 export interface JobPromptResponse {
   jobId: string;
   promptSnapshot: string;
+}
+
+// --- contributions -------------------------------------------------------
+/**
+ * M8 settings (PRD §4.14 "Shared context", §9.5): every automatic agent
+ * contribution, with the thread it came from, and delete for any item.
+ *
+ * - `GET /api/reviews/:id/contributions` — the review's contributions.
+ * - `DELETE /api/reviews/:id/contributions/:contributionId` — remove one
+ *   item (any status). Answers 404 when the id is unknown.
+ */
+export interface ContributionsResponse {
+  contributions: Contribution[];
+}
+
+export interface DeleteContributionResponse {
+  ok: true;
+  deletedId: string;
 }
 
 // --- WebSocket events ----------------------------------------------------

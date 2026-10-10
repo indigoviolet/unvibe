@@ -409,6 +409,16 @@ export interface ReviewDescription {
   source: "pr" | "commits";
   /** Editable only when the user authors an open PR (PRD §4.11). */
   editable: boolean;
+  /** PR author login for the author line. Absent on branches. */
+  author?: string;
+  /** gh PR state (OPEN/CLOSED/MERGED) for the author line. Absent on branches. */
+  state?: string;
+  /**
+   * "Restated →" mapping (PRD §4.11): description paragraph id → ids of
+   * the guide blocks whose citations restate it. Derived from guide
+   * citations of `desc:` ids; recomputed as the guide grows.
+   */
+  restated?: Record<string, string[]>;
   /**
    * M6: original PR body verbatim (for byte-for-byte round-trip of
    * unedited paragraphs, PRD §15). Absent on pre-M6 snapshots.
@@ -476,6 +486,7 @@ export interface Job {
   /** Snapshot of the exact prompt sent (Settings links to it). */
   promptSnapshot?: string;
   usage?: TokenUsage;
+  /** Cache read share: cached/(input+cached). input counts uncached input only (M0). */
   cacheHitRate?: number;
   error?: string;
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */

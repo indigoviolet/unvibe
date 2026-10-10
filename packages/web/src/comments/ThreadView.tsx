@@ -23,6 +23,7 @@ import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
+import { isAskWorking, markAskSent, useAskWorkingTick } from "./askState.js";
 
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -52,9 +53,11 @@ function headerLabel(snapshotFile: string | null, thread: Annotation): string {
 interface Props {
   reviewId: string;
   thread: Annotation;
+  /** Older versions render read-only: no composer, actions disabled. */
+  readOnly?: boolean;
 }
 
-export function ThreadView({ reviewId, thread }: Props) {
+export function ThreadView({ reviewId, thread, readOnly }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const host = thread.anchor.host;
   const file =
@@ -64,7 +67,13 @@ export function ThreadView({ reviewId, thread }: Props) {
   const messages = thread.messages;
   const isNew = messages.length === 0;
   const last = messages[messages.length - 1];
-  const working = !thread.note && messages.length > 0 && last?.who === "you";
+  const awaitingReply = !thread.note && messages.length > 0 && last?.who === "you";
+  // The reply arrives through the pipeline seam (501 until the interaction
+  // agent lands): bound the spinner so it never spins forever, then fall
+  // back to a muted waiting note.
+  const working = awaitingReply && isAskWorking(thread.id);
+  const waiting = awaitingReply && !working;
+  useAskWorkingTick(thread.id, working);
   const posted = thread.postedAt !== undefined;
   const successor = successsorTarget(thread);
 
@@ -129,9 +138,13 @@ export function ThreadView({ reviewId, thread }: Props) {
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
+    const ask = !thread.note;
     api
       .replyComment(reviewId, thread.id, { text })
-      .then(() => setDraft(""))
+      .then(() => {
+        setDraft("");
+        if (ask) markAskSent(thread.id);
+      })
       .catch((err: unknown) => {
         toast(`Couldn't send the reply: ${err instanceof Error ? err.message : String(err)}`);
       })
@@ -164,10 +177,17 @@ export function ThreadView({ reviewId, thread }: Props) {
           <button
             className="ib pr"
             type="button"
-            data-tip={thread.post ? "Marked for the PR · click to unmark" : "Mark for the PR"}
+            data-tip={
+              readOnly
+                ? "Viewing an older version · read-only"
+                : thread.post
+                  ? "Marked for the PR · click to unmark"
+                  : "Mark for the PR"
+            }
             aria-label={thread.post ? "Marked for the PR · click to unmark" : "Mark for the PR"}
             aria-pressed={thread.post}
             data-post={thread.id}
+            disabled={readOnly}
             onClick={togglePost}
           >
             <Icon name="send" />
@@ -176,9 +196,10 @@ export function ThreadView({ reviewId, thread }: Props) {
         <button
           className="ib"
           type="button"
-          data-tip="Delete"
+          data-tip={readOnly ? "Viewing an older version · read-only" : "Delete"}
           aria-label="Delete"
           data-remove={thread.id}
+          disabled={readOnly}
           onClick={onDelete}
         >
           <Icon name="trash" />
@@ -187,9 +208,10 @@ export function ThreadView({ reviewId, thread }: Props) {
           <button
             className="ib"
             type="button"
-            data-tip="Close"
+            data-tip={readOnly ? "Viewing an older version · read-only" : "Close"}
             aria-label="Close"
             data-closethr={thread.id}
+            disabled={readOnly}
             onClick={onClose}
           >
             <Icon name="x" />
@@ -228,6 +250,11 @@ export function ThreadView({ reviewId, thread }: Props) {
           <span>Reading the diff and PR body…</span>
         </div>
       ) : null}
+      {waiting ? (
+        <div className="hint" role="status">
+          Still waiting for the agent — its reply will appear here when the pipeline answers.
+        </div>
+      ) : null}
       {posted ? (
         <div className="hint">
           Posted
@@ -241,45 +268,49 @@ export function ThreadView({ reviewId, thread }: Props) {
           ) : null}
         </div>
       ) : null}
-      <div className="composer">
-        <textarea
-          id={`ta-${thread.id}`}
-          rows={isNew ? 3 : 1}
-          placeholder={isNew ? (thread.note ? "Write a note…" : "Ask the agent, or draft a review comment…") : "Reply…"}
-          aria-label={isNew ? "New comment" : "Reply"}
-          value={draft}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            persistReply(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              onSend();
-            }
-          }}
-        />
-        <div className="row">
-          <button
-            className="btn ghost"
-            type="button"
-            data-discard={thread.id}
-            data-tip={isNew ? "Discard this comment" : "Clear the reply"}
-            onClick={onDiscard}
-          >
-            Discard
-          </button>
-          <button
-            className="btn"
-            type="button"
-            data-send={thread.id}
-            disabled={sending || draft.trim() === ""}
-            onClick={onSend}
-          >
-            {thread.note ? "Save" : isNew ? "Ask" : "Reply"}
-          </button>
+      {readOnly ? (
+        <div className="hint">Viewing an older version · read-only</div>
+      ) : (
+        <div className="composer">
+          <textarea
+            id={`ta-${thread.id}`}
+            rows={isNew ? 3 : 1}
+            placeholder={isNew ? (thread.note ? "Write a note…" : "Ask the agent, or draft a review comment…") : "Reply…"}
+            aria-label={isNew ? "New comment" : "Reply"}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              persistReply(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                onSend();
+              }
+            }}
+          />
+          <div className="row">
+            <button
+              className="btn ghost"
+              type="button"
+              data-discard={thread.id}
+              data-tip={isNew ? "Discard this comment" : "Clear the reply"}
+              onClick={onDiscard}
+            >
+              Discard
+            </button>
+            <button
+              className="btn"
+              type="button"
+              data-send={thread.id}
+              disabled={sending || draft.trim() === ""}
+              onClick={onSend}
+            >
+              {thread.note ? "Save" : isNew ? "Ask" : "Reply"}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

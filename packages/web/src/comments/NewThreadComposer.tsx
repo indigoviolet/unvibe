@@ -11,6 +11,7 @@ import { useState } from "react";
 import type { ActionAnchor } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
+import { markAskSent } from "./askState.js";
 
 interface Props {
   reviewId: string;
@@ -32,7 +33,10 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
     setSending(true);
     api
       .createComment(reviewId, { anchor, quote, note, text: value })
-      .then((res) => onCreated(res.id))
+      .then((res) => {
+        if (!note) markAskSent(res.id);
+        onCreated(res.id);
+      })
       .catch((err: unknown) => {
         toast(`Couldn't create the comment: ${err instanceof Error ? err.message : String(err)}`);
       })

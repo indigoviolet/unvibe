@@ -17,8 +17,12 @@ import { useEffect, useState } from "react";
 import type { SubmitPreview } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
+import { useViewer } from "../comments/viewer.js";
 import { pendingCount } from "../comments/threads.js";
+import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { useReview } from "../state/store.js";
+
+const READ_ONLY_REASON = "Viewing an older version · read-only · back to current to submit";
 
 function locationLabel(comment: SubmitPreview["comments"][number]): string {
   const loc = comment.location;
@@ -44,13 +48,29 @@ type PanelState =
 
 export function SubmitPanel({ reviewId }: { reviewId: string }) {
   const snapshot = useReview((s) => s.snapshot);
+  const readOnly = useIsReadOnlyVersion();
+  const viewer = useViewer();
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<PanelState>({ status: "loading" });
 
-  const count = pendingCount(snapshot);
+  const count = readOnly ? 0 : pendingCount(snapshot);
+  const submitLabel = viewer ? `Submit as ${viewer}` : "Submit review";
 
   useEffect(() => {
     if (!open) return;
+    if (readOnly) {
+      setState({
+        status: "ready",
+        preview: {
+          comments: [],
+          alreadyPosted: [],
+          reviewBody: "",
+          commitId: "",
+          disabledReason: READ_ONLY_REASON,
+        },
+      });
+      return;
+    }
     setState({ status: "loading" });
     let cancelled = false;
     api
@@ -79,7 +99,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [open, reviewId]);
+  }, [open, reviewId, readOnly]);
 
   // A successful post flips threads to posted through a patch; refresh the
   // preview when reopened. Live counts on the button follow the store.
@@ -208,6 +228,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
             <PreviewBody
               preview={state.preview}
               disabled={state.status === "submitting"}
+              submitLabel={submitLabel}
               onCancel={() => setOpen(false)}
               onSubmit={() => doSubmit(state.preview)}
             />
@@ -267,11 +288,13 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
 function PreviewBody({
   preview,
   disabled,
+  submitLabel,
   onCancel,
   onSubmit,
 }: {
   preview: SubmitPreview;
   disabled: boolean;
+  submitLabel: string;
   onCancel: () => void;
   onSubmit: () => void;
 }) {
@@ -325,7 +348,7 @@ function PreviewBody({
         </button>
         {n > 0 ? (
           <button className="btn" type="button" data-submitgo="" disabled={disabled} onClick={onSubmit}>
-            Submit review
+            {submitLabel}
           </button>
         ) : null}
       </div>

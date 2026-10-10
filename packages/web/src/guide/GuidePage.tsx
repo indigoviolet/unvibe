@@ -11,9 +11,11 @@
  * page, expands its card, scrolls and highlights it.
  */
 import { useCallback, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
+import { VersionSwitcher } from "../versions/VersionSwitcher.js";
+import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { PageView } from "./PageView.js";
 import "./guide-m2.css";
@@ -29,11 +31,13 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   const setSnapshot = useReview((s) => s.setSnapshot);
   const splat = useParams()["*"];
   const navigate = useNavigate();
+  const location = useLocation();
+  const versionParam = useReviewVersion();
 
   useEffect(() => {
     let cancelled = false;
     api
-      .review(reviewId)
+      .review(reviewId, versionParam)
       .then((snap) => {
         if (!cancelled) setSnapshot(snap);
       })
@@ -43,7 +47,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [reviewId, setSnapshot]);
+  }, [reviewId, versionParam, setSnapshot]);
 
   const pageId = pageIdFromSplat(splat);
 
@@ -81,6 +85,25 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     return () => window.removeEventListener(GUIDE_BLOCK_EVENT, onRequest);
   }, [onOpenPage, pageId]);
 
+  // Card deep links (`/review/:id#C-<cardId>`, e.g. from Settings → Shared
+  // context → Open card): the snapshot loads async, so poll briefly for the
+  // card element instead of relying on the browser's initial-hash scroll.
+  useEffect(() => {
+    const hash = location.hash.replace(/^#/, "");
+    if (!snapshot || !/^C-/.test(hash)) return;
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      const el = document.getElementById(hash);
+      if (el) {
+        el.scrollIntoView({ block: "start" });
+        window.clearInterval(timer);
+      } else if (++tries > 20) {
+        window.clearInterval(timer);
+      }
+    }, 150);
+    return () => window.clearInterval(timer);
+  }, [snapshot, location.hash]);
+
   const pages = snapshot?.pages;
   const lookupPage = useCallback(
     (id: string) => pages?.find((p) => p.id === id),
@@ -98,28 +121,36 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   }
 
   const current = pageId === null ? pages.find((p) => p.kind === "root") ?? pages[0] : lookupPage(pageId);
+  // The switcher lives above every branch: pipeline-less reviews have no
+  // pages yet ("Page not found"), but their versions still switch.
   if (!current) {
     return (
-      <div className="doc">
-        <div className="eyebrow">Guided review</div>
-        <h1 className="title">Page not found</h1>
-        <p className="hint">
-          There is no page <code>{pageId}</code> in this review.{" "}
-          <button type="button" className="x" onClick={() => onOpenPage(null)}>
-            Back to the guided review
-          </button>
-        </p>
-      </div>
+      <>
+        <VersionSwitcher />
+        <div className="doc">
+          <div className="eyebrow">Guided review</div>
+          <h1 className="title">Page not found</h1>
+          <p className="hint">
+            There is no page <code>{pageId}</code> in this review.{" "}
+            <button type="button" className="x" onClick={() => onOpenPage(null)}>
+              Back to the guided review
+            </button>
+          </p>
+        </div>
+      </>
     );
   }
 
   return (
-    <PageView
-      reviewId={reviewId}
-      page={current}
-      lookupPage={lookupPage}
-      onOpenPage={onOpenPage}
-      onJumpToCard={onJumpToCard}
-    />
+    <>
+      <VersionSwitcher />
+      <PageView
+        reviewId={reviewId}
+        page={current}
+        lookupPage={lookupPage}
+        onOpenPage={onOpenPage}
+        onJumpToCard={onJumpToCard}
+      />
+    </>
   );
 }

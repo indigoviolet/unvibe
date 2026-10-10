@@ -26,6 +26,7 @@ import { useReview } from "../state/store.js";
 import { highlightAnchorInRoot } from "./anchor.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
+import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
 import { ThreadView } from "./ThreadView.js";
 
 function makeMark(threadId: string): HTMLElement {
@@ -64,6 +65,10 @@ export function GuideThreadHooks() {
       onOpenBlockThread((threadId) => {
         const reviewId = useReview.getState().snapshot?.review.id;
         if (!reviewId) return;
+        if (isReadOnlyVersionNow()) {
+          toast("Viewing an older version · read-only");
+          return;
+        }
         api.updateComment(reviewId, threadId, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the comment: ${err instanceof Error ? err.message : String(err)}`);
         });
@@ -110,12 +115,30 @@ export function GuideThreadHooks() {
   useEffect(() => {
     const onClick = (e: MouseEvent): void => {
       const mark = (e.target as Element | null)?.closest?.("mark.anc[data-thr]");
-      if (!mark) return;
+      if (!mark) {
+        // Suggested-comment links jump to the thread and open it.
+        const jump = (e.target as Element | null)?.closest?.("[data-cjump]");
+        if (jump) {
+          const id = (jump as HTMLElement).dataset.cjump ?? "";
+          const snap = useReview.getState().snapshot;
+          const reviewId = snap?.review.id;
+          const thread = snap?.annotations.find((a) => a.id === id);
+          if (!reviewId || !thread || thread.type !== "thread" || isReadOnlyVersionNow()) return;
+          if (!thread.open) {
+            api.updateComment(reviewId, id, { open: true }).catch(() => {});
+          }
+        }
+        return;
+      }
       const id = (mark as HTMLElement).dataset.thr ?? "";
       const snap = useReview.getState().snapshot;
       const reviewId = snap?.review.id;
       const thread = snap?.annotations.find((a) => a.id === id);
       if (!reviewId || !thread || thread.type !== "thread") return;
+      if (isReadOnlyVersionNow()) {
+        toast("Viewing an older version · read-only");
+        return;
+      }
       api.updateComment(reviewId, id, { open: !thread.open }).catch((err: unknown) => {
         toast(`Couldn't open the comment: ${err instanceof Error ? err.message : String(err)}`);
       });
@@ -161,6 +184,7 @@ interface BlockProps {
 
 export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   const annotations = useReview((s) => s.snapshot?.annotations);
+  const readOnly = useIsReadOnlyVersion();
   const [pending, setPending] = useState<NewThreadRequest | null>(null);
 
   useEffect(() => {
@@ -168,6 +192,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
       if (req.anchor.where !== "block") return;
       if (!anchorMatchesBlock(req.anchor.blockId, cardId, blockId)) return;
+      if (isReadOnlyVersionNow()) return;
       setPending(req);
     };
     window.addEventListener(NEW_THREAD_EVENT, onRequest);
@@ -186,9 +211,9 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   return (
     <>
       {threads.map((t) => (
-        <ThreadView key={t.id} reviewId={reviewId} thread={t} />
+        <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
       ))}
-      {pending ? (
+      {pending && !readOnly ? (
         <NewThreadComposer
               key="pending"
           reviewId={reviewId}

@@ -1,38 +1,75 @@
 /**
- * Settings page (`/settings`). Owner: settings agent.
- * Models, prompts (template + expanded), limits, jobs, shared context.
+ * Settings page (`/settings`, PRD §4.14): models, prompts (template +
+ * expanded), limits and budgets, jobs, shared context.
+ *
+ * Reachable from the top bar and the start page; also openable in the
+ * context of a review (`/settings?review=:id`), which gives "Expanded for
+ * this review" and the Jobs / Shared context sections a subject.
  */
 import { useEffect, useState } from "react";
-import { api } from "../api/client.js";
+import { Link, useSearchParams } from "react-router-dom";
 import type { Settings } from "@unvibe/shared";
+import { api } from "../api/client.js";
+import { ContributionsSection } from "./ContributionsSection.js";
+import { JobsSection } from "./JobsSection.js";
+import { LimitsSection } from "./LimitsSection.js";
+import { ModelsSection } from "./ModelsSection.js";
+import { PromptsSection } from "./PromptsSection.js";
+import "./settings.css";
 
-export function SettingsPage() {
+export function SettingsPage(): React.JSX.Element {
+  const [params] = useSearchParams();
+  const reviewId = params.get("review");
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     api
       .settings()
-      .then(setSettings)
-      .catch(() => {
-        // Scaffold: service stubs return 501.
+      .then((s) => {
+        if (!cancelled) setSettings(s);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const back = reviewId ? `/review/${reviewId}` : "/";
 
   return (
     <div className="app">
       <header className="top">
         <div className="pr">
           <b>Settings</b>
+          {reviewId ? <span className="num">for review {reviewId}</span> : null}
         </div>
+        <Link className="tbtn" to={back}>
+          {reviewId ? "Back to review" : "Back to start"}
+        </Link>
       </header>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
-          <h1 className="title">Settings</h1>
-          <p className="hint">
-            Scaffold placeholder (settings agent owns this): model pickers, prompt templates +
-            expanded text, limits/budgets, jobs, shared context.
-          </p>
-          {settings && <pre className="code">{JSON.stringify(settings, null, 2)}</pre>}
+          <div className="eyebrow">Settings</div>
+          <h1 className="title">Models, prompts, limits, jobs, shared context</h1>
+          {error ? (
+            <p className="err" role="alert">
+              Couldn&apos;t load settings: {error}
+            </p>
+          ) : null}
+          {!settings && !error ? <p className="hint">Loading settings…</p> : null}
+          {settings ? (
+            <>
+              <ModelsSection settings={settings} onSaved={setSettings} />
+              <PromptsSection reviewId={reviewId} />
+              <LimitsSection settings={settings} onSaved={setSettings} />
+              <JobsSection reviewId={reviewId} />
+              <ContributionsSection reviewId={reviewId} />
+            </>
+          ) : null}
         </div>
       </main>
     </div>

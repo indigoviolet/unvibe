@@ -27,7 +27,7 @@ function emptySnapshot(id: string): ReviewSnapshot {
 describe("WS events", () => {
   it("streams patch events to an authenticated client", async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
-    const { app, ctx } = await createApp("tok", { runner: new RealCommandRunner() });
+    const { app, ctx } = await createApp("tok", {runner: new RealCommandRunner(), autoPipeline: false});
     ctx.reviews.putSnapshot("rv_ws", emptySnapshot("rv_ws"));
     await app.listen({ host: "127.0.0.1", port: 0 });
     const port = (app.server.address() as AddressInfo).port;
@@ -79,7 +79,7 @@ describe("WS events", () => {
   });
 
   it("rejects unauthenticated sockets", async () => {
-    const { app } = await createApp("tok", { runner: new RealCommandRunner() });
+    const { app } = await createApp("tok", {runner: new RealCommandRunner(), autoPipeline: false});
     await app.listen({ host: "127.0.0.1", port: 0 });
     const port = (app.server.address() as AddressInfo).port;
     try {

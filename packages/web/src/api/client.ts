@@ -7,12 +7,18 @@ import type {
   ActionResponse,
   AddRepoRequest,
   ChangesFilter,
+  ContributionsResponse,
   CreateCommentRequest,
   CreateCommentResponse,
   CreateReviewRequest,
+  DeleteContributionResponse,
   ExistingCommentsResponse,
   HealthResponse,
+  Job,
+  JobPromptResponse,
+  JobResponse,
   JobsResponse,
+  ModelsResponse,
   PromptsResponse,
   RefreshResponse,
   ReplyCommentRequest,
@@ -28,6 +34,8 @@ import type {
   UpdateCommentRequest,
   UpdateDescriptionRequest,
   UpdateHunkRequest,
+  UpdateReviewResponse,
+  ViewerResponse,
 } from "@unvibe/shared";
 // Static import keeps mock timing deterministic in dev; the mock modules are
 // data + an in-memory client with no side effects on import, so bundlers can
@@ -59,10 +67,14 @@ export function getToken(): string | null {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
+  // Only claim JSON when there is a body: Fastify 400s a bodyless POST
+  // that carries `content-type: application/json` (refresh, update,
+  // summarize, cancel all post without one).
+  const hasBody = init?.body !== undefined;
   const res = await fetch(path, {
     ...init,
     headers: {
-      "content-type": "application/json",
+      ...(hasBody ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
@@ -97,9 +109,10 @@ const realApi = {
 
   createReview: (body: CreateReviewRequest): Promise<ReviewSnapshot> =>
     post("/api/reviews", body),
-  review: (id: string): Promise<ReviewSnapshot> => get(`/api/reviews/${encodeURIComponent(id)}`),
+  review: (id: string, version?: number): Promise<ReviewSnapshot> =>
+    get(`/api/reviews/${encodeURIComponent(id)}${version !== undefined ? `?version=${version}` : ""}`),
   refresh: (id: string): Promise<RefreshResponse> => post(`/api/reviews/${encodeURIComponent(id)}/refresh`),
-  update: (id: string): Promise<RefreshResponse> => post(`/api/reviews/${encodeURIComponent(id)}/update`),
+  update: (id: string): Promise<UpdateReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/update`),
   action: (id: string, action: ReviewAction): Promise<ActionResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/actions`, action),
 
@@ -142,14 +155,33 @@ const realApi = {
   prComments: (id: string): Promise<ExistingCommentsResponse> =>
     get(`/api/reviews/${encodeURIComponent(id)}/pr-comments`),
 
+  viewer: (): Promise<ViewerResponse> => get("/api/viewer"),
   settings: (): Promise<Settings> => get("/api/settings"),
-  saveSettings: (body: Settings): Promise<Settings> =>
+  saveSettings: (body: Partial<Settings>): Promise<Settings> =>
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+  models: (provider: string): Promise<ModelsResponse> =>
+    get(`/api/models?provider=${encodeURIComponent(provider)}`),
 
   prompts: (reviewId?: string): Promise<PromptsResponse> =>
     get(`/api/prompts${reviewId ? `?review=${encodeURIComponent(reviewId)}` : ""}`),
   jobs: (reviewId?: string): Promise<JobsResponse> =>
     get(`/api/jobs${reviewId ? `?review=${encodeURIComponent(reviewId)}` : ""}`),
+  job: (id: string): Promise<JobResponse> => get(`/api/jobs/${encodeURIComponent(id)}`),
+  jobPrompt: (id: string): Promise<JobPromptResponse> =>
+    get(`/api/jobs/${encodeURIComponent(id)}/prompt`),
+  cancelJob: (id: string): Promise<{ job: Job }> => post(`/api/jobs/${encodeURIComponent(id)}/cancel`),
+  setJobPriority: (id: string, priority: number): Promise<{ job: Job }> =>
+    request(`/api/jobs/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ priority }),
+    }),
+
+  contributions: (reviewId: string): Promise<ContributionsResponse> =>
+    get(`/api/reviews/${encodeURIComponent(reviewId)}/contributions`),
+  deleteContribution: (reviewId: string, contributionId: string): Promise<DeleteContributionResponse> =>
+    request(`/api/reviews/${encodeURIComponent(reviewId)}/contributions/${encodeURIComponent(contributionId)}`, {
+      method: "DELETE",
+    }),
 };
 
 export type ApiClient = typeof realApi;

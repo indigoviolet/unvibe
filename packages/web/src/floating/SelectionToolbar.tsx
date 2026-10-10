@@ -24,6 +24,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ActionAnchor } from "@unvibe/shared";
 import { api } from "../api/client.js";
+import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { toast } from "./Toast.js";
 import { useReview } from "../state/store.js";
@@ -136,6 +137,7 @@ interface Pending {
 
 export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
+  const readOnly = useIsReadOnlyVersion();
   const barRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<Pending | null>(null);
   pendingRef.current = pending;
@@ -149,7 +151,11 @@ export function SelectionToolbar() {
       const scope = (e.target as Element | null)?.closest?.(
         "#page, #right .desc:not(.editing), #right table.diff",
       );
-      if (!scope || (e.target as Element | null)?.closest?.("button, a, input, textarea")) {
+      if (
+        !scope ||
+        (e.target as Element | null)?.closest?.("button, a, input, textarea") ||
+        isReadOnlyVersionNow()
+      ) {
         hide();
         return;
       }
@@ -244,7 +250,7 @@ export function SelectionToolbar() {
   };
 
   return (
-    <div id="selbar" ref={barRef} hidden={pending === null}>
+    <div id="selbar" ref={barRef} hidden={pending === null || readOnly}>
       <button type="button" data-act="explain" onClick={onExplain}>
         Explain
       </button>

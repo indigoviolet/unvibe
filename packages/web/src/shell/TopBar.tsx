@@ -1,9 +1,11 @@
 /** Top bar: title, Tips, Submit review slot, Source toggle. */
-import { Icon } from "../components/Icon.js";
+import { Link } from "react-router-dom";
 import { SubmitPanel } from "./SubmitPanel.js";
+import { TipsButton } from "./Tips.js";
 
 interface Props {
   title: string;
+  /** Review context: settings opens as `/settings?review=:id`; submit posts it. */
   reviewId: string;
   pendingCount: number;
   sourceOpen: boolean;
@@ -18,9 +20,10 @@ export function TopBar({ title, reviewId, pendingCount, sourceOpen, onToggleSour
         <b>{title}</b>
       </div>
       <span className="pill">Scaffold · stubs</span>
-      <button className="tbtn" type="button" title="Usage tips">
-        Tips
-      </button>
+      <TipsButton />
+      <Link className="tbtn" to={`/settings?review=${encodeURIComponent(reviewId)}`}>
+        Settings
+      </Link>
       <SubmitPanel reviewId={reviewId} />
       <button
         className="tbtn"
@@ -35,10 +38,4 @@ export function TopBar({ title, reviewId, pendingCount, sourceOpen, onToggleSour
   );
 }
 
-export function TipsButton() {
-  return (
-    <button className="tbtn" type="button">
-      <Icon name="bulb" /> Tips
-    </button>
-  );
-}
+

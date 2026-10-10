@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { registerMcp } from "../mcp/index.js";
 import type { ServiceContext } from "./context.js";
 import { registerComments } from "./comments.js";
+import { registerContributions } from "./contributions.js";
 import { registerDescription } from "./description.js";
 import type { RouteDeps } from "./deps.js";
 import { registerEvents } from "./events.js";
@@ -12,23 +13,33 @@ import { registerRepos } from "./repos.js";
 import { registerReviews, type ReviewsRouteDeps } from "./reviews.js";
 import { registerSettings } from "./settings.js";
 import { registerSubmit } from "./submit.js";
+import { registerViewer } from "./viewer.js";
 
 /**
  * One route module per area; each registers its PRD §14.1 endpoints.
- * `ctx` carries the core stores; `deps` the optional M3 singletons plus
- * the M5 update-pass wiring (`ReviewsRouteDeps`: job queue + base runner).
+ * M3 unification: `ctx` is the full `AppContext` (core stores + M3
+ * singletons); `deps` carries the same plus per-test overrides (jobs,
+ * baseRunner, ...). Route modules read pipeline/jobs/settings from the
+ * merged view.
  */
 export async function registerRoutes(
   app: FastifyInstance,
   ctx: ServiceContext,
   deps: RouteDeps & ReviewsRouteDeps = {},
 ): Promise<void> {
+  const full = { ...ctx, ...deps } as ServiceContext & RouteDeps & ReviewsRouteDeps & {
+    pipeline?: import("../pipeline/index.js").Pipeline;
+    dataDir?: string;
+    fixturesDir?: string;
+  };
   await registerRepos(app, ctx);
   await registerReviews(app, ctx, deps);
-  await registerHunks(app, ctx);
+  await registerHunks(app, full as unknown as ServiceContext, full as unknown as RouteDeps);
   await registerComments(app, ctx);
+  await registerContributions(app, ctx);
   await registerDescription(app, ctx);
   await registerSubmit(app, ctx);
+  await registerViewer(app, ctx);
   await registerSettings(app, deps);
   await registerPrompts(app, {
     snapshots: {

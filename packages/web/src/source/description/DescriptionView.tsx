@@ -3,7 +3,8 @@
  *
  * - Description HTML with stable paragraph ids (`desc:` citation targets).
  *   For a branch without a PR the service renders commit messages
- *   (`source: "commits"`, read-only).
+ *   (`source: "commits"`, read-only). Author byline from
+ *   `description.author`/`state`.
  * - Editing when the user authors an open PR (`description.editable`):
  *   in-place contenteditable body with Discard/Save; Save stores locally
  *   through `PUT …/description` and shows "Edited · goes to GitHub when
@@ -13,8 +14,10 @@
  * - Threads sit under their paragraph (open ones render, closing leaves
  *   the highlight or a marker); selection in the description anchors to
  *   the paragraph id.
- * - "Restated →" links jump back to the guide block that restates the
- *   paragraph.
+ * - "Restated →" links (`button.back[data-back]`): present in the HTML
+ *   when the pipeline emits them, otherwise added here from
+ *   `description.restated` (paragraph → guide block ids). They jump back
+ *   to the guide block that restates the paragraph.
  *
  * The `editor` seam is kept: pass a custom `DescriptionEditor` to replace
  * the built-in contenteditable body.
@@ -25,13 +28,16 @@ import type { Annotation } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { markTextInElement } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
+import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../../comments/readOnly.js";
 import { ThreadView } from "../../comments/ThreadView.js";
+import { useViewer } from "../../comments/viewer.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/SelectionToolbar.js";
 import { toast } from "../../floating/Toast.js";
 import { Icon } from "../../components/Icon.js";
 import { requestGuideBlock } from "../../guide/actions.js";
 import { useReview } from "../../state/store.js";
 import { cleanEditedHtml, DescriptionEditor as DefaultEditor } from "./DescriptionEditor.js";
+import { canEditDescription } from "./canEdit.js";
 import { splitDescriptionHtml } from "./segments.js";
 
 export interface DescriptionEditor {
@@ -69,6 +75,8 @@ function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
 export function DescriptionView({ reviewId, editor }: Props) {
   const description = useReview((s) => s.snapshot?.description);
   const annotations = useReview((s) => s.snapshot?.annotations);
+  const readOnlyVersion = useIsReadOnlyVersion();
+  const viewer = useViewer();
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState<NewThreadRequest | null>(null);
   const [highlighted, setHighlighted] = useState<ReadonlySet<string>>(new Set());
@@ -106,10 +114,13 @@ export function DescriptionView({ reviewId, editor }: Props) {
     [descThreads, knownIds],
   );
 
+  const restated = useMemo(() => description?.restated ?? {}, [description]);
+
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
       if (req.anchor.where !== "description") return;
+      if (isReadOnlyVersionNow()) return;
       setPending(req);
     };
     window.addEventListener(NEW_THREAD_EVENT, onRequest);
@@ -124,7 +135,8 @@ export function DescriptionView({ reviewId, editor }: Props) {
     );
   }
 
-  const canEdit = description.editable && description.source === "pr";
+  const canEdit =
+    canEditDescription(description, viewer === undefined ? null : viewer) && !readOnlyVersion;
 
   const startEditing = (): void => {
     draftRef.current = innerOfDesc(displayHtml);
@@ -147,8 +159,19 @@ export function DescriptionView({ reviewId, editor }: Props) {
     });
   };
 
+  const byline =
+    description.author !== undefined || description.state !== undefined
+      ? `by ${description.author ?? "unknown"}${description.state ? ` · ${description.state}` : ""}`
+      : null;
+
   return (
     <>
+      {byline ? (
+        <div className="dbar">
+          <span className="hint">{byline}</span>
+          <span className="sp" />
+        </div>
+      ) : null}
       {description.pendingHtml && !editing ? (
         <div className="dbar">
           <span className="hint">Edited · goes to GitHub when you submit the review</span>
@@ -217,6 +240,8 @@ export function DescriptionView({ reviewId, editor }: Props) {
           setHighlighted={setHighlighted}
           pending={pending}
           setPending={setPending}
+          restated={restated}
+          readOnly={readOnlyVersion}
         />
       )}
     </>
@@ -232,13 +257,42 @@ interface BodyProps {
   setHighlighted: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>;
   pending: NewThreadRequest | null;
   setPending: (req: NewThreadRequest | null) => void;
+  /** Paragraph → guide block ids for "Restated →" links. */
+  restated: Record<string, string[]>;
+  readOnly: boolean;
 }
 
 const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function DescriptionBody(
-  { reviewId, segments, byPara, orphans, highlighted, setHighlighted, pending, setPending },
+  { reviewId, segments, byPara, orphans, highlighted, setHighlighted, pending, setPending, restated, readOnly },
   ref,
 ) {
   const innerRef = useRef<HTMLDivElement | null>(null);
+
+  // "Restated →" links from the snapshot mapping (paragraph → guide block
+  // ids). Appended after the matching paragraph element; the click
+  // delegation below jumps to the guide block. Re-applied whenever the
+  // segments or the mapping change (re-renders wipe manual DOM).
+  useEffect(() => {
+    const root = innerRef.current;
+    if (!root) return;
+    for (const [paragraphId, blockIds] of Object.entries(restated)) {
+      if (blockIds.length === 0) continue;
+      let el: Element | null = null;
+      try {
+        el = root.querySelector(`#${CSS.escape(paragraphId)}`);
+      } catch {
+        continue;
+      }
+      if (!el || el.querySelector("button.back[data-back]")) continue;
+      const btn = document.createElement("button");
+      btn.className = "back";
+      btn.type = "button";
+      btn.setAttribute("data-back", blockIds[0]);
+      btn.textContent = blockIds.length > 1 ? `Restated → (${blockIds.length})` : "Restated →";
+      btn.title = "Show the guide block that restates this paragraph";
+      el.appendChild(btn);
+    }
+  }, [segments, restated]);
 
   // Anchor highlights: wrap each thread quote inside its paragraph body.
   // Threads whose quote is gone (or empty) fall back to the marker.
@@ -263,6 +317,10 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   }, [byPara, segments, setHighlighted]);
 
   const openThread = (id: string): void => {
+    if (readOnly) {
+      toast("Viewing an older version · read-only");
+      return;
+    }
     api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
       toast(`Couldn't open the comment: ${err instanceof Error ? err.message : String(err)}`);
     });
@@ -318,10 +376,10 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
             ) : null}
             {open.map((t) => (
               <div className="dann" key={t.id}>
-                <ThreadView reviewId={reviewId} thread={t} />
+                <ThreadView reviewId={reviewId} thread={t} readOnly={readOnly} />
               </div>
             ))}
-            {showPending && pending ? (
+            {showPending && pending && !readOnly ? (
               <div className="dann">
                 <NewThreadComposer
               key="pending"
@@ -342,7 +400,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
           {orphans
             .filter((t) => t.open)
             .map((t) => (
-              <ThreadView key={t.id} reviewId={reviewId} thread={t} />
+              <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
             ))}
         </div>
       ) : null}

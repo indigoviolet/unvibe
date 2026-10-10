@@ -20,6 +20,7 @@ import { slotKey, type LineSlots } from "../source/diff/lineSlots.js";
 import { useReview } from "../state/store.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
+import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
 import { ThreadView } from "./ThreadView.js";
 
 export { slotKey };
@@ -37,12 +38,14 @@ export function useDiffCommentBindings(reviewId: string): {
   onLineClick: (fileKey: string, line: number) => void;
 } {
   const annotations = useReview((s) => s.snapshot?.annotations);
+  const readOnly = useIsReadOnlyVersion();
   const [pending, setPending] = useState<Pending | null>(null);
 
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
       if (req.anchor.where !== "diff-line") return;
+      if (isReadOnlyVersionNow()) return;
       setPending({ fileKey: req.anchor.fileKey, line: req.anchor.line, quote: req.quote, note: req.note });
     };
     window.addEventListener(NEW_THREAD_EVENT, onRequest);
@@ -66,6 +69,10 @@ export function useDiffCommentBindings(reviewId: string): {
 
   const onLineClick = useCallback(
     (fileKey: string, line: number) => {
+      if (isReadOnlyVersionNow()) {
+        toast("Viewing an older version · read-only");
+        return;
+      }
       const key = slotKey(fileKey, line);
       const existing = byLine.get(key) ?? [];
       const snap = useReview.getState().snapshot;
@@ -98,9 +105,9 @@ export function useDiffCommentBindings(reviewId: string): {
       slots[key] = (
         <>
           {open.map((t) => (
-            <ThreadView key={t.id} reviewId={reviewId} thread={t} />
+            <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
           ))}
-          {pending && slotKey(pending.fileKey, pending.line) === key ? (
+          {pending && !readOnly && slotKey(pending.fileKey, pending.line) === key ? (
             <NewThreadComposer
               key="pending"
               reviewId={reviewId}
@@ -114,7 +121,7 @@ export function useDiffCommentBindings(reviewId: string): {
         </>
       );
     }
-    if (pending && !slots[slotKey(pending.fileKey, pending.line)]) {
+    if (pending && !readOnly && !slots[slotKey(pending.fileKey, pending.line)]) {
       slots[slotKey(pending.fileKey, pending.line)] = (
         <NewThreadComposer
               key="pending"
@@ -128,7 +135,7 @@ export function useDiffCommentBindings(reviewId: string): {
       );
     }
     return slots;
-  }, [byLine, pending, reviewId]);
+  }, [byLine, pending, reviewId, readOnly]);
 
   const commentedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 
