@@ -1,8 +1,14 @@
 /**
  * One adapter subprocess per provider, started lazily, multiplexing sessions.
  *
- * - The `claude`/`codex` CLIs are found on the PATH resolved from a
- *   login shell (`exec/shell-path.ts`), never hard-coded install paths.
+ * - The user's installed `claude`/`codex` CLIs are found on the PATH
+ *   resolved from a login shell (`exec/shell-path.ts`), never hard-coded
+ *   install paths, and each adapter is pointed at them through the mechanism
+ *   it really supports (see `exec/agent-bins.ts`): `CLAUDE_CODE_EXECUTABLE`
+ *   for claude-agent-acp (→ SDK `pathToClaudeCodeExecutable`), `CODEX_PATH`
+ *   for codex-acp (→ `codex app-server`). Explicit `UNVIBE_CLAUDE_BIN` /
+ *   `UNVIBE_CODEX_BIN` (or pre-set adapter vars) override the PATH lookup
+ *   for unusual installs. No bundled platform binary is ever used.
  * - Restart on crash with in-flight prompts failing as retryable errors.
  * - `session/update` notifications are demultiplexed per session so
  *   concurrent prompts on different sessions stream independently.
@@ -14,6 +20,7 @@ import { Readable, Writable } from "node:stream";
 import { createRequire } from "node:module";
 import * as acp from "@agentclientprotocol/sdk";
 import { resolvePathFromLoginShell } from "../../exec/shell-path.js";
+import { agentBinEnv, resolveAgentBin } from "../../exec/agent-bins.js";
 import {
   decidePermission,
   decisionToOutcome,
@@ -195,12 +202,37 @@ export async function spawnAdapterTransport(
     return true;
   });
   const entry = resolveAdapterEntry(provider);
+  // Point each adapter at the user's installed CLI (see exec/agent-bins.ts
+  // for the per-adapter mechanism). Explicit test env (`opts.env`) wins;
+  // otherwise the adapter-native vars are respected when pre-set, else the
+  // login-shell PATH lookup decides. When neither adapter var is set and no
+  // user binary is found, surface the install hint instead of letting the
+  // adapter fall back to a bundled binary (Unvibe ships none).
+  const mergedPath = merged.join(":");
+  const claudeBin = resolveAgentBin("claude", { pathValue: mergedPath });
+  const codexBin = resolveAgentBin("codex", { pathValue: mergedPath });
+  const AutoBins = agentBinEnv({ claude: claudeBin, codex: codexBin }).env;
+  const wanted = provider === "claude" ? claudeBin : codexBin;
+  const adapterVar = provider === "claude" ? "CLAUDE_CODE_EXECUTABLE" : "CODEX_PATH";
+  if (!process.env[adapterVar] && !(opts?.env ?? {})[adapterVar] && !AutoBins[adapterVar]) {
+    const cli = provider === "claude" ? "claude" : "codex";
+    const hint =
+      provider === "claude"
+        ? "Install Claude Code (https://code.claude.com/docs/setup) and ensure `claude` is on your login-shell PATH; Unvibe does not install it for you."
+        : "Install the Codex CLI (https://developers.openai.com/codex/cli/) and ensure `codex` is on your login-shell PATH; Unvibe does not install it for you.";
+    throw new Error(
+      `${cli} CLI not found on your login-shell PATH (looked for \`${cli}\`). ${hint} ` +
+        `Unusual install? Set ${provider === "claude" ? "UNVIBE_CLAUDE_BIN or CLAUDE_CODE_EXECUTABLE" : "UNVIBE_CODEX_BIN or CODEX_PATH"} to the executable path.`,
+    );
+  }
+  void wanted;
   const proc: ChildProcess = spawn(process.execPath, [entry], {
     stdio: ["pipe", "pipe", "pipe"],
     env: {
       ...process.env,
+      ...AutoBins,
       ...(opts?.env ?? {}),
-      PATH: merged.join(":"),
+      PATH: mergedPath,
       NO_BROWSER: "1",
     },
   });

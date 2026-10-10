@@ -9,3 +9,15 @@ export {
 } from "./shell-path.js";
 export type { LoginShellPath } from "./shell-path.js";
 export { runGh } from "./gh.js";
+export {
+  agentBinEnv,
+  agentBinSpec,
+  compareVersions,
+  findBinOnPath,
+  meetsMinVersion,
+  missingBinMessage,
+  parseVersion,
+  resolveAgentBin,
+  versionTooOldMessage,
+} from "./agent-bins.js";
+export type { AgentProvider, ResolvedAgentBin } from "./agent-bins.js";
