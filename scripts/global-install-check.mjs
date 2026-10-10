@@ -1,23 +1,40 @@
 /*global console process setTimeout Buffer */
  // Global-install check (PRD §14 install path), run as:
-//   node scripts/global-install-check.mjs [--port N]
+//   node scripts/global-install-check.mjs [--port N] [--git-port M] [--phases tarball,git]
 //
-// Verifies `npm install -g <tarball>` into a temporary prefix, then runs
-// `unvibe doctor` and `unvibe start`/`status`/`stop` from OUTSIDE the repo.
-// This exercises the hard parts: workspaces + devDependencies in the
-// packed tree, root bin linkage, and dist/prompts resolution relative to
-// the installed package (not the repo).
+// Phase "tarball": `npm install -g <tarball>` into a temporary prefix, then
+// `unvibe doctor` and `unvibe start`/`status`/`stop` from OUTSIDE the repo,
+// plus the demo pipeline from the installed copy. This exercises the hard
+// parts: workspaces + devDependencies in the packed tree, root bin linkage,
+// and dist/prompts/fixtures resolution relative to the installed package
+// (not the repo).
+// Phase "git": the documented `npm install -g github:<org>/unvibe` path,
+// tested with a local bare clone as the git source
+// (`npm install -g git+file://<bare>#<branch>`), which additionally
+// exercises the `prepare` build-from-source step.
+// Both phases assert the ACP adapter packages resolve from the installed
+// tree (the bundled service spawns them as subprocesses) and report the
+// install size.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
-const portIdx = args.indexOf("--port");
-const PORT = portIdx >= 0 ? Number(args[portIdx + 1]) : 4593;
+const flag = (name, fallback) => {
+  const i = args.indexOf(name);
+  return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : fallback;
+};
+const PORT = Number(flag("--port", "4593"));
+const GIT_PORT = Number(flag("--git-port", "4594"));
+const PHASES = String(flag("--phases", process.env.UNVIBE_GLOBAL_CHECK_PHASES ?? "tarball,git"))
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 let failures = 0;
 function assert(cond, msg) {
@@ -29,75 +46,60 @@ function assert(cond, msg) {
 }
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-global-"));
-const PREFIX = path.join(TMP, "prefix");
-const HOME = path.join(TMP, "home");
-const DATA = path.join(TMP, "data");
-fs.mkdirSync(PREFIX, { recursive: true });
-fs.mkdirSync(HOME, { recursive: true });
-const ENV = {
-  ...process.env,
-  HOME,
-  UNVIBE_DATA_DIR: DATA,
-  UNVIBE_PORT: String(PORT),
-  UNVIBE_IDLE_MS: "0",
-  // Demo review below runs the recorded pipeline (no tokens) from the
-  // installed copy: fixtures + prompts must resolve outside the repo.
-  UNVIBE_AGENT: "replay",
-  PATH: `${path.join(PREFIX, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
-};
-
 console.log(`work dir: ${TMP}`);
 
-// 1. pack ----------------------------------------------------------------------
-{
-  const r = spawnSync("npm", ["pack", "--pack-destination", TMP], {
-    cwd: ROOT,
-    encoding: "utf8",
-    timeout: 300_000,
-  });
-  assert(r.status === 0, `npm pack (${(r.stderr ?? "").split("\n").slice(-2).join(" ")})`);
-}
-const tarball = fs.readdirSync(TMP).find((f) => f.endsWith(".tgz"));
-assert(!!tarball, `tarball produced (${tarball ?? "none"})`);
-
-// 2. install -g into the temp prefix ---------------------------------------------
-{
-  const r = spawnSync("npm", ["install", "-g", path.join(TMP, tarball), "--prefix", PREFIX], {
-    // Outside the repo on purpose: nothing must resolve via the checkout.
-    cwd: os.tmpdir(),
-    env: ENV,
-    encoding: "utf8",
-    timeout: 300_000,
-  });
-  if (r.status !== 0) console.error(r.stdout, r.stderr);
-  assert(r.status === 0, "npm install -g <tarball> --prefix");
-}
-const UNVIBE = path.join(PREFIX, "bin", "unvibe");
-assert(fs.existsSync(UNVIBE), "unvibe bin linked in the prefix");
-
-const runInstalled = (cmdArgs) => {
-  const r = spawnSync(process.execPath, [UNVIBE, ...cmdArgs], {
-    cwd: os.tmpdir(),
-    env: ENV,
-    encoding: "utf8",
-    timeout: 60_000,
-  });
-  return { code: r.status ?? 1, out: (r.stdout ?? "") + (r.stderr ?? "") };
-};
-
-// 3. doctor -----------------------------------------------------------------------
-{
-  const d = runInstalled(["doctor"]);
-  console.log(d.out);
-  assert(d.code === 0, "unvibe doctor exits 0 from the global install");
-  assert(d.out.includes("[ok] node"), "doctor reports node");
-  assert(d.out.includes("data dir"), "doctor reports the data dir");
+/** Portable directory size (bytes); `du -b` is GNU-only, macOS lacks it. */
+function dirSizeBytes(dir) {
+  let total = 0;
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, e.name);
+      try {
+        if (e.isDirectory() && !e.isSymbolicLink()) walk(full);
+        else if (e.isFile()) total += fs.statSync(full).size;
+      } catch {
+        // ignore unreadable entries
+      }
+    }
+  };
+  try {
+    walk(dir);
+  } catch {
+    // missing dir: size 0
+  }
+  return total;
 }
 
-// 4. start / status / stop ----------------------------------------------------------
-const health = () =>
+function mb(bytes) {
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+/**
+ * The bundled service spawns the ACP adapters as subprocesses, resolving
+ * them with `createRequire` from the bundle location — they must be real,
+ * resolvable files in the installed tree, not inlined code.
+ */
+function checkAdapterResolution(installedPkgDir, label) {
+  const fromBundle = createRequire(path.join(installedPkgDir, "packages", "service", "dist", "index.js"));
+  for (const spec of [
+    "@agentclientprotocol/sdk",
+    "@agentclientprotocol/claude-agent-acp/dist/index.js",
+    "@agentclientprotocol/codex-acp/dist/index.js",
+  ]) {
+    let resolved = null;
+    try {
+      resolved = fromBundle.resolve(spec);
+    } catch (e) {
+      assert(false, `${label}: ${spec} resolves from the installed bundle (${String(e).slice(0, 120)})`);
+      continue;
+    }
+    assert(fs.existsSync(resolved), `${label}: ${spec} resolves to a real file (${resolved})`);
+  }
+}
+
+const health = (port) =>
   new Promise((resolve) => {
-    const req = http.get({ host: "127.0.0.1", port: PORT, path: "/api/health", timeout: 2000 }, (res) => {
+    const req = http.get({ host: "127.0.0.1", port, path: "/api/health", timeout: 2000 }, (res) => {
       res.resume();
       resolve(res.statusCode === 200);
     });
@@ -106,10 +108,10 @@ const health = () =>
     req.on("close", () => resolve(false));
   });
 
-async function waitFor(want, timeoutMs, label) {
+async function waitFor(port, want, timeoutMs, label) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    if ((await health()) === want) return true;
+    if ((await health(port)) === want) return true;
     if (Date.now() >= deadline) {
       console.error(`timeout waiting for ${label}`);
       return false;
@@ -118,78 +120,125 @@ async function waitFor(want, timeoutMs, label) {
   }
 }
 
-const main = async () => {
-  const start = runInstalled(["start"]);
-  assert(start.code === 0, `unvibe start (${start.out.trim().split("\n")[0]})`);
-  assert(await waitFor(true, 20_000, "health"), "globally installed service answers");
-  assert(start.out.includes(`http://127.0.0.1:${PORT}/?token=`), "start prints the token URL");
-
-  // Prompts + web dist resolve relative to the installed package.
-  const token = fs.readFileSync(path.join(DATA, "token"), "utf8").trim();
-  const prompts = await new Promise((resolve) => {
-    http
-      .get(
-        { host: "127.0.0.1", port: PORT, path: "/api/prompts", headers: { authorization: `Bearer ${token}` } },
-        (res) => {
-          let body = "";
-          res.on("data", (d) => (body += d));
-          res.on("end", () => resolve({ code: res.statusCode, body }));
+function api(port, token, method, apiPath, body) {
+  return new Promise((resolve) => {
+    const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: apiPath,
+        method,
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(payload ? { "content-type": "application/json", "content-length": payload.length } : {}),
         },
-      )
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (d) => (data += d));
+        res.on("end", () => resolve({ code: res.statusCode, body: data }));
+      },
+    );
+    req.on("error", () => resolve({ code: 0, body: "" }));
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+function simpleGet(port, getPath, headers) {
+  return new Promise((resolve) => {
+    http
+      .get({ host: "127.0.0.1", port, path: getPath, headers }, (res) => {
+        let body = "";
+        res.on("data", (d) => (body += d));
+        res.on("end", () => resolve({ code: res.statusCode, body }));
+      })
       .on("error", () => resolve({ code: 0, body: "" }));
   });
-  assert(prompts.code === 200 && prompts.body.includes("instructions"), "prompts resolve from the installed package");
-  const shell = await new Promise((resolve) => {
-    http
-      .get({ host: "127.0.0.1", port: PORT, path: `/start.html` }, (res) => {
-        res.resume();
-        resolve(res.statusCode);
-      })
-      .on("error", () => resolve(0));
-  });
-  assert(shell === 200, "web dist serves from the installed package");
+}
 
-  // Demo review from the installed copy (recorded pipeline, no tokens).
-  const api = (method, apiPath, body) =>
-    new Promise((resolve) => {
-      const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
-      const req = http.request(
-        {
-          host: "127.0.0.1",
-          port: PORT,
-          path: apiPath,
-          method,
-          headers: {
-            authorization: `Bearer ${token}`,
-            ...(payload ? { "content-type": "application/json", "content-length": payload.length } : {}),
-          },
-        },
-        (res) => {
-          let data = "";
-          res.on("data", (d) => (data += d));
-          res.on("end", () => resolve({ code: res.statusCode, body: data }));
-        },
-      );
-      req.on("error", () => resolve({ code: 0, body: "" }));
-      if (payload) req.write(payload);
-      req.end();
-    });
+/**
+ * Verify one global install: doctor, start/status/stop outside the repo,
+ * prompts + web shell resolution, ACP adapter resolvability, install size.
+ * With `full`, also runs the recorded demo pipeline end to end (proves
+ * fixtures/ + prompts/ resolve outside the repo).
+ */
+async function verifyInstall({ prefix, port, label, full }) {
+  const HOME = path.join(TMP, `home-${label}`);
+  const DATA = path.join(TMP, `data-${label}`);
+  fs.mkdirSync(HOME, { recursive: true });
+  const ENV = {
+    ...process.env,
+    HOME,
+    UNVIBE_DATA_DIR: DATA,
+    UNVIBE_PORT: String(port),
+    UNVIBE_IDLE_MS: "0",
+    UNVIBE_AGENT: "replay",
+    PATH: `${path.join(prefix, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
+  };
+  const UNVIBE = path.join(prefix, "bin", "unvibe");
+  assert(fs.existsSync(UNVIBE), `${label}: unvibe bin linked in the prefix`);
+  const installedPkg = path.join(prefix, "lib", "node_modules", "unvibe");
+  assert(fs.existsSync(path.join(installedPkg, "package.json")), `${label}: installed package dir exists`);
+  // npm ≥11 links (rather than copies) global installs from a git URL when
+  // the package has a `prepare` script, then removes the clone's working
+  // tree — leaving a dangling symlink (reproducible with a trivial
+  // package; not specific to this repo). Fail loudly with the diagnosis
+  // instead of running a broken install.
   {
-    const created = await api("POST", "/api/reviews", { repoId: "demo" });
-    assert(created.code === 201, "installed copy creates the demo review");
-    let snap = null;
+    const st = fs.lstatSync(installedPkg, { throwIfNoEntry: false });
+    const isLink = !!st?.isSymbolicLink();
+    const real = fs.existsSync(installedPkg);
+    assert(!isLink || real, `${label}: installed package is a real dir, not a dangling symlink` +
+      (isLink && !real ? ` (npm ${process.env.npm_config_user_agent ?? "unknown"} linked the git clone and removed it; see README troubleshooting)` : ""));
+    if (isLink && !real) return;
+  }
+
+  checkAdapterResolution(installedPkg, label);
+  console.log(`${label}: install size ${mb(dirSizeBytes(prefix))} (prefix ${prefix})`);
+
+  const runInstalled = (cmdArgs) => {
+    const r = spawnSync(process.execPath, [UNVIBE, ...cmdArgs], {
+      cwd: os.tmpdir(),
+      env: ENV,
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    return { code: r.status ?? 1, out: (r.stdout ?? "") + (r.stderr ?? "") };
+  };
+
+  const d = runInstalled(["doctor"]);
+  assert(d.code === 0, `${label}: unvibe doctor exits 0 from the global install`);
+  assert(d.out.includes("[ok] node"), `${label}: doctor reports node`);
+  assert(d.out.includes("data dir"), `${label}: doctor reports the data dir`);
+
+  const start = runInstalled(["start"]);
+  assert(start.code === 0, `${label}: unvibe start (${start.out.trim().split("\n")[0]})`);
+  assert(await waitFor(port, true, 20_000, `${label} health`), `${label}: globally installed service answers`);
+  assert(start.out.includes(`http://127.0.0.1:${port}/?token=`), `${label}: start prints the token URL`);
+
+  const token = fs.readFileSync(path.join(DATA, "token"), "utf8").trim();
+  const prompts = await simpleGet(port, "/api/prompts", { authorization: `Bearer ${token}` });
+  assert(prompts.code === 200 && prompts.body.includes("instructions"), `${label}: prompts resolve from the installed package`);
+  const shell = await simpleGet(port, "/start.html");
+  assert(shell.code === 200, `${label}: web dist serves from the installed package`);
+
+  if (full) {
+    const created = await api(port, token, "POST", "/api/reviews", { repoId: "demo" });
+    assert(created.code === 201, `${label}: installed copy creates the demo review`);
+    let id = null;
     try {
-      snap = JSON.parse(created.body);
+      id = JSON.parse(created.body)?.review?.id ?? null;
     } catch {
-      snap = null;
+      id = null;
     }
-    const id = snap?.review?.id;
-    assert(typeof id === "string", "demo review has an id");
+    assert(typeof id === "string", `${label}: demo review has an id`);
     if (typeof id === "string") {
       let done = false;
       for (let i = 0; i < 40 && !done; i++) {
         await new Promise((r) => setTimeout(r, 1000));
-        const got = await api("GET", `/api/reviews/${id}`);
+        const got = await api(port, token, "GET", `/api/reviews/${id}`);
         try {
           const s = JSON.parse(got.body);
           const root = (s.pages ?? []).find((p) => p.id === "root");
@@ -199,23 +248,84 @@ const main = async () => {
             !(root?.cards ?? []).some((c) => c.pending) &&
             (s.pages ?? []).filter((p) => p.kind === "finding").length >= 2;
           if (done) {
-            assert(true, "demo pipeline completes from the installed copy");
+            assert(true, `${label}: demo pipeline completes from the installed copy`);
             const hunks = (s.hunkStates ?? []).filter((h) => h.summary).length;
-            assert(hunks >= 8, `demo hunk summaries present (${hunks})`);
+            assert(hunks >= 8, `${label}: demo hunk summaries present (${hunks})`);
           }
         } catch {
           // keep polling
         }
       }
-      assert(done, "demo snapshot ends complete (60s budget)");
+      assert(done, `${label}: demo snapshot ends complete (60s budget)`);
     }
   }
 
   const status = runInstalled(["status"]);
-  assert(status.code === 0 && status.out.includes("running"), "status reports running");
+  assert(status.code === 0 && status.out.includes("running"), `${label}: status reports running`);
   const stop = runInstalled(["stop"]);
-  assert(stop.code === 0 && (await waitFor(false, 10_000, "shutdown")), "stop shuts the service down");
+  assert(stop.code === 0 && (await waitFor(port, false, 10_000, `${label} shutdown`)), `${label}: stop shuts the service down`);
+}
 
+async function phaseTarball() {
+  const PREFIX = path.join(TMP, "prefix-tarball");
+  fs.mkdirSync(PREFIX, { recursive: true });
+  const ENV = { ...process.env, PATH: `${path.join(PREFIX, "bin")}${path.delimiter}${process.env.PATH ?? ""}` };
+  const pack = spawnSync("npm", ["pack", "--pack-destination", TMP], {
+    cwd: ROOT,
+    encoding: "utf8",
+    timeout: 300_000,
+  });
+  assert(pack.status === 0, `npm pack (${(pack.stderr ?? "").split("\n").slice(-2).join(" ")})`);
+  const tarball = fs.readdirSync(TMP).find((f) => f.endsWith(".tgz"));
+  assert(!!tarball, `tarball produced (${tarball ?? "none"})`);
+  if (!tarball) return;
+  console.log(`tarball: ${tarball} (${mb(fs.statSync(path.join(TMP, tarball)).size)})`);
+  const inst = spawnSync("npm", ["install", "-g", path.join(TMP, tarball), "--prefix", PREFIX], {
+    cwd: os.tmpdir(),
+    env: ENV,
+    encoding: "utf8",
+    timeout: 300_000,
+  });
+  if (inst.status !== 0) console.error(inst.stdout, inst.stderr);
+  assert(inst.status === 0, "npm install -g <tarball> --prefix");
+  await verifyInstall({ prefix: PREFIX, port: PORT, label: "tarball", full: true });
+}
+
+async function phaseGit() {
+  // The documented path installs from a git URL; a local bare clone stands
+  // in for github:<org>/unvibe (same mechanism, no network to GitHub).
+  // Install the CURRENT commit so the check covers this branch's packaging.
+  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" });
+  assert(head.status === 0, "git rev-parse HEAD");
+  const sha = (head.stdout ?? "").trim();
+  const branch = `check-${sha.slice(0, 12)}`;
+  const BARE = path.join(TMP, "upstream.git");
+  const clone = spawnSync("git", ["clone", "--bare", ROOT, BARE], { encoding: "utf8", timeout: 120_000 });
+  assert(clone.status === 0, `bare clone for the git-URL source (${(clone.stderr ?? "").split("\n")[0]})`);
+  const upd = spawnSync("git", ["--git-dir", BARE, "update-ref", `refs/heads/${branch}`, sha], {
+    encoding: "utf8",
+  });
+  assert(upd.status === 0, `bare clone pins ${branch} at ${sha.slice(0, 12)}`);
+
+  const PREFIX = path.join(TMP, "prefix-git");
+  fs.mkdirSync(PREFIX, { recursive: true });
+  const ENV = { ...process.env, PATH: `${path.join(PREFIX, "bin")}${path.delimiter}${process.env.PATH ?? ""}` };
+  // `prepare` builds from source inside the cloned tree (needs devDeps +
+  // build tools there) — this is the step the tarball phase skips.
+  const inst = spawnSync(
+    "npm",
+    ["install", "-g", `git+file://${BARE}#${branch}`, "--prefix", PREFIX],
+    { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 600_000 },
+  );
+  if (inst.status !== 0) console.error((inst.stdout ?? "").slice(-3000), (inst.stderr ?? "").slice(-3000));
+  assert(inst.status === 0, `npm install -g git+file://<bare>#${branch} --prefix`);
+  if (inst.status !== 0) return;
+  await verifyInstall({ prefix: PREFIX, port: GIT_PORT, label: "git", full: false });
+}
+
+const main = async () => {
+  if (PHASES.includes("tarball")) await phaseTarball();
+  if (PHASES.includes("git")) await phaseGit();
   if (failures > 0) {
     console.error(`${failures} assertion(s) failed (work dir kept: ${TMP})`);
     process.exit(1);
