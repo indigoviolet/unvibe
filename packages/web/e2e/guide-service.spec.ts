@@ -6,14 +6,14 @@
  * service's ReviewStore (`review_snapshots` row — the same row
  * `ReviewStore.putSnapshot` writes; see `packages/service/src/state/store.ts`
  * and migration 002) and loads it through the real HTTP API:
- * pages navigate, and card actions against the unwired M3 stub fail
- * gracefully with a toast.
+ * pages navigate, and card actions run against the M4 actions route.
  *
  * The seed rewrites the fixture's short citation keys (`diff:conn:…`) to
  * canonical file keys using `meta.json` `keyAliases`. That rewrite stands
  * in for the pipeline fix (citations must be stored canonical or the
  * snapshot must carry the alias map); without it diff reveals cannot
- * resolve in live mode.
+ * resolve in live mode. Card actions run against the real M4 actions
+ * route (read applies; only second_opinion is still unwired).
  *
  * Requires `mise run build` first (runs `packages/service/dist/index.js`
  * and serves `packages/web/dist`). Skipped when the service isn't built.
@@ -160,12 +160,14 @@ test.describe("guide over real service", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("unwired actions fail gracefully with a toast", async ({ page }) => {
+  test("card read action applies over the real API", async ({ page }) => {
     test.setTimeout(120_000);
     await openSeededReview(page);
-    // The M3 actions stub answers 501: optimistic update rolls back.
+    // M4 implements the actions route: Mark read greys + collapses the card.
     await page.locator("#C-central").getByRole("button", { name: "Mark read" }).click();
-    await expect(page.locator("#toast")).toContainText(/failed|service/i, { timeout: 10_000 });
+    await expect(page.locator("#C-central")).toHaveClass(/read/, { timeout: 10_000 });
+    // Unmarking expands it again.
+    await page.locator("#C-central").getByRole("button", { name: "Mark unread" }).click();
     await expect(page.locator("#C-central")).not.toHaveClass(/read/, { timeout: 10_000 });
   });
 });
