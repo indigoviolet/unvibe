@@ -15,6 +15,11 @@ export interface Repo {
   localPath: string;
   /** Epoch ms of last open. */
   lastOpened: number;
+  /**
+   * True when this entry was auto-detected under a repo root rather than
+   * explicitly added (M1 service addition; absent/false = remembered).
+   */
+  detected?: boolean;
 }
 
 /** One review of a branch or PR. */
@@ -47,11 +52,29 @@ export type FileCategory = "source" | "tests" | "docs" | "config" | "generated";
 
 /** A changed file in a version's diff. */
 export interface ReviewFile {
-  /** Stable key within the review (e.g. short path slug). */
+  /** Stable key within the review (derived deterministically from the path). */
   fileKey: string;
   path: string;
   category: FileCategory;
   hunks: Hunk[];
+  /** Pre-rename path for renames (M1 service addition). */
+  oldPath?: string;
+  /** `git diff` status flags (M1 service additions). */
+  isNew?: boolean;
+  isDeleted?: boolean;
+  isRename?: boolean;
+  isBinary?: boolean;
+}
+
+/** One diff row: an added, deleted, or context line (M1 service addition). */
+export interface HunkLine {
+  kind: "add" | "del" | "ctx";
+  /** Old-side line number (del/ctx rows). */
+  oldLine?: number;
+  /** New-side line number (add/ctx rows). */
+  newLine?: number;
+  /** Line content without the leading `+`/`-`/` ` marker. */
+  text: string;
 }
 
 /** One hunk: git's own run of changed lines + ≤3 context lines (PRD §4.13). */
@@ -68,6 +91,10 @@ export interface Hunk {
   oldEnd: number;
   added: number;
   removed: number;
+  /** Line rows in diff order (M1 service addition; always populated). */
+  lines: HunkLine[];
+  /** True when the hunk ends with "No newline at end of file". */
+  noNewline?: boolean;
   /** Why "Hide uninteresting" hid this hunk, if it did. */
   hiddenReason?: string;
 }
@@ -303,6 +330,18 @@ export interface Contribution {
   /** ID of an earlier contribution this supersedes. */
   replaces?: string;
   status: ContributionStatus;
+}
+
+/** PR description (or branch commit messages) as rendered HTML (M1 addition). */
+export interface ReviewDescription {
+  /** HTML with stable paragraph ids; `desc:<id>@<rev>` tokens resolve here. */
+  html: string;
+  /** Description revision the paragraph ids are stable against. */
+  rev: string;
+  /** PR body vs branch commit messages. */
+  source: "pr" | "commits";
+  /** Editable only when the user authors an open PR (PRD §4.11). */
+  editable: boolean;
 }
 
 export type JobKind =

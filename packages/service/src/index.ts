@@ -39,27 +39,24 @@ async function main(): Promise<void> {
     onEvent: (reviewId: string, event: ReviewEvent) => bus?.publish(reviewId, event),
   });
   // Startup recovery: interrupted jobs become retryable errors; queued
-  // jobs wait for the supervisor to rebind their `run` functions.
+  // jobs wait for their `run` functions to be rebound.
   const recovered = jobStore.listOpen();
   if (recovered.length > 0) jobs.recover(recovered);
 
-  // The supervisor wires a real ReviewReader + worktree paths after
-  // merge; until then MCP tools report "unknown review".
+  const runner = new RealCommandRunner();
+  // TODO(integration): wire a real ReviewReader + worktree paths.
   const mcp = new McpRegistry({
     reader: {
       getReview: async (): Promise<McpReviewData | null> => null,
       getWorktreePath: () => null,
     },
-    commands: new RealCommandRunner(),
+    commands: runner,
   });
-
-  // NOTE: no SessionManager singleton yet: it needs the real ACP
-  // AgentRunner (a later milestone after the M0 spike). The supervisor
-  // constructs it as `new SessionManager({ runner, store })` — see
-  // `src/sessions/manager.ts`.
 
   const created = await createApp(token, {
     db,
+    dataDir: config.dataDir,
+    runner,
     jobs,
     settings,
     models: new StaticModelCatalog(),

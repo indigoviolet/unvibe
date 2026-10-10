@@ -12,6 +12,7 @@
  * URL into localStorage + cookie). Documented for later agents.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fastifyStatic from "@fastify/static";
@@ -19,16 +20,31 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { hasValidToken } from "./auth.js";
 import { EventBus } from "./events.js";
+import { RealCommandRunner, type CommandRunner } from "./exec/index.js";
 import { MCP_ROUTE_PREFIX } from "./mcp/index.js";
+import { RepoStore } from "./repos/store.js";
 import { registerRoutes, type RouteDeps } from "./routes/index.js";
+import type { ServiceContext } from "./routes/context.js";
+import { ReviewStore } from "./state/store.js";
 import type { ServiceConfig } from "./config.js";
+import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
 
 export const SERVICE_VERSION = "0.0.1";
 
 export interface AppContext {
   app: FastifyInstance;
   bus: EventBus;
+  ctx: ServiceContext;
   deps: RouteDeps;
+}
+
+export interface CreateAppOptions extends RouteDeps {
+  /** Defaults to an in-memory database (tests) — production passes its own. */
+  db?: DatabaseSync;
+  /** Defaults to a fresh temp dir — production passes the real data dir. */
+  dataDir?: string;
+  /** Defaults to the real runner — tests inject fakes. */
+  runner?: CommandRunner;
 }
 
 function webDistDir(): string {
@@ -37,9 +53,23 @@ function webDistDir(): string {
   return path.resolve(here, "..", "..", "web", "dist");
 }
 
-export async function createApp(token: string, deps: RouteDeps = {}): Promise<AppContext> {
+export async function createApp(token: string, opts: CreateAppOptions = {}): Promise<AppContext> {
   const app = Fastify({ logger: false });
   const bus = new EventBus();
+
+  const db = opts.db ?? openDatabase(":memory:");
+  migrate(db);
+  const dataDir =
+    opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
+  const runner = opts.runner ?? new RealCommandRunner();
+  const ctx: ServiceContext = {
+    db,
+    dataDir,
+    runner,
+    bus,
+    repos: new RepoStore(db),
+    reviews: new ReviewStore(db, bus),
+  };
 
   await app.register(websocket);
 
@@ -59,13 +89,15 @@ export async function createApp(token: string, deps: RouteDeps = {}): Promise<Ap
 
   app.get("/api/health", async () => ({ ok: true, version: SERVICE_VERSION }));
 
-  await registerRoutes(app, bus, deps);
+  await registerRoutes(app, ctx, opts);
 
   // Static web app with SPA fallback. The Vite build emits dist/index.html
   // plus dist/assets/* (hashed, no review data — served without a token so
   // the shell can load after the first authenticated navigation).
   const dist = webDistDir();
-  await app.register(fastifyStatic, { root: dist });
+  if (fs.existsSync(dist)) {
+    await app.register(fastifyStatic, { root: dist });
+  }
   app.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith("/api/")) return reply.code(404).send({ error: "unknown api route" });
     const indexFile = path.join(dist, "index.html");
@@ -79,7 +111,7 @@ export async function createApp(token: string, deps: RouteDeps = {}): Promise<Ap
     return reply.sendFile("index.html");
   });
 
-  return { app, bus, deps };
+  return { app, bus, ctx, deps: opts };
 }
 
 export async function listen(app: FastifyInstance, config: ServiceConfig): Promise<string> {

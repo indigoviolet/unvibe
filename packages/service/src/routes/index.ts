@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import type { EventBus } from "../events.js";
 import { registerMcp } from "../mcp/index.js";
+import type { ServiceContext } from "./context.js";
 import { registerComments } from "./comments.js";
 import { registerDescription } from "./description.js";
 import type { RouteDeps } from "./deps.js";
@@ -13,22 +13,25 @@ import { registerReviews } from "./reviews.js";
 import { registerSettings } from "./settings.js";
 import { registerSubmit } from "./submit.js";
 
-/** One route module per area; each registers its PRD §14.1 endpoints. */
+/**
+ * One route module per area; each registers its PRD §14.1 endpoints.
+ * `ctx` carries the core stores; `deps` the optional M3 singletons.
+ */
 export async function registerRoutes(
   app: FastifyInstance,
-  bus: EventBus,
+  ctx: ServiceContext,
   deps: RouteDeps = {},
 ): Promise<void> {
-  await registerRepos(app);
-  await registerReviews(app);
-  await registerHunks(app);
+  await registerRepos(app, ctx);
+  await registerReviews(app, ctx);
+  await registerHunks(app, ctx);
   await registerComments(app);
   await registerDescription(app);
   await registerSubmit(app);
   await registerSettings(app, deps);
   await registerPrompts(app);
   await registerJobs(app, deps);
-  await registerEvents(app, bus);
+  await registerEvents(app, ctx.bus);
   if (deps.mcp) await registerMcp(app, deps.mcp);
 }
 
