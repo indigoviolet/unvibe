@@ -35,3 +35,7 @@ run = "mise run lint && mise run typecheck && mise run test"
 [tasks.start]
 description = "Run the built service"
 run = "node packages/service/dist/index.js"
+
+[tasks."test:live:submit"]
+description = "Live M6 submit test on indigoviolet/lvu (draft PR only; never run by check)"
+run = "node ./scripts/live-submit.mjs"
