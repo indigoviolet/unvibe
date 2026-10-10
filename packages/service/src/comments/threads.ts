@@ -1,0 +1,596 @@
+/**
+ * Comment threads without the agent (M6).
+ *
+ * Threads live as `Annotation` records of type `"thread"` in the review
+ * snapshot (`packages/shared` entities). Every change goes through
+ * `ReviewStore.mutate` so subscribers get RFC 6902 patches.
+ *
+ * - `createThreadInDraft` / `createThread`: Note or user's first message,
+ *   anchored on a guide block, a description paragraph, or a diff line,
+ *   with quoted text + prefix/suffix (PRD §7 Anchor).
+ * - `createSuggestedCommentInDraft` / `createSuggestedComment`: agent
+ *   findings' suggested comments — a thread on a diff line whose first
+ *   message is flagged `suggested` and is NOT marked for the PR (PRD §4.9).
+ * - `replyInDraft` / `replyToThread`: user reply.
+ * - `setOpenInDraft` / `setThreadOpen`, `setPostInDraft` / `setThreadPost`,
+ *   `setDraftInDraft` / `updateThreadDraft`, `deleteInDraft` /
+ *   `deleteAnnotation`: open/close, mark for PR, edit For-PR draft, delete.
+ * - `appendAgentReplyInDraft` / `appendAgentReply`: clearly marked seam the
+ *   Ask pipeline calls to deliver the agent's reply (another agent owns the
+ *   pipeline; this module only appends the message).
+ *
+ * The `POST /api/reviews/:id/actions` union (`note`, `close`, `delete`)
+ * overlaps this module. The actions route (another agent) should call
+ * `createNoteThread`, `closeAnnotation`, and `deleteAnnotation` below.
+ */
+
+import { randomBytes } from "node:crypto";
+import type {
+  ActionAnchor,
+  Anchor,
+  AnchorHost,
+  Annotation,
+  ChatMessage,
+  ReviewSnapshot,
+} from "@unvibe/shared";
+import type { WritableDraft } from "immer";
+import type { ReviewStore } from "../state/store.js";
+
+export interface CreateThreadParams {
+  anchor: ActionAnchor;
+  quote: string;
+  prefix?: string;
+  suffix?: string;
+  position?: number;
+  /** True = Note (no agent reply); false = user's first Ask message. */
+  note?: boolean;
+  /** Initial user text (first message when present). */
+  text?: string;
+}
+
+export interface CreateSuggestedParams {
+  anchor: ActionAnchor;
+  quote: string;
+  prefix?: string;
+  suffix?: string;
+  position?: number;
+  /** Agent suggestion text (required). */
+  suggestionText: string;
+}
+
+/** New thread ids. Format `ann_<12 hex>` (app-assigned, PRD §7.2). */
+export function newAnnotationId(): string {
+  return `ann_${randomBytes(6).toString("hex")}`;
+}
+
+function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
+  switch (anchor.where) {
+    case "block":
+      return { kind: "block", blockId: anchor.blockId };
+    case "description":
+      return { kind: "description", paragraphId: anchor.paragraphId };
+    case "diff-line": {
+      const host: AnchorHost = { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+      const extra = anchor as { endLine?: number; side?: "LEFT" | "RIGHT" };
+      if (extra.endLine !== undefined) {
+        (host as { endLine?: number }).endLine = extra.endLine;
+      }
+      if (extra.side !== undefined) {
+        (host as { side?: "LEFT" | "RIGHT" }).side = extra.side;
+      }
+      return host;
+    }
+  }
+}
+
+/** Best-effort plain text of a guide block (for prefix/suffix matching). */
+function blockText(block: unknown): string {
+  const b = block as Record<string, unknown>;
+  if (typeof b["text"] === "object" && b["text"] !== null) {
+    const t = b["text"] as Record<string, unknown>;
+    if (typeof t["standard"] === "string") return t["standard"] as string;
+  }
+  if (typeof b["code"] === "string") return b["code"] as string;
+  if (typeof b["html"] === "string") return stripTags(b["html"] as string);
+  if (typeof b["mermaid"] === "string") return b["mermaid"] as string;
+  if (Array.isArray(b["items"])) {
+    return (b["items"] as Array<Record<string, unknown>>)
+      .map((it) => (typeof it["html"] === "string" ? stripTags(it["html"] as string) : ""))
+      .join("\n");
+  }
+  if (Array.isArray(b["inner"])) return "";
+  return "";
+}
+
+function stripTags(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findBlockText(snapshot: ReviewSnapshot, blockId: string): string | null {
+  for (const page of snapshot.pages ?? []) {
+    for (const card of page.cards ?? []) {
+      for (const block of card.blocks ?? []) {
+        const b = block as { id?: string };
+        if (b.id === blockId) return blockText(block);
+      }
+    }
+  }
+  return null;
+}
+
+function descriptionParagraphText(snapshot: ReviewSnapshot, paragraphId: string): string | null {
+  const html = snapshot.description?.html ?? snapshot.description?.pendingHtml ?? null;
+  if (!html) return null;
+  const re = new RegExp(
+    `<[^>]*\\bid=["']${paragraphId.replace(/["'\\]/g, "")}["'][^>]*>([\\s\\S]*?)<\\/(?:p|ul|ol|pre|li|div)>`,
+    "i",
+  );
+  const m = html.match(re);
+  if (!m) return null;
+  return stripTags(m[1]);
+}
+
+function diffLineContext(
+  snapshot: ReviewSnapshot,
+  fileKey: string,
+  line: number,
+): { text: string; prev: string; next: string } | null {
+  const file = (snapshot.files ?? []).find((f) => f.fileKey === fileKey);
+  if (!file) return null;
+  for (const hunk of file.hunks ?? []) {
+    for (let i = 0; i < hunk.lines.length; i++) {
+      const row = hunk.lines[i];
+      const num = row.newLine ?? row.oldLine;
+      if (num === line) {
+        const prev = i > 0 ? (hunk.lines[i - 1].text ?? "") : "";
+        const next = i + 1 < hunk.lines.length ? (hunk.lines[i + 1].text ?? "") : "";
+        return { text: row.text ?? "", prev, next };
+      }
+    }
+  }
+  return null;
+}
+
+function contextAround(haystack: string, needle: string): { prefix: string; suffix: string } {
+  const idx = needle ? haystack.indexOf(needle) : -1;
+  if (needle === "" || idx < 0) return { prefix: "", suffix: "" };
+  const WINDOW = 80;
+  return {
+    prefix: haystack.slice(Math.max(0, idx - WINDOW), idx),
+    suffix: haystack.slice(idx + needle.length, idx + needle.length + WINDOW),
+  };
+}
+
+/**
+ * Build an `Anchor` for a new thread, validating the host exists in the
+ * snapshot. `prefix`/`suffix` default to the text around the quote in the
+ * host block/paragraph/line (PRD §8 anchor matching).
+ */
+export function buildAnchor(
+  snapshot: ReviewSnapshot,
+  anchor: ActionAnchor,
+  quote: string,
+  opts: { prefix?: string; suffix?: string; position?: number } = {},
+): Anchor {
+  const host = actionAnchorToHost(anchor);
+  const version = snapshot.version?.n ?? snapshot.review?.currentVersion ?? 1;
+  if (host.kind === "block") {
+    const text = findBlockText(snapshot, host.blockId);
+    if (text === null) throw new Error(`unknown block ${host.blockId}`);
+    const ctx = contextAround(text, quote);
+    return {
+      host,
+      quotedText: quote,
+      prefix: opts.prefix ?? ctx.prefix,
+      suffix: opts.suffix ?? ctx.suffix,
+      position: opts.position ?? 0,
+      version,
+    };
+  }
+  if (host.kind === "description") {
+    const text = descriptionParagraphText(snapshot, host.paragraphId);
+    if (text === null) {
+      // Paragraph ids come from the rendered description; unknown ids are
+      // a client bug, but keep the message actionable.
+      throw new Error(`unknown description paragraph ${host.paragraphId}`);
+    }
+    const ctx = contextAround(text, quote);
+    return {
+      host,
+      quotedText: quote,
+      prefix: opts.prefix ?? ctx.prefix,
+      suffix: opts.suffix ?? ctx.suffix,
+      position: opts.position ?? 0,
+      version,
+    };
+  }
+  // diff-line: the file must exist; the line should be a real new/old-side
+  // number, but we accept any positive line (location computation falls
+  // back to the nearest commentable line or the review body).
+  const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
+  if (!file) throw new Error(`unknown file ${host.fileKey}`);
+  if (!Number.isSafeInteger(host.line) || host.line < 1) {
+    throw new Error(`invalid diff line ${String(host.line)}`);
+  }
+  if (host.endLine !== undefined) {
+    if (!Number.isSafeInteger(host.endLine) || host.endLine < host.line) {
+      throw new Error(`invalid diff endLine ${String(host.endLine)}`);
+    }
+  }
+  const ctx = diffLineContext(snapshot, host.fileKey, host.line);
+  return {
+    host,
+    quotedText: quote,
+    prefix: opts.prefix ?? (ctx?.prev ?? ""),
+    suffix: opts.suffix ?? (ctx?.next ?? ""),
+    position: opts.position ?? host.line,
+    version,
+  };
+}
+
+/** Draft helper: insert a thread; returns the new annotation. */
+export function createThreadInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  snapshot: ReviewSnapshot,
+  params: CreateThreadParams,
+): Annotation {
+  const quote = params.quote ?? "";
+  const anchor = buildAnchor(
+    snapshot,
+    params.anchor,
+    quote,
+    { prefix: params.prefix, suffix: params.suffix, position: params.position },
+  );
+  const note = params.note ?? false;
+  const messages: ChatMessage[] = [];
+  if (params.text !== undefined && params.text !== "") {
+    messages.push({ who: "you", text: params.text });
+  }
+  // Guide threads start closed; diff + description threads start open
+  // (prototype `threadShown`: `t.file || t.desc ? !collapsed : open`).
+  const open = anchor.host.kind === "block" ? false : true;
+  const thread: Annotation = {
+    id: newAnnotationId(),
+    type: "thread",
+    anchor,
+    open,
+    messages,
+    post: false,
+    note,
+    ...(messages.length === 0 ? { reply: "" } : {}),
+  };
+  draft.annotations.push(thread as Annotation);
+  return thread;
+}
+
+/** Draft helper: agent-suggested comment (PRD §4.9). */
+export function createSuggestedCommentInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  snapshot: ReviewSnapshot,
+  params: CreateSuggestedParams,
+): Annotation {
+  if (params.anchor.where !== "diff-line") {
+    throw new Error("suggested comments must anchor on a diff line");
+  }
+  if (!params.suggestionText || params.suggestionText.trim() === "") {
+    throw new Error("suggestionText is required");
+  }
+  const anchor = buildAnchor(
+    snapshot,
+    params.anchor,
+    params.quote ?? "",
+    { prefix: params.prefix, suffix: params.suffix, position: params.position },
+  );
+  const thread: Annotation = {
+    id: newAnnotationId(),
+    type: "thread",
+    anchor,
+    open: true,
+    messages: [{ who: "ai", text: params.suggestionText, suggested: true }],
+    post: false,
+    note: false,
+  };
+  draft.annotations.push(thread as Annotation);
+  return thread;
+}
+
+function findThread(draft: WritableDraft<ReviewSnapshot>, threadId: string): Annotation {
+  const found = (draft.annotations as Annotation[]).find((a) => a.id === threadId);
+  if (!found) throw new Error(`unknown comment ${threadId}`);
+  if (found.type !== "thread") throw new Error(`annotation ${threadId} is not a thread`);
+  return found as WritableDraft<Annotation> as unknown as Annotation;
+}
+
+/** Draft helper: user reply. */
+export function replyInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  threadId: string,
+  text: string,
+): void {
+  if (!text || text.trim() === "") throw new Error("reply text is required");
+  const thread = findThread(draft, threadId);
+  (thread.messages as ChatMessage[]).push({ who: "you", text });
+  thread.reply = "";
+  thread.open = true;
+}
+
+/**
+ * Draft helper: agent reply seam.
+ *
+ * The Ask pipeline (another agent) calls `appendAgentReply` after the
+ * agent answers. This module only appends the message — prompting,
+ * streaming, and citations belong to the pipeline.
+ */
+export function appendAgentReplyInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  threadId: string,
+  message: { text?: string; html?: string },
+): void {
+  if (message.text === undefined && message.html === undefined) {
+    throw new Error("agent reply needs text or html");
+  }
+  const thread = findThread(draft, threadId);
+  (thread.messages as ChatMessage[]).push({
+    who: "ai",
+    ...(message.text !== undefined ? { text: message.text } : {}),
+    ...(message.html !== undefined ? { html: message.html } : {}),
+  });
+  thread.open = true;
+}
+
+/** Draft helper: open/close. */
+export function setOpenInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  threadId: string,
+  open: boolean,
+): void {
+  findThread(draft, threadId).open = open;
+}
+
+/** Draft helper: mark for PR. */
+export function setPostInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  threadId: string,
+  post: boolean,
+): void {
+  const thread = findThread(draft, threadId);
+  thread.post = post;
+  if (post) thread.open = true;
+}
+
+/** Draft helper: edit the For-PR draft text (null clears it). */
+export function setDraftInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  threadId: string,
+  text: string | null | undefined,
+): void {
+  const thread = findThread(draft, threadId);
+  if (text === null || text === undefined) {
+    delete thread.draft;
+  } else {
+    thread.draft = text;
+  }
+}
+
+/** Draft helper: unsent reply-box content (null clears it). */
+export function setReplyBoxInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  threadId: string,
+  text: string | null | undefined,
+): void {
+  const thread = findThread(draft, threadId);
+  if (text === null || text === undefined) {
+    delete thread.reply;
+  } else {
+    thread.reply = text;
+  }
+}
+
+/** Draft helper: delete a thread. */
+export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, threadId: string): void {
+  const idx = (draft.annotations as Annotation[]).findIndex((a) => a.id === threadId);
+  if (idx < 0) throw new Error(`unknown comment ${threadId}`);
+  (draft.annotations as Annotation[]).splice(idx, 1);
+}
+
+/**
+ * Exact text that will be posted for a thread: the For-PR draft when set,
+ * else the first user message, else the suggested message (prototype
+ * `Comments menu` draft fallback).
+ */
+export function threadPostText(thread: Annotation): string {
+  if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
+  const you = thread.messages.find((m) => m.who === "you" && m.text);
+  if (you?.text) return you.text;
+  const suggested = thread.messages.find((m) => m.suggested && m.text);
+  if (suggested?.text) return suggested.text;
+  const first = thread.messages.find((m) => m.text);
+  return first?.text ?? "";
+}
+
+// --- Store wrappers (all through ReviewStore.mutate) ------------------------
+
+async function mutateThread(
+  store: ReviewStore,
+  reviewId: string,
+  fn: (draft: WritableDraft<ReviewSnapshot>, snapshot: ReviewSnapshot) => Annotation | void,
+): Promise<ReviewSnapshot> {
+  const before = store.getSnapshot(reviewId);
+  if (!before) throw new Error(`unknown review ${reviewId}`);
+  const out = await store.mutate(reviewId, (draft) => {
+    fn(draft, before);
+  });
+  return out.snapshot;
+}
+
+/** Create a Note or Ask-first-message thread. Returns the new thread id. */
+export async function createThread(
+  store: ReviewStore,
+  reviewId: string,
+  params: CreateThreadParams,
+): Promise<{ id: string; snapshot: ReviewSnapshot }> {
+  let id = "";
+  const snapshot = await mutateThread(store, reviewId, (draft, before) => {
+    id = createThreadInDraft(draft, before, params).id;
+  });
+  return { id, snapshot };
+}
+
+/**
+ * Actions-route seam: `note` action without agent involvement.
+ * Creates a Note thread (no agent reply); the conversation pipeline owns
+ * everything that needs the agent.
+ */
+export async function createNoteThread(
+  store: ReviewStore,
+  reviewId: string,
+  params: { anchor: ActionAnchor; quote: string; text?: string; prefix?: string; suffix?: string },
+): Promise<{ id: string; snapshot: ReviewSnapshot }> {
+  return createThread(store, reviewId, { ...params, note: true });
+}
+
+/**
+ * Actions-route seam: `ask` without the agent reply. Creates the thread
+ * with the user's first message; the pipeline delivers the agent reply
+ * via `appendAgentReply`.
+ */
+export async function createAskThread(
+  store: ReviewStore,
+  reviewId: string,
+  params: { anchor: ActionAnchor; quote: string; message: string; prefix?: string; suffix?: string },
+): Promise<{ id: string; snapshot: ReviewSnapshot }> {
+  if (!params.message || params.message.trim() === "") {
+    throw new Error("ask message is required");
+  }
+  return createThread(store, reviewId, {
+    anchor: params.anchor,
+    quote: params.quote,
+    text: params.message,
+    prefix: params.prefix,
+    suffix: params.suffix,
+    note: false,
+  });
+}
+
+/** Create an agent-suggested comment (critic pipeline seam). */
+export async function createSuggestedComment(
+  store: ReviewStore,
+  reviewId: string,
+  params: CreateSuggestedParams,
+): Promise<{ id: string; snapshot: ReviewSnapshot }> {
+  let id = "";
+  const snapshot = await mutateThread(store, reviewId, (draft, before) => {
+    id = createSuggestedCommentInDraft(draft, before, params).id;
+  });
+  return { id, snapshot };
+}
+
+/** User reply. */
+export async function replyToThread(
+  store: ReviewStore,
+  reviewId: string,
+  threadId: string,
+  text: string,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    replyInDraft(draft, threadId, text);
+  });
+}
+
+/**
+ * Agent-reply seam for the Ask pipeline.
+ *
+ * ```ts
+ * const { id } = await createAskThread(store, reviewId, { anchor, quote, message });
+ * // … pipeline prompts the agent …
+ * await appendAgentReply(store, reviewId, id, { text: answer });
+ * ```
+ */
+export async function appendAgentReply(
+  store: ReviewStore,
+  reviewId: string,
+  threadId: string,
+  message: { text?: string; html?: string },
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    appendAgentReplyInDraft(draft, threadId, message);
+  });
+}
+
+/** Open/close a thread. Actions-route seam for `close` (pass `false`). */
+export async function setThreadOpen(
+  store: ReviewStore,
+  reviewId: string,
+  threadId: string,
+  open: boolean,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    setOpenInDraft(draft, threadId, open);
+  });
+}
+
+/** Actions-route seam: `close` sets `open` to false. */
+export async function closeAnnotation(
+  store: ReviewStore,
+  reviewId: string,
+  annotationId: string,
+): Promise<ReviewSnapshot> {
+  return setThreadOpen(store, reviewId, annotationId, false);
+}
+
+/** Mark/unmark a thread For PR. */
+export async function setThreadPost(
+  store: ReviewStore,
+  reviewId: string,
+  threadId: string,
+  post: boolean,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    setPostInDraft(draft, threadId, post);
+  });
+}
+
+/** Edit the For-PR draft text (null clears it). */
+export async function updateThreadDraft(
+  store: ReviewStore,
+  reviewId: string,
+  threadId: string,
+  text: string | null | undefined,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    setDraftInDraft(draft, threadId, text);
+  });
+}
+
+/** Set the unsent reply-box content (null clears it). */
+export async function updateReplyBox(
+  store: ReviewStore,
+  reviewId: string,
+  threadId: string,
+  text: string | null | undefined,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    setReplyBoxInDraft(draft, threadId, text);
+  });
+}
+
+/** Delete a thread. Actions-route seam for `delete`. */
+export async function deleteAnnotation(
+  store: ReviewStore,
+  reviewId: string,
+  threadId: string,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    deleteInDraft(draft, threadId);
+  });
+}
+
+

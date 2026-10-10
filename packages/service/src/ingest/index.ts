@@ -24,6 +24,7 @@ import { fileKeyForPath } from "./classify.js";
 import { parseUnifiedDiff } from "./diff.js";
 import { resolveSource, type IngestSource } from "./source.js";
 import { uninterestingReason } from "./uninteresting.js";
+import { splitRawBlocks } from "../submit/description.js";
 
 export type { IngestSource };
 export { parseUnifiedDiff } from "./diff.js";
@@ -159,11 +160,19 @@ export async function ingestReview(
   let description: ReviewDescription;
   if (prNumber !== undefined) {
     const rendered = renderMarkdownBlocks(resolved.descriptionMarkdown);
+    // M6: keep the verbatim body + per-paragraph sources so edited HTML
+    // converts back with byte-for-byte round-trip outside edited paragraphs.
+    const paragraphSources: Record<string, string> = {};
+    for (const b of splitRawBlocks(resolved.descriptionMarkdown)) {
+      if (b.id) paragraphSources[b.id] = b.raw;
+    }
     description = {
       html: rendered.html,
       rev: "1",
       source: "pr",
       editable: resolved.descriptionEditable,
+      baseMarkdown: resolved.descriptionMarkdown,
+      paragraphSources,
     };
   } else {
     const rendered = renderCommitMessages(resolved.commits);
