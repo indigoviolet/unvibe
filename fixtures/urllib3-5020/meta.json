@@ -1,0 +1,24 @@
+{
+  "repo": "urllib3/urllib3",
+  "pr": 5020,
+  "title": "Unfold obsolete folded response headers",
+  "headSha": "bdcc1e493e",
+  "mergeBaseSha": "443cb01be1",
+  "baseRef": "main",
+  "fileKeys": {
+    "conn": "src/urllib3/connection.py",
+    "tconn": "test/test_connection.py",
+    "tsock": "test/with_dummyserver/test_socketlevel.py",
+    "log": "changelog/1362.bugfix.rst"
+  },
+  "descParagraphs": ["d-intro", "d-norm", "d-sync", "d-tests", "d-scope", "d-valid"],
+  "concepts": [
+    "obs-fold",
+    "http-headers",
+    "header-injection",
+    "regex-performance",
+    "ows-rws",
+    "set-cookie",
+    "requests-cookies"
+  ]
+}
