@@ -19,7 +19,8 @@
  *   cited something outside the base, in full), `item-deleted` (one line for
  *   a deleted item that had been shared);
  * - accepted but never logged (UI state): `read`, `collapse`,
- *   `depth-state`, `open`, `close`, `mark-for-pr`, `undo`.
+ *   `depth-state`, `open`, `close`, `mark-for-pr`, `undo`, `bookmark`
+ *   (page-saved flag).
  */
 export type InteractionEventKind =
   | "example-added"
@@ -36,13 +37,16 @@ export type InteractionEventKind =
   | "open"
   | "close"
   | "mark-for-pr"
-  | "undo";
+  | "undo"
+  | "bookmark";
 
 export interface InteractionEvent {
   kind: InteractionEventKind;
   reviewId: string;
   /** Card the event belongs to (required for card-local kinds). */
   cardId?: string;
+  /** Page the event belongs to (page-level UI state such as `bookmark`). */
+  pageId?: string;
   /** Hunk content hash, for hunk-anchored events (e.g. settled threads). */
   hunkHash?: string;
   /** Thread the event came from, when there is one. */

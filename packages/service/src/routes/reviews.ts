@@ -376,6 +376,7 @@ export async function registerReviews(
       // Generate validates the review itself; everything else 404s early.
       return reply.code(404).send({ error: "unknown review" });
     }
+    const routeDeps = deps as RouteDeps & { fixturesDir?: string; promptsDir?: string };
     return dispatchAction(
       body as Parameters<typeof dispatchAction>[0],
       {
@@ -383,6 +384,11 @@ export async function registerReviews(
         jobs: (deps as RouteDeps).jobs,
         reviews: ctx.reviews,
         reviewId: id,
+        ...(routeDeps.sessions ? { sessions: routeDeps.sessions } : {}),
+        ...(routeDeps.settings ? { settings: routeDeps.settings } : {}),
+        ...(routeDeps.sharedctx ? { sharedctx: routeDeps.sharedctx } : {}),
+        ...(routeDeps.fixturesDir ? { fixturesDir: routeDeps.fixturesDir } : {}),
+        ...(routeDeps.promptsDir ? { promptsDir: routeDeps.promptsDir } : {}),
       },
       reply,
     );

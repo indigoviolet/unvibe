@@ -1,12 +1,14 @@
 /**
  * Thread reply-box behaviour against the mock API (`VITE_MOCK=1`):
  * typed text survives unrelated WS patches, Discard clears the box on an
- * existing thread, and Cmd/Ctrl+Enter sends.
+ * existing thread, Cmd/Ctrl+Enter sends, and a failed agent reply shows
+ * the error with a Retry button wired to the `retry` action.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { ThreadView } from "./ThreadView.js";
 
@@ -83,5 +85,46 @@ describe("ThreadView reply box", () => {
     fireEvent.change(box, { target: { value: "to clear" } });
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(screen.getByLabelText("Reply")).toHaveValue("");
+  });
+
+  test("a failed reply shows the error with a Retry button wired to the retry action", async () => {
+    const failed = thread({
+      note: false,
+      messages: [{ who: "you", text: "Why?" }],
+      error: "rate limited",
+      working: null,
+    });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [failed] });
+    const spy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, threadId: failed.id });
+    render(<ThreadView reviewId={REVIEW_ID} thread={failed} />);
+    try {
+      expect(screen.getByRole("alert")).toHaveTextContent(/rate limited/);
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "retry", threadId: failed.id });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("an ask reply sends through the reply action, not the comments route", async () => {
+    const asking = thread({ note: false, messages: [{ who: "you", text: "Why?" }] });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [asking] });
+    const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, threadId: asking.id });
+    const replySpy = vi.spyOn(api, "replyComment");
+    render(<ThreadView reviewId={REVIEW_ID} thread={asking} />);
+    try {
+      const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+      fireEvent.change(box, { target: { value: "And then?" } });
+      fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+      expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
+        kind: "reply",
+        threadId: asking.id,
+        message: "And then?",
+      });
+      expect(replySpy).not.toHaveBeenCalled();
+    } finally {
+      actionSpy.mockRestore();
+      replySpy.mockRestore();
+    }
   });
 });

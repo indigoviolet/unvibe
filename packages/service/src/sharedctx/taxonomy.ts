@@ -2,8 +2,8 @@
  * Log taxonomy (PRD §9.3): which interaction events enter the append-only
  * log, with what kind, payload and scope.
  *
- * - never: read, collapse, depth-stepper state, open/close, mark-for-PR
- *   (and undo — UI state, not shared knowledge);
+ * - never: read, collapse, depth-stepper state, open/close, mark-for-PR,
+ *   bookmark (and undo — UI state, not shared knowledge);
  * - local to conversations anchored on that card: examples, diagrams, depth
  *   rewrites (card scope required);
  * - one line once a thread settles: `thread-summary`;
@@ -33,6 +33,7 @@ export function logEntryForEvent(event: InteractionEvent): TaxonomyResult | null
     case "open":
     case "close":
     case "mark-for-pr":
+    case "bookmark":
     case "undo":
       return null;
     case "example-added":

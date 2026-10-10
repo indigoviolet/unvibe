@@ -2,10 +2,11 @@
  * New-thread composer (comments owner).
  *
  * The pending box the selection toolbar and diff line clicks open *before*
- * anything reaches the server: Discard removes it locally (no request),
- * Send creates the thread through `POST …/comments` with the user's
- * message. Ask threads (`note: false`) then show the agent as working
- * until its reply arrives through a patch; Note threads stay quiet.
+ * anything reaches the server: Discard removes it locally (no request).
+ * Notes save through `POST …/comments` and stay quiet; Ask sends the
+ * `ask` action (thread + agent reply in one round trip) and the thread
+ * then shows the agent as working until its reply arrives through a
+ * patch (or an error with a Retry button when the turn fails).
  */
 import { useState } from "react";
 import type { ActionAnchor } from "@unvibe/shared";
@@ -31,10 +32,24 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
     const value = text.trim();
     if (!value || sending) return;
     setSending(true);
+    if (!note) {
+      api
+        .action(reviewId, { kind: "ask", anchor, quote, message: value })
+        .then((res) => {
+          const id = res.threadId ?? res.annotationId;
+          if (!id) throw new Error("ask returned no thread");
+          markAskSent(id);
+          onCreated(id);
+        })
+        .catch((err: unknown) => {
+          toast(`Couldn't ask the agent: ${err instanceof Error ? err.message : String(err)}`);
+        })
+        .finally(() => setSending(false));
+      return;
+    }
     api
       .createComment(reviewId, { anchor, quote, note, text: value })
       .then((res) => {
-        if (!note) markAskSent(res.id);
         onCreated(res.id);
       })
       .catch((err: unknown) => {

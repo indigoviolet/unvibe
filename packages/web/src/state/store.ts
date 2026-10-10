@@ -32,9 +32,10 @@ interface ReviewState {
   snapshot: ReviewSnapshot | null;
   connected: boolean;
   /**
-   * Streamed text per card (`text` events carry `cardId`). Cards show the
-   * tail as progress while their job runs; patches/snapshots materialize
-   * the content and clear the streams.
+   * Streamed text per card or thread (`text` events carry `cardId` and/or
+   * `threadId`). Cards show the tail as progress while their job runs;
+   * threads show it under the working indicator; patches/snapshots
+   * materialize the content and clear the streams.
    */
   streams: Record<string, string>;
   /** Out-of-order patches waiting for their `baseRev`. */
@@ -215,9 +216,10 @@ export const useReview = create<ReviewState>()((set) => ({
           return { snapshot: { ...s.snapshot, jobs } };
         }
         case "text": {
-          if (!event.cardId) return s;
-          const prev = s.streams[event.cardId] ?? "";
-          return { streams: { ...s.streams, [event.cardId]: (prev + event.delta).slice(-4000) } };
+          const key = event.threadId ?? event.cardId;
+          if (!key) return s;
+          const prev = s.streams[key] ?? "";
+          return { streams: { ...s.streams, [key]: (prev + event.delta).slice(-4000) } };
         }
         default:
           return s; // error handled by streaming views later

@@ -11,8 +11,9 @@
  * - dismisses on scroll, outside press, Escape, blur, resize and selection
  *   collapse — the same rules as the other floating UI.
  *
- * Explain calls the `explain` action (501 until the interaction agent
- * lands: a toast, never a break). Ask… / Note open a pending thread
+ * Explain calls the `explain` action (accepted by the service; the
+ * expansion card itself renders in a later milestone — never a break).
+ * Ask… / Note open a pending thread
  * composer at the anchor via the `unvibe:new-thread` event; the host
  * (guide block, description paragraph, diff line) renders it. Selection in
  * a pure-deletion diff row anchors to the nearest row with a new-side

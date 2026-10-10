@@ -62,9 +62,9 @@ export function changeListVariable(
   deps: TurnWireDeps,
   reviewId: string,
   template: string,
-  variables: Record<string, string>,
+  variables: Record<string, unknown>,
   opts: { conversationKey?: string; cardId?: string; hunkHash?: string; baseLogSeq?: number } = {},
-): Record<string, string> {
+): Record<string, unknown> {
   if (variables["change_list"] !== undefined) return variables;
   if (!templateExpectsChangeList(deps.promptsDir, template)) return variables;
   const snapshot = deps.reviews.getSnapshot(reviewId);

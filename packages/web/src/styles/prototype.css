@@ -52,6 +52,10 @@ code { font-family: var(--mono); font-size: .86em; }
 .col.overlay { position: fixed; top: 50px; bottom: 0; right: 0; width: min(680px, 100vw); z-index: 25; box-shadow: 0 0 28px rgb(0 0 0 / .18); }
 @media (max-width: 600px) { .top .pill { display: none; } }
 .hint { font-size: 12px; color: var(--muted); }
+/* Thread agent failure (M4 ask/reply): warning-tinted box with a Retry button. */
+.perr { margin: 6px 0; padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font-size: 13px; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+/* Streamed reply tail shown under the working indicator while it flows. */
+.working .stream { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn { border: 1px solid var(--ink); background: var(--ink); color: var(--surface); border-radius: 6px; padding: 3px 10px; font-size: 12.5px; font-weight: 500; }
 .btn.ghost { background: none; color: var(--ink); border-color: var(--line); }
 .mini { border: 0; background: none; color: var(--muted); font-size: 11.5px; padding: 2px 5px; border-radius: 4px; }

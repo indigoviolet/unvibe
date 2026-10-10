@@ -244,7 +244,26 @@ export type ReviewAction =
   | { kind: "second_opinion"; cardId: string; mode: "blind" | "check" }
   | { kind: "promote"; annotationId: string }
   | { kind: "close"; annotationId: string }
-  | { kind: "delete"; targetId: string };
+  | { kind: "delete"; targetId: string }
+  /**
+   * M4: answer a follow-up suggestion under the block it came from. The
+   * answer is added as an expansion anchored on that block (prototype
+   * `follow`), quoting the suggestion label.
+   */
+  | { kind: "followup"; cardId: string; blockId: string; index: number }
+  /**
+   * M4: follow-up user message in an existing ask thread. Continues the
+   * thread's conversation session (`Annotation.sessionId`) instead of
+   * forking again.
+   */
+  | { kind: "reply"; threadId: string; message: string }
+  /** M4: retry a thread/expansion whose job left a visible error state. */
+  | { kind: "retry"; threadId: string }
+  /**
+   * M4: write a concept page on first open (`ensureConceptPage`). The
+   * page shows a working state while its job fills it.
+   */
+  | { kind: "concept"; slug: string };
 
 export type ActionAnchor =
   | { where: "block"; blockId: string }
@@ -255,6 +274,16 @@ export interface ActionResponse {
   accepted: boolean;
   /** Job started for the action, when async. */
   jobId?: string;
+  /** M4: annotation created or targeted by the action (explain/ask/note/followup). */
+  annotationId?: string;
+  /** M4: thread id (ask/reply/retry/followup answers). Same as annotationId for threads. */
+  threadId?: string;
+  /** M4: page created or targeted (promote/concept/bookmark). */
+  pageId?: string;
+  /** M4: card created or targeted (depth/examples/diagram/undo/read/collapse/followup). */
+  cardId?: string;
+  /** M4: true when an identical active request was reused (dedupe, PRD §12). */
+  deduplicated?: boolean;
 }
 
 // --- hunks ---------------------------------------------------------------
@@ -612,7 +641,7 @@ export type StatePatchOp =
 
 export type ReviewEvent =
   | { type: "job"; job: Job }
-  | { type: "text"; jobId: string; cardId?: string; delta: string }
+  | { type: "text"; jobId: string; cardId?: string; threadId?: string; delta: string }
   | { type: "patch"; baseRev: number; headRev: number; ops: StatePatchOp[] }
   | { type: "snapshot"; snapshot: ReviewSnapshot }
   | { type: "error"; message: string; jobId?: string };

@@ -245,6 +245,7 @@ export class Pipeline {
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
+      ...(o.threadId ? { threadId: o.threadId } : {}),
       promptSnapshot: prompt,
       run: async (ctx) => {
         // Retryable errors retry inside the job (so the deferred settles
@@ -343,6 +344,12 @@ export class Pipeline {
         }
       },
     });
+    // M4: hand the enqueued job to the action handler (jobId + cancel).
+    try {
+      o.onJob?.(enqueued);
+    } catch {
+      // ignore
+    }
     void enqueued;
     return done;
   }
@@ -369,6 +376,7 @@ export class Pipeline {
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
+      ...(o.threadId ? { threadId: o.threadId } : {}),
       promptSnapshot: prompt,
       run: async (ctx) => {
         for (let attempt = 0; ; attempt++) {
@@ -444,6 +452,12 @@ export class Pipeline {
         }
       },
     });
+    // M4: hand the enqueued job to the action handler (jobId + cancel).
+    try {
+      o.onJob?.(enqueued);
+    } catch {
+      // ignore
+    }
     void enqueued;
     return done;
   }
@@ -674,7 +688,7 @@ export class Pipeline {
 
   // -- internals ------------------------------------------------------
 
-  private render(template: string, variables: Record<string, string>): string {
+  private render(template: string, variables: Record<string, unknown>): string {
     const lib = loadTemplatesDirSync(this.promptsDir);
     const tpl = lib.get(template);
     if (!tpl) throw new Error(`unknown prompt template ${template}`);

@@ -848,6 +848,66 @@ export const mockApi = {
         return { accepted: true };
       }
     }
+    // Ask turns (M4): create/answer through the patch path like the
+    // service (working flag, delayed canned answer, patch delivery).
+    if (a.kind === "ask" || a.kind === "reply" || a.kind === "retry") {
+      const answerLater = (tid: string, text: string, quote: string): void => {
+        void wait(700).then(() => {
+          const target = annotations.find((x) => x.id === tid);
+          if (!target || target.type !== "thread") return;
+          target.messages.push({ who: "ai", html: mockAnswerFor(text, quote) });
+          target.working = null;
+          target.open = true;
+          emitAnnotations();
+        });
+      };
+      if (a.kind === "reply" || a.kind === "retry") {
+        const threadId = a.threadId;
+        const thread = annotations.find((x) => x.id === threadId);
+        if (!thread || thread.type !== "thread") throw new Error(`unknown comment ${threadId}`);
+        if (a.kind === "retry" && !thread.error) throw new Error(`thread ${thread.id} has no failed reply to retry`);
+        if (a.kind === "reply") {
+          thread.messages.push({ who: "you", text: a.message });
+        }
+        thread.error = null;
+        thread.working = "Reading…";
+        thread.open = true;
+        emitAnnotations();
+        const lastYou = [...thread.messages].reverse().find((m) => m.who === "you" && m.text);
+        answerLater(thread.id, lastYou?.text ?? "", thread.anchor.quotedText);
+        return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-${a.kind}-${thread.id}` };
+      }
+      if (a.kind === "ask") {
+        const anchor = a.anchor;
+        const host =
+          anchor.where === "block"
+            ? { kind: "block", blockId: anchor.blockId }
+            : anchor.where === "description"
+              ? { kind: "description", paragraphId: anchor.paragraphId }
+              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+        const thread: import("@unvibe/shared").Annotation = {
+          id: `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`,
+          type: "thread",
+          anchor: {
+            host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
+            quotedText: a.quote,
+            prefix: "",
+            suffix: "",
+            position: 0,
+            version: 1,
+          },
+          open: host.kind === "block" ? false : true,
+          messages: [{ who: "you", text: a.message }],
+          post: false,
+          note: false,
+          working: "Reading…",
+        };
+        annotations.push(thread);
+        emitAnnotations();
+        answerLater(thread.id, a.message, a.quote);
+        return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-ask-${thread.id}` };
+      }
+    }
     // Guide instant state (PRD §4.3/§4.4) applies locally through the patch
     // path; everything else agent-driven answers `accepted: false` until the
     // service implements it (the UI toasts).

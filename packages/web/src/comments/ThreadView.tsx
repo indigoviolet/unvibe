@@ -11,12 +11,15 @@
  *   through `PATCH …/comments/:id` `reply`); Discard removes a new empty
  *   thread and clears the box on an existing one; Cmd/Ctrl+Enter sends.
  * - Ask threads show the agent as working until its reply arrives through
- *   a patch; Note threads never do. Agent-suggested first messages render
- *   as "Agent · suggested comment" and start unmarked for the PR.
+ *   a patch (plus the streamed tail while it flows); Note threads never
+ *   do. A failed reply shows the error with a Retry button (the `retry`
+ *   action rebuilds on the same thread). Agent-suggested first messages
+ *   render as "Agent · suggested comment" and start unmarked for the PR.
  * - Outdated threads show the original snippet + a link to the new code.
  * - Posted threads show their posted state and are never pending.
  */
 import { useEffect, useRef, useState } from "react";
+import type { JSX } from "react";
 import type { Annotation } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
@@ -39,6 +42,49 @@ function successsorTarget(thread: Annotation): string | null {
   }
   if (host.kind === "description") return `desc:${host.paragraphId}`;
   return null;
+}
+
+/**
+ * End-of-message citation markers (PRD §4.5), mirroring the guide's
+ * `BlockMarkers`: one `<>` button per verified group (count when >1),
+ * one dimmed button per unverified citation; click reveals the source.
+ */
+function MessageCitations({ citations }: { citations: Annotation["messages"][number]["citations"] }): JSX.Element | null {
+  const verified = (citations ?? []).filter((c) => !c.unverified);
+  const unverified = (citations ?? []).filter((c) => c.unverified);
+  if (verified.length === 0 && unverified.length === 0) return null;
+  return (
+    <span className="lo">
+      {verified.length > 0 && (
+        <button
+          className="lk"
+          type="button"
+          data-refs={verified.map((c) => c.target).join("|")}
+          data-src={verified[0].target}
+          aria-label={verified.length > 1 ? `${verified.length} sources` : "Source"}
+          data-tip="Show in source"
+          onClick={() => revealSource(verified[0].target)}
+        >
+          <Icon name="code" />
+          {verified.length > 1 ? verified.length : ""}
+        </button>
+      )}
+      {unverified.map((c) => (
+        <button
+          key={c.target}
+          className="lk unverified"
+          type="button"
+          data-refs={c.target}
+          data-src={c.target}
+          aria-label="Unverified source"
+          data-tip="This citation could not be checked, so it is shown as unverified."
+          onClick={() => revealSource(c.target)}
+        >
+          <Icon name="code" />
+        </button>
+      ))}
+    </span>
+  );
 }
 
 function headerLabel(snapshotFile: string | null, thread: Annotation): string {
@@ -68,11 +114,17 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   const isNew = messages.length === 0;
   const last = messages[messages.length - 1];
   const awaitingReply = !thread.note && messages.length > 0 && last?.who === "you";
-  // The reply arrives through the pipeline seam (501 until the interaction
-  // agent lands): bound the spinner so it never spins forever, then fall
-  // back to a muted waiting note.
-  const working = awaitingReply && isAskWorking(thread.id);
-  const waiting = awaitingReply && !working;
+  // The server marks the thread working while its job runs; the 60 s
+  // client window stays as a fallback so a lost patch never spins forever,
+  // then yields to a muted waiting note. Streamed deltas arrive on the WS
+  // (keyed by thread id) and show as progress until the reply patch lands;
+  // a failed turn sets `thread.error` with a Retry button instead.
+  const streams = useReview((s) => s.streams);
+  const streamTail = streams[thread.id];
+  const serverWorking = thread.working !== undefined && thread.working !== null && thread.working !== "";
+  // A failed turn shows the error + Retry instead of any spinner.
+  const working = awaitingReply && !thread.error && (serverWorking || isAskWorking(thread.id));
+  const waiting = awaitingReply && !working && !thread.error;
   useAskWorkingTick(thread.id, working);
   const posted = thread.postedAt !== undefined;
   const successor = successsorTarget(thread);
@@ -139,14 +191,32 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
     if (!text || sending) return;
     setSending(true);
     const ask = !thread.note;
-    api
-      .replyComment(reviewId, thread.id, { text })
+    // Ask threads answer through the agent (`reply` action appends the
+    // message and fills the reply); notes stay user-only.
+    const send = ask
+      ? api.action(reviewId, { kind: "reply", threadId: thread.id, message: text })
+      : api.replyComment(reviewId, thread.id, { text });
+    send
       .then(() => {
         setDraft("");
         if (ask) markAskSent(thread.id);
       })
       .catch((err: unknown) => {
         toast(`Couldn't send the reply: ${err instanceof Error ? err.message : String(err)}`);
+      })
+      .finally(() => setSending(false));
+  };
+
+  const onRetry = (): void => {
+    if (sending) return;
+    setSending(true);
+    api
+      .action(reviewId, { kind: "retry", threadId: thread.id })
+      .then(() => {
+        markAskSent(thread.id);
+      })
+      .catch((err: unknown) => {
+        toast(`Couldn't retry the reply: ${err instanceof Error ? err.message : String(err)}`);
       })
       .finally(() => setSending(false));
   };
@@ -237,6 +307,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
           <div>
             <div className="who">{m.who === "you" ? "You" : m.suggested ? "Agent · suggested comment" : "Agent"}</div>
             <p dangerouslySetInnerHTML={{ __html: m.html ?? tick(m.text ?? "") }} />
+            <MessageCitations citations={m.citations} />
           </div>
         </div>
       ))}
@@ -247,12 +318,21 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
             <i />
             <i />
           </span>
-          <span>Reading the diff and PR body…</span>
+          <span>{thread.working && thread.working !== "Reading…" ? thread.working : "Reading the diff and PR body…"}</span>
+          {streamTail ? <span className="stream">{streamTail.slice(-160)}</span> : null}
         </div>
       ) : null}
       {waiting ? (
         <div className="hint" role="status">
           Still waiting for the agent — its reply will appear here when the pipeline answers.
+        </div>
+      ) : null}
+      {thread.error && !readOnly ? (
+        <div className="perr" role="alert">
+          <span>Couldn't get an answer: {thread.error}</span>
+          <button className="btn" type="button" data-retry={thread.id} onClick={onRetry}>
+            Retry
+          </button>
         </div>
       ) : null}
       {posted ? (

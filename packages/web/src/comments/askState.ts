@@ -1,12 +1,11 @@
 /**
  * Ask working state (comments owner).
  *
- * The agent's reply arrives through a patch via the pipeline seam — which
- * the interaction agent hasn't built yet, so `ask`/`explain` actions still
- * answer 501. The thread must never spin forever: the spinner shows while
- * the reply is plausibly in flight, then yields to a muted waiting note.
- * (Mock mode always answers within a second, so tests never see the
- * fallback.)
+ * The agent's reply arrives through a patch; the server also marks the
+ * thread `working` while its job runs (`ThreadView` keys the spinner on
+ * that first). This 60 s client window stays as a fallback so a lost
+ * patch never spins forever, then yields to a muted waiting note. (Mock
+ * mode always answers within a second, so tests never see the fallback.)
  */
 import { useEffect, useState } from "react";
 

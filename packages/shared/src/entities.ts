@@ -368,6 +368,48 @@ export interface ChatMessage {
   html?: string;
   /** Agent-drafted suggested comment not yet marked for the PR. */
   suggested?: boolean;
+  /** M4: validated citations backing an agent reply (hover + jump-to-source). */
+  citations?: Citation[];
+  /**
+   * M4: streaming / error marker for an agent reply in flight. `working`
+   * carries the progress line while the job runs; `error` carries a
+   * retryable failure once it settles that way (never a spinner forever).
+   */
+  working?: string | null;
+  error?: string | null;
+}
+
+/**
+ * M4 (PRD §4.7): body of an expansion annotation. An expansion is a card
+ * in its own right — depth level, read, collapsed, revision and undo
+ * stack — so every card action (depth, examples, diagram, undo, read,
+ * collapse) works on it too. The quoted anchor text stays in
+ * `Annotation.anchor`; the agent's content lives here.
+ */
+export interface ExpansionState {
+  /** Agent content blocks (streamed in while the job runs). */
+  blocks: Block[];
+  /** Depth level of the rendered text (simpler / standard / first principles). */
+  level: DepthLevel;
+  /** Greyed + collapsed to its title row (marking an expansion read closes it). */
+  read: boolean;
+  collapsed: boolean;
+  /** Bumped on every accepted rewrite; references always mean latest. */
+  revision: number;
+  /** Undo stack of block snapshots (depth/examples/diagram changes). No redo. */
+  undoStack: CardSnapshot[];
+  /** Progress line while the explain job runs (immediately visible working state). */
+  working?: string | null;
+  /** Retryable failure text (visible error state + retry path, PRD §4.8). */
+  error?: string | null;
+  /** Active job filling or rewriting this expansion, when one is running. */
+  jobId?: string;
+  /**
+   * True when the anchor text can no longer be found in its host (for
+   * example after a depth rewrite). The annotation stays attached to the
+   * block and the UI shows the collapsed-card fallback (PRD §4.7).
+   */
+  anchorStale?: boolean;
 }
 
 /** An expansion card, comment thread, or opened-as-page link on an anchor. */
@@ -387,6 +429,43 @@ export interface Annotation {
   note: boolean;
   /** Threads only: unsent reply-box content (survives re-renders). */
   reply?: string;
+  /**
+   * M4: expansion body (type `"expansion"` only). Anchor-only annotations
+   * (no `expansion`) are treated as closed link stubs.
+   */
+  expansion?: ExpansionState;
+  /**
+   * M4: progress line while an agent job works on this annotation
+   * (explain fill, ask reply). Cleared when the job settles.
+   */
+  working?: string | null;
+  /**
+   * M4: retryable failure text (visible error state with a retry path,
+   * never a spinner forever, PRD §4.8). Set on the thread/expansion when
+   * its job errors; cleared on the next attempt.
+   */
+  error?: string | null;
+  /** M4: active agent job for this annotation, when one is running. */
+  jobId?: string;
+  /**
+   * M4: conversation session backing this thread's agent replies. Forked
+   * once per thread; follow-up turns reuse it via
+   * `SessionManager.sendOnConversation` instead of forking again.
+   */
+  sessionId?: string;
+  /**
+   * M4: true when the anchor text can no longer be found in its host
+   * (for example after a depth rewrite of the host card). The annotation
+   * stays attached to the block; the UI shows the collapsed-card fallback
+   * (PRD §4.7).
+   */
+  anchorStale?: boolean;
+  /**
+   * M4: page this annotation was promoted to ("Open as page", PRD §4.7).
+   * The anchor becomes a link to that page; the annotation itself is
+   * closed (type `"link"` on promotion, or kept with this pointer).
+   */
+  promotedToPage?: string;
   /**
    * M5 (PRD §8): true when the anchored code changed and the quote could
    * not be re-found with confidence. The original snippet is kept in
@@ -549,6 +628,12 @@ export interface Job {
   error?: string;
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
   cardId?: string;
+  /**
+   * M4: annotation this job works on (explain fill, ask reply, follow-up
+   * answer), when annotation-scoped. Lets the UI match streamed `text`
+   * events to the thread/expansion while it fills.
+   */
+  threadId?: string;
   /** Latest human-readable progress line, shown on the card while running. */
   progress?: string;
   /**

@@ -15,8 +15,8 @@ export interface RunInForkOptions {
   kind: JobKind;
   /** Prompt template name (e.g. "go_deeper", "critic"). */
   template: string;
-  /** Template variables (rendered deterministically). */
-  variables: Record<string, string>;
+  /** Template variables (rendered deterministically; may nest for `{{a.b}}`). */
+  variables: Record<string, unknown>;
   priority: number;
   dedupeKey?: { anchor: string; requestKind: string; depth?: string; baseVersion: string };
   cardId?: string;
@@ -29,13 +29,19 @@ export interface RunInForkOptions {
   conversationKey?: string;
   /** Hunk content hash the conversation is anchored on (change-list filter). */
   hunkHash?: string;
-  /** Thread the turn replies in (contribution labelling). */
+  /** Thread the turn replies in (contribution labelling; M4: WS correlation). */
   threadId?: string;
   /** Called with newly finished cards as they stream in. */
   onPartial?: (cards: ParsedCard[]) => void | Promise<void>;
   signal?: AbortSignal;
   /** Extra replay marker for the ReplayAgentRunner (demo/tests). */
   replay?: { kind: string; key?: string };
+  /**
+   * M4: called with the enqueued job once it exists (after the base
+   * lookup). Lets action handlers return the `jobId` without awaiting
+   * the agent result.
+   */
+  onJob?: (job: Job) => void;
 }
 
 export interface RunInForkResult {
@@ -59,12 +65,16 @@ export interface RunSmallOptions {
   reviewId: string;
   kind: JobKind;
   template: string;
-  variables: Record<string, string>;
+  variables: Record<string, unknown>;
   priority: number;
   dedupeKey?: { anchor: string; requestKind: string; depth?: string; baseVersion: string };
   cardId?: string;
+  /** M4: annotation the streamed text belongs to (ask replies, expansions). */
+  threadId?: string;
   signal?: AbortSignal;
   replay?: { kind: string; key?: string };
+  /** M4: called with the enqueued job once it exists (see above). */
+  onJob?: (job: Job) => void;
 }
 
 export type RunSmallResult = RunInForkResult;

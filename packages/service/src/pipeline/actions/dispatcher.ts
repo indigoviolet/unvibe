@@ -1,24 +1,56 @@
 /**
- * Actions dispatcher (M3): one file per action kind.
+ * Actions dispatcher (M4/M6): one file per action kind.
  *
- * `generate` is implemented (Go deeper → Generate through the `runInFork`
- * seam); `second_opinion` is implemented via the isolated `secondopinion/`
- * module (own base, blind/check modes). Every other kind stays 501 here;
- * the next agent (interaction actions) extends this dispatcher with one
- * module per kind (`explain.ts`, `ask.ts`, `depth.ts`, ...).
+ * `generate` (Go deeper) and every interaction kind route here, plus
+ * `second_opinion` via the isolated `secondopinion/` module (own base,
+ * blind/check modes). Each action goes through `ReviewStore.mutate` so
+ * the UI gets patches; each agent call runs at user-requested priority
+ * with (anchor, kind, depth, base version) dedupe and citation validation
+ * via the `runInFork` seam.
  */
 import type { FastifyReply } from "fastify";
-import type { ReviewAction } from "@unvibe/shared";
+import type { ActionResponse, ReviewAction } from "@unvibe/shared";
 import type { JobQueue } from "../../jobs/index.js";
+import type { SessionManager } from "../../sessions/manager.js";
+import type { SettingsStore } from "../../settings/index.js";
+import type { SharedContextService } from "../../sharedctx/service.js";
 import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import { generateAction } from "./generate.js";
+import { askAction, replyAction, retryAction } from "./ask.js";
+import { bookmarkAction, collapseAction, readAction } from "./read.js";
+import { closeAction, deleteAction } from "./close.js";
+import { conceptAction } from "./concept.js";
+import { depthAction } from "./depth.js";
+import { diagramAction } from "./diagram.js";
+import { examplesAction } from "./examples.js";
+import { explainAction } from "./explain.js";
+import { followupAction } from "./followup.js";
+import { noteAction } from "./note.js";
+import { promoteAction } from "./promote.js";
 import { removeSecondOpinionAction, secondOpinionAction } from "./second_opinion.js";
+import { undoAction } from "./undo.js";
+import type { ActionContext } from "./common.js";
 
 export interface ActionDeps {
   pipeline?: Pipeline;
   jobs?: JobQueue;
   reviews?: ReviewStore;
+  sessions?: SessionManager;
+  settings?: SettingsStore;
+  sharedctx?: SharedContextService;
+  fixturesDir?: string;
+  promptsDir?: string;
+}
+
+function need(ctx: ActionContext): asserts ctx is Required<Pick<ActionContext, "pipeline" | "jobs" | "reviews">> & ActionContext {
+  if (!ctx.pipeline || !ctx.jobs || !ctx.reviews) {
+    throw new Error("not implemented: pipeline not wired");
+  }
+}
+
+function bad(reply: FastifyReply, message: string): unknown {
+  return reply.code(400).send({ error: message });
 }
 
 export async function dispatchAction(
@@ -26,83 +58,233 @@ export async function dispatchAction(
   deps: ActionDeps & { reviewId: string },
   reply: FastifyReply,
 ): Promise<unknown> {
-  if (action.kind === "generate") {
-    if (!deps.pipeline || !deps.jobs || !deps.reviews) {
-      return reply.code(501).send({ error: "not implemented: pipeline not wired" });
-    }
-    try {
-      const res = await generateAction(deps.pipeline, deps.jobs, deps.reviews, deps.reviewId, action.cardId);
-      return { accepted: true, jobId: res.jobId };
-    } catch (err) {
-      const msg = (err as Error).message;
-      if (/no pending card|unknown review/.test(msg)) return reply.code(404).send({ error: msg });
-      return reply.code(500).send({ error: msg });
-    }
-  }
-  if (action.kind === "second_opinion") {
-    if (!deps.pipeline || !deps.jobs || !deps.reviews) {
-      return reply.code(501).send({ error: "not implemented: pipeline not wired" });
-    }
-    try {
-      const res = await secondOpinionAction(
-        deps.pipeline,
-        deps.jobs,
-        deps.reviews,
-        deps.reviewId,
-        action.cardId,
-        action.mode,
-      );
-      return { accepted: true, jobId: res.jobId };
-    } catch (err) {
-      const msg = (err as Error).message;
-      if (/unknown review|unknown card/.test(msg)) return reply.code(404).send({ error: msg });
-      if (/different model|Settings/.test(msg)) return reply.code(400).send({ error: msg });
-      return reply.code(500).send({ error: msg });
-    }
-  }
-  if (action.kind === "delete") {
-    // Second-opinion removal travels over the generic `delete` action to
-    // avoid a contract change: targetId `second-opinion:<cardId>:<mode>` or
-    // a stored `so-…` opinion id. Other targets stay 501 for the
-    // interaction-actions owner.
-    const target = (action as { targetId?: string }).targetId ?? "";
-    const soMatch =
-      target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
-    if (soMatch && deps.pipeline && deps.jobs && deps.reviews) {
-      try {
-        if (soMatch[1].startsWith("so-")) {
-          await removeSecondOpinionAction(
-            deps.pipeline,
-            deps.jobs,
-            deps.reviews,
-            deps.reviewId,
-            "",
-            undefined,
-            soMatch[1],
-          );
-        } else {
-          const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-          await removeSecondOpinionAction(
-            deps.pipeline,
-            deps.jobs,
-            deps.reviews,
-            deps.reviewId,
-            cardId,
-            mode as "blind" | "check",
-          );
+  const ctx: ActionContext = {
+    ...(deps.pipeline ? { pipeline: deps.pipeline } : {}),
+    ...(deps.jobs ? { jobs: deps.jobs } : {}),
+    ...(deps.reviews ? { reviews: deps.reviews } : {}),
+    reviewId: deps.reviewId,
+    ...(deps.sessions ? { sessions: deps.sessions } : {}),
+    ...(deps.settings ? { settings: deps.settings } : {}),
+    ...(deps.sharedctx ? { sharedctx: deps.sharedctx } : {}),
+    ...(deps.fixturesDir ? { fixturesDir: deps.fixturesDir } : {}),
+    ...(deps.promptsDir ? { promptsDir: deps.promptsDir } : {}),
+  } as ActionContext;
+
+  try {
+    switch (action.kind) {
+      case "generate": {
+        need(ctx);
+        if (!deps.pipeline || !deps.jobs || !deps.reviews) {
+          return reply.code(501).send({ error: "not implemented: pipeline not wired" });
         }
-        return { accepted: true };
-      } catch (err) {
-        const msg = (err as Error).message;
-        if (/unknown second opinion|unknown card|unknown review/.test(msg)) {
-          return reply.code(404).send({ error: msg });
+        try {
+          const res = await generateAction(deps.pipeline, deps.jobs, deps.reviews, deps.reviewId, action.cardId);
+          const out: ActionResponse = { accepted: true, jobId: res.jobId };
+          return out;
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (/no pending card|unknown review/.test(msg)) return reply.code(404).send({ error: msg });
+          return reply.code(500).send({ error: msg });
         }
-        return reply.code(500).send({ error: msg });
       }
+      case "explain": {
+        need(ctx);
+        if (typeof action.quote !== "string" || !action.anchor) return bad(reply, "quote and anchor are required");
+        const res = await explainAction(ctx, { quote: action.quote, anchor: action.anchor });
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId };
+        if (res.jobId) out.jobId = res.jobId;
+        if (res.deduplicated) out.deduplicated = true;
+        return out;
+      }
+      case "ask": {
+        need(ctx);
+        if (typeof action.quote !== "string" || !action.anchor || typeof action.message !== "string") {
+          return bad(reply, "quote, anchor and message are required");
+        }
+        const res = await askAction(ctx, { quote: action.quote, anchor: action.anchor, message: action.message });
+        const out: ActionResponse = { accepted: true, annotationId: res.threadId, threadId: res.threadId };
+        if (res.jobId) out.jobId = res.jobId;
+        if (res.deduplicated) out.deduplicated = true;
+        return out;
+      }
+      case "note": {
+        need(ctx);
+        if (typeof action.quote !== "string" || !action.anchor) return bad(reply, "quote and anchor are required");
+        const res = await noteAction(ctx, {
+          quote: action.quote,
+          anchor: action.anchor,
+          ...(action.text !== undefined ? { text: action.text } : {}),
+        });
+        return { accepted: true, annotationId: res.threadId, threadId: res.threadId } satisfies ActionResponse;
+      }
+      case "reply": {
+        need(ctx);
+        if (typeof action.threadId !== "string" || typeof action.message !== "string") {
+          return bad(reply, "threadId and message are required");
+        }
+        const res = await replyAction(ctx, action.threadId, action.message);
+        const out: ActionResponse = { accepted: true, threadId: res.threadId, annotationId: res.threadId };
+        if (res.jobId) out.jobId = res.jobId;
+        return out;
+      }
+      case "retry": {
+        need(ctx);
+        if (typeof action.threadId !== "string") return bad(reply, "threadId is required");
+        const res = await retryAction(ctx, action.threadId);
+        const out: ActionResponse = { accepted: true, threadId: res.threadId, annotationId: res.threadId };
+        if (res.jobId) out.jobId = res.jobId;
+        return out;
+      }
+      case "depth": {
+        need(ctx);
+        if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
+        if (action.direction !== "simpler" && action.direction !== "deeper") {
+          return bad(reply, "direction must be simpler or deeper");
+        }
+        const res = await depthAction(ctx, action.cardId, action.direction);
+        const out: ActionResponse = { accepted: true, cardId: res.cardId };
+        if (res.jobId) out.jobId = res.jobId;
+        if (res.deduplicated) out.deduplicated = true;
+        return out;
+      }
+      case "examples": {
+        need(ctx);
+        if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
+        const res = await examplesAction(ctx, action.cardId);
+        const out: ActionResponse = { accepted: true, cardId: res.cardId };
+        if (res.jobId) out.jobId = res.jobId;
+        if (res.deduplicated) out.deduplicated = true;
+        return out;
+      }
+      case "diagram": {
+        need(ctx);
+        if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
+        const res = await diagramAction(ctx, action.cardId);
+        const out: ActionResponse = { accepted: true, cardId: res.cardId };
+        if (res.jobId) out.jobId = res.jobId;
+        if (res.deduplicated) out.deduplicated = true;
+        return out;
+      }
+      case "undo": {
+        need(ctx);
+        if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
+        const res = await undoAction(ctx, action.cardId);
+        return { accepted: true, cardId: res.cardId } satisfies ActionResponse;
+      }
+      case "read": {
+        need(ctx);
+        if (typeof action.cardId !== "string" || typeof action.read !== "boolean") {
+          return bad(reply, "cardId and read are required");
+        }
+        const res = await readAction(ctx, action.cardId, action.read);
+        return { accepted: true, cardId: res.cardId } satisfies ActionResponse;
+      }
+      case "collapse": {
+        need(ctx);
+        if (typeof action.cardId !== "string" || typeof action.collapsed !== "boolean") {
+          return bad(reply, "cardId and collapsed are required");
+        }
+        const res = await collapseAction(ctx, action.cardId, action.collapsed);
+        return { accepted: true, cardId: res.cardId } satisfies ActionResponse;
+      }
+      case "bookmark": {
+        need(ctx);
+        if (typeof action.pageId !== "string" || typeof action.saved !== "boolean") {
+          return bad(reply, "pageId and saved are required");
+        }
+        const res = await bookmarkAction(ctx, action.pageId, action.saved);
+        return { accepted: true, pageId: res.pageId } satisfies ActionResponse;
+      }
+      case "promote": {
+        need(ctx);
+        if (typeof action.annotationId !== "string") return bad(reply, "annotationId is required");
+        const res = await promoteAction(ctx, action.annotationId);
+        return { accepted: true, annotationId: res.annotationId, pageId: res.pageId } satisfies ActionResponse;
+      }
+      case "close": {
+        need(ctx);
+        if (typeof action.annotationId !== "string") return bad(reply, "annotationId is required");
+        const res = await closeAction(ctx, action.annotationId);
+        return { accepted: true, annotationId: res.annotationId } satisfies ActionResponse;
+      }
+      case "delete": {
+        need(ctx);
+        if (typeof action.targetId !== "string") return bad(reply, "targetId is required");
+        // Second-opinion removal travels over the generic `delete` action:
+        // targetId `second-opinion:<cardId>:<mode>` or a stored `so-…`
+        // opinion id. All other targets are annotation ids (M4).
+        const target = action.targetId;
+        const soMatch = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
+        if (soMatch) {
+          try {
+            if (soMatch[1].startsWith("so-")) {
+              await removeSecondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, "", undefined, soMatch[1]);
+            } else {
+              const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
+              await removeSecondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, cardId, mode as "blind" | "check");
+            }
+            return { accepted: true } satisfies ActionResponse;
+          } catch (err) {
+            const msg = (err as Error).message;
+            if (/unknown second opinion|unknown card|unknown review/.test(msg)) {
+              return reply.code(404).send({ error: msg });
+            }
+            return reply.code(500).send({ error: msg });
+          }
+        }
+        const res = await deleteAction(ctx, target);
+        return { accepted: true, annotationId: res.targetId } satisfies ActionResponse;
+      }
+      case "followup": {
+        need(ctx);
+        if (typeof action.cardId !== "string" || typeof action.blockId !== "string" || !Number.isSafeInteger(action.index)) {
+          return bad(reply, "cardId, blockId and index are required");
+        }
+        const res = await followupAction(ctx, action.cardId, action.blockId, action.index);
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, cardId: action.cardId };
+        if (res.jobId) out.jobId = res.jobId;
+        if (res.deduplicated) out.deduplicated = true;
+        return out;
+      }
+      case "concept": {
+        need(ctx);
+        if (typeof action.slug !== "string") return bad(reply, "slug is required");
+        const res = await conceptAction(ctx, action.slug);
+        const out: ActionResponse = { accepted: true, pageId: res.pageId };
+        if (res.jobId) out.jobId = res.jobId;
+        if (res.deduplicated) out.deduplicated = true;
+        return out;
+      }
+      case "second_opinion": {
+        need(ctx);
+        if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
+        if (action.mode !== "blind" && action.mode !== "check") {
+          return bad(reply, "mode must be blind or check");
+        }
+        try {
+          const res = await secondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, action.cardId, action.mode);
+          return { accepted: true, jobId: res.jobId } satisfies ActionResponse;
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (/unknown review|unknown card/.test(msg)) return reply.code(404).send({ error: msg });
+          if (/different model|Settings/.test(msg)) return reply.code(400).send({ error: msg });
+          return reply.code(500).send({ error: msg });
+        }
+      }
+      default:
+        return reply.code(501).send({ error: `not implemented: M3 actions (${(action as { kind: string }).kind})` });
     }
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (/unknown review|unknown card|unknown annotation|unknown comment|unknown follow-up|unknown page|unknown block|unknown file|unknown description|unknown thread|unknown second opinion/.test(msg)) {
+      return reply.code(404).send({ error: msg });
+    }
+    if (/required|must be|bad |invalid|no failed|cannot be retried|has a failed/.test(msg)) {
+      return reply.code(400).send({ error: msg });
+    }
+    if (/not implemented: pipeline not wired/.test(msg)) {
+      return reply.code(501).send({ error: msg });
+    }
+    return reply.code(500).send({ error: msg });
   }
-  // Next agent extends here: explain | ask | note | depth | examples |
-  // diagram | undo | read | collapse | promote | close | delete (other
-  // targets). Each gets its own module under `actions/` and a branch here.
-  return reply.code(501).send({ error: `not implemented: M3 actions (${action.kind})` });
 }

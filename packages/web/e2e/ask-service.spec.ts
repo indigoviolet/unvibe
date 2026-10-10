@@ -1,0 +1,252 @@
+/**
+ * Ask over the real service (M4 interaction).
+ *
+ * Built service + temp data dir + the `demo` review (`UNVIBE_AGENT:
+ * "replay"`, so no live agents and no git needed). Covers:
+ * - select guide text → Ask → working thread → streamed agent answer
+ *   with citation markers (the `ask`/`reply` actions through the patch
+ *   path, replacing the old 60 s client-only fallback);
+ * - Explain runs without breaking (the expansion card itself is a later
+ *   milestone; assert no error toast and an expansion annotation created).
+ *
+ * Requires `mise run build` first. Skipped when the service isn't built.
+ */
+import { execFile } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { expect, test, type Page } from "@playwright/test";
+
+const exec = promisify(execFile);
+const SERVICE_ENTRY = fileURLToPath(new URL("../../service/dist/index.js", import.meta.url));
+
+test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+
+interface RunningService {
+  origin: string;
+  token: string;
+  stop: () => Promise<void>;
+}
+
+/** Spawn the built service on an ephemeral port; parse origin + token. */
+async function startService(dataDir: string): Promise<RunningService> {
+  const { spawn } = await import("node:child_process");
+  const proc = spawn(process.execPath, [SERVICE_ENTRY], {
+    env: {
+      ...process.env,
+      UNVIBE_DATA_DIR: dataDir,
+      UNVIBE_PORT: "0",
+      UNVIBE_REPO_ROOTS: "",
+      // Never start real agents in tests: replay the fixture recordings.
+      UNVIBE_AGENT: "replay",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  const started = new Promise<{ origin: string; token: string }>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`service did not start: ${out}`)), 30_000);
+    proc.stdout?.on("data", (d: Buffer) => {
+      out += d.toString();
+      const m = out.match(/Unvibe listening on (http:\/\/127\.0\.0\.1:\d+)\/\?token=(\S+)/);
+      if (m) {
+        clearTimeout(timer);
+        resolve({ origin: m[1], token: m[2] });
+      }
+    });
+    proc.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    proc.on("exit", (code) => {
+      if (code !== 0 && code !== null) {
+        clearTimeout(timer);
+        reject(new Error(`service exited with ${code}: ${out}`));
+      }
+    });
+  });
+  const { origin, token } = await started;
+  return {
+    origin,
+    token,
+    stop: () =>
+      new Promise<void>((resolve) => {
+        proc.on("exit", () => resolve());
+        proc.kill("SIGTERM");
+        setTimeout(() => {
+          if (proc.exitCode === null) proc.kill("SIGKILL");
+          resolve();
+        }, 5000).unref?.();
+      }),
+  };
+}
+
+async function apiJson(
+  origin: string,
+  token: string,
+  method: string,
+  urlPath: string,
+  body?: unknown,
+): Promise<unknown> {
+  const args = [
+    "-s",
+    "-X",
+    method,
+    `${origin}${urlPath}`,
+    "-H",
+    `Authorization: Bearer ${token}`,
+    "-H",
+    "content-type: application/json",
+  ];
+  if (body !== undefined) args.push("-d", JSON.stringify(body));
+  const { stdout } = await exec("curl", args);
+  return JSON.parse(stdout);
+}
+
+/**
+ * Select the first occurrence of `text` under `rootSelector`, then
+ * dispatch mouseup so the selection toolbar reacts as if the user dragged.
+ */
+async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
+  await page.evaluate((rootSelector) => {
+    document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
+  }, rootSelector);
+  await page.waitForTimeout(350);
+  const found = await page.evaluate(
+    ({ rootSelector, text }) => {
+      const root = document.querySelector(rootSelector);
+      if (!root) return false;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const data = (node as Text).data;
+        const at = data.indexOf(text);
+        if (at < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + text.length);
+        const sel = getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        return true;
+      }
+      return false;
+    },
+    { rootSelector, text },
+  );
+  expect(found).toBe(true);
+  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
+}
+
+test.describe("ask over the real service", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  test.beforeAll(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-ask-data-"));
+    svc = await startService(dataDir);
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    reviewId = created.review.id;
+    // Wait for the guide: root problem + central cards with content.
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
+        pages: { id: string; cards: { id: string; blocks: unknown[] }[] }[];
+      };
+      const root = snap.pages.find((p) => p.id === "root");
+      const ready =
+        root?.cards.some((c) => c.id === "problem" && c.blocks.length > 0) &&
+        root?.cards.some((c) => c.id === "central" && c.blocks.length > 0);
+      if (ready) break;
+      if (Date.now() > deadline) throw new Error("guide did not fill in time");
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    svc = null;
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  async function openReview(page: Page): Promise<void> {
+    if (!svc) throw new Error("service not running");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#page .doc h1.title")).toContainText(
+      "Unfold obsolete folded response headers",
+      { timeout: 30_000 },
+    );
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+  }
+
+  test("ask answers with citations through the streamed patch path", async ({ page }) => {
+    test.setTimeout(120_000);
+    await openReview(page);
+    // Record transient streaming UI: the working indicator and the stream
+    // tail render only while the job runs (the replay backend answers in
+    // ~a second, faster than an assertion round trip), so observe the DOM
+    // continuously from before the Ask click.
+    await page.evaluate(() => {
+      (window as unknown as { __m4seen?: { working: boolean; stream: boolean } }).__m4seen = {
+        working: false,
+        stream: false,
+      };
+      const root = document.querySelector("#C-central");
+      if (!root) return;
+      new MutationObserver(() => {
+        const seen = (window as unknown as { __m4seen: { working: boolean; stream: boolean } }).__m4seen;
+        if (root.querySelector(".ithread .working")) seen.working = true;
+        if (root.querySelector(".ithread .stream")) seen.stream = true;
+      }).observe(root, { childList: true, subtree: true, characterData: true });
+    });
+    await selectText(page, "#C-central", "fast path");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const composer = page.locator("#C-central .ithread[data-pending-thread]");
+    await expect(composer).toBeVisible();
+    await composer.locator("textarea").fill("Does the fast path still catch a fold that uses a bare LF?");
+    await composer.getByRole("button", { name: "Ask" }).click();
+    // The thread carries the question; the agent answer arrives with the
+    // agent avatar and a citation marker whose refs point at the diff
+    // (never the 60 s waiting fallback).
+    const thread = page.locator("#C-central .ithread[data-thread]", {
+      hasText: "Does the fast path still catch a fold",
+    });
+    // Thread-creation patch latency stretches under parallel-suite load
+    // (same race as the comments-service specs); the reply below is the
+    // stable signal.
+    await expect(thread.first()).toBeVisible({ timeout: 30_000 });
+    await expect(thread.locator(".msg .av.ai").first()).toBeVisible({ timeout: 30_000 });
+    const marker = thread.locator(".msg .lk[data-refs]");
+    await expect(marker.first()).toBeVisible({ timeout: 30_000 });
+    await expect(marker.first()).toHaveAttribute("data-refs", /diff:/);
+    await expect(thread.locator(".working")).toHaveCount(0);
+    // And the working + stream states really rendered mid-flight.
+    const seen = await page.evaluate(
+      () => (window as unknown as { __m4seen?: { working: boolean; stream: boolean } }).__m4seen,
+    );
+    expect(seen?.working).toBe(true);
+    expect(seen?.stream).toBe(true);
+  });
+
+  test("explain runs without breaking", async ({ page }) => {
+    test.setTimeout(120_000);
+    await openReview(page);
+    await selectText(page, "#C-central", "fast path");
+    await page.locator('#selbar [data-act="explain"]').click();
+    // No error toast: the action is accepted (the expansion card itself
+    // renders in a later milestone).
+    await page.waitForTimeout(3000);
+    await expect(page.locator("#toast")).toBeHidden();
+    if (!svc) throw new Error("service not running");
+    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
+      annotations: { type: string; anchor: { quotedText: string } }[];
+    };
+    expect(snap.annotations.some((a) => a.type === "expansion" && a.anchor.quotedText.includes("fast path"))).toBe(
+      true,
+    );
+  });
+});
