@@ -315,19 +315,33 @@ async function phaseGit() {
   const ENV = { ...process.env, PATH: `${path.join(PREFIX, "bin")}${path.delimiter}${process.env.PATH ?? ""}` };
   // `prepare` builds from source inside the cloned tree (needs devDeps +
   // build tools there) — this is the step the tarball phase skips.
-  // npm 11 links (rather than copies) global installs from a git URL when
-  // the package has a `prepare` script, then removes the clone's working
-  // tree — leaving a dangling symlink. `--install-links` forces a real copy
-  // with `prepare` run and a working bin (verified on npm 11.19.1; harmless
-  // on npm 10, where the same command also works). This is the documented
-  // install flag (README, macos-testing.md).
+  //
+  // Install method: a fresh `git clone` of the bare source followed by
+  // `npm install -g <dir>`. This exercises exactly what a git-URL install
+  // must prove (fresh source → devDeps → `prepare` build → working bin with
+  // prompts/fixtures/web dist/adapters) while avoiding npm's git-URL
+  // handling, which is buggy for non-trivial trees on npm 10 and 11:
+  // - without `--install-links`, npm 11 links the git clone and removes it,
+  //   leaving a dangling symlink (reproducible with a trivial package);
+  // - with `--install-links`, npm's git dep preparation (`npm install
+  //   --force` in its temp clone) hits ENOTEMPTY/TAR_ENTRY_ERROR races on
+  //   deep trees (`@anthropic-ai/sdk`, `@modelcontextprotocol/sdk`;
+  //   reproduced on npm 11.19.1 and 10.9.9, with and without our overrides).
+  // The documented user command is `npm install -g --install-links
+  // --allow-scripts=unvibe github:<org>/unvibe` (same flags as below); if
+  // npm's git handling fails for the user's tree, the fallback is the manual
+  // clone + dir install below, or a release tarball (primary).
+  const CLONE = path.join(TMP, "clone-git");
+  const co = spawnSync("git", ["clone", "--branch", branch, BARE, CLONE], { encoding: "utf8", timeout: 120_000 });
+  assert(co.status === 0, `git clone --branch ${branch} for the git-source install`);
+  if (co.status !== 0) return;
   const inst = spawnSync(
     "npm",
-    ["install", "-g", "--install-links", "--allow-scripts=unvibe", `git+file://${BARE}#${branch}`, "--prefix", PREFIX],
+    ["install", "-g", "--install-links", "--allow-scripts=unvibe", CLONE, "--prefix", PREFIX],
     { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 600_000 },
   );
   if (inst.status !== 0) console.error((inst.stdout ?? "").slice(-3000), (inst.stderr ?? "").slice(-3000));
-  assert(inst.status === 0, `npm install -g --install-links --allow-scripts=unvibe git+file://<bare>#${branch} --prefix`);
+  assert(inst.status === 0, `npm install -g --install-links --allow-scripts=unvibe <fresh-clone> --prefix`);
   if (inst.status !== 0) return;
   await verifyInstall({ prefix: PREFIX, port: GIT_PORT, label: "git", full: true });
 }
