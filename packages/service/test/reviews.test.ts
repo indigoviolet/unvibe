@@ -105,7 +105,7 @@ describe("review routes", () => {
     }
   });
 
-  it("refresh reports head movement without creating versions (M5 seam)", async () => {
+  it("refresh creates version n+1 on head movement (M5)", async () => {
     const dir = await makeRepo();
     const { app } = await createApp("tok", { runner: real });
     try {
@@ -135,10 +135,16 @@ describe("review routes", () => {
       expect(moved.statusCode).toBe(200);
       expect(moved.json()).toMatchObject({ newVersion: true });
 
-      // M1 leaves the snapshot untouched: still version 1.
+      // M5 creates version 2 in one mutate (single rev bump + patch).
       const snap = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
-      expect((snap.json() as ReviewSnapshot).rev).toBe(1);
-      expect((snap.json() as ReviewSnapshot).version.n).toBe(1);
+      expect((snap.json() as ReviewSnapshot).rev).toBe(2);
+      expect((snap.json() as ReviewSnapshot).version.n).toBe(2);
+      expect((snap.json() as ReviewSnapshot).versionStatus?.stale).toBe(true);
+
+      // The old version stays viewable.
+      const old = await app.inject({ method: "GET", url: `/api/reviews/${id}?version=1`, headers: authed });
+      expect(old.statusCode).toBe(200);
+      expect((old.json() as ReviewSnapshot).version.n).toBe(1);
     } finally {
       await app.close();
     }

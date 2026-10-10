@@ -23,7 +23,7 @@ import { EventBus } from "./events.js";
 import { RealCommandRunner, type CommandRunner } from "./exec/index.js";
 import { MCP_ROUTE_PREFIX } from "./mcp/index.js";
 import { RepoStore } from "./repos/store.js";
-import { registerRoutes, type RouteDeps } from "./routes/index.js";
+import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/index.js";
 import type { ServiceContext } from "./routes/context.js";
 import { ReviewStore } from "./state/store.js";
 import type { ServiceConfig } from "./config.js";
@@ -38,7 +38,7 @@ export interface AppContext {
   deps: RouteDeps;
 }
 
-export interface CreateAppOptions extends RouteDeps {
+export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
   /** Defaults to an in-memory database (tests) — production passes its own. */
   db?: DatabaseSync;
   /** Defaults to a fresh temp dir — production passes the real data dir. */

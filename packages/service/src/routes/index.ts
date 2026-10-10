@@ -9,21 +9,22 @@ import { registerHunks } from "./hunks.js";
 import { registerJobs } from "./jobs.js";
 import { registerPrompts, toPromptSnapshot } from "./prompts.js";
 import { registerRepos } from "./repos.js";
-import { registerReviews } from "./reviews.js";
+import { registerReviews, type ReviewsRouteDeps } from "./reviews.js";
 import { registerSettings } from "./settings.js";
 import { registerSubmit } from "./submit.js";
 
 /**
  * One route module per area; each registers its PRD §14.1 endpoints.
- * `ctx` carries the core stores; `deps` the optional M3 singletons.
+ * `ctx` carries the core stores; `deps` the optional M3 singletons plus
+ * the M5 update-pass wiring (`ReviewsRouteDeps`: job queue + base runner).
  */
 export async function registerRoutes(
   app: FastifyInstance,
   ctx: ServiceContext,
-  deps: RouteDeps = {},
+  deps: RouteDeps & ReviewsRouteDeps = {},
 ): Promise<void> {
   await registerRepos(app, ctx);
-  await registerReviews(app, ctx);
+  await registerReviews(app, ctx, deps);
   await registerHunks(app, ctx);
   await registerComments(app);
   await registerDescription(app);
@@ -43,3 +44,4 @@ export async function registerRoutes(
 }
 
 export type { RouteDeps } from "./deps.js";
+export type { ReviewsRouteDeps, RegisterReviewsDeps } from "./reviews.js";
