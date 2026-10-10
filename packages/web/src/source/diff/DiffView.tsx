@@ -1,27 +1,678 @@
 /**
- * Diff slot. Owner: diff agent.
- * Placeholder: toolbar + file list + hunks per PRD §4.13.
+ * Diff pane (PRD §4.13): toolbar, files panel, file/hunk list.
+ *
+ * Behaviour ported from `prototype.html`; data comes from the review
+ * snapshot (`files` + `hunkStates`). Hunk state (folded, reviewed, note,
+ * summary) persists through `PATCH /api/reviews/:id/hunks/:hash`; in mock
+ * mode the in-memory API applies the same change through the WS-patch path.
+ * View preferences persist in `localStorage`.
+ *
+ * Later milestones plug in here without touching this file's contract:
+ * - threads/expansions render under a line via `lineSlots` (prop or
+ *   `LineSlotProvider`) keyed `${fileKey}:${newSideLine}`;
+ * - line-number clicks emit `onLineClick` ("start a comment" hook);
+ * - the guide agent jumps here via `revealSource("diff:…")`.
  */
-export function DiffView({ reviewId }: { reviewId: string }) {
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import { api } from "../../api/client.js";
+import { Icon } from "../../components/Icon.js";
+import { toast } from "../../floating/Toast.js";
+import { useReview } from "../../state/store.js";
+import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } from "./FileSection.js";
+import {
+  buildFileTree,
+  citedHunkHashes,
+  filterFiles,
+  hunkOverlaps,
+  shouldHideHunk,
+  type TreeRow,
+} from "./diffLogic.js";
+import { useLineSlots, type LineSlots } from "./lineSlots.js";
+import {
+  onRevealSource,
+  parseDiffRef,
+  revealSource,
+  takePendingReveal,
+  type RevealTarget,
+} from "./revealSource.js";
+
+export const WIDEN_EVENT = "unvibe:widen-pane";
+
+const PREFS_KEY = "unvibe.diff.prefs.v1";
+const CATS = [
+  { k: "source", l: "Source .py" },
+  { k: "tests", l: "Tests" },
+  { k: "docs", l: "Docs" },
+  { k: "config", l: "Config" },
+  { k: "generated", l: "Generated" },
+] as const;
+
+interface DiffPrefs {
+  view: DiffViewMode;
+  hideUninteresting: boolean;
+  hideReviewed: boolean;
+  cats: string[];
+  filesOpen: boolean;
+}
+
+const DEFAULT_PREFS: DiffPrefs = {
+  view: "unified",
+  hideUninteresting: true,
+  hideReviewed: false,
+  cats: CATS.map((c) => c.k),
+  filesOpen: false,
+};
+
+function loadPrefs(): DiffPrefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return DEFAULT_PREFS;
+    const p = JSON.parse(raw) as Partial<DiffPrefs>;
+    return {
+      view: p.view === "split" ? "split" : "unified",
+      hideUninteresting: p.hideUninteresting ?? true,
+      hideReviewed: p.hideReviewed ?? false,
+      cats: Array.isArray(p.cats) && p.cats.length > 0 ? p.cats : [...DEFAULT_PREFS.cats],
+      filesOpen: p.filesOpen ?? false,
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+export interface DiffViewProps {
+  reviewId: string;
+  /** Extra rows under a diff line, keyed `${fileKey}:${newSideLine}`. */
+  lineSlots?: LineSlots;
+  /** New-side lines that already have a comment (shows the comment icon). */
+  commentedLines?: ReadonlySet<string>;
+  /** "Start a comment" hook: fired when a new-side line number is clicked. */
+  onLineClick?: (fileKey: string, line: number) => void;
+}
+
+interface Highlight {
+  fileKey: string;
+  start: number;
+  end: number;
+  nonce: number;
+}
+
+export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: DiffViewProps): ReactNode {
+  const snapshot = useReview((s) => s.snapshot);
+  const setSnapshot = useReview((s) => s.setSnapshot);
+  const [prefs, setPrefs] = useState<DiffPrefs>(loadPrefs);
+  const [fq, setFq] = useState("");
+  const [fileFold, setFileFold] = useState<Record<string, boolean>>({});
+  const [unhidden, setUnhidden] = useState<Record<string, boolean>>({});
+  const [dirOpen, setDirOpen] = useState<Record<string, boolean>>({});
+  const [editingNote, setEditingNote] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [highlight, setHighlight] = useState<Highlight | null>(null);
+  const [fileHighlight, setFileHighlight] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [eagerFiles, setEagerFiles] = useState<ReadonlySet<string>>(new Set());
+  const [briefs, setBriefs] = useState<Record<string, string> | null>(null);
+  const hlTimer = useRef<number | undefined>(undefined);
+  const ctxSlots = useLineSlots();
+  const slots = useMemo(() => ({ ...ctxSlots, ...lineSlots }), [ctxSlots, lineSlots]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      // Private mode: prefs just don't persist.
+    }
+  }, [prefs]);
+
+  // Snapshot: the guide column fetches it too; fetch here when absent so the
+  // diff pane works standalone (tests, deep links).
+  useEffect(() => {
+    if (snapshot) return;
+    let cancelled = false;
+    api
+      .review(reviewId)
+      .then((snap) => {
+        if (!cancelled) setSnapshot(snap);
+      })
+      .catch(() => {
+        // Service stubs return 501 until Service M1 lands; the pane shows loading.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reviewId, snapshot, setSnapshot]);
+
+  // Stale check: a cheap fetch-and-compare, no agent time (PRD §8). The
+  // update pass itself lands in a later milestone.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .refresh(reviewId)
+      .then((r) => {
+        if (!cancelled) setStale(r.newVersion);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [reviewId]);
+
+  // Mock-only hidden-row brief copy (prototype BRIEF; M2's hunk pass
+  // produces these per hunk). Code-split so production never loads it.
+  useEffect(() => {
+    if (import.meta.env.VITE_MOCK === "1") {
+      import("../../mock/diff.js")
+        .then((m) => setBriefs(m.HUNK_BRIEFS))
+        .catch(() => {});
+    }
+  }, []);
+
+  const states = useMemo(
+    () => new Map<string, HunkUiState>((snapshot?.hunkStates ?? []).map((s) => [s.contentHash, s])),
+    [snapshot],
+  );
+
+  const reviewedCount = useCallback(
+    (f: ReviewFile) => f.hunks.filter((h) => states.get(h.contentHash)?.reviewed).length,
+    [states],
+  );
+
+  const cited = useMemo(
+    () =>
+      snapshot ? citedHunkHashes(snapshot.files, snapshot.pages, snapshot.annotations) : new Set<string>(),
+    [snapshot],
+  );
+
+  const isHidden = useCallback(
+    (h: Hunk) =>
+      shouldHideHunk(h, {
+        hideUninteresting: prefs.hideUninteresting,
+        unhidden: !!unhidden[h.contentHash],
+        cited: cited.has(h.contentHash),
+      }),
+    [prefs.hideUninteresting, unhidden, cited],
+  );
+
+  const cats = useMemo(() => new Set(prefs.cats), [prefs.cats]);
+  const visible = useMemo(
+    () =>
+      snapshot ? filterFiles(snapshot.files, { query: fq, cats, hideReviewed: prefs.hideReviewed, reviewedCount }) : [],
+    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount],
+  );
+
+  const progress = useMemo(() => {
+    const files = snapshot?.files ?? [];
+    const total = files.reduce((s, f) => s + f.hunks.length, 0);
+    const rev = files.reduce((s, f) => s + f.hunks.filter((h) => states.get(h.contentHash)?.reviewed).length, 0);
+    return { reviewed: rev, total };
+  }, [snapshot, states]);
+
+  // Summarize is async (a job on the service, canned text in mock): the
+  // button shows progress until the snapshot actually carries a summary.
+  useEffect(() => {
+    setBusy((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const k of Object.keys(next)) {
+        if (states.get(k)?.summary) {
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [states]);
+
+  const flash = useCallback((hl: Highlight | null, fileKey: string | null) => {
+    window.clearTimeout(hlTimer.current);
+    setHighlight(hl);
+    setFileHighlight(fileKey);
+    hlTimer.current = window.setTimeout(() => {
+      setHighlight(null);
+      setFileHighlight(null);
+    }, 2600);
+  }, []);
+
+  const doReveal = useCallback(
+    (target: RevealTarget) => {
+      const snap = useReview.getState().snapshot;
+      if (!snap) return;
+      const file = snap.files.find((f) => f.fileKey === target.fileKey);
+      if (!file) return;
+      const st = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
+      const fullyReviewed = file.hunks.every((h) => st.get(h.contentHash)?.reviewed);
+      setPrefs((p) => ({
+        ...p,
+        cats: p.cats.includes(file.category) ? p.cats : [...p.cats, file.category],
+        hideReviewed: p.hideReviewed && fullyReviewed ? false : p.hideReviewed,
+      }));
+      setFq((prev) => (file.path.toLowerCase().includes(prev.toLowerCase()) ? prev : ""));
+      setFileFold((prev) => ({ ...prev, [file.fileKey]: false }));
+      setEagerFiles((prev) => new Set(prev).add(file.fileKey));
+      if (target.start === undefined) {
+        flash(null, file.fileKey);
+        return;
+      }
+      const end = target.end ?? target.start;
+      setUnhidden((prev) => {
+        const next = { ...prev };
+        for (const h of file.hunks) if (hunkOverlaps(h, target.start as number, end)) next[h.contentHash] = true;
+        return next;
+      });
+      // Unfold the overlapping hunks so the lines are visible (persisted,
+      // like clicking "show" — the prototype has no persistence to keep).
+      for (const h of file.hunks) {
+        if (hunkOverlaps(h, target.start, end) && st.get(h.contentHash)?.folded) {
+          api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {});
+        }
+      }
+      flash({ fileKey: file.fileKey, start: target.start, end, nonce: Date.now() }, null);
+    },
+    [reviewId, flash],
+  );
+
+  useEffect(() => {
+    if (!snapshot) return;
+    const ref = takePendingReveal();
+    if (ref) {
+      const t = parseDiffRef(ref);
+      if (t) doReveal(t);
+    }
+  }, [snapshot, doReveal]);
+
+  useEffect(() => onRevealSource((_ref, target) => doReveal(target)), [doReveal]);
+
+  // Mock-mode hook for Playwright: `window.__revealSource("diff:conn:82")`.
+  useEffect(() => {
+    if (import.meta.env.VITE_MOCK === "1") {
+      (window as unknown as { __revealSource?: (ref: string) => boolean }).__revealSource = revealSource;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!highlight && !fileHighlight) return;
+    const key = highlight?.fileKey ?? fileHighlight;
+    if (!key) return;
+    let el: HTMLElement | null = null;
+    if (highlight) {
+      for (let l = highlight.start; l <= highlight.end; l++) {
+        el = document.getElementById(`L-${key}-${l}`);
+        if (el) break;
+      }
+    }
+    el ??= document.getElementById(`F-${key}`);
+    // jsdom (unit tests) has no scrollIntoView; guard it.
+    el?.scrollIntoView?.({ block: "center" });
+  }, [highlight, fileHighlight]);
+
+  useEffect(() => () => window.clearTimeout(hlTimer.current), []);
+
+  const patchHunk = useCallback(
+    async (hash: string, body: UpdateHunkRequest) => {
+      try {
+        await api.updateHunk(reviewId, hash, body);
+      } catch {
+        toast("Couldn't save hunk state");
+      }
+    },
+    [reviewId],
+  );
+
+  const actions: HunkActions = useMemo(
+    () => ({
+      toggleFold: (hash, folded) => void patchHunk(hash, { folded: !folded }),
+      summarize: (hash) => {
+        setBusy((prev) => ({ ...prev, [hash]: true }));
+        api.summarizeHunk(reviewId, hash).catch(() => {
+          toast("Couldn't summarize hunk");
+          setBusy((prev) => {
+            const next = { ...prev };
+            delete next[hash];
+            return next;
+          });
+        });
+      },
+      deleteSummary: (hash) => void patchHunk(hash, { summary: null }),
+      beginNote: (hash, current) => {
+        setEditingNote((prev) => ({ ...prev, [hash]: current ?? "" }));
+        setTimeout(() => document.getElementById(`hn-${hash}`)?.focus(), 0);
+      },
+      changeNote: (hash, draft) => setEditingNote((prev) => ({ ...prev, [hash]: draft })),
+      saveNote: (hash) => {
+        const draft = (editingNote[hash] ?? "").trim();
+        setEditingNote((prev) => {
+          const next = { ...prev };
+          delete next[hash];
+          return next;
+        });
+        void patchHunk(hash, { note: draft });
+      },
+      discardNote: (hash) =>
+        setEditingNote((prev) => {
+          const next = { ...prev };
+          delete next[hash];
+          return next;
+        }),
+      deleteNote: (hash) => void patchHunk(hash, { note: "" }),
+      toggleReviewed: (hash, reviewed) => void patchHunk(hash, { reviewed: !reviewed, folded: !reviewed }),
+    }),
+    [patchHunk, reviewId, editingNote],
+  );
+
+  const setView = useCallback(
+    (view: DiffViewMode) => {
+      if (view === "split") window.dispatchEvent(new CustomEvent(WIDEN_EVENT));
+      setPrefs((p) => ({ ...p, view }));
+    },
+    [],
+  );
+
+  const foldAll = useCallback(async () => {
+    const snap = useReview.getState().snapshot;
+    if (!snap) return;
+    const st = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
+    const targets: { file: ReviewFile; hunk: Hunk }[] = [];
+    for (const f of filterFiles(snap.files, {
+      query: fq,
+      cats: new Set(prefs.cats),
+      hideReviewed: prefs.hideReviewed,
+      reviewedCount,
+    })) {
+      f.hunks.forEach((h) => {
+        if (
+          shouldHideHunk(h, {
+            hideUninteresting: prefs.hideUninteresting,
+            unhidden: !!unhidden[h.contentHash],
+            cited: cited.has(h.contentHash),
+          })
+        ) {
+          return;
+        }
+        targets.push({ file: f, hunk: h });
+      });
+    }
+    // Fold first so the UI settles, then summarize hunks lacking one.
+    await Promise.all(targets.map(({ hunk }) => api.updateHunk(reviewId, hunk.contentHash, { folded: true }).catch(() => {})));
+    for (const { hunk } of targets) {
+      if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
+    }
+    toast(`Summarized and folded ${targets.length} hunks.`);
+  }, [reviewId, fq, prefs, reviewedCount, unhidden, cited, actions]);
+
+  const unfoldAll = useCallback(async () => {
+    const snap = useReview.getState().snapshot;
+    if (!snap) return;
+    setFileFold({});
+    await Promise.all(
+      snap.files.flatMap((f) => f.hunks.map((h) => api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {}))),
+    );
+  }, [reviewId]);
+
+  const markFileReviewed = useCallback(
+    (file: ReviewFile, allReviewed: boolean) => {
+      void Promise.all(
+        file.hunks.map((h) =>
+          api.updateHunk(reviewId, h.contentHash, { reviewed: !allReviewed, folded: !allReviewed }).catch(() => {}),
+        ),
+      ).catch(() => toast("Couldn't save hunk state"));
+    },
+    [reviewId],
+  );
+
+  const doUpdate = useCallback(async () => {
+    setUpdating(true);
+    try {
+      await api.update(reviewId);
+      setSnapshot(await api.review(reviewId));
+      setStale(false);
+      toast("Review updated");
+    } catch {
+      toast("Couldn't update the review");
+    } finally {
+      setUpdating(false);
+    }
+  }, [reviewId, setSnapshot]);
+
+  if (!snapshot) {
+    return (
+      <div>
+        <div className="dtool">
+          <span className="hint">Loading diff…</span>
+        </div>
+      </div>
+    );
+  }
+
+  const tree: TreeRow[] = prefs.filesOpen ? buildFileTree(visible) : [];
+  const catCount = (k: string): number => snapshot.files.filter((f) => f.category === k).length;
+
   return (
-    <div style={{ padding: "8px 12px" }}>
+    <div>
       <div className="dtool">
-        <button className="tbtn" type="button">
-          Files
+        <button
+          className="tbtn"
+          type="button"
+          aria-expanded={prefs.filesOpen}
+          data-tip={prefs.filesOpen ? "Hide the file list" : "Show the file list"}
+          aria-label={prefs.filesOpen ? "Hide files panel" : "Show files panel"}
+          onClick={() => setPrefs((p) => ({ ...p, filesOpen: !p.filesOpen }))}
+        >
+          <Icon name={prefs.filesOpen ? "down" : "right"} />
+          Files <span className="hint">{visible.length}/{snapshot.files.length}</span>
         </button>
         <span className="seg" role="group" aria-label="Diff view">
-          <button type="button" aria-pressed="true">
+          <button type="button" aria-pressed={prefs.view === "unified"} onClick={() => setView("unified")}>
             Unified
           </button>
-          <button type="button" aria-pressed="false">
+          <button type="button" aria-pressed={prefs.view === "split"} onClick={() => setView("split")}>
             Split
           </button>
         </span>
-        <button className="x" type="button" aria-pressed="true">
-          ✓ Hide uninteresting
+        <button
+          className="x"
+          type="button"
+          aria-pressed={prefs.hideUninteresting}
+          data-tip="Collapse generated, import-only, docs and config hunks to one line"
+          aria-label="Hide uninteresting"
+          onClick={() =>
+            setPrefs((p) => {
+              if (!p.hideUninteresting) setUnhidden({});
+              return { ...p, hideUninteresting: !p.hideUninteresting };
+            })
+          }
+        >
+          {prefs.hideUninteresting ? "✓ " : ""}Hide uninteresting
+        </button>
+        <button
+          className="x"
+          type="button"
+          data-tip="Summarize every hunk with the agent, then fold the code"
+          aria-label="Fold all"
+          onClick={() => void foldAll()}
+        >
+          <Icon name="spark" />
+          Fold all
+        </button>
+        <button
+          className="x"
+          type="button"
+          data-tip="Show code for every folded hunk; summaries stay"
+          aria-label="Unfold all"
+          onClick={() => void unfoldAll()}
+        >
+          Unfold all
         </button>
       </div>
-      <p className="hint">Scaffold placeholder for review {reviewId} (diff agent owns this).</p>
+      {stale ? (
+        <div className="dbar" data-testid="stale-banner">
+          <span className="hint">New commits on this branch</span>
+          <span className="sp" />
+          <button className="x" type="button" disabled={updating} onClick={() => void doUpdate()}>
+            Update
+          </button>
+        </div>
+      ) : null}
+      {prefs.filesOpen ? (
+        <div className="files">
+          <div className="frow">
+            <input
+              type="search"
+              id="fq"
+              placeholder="Filter files by name"
+              aria-label="Filter files by name"
+              value={fq}
+              onChange={(e) => setFq(e.target.value)}
+            />
+            <button
+              className="chip"
+              type="button"
+              aria-pressed={prefs.hideReviewed}
+              onClick={() => setPrefs((p) => ({ ...p, hideReviewed: !p.hideReviewed }))}
+            >
+              Hide reviewed
+            </button>
+          </div>
+          <div className="frow" role="group" aria-label="File types">
+            {CATS.map((c) => (
+              <button
+                key={c.k}
+                className="chip"
+                type="button"
+                aria-pressed={cats.has(c.k)}
+                onClick={() =>
+                  setPrefs((p) => ({
+                    ...p,
+                    cats: p.cats.includes(c.k) ? p.cats.filter((x) => x !== c.k) : [...p.cats, c.k],
+                  }))
+                }
+              >
+                {c.l}
+                <span>{catCount(c.k)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="prog">
+            <span>
+              {progress.reviewed}/{progress.total} hunks reviewed
+            </span>
+            <span className="bar">
+              <i style={{ width: `${progress.total === 0 ? 0 : Math.round((100 * progress.reviewed) / progress.total)}%` }} />
+            </span>
+          </div>
+          <div className="flist">
+            {tree.length > 0 ? (
+              tree.map((row) =>
+                row.type === "dir" ? (
+                  <button
+                    key={`dir-${row.path}`}
+                    className="fr dir"
+                    type="button"
+                    style={{ paddingLeft: 10 + row.depth * 14 }}
+                    aria-expanded={dirOpen[row.path] ?? true}
+                    onClick={() => setDirOpen((prev) => ({ ...prev, [row.path]: !(prev[row.path] ?? true) }))}
+                  >
+                    <Icon name={dirOpen[row.path] ?? true ? "down" : "right"} />
+                    <span className="nm" title={row.path}>
+                      {row.label}
+                    </span>
+                  </button>
+                ) : (
+                  <FileTreeRow
+                    key={`file-${row.file.fileKey}`}
+                    file={row.file}
+                    depth={row.depth}
+                    reviewed={reviewedCount(row.file)}
+                    onJump={(key) => {
+                      setFileFold((prev) => ({ ...prev, [key]: false }));
+                      setEagerFiles((prev) => new Set(prev).add(key));
+                      setTimeout(() => {
+                        const el = document.getElementById(`F-${key}`);
+                        const stick = document.querySelector("#right .rstick");
+                        if (!el) return;
+                        // Scroll within the pane, keeping the sticky toolbar visible.
+                        const pane = document.getElementById("right");
+                        if (pane && stick) {
+                          pane.scrollTop += el.getBoundingClientRect().top - stick.getBoundingClientRect().bottom;
+                        } else {
+                          el.scrollIntoView({ block: "start" });
+                        }
+                      }, 0);
+                    }}
+                  />
+                ),
+              )
+            ) : (
+              <p className="hint" style={{ padding: "4px 10px", margin: 0 }}>
+                No files match.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
+      {visible.length > 0 ? (
+        visible.map((f, vi) => (
+          <FileSection
+            key={f.fileKey}
+            file={f}
+            view={prefs.view}
+            reviewed={reviewedCount(f)}
+            folded={!!fileFold[f.fileKey]}
+            eager={vi < 3 || eagerFiles.has(f.fileKey)}
+            busy={busy}
+            editingNote={editingNote}
+            slots={slots}
+            commentedLines={commentedLines ?? new Set()}
+            highlight={highlight?.fileKey === f.fileKey ? { start: highlight.start, end: highlight.end } : null}
+            fileHighlighted={fileHighlight === f.fileKey}
+            briefs={briefs}
+            states={states}
+            isHidden={isHidden}
+            actions={actions}
+            onLineClick={onLineClick}
+            onToggleFileFold={(key) => setFileFold((prev) => ({ ...prev, [key]: !prev[key] }))}
+            onMarkFileReviewed={markFileReviewed}
+            onUnhide={(hashes) => setUnhidden((prev) => ({ ...prev, ...Object.fromEntries(hashes.map((h) => [h, true])) }))}
+          />
+        ))
+      ) : (
+        <p className="hint" style={{ padding: 16 }}>
+          No files match the current filters.
+        </p>
+      )}
     </div>
+  );
+}
+
+function FileTreeRow({
+  file,
+  depth,
+  reviewed,
+  onJump,
+}: {
+  file: ReviewFile;
+  depth: number;
+  reviewed: number;
+  onJump: (fileKey: string) => void;
+}): ReactNode {
+  const total = file.hunks.length;
+  const added = file.hunks.reduce((s, h) => s + h.added, 0);
+  const removed = file.hunks.reduce((s, h) => s + h.removed, 0);
+  return (
+    <button
+      className="fr"
+      type="button"
+      style={{ paddingLeft: 10 + depth * 14 + 20 }}
+      title={file.path}
+      onClick={() => onJump(file.fileKey)}
+    >
+      <span className="nm">{file.path.split("/").pop()}</span>
+      {file.category === "generated" ? <span className="gtag">gen</span> : null}
+      <span className="st">
+        <span className="a">+{added}</span> <span className="d">−{removed}</span>
+      </span>
+      <span className={`rv${reviewed === total ? " done" : ""}`}>{reviewed === total ? "✓" : `${reviewed}/${total}`}</span>
+    </button>
   );
 }
