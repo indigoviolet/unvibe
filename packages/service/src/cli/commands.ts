@@ -92,7 +92,9 @@ async function cmdStart(args: string[]): Promise<number> {
     // and keeps `stop`/`status` fast even when Fastify is unavailable.
     const { serve } = await import("../serve.js");
     await serve();
-    return 0;
+    // serve() returns after logging while the server lives on in the event
+    // loop — never fall through to the dispatcher's process.exit().
+    await new Promise<never>(() => {});
   }
   await spawnDetached();
   const ok = await waitForHealth(config.port);
