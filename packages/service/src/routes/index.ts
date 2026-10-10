@@ -9,6 +9,7 @@ import { registerEvents } from "./events.js";
 import { registerHunks } from "./hunks.js";
 import { registerJobs } from "./jobs.js";
 import { registerPrompts, toPromptSnapshot } from "./prompts.js";
+import { registerReadiness } from "./readiness.js";
 import { registerRepos } from "./repos.js";
 import { registerReviews, type ReviewsRouteDeps } from "./reviews.js";
 import { registerSettings } from "./settings.js";
@@ -33,6 +34,7 @@ export async function registerRoutes(
     fixturesDir?: string;
   };
   await registerRepos(app, ctx);
+  await registerReadiness(app, ctx, deps);
   await registerReviews(app, ctx, deps);
   await registerHunks(app, full as unknown as ServiceContext, full as unknown as RouteDeps);
   await registerComments(app, ctx);

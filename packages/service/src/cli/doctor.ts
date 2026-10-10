@@ -5,12 +5,20 @@
  * a fresh machine without agent CLIs still reports cleanly. `gh` is probed
  * with `GITHUB_TOKEN` unset (PRD §15) so a scoped token in the environment
  * can neither help nor break the check.
+ *
+ * Shared checks (PATH lookup, `gh` auth, `git` version) live in
+ * `../readiness/checks.js` so `GET /api/readiness` reuses the same logic.
  */
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
-import path from "node:path";
 import { resolveLoginShellPath } from "../exec/shell-path.js";
+import {
+  findOnPath as sharedFindOnPath,
+  ghAuthStatus as sharedGhAuth,
+  gitVersion as sharedGitVersion,
+} from "../readiness/checks.js";
+import { RealCommandRunner } from "../exec/runner.js";
 
 export interface DoctorCheck {
   name: string;
@@ -34,27 +42,13 @@ function execTimeout(
   });
 }
 
-/** Minimal `command -v`: search PATH for an executable file. */
+/** Minimal `command -v` (shared with readiness; re-exported for compat). */
 export function findOnPath(name: string, pathValue: string = process.env.PATH ?? ""): string | null {
-  const dirs = pathValue.split(path.delimiter).filter(Boolean);
-  const candidates = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`, name] : [name];
-  for (const dir of dirs) {
-    for (const c of candidates) {
-      const full = path.join(dir, c);
-      try {
-        fs.accessSync(full, fs.constants.X_OK);
-        const st = fs.statSync(full);
-        if (st.isFile()) return full;
-      } catch {
-        // keep looking
-      }
-    }
-  }
-  return null;
+  return sharedFindOnPath(name, pathValue);
 }
 
 async function toolVersion(cmd: string, args: string[]): Promise<string | null> {
-  if (!findOnPath(cmd)) return null;
+  if (!sharedFindOnPath(cmd)) return null;
   const r = await execTimeout(cmd, args);
   if (r.code !== 0) return null;
   return r.stdout.split("\n")[0];
@@ -74,18 +68,12 @@ function portTaken(port: number, timeoutMs = 2000): Promise<boolean> {
   });
 }
 
-/** `gh auth status` with GITHUB_TOKEN unset (PRD §15). Exported for tests. */
+/**
+ * `gh auth status` with GITHUB_TOKEN unset (PRD §15). Shared with
+ * readiness (see `../readiness/checks.js`); kept here for compat.
+ */
 export async function ghAuthStatus(): Promise<{ present: boolean; loggedIn: boolean; detail: string }> {
-  const bin = findOnPath("gh");
-  if (!bin) return { present: false, loggedIn: false, detail: "gh not on PATH" };
-  const env = { ...process.env, GITHUB_TOKEN: undefined } as NodeJS.ProcessEnv;
-  delete env.GITHUB_TOKEN;
-  const r = await execTimeout("gh", ["auth", "status"], { env });
-  if (r.code === 0) {
-    const first = (r.stdout + "\n" + r.stderr).split("\n").find((l) => l.trim()) ?? "logged in";
-    return { present: true, loggedIn: true, detail: first.trim() };
-  }
-  return { present: true, loggedIn: false, detail: "gh present but not logged in (gh auth login)" };
+  return sharedGhAuth(new RealCommandRunner());
 }
 
 export interface DoctorOptions {
@@ -103,7 +91,8 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
     detail: `${process.version} (need >= 24 for node:sqlite) at ${process.execPath}`,
   });
 
-  const git = await toolVersion("git", ["--version"]);
+  const runner = new RealCommandRunner();
+  const git = (await sharedGitVersion(runner)) ?? (await toolVersion("git", ["--version"]));
   checks.push({ name: "git", status: git ? "ok" : "fail", detail: git ?? "not on PATH" });
 
   const gh = await ghAuthStatus();
