@@ -10,7 +10,6 @@ import type { Annotation, Block, DepthLevel, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
-import { activeAliases } from "./aliases.js";
 import { resolveBlockCitations, resolveCitation } from "./citations.js";
 import { DiagramView } from "./DiagramView.js";
 import { depthText, isPageRead } from "./guideUtils.js";
@@ -97,7 +96,7 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
   const pages = snapshot?.pages;
   const citations =
     "citations" in block && Array.isArray(block.citations) ? block.citations : [];
-  const resolved = snapshot ? resolveBlockCitations(snapshot, citations, activeAliases()) : [];
+  const resolved = snapshot ? resolveBlockCitations(snapshot, citations) : [];
   const id = `B-${block.id}`;
 
   switch (block.type) {
@@ -119,7 +118,7 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     case "list": {
       const items = block.items.map((item, i) => {
         const itemResolved = snapshot
-          ? resolveBlockCitations(snapshot, item.citations, activeAliases())
+          ? resolveBlockCitations(snapshot, item.citations)
           : [];
         return (
           <li key={i} id={`${id}-${i}`}>
@@ -221,7 +220,7 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     case "comment-link": {
       const thread = snapshot?.annotations.find((a) => a.id === block.threadId);
       const label = snapshot
-        ? resolveCitation(snapshot, { target: block.diffRef }, activeAliases()).label
+        ? resolveCitation(snapshot, { target: block.diffRef }).label
         : block.diffRef;
       return (
         <div className="blk" id={id}>

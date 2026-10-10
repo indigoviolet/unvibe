@@ -24,7 +24,7 @@ import type {
   ReviewFile,
   ReviewSnapshot,
 } from "@unvibe/shared";
-import { parseReply, collectTargets } from "@unvibe/shared";
+import { canonicalizeTarget, parseId, parseReply, collectTargets } from "@unvibe/shared";
 import { classifyFile, fileKeyForPath } from "../ingest/classify.js";
 import { renderMarkdownBlocks } from "../ingest/description.js";
 import { parseUnifiedDiff } from "../ingest/diff.js";
@@ -132,11 +132,46 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
 
   const textOf = (file: string): string => read(path.join("recordings", file));
 
+  // --- canonical targets -----------------------------------------------
+  // Stored citations use canonical file keys (like the live pipeline);
+  // the alias-form recordings resolve through this one mapping.
+  const keyAliases = (meta.keyAliases ?? {}) as Record<string, string>;
+  const resolveKey = (key: string): string | null => {
+    if (files.some((f) => f.fileKey === key)) return key;
+    const aliased = keyAliases[key];
+    return aliased && files.some((f) => f.fileKey === aliased) ? aliased : null;
+  };
+  const canonCites = (cites: { target: string }[]): { target: string }[] =>
+    cites.map((c) => ({ target: canonicalizeTarget(c.target, resolveKey) }));
+  const canonBlocks = (blocks: Block[]): Block[] =>
+    blocks.map((b) => {
+      switch (b.type) {
+        case "paragraph":
+          return { ...b, citations: canonCites(b.citations) };
+        case "list":
+          return {
+            ...b,
+            items: b.items.map((it) => ({ ...it, citations: canonCites(it.citations) })),
+            citations: canonCites(b.citations),
+          };
+        case "comment-link":
+          return {
+            ...b,
+            diffRef: canonicalizeTarget(b.diffRef, resolveKey),
+            citations: canonCites(b.citations),
+          };
+        case "aside":
+          return { ...b, inner: canonBlocks(b.inner), citations: canonCites(b.citations) };
+        default:
+          return { ...b, citations: canonCites((b as { citations: { target: string }[] }).citations) };
+      }
+    });
+
   // --- pages -----------------------------------------------------------
   const reader = parseReply(textOf("reader.md"));
   const readerCardIds = (reader.data?.cardIds as string[] | undefined) ?? [];
   const rootCards: Card[] = reader.cards.map((c, i) =>
-    mkCard(readerCardIds[i] ?? `reader-${i}`, "root", c.title, c.blocks),
+    mkCard(readerCardIds[i] ?? `reader-${i}`, "root", c.title, canonBlocks(c.blocks)),
   );
 
   for (const key of ["flow", "design", "regex", "check"]) {
@@ -144,7 +179,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     const parsed = parseReply(textOf(entry.file));
     const cardId = (parsed.data?.cardId as string | undefined) ?? `g-${key}`;
     const title = (parsed.data?.title as string | undefined) ?? null;
-    rootCards.push(mkCard(cardId, "root", title, parsed.blocks));
+    rootCards.push(mkCard(cardId, "root", title, canonBlocks(parsed.blocks)));
   }
 
   const pages: Page[] = [
@@ -173,8 +208,31 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       parent: "root",
       ...(finding.confidence ? { confidence: finding.confidence } : {}),
       ...(finding.summary ? { summary: finding.summary } : {}),
-      cards: parsed.cards.map((c, i) => mkCard(cardIds[i] ?? `${entry.key}-${i}`, entry.key!, c.title, c.blocks)),
+      cards: parsed.cards.map((c, i) =>
+        mkCard(cardIds[i] ?? `${entry.key}-${i}`, entry.key!, c.title, canonBlocks(c.blocks)),
+      ),
     });
+  }
+
+  // Finding → suggested-comment links (PRD §4.9): the seed threads below
+  // exist with fixed ids, so the finding pages link them directly.
+  const findingComment: Record<string, { thread: string; diff: string }> = {
+    "f-lf": { thread: "t-sglf", diff: `diff:${keyAliases["conn"]}:82` },
+    "f-perf": { thread: "t-sgperf", diff: `diff:${keyAliases["conn"]}:80` },
+  };
+  for (const page of pages) {
+    if (page.kind !== "finding") continue;
+    const link = findingComment[page.id];
+    const last = link ? page.cards[page.cards.length - 1] : undefined;
+    if (link && last) {
+      last.blocks.push({
+        type: "comment-link",
+        id: "b-comment",
+        diffRef: link.diff,
+        threadId: link.thread,
+        citations: [{ target: link.diff }],
+      });
+    }
   }
 
   const conceptTitles: Record<string, string> = {};
@@ -188,8 +246,41 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       title,
       saved: true,
       parent: "root",
-      cards: [mkCard(`cc-${entry.key}`, `c-${entry.key}`, null, parsed.blocks)],
+      cards: [mkCard(`cc-${entry.key}`, `c-${entry.key}`, null, canonBlocks(parsed.blocks))],
     });
+  }
+
+  // "Restated →" mapping (PRD §4.11): description paragraph → guide block
+  // ids whose citations restate it, derived from the root page's `desc:`.
+  const restated: Record<string, string[]> = {};
+  const rootPage = pages.find((p) => p.id === "root")!;
+  const scanTargets = (b: Block): string[] => {
+    switch (b.type) {
+      case "paragraph":
+        return b.citations.map((c) => c.target);
+      case "list":
+        return [...b.citations.map((c) => c.target), ...b.items.flatMap((it) => it.citations.map((c) => c.target))];
+      case "aside":
+        return [...b.citations.map((c) => c.target), ...b.inner.flatMap(scanTargets)];
+      case "table":
+      case "code":
+      case "diagram":
+      case "finding-link":
+      case "comment-link":
+      case "follow-up":
+        return b.citations.map((c) => c.target);
+    }
+  };
+  for (const card of rootPage.cards) {
+    for (const block of card.blocks) {
+      for (const t of scanTargets(block)) {
+        const parsed = parseId(t);
+        if (parsed?.kind === "desc") {
+          restated[parsed.paragraph] ??= [];
+          if (!restated[parsed.paragraph].includes(block.id)) restated[parsed.paragraph].push(block.id);
+        }
+      }
+    }
   }
 
   // --- annotations (prototype seed()) ----------------------------------
@@ -340,6 +431,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       rev: "1",
       source: "pr",
       editable: false,
+      restated,
     },
     pages,
     annotations,

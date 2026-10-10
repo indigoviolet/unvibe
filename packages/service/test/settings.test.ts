@@ -59,11 +59,9 @@ describe("settings + jobs routes", () => {
     migrate(db);
     db.prepare("INSERT OR IGNORE INTO repos (id, owner, name, local_path) VALUES ('r', 'o', 'n', '/t')").run();
     db.prepare("INSERT OR IGNORE INTO reviews (id, repo_id, branch, created_at) VALUES ('r1', 'r', 'b', 0)").run();
-    const { app } = await createApp("tok", {
-      settings: new SettingsStore(db),
+    const { app } = await createApp("tok", {settings: new SettingsStore(db),
       models: new StaticModelCatalog(),
-      jobs: new JobQueue(),
-    });
+      jobs: new JobQueue(), autoPipeline: false});
     const auth = { authorization: "Bearer tok" };
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
@@ -108,7 +106,7 @@ describe("settings + jobs routes", () => {
     const { JobStore } = await import("../src/jobs/store.js");
     const store = new JobStore(db);
     const queue = new JobQueue({ getConcurrencyCap: () => 0, persist: store });
-    const { app } = await createApp("tok", { jobs: queue });
+    const { app } = await createApp("tok", {jobs: queue, autoPipeline: false});
     const auth = { authorization: "Bearer tok" };
     try {
       const job = queue.enqueue({

@@ -93,7 +93,7 @@ describe("repo routes", () => {
   it("POST validates the path and remembers the repo; GET lists it", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-repo-"));
     await makeGitRepo(dir);
-    const { app } = await createApp("tok", { runner: real });
+    const { app } = await createApp("tok", {runner: real, autoPipeline: false});
     const authed = { authorization: "Bearer tok" };
     try {
       const bad = await app.inject({
@@ -112,12 +112,13 @@ describe("repo routes", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as { repos: Repo[] };
-      expect(body.repos).toHaveLength(1);
-      expect(body.repos[0]).toMatchObject({ localPath: dir, owner: "local" });
+      expect(body.repos).toHaveLength(2);
+      expect(body.repos[0]).toMatchObject({ id: "demo" });
+      expect(body.repos[1]).toMatchObject({ localPath: dir, owner: "local" });
 
       const list = await app.inject({ method: "GET", url: "/api/repos", headers: authed });
       expect(list.statusCode).toBe(200);
-      expect((list.json() as { repos: Repo[] }).repos).toHaveLength(1);
+      expect((list.json() as { repos: Repo[] }).repos).toHaveLength(2);
     } finally {
       await app.close();
     }
@@ -134,7 +135,7 @@ describe("repo routes", () => {
       run: (cmd: string, opts: Parameters<FakeCommandRunner["run"]>[1]) =>
         cmd === "gh" ? fake.run(cmd, opts) : real.run(cmd, opts),
     };
-    const { app } = await createApp("tok", { runner });
+    const { app } = await createApp("tok", {runner, autoPipeline: false});
     const authed = { authorization: "Bearer tok" };
     try {
       const added = await app.inject({
@@ -143,7 +144,7 @@ describe("repo routes", () => {
         headers: authed,
         payload: { path: dir },
       });
-      const repo = (added.json() as { repos: Repo[] }).repos[0];
+      const repo = (added.json() as { repos: Repo[] }).repos.find((r) => r.id !== "demo")!;
 
       const res = await app.inject({
         method: "GET",

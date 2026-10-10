@@ -37,6 +37,7 @@ export function StartPage(): React.JSX.Element {
   const [requested, setRequested] = useState<RepoChange[]>([]);
   const [branches, setBranches] = useState<RepoChange[]>([]);
   const [previous, setPrevious] = useState<RepoChange[]>([]);
+  const [demo, setDemo] = useState<RepoChange[]>([]);
   const [path, setPath] = useState("");
   const [opening, setOpening] = useState<string | null>(null);
 
@@ -55,6 +56,15 @@ export function StartPage(): React.JSX.Element {
       })
       .catch(() => {
         // Offline service: the page stays empty.
+      });
+    // Demo entry (repo-less `demo` change): no tokens, same pipeline path.
+    api
+      .repoChanges("demo")
+      .then((r) => {
+        if (!cancelled) setDemo(r.changes.filter((c) => c.kind === "demo"));
+      })
+      .catch(() => {
+        // Demo unavailable: the section stays hidden.
       });
     return () => {
       cancelled = true;
@@ -139,6 +149,26 @@ export function StartPage(): React.JSX.Element {
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
           <h1 className="title">Open a review</h1>
+
+          {demo.length > 0 ? (
+            <>
+              <div className="divider">Try the demo</div>
+              {demo.map((c, i) => (
+                <div key={changeKey(c, i)} className="ci">
+                  <button
+                    className="cj"
+                    type="button"
+                    disabled={opening !== null}
+                    onClick={() => void openReview(changeKey(c, i), { repoId: "demo" })}
+                  >
+                    <span className="cw">Demo · no tokens</span>
+                    <span className="cx2">{c.title}</span>
+                  </button>
+                  {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
+                </div>
+              ))}
+            </>
+          ) : null}
 
           <div className="divider">Repositories</div>
           <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>

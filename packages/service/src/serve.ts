@@ -2,21 +2,17 @@
  * Foreground service entry (PRD §14).
  *
  * Started by the `unvibe` CLI (`start --foreground`, or with no command
- * for `mise run start`). Owns the singletons, shutdown hooks and the
- * idle-exit wiring; the CLI layer (`src/cli/`) handles daemonising.
+ * for `mise run start`). `buildApp` is the single composition root (M3);
+ * this module owns the shutdown hooks and idle-exit wiring; the CLI layer
+ * (`src/cli/`) handles daemonising.
  */
-import type { ReviewEvent } from "@unvibe/shared";
 import { loadOrCreateToken } from "./auth.js";
 import { removeOwnLock, writeLock } from "./cli/lock.js";
 import { loadConfig } from "./config.js";
-import type { EventBus } from "./events.js";
 import { applyLoginShellPath } from "./exec/index.js";
-import { RealCommandRunner } from "./exec/runner.js";
-import { JobQueue, JobStore } from "./jobs/index.js";
 import { ShutdownHooks } from "./lifecycle/index.js";
-import { McpRegistry, type McpReviewData } from "./mcp/index.js";
 import { createApp, listen } from "./server.js";
-import { SettingsStore, StaticModelCatalog } from "./settings/index.js";
+import { isAcpRunner } from "./agent/factory.js";
 import { dbFilePath } from "./store/index.js";
 import { migrate, openDatabase } from "./store/index.js";
 
@@ -34,54 +30,39 @@ export async function serve(): Promise<void> {
   const db = openDatabase(dbFilePath(config.dataDir));
   migrate(db);
 
-  // M3 singletons. The bus is created inside createApp, so the queue's
-  // event sink forwards through a holder assigned after startup.
-  const settings = new SettingsStore(db);
-  const jobStore = new JobStore(db);
-  let bus: EventBus | null = null;
-  const jobs = new JobQueue({
-    persist: jobStore,
-    getConcurrencyCap: () => settings.get().sessionsPerProvider,
-    onEvent: (reviewId: string, event: ReviewEvent) => bus?.publish(reviewId, event),
-  });
-  // Startup recovery: interrupted jobs become retryable errors; queued
-  // jobs wait for their `run` functions to be rebound.
-  const recovered = jobStore.listOpen();
-  if (recovered.length > 0) jobs.recover(recovered);
-
-  const runner = new RealCommandRunner();
-  // TODO(integration): wire a real ReviewReader + worktree paths.
-  const mcp = new McpRegistry({
-    reader: {
-      getReview: async (): Promise<McpReviewData | null> => null,
-      getWorktreePath: () => null,
-    },
-    commands: runner,
-  });
-
   const shutdown = new ShutdownHooks();
+  // buildApp (via createApp) is the single composition root: agent runner
+  // defaults to ACP (real subprocesses), replay only with UNVIBE_AGENT.
+  // The lifecycle closure reads through this holder (assigned after
+  // createApp) so idle exit sees the real job queue (M3 activeCount).
+  const holder: { ctx?: import("./app.js").AppContext } = {};
   const created = await createApp(token, {
     db,
     dataDir: config.dataDir,
-    runner,
-    jobs,
-    settings,
-    models: new StaticModelCatalog(),
-    mcp,
+    mcpBaseUrl: `http://127.0.0.1:${config.port}`,
     lifecycle: {
       idleMs: config.idleMs,
-      hasJobs: () => jobs.activeCount() > 0,
+      hasJobs: () => (holder.ctx ? holder.ctx.jobs.activeCount() > 0 : false),
       onIdleExit: () => {
         void shutdown.run().then(() => process.exit(0));
       },
     },
   });
-  bus = created.bus;
+  holder.ctx = created.ctx;
 
   // Clean shutdown (PRD §14 idle exit): agent subprocesses and jobs first,
-  // then the HTTP server, then the DB. Later milestones register their own
-  // agent-subprocess hooks on the exported ShutdownHooks list pattern.
-  shutdown.onShutdown(() => jobs.shutdown());
+  // then the HTTP server, then the DB.
+  shutdown.onShutdown(async () => {
+    const agents = created.ctx.agents;
+    if (isAcpRunner(agents)) {
+      try {
+        await agents.dispose();
+      } catch {
+        // best-effort: subprocesses die with the process
+      }
+    }
+  });
+  shutdown.onShutdown(() => created.ctx.jobs.shutdown());
   shutdown.onShutdown(() => created.app.close());
   shutdown.onShutdown(() => db.close());
 

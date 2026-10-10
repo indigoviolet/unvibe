@@ -18,25 +18,29 @@ import { fileURLToPath } from "node:url";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
+import type { AgentRunner } from "@unvibe/shared";
 import { hasValidToken } from "./auth.js";
-import { EventBus } from "./events.js";
-import { RealCommandRunner, type CommandRunner } from "./exec/index.js";
+import type { CommandRunner } from "./exec/index.js";
 import { DEFAULT_IDLE_MS, IdleMonitor } from "./lifecycle/index.js";
 import { MCP_ROUTE_PREFIX } from "./mcp/index.js";
-import { RepoStore } from "./repos/store.js";
+import type { McpRegistry } from "./mcp/index.js";
+import type { JobQueue } from "./jobs/index.js";
+import type { ModelCatalog } from "./settings/index.js";
+import type { SettingsStore } from "./settings/index.js";
 import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/index.js";
-import type { ServiceContext } from "./routes/context.js";
-import { ReviewStore } from "./state/store.js";
+import { buildApp, type AppContext as UnifiedContext } from "./app.js";
 import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
 
 export const SERVICE_VERSION = "0.0.1";
 
+/** `createApp` return: Fastify app + unified context (all singletons). */
 export interface AppContext {
   app: FastifyInstance;
-  bus: EventBus;
-  ctx: ServiceContext;
-  deps: RouteDeps;
+  bus: UnifiedContext["bus"];
+  /** Unified context (ServiceContext + RouteDeps + pipeline). Tests use `ctx.reviews`, `ctx.jobs`, `ctx.pipeline`, ... */
+  ctx: UnifiedContext;
+  deps: UnifiedContext;
 }
 
 export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
@@ -46,10 +50,21 @@ export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
   dataDir?: string;
   /** Defaults to the real runner — tests inject fakes. */
   runner?: CommandRunner;
+  /** Agent runner (replay/fake/ACP). Defaults via factory (UNVIBE_AGENT, else ACP). */
+  agents?: AgentRunner;
+  promptsDir?: string;
+  fixturesDir?: string;
+  mcpBaseUrl?: string;
+  models?: ModelCatalog;
+  /** Test override for the MCP registry (mcp.test). */
+  mcp?: McpRegistry;
+  jobs?: JobQueue;
+  settings?: SettingsStore;
   /**
    * Idle-exit wiring (PRD §14, owned by the shell milestone). `idleMs`
    * defaults to 10 minutes; non-positive disables. `hasJobs` should report
-   * running/queued jobs (the service passes the real queue); `onIdleExit`
+   * running/queued jobs; when omitted it defaults to the real job queue's
+   * `activeCount` (M3: idle exit works with the real queue). `onIdleExit`
    * runs clean shutdown. Omitted in tests that don't care.
    */
   lifecycle?: {
@@ -103,21 +118,28 @@ function webDistDir(): string {
 
 export async function createApp(token: string, opts: CreateAppOptions = {}): Promise<AppContext> {
   const app = Fastify({ logger: false });
-  const bus = new EventBus();
 
   const db = opts.db ?? openDatabase(":memory:");
   migrate(db);
-  const dataDir =
-    opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
-  const runner = opts.runner ?? new RealCommandRunner();
-  const ctx: ServiceContext = {
+  const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
+
+  // Unified composition root (M3): builds jobs/settings/sessions/mcp/
+  // pipeline with recovery. Explicit overrides (tests) win over defaults
+  // and are wired into the pipeline itself.
+  const ctx: UnifiedContext = buildApp({
     db,
     dataDir,
-    runner,
-    bus,
-    repos: new RepoStore(db),
-    reviews: new ReviewStore(db, bus),
-  };
+    ...(opts.runner ? { runner: opts.runner } : {}),
+    ...(opts.agents ? { agents: opts.agents } : {}),
+    ...(opts.promptsDir ? { promptsDir: opts.promptsDir } : {}),
+    ...(opts.fixturesDir ? { fixturesDir: opts.fixturesDir } : {}),
+    ...(opts.mcpBaseUrl ? { mcpBaseUrl: opts.mcpBaseUrl } : {}),
+    ...(opts.models ? { models: opts.models } : {}),
+    ...(opts.jobs ? { jobs: opts.jobs } : {}),
+    ...(opts.settings ? { settings: opts.settings } : {}),
+    ...(opts.mcp ? { mcp: opts.mcp } : {}),
+  });
+  const bus = ctx.bus;
 
   await app.register(websocket);
 
@@ -174,7 +196,15 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
 
   app.get("/api/health", async () => ({ ok: true, version: SERVICE_VERSION }));
 
-  await registerRoutes(app, ctx, opts);
+  // Routes take (ctx, deps) where both are the unified context; explicit
+  // test overrides (jobs, baseRunner, ...) win. The update pass defaults to
+  // the pipeline's UpdateBaseRunner; M5 tests inject `baseRunner` directly.
+  const routeDeps = {
+    ...ctx,
+    ...opts,
+    ...(opts.baseRunner ? {} : { baseRunner: ctx.updateRunner }),
+  };
+  await registerRoutes(app, ctx, routeDeps);
 
   // Static web app with SPA fallback. The Vite build emits dist/index.html
   // plus dist/assets/* (hashed, no review data — served without a token so
@@ -199,13 +229,15 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   // Idle exit (PRD §14, shell milestone): exit after `idleMs` with no open
   // window (no WS clients, no recent HTTP) and no running/queued jobs.
   // The timer is unref'd so it never keeps the process alive by itself.
+  // Default hasJobs uses the real job queue (M3), so `serve()` idle-exits
+  // correctly without passing hasJobs explicitly.
   const idleMs = opts.lifecycle?.idleMs ?? DEFAULT_IDLE_MS;
   if (idleMs > 0) {
     const monitor = new IdleMonitor({
       state: {
         wsClients: () => wsClients,
         lastHttpAt: () => lastHttpAt,
-        hasActiveJobs: opts.lifecycle?.hasJobs ?? (() => false),
+        hasActiveJobs: opts.lifecycle?.hasJobs ?? (() => ctx.jobs.activeCount() > 0),
       },
       idleMs,
       onIdle: () => {
@@ -216,7 +248,7 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     app.addHook("onClose", async () => monitor.stop());
   }
 
-  return { app, bus, ctx, deps: opts };
+  return { app, bus, ctx, deps: routeDeps };
 }
 
 export async function listen(app: FastifyInstance, config: ServiceConfig): Promise<string> {

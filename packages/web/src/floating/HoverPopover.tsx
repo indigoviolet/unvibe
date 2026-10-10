@@ -20,7 +20,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { Anchor, Annotation, Page } from "@unvibe/shared";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
-import { activeAliases } from "../guide/aliases.js";
 import { resolveBlockCitations } from "../guide/citations.js";
 import { lookupConceptPage, pagePreviewHtml } from "../guide/guideUtils.js";
 import { openLinkTarget, previewLinkTarget } from "../guide/RichText.js";
@@ -105,7 +104,6 @@ export function HoverPopover() {
   const openFor = (anchor: Element): void => {
     const snap = useReview.getState().snapshot;
     if (!snap) return;
-    const aliases = activeAliases();
     const byId = new Map(snap.pages.map((p) => [p.id, p]));
     const lookup = (id: string): Page | undefined => byId.get(id);
     let content = "";
@@ -114,7 +112,6 @@ export function HoverPopover() {
       const resolved = resolveBlockCitations(
         snap,
         targets.map((target) => ({ target })),
-        aliases,
       );
       content = resolved
         .map(

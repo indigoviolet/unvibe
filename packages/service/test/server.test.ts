@@ -39,25 +39,25 @@ describe("HTTP auth gate", () => {
   it("every PRD §14.1 endpoint is registered and gated", async () => {
     const { app } = await createApp("test-token");
     const authed = { authorization: "Bearer test-token" };
-    // Later milestones own these; they stay 501 stubs on this branch.
-    const stubs: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string }[] = [
-      { method: "POST", url: "/api/reviews/r1/update" },
-      { method: "POST", url: "/api/reviews/r1/actions" },
-      { method: "POST", url: "/api/reviews/r1/hunks/abc/summarize" },
-      { method: "GET", url: "/api/settings" },
-      { method: "PUT", url: "/api/settings" },
-      { method: "GET", url: "/api/jobs" },
-    ];
-    // M1 service implements these (functional status, not 501).
-    // M6 implements comments/description/submit (validation statuses, not 501).
+    // All milestones landed: nothing stays 501 on this branch.
+    const stubs: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string }[] = [];
+    // M1 service + M3 pipeline + M6 comments/description/submit: functional
+    // statuses, not 501.
     const live: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string; status: number }[] = [
       { method: "GET", url: "/api/repos", status: 200 },
       { method: "POST", url: "/api/repos", status: 400 },
       { method: "GET", url: "/api/repos/r1/changes", status: 404 },
+      { method: "GET", url: "/api/repos/demo/changes", status: 200 },
       { method: "POST", url: "/api/reviews", status: 400 },
       { method: "GET", url: "/api/reviews/r1", status: 404 },
       { method: "POST", url: "/api/reviews/r1/refresh", status: 404 },
+      { method: "POST", url: "/api/reviews/r1/update", status: 404 },
+      { method: "POST", url: "/api/reviews/r1/actions", status: 400 },
+      { method: "POST", url: "/api/reviews/r1/resume", status: 404 },
+      { method: "POST", url: "/api/reviews/r1/hunks/abc/summarize", status: 404 },
       { method: "PATCH", url: "/api/reviews/r1/hunks/abc", status: 400 },
+      { method: "GET", url: "/api/settings", status: 200 },
+      { method: "GET", url: "/api/jobs", status: 400 },
       { method: "PATCH", url: "/api/reviews/r1/comments/c1", status: 400 },
       { method: "PUT", url: "/api/reviews/r1/description", status: 400 },
       { method: "POST", url: "/api/reviews/r1/submit", status: 404 },

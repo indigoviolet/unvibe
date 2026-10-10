@@ -74,10 +74,10 @@ describe("update pass", () => {
         return fakeReply(newHash);
       },
     };
-    const { app, ctx } = await createApp("tok", { runner: real, jobs: queue, baseRunner });
+    const { app, ctx } = await createApp("tok", {runner: real, jobs: queue, baseRunner, autoPipeline: false});
     try {
       const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
-      const repoId = (added.json() as { repos: { id: string }[] }).repos[0].id;
+      const repoId = (added.json() as { repos: { id: string; localPath?: string }[] }).repos.find((r) => r.id !== "demo")!.id;
       const created = await app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: { repoId, branch: "feature" } });
       const id = (created.json() as ReviewSnapshot).review.id;
 

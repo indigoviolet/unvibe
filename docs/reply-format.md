@@ -123,6 +123,14 @@ the orange finding reference card:
 Finding: [[page:f-lf]]
 ```
 
+## 7b. Suggested-comment links
+
+Finding pages link their drafted suggested comment with a `comment-link`
+block (PRD §4.9): hover previews the thread, click jumps to the diff line.
+The block is constructed by the app (pipeline/builder) from the critic's
+trailing-JSON `suggestedComment`, not written by the agent — there is no
+inline text form. It renders as `Comment: [[ann:<thread>]] [[<diff:…>]]`.
+
 ## 8. Tables and lists
 
 GitHub Markdown tables and `-`/`*`/`1.` lists. Every table cell and list
