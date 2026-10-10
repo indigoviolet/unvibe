@@ -1,4 +1,4 @@
-/*global console process URL */
+/*global console */
 /**
  * Prune bundled agent platform binaries (see `stubs/empty-platform` +
  * `overrides` in package.json).
