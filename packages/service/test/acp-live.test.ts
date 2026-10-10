@@ -61,7 +61,13 @@ async function startHunkServer(): Promise<HunkServer> {
       return { content: [{ type: "text" as const, text: `HUNK:${id}:live-fixed-content:alpha-bravo-42` }] };
     },
   );
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  // Stateful transport (one MCP session per initialize, like production
+  // `McpRegistry.issueSession`): the SDK forbids reusing a stateless
+  // transport across HTTP requests, and newer CLIs send discover/initialize/
+  // notification/GET/tools-list as separate requests. Stateless reuse 500s
+  // on the second request.
+  const { randomUUID } = await import("node:crypto");
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
   await server.connect(transport);
   const http = createServer((req: IncomingMessage, res: ServerResponse) => {
     if (req.url !== "/mcp") {
@@ -76,6 +82,21 @@ async function startHunkServer(): Promise<HunkServer> {
         parsed = body ? JSON.parse(body) : undefined;
       } catch {
         res.writeHead(400).end("bad json");
+        return;
+      }
+      // Newer claude CLIs (≥2.1.296, MCP protocol 2026-07-28) probe
+      // `server/discover` before `initialize`; our SDK (1.32.1) predates it
+      // and would answer HTTP 500 (fatal). Answer JSON-RPC Method Not Found
+      // (HTTP 200) so the CLI falls back to `initialize`, which we serve.
+      // All other methods (initialize, notifications/initialized, tools/*)
+      // go to the stateful transport, which needs to see the full sequence
+      // to establish the MCP session.
+      const method = (parsed as { method?: unknown } | null)?.method;
+      const rpcId = (parsed as { id?: unknown } | null)?.id;
+      if (method === "server/discover") {
+        res.writeHead(200, { "content-type": "application/json" }).end(
+          JSON.stringify({ jsonrpc: "2.0", id: rpcId ?? null, error: { code: -32601, message: "Method not found: server/discover" } }),
+        );
         return;
       }
       transport.handleRequest(req, res, parsed).catch((e) => {
