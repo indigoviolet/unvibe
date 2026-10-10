@@ -1,18 +1,25 @@
 /**
- * Hunk state (PRD §4.13):
+ * Hunk state (PRD §4.13) + M3 summarize (PRD §11.5, §4.13 "Fold all").
+ *
  * - `PATCH /api/reviews/:id/hunks/:hash` — folded / reviewed / note, keyed
  *   by content hash so state survives rebases, applied through
  *   `ReviewStore.mutate` (rev bump + RFC 6902 patch event on the WS bus).
- * - `POST …/hunks/:hash/summarize` stays 501: the agent milestone owns it.
+ * - `POST …/hunks/:hash/summarize` — one-hunk summarize on demand at user
+ *   priority (small model, no fork). "Fold all" is the client calling this
+ *   per hunk missing a summary (documented in `docs/pipeline.md`); no batch
+ *   endpoint is needed because jobs dedupe per hunk hash.
  */
 import type { FastifyInstance } from "fastify";
 import type { UpdateHunkRequest } from "@unvibe/shared";
 import type { ServiceContext } from "./context.js";
+import type { RouteDeps } from "./deps.js";
+import type { Pipeline } from "../pipeline/index.js";
 
-const TODO_SUMMARY = { error: "not implemented: agent summarize (later milestone)" };
-
-/** PATCH /api/reviews/:id/hunks/:hash · POST …/hunks/:hash/summarize */
-export async function registerHunks(app: FastifyInstance, ctx: ServiceContext): Promise<void> {
+export async function registerHunks(
+  app: FastifyInstance,
+  ctx: ServiceContext,
+  deps: RouteDeps & { pipeline?: Pipeline } = {},
+): Promise<void> {
   app.patch("/api/reviews/:id/hunks/:hash", async (req, reply) => {
     const { id, hash } = req.params as { id: string; hash: string };
     const body = (req.body ?? {}) as UpdateHunkRequest;
@@ -36,8 +43,6 @@ export async function registerHunks(app: FastifyInstance, ctx: ServiceContext): 
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
 
-    // Hunk state is keyed by content hash (PRD §8): unknown hashes are
-    // accepted (the hunk may come from an older version) and upserted.
     try {
       await ctx.reviews.mutate(id, (draft) => {
         let entry = draft.hunkStates.find((s) => s.contentHash === hash);
@@ -59,7 +64,21 @@ export async function registerHunks(app: FastifyInstance, ctx: ServiceContext): 
     return { ok: true };
   });
 
-  app.post("/api/reviews/:id/hunks/:hash/summarize", async (_req, reply) =>
-    reply.code(501).send(TODO_SUMMARY),
-  );
+  app.post("/api/reviews/:id/hunks/:hash/summarize", async (req, reply) => {
+    const { id, hash } = req.params as { id: string; hash: string };
+    void req;
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const pipeline = (deps as { pipeline?: Pipeline }).pipeline;
+    if (!pipeline) return reply.code(501).send({ error: "not implemented: pipeline not wired" });
+    try {
+      const job = pipeline.summarizeHunk(id, hash);
+      return reply.code(202).send({ jobId: job.id });
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (/unknown hunk/.test(msg)) return reply.code(404).send({ error: msg });
+      if (/unknown review/.test(msg)) return reply.code(404).send({ error: msg });
+      return reply.code(500).send({ error: msg });
+    }
+  });
 }

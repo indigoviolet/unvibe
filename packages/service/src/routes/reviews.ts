@@ -1,21 +1,23 @@
 /**
- * Reviews (M1 service + M5 versions):
- * - `POST /api/reviews` — ingest a PR or branch, persist review + version 1
- *   rows, the v1 per-version files (M5, migration 003), and the v1 snapshot.
- * - `GET /api/reviews/:id[?version=n]` — the current snapshot, or the
- *   snapshot with an older version's `version` + `files` swapped in (M5:
- *   older versions stay viewable).
- * - `POST /api/reviews/:id/refresh` — fetch and compare (no agent time,
- *   PRD §8.1). A moved head creates version n+1 with the old→new ID mapping
- *   and applies the §8 table in one `ReviewStore.mutate`.
- * - `POST /api/reviews/:id/update` — manual only: enqueues the update-pass
- *   job (M5). 501 until a `JobQueue` + `UpdateBaseRunner` are wired.
- * - `POST …/actions` (M3) stays a 501 stub here.
+ * Reviews (M1 service + M5 versions + M3 pipeline):
+ * - `POST /api/reviews` — ingest a PR or branch (or the `demo` fixture),
+ *   persist review + version 1 rows, the v1 per-version files (M5), and the
+ *   v1 snapshot. Triggers the M3 pipeline (`reader → base → critic/concepts
+ *   → hunk pass`) in the background when wired.
+ * - `GET /api/reviews/:id[?version=n]` — current snapshot (with live jobs
+ *   merged in), or an older version's `version` + `files` swapped in.
+ * - `POST /api/reviews/:id/refresh` — fetch and compare (no agent time).
+ * - `POST /api/reviews/:id/update` — manual update pass (M5, via the
+ *   pipeline's UpdateBaseRunner by default).
+ * - `POST /api/reviews/:id/resume` — re-enqueue interrupted pipeline stages
+ *   (M3 resilience; idempotent).
+ * - `POST …/actions` — M3 dispatcher (`generate` implemented, rest 501).
  */
 import type { FastifyInstance } from "fastify";
 import type {
   CreateReviewRequest,
   RefreshResponse,
+  ResumeReviewResponse,
   ReviewSnapshot,
   UpdateReviewResponse,
   Version,
@@ -38,35 +40,93 @@ import {
   type UpdateBaseRunner,
   type UpdateReplyParser,
 } from "../versions/update.js";
+import { demoFixtureName, fixturesDirDefault, ingestDemo, isDemoRequest } from "../pipeline/demo.js";
+import { dispatchAction } from "../pipeline/actions/dispatcher.js";
+import type { Pipeline } from "../pipeline/index.js";
 
-const TODO_ACTIONS = { error: "not implemented: M3 actions" };
-
-/**
- * Extra M5 dependencies for the reviews routes. The supervisor wires the
- * real base pipeline; tests inject a fake `baseRunner`. Absent `jobs` or
- * `baseRunner`, `POST …/update` stays 501 like the other unwired stubs.
- */
 export interface ReviewsRouteDeps {
   baseRunner?: UpdateBaseRunner;
   parser?: UpdateReplyParser;
   promptsDir?: string;
+  pipeline?: Pipeline;
+  fixturesDir?: string;
+  /**
+   * When false, `POST /api/reviews` does not auto-trigger the pipeline.
+   * Tests that assert exact revs / empty snapshots use this to preserve
+   * pre-pipeline behaviour; production and pipeline tests use the default
+   * (true). Demo reviews always trigger (they exist to exercise the pipe).
+   */
+  autoPipeline?: boolean;
 }
 
 export type RegisterReviewsDeps = RouteDeps & ReviewsRouteDeps;
 
-/**
- * POST /api/reviews · GET /api/reviews/:id ·
- * POST /api/reviews/:id/refresh · POST /api/reviews/:id/update ·
- * POST /api/reviews/:id/actions
- */
 export async function registerReviews(
   app: FastifyInstance,
   ctx: ServiceContext,
   deps: RegisterReviewsDeps = {},
 ): Promise<void> {
+  const pipeline = (deps as { pipeline?: Pipeline }).pipeline;
+  const autoPipeline = (deps as { autoPipeline?: boolean }).autoPipeline ?? true;
+
   app.post("/api/reviews", async (req, reply) => {
     const body = (req.body ?? {}) as CreateReviewRequest;
     if (!body.repoId) return reply.code(400).send({ error: "repoId is required" });
+
+    // Demo mode: repo-less fixture review running the same pipeline path.
+    if (isDemoRequest(body)) {
+      const reviewId = newReviewId();
+      const fixturesDir = (deps as { fixturesDir?: string }).fixturesDir ?? fixturesDirDefault();
+      void demoFixtureName(body);
+      let ingested;
+      try {
+        ingested = ingestDemo(fixturesDir, reviewId, ctx.dataDir);
+      } catch (err) {
+        return reply.code(500).send({ error: `demo ingest failed: ${(err as Error).message}` });
+      }
+      const snapshot: ReviewSnapshot = {
+        review: ingested.review,
+        version: ingested.version,
+        files: ingested.files,
+        description: ingested.description,
+        pages: [
+          {
+            id: "root",
+            kind: "root",
+            title: ingested.title,
+            saved: false,
+            cards: [],
+          },
+        ],
+        annotations: [],
+        hunkStates: [],
+        jobs: [],
+        contributions: [],
+        logTail: [],
+        rev: 1,
+      };
+      transaction(ctx.db, () => {
+        // Demo repo row (synthetic, so jobs FK + refresh joins work).
+        ctx.db
+          .prepare(
+            "INSERT INTO repos (id, owner, name, local_path, last_opened) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+          )
+          .run("demo", "demo", "urllib3-5020", fixturesDir, Date.now());
+        writeReviewRows(ctx.db, "demo", { ...ingested, review: snapshot.review });
+        saveVersionFiles(ctx.db, reviewId, ingested.version.n, ingested.files);
+        ctx.reviews.putSnapshot(reviewId, snapshot);
+      });
+      if (pipeline) {
+        try {
+          pipeline.startReview(reviewId);
+        } catch (err) {
+          // Pipeline trigger never fails creation; the stage records the error.
+          void err;
+        }
+      }
+      return reply.code(201).send(snapshot);
+    }
+
     if (body.pr === undefined && !body.branch) {
       return reply.code(400).send({ error: "either pr or branch is required" });
     }
@@ -104,6 +164,13 @@ export async function registerReviews(
       ctx.reviews.putSnapshot(reviewId, snapshot);
     });
     ctx.repos.touch(repo.id);
+    if (pipeline && autoPipeline) {
+      try {
+        pipeline.startReview(reviewId);
+      } catch {
+        // never fail creation
+      }
+    }
     return reply.code(201).send(snapshot);
   });
 
@@ -112,13 +179,17 @@ export async function registerReviews(
     const query = req.query as { version?: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
-    if (query.version === undefined) return snapshot;
+    // Merge live jobs so the Jobs view + usage totals stay current without
+    // waiting for a patch event.
+    const jobs = (deps as RouteDeps).jobs;
+    const withJobs: ReviewSnapshot = jobs ? { ...snapshot, jobs: jobs.listByReview(id) } : snapshot;
+    if (query.version === undefined) return withJobs;
 
     const n = Number(query.version);
     if (!Number.isSafeInteger(n) || n < 1) {
       return reply.code(400).send({ error: `bad ?version=${query.version}` });
     }
-    if (n === snapshot.version.n) return snapshot;
+    if (n === snapshot.version.n) return withJobs;
     const vrow = ctx.db
       .prepare(
         "SELECT n, head_sha AS headSha, merge_base_sha AS mergeBaseSha, base_ref AS baseRef, fetched_at AS fetchedAt, id_mapping AS idMapping FROM versions WHERE review_id = ? AND n = ?",
@@ -137,13 +208,22 @@ export async function registerReviews(
       fetchedAt: vrow.fetchedAt,
       idMapping: JSON.parse(vrow.idMapping) as Record<string, string>,
     };
-    return { ...snapshot, version, files };
+    return { ...withJobs, version, files };
   });
 
   app.post("/api/reviews/:id/refresh", async (req, reply) => {
     const { id } = req.params as { id: string };
     const row = readReviewRow(ctx.db, id);
-    if (!row) return reply.code(404).send({ error: "unknown review" });
+    // Demo reviews have no review row (snapshot is the source of truth);
+    // refresh is a no-op for them (no remote to fetch).
+    if (!row) {
+      const snap = ctx.reviews.getSnapshot(id);
+      if (snap?.review.repoId === "demo") {
+        const response: RefreshResponse = { review: snap.review, newVersion: false };
+        return response;
+      }
+      return reply.code(404).send({ error: "unknown review" });
+    }
     const repo = ctx.repos.get(row.repoId);
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
     const snapshot = ctx.reviews.getSnapshot(id);
@@ -177,7 +257,6 @@ export async function registerReviews(
 
   app.post("/api/reviews/:id/update", async (req, reply) => {
     const { id } = req.params as { id: string };
-    // Unwired stays 501 like the other milestone stubs (server.test pins this).
     if (!deps.jobs || !deps.baseRunner) {
       return reply.code(501).send({ error: "not implemented: update pass not wired (no job queue / base runner)" });
     }
@@ -187,7 +266,7 @@ export async function registerReviews(
     let provider = "main";
     let model = "main-model";
     try {
-      const s = deps.settings?.get();
+      const s = (deps as RouteDeps).settings?.get();
       if (s) {
         provider = s.main.provider;
         model = s.main.model;
@@ -219,5 +298,39 @@ export async function registerReviews(
     }
   });
 
-  app.post("/api/reviews/:id/actions", async (_req, reply) => reply.code(501).send(TODO_ACTIONS));
+  app.post("/api/reviews/:id/resume", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!pipeline) return reply.code(501).send({ error: "not implemented: pipeline not wired" });
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    void req;
+    try {
+      const { jobIds, pendingStages } = await pipeline.resumeReview(id);
+      const response: ResumeReviewResponse = { resumed: jobIds.length > 0, jobIds, pendingStages: pendingStages as ResumeReviewResponse["pendingStages"] };
+      return response;
+    } catch (err) {
+      return reply.code(500).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post("/api/reviews/:id/actions", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { kind?: string };
+    if (!body.kind) return reply.code(400).send({ error: "action kind is required" });
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot && body.kind !== "generate") {
+      // Generate validates the review itself; everything else 404s early.
+      return reply.code(404).send({ error: "unknown review" });
+    }
+    return dispatchAction(
+      body as Parameters<typeof dispatchAction>[0],
+      {
+        pipeline,
+        jobs: (deps as RouteDeps).jobs,
+        reviews: ctx.reviews,
+        reviewId: id,
+      },
+      reply,
+    );
+  });
 }
