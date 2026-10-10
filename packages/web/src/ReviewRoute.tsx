@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { connectEvents } from "./api/ws.js";
+import { GuideThreadHooks } from "./comments/GuideThreads.js";
 import { HoverPopover } from "./floating/HoverPopover.js";
 import { SelectionToolbar } from "./floating/SelectionToolbar.js";
 import { Toast } from "./floating/Toast.js";
@@ -22,6 +23,7 @@ export function ReviewRoute() {
   return (
     <>
       <AppShell reviewId={reviewId} />
+      <GuideThreadHooks />
       <HoverPopover />
       <Tooltip />
       <SelectionToolbar />

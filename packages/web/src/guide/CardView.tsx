@@ -11,6 +11,7 @@
  */
 import type { Annotation, Card, DepthLevel, Page } from "@unvibe/shared";
 import { Fragment } from "react";
+import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
 import { performAction, performUpdate } from "./actions.js";
@@ -135,6 +136,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         onOpenPage={onOpenPage}
         onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
       />
+      <GuideBlockThreads reviewId={reviewId} cardId={card.id} blockId={block.id} />
       {expansionsFor(block.id).map((e) => (
         <ExpansionCard key={e.id} expansion={e} />
       ))}
