@@ -77,7 +77,15 @@ async function startService(dataDir: string): Promise<RunningService> {
   }
   const { spawn } = await import("node:child_process");
   const proc = spawn(process.execPath, [SERVICE_ENTRY], {
-    env: { ...process.env, UNVIBE_DATA_DIR: dataDir, UNVIBE_PORT: "0", UNVIBE_REPO_ROOTS: "", UNVIBE_AGENT: "replay", },
+    env: {
+      ...process.env,
+      UNVIBE_DATA_DIR: dataDir,
+      UNVIBE_PORT: "0",
+      UNVIBE_REPO_ROOTS: "",
+      // No agent behaviour under test: keep the pipeline disabled so no
+      // background job mutates the review mid-test.
+      UNVIBE_AGENT: "none",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "";
