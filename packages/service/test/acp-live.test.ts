@@ -177,10 +177,11 @@ describe.skipIf(!LIVE)("ACP live adapters", () => {
           // ("can't access that tool") even though the tool is listed and the
           // runner allows it — model nondeterminism, not a runner bug (the
           // majority of runs call on the first try; debug logs show the
-          // allow decision + server receipt). Retry fresh sessions, bounded.
+          // allow decision + server receipt). Retry fresh sessions, bounded
+          // (5 attempts; codex flakes more in full-suite runs than solo).
           let toolText = "";
           let ok = false;
-          for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+          for (let attempt = 0; attempt < 5 && !ok; attempt++) {
             const target = attempt === 0 ? s : await runner.start({
               provider,
               model: "",
@@ -188,7 +189,7 @@ describe.skipIf(!LIVE)("ACP live adapters", () => {
               systemPrompt: "You are a test agent.",
               mcpServers: [{ name: "unvibe-live", url: mcp.url }],
             });
-            const promptText = attempt < 2
+            const promptText = attempt < 3
               ? "Call the get_hunk tool with id 'h:live:abc123' and then reply with the exact string it returned, and nothing else."
               : "You do have a tool named mcp__unvibe_live__get_hunk. Call it with id 'h:live:abc123' and then reply with the exact string it returned, and nothing else.";
             const tool = await collect(runner, target, promptText);
