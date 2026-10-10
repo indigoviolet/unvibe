@@ -19,12 +19,33 @@ Service dependencies (so a global npm install brings the adapters along):
 
 ## Configuration
 
-- **CLIs via login-shell PATH.** Adapters spawn the user's `claude`/`codex`
-  logins. The service resolves `PATH` from a login shell
-  (`src/exec/shell-path.ts`, PRD §14 macOS gotcha) and prepends it to the
-  adapter subprocess env — never hard-coded install paths (works on macOS
-  and Linux). `NO_BROWSER=1` is always set (safe: stored ChatGPT OAuth login
-  is still used, no browser, no new credentials).
+- **User's installed CLIs via login-shell PATH (no bundled binaries).**
+  Each adapter is pointed at the user's `claude`/`codex` through the
+  mechanism it really supports (verified against the adapter sources in
+  `node_modules`):
+  - Claude (`claude-agent-acp` 0.89.0 → SDK 0.3.293): `CLAUDE_CODE_EXECUTABLE`
+    env → SDK `pathToClaudeCodeExecutable` ("Path to the Claude Code
+    executable. Uses the built-in executable if not specified.").
+  - Codex (`codex-acp` 2.2.2 → `@openai/codex` 0.160.1): `CODEX_PATH` env →
+    `codex app-server` (README: "Set CODEX_PATH only when you want the
+    adapter to run a different Codex binary").
+  The service resolves `PATH` from a login shell (`src/exec/shell-path.ts`,
+  PRD §14 macOS gotcha) and sets both vars on the adapter subprocess env —
+  never hard-coded install paths (works on macOS and Linux).
+  Overrides for unusual installs: `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN`
+  (else the adapter-native vars when pre-set). `NO_BROWSER=1` is always set
+  (safe: stored ChatGPT OAuth login is still used, no browser, no new
+  credentials).
+- **No bundled platform binaries.** The adapters' `optionalDependencies`
+  would pull `@openai/codex-<platform>` (427 MB) and
+  `@anthropic-ai/claude-agent-sdk-<platform>` (242 MB). Unvibe stubs them
+  via npm `overrides` (`stubs/empty-platform`, local installs) and deletes
+  any fetched copies in `postinstall` (`scripts/prune-binaries.mjs`, global
+  installs where npm ignores overrides) — final install ~69 MB (was ~736
+  MB). Minimum versions: Codex ≥ 0.160.1 (adapter dep `^0.160.1`), Claude
+  Code ≥ 2.1.293 (SDK 0.3.293 bundles 2.1.293); readiness/doctor enforce
+  them with update hints. MCP `server/discover` (newer CLIs) is answered
+  with Method Not Found so the CLI falls back to `initialize`.
 - **One subprocess per provider**, started lazily on first `start()` /
   `listModels()`, multiplexing all sessions for that provider. Crash: the
   transport drops, in-flight prompts fail as **retryable** errors, and the

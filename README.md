@@ -14,23 +14,26 @@ for PRs and posting — `gh` logged in. Agents run through
 your existing Claude Code / Codex logins; no new accounts.
 
 ```sh
-npm install -g github:<org>/unvibe   # install or update (same command)
+npm install -g --install-links --allow-scripts=unvibe github:<org>/unvibe   # install or update (same command)
 unvibe setup                          # per-install token + unvibe:// handler
 unvibe open                           # start the service, open the app
 ```
 
-> Known issue (npm 11, 2026-10-10): global installs from a **git URL**
-> currently land as a dangling symlink when the package has a `prepare`
-> script (reproducible with a trivial package — npm-side, see
-> `docs/acceptance-audit.md` §14). Until that resolves, install from a
-> release tarball instead:
+> npm 11 note: global installs from a **git URL** need `--install-links`
+> (otherwise npm links the git clone and removes it, leaving a dangling
+> symlink when the package has a `prepare` script — reproducible with a
+> trivial package, npm-side) and `--allow-scripts=unvibe` (npm 11 blocks
+> install scripts by default; ours builds from source on git installs and
+> prunes the bundled agent platform binaries — see below). The same flags
+> work on npm 10. Release tarballs work with the same flags:
 >
 > ```sh
-> npm install -g https://github.com/<org>/unvibe/releases/download/<v>/unvibe-<v>.tgz
+> npm install -g --install-links --allow-scripts=unvibe https://github.com/<org>/unvibe/releases/download/<v>/unvibe-<v>.tgz
 > ```
 >
-> Verified: ~2.3 MB tarball, ~736 MB installed on Linux (mostly the
-> vendored Codex binary + dependency tree).
+> Verified: ~2.3 MB tarball, ~69 MB installed on Linux (was ~736 MB before
+> the bundled Codex/Claude platform binaries were removed — Unvibe now runs
+> your installed `claude`/`codex` CLIs and ships none).
 
 `unvibe setup` writes a small URL helper — `~/Applications/Unvibe.app`
 (macOS, generated locally with `osacompile` so Gatekeeper stays out of the
@@ -77,9 +80,18 @@ tests, and the restart/global-install checks.
 
 | Value | Behaviour |
 |---|---|
-| unset (default) | Real agents via ACP (`claude-agent-acp` / `codex-acp` subprocesses driving your `claude`/`codex` logins). Read-only permission policy; MCP tools served by the service. |
+| unset (default) | Real agents via ACP (`claude-agent-acp` / `codex-acp` subprocesses driving your installed `claude`/`codex` CLIs through your logins — Unvibe ships no bundled agent binary). Read-only permission policy; MCP tools served by the service. |
 | `replay` | Recorded fixture sessions (demo + agent-behaviour tests). No tokens, no network. |
 | `none` | Pipeline disabled: reviews open as diff + metadata with no guide. For tests/specs that don't exercise agents. |
+
+Agents run as your CLIs, found on the login-shell PATH (the macOS
+Finder-PATH gotcha — see `unvibe doctor`). Unusual installs: set
+`UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN` (or the adapter-native
+`CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`) to the executable path. Minimum
+versions: Codex ≥ 0.160.1, Claude Code ≥ 2.1.293 (the versions the adapters
+were written against); readiness/doctor report the exact path + version each
+agent will run and whether it is logged in, and tell you how to update when
+too old. Unvibe never installs `claude`/`codex` for you.
 
 Live adapter checks need logins and spend a little: `mise run test:live`
 (~2k-token pack + short prompts per provider, ~1 min each),
@@ -98,6 +110,8 @@ Env vars:
 | `UNVIBE_IDLE_MS` | `600000` | Idle exit after this long with no window/jobs; `<=0` disables. |
 | `UNVIBE_AGENT` | ACP | `replay` / `none` / real (see above). |
 | `UNVIBE_ACP_DEBUG` | — | `1` logs permission decisions, `2` full payloads. |
+| `UNVIBE_CLAUDE_BIN` | — | Override: path to the `claude` executable (else login-shell PATH; also respects `CLAUDE_CODE_EXECUTABLE`). |
+| `UNVIBE_CODEX_BIN` | — | Override: path to the `codex` executable (else login-shell PATH; also respects `CODEX_PATH`). |
 
 In-app Settings (persisted): models per role (main/small/second opinion),
 prompt templates + per-review expansions, concurrency caps, inline budget
@@ -122,12 +136,17 @@ reconciled against GitHub before posting again
 ## Troubleshooting (`unvibe doctor`)
 
 `unvibe doctor` (and Settings → environment in the app) checks node, git,
-`gh` (+ auth, with `GITHUB_TOKEN` unset per PRD §15), `claude`/`codex`,
-the login-shell PATH (the macOS Finder-PATH gotcha), the data dir, and
-the port — each with a fix hint. Common cases:
+`gh` (+ auth, with `GITHUB_TOKEN` unset per PRD §15), `claude`/`codex`
+(path + version each agent will run, login state; missing → how to install,
+Unvibe does not install them for you), the login-shell PATH (the macOS
+Finder-PATH gotcha), the data dir, and the port — each with a fix hint.
+Common cases:
 
 - `gh not logged in` → `gh auth login`; local branches
   still work without `gh`.
+- `claude`/`codex` missing or too old → install/update the CLI (see the
+  hints; Unvibe needs Codex ≥ 0.160.1, Claude Code ≥ 2.1.293), ensure it is
+  on the login-shell PATH, Re-check.
 - `port … in use by something else` → set `UNVIBE_PORT` (and reinstall
   the web app, see above).
 - Agent failures surface on the job/card with retryable errors and
