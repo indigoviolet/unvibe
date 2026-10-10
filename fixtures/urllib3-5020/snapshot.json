@@ -27,118 +27,1071 @@
   },
   "files": [
     {
-      "fileKey": "conn",
+      "fileKey": "src-urllib3-connection.py",
       "path": "src/urllib3/connection.py",
       "category": "source",
       "hunks": [
         {
-          "contentHash": "8e9be54d1f0703ca",
+          "contentHash": "fa60105d7fcbe8fe",
           "header": "@@ -77,6 +77,37 @@ class BaseSSLError(BaseException):  # type: ignore[no-redef]",
-          "context": "BaseSSLError",
+          "context": "class BaseSSLError(BaseException):  # type: ignore[no-redef]",
           "newStart": 77,
           "newEnd": 113,
           "oldStart": 77,
           "oldEnd": 82,
           "added": 31,
-          "removed": 0
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 77,
+              "newLine": 77,
+              "text": "RECENT_DATE = datetime.date(2025, 1, 1)"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 78,
+              "newLine": 78,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 79,
+              "newLine": 79,
+              "text": "_CONTAINS_CONTROL_CHAR_RE = re.compile(r\"[^-!#$%&'*+.^_`|~0-9a-zA-Z]\")"
+            },
+            {
+              "kind": "add",
+              "newLine": 80,
+              "text": "# Starting the optional OWS match at the beginning of a whitespace run avoids"
+            },
+            {
+              "kind": "add",
+              "newLine": 81,
+              "text": "# quadratic backtracking for long header values."
+            },
+            {
+              "kind": "add",
+              "newLine": 82,
+              "text": "_OBSOLETE_FOLD_RE = re.compile(r\"(?:(?<![ \\t])[ \\t]+)?\\r\\n[ \\t]+\")"
+            },
+            {
+              "kind": "add",
+              "newLine": 83,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 84,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 85,
+              "text": "def _normalize_header_value(value: str) -> str:"
+            },
+            {
+              "kind": "add",
+              "newLine": 86,
+              "text": "    if \"\\r\\n\" not in value:"
+            },
+            {
+              "kind": "add",
+              "newLine": 87,
+              "text": "        return value"
+            },
+            {
+              "kind": "add",
+              "newLine": 88,
+              "text": "    return _OBSOLETE_FOLD_RE.sub(\" \", value)"
+            },
+            {
+              "kind": "add",
+              "newLine": 89,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 90,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 91,
+              "text": "def _normalize_header_values("
+            },
+            {
+              "kind": "add",
+              "newLine": 92,
+              "text": "    message: http.client.HTTPMessage,"
+            },
+            {
+              "kind": "add",
+              "newLine": 93,
+              "text": ") -> list[tuple[str, str]]:"
+            },
+            {
+              "kind": "add",
+              "newLine": 94,
+              "text": "    header_items = message.items()"
+            },
+            {
+              "kind": "add",
+              "newLine": 95,
+              "text": "    headers_changed = False"
+            },
+            {
+              "kind": "add",
+              "newLine": 96,
+              "text": "    for index, (name, value) in enumerate(header_items):"
+            },
+            {
+              "kind": "add",
+              "newLine": 97,
+              "text": "        normalized_value = _normalize_header_value(value)"
+            },
+            {
+              "kind": "add",
+              "newLine": 98,
+              "text": "        if normalized_value != value:"
+            },
+            {
+              "kind": "add",
+              "newLine": 99,
+              "text": "            header_items[index] = (name, normalized_value)"
+            },
+            {
+              "kind": "add",
+              "newLine": 100,
+              "text": "            headers_changed = True"
+            },
+            {
+              "kind": "add",
+              "newLine": 101,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 102,
+              "text": "    if headers_changed:"
+            },
+            {
+              "kind": "add",
+              "newLine": 103,
+              "text": "        # Keep the original message in sync for downstream consumers such as"
+            },
+            {
+              "kind": "add",
+              "newLine": 104,
+              "text": "        # cookie jars while preserving its identity and header ordering."
+            },
+            {
+              "kind": "add",
+              "newLine": 105,
+              "text": "        for name, _ in header_items:"
+            },
+            {
+              "kind": "add",
+              "newLine": 106,
+              "text": "            del message[name]"
+            },
+            {
+              "kind": "add",
+              "newLine": 107,
+              "text": "        for name, value in header_items:"
+            },
+            {
+              "kind": "add",
+              "newLine": 108,
+              "text": "            message[name] = value"
+            },
+            {
+              "kind": "add",
+              "newLine": 109,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 110,
+              "text": "    return header_items"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 80,
+              "newLine": 111,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 81,
+              "newLine": 112,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 82,
+              "newLine": 113,
+              "text": "class HTTPConnection(_HTTPConnection):"
+            }
+          ]
         },
         {
-          "contentHash": "6a6e4258f12aa9a2",
+          "contentHash": "b355d2096d4d7f39",
           "header": "@@ -616,7 +647,8 @@ def getresponse(  # type: ignore[override]",
-          "context": "getresponse",
+          "context": "def getresponse(  # type: ignore[override]",
           "newStart": 647,
           "newEnd": 654,
           "oldStart": 616,
           "oldEnd": 622,
           "added": 2,
-          "removed": 1
+          "removed": 1,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 616,
+              "newLine": 647,
+              "text": "                exc_info=True,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 617,
+              "newLine": 648,
+              "text": "            )"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 618,
+              "newLine": 649,
+              "text": ""
+            },
+            {
+              "kind": "del",
+              "oldLine": 619,
+              "text": "        headers = HTTPHeaderDict(httplib_response.msg.items())"
+            },
+            {
+              "kind": "add",
+              "newLine": 650,
+              "text": "        header_items = _normalize_header_values(httplib_response.msg)"
+            },
+            {
+              "kind": "add",
+              "newLine": 651,
+              "text": "        headers = HTTPHeaderDict(header_items)"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 620,
+              "newLine": 652,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 621,
+              "newLine": 653,
+              "text": "        response = HTTPResponse("
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 622,
+              "newLine": 654,
+              "text": "            body=httplib_response,"
+            }
+          ]
         }
       ]
     },
     {
-      "fileKey": "tconn",
+      "fileKey": "test-test_connection.py",
       "path": "test/test_connection.py",
       "category": "tests",
       "hunks": [
         {
-          "contentHash": "d3fa50151b6ba9c2",
+          "contentHash": "6cfb09ec98cba6ba",
           "header": "@@ -3,7 +3,7 @@",
           "newStart": 3,
           "newEnd": 9,
           "oldStart": 3,
           "oldEnd": 9,
           "added": 1,
-          "removed": 1
+          "removed": 1,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 3,
+              "newLine": 3,
+              "text": "import datetime"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 4,
+              "newLine": 4,
+              "text": "import socket"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 5,
+              "newLine": 5,
+              "text": "import typing"
+            },
+            {
+              "kind": "del",
+              "oldLine": 6,
+              "text": "from http.client import ResponseNotReady"
+            },
+            {
+              "kind": "add",
+              "newLine": 6,
+              "text": "from http.client import HTTPMessage, ResponseNotReady"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 7,
+              "newLine": 7,
+              "text": "from unittest import mock"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 8,
+              "newLine": 8,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 9,
+              "newLine": 9,
+              "text": "import pytest"
+            }
+          ],
+          "hiddenReason": "imports"
         },
         {
-          "contentHash": "abd2375de421f261",
+          "contentHash": "92cf4ca541bdb0f2",
           "header": "@@ -14,6 +14,8 @@",
           "newStart": 14,
           "newEnd": 21,
           "oldStart": 14,
           "oldEnd": 19,
           "added": 2,
-          "removed": 0
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 14,
+              "newLine": 14,
+              "text": "    HTTPConnection,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 15,
+              "newLine": 15,
+              "text": "    HTTPSConnection,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 16,
+              "newLine": 16,
+              "text": "    _match_hostname,"
+            },
+            {
+              "kind": "add",
+              "newLine": 17,
+              "text": "    _normalize_header_value,"
+            },
+            {
+              "kind": "add",
+              "newLine": 18,
+              "text": "    _normalize_header_values,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 17,
+              "newLine": 19,
+              "text": "    _url_from_connection,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 18,
+              "newLine": 20,
+              "text": "    _wrap_proxy_error,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 19,
+              "newLine": 21,
+              "text": ")"
+            }
+          ],
+          "hiddenReason": "imports"
         },
         {
-          "contentHash": "bf58073e75d408be",
+          "contentHash": "b33779988cee5f8a",
           "header": "@@ -209,6 +211,43 @@ def test_recent_date(self) -> None:",
-          "context": "test_recent_date",
+          "context": "def test_recent_date(self) -> None:",
           "newStart": 211,
           "newEnd": 253,
           "oldStart": 209,
           "oldEnd": 214,
           "added": 37,
-          "removed": 0
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 209,
+              "newLine": 211,
+              "text": "        two_years = datetime.timedelta(days=365 * 2)"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 210,
+              "newLine": 212,
+              "text": "        assert RECENT_DATE > (datetime.datetime.today() - two_years).date()"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 211,
+              "newLine": 213,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 214,
+              "text": "    @pytest.mark.parametrize("
+            },
+            {
+              "kind": "add",
+              "newLine": 215,
+              "text": "        (\"value\", \"expected\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 216,
+              "text": "        ["
+            },
+            {
+              "kind": "add",
+              "newLine": 217,
+              "text": "            (\"ordinary\\tvalue\", \"ordinary\\tvalue\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 218,
+              "text": "            (\"before \\t\\r\\n\\t  after\", \"before after\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 219,
+              "text": "            (\"one\\r\\n two\\t\\r\\n\\tthree\", \"one two three\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 220,
+              "text": "            (\"one\\r\\n \\r\\n\\tthree\", \"one  three\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 221,
+              "text": "        ],"
+            },
+            {
+              "kind": "add",
+              "newLine": 222,
+              "text": "    )"
+            },
+            {
+              "kind": "add",
+              "newLine": 223,
+              "text": "    def test_normalize_header_value(self, value: str, expected: str) -> None:"
+            },
+            {
+              "kind": "add",
+              "newLine": 224,
+              "text": "        assert _normalize_header_value(value) == expected"
+            },
+            {
+              "kind": "add",
+              "newLine": 225,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 226,
+              "text": "    def test_normalize_header_values_preserves_message(self) -> None:"
+            },
+            {
+              "kind": "add",
+              "newLine": 227,
+              "text": "        message = HTTPMessage()"
+            },
+            {
+              "kind": "add",
+              "newLine": 228,
+              "text": "        message[\"X-First\"] = \"one\""
+            },
+            {
+              "kind": "add",
+              "newLine": 229,
+              "text": "        message[\"Set-Cookie\"] = \"a=1 \\r\\n two\""
+            },
+            {
+              "kind": "add",
+              "newLine": 230,
+              "text": "        message[\"X-Second\"] = \"three\""
+            },
+            {
+              "kind": "add",
+              "newLine": 231,
+              "text": "        message[\"Set-Cookie\"] = \"b=2\""
+            },
+            {
+              "kind": "add",
+              "newLine": 232,
+              "text": "        message.set_payload(\"payload\")"
+            },
+            {
+              "kind": "add",
+              "newLine": 233,
+              "text": "        defects = message.defects"
+            },
+            {
+              "kind": "add",
+              "newLine": 234,
+              "text": "        policy = message.policy"
+            },
+            {
+              "kind": "add",
+              "newLine": 235,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 236,
+              "text": "        header_items = _normalize_header_values(message)"
+            },
+            {
+              "kind": "add",
+              "newLine": 237,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 238,
+              "text": "        expected = ["
+            },
+            {
+              "kind": "add",
+              "newLine": 239,
+              "text": "            (\"X-First\", \"one\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 240,
+              "text": "            (\"Set-Cookie\", \"a=1 two\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 241,
+              "text": "            (\"X-Second\", \"three\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 242,
+              "text": "            (\"Set-Cookie\", \"b=2\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 243,
+              "text": "        ]"
+            },
+            {
+              "kind": "add",
+              "newLine": 244,
+              "text": "        assert header_items == expected"
+            },
+            {
+              "kind": "add",
+              "newLine": 245,
+              "text": "        assert message.items() == expected"
+            },
+            {
+              "kind": "add",
+              "newLine": 246,
+              "text": "        assert message.get_all(\"Set-Cookie\") == [\"a=1 two\", \"b=2\"]"
+            },
+            {
+              "kind": "add",
+              "newLine": 247,
+              "text": "        assert message.get_payload() == \"payload\""
+            },
+            {
+              "kind": "add",
+              "newLine": 248,
+              "text": "        assert message.defects is defects"
+            },
+            {
+              "kind": "add",
+              "newLine": 249,
+              "text": "        assert message.policy is policy"
+            },
+            {
+              "kind": "add",
+              "newLine": 250,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 212,
+              "newLine": 251,
+              "text": "    def test_HTTPSConnection_default_socket_options(self) -> None:"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 213,
+              "newLine": 252,
+              "text": "        conn = HTTPSConnection(\"not.a.real.host\", port=443)"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 214,
+              "newLine": 253,
+              "text": "        assert conn.socket_options == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]"
+            }
+          ]
         }
       ]
     },
     {
-      "fileKey": "tsock",
+      "fileKey": "test-with_dummyserver-test_socketlevel.py",
       "path": "test/with_dummyserver/test_socketlevel.py",
       "category": "tests",
       "hunks": [
         {
-          "contentHash": "7f5d383d0f56bd09",
+          "contentHash": "29382503b8689e5f",
           "header": "@@ -37,6 +37,7 @@",
           "newStart": 37,
           "newEnd": 43,
           "oldStart": 37,
           "oldEnd": 42,
           "added": 1,
-          "removed": 0
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 37,
+              "newLine": 37,
+              "text": "from urllib3 import ("
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 38,
+              "newLine": 38,
+              "text": "    BaseHTTPResponse,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 39,
+              "newLine": 39,
+              "text": "    HTTPConnectionPool,"
+            },
+            {
+              "kind": "add",
+              "newLine": 40,
+              "text": "    HTTPResponse,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 40,
+              "newLine": 41,
+              "text": "    HTTPSConnectionPool,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 41,
+              "newLine": 42,
+              "text": "    ProxyManager,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 42,
+              "newLine": 43,
+              "text": "    util,"
+            }
+          ]
         },
         {
-          "contentHash": "44301a6c99dbe2e5",
+          "contentHash": "949dda852e448b55",
           "header": "@@ -88,6 +89,62 @@ def multicookie_response_handler(listener: socket.socket) -> None:",
-          "context": "multicookie_response_handler",
+          "context": "def multicookie_response_handler(listener: socket.socket) -> None:",
           "newStart": 89,
           "newEnd": 150,
           "oldStart": 88,
           "oldEnd": 93,
           "added": 56,
-          "removed": 0
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 88,
+              "newLine": 89,
+              "text": "            assert r.headers == {\"set-cookie\": \"foo=1, bar=1\"}"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 89,
+              "newLine": 90,
+              "text": "            assert r.headers.getlist(\"set-cookie\") == [\"foo=1\", \"bar=1\"]"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 90,
+              "newLine": 91,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 92,
+              "text": "    def test_obsolete_line_folding_is_unfolded(self) -> None:"
+            },
+            {
+              "kind": "add",
+              "newLine": 93,
+              "text": "        def folded_cookie_response_handler(listener: socket.socket) -> None:"
+            },
+            {
+              "kind": "add",
+              "newLine": 94,
+              "text": "            with listener.accept()[0] as sock:"
+            },
+            {
+              "kind": "add",
+              "newLine": 95,
+              "text": "                buf = b\"\""
+            },
+            {
+              "kind": "add",
+              "newLine": 96,
+              "text": "                while not buf.endswith(b\"\\r\\n\\r\\n\"):"
+            },
+            {
+              "kind": "add",
+              "newLine": 97,
+              "text": "                    buf += sock.recv(65536)"
+            },
+            {
+              "kind": "add",
+              "newLine": 98,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 99,
+              "text": "                sock.sendall("
+            },
+            {
+              "kind": "add",
+              "newLine": 100,
+              "text": "                    b\"HTTP/1.1 200 OK\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 101,
+              "text": "                    b\"Set-Cookie: ___utmvbtouVBFmB=gZg\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 102,
+              "text": "                    b\"    XbNOjalT: Lte; path=/; Max-Age=900\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 103,
+              "text": "                    b\"Set-Cookie: ordinary=1; Path=/\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 104,
+              "text": "                    b\"Fold-Space-Space: before \\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 105,
+              "text": "                    b\" after\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 106,
+              "text": "                    b\"Fold-Space-Tab: before \\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 107,
+              "text": "                    b\"\\tafter\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 108,
+              "text": "                    b\"Fold-Tab-Space: before\\t\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 109,
+              "text": "                    b\" after\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 110,
+              "text": "                    b\"Fold-Tab-Tab: before\\t\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 111,
+              "text": "                    b\"\\tafter\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 112,
+              "text": "                    b\"Fold-Mixed-Repeated: one \\t\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 113,
+              "text": "                    b\"\\t  two\\t \\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 114,
+              "text": "                    b\" \\tthree\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 115,
+              "text": "                    b\"Ordinary: one\\t two\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 116,
+              "text": "                    b\"Content-Length: 0\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 117,
+              "text": "                    b\"\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 118,
+              "text": "                )"
+            },
+            {
+              "kind": "add",
+              "newLine": 119,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 120,
+              "text": "        self._start_server(folded_cookie_response_handler)"
+            },
+            {
+              "kind": "add",
+              "newLine": 121,
+              "text": "        with HTTPConnectionPool(self.host, self.port) as pool:"
+            },
+            {
+              "kind": "add",
+              "newLine": 122,
+              "text": "            r = pool.request(\"GET\", \"/\", retries=0)"
+            },
+            {
+              "kind": "add",
+              "newLine": 123,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 124,
+              "text": "            assert r.headers.getlist(\"set-cookie\") == ["
+            },
+            {
+              "kind": "add",
+              "newLine": 125,
+              "text": "                \"___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900\","
+            },
+            {
+              "kind": "add",
+              "newLine": 126,
+              "text": "                \"ordinary=1; Path=/\","
+            },
+            {
+              "kind": "add",
+              "newLine": 127,
+              "text": "            ]"
+            },
+            {
+              "kind": "add",
+              "newLine": 128,
+              "text": "            assert r.headers[\"fold-space-space\"] == \"before after\""
+            },
+            {
+              "kind": "add",
+              "newLine": 129,
+              "text": "            assert r.headers[\"fold-space-tab\"] == \"before after\""
+            },
+            {
+              "kind": "add",
+              "newLine": 130,
+              "text": "            assert r.headers[\"fold-tab-space\"] == \"before after\""
+            },
+            {
+              "kind": "add",
+              "newLine": 131,
+              "text": "            assert r.headers[\"fold-tab-tab\"] == \"before after\""
+            },
+            {
+              "kind": "add",
+              "newLine": 132,
+              "text": "            assert r.headers[\"fold-mixed-repeated\"] == \"one two three\""
+            },
+            {
+              "kind": "add",
+              "newLine": 133,
+              "text": "            assert r.headers[\"ordinary\"] == \"one\\t two\""
+            },
+            {
+              "kind": "add",
+              "newLine": 134,
+              "text": "            assert r.headers[\"content-length\"] == \"0\""
+            },
+            {
+              "kind": "add",
+              "newLine": 135,
+              "text": "            assert all("
+            },
+            {
+              "kind": "add",
+              "newLine": 136,
+              "text": "                \"\\r\" not in value and \"\\n\" not in value for value in r.headers.values()"
+            },
+            {
+              "kind": "add",
+              "newLine": 137,
+              "text": "            )"
+            },
+            {
+              "kind": "add",
+              "newLine": 138,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 139,
+              "text": "            assert isinstance(r, HTTPResponse)"
+            },
+            {
+              "kind": "add",
+              "newLine": 140,
+              "text": "            assert r._original_response is not None"
+            },
+            {
+              "kind": "add",
+              "newLine": 141,
+              "text": "            assert r._original_response.headers is r._original_response.msg"
+            },
+            {
+              "kind": "add",
+              "newLine": 142,
+              "text": "            assert r._original_response.msg.get_all(\"set-cookie\") == ["
+            },
+            {
+              "kind": "add",
+              "newLine": 143,
+              "text": "                \"___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900\","
+            },
+            {
+              "kind": "add",
+              "newLine": 144,
+              "text": "                \"ordinary=1; Path=/\","
+            },
+            {
+              "kind": "add",
+              "newLine": 145,
+              "text": "            ]"
+            },
+            {
+              "kind": "add",
+              "newLine": 146,
+              "text": "            assert r._original_response.msg[\"fold-mixed-repeated\"] == \"one two three\""
+            },
+            {
+              "kind": "add",
+              "newLine": 147,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 91,
+              "newLine": 148,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 92,
+              "newLine": 149,
+              "text": "class TestSNI(SocketDummyServerTestCase):"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 93,
+              "newLine": 150,
+              "text": "    def test_hostname_in_first_request_packet(self) -> None:"
+            }
+          ]
         }
       ]
     },
     {
-      "fileKey": "log",
+      "fileKey": "changelog-1362.bugfix.rst",
       "path": "changelog/1362.bugfix.rst",
       "category": "docs",
       "hunks": [
         {
-          "contentHash": "8d574d85611f77a6",
+          "contentHash": "d1c6f159e5ffb42d",
           "header": "@@ -0,0 +1,3 @@",
           "newStart": 1,
           "newEnd": 3,
           "oldStart": 0,
           "oldEnd": 0,
           "added": 3,
-          "removed": 0
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "add",
+              "newLine": 1,
+              "text": "Fixed response header handling to replace obsolete folded header lines"
+            },
+            {
+              "kind": "add",
+              "newLine": 2,
+              "text": "(`obs-fold`) with spaces in accordance with RFC 9112, preventing raw"
+            },
+            {
+              "kind": "add",
+              "newLine": 3,
+              "text": "CRLF sequences from appearing in header values such as ``Set-Cookie``."
+            }
+          ],
+          "hiddenReason": "docs / config"
         }
-      ]
+      ],
+      "isNew": true
     }
   ],
+  "description": {
+    "html": "<div class=\"desc\"><h3>Unfold obsolete folded response headers</h3><p class=\"para\" id=\"d-p1\">Addresses the original obs-fold response-header case discussed in #1362. Python's <code>http.client</code> preserves obsolete folded response header lines in <code>HTTPMessage</code> values. This change replaces each RFC 9112 <code>OWS CRLF RWS</code> sequence with a single space before urllib3 or downstream consumers interpret the value.</p><h3>The normalization</h3><ul class=\"para\" id=\"d-p2\"><li>keeps urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> synchronized, preventing cookie consumers such as Requests from re-emitting raw CRLF;</li><li>preserves header names, ordering, duplicate fields, and parser state;</li><li>uses a common-case fast path and a linear-time pattern for long field values.</li></ul><h3>Tests</h3><p class=\"para\" id=\"d-p3\">The socket regression covers the original folded <code>Set-Cookie</code>, duplicate cookies, every SP/HTAB combination around CRLF, mixed and repeated whitespace, multiple folds, and ordinary headers. Focused unit coverage also verifies adjacent folds and preservation of the original message's order, duplicates, payload, policy, and defects.</p><p class=\"para\" id=\"d-p4\">This intentionally does not address the separate whitespace-before-colon/header name validation scope discussed on #1362.</p><h3>Validation performed</h3><ul class=\"para\" id=\"d-p5\"><li>full local suite: 2,279 passed, 333 skipped, 4 xfailed;</li><li>focused strict nox sessions on Python 3.12, 3.13, and 3.14;</li><li>pyupgrade, Black, isort, and flake8;</li><li>towncrier changelog validation;</li><li>source distribution and wheel builds;</li><li>end-to-end Requests cookie extraction and subsequent request serialization.</li></ul></div>",
+    "rev": "1",
+    "source": "pr",
+    "editable": false
+  },
   "pages": [
     {
       "id": "root",
@@ -165,7 +1118,7 @@
               },
               "citations": [
                 {
-                  "target": "desc:d-intro"
+                  "target": "desc:d-p1"
                 },
                 {
                   "target": "diff:conn:650-651"
@@ -182,10 +1135,10 @@
               },
               "citations": [
                 {
-                  "target": "desc:d-sync"
+                  "target": "desc:d-p2"
                 },
                 {
-                  "target": "desc:d-intro"
+                  "target": "desc:d-p1"
                 }
               ]
             }
@@ -368,7 +1321,7 @@
               },
               "citations": [
                 {
-                  "target": "desc:d-sync"
+                  "target": "desc:d-p2"
                 }
               ]
             },
@@ -738,7 +1691,7 @@
               },
               "citations": [
                 {
-                  "target": "desc:d-norm"
+                  "target": "desc:d-p2"
                 }
               ]
             },
@@ -817,7 +1770,7 @@
               },
               "citations": [
                 {
-                  "target": "desc:d-intro"
+                  "target": "desc:d-p1"
                 },
                 {
                   "target": "diff:conn:80-82"
@@ -934,7 +1887,7 @@
               },
               "citations": [
                 {
-                  "target": "desc:d-sync"
+                  "target": "desc:d-p2"
                 }
               ]
             },
@@ -1186,7 +2139,7 @@
       "anchor": {
         "host": {
           "kind": "diff-line",
-          "fileKey": "conn",
+          "fileKey": "src-urllib3-connection.py",
           "line": 82
         },
         "quotedText": "_OBSOLETE_FOLD_RE",
@@ -1212,7 +2165,7 @@
       "anchor": {
         "host": {
           "kind": "diff-line",
-          "fileKey": "conn",
+          "fileKey": "src-urllib3-connection.py",
           "line": 80
         },
         "quotedText": "Starting the optional OWS match",
@@ -1238,7 +2191,7 @@
       "anchor": {
         "host": {
           "kind": "diff-line",
-          "fileKey": "tconn",
+          "fileKey": "test-test_connection.py",
           "line": 220
         },
         "quotedText": "one  three",
@@ -1264,43 +2217,43 @@
   ],
   "hunkStates": [
     {
-      "contentHash": "8e9be54d1f0703ca",
+      "contentHash": "fa60105d7fcbe8fe",
       "folded": false,
       "reviewed": false
     },
     {
-      "contentHash": "6a6e4258f12aa9a2",
+      "contentHash": "b355d2096d4d7f39",
       "folded": false,
       "reviewed": false,
       "note": "Only call site; everything else is the helper."
     },
     {
-      "contentHash": "d3fa50151b6ba9c2",
+      "contentHash": "6cfb09ec98cba6ba",
       "folded": false,
       "reviewed": false
     },
     {
-      "contentHash": "abd2375de421f261",
+      "contentHash": "92cf4ca541bdb0f2",
       "folded": false,
       "reviewed": false
     },
     {
-      "contentHash": "bf58073e75d408be",
+      "contentHash": "b33779988cee5f8a",
       "folded": true,
       "reviewed": true
     },
     {
-      "contentHash": "7f5d383d0f56bd09",
+      "contentHash": "29382503b8689e5f",
       "folded": false,
       "reviewed": false
     },
     {
-      "contentHash": "44301a6c99dbe2e5",
+      "contentHash": "949dda852e448b55",
       "folded": false,
       "reviewed": false
     },
     {
-      "contentHash": "8d574d85611f77a6",
+      "contentHash": "d1c6f159e5ffb42d",
       "folded": false,
       "reviewed": false
     }

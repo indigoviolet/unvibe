@@ -1,6 +1,6 @@
 ## Evidence
 
-Description: it says the normalization uses a linear-time pattern for long field values. [[desc:d-norm]]
+Description: it says the normalization uses a linear-time pattern for long field values. [[desc:d-p2]]
 
 Code: a comment explains that starting the whitespace match at the beginning of a run avoids quadratic backtracking. [[diff:conn:80-82]]
 

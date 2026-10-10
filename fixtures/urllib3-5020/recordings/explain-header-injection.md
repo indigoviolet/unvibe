@@ -1,4 +1,4 @@
-HTTP separates headers with CRLF. If a header value itself contains CRLF and some code later writes that value back out, for example a cookie jar sending a stored cookie on the next request, the line break ends the header early and whatever follows becomes a new header. That's header injection. Here the risk is that a folded `Set-Cookie` could be re-sent with a raw CRLF inside it. [[desc:d-sync]]
+HTTP separates headers with CRLF. If a header value itself contains CRLF and some code later writes that value back out, for example a cookie jar sending a stored cookie on the next request, the line break ends the header early and whatever follows becomes a new header. That's header injection. Here the risk is that a folded `Set-Cookie` could be re-sent with a raw CRLF inside it. [[desc:d-p2]]
 
 ::: simple
 A hidden line break inside a header can split one header into two when the value is sent again. Removing line breaks from values prevents that.

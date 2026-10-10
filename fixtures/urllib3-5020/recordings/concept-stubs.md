@@ -1,8 +1,8 @@
 ## Concept stubs
 
-- [[concept:obs-fold|Obsolete line folding]]: servers must not fold; recipients replace each fold with spaces. Mentioned in [[desc:d-intro]].
+- [[concept:obs-fold|Obsolete line folding]]: servers must not fold; recipients replace each fold with spaces. Mentioned in [[desc:d-p1]].
 - [[concept:http-headers|HTTPHeaderDict and HTTPMessage]]: two copies of the headers, both normalized. Mentioned at [[diff:conn:650-651]].
-- [[concept:header-injection|Header injection]]: a raw CRLF re-sent downstream can split one header into two. Mentioned in [[desc:d-sync]].
+- [[concept:header-injection|Header injection]]: a raw CRLF re-sent downstream can split one header into two. Mentioned in [[desc:d-p2]].
 - [[concept:regex-performance|Regex backtracking]]: the lookbehind keeps the fold pattern linear-time. Mentioned at [[diff:conn:80-82]].
 - [[concept:ows-rws|OWS and RWS]]: a fold is `OWS CRLF RWS`. Mentioned at [[diff:conn:82]].
 - [[concept:set-cookie|Set-Cookie separation]]: cookie lines are never comma-joined. Mentioned at [[diff:tsock:124-127]].

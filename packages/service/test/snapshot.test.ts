@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { collectTargets } from "@unvibe/shared";
 import { buildSnapshot } from "../src/replay/snapshot.js";
 import { createSnapshotLookup, validateReply } from "../src/validate/index.js";
+import { createApp } from "../src/server.js";
 
 const fixturesDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -19,10 +20,10 @@ describe("snapshot build", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
     expect(counts).toHaveLength(51);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
-      ["conn", 2],
-      ["tconn", 3],
-      ["tsock", 2],
-      ["log", 1],
+      ["src-urllib3-connection.py", 2],
+      ["test-test_connection.py", 3],
+      ["test-with_dummyserver-test_socketlevel.py", 2],
+      ["changelog-1362.bugfix.rst", 1],
     ]);
     expect(snapshot.pages.map((p) => p.id).sort()).toEqual(
       [
@@ -54,23 +55,28 @@ describe("snapshot build", () => {
     );
 
     // Seed state survived: tconn hunk 3 reviewed+folded, conn hunk 2 noted.
-    const tconn = snapshot.files.find((f) => f.fileKey === "tconn")!;
-    const conn = snapshot.files.find((f) => f.fileKey === "conn")!;
+    const tconn = snapshot.files.find((f) => f.fileKey === "test-test_connection.py")!;
+    const conn = snapshot.files.find((f) => f.fileKey === "src-urllib3-connection.py")!;
     const reviewed = snapshot.hunkStates.find((s) => s.contentHash === tconn.hunks[2].contentHash)!;
     expect(reviewed).toMatchObject({ reviewed: true, folded: true });
     const noted = snapshot.hunkStates.find((s) => s.contentHash === conn.hunks[1].contentHash)!;
     expect(noted.note).toMatch(/Only call site/);
 
-    // Independent re-validation: every citation in the snapshot validates.
+    // Independent re-validation: every citation in the snapshot validates
+    // (same alias mapping the builder uses for the short recording keys).
     const lookup = createSnapshotLookup(snapshot, {
-      aliases: { conn: "conn", tconn: "tconn", tsock: "tsock", log: "log" },
+      aliases: {
+        conn: "src-urllib3-connection.py",
+        tconn: "test-test_connection.py",
+        tsock: "test-with_dummyserver-test_socketlevel.py",
+        log: "changelog-1362.bugfix.rst",
+      },
       descTexts: {
-        "d-intro": "x",
-        "d-norm": "x",
-        "d-sync": "x",
-        "d-tests": "x",
-        "d-scope": "x",
-        "d-valid": "x",
+        "d-p1": "x",
+        "d-p2": "x",
+        "d-p3": "x",
+        "d-p4": "x",
+        "d-p5": "x",
       },
       concepts: [
         "obs-fold",
@@ -93,5 +99,31 @@ describe("snapshot build", () => {
       p.cards.flatMap((c) => collectTargets(c.blocks).citations),
     );
     expect(total.length).toBeGreaterThan(30);
+  });
+
+  it("serves GET /api/prompts?review= for the stored snapshot (no 501)", async () => {
+    const { snapshot } = buildSnapshot(fixturesDir);
+    const { app, ctx } = await createApp("test-token");
+    try {
+      ctx.reviews.putSnapshot(snapshot.review.id, snapshot);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/prompts?review=${snapshot.review.id}`,
+        headers: { authorization: "Bearer test-token" },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        templates: { name: string }[];
+        expanded: { name: string; expanded: string }[];
+      };
+      expect(body.templates).toHaveLength(18);
+      expect(body.expanded).toHaveLength(18);
+      const blind = body.expanded.find((e) => e.name === "second_opinion_blind")!;
+      expect(blind.expanded).toContain("Folds that end in a bare LF are not unfolded");
+      const reader = body.expanded.find((e) => e.name === "reader")!;
+      expect(reader.expanded).toContain("src-urllib3-connection.py");
+    } finally {
+      await app.close();
+    }
   });
 });

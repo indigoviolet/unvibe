@@ -1,4 +1,4 @@
-A response's headers exist twice: urllib3's `HTTPHeaderDict` and `http.client`'s `HTTPMessage`. Requests reads cookies from the second, so cleaning only the first would leave the raw CRLF where it does harm. [[desc:d-sync]]
+A response's headers exist twice: urllib3's `HTTPHeaderDict` and `http.client`'s `HTTPMessage`. Requests reads cookies from the second, so cleaning only the first would leave the raw CRLF where it does harm. [[desc:d-p2]]
 
 The helper therefore rewrites the original message in place. It keeps the object's identity (the socket test checks `headers is msg`), its `defects` and `policy`, its payload, and the order of every header, including duplicate `Set-Cookie` lines. [[diff:tconn:226-249]] [[diff:tsock:141]]
 

@@ -1,4 +1,4 @@
-HTTP/1.1 originally let a server continue a header value on the next line, as long as that line started with a space or tab. That's line folding. RFC 9112 now calls it `obs-fold` (obsolete folding): servers must not send it, and a client that receives it must replace each fold with one or more spaces before using the value. Python's `http.client` doesn't do that; it keeps the CRLF and the leading whitespace inside the value. [[desc:d-intro]] [[diff:conn:80-82]]
+HTTP/1.1 originally let a server continue a header value on the next line, as long as that line started with a space or tab. That's line folding. RFC 9112 now calls it `obs-fold` (obsolete folding): servers must not send it, and a client that receives it must replace each fold with one or more spaces before using the value. Python's `http.client` doesn't do that; it keeps the CRLF and the leading whitespace inside the value. [[desc:d-p1]] [[diff:conn:80-82]]
 
 ::: simple
 Some servers split one long header across two lines, starting the second line with spaces. The modern rule is: treat that split as a single space. Python keeps the line break instead, so urllib3 has to clean it up.

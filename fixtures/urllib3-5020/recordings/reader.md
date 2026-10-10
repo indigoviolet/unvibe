@@ -1,6 +1,6 @@
 ## The problem
 
-HTTP/1.1 used to let a server continue a header value on the next line by starting that line with a space or tab. That's [[concept:obs-fold|obsolete line folding]]. Python's `http.client` keeps the folded value as it arrived, with the raw CRLF inside it, and urllib3 copied those values straight into its [[concept:http-headers|HTTPHeaderDict]]. A header such as `Set-Cookie` could therefore contain a hidden line break. [[desc:d-intro]] [[diff:conn:650-651]]
+HTTP/1.1 used to let a server continue a header value on the next line by starting that line with a space or tab. That's [[concept:obs-fold|obsolete line folding]]. Python's `http.client` keeps the folded value as it arrived, with the raw CRLF inside it, and urllib3 copied those values straight into its [[concept:http-headers|HTTPHeaderDict]]. A header such as `Set-Cookie` could therefore contain a hidden line break. [[desc:d-p1]] [[diff:conn:650-651]]
 
 ::: simple
 Old servers sometimes split one header across two lines. Python keeps the line break inside the header's value, and urllib3 passed it along unchanged, so some header values contained hidden line breaks.
@@ -10,7 +10,7 @@ Old servers sometimes split one header across two lines. Python keeps the line b
 A parser leaking its input format. A fold is an encoding detail: one value written across lines. RFC 9112 requires a recipient to replace each fold with spaces before interpreting the value. Keeping the CRLF lets the wire format leak into the value itself, and every consumer then has to unfold it again, or carries the line break further.
 :::
 
-The line break isn't just untidy. Libraries that copy cookies from the response, such as Requests, read `http.client`'s own message object and can send the value back out with the raw CRLF in it. That can split one header into two on the next request: [[concept:header-injection|header injection]]. Issue #1362 tracked the original report. [[desc:d-sync]] [[desc:d-intro]]
+The line break isn't just untidy. Libraries that copy cookies from the response, such as Requests, read `http.client`'s own message object and can send the value back out with the raw CRLF in it. That can split one header into two on the next request: [[concept:header-injection|header injection]]. Issue #1362 tracked the original report. [[desc:d-p2]] [[desc:d-p1]]
 
 ::: simple
 Worse, other libraries copy these values into the next request, and the hidden line break can turn one header into two.

@@ -11,7 +11,13 @@
     "tsock": "test/with_dummyserver/test_socketlevel.py",
     "log": "changelog/1362.bugfix.rst"
   },
-  "descParagraphs": ["d-intro", "d-norm", "d-sync", "d-tests", "d-scope", "d-valid"],
+  "keyAliases": {
+    "conn": "src-urllib3-connection.py",
+    "tconn": "test-test_connection.py",
+    "tsock": "test-with_dummyserver-test_socketlevel.py",
+    "log": "changelog-1362.bugfix.rst"
+  },
+  "descParagraphs": ["d-p1", "d-p2", "d-p3", "d-p4", "d-p5"],
   "concepts": [
     "obs-fold",
     "http-headers",

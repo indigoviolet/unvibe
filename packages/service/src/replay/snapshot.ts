@@ -4,12 +4,15 @@
  * (files, pages, cards, annotations seeded as in the prototype's `seed()`,
  * hunk states). Every citation must validate — the build throws otherwise.
  *
- * File keys keep the prototype's short slugs (`conn`, `tconn`, `tsock`,
- * `log`); `meta.json` maps each alias to its repo path, and the same map
- * is passed to the lookup as `aliases`, so the scheme can change later
- * without touching the recordings.
+ * Files and hunks come from the canonical ingest code
+ * (`parseUnifiedDiff`, `hashHunkLines`, `classifyFile`,
+ * `uninterestingReason`, `renderMarkdownBlocks`), so the fixture snapshot
+ * is exactly what a real ingest of that diff + PR body would produce. The
+ * recordings keep the prototype's short file keys (`conn`, `tconn`,
+ * `tsock`, `log`; see `meta.json` `keyAliases` for the mapping) as
+ * aliases, resolved through one mapping at build time; the snapshot itself
+ * contains only real IDs.
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type {
@@ -22,6 +25,11 @@ import type {
   ReviewSnapshot,
 } from "@unvibe/shared";
 import { parseReply, collectTargets } from "@unvibe/shared";
+import { classifyFile, fileKeyForPath } from "../ingest/classify.js";
+import { renderMarkdownBlocks } from "../ingest/description.js";
+import { parseUnifiedDiff } from "../ingest/diff.js";
+import { hashHunkLines } from "../ingest/hash.js";
+import { uninterestingReason } from "../ingest/uninteresting.js";
 import type { ManifestEntry } from "./runner.js";
 import { createSnapshotLookup, validateReply } from "../validate/index.js";
 
@@ -33,6 +41,8 @@ export interface FixtureMeta {
   mergeBaseSha: string;
   baseRef: string;
   fileKeys: Record<string, string>;
+  /** Prototype short key → canonical file key (alias mapping). */
+  keyAliases: Record<string, string>;
   descParagraphs: string[];
   concepts: string[];
 }
@@ -40,92 +50,6 @@ export interface FixtureMeta {
 export interface BuildFailure {
   file: string;
   detail: string;
-}
-
-function sha16(s: string): string {
-  return crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
-}
-
-interface RawHunk {
-  header: string;
-  context?: string;
-  oldStart: number;
-  oldEnd: number;
-  newStart: number;
-  newEnd: number;
-  added: number;
-  removed: number;
-  rows: string[];
-}
-
-/** Parse unified-diff hunks (git's own: changed lines + ≤3 context). */
-function parseHunks(diffText: string): RawHunk[] {
-  const hunks: RawHunk[] = [];
-  let cur: RawHunk | null = null;
-  const push = (): void => {
-    if (!cur) return;
-    const newRows = cur.rows.filter((r) => r[0] === " " || r[0] === "+").length;
-    const oldRows = cur.rows.filter((r) => r[0] === " " || r[0] === "-").length;
-    cur.newEnd = newRows > 0 ? cur.newStart + newRows - 1 : cur.newStart;
-    cur.oldEnd = oldRows > 0 ? cur.oldStart + oldRows - 1 : cur.oldStart;
-    hunks.push(cur);
-  };
-  for (const line of diffText.split("\n")) {
-    const m = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/);
-    if (m) {
-      push();
-      cur = {
-        header: line,
-        context: m[5] || undefined,
-        oldStart: Number(m[1]),
-        oldEnd: Number(m[1]),
-        newStart: Number(m[3]),
-        newEnd: Number(m[3]),
-        added: 0,
-        removed: 0,
-        rows: [],
-      };
-      continue;
-    }
-    if (!cur || line.startsWith("\\")) continue;
-    const k = line[0];
-    if (k !== "+" && k !== "-" && k !== " ") continue;
-    cur.rows.push(line);
-    if (k === "+") cur.added++;
-    else if (k === "-") cur.removed++;
-  }
-  push();
-  return hunks;
-}
-
-/**
- * Fixture-local content hash (PRD §8: ignores line numbers and whitespace).
- * Canonical hunk hashing is owned by the ingest agent; this documents the
- * fixture algorithm so it can be aligned later.
- */
-export function hunkContentHash(rows: string[]): string {
-  const norm = rows.map((r) => `${r[0]}${r.slice(1).trim().replace(/\s+/g, " ")}`).join("\n");
-  return sha16(norm);
-}
-
-function fnContext(trailing: string | undefined): string | undefined {
-  if (!trailing) return undefined;
-  const m = trailing.match(/(?:def|class)\s+(\w+)/);
-  return m ? m[1] : trailing || undefined;
-}
-
-function fileCategory(p: string, gen: boolean): ReviewFile["category"] {
-  if (gen) return "generated";
-  if (/(^|\/)tests?\//.test(p)) return "tests";
-  if (/\.(md|rst)$/.test(p) || /(^|\/)(changelog|docs)\//.test(p)) return "docs";
-  if (p.endsWith(".py")) return "source";
-  return "config";
-}
-
-function descText(html: string, id: string): string | null {
-  const m = html.match(new RegExp(`id="${id}"[^>]*>([\\s\\S]*?)</(p|li|ul)>`, "i"));
-  if (!m) return null;
-  return m[1].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || null;
 }
 
 function mkCard(id: string, pageId: string, title: string | null, blocks: Block[]): Card {
@@ -161,31 +85,50 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     gen: boolean;
     diff: string;
   }[];
-  const descriptionHtml = read("description.html");
   const manifest = JSON.parse(read("manifest.json")) as { recordings: ManifestEntry[] };
 
-  const descTexts: Record<string, string> = {};
-  for (const id of meta.descParagraphs) {
-    const t = descText(descriptionHtml, id);
-    if (t !== null) descTexts[id] = t;
-  }
-
-  // --- files -----------------------------------------------------------
-  const files: ReviewFile[] = diffEntries.map((e) => {
-    const hunks: Hunk[] = parseHunks(e.diff).map((h) => ({
-      contentHash: hunkContentHash(h.rows),
+  // --- files: canonical ingest ------------------------------------------
+  // diff.json holds one `git diff` section per file; concatenated they are
+  // exactly the diff text a real ingest would parse.
+  const diffText = diffEntries.map((e) => e.diff).join("\n");
+  const files: ReviewFile[] = parseUnifiedDiff(diffText).map((f) => {
+    const category = classifyFile(f.path);
+    const hunks: Hunk[] = f.hunks.map((h) => ({
+      contentHash: hashHunkLines(h.lines),
       header: h.header,
-      ...(fnContext(h.context) ? { context: fnContext(h.context) } : {}),
+      ...(h.context !== undefined ? { context: h.context } : {}),
       newStart: h.newStart,
       newEnd: h.newEnd,
       oldStart: h.oldStart,
       oldEnd: h.oldEnd,
       added: h.added,
       removed: h.removed,
+      lines: h.lines.map((l) => ({ ...l })),
+      ...(h.noNewline ? { noNewline: true as const } : {}),
+      ...(() => {
+        const reason = uninterestingReason(h, { category });
+        return reason !== undefined ? { hiddenReason: reason } : {};
+      })(),
     }));
-    return { fileKey: e.key, path: meta.fileKeys[e.key] ?? e.path, category: fileCategory(e.path, e.gen), hunks };
+    return {
+      fileKey: fileKeyForPath(f.path),
+      path: f.path,
+      category,
+      hunks,
+      ...(f.oldPath !== undefined ? { oldPath: f.oldPath } : {}),
+      ...(f.isNew ? { isNew: true as const } : {}),
+      ...(f.isDeleted ? { isDeleted: true as const } : {}),
+      ...(f.isRename ? { isRename: true as const } : {}),
+      ...(f.isBinary ? { isBinary: true as const } : {}),
+    };
   });
-  const hashOf = (key: string, index: number): string => files.find((f) => f.fileKey === key)!.hunks[index].contentHash;
+  const hunksOf = (fileKey: string): Hunk[] => files.find((f) => f.fileKey === fileKey)!.hunks;
+
+  // --- description: canonical ingest -------------------------------------
+  const rendered = renderMarkdownBlocks(read("description.md"));
+  const descTexts: Record<string, string> = Object.fromEntries(
+    rendered.paragraphs.map((p) => [p.id, p.text]),
+  );
 
   const textOf = (file: string): string => read(path.join("recordings", file));
 
@@ -250,6 +193,9 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   }
 
   // --- annotations (prototype seed()) ----------------------------------
+  // Annotation anchors use real file keys; card anchors use card#block IDs.
+  const connKey = meta.keyAliases["conn"];
+  const tconnKey = meta.keyAliases["tconn"];
   const annotations: Annotation[] = [
     {
       id: "x-seed",
@@ -293,7 +239,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       id: "t-sglf",
       type: "thread",
       anchor: {
-        host: { kind: "diff-line", fileKey: "conn", line: 82 },
+        host: { kind: "diff-line", fileKey: connKey, line: 82 },
         quotedText: "_OBSOLETE_FOLD_RE",
         prefix: "",
         suffix: "",
@@ -315,7 +261,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       id: "t-sgperf",
       type: "thread",
       anchor: {
-        host: { kind: "diff-line", fileKey: "conn", line: 80 },
+        host: { kind: "diff-line", fileKey: connKey, line: 80 },
         quotedText: "Starting the optional OWS match",
         prefix: "",
         suffix: "",
@@ -337,7 +283,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       id: "t-diff",
       type: "thread",
       anchor: {
-        host: { kind: "diff-line", fileKey: "tconn", line: 220 },
+        host: { kind: "diff-line", fileKey: tconnKey, line: 220 },
         quotedText: "one  three",
         prefix: "",
         suffix: "",
@@ -361,13 +307,13 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   const hunkStates = files.flatMap((f) =>
     f.hunks.map((h) => ({ contentHash: h.contentHash, folded: false, reviewed: false })),
   );
-  const setState = (key: string, index: number, patch: Record<string, unknown>): void => {
-    const hash = hashOf(key, index);
+  const setState = (fileKey: string, index: number, patch: Record<string, unknown>): void => {
+    const hash = hunksOf(fileKey)[index].contentHash;
     const s = hunkStates.find((x) => x.contentHash === hash)!;
     Object.assign(s, patch);
   };
-  setState("tconn", 2, { reviewed: true, folded: true });
-  setState("conn", 1, { note: "Only call site; everything else is the helper." });
+  setState(meta.keyAliases["tconn"], 2, { reviewed: true, folded: true });
+  setState(meta.keyAliases["conn"], 1, { note: "Only call site; everything else is the helper." });
 
   const version = {
     n: 1,
@@ -389,6 +335,12 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     },
     version,
     files,
+    description: {
+      html: rendered.html,
+      rev: "1",
+      source: "pr",
+      editable: false,
+    },
     pages,
     annotations,
     hunkStates,
@@ -405,7 +357,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
 
   // --- validate every recording -----------------------------------------
   const lookup = createSnapshotLookup(snapshot, {
-    aliases: meta.fileKeys,
+    aliases: meta.keyAliases,
     descTexts,
     concepts: meta.concepts,
   });

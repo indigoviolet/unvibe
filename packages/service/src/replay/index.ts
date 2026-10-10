@@ -5,5 +5,5 @@
  */
 export { ReplayAgentRunner, chunkText, usageFor } from "./runner.js";
 export type { ManifestEntry, ReplayOptions, ResolvedRecording } from "./runner.js";
-export { buildSnapshot, defaultFixturesDir, hunkContentHash } from "./snapshot.js";
+export { buildSnapshot, defaultFixturesDir } from "./snapshot.js";
 export type { BuildFailure, BuiltSnapshot, FixtureMeta } from "./snapshot.js";
