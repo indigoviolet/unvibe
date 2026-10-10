@@ -228,7 +228,7 @@ export interface ReviewUsageTotals {
   inputTokens: number;
   cachedTokens: number;
   outputTokens: number;
-  /** cachedTokens / inputTokens (undefined when no input yet). */
+  /** Cache read share: cached/(input+cached). input counts uncached input only (M0). */
   cacheHitRate?: number;
   /** Epoch ms of the first card streamed (time-to-first-card, PRD §16). */
   firstCardAt?: number;

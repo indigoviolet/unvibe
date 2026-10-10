@@ -460,6 +460,7 @@ export interface Job {
   /** Snapshot of the exact prompt sent (Settings links to it). */
   promptSnapshot?: string;
   usage?: TokenUsage;
+  /** Cache read share: cached/(input+cached). input counts uncached input only (M0). */
   cacheHitRate?: number;
   error?: string;
   /**

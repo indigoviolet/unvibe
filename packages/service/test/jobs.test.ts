@@ -363,7 +363,9 @@ describe("usage, prompts and events", () => {
     await queue.drain();
     const cur = queue.get(job.id)!;
     expect(cur.usage).toEqual({ inputTokens: 200, cachedTokens: 120, outputTokens: 20 });
-    expect(cur.cacheHitRate).toBeCloseTo(0.6);
+    // Read share = cached/(input+cached) (M0 pitfall #2: input counts
+    // uncached input only, so cached/input can exceed 1).
+    expect(cur.cacheHitRate).toBeCloseTo(120 / 320);
     expect(cur.sessionId).toBe("s-1");
     expect(cur.promptSnapshot).toBe("PROMPT");
     const texts = events.filter((e) => e.type === "text");

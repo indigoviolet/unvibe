@@ -967,9 +967,12 @@ export class Pipeline {
     const settings = this.opts.settings.get();
     const lib = loadTemplatesDirSync(this.promptsDir);
     const basePrompt = renderTemplate(lib.get("critic")!, {});
-    const keys = ["f-lf", "f-perf"];
+    // Replay keys select the f-lf/f-perf recordings; live runs get neutral
+    // ids (page titles carry the meaning; ids are opaque).
+    const replay = isReplayRunner(this.opts.runner);
+    const keys = replay ? ["f-lf", "f-perf"] : ["f-critic-0", "f-critic-1"];
     return keys.map((key) => {
-      const prompt = isReplayRunner(this.opts.runner) ? withReplayMark(basePrompt, { kind: "critic", key }) : basePrompt;
+      const prompt = replay ? withReplayMark(basePrompt, { kind: "critic", key }) : basePrompt;
       return this.opts.jobs.enqueue({
         reviewId,
         kind: "critic",
@@ -1440,7 +1443,9 @@ export class Pipeline {
         t.inputTokens += usage.inputTokens;
         t.cachedTokens += usage.cachedTokens;
         t.outputTokens += usage.outputTokens;
-        t.cacheHitRate = t.inputTokens > 0 ? t.cachedTokens / t.inputTokens : undefined;
+        // Read share (M0 pitfall #2): input counts uncached input only.
+        t.cacheHitRate =
+          t.inputTokens + t.cachedTokens > 0 ? t.cachedTokens / (t.inputTokens + t.cachedTokens) : undefined;
         draft.usageTotals = t;
       });
     } catch {

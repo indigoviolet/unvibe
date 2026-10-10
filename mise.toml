@@ -76,3 +76,7 @@ run = "mise run build && node scripts/global-install-check.mjs"
 [tasks."test:live:submit"]
 description = "Live M6 submit test on indigoviolet/lvu (draft PR only; never run by check)"
 run = "node ./scripts/live-submit.mjs"
+
+[tasks."test:live:pipeline"]
+description = "Live M3 pipeline smoke on real agents (claude+codex; token spend; never run by check)"
+run = "mise run build && node scripts/live-pipeline.mjs"

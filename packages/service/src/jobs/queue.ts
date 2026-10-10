@@ -437,8 +437,12 @@ export class JobQueue {
           cachedTokens: (job.usage?.cachedTokens ?? 0) + (usage.cachedTokens ?? 0),
           outputTokens: (job.usage?.outputTokens ?? 0) + (usage.outputTokens ?? 0),
         };
+        // Read share (M0 spike pitfall #2): inputTokens counts UNCACHED
+        // input only, so the rate is cached/(input+cached), never
+        // cached/input (which can exceed 1).
         const input = job.usage.inputTokens;
-        job.cacheHitRate = input > 0 ? job.usage.cachedTokens / input : undefined;
+        const cached = job.usage.cachedTokens;
+        job.cacheHitRate = input + cached > 0 ? cached / (input + cached) : undefined;
         this.save(entry);
         this.emit(entry);
       },
