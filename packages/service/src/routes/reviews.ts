@@ -267,15 +267,18 @@ export async function registerReviews(
 
   app.post("/api/reviews/:id/refresh", async (req, reply) => {
     const { id } = req.params as { id: string };
+    // Demo reviews have no git source (fixture ingest, PRD §11 demo path):
+    // refresh is a no-op (no remote to fetch). The demo persists a review
+    // row like any other, so check the snapshot's repo, not just row
+    // presence.
+    const pre = ctx.reviews.getSnapshot(id);
+    if (pre?.review.repoId === "demo") {
+      const response: RefreshResponse = { review: pre.review, newVersion: false };
+      return response;
+    }
     const row = readReviewRow(ctx.db, id);
-    // Demo reviews have no review row (snapshot is the source of truth);
-    // refresh is a no-op for them (no remote to fetch).
+    // Unknown review (no row and no snapshot, or a row without a snapshot).
     if (!row) {
-      const snap = ctx.reviews.getSnapshot(id);
-      if (snap?.review.repoId === "demo") {
-        const response: RefreshResponse = { review: snap.review, newVersion: false };
-        return response;
-      }
       return reply.code(404).send({ error: "unknown review" });
     }
     const repo = ctx.repos.get(row.repoId);

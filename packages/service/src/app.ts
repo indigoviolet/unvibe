@@ -40,7 +40,7 @@ import { McpRegistry } from "./mcp/index.js";
 import { StoreReviewReader } from "./mcp/reviewReader.js";
 import { RepoStore } from "./repos/store.js";
 import { ReviewStore } from "./state/store.js";
-import { SettingsStore, StaticModelCatalog, type ModelCatalog } from "./settings/index.js";
+import { SettingsStore, StaticModelCatalog, type ModelCatalog, type OfferedModels } from "./settings/index.js";
 import { SessionManager } from "./sessions/manager.js";
 import { SessionStore } from "./sessions/store.js";
 import { SharedContextService, setInteractionHandler } from "./sharedctx/index.js";
@@ -109,6 +109,45 @@ export class AcpModelCatalog implements ModelCatalog {
     }
     return this.fallback.listModels(provider);
   }
+
+  /**
+   * Live adapter offering with the adapter's default model, or null when
+   * unknown (no live adapter, probe failed/timed out, or empty). Null
+   * means settings keeps static defaults and skips offer validation.
+   */
+  async offered(provider: string): Promise<OfferedModels | null> {
+    const live = (
+      this.runner as unknown as {
+        listModelsWithDefault?: (p: string) => Promise<{ models: { id: string }[]; defaultId: string | null }>;
+      }
+    ).listModelsWithDefault;
+    if (typeof live !== "function") return null;
+    try {
+      const res = await withTimeout(
+        live.call(this.runner, provider),
+        10_000,
+        () => Promise.reject(new Error("offered() timed out")),
+      );
+      const models = res.models.map((m) => m.id).filter(Boolean);
+      if (models.length === 0) return null;
+      return { models, defaultId: res.defaultId };
+    } catch {
+      return null;
+    }
+  }
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const gate = new Promise<T>((resolve, reject) => {
+    timer = setTimeout(() => {
+      void onTimeout().then(resolve, reject);
+    }, ms);
+    timer.unref?.();
+  });
+  return Promise.race([p, gate]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 /**

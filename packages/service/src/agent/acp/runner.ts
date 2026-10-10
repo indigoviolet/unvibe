@@ -81,7 +81,7 @@ export class AcpAgentRunner implements AgentRunner {
   /** Last reported cumulative usage per session (Claude counters grow across
    *  turns; per-turn usage is the delta — see usage.ts). */
   private usageBaseline = new Map<string, TurnUsage>();
-  private modelCache = new Map<ProviderId, { at: number; models: ModelInfo[] }>();
+  private modelCache = new Map<ProviderId, { at: number; models: ModelInfo[]; defaultId?: string | null }>();
   private opts: AcpRunnerOptions;
 
   constructor(opts: AcpRunnerOptions = {}) {
@@ -569,9 +569,19 @@ export class AcpAgentRunner implements AgentRunner {
 
   /** Models the adapter offers (from session/new configOptions). */
   async listModels(provider: string): Promise<ModelInfo[]> {
+    return (await this.listModelsWithDefault(provider)).models;
+  }
+
+  /**
+   * Models plus the adapter's current (default) model id, from the same
+   * session/new probe. Settings uses the default to pick the
+   * second-opinion model (PRD §12: a different provider's default).
+   */
+  async listModelsWithDefault(provider: string): Promise<{ models: ModelInfo[]; defaultId: string | null }> {
     const p = normalizeProvider(provider);
     const cached = this.modelCache.get(p);
-    if (cached && Date.now() - cached.at < 5 * 60_000) return cached.models;
+    if (cached && Date.now() - cached.at < 5 * 60_000)
+      return { models: cached.models, defaultId: cached.defaultId ?? null };
     const caller = await this.ensureCaller(p);
     const res = (await caller.request("session/new", {
       cwd: tmpdir(),
@@ -579,9 +589,9 @@ export class AcpAgentRunner implements AgentRunner {
       _meta: p === "claude" ? {} : { jetbrains: { air: { version: 1 } } },
     })) as { sessionId: string; configOptions?: unknown[] };
     try {
-      const models = extractModels(res.configOptions);
-      this.modelCache.set(p, { at: Date.now(), models });
-      return models;
+      const { models, defaultId } = extractModels(res.configOptions);
+      this.modelCache.set(p, { at: Date.now(), models, defaultId });
+      return { models, defaultId };
     } finally {
       try {
         await caller.request("session/close", { sessionId: res.sessionId });
@@ -659,19 +669,22 @@ export class AcpAgentRunner implements AgentRunner {
   }
 }
 
-function extractModels(configOptions: unknown[] | undefined): ModelInfo[] {
-  if (!configOptions) return [];
+function extractModels(configOptions: unknown[] | undefined): { models: ModelInfo[]; defaultId: string | null } {
+  if (!configOptions) return { models: [], defaultId: null };
   for (const o of configOptions) {
-    const opt = o as { id?: string; category?: string; options?: unknown };
+    const opt = o as { id?: string; category?: string; options?: unknown; currentValue?: unknown };
     if (opt.id === "model" || opt.category === "model") {
-      return flattenSelectOptions(o).map((e) => ({
-        id: e.value,
-        name: e.name,
-        description: e.description,
-      }));
+      return {
+        models: flattenSelectOptions(o).map((e) => ({
+          id: e.value,
+          name: e.name,
+          description: e.description,
+        })),
+        defaultId: typeof opt.currentValue === "string" && opt.currentValue ? opt.currentValue : null,
+      };
     }
   }
-  return [];
+  return { models: [], defaultId: null };
 }
 
 export type { PendingPrompt };
