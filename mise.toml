@@ -20,6 +20,10 @@ sources = ["packages/*/src/**/*", "packages/*/package.json"]
 description = "Run vitest across workspaces"
 run = "npm run test --workspaces --if-present"
 
+[tasks."test:e2e"]
+description = "Playwright e2e for the guide against the mock fixture (guide agent; the diff agent may subsume this into its own test:e2e)"
+run = "VITE_MOCK=1 npm run build --workspace @unvibe/web && npm exec --workspace @unvibe/web -- playwright test"
+
 [tasks.lint]
 description = "Run ESLint"
 run = "npx eslint ."
