@@ -43,6 +43,8 @@ export interface IngestedReview {
   files: ReviewFile[];
   description: ReviewDescription;
   worktreePath: string;
+  /** Display title: PR title or branch name (stored in reviews.data for the front-screen list). */
+  title: string;
 }
 
 /** New review/version-1 ids. Format `rv_<12 hex>` (app-assigned, PRD §7.2). */
@@ -148,7 +150,7 @@ export async function ingestReview(
     };
   }
 
-  return { review, version, files, description, worktreePath: resolved.worktreePath };
+  return { review, version, files, description, worktreePath: resolved.worktreePath, title: resolved.title };
 }
 
 /** Persist the review + version-1 rows (snapshot goes via `ReviewStore`). */
@@ -158,6 +160,7 @@ export function writeReviewRows(
   ingested: IngestedReview,
 ): void {
   const { review, version } = ingested;
+  const title = ingested.title ?? "";
   db.prepare(
     "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
   ).run(
@@ -167,7 +170,7 @@ export function writeReviewRows(
     review.prNumber ?? null,
     review.currentVersion,
     review.createdAt,
-    JSON.stringify({ title: "" }),
+    JSON.stringify({ title }),
   );
   db.prepare(
     "INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?)",

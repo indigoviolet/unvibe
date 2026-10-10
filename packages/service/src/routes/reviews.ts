@@ -43,6 +43,8 @@ import {
 import { demoFixtureName, fixturesDirDefault, ingestDemo, isDemoRequest } from "../pipeline/demo.js";
 import { dispatchAction } from "../pipeline/actions/dispatcher.js";
 import type { Pipeline } from "../pipeline/index.js";
+import { deleteReviewLocal, listReviewSummaries, touchReviewOpened } from "../reviews/index.js";
+import { isNoneRunner } from "../agent/factory.js";
 
 export interface ReviewsRouteDeps {
   baseRunner?: UpdateBaseRunner;
@@ -68,6 +70,55 @@ export async function registerReviews(
 ): Promise<void> {
   const pipeline = (deps as { pipeline?: Pipeline }).pipeline;
   const autoPipeline = (deps as { autoPipeline?: boolean }).autoPipeline ?? true;
+
+  // Front screen: every review opened before, across ALL repos, most
+  // recent first (PRD §4.2). No gh/git calls; summaries come from durable
+  // rows + snapshots so the page stays fast with many sessions.
+  app.get("/api/reviews", async () => {
+    const agents = (deps as RouteDeps).agents;
+    const pipelineDisabled = !pipeline || (agents ? isNoneRunner(agents) : false);
+    const jobs = (deps as RouteDeps).jobs;
+    const reviews = listReviewSummaries({
+      db: ctx.db,
+      ...(jobs ? { jobsByReview: (id: string) => jobs.listByReview(id) } : {}),
+      pipelineDisabled,
+    });
+    return { reviews };
+  });
+
+  // Front screen "Remove": archive/delete the review's local data only.
+  // Never touches GitHub or the user's checkout; removes the managed
+  // worktree. Confirm in the UI before calling.
+  app.delete("/api/reviews/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const jobs = (deps as { jobs?: { listByReview: (id: string) => { id: string; state: string }[]; cancel: (id: string) => void } }).jobs;
+    const result = await deleteReviewLocal({
+      db: ctx.db,
+      runner: ctx.runner,
+      dataDir: ctx.dataDir,
+      ...(jobs
+        ? {
+            cancelJobs: (reviewId: string) => {
+              try {
+                for (const j of jobs.listByReview(reviewId)) {
+                  if (j.state !== "done" && j.state !== "error" && j.state !== "cancelled") {
+                    try {
+                      jobs.cancel(j.id);
+                    } catch {
+                      // Best effort.
+                    }
+                  }
+                }
+              } catch {
+                // Ignore.
+              }
+            },
+          }
+        : {}),
+    }, id);
+    if (!result.deleted) return reply.code(404).send({ error: "unknown review" });
+    return { ok: true };
+  });
 
   app.post("/api/reviews", async (req, reply) => {
     const body = (req.body ?? {}) as CreateReviewRequest;
@@ -179,6 +230,9 @@ export async function registerReviews(
     const query = req.query as { version?: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    // Opening a review marks it recently opened for the front-screen list
+    // (most recent first). Version views don't reorder the list.
+    if (query.version === undefined) touchReviewOpened(ctx.db, id);
     // Merge live jobs so the Jobs view + usage totals stay current without
     // waiting for a patch event.
     const jobs = (deps as RouteDeps).jobs;
