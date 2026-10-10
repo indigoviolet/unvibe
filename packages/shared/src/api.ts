@@ -15,6 +15,7 @@ import type {
   LogEntry,
   Page,
   Review,
+  ReviewDescription,
   ReviewFile,
   Repo,
   Version,
@@ -40,12 +41,16 @@ export interface AddRepoRequest {
 export type ChangesFilter = "authoring" | "review-requested" | "branches" | "recent" | "all";
 
 export interface RepoChange {
-  kind: "pr" | "branch";
+  kind: "pr" | "branch" | "review";
   title: string;
   prNumber?: number;
   branch?: string;
   author?: string;
   updatedAt?: number;
+  /** Set for kind "review": the opened review's id (M1 service addition). */
+  reviewId?: string;
+  /** Set for kind "review": head moved since the review was fetched. */
+  stale?: boolean;
 }
 
 export interface RepoChangesResponse {
@@ -64,6 +69,8 @@ export interface ReviewSnapshot {
   review: Review;
   version: Version;
   files: ReviewFile[];
+  /** PR description / commit messages; absent only on pre-M1 snapshots. */
+  description?: ReviewDescription;
   pages: Page[];
   annotations: Annotation[];
   hunkStates: HunkState[];
@@ -78,7 +85,11 @@ export type ReviewResponse = ReviewSnapshot;
 
 export interface RefreshResponse {
   review: Review;
-  /** True when a new version was created by the fetch. */
+  /**
+   * True when a new version was created by the fetch.
+   * M1: true when the head SHA moved (version creation + mapping is M5;
+   * see the `M5 seam` marker in the service refresh route).
+   */
   newVersion: boolean;
 }
 
@@ -119,7 +130,8 @@ export interface ActionResponse {
 export interface UpdateHunkRequest {
   folded?: boolean;
   reviewed?: boolean;
-  note?: string;
+  /** Set to change the note; explicit null clears it (M1 addition). */
+  note?: string | null;
 }
 
 export interface SummarizeHunkResponse {
@@ -175,6 +187,19 @@ export interface Settings {
   /** Base-rebuild thresholds (PRD §9.4). */
   rebuildSupersededRatio: number;
   rebuildAppendedTokens: number;
+  /** Provider cache lifetime in ms: idle sessions close after this (PRD §12). */
+  cacheLifetimeMs: number;
+  /** Service exits after this many idle minutes (PRD §14; 0 = never). */
+  idleExitMinutes: number;
+}
+
+/** PUT /api/settings accepts a partial update; GET returns full Settings. */
+export type UpdateSettingsRequest = Partial<Settings>;
+
+/** GET /api/models?provider=:id — models an ACP adapter offers (PRD §4.14). */
+export interface ModelsResponse {
+  provider: string;
+  models: string[];
 }
 
 // --- prompts -------------------------------------------------------------
@@ -205,6 +230,17 @@ export interface PromptsResponse {
 
 export interface JobsResponse {
   jobs: Job[];
+}
+
+/** GET /api/jobs/:id — one job. */
+export interface JobResponse {
+  job: Job;
+}
+
+/** GET /api/jobs/:id/prompt — the exact prompt the job sent. */
+export interface JobPromptResponse {
+  jobId: string;
+  promptSnapshot: string;
 }
 
 // --- WebSocket events ----------------------------------------------------

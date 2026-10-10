@@ -1,0 +1,44 @@
+M0 ACP spike: adapter=claude pkg=@agentclientprotocol/claude-agent-acp@0.89.0 at=2026-10-10T09:06:28.968Z
+pack: lines=1151 approxTokens=32740 bytes=130961
+  fact ZK-4177 at line 164: q=What is the value of RETRY_BUDGET_MS in milliseconds?
+  fact ZK-9182 at line 328: q=Which region is the fallback region if the primary fails?
+  fact ZK-3355 at line 491: q=What is the TTL in seconds for the negative-lookup cache?
+  fact ZK-6041 at line 655: q=Which team owns the shard rebalancer?
+  fact ZK-7723 at line 818: q=What is the maximum batch size of the drain_queue worker?
+  fact ZK-2089 at line 982: q=What wire protocol version does the handshaker pin?
+(node:205250) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+mcp server: http://127.0.0.1:42553/mcp
+capabilities: {"additionalDirectories":{},"close":{},"delete":{},"fork":{},"list":{},"resume":{},"subagents":{}} loadSession=true mcp={"http":true,"sse":true}
+authMethods: []
+newSession modes={"currentModeId":"default","availableModes":[{"id":"default","name":"Manual","description":"Always ask before making changes"},{"id":"acceptEdits","name":"Accept edits","description":"Automatically accept all file edits"},{"id":"plan","name":"Plan","description":"Create a plan before making changes"},{"id":"auto","name":"Auto","description":"Claude handles permission decisions"},{"id":"bypassPermissions","name":"Bypass permissions","description":"Accepts all permissions"}]}
+newSession configOptions=[{"id":"mode","name":"Mode","description":"Session permission mode","category":"mode","type":"select","currentValue":"default","options":[{"value":"default","name":"Manual","description":"Always ask before making changes"},{"value":"acceptEdits","name":"Accept edits","description":"Automatically accept all file edits"},{"value":"plan","name":"Plan","description":"Create a plan before making changes"},{"value":"auto","name":"Auto","description":"Claude handles permission decisions"},{"value":"bypassPermissions","name":"Bypass permissions","description":"Accepts all permissions"}]},{"id":"model","name":"Model","description":"AI model to use","category":"model","type":"select","currentValue":"opus","options":[{"value":"default","name":"Default (recommended)","description":"Opus 5.5"},{"value":"opus","name":"Opus 5.5","description":"For complex work and everyday tasks"},{"value":"fable","name":"Fable 5.1","description":"For your toughest challenges"},{"value":"sonnet","name":"Sonnet 5.5","description":"Most efficient for simpler tasks"},{"value":"haiku","name":"Haiku 5.5","description":"Fastest for quick answers"},{"value":"claude-haiku-4-5-20251001","name":"Haiku 4.5","description":"Fastest for quick answers"},{"value":"claude-sonnet-5","name":"Sonnet 5","description":"Efficient for routine tasks"},{"value":"claude-opus-5","name":"Opus 5","description":"Best for everyday, complex tasks"},{"value":"claude-fable-5","name":"Fable 5","description":"Most capable for your hardest and longest-running tasks"},{"value":"claude-opus-4-8","name":"Opus 4.8","description":"Best for everyday, complex tasks"},{"value":"claude-opus-4-7","name":"Opus 4.7","description":"Best for everyday, complex tasks"},{"value":"claude-opus-4-6","name":"Opus 4.6","description":"Best for everyday, complex tasks"},{"value":"claude-sonnet-4-6","name":"Sonnet 4.6","description":"Efficient for routine tasks"}]},{"id":"effort","name":"Effort","description":"Available effort levels for this model","category
+tiny turn: text="PONG" stop=end_turn
+PASS  0-auth-smoke
+      -> tiny turn ok, stop=end_turn, usage=[total=21898 in=2 out=5 cachedRead=0 cachedWrite=21891]
+PASS  1a-system-prompt
+      -> reply="QUOKKA-7" (via _meta.systemPrompt)
+PASS  1b-mcp-tool
+      -> serverCalls=[{"at":"2026-10-10T09:06:35.203Z","id":"h:sp:abc123"}] reply="HUNK:h:sp:abc123:fixed-content:alpha-bravo-42" toolCallsSeen=[{"id":"toolu_0112rWgqhHn6inp2r4EpDWmc","name":"ToolSearch","title":"ToolSearch","status":"pending"},{"id":"toolu_0112rWgqhHn6inp2r4EpDWmc","title":"","status":""},{"id":"toolu_0112rWgqhHn6inp2r4EpDWmc","title":"","status":""},{"id":"toolu_0112rWgqhHn6inp2r4EpDWmc","title":"","status":""},{"id":"toolu_0112rWgqhHn6inp2r4EpDWmc","title":"","status":"completed"},{"id":"toolu_01JEofuEe2MxptifqHeBdfim" perms=1
+base session: 3071ba11-6998-4a50-9c60-a8a3003cf75f
+PASS  2-base-pack
+      -> reply="READY" elapsed=1953ms
+base stop=end_turn usage=[total=82691 in=2 out=4 cachedRead=0 cachedWrite=82685] cacheShare=0.0% _metaKeys=quota usage_updates=3 first={"used":82691,"size":1000000,"_meta":{"_claude/model":"claude-opus-5-5"},"sessionUpdate":"usage_update"}
+PASS  3-fork
+      -> base=3071ba11-6998-4a50-9c60-a8a3003cf75f fork1=8bf52f81-1517-46a4-a8bd-5cea8f0247c2 fork2=9a5cd229-66c2-407a-8332-7f457b47b02e
+results written to /home/venky/dev/unvibe.worktrees/m0-acp-spike/spikes/acp/results/claude-1791623199260.json
+file:///home/venky/dev/unvibe.worktrees/m0-acp-spike/spikes/acp/node_modules/@agentclientprotocol/sdk/dist/jsonrpc.js:844
+                pendingResponse.reject(new RequestError(code, message, data));
+                                       ^
+
+RequestError: Internal error
+    at Connection.handleResponse (/home/venky/dev/unvibe.worktrees/m0-acp-spike/spikes/acp/node_modules/@agentclientprotocol/sdk/src/jsonrpc.ts:1501:32)
+    at Connection.receiveMessage (/home/venky/dev/unvibe.worktrees/m0-acp-spike/spikes/acp/node_modules/@agentclientprotocol/sdk/src/jsonrpc.ts:1371:12)
+    at Connection.receiveWireMessage (/home/venky/dev/unvibe.worktrees/m0-acp-spike/spikes/acp/node_modules/@agentclientprotocol/sdk/src/jsonrpc.ts:1271:10)
+    at Connection.receive (/home/venky/dev/unvibe.worktrees/m0-acp-spike/spikes/acp/node_modules/@agentclientprotocol/sdk/src/jsonrpc.ts:1230:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  code: -32603,
+  data: { details: 'Session not found' }
+}
+
+Node.js v26.10.0
