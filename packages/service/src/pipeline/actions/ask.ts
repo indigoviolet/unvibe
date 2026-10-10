@@ -154,8 +154,12 @@ export async function runAskFill(
     async (res) => {
       const { html, citations } = replyHtml(res.cards);
       const fixedCitations = canonicalizeCitations(citations, getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
+      // The app removes the trailing JSON block before display (reply-format
+      // §10): store the body, not the raw reply.
+      const split = splitReply(res.text);
+      const body = split.ok ? split.body.trim() : res.text;
       await reviews.mutate(reviewId, (draft) => {
-        appendAgentReplyInDraft(draft, threadId, { text: res.text, html });
+        appendAgentReplyInDraft(draft, threadId, { text: body, html });
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId)!;
         found.working = null;
         found.error = null;
@@ -338,8 +342,10 @@ async function replyOnSession(
           await recordUsageLocal(ctx, reviewId, usage);
           const { html, citations } = replyHtml(parsed.cards);
           const fixedCitations = canonicalizeCitations(citations, getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
+          const turnSplit = splitReply(text);
+          const turnBody = turnSplit.ok ? turnSplit.body.trim() : text;
           await reviews.mutate(reviewId, (draft) => {
-            appendAgentReplyInDraft(draft, threadId, { text, html });
+            appendAgentReplyInDraft(draft, threadId, { text: turnBody, html });
             const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId)!;
             found.working = null;
             found.error = null;
