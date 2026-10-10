@@ -28,6 +28,16 @@ export interface HealthResponse {
   version: string;
 }
 
+/**
+ * M6: `GET /api/viewer` — the GitHub login behind `gh` (`gh api user`),
+ * cached server-side. The Submit panel says "Submit as <user>" and the
+ * description tab applies the "author + open PR" rule with it.
+ */
+export interface ViewerResponse {
+  /** GitHub login, or null when `gh` is not logged in. */
+  login: string | null;
+}
+
 // --- repos ---------------------------------------------------------------
 
 export interface ReposResponse {

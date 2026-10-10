@@ -8,6 +8,7 @@
  */
 import { useEffect } from "react";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
+import { useDiffCommentBindings } from "../comments/DiffComments.js";
 import { DescriptionView } from "./description/DescriptionView.js";
 import { DiffView } from "./diff/DiffView.js";
 import { REVEAL_EVENT } from "./diff/revealSource.js";
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export function SourcePane({ reviewId, tab, onTab }: Props) {
+  const diffComments = useDiffCommentBindings(reviewId);
   useEffect(() => {
     const onReveal = (e: Event): void => {
       const ref = (e as CustomEvent<{ ref?: unknown }>).detail?.ref;
@@ -56,7 +58,16 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
           <CommentsMenu reviewId={reviewId} />
         </div>
       </div>
-      {tab === "desc" ? <DescriptionView reviewId={reviewId} /> : <DiffView reviewId={reviewId} />}
+      {tab === "desc" ? (
+        <DescriptionView reviewId={reviewId} />
+      ) : (
+        <DiffView
+          reviewId={reviewId}
+          lineSlots={diffComments.lineSlots}
+          commentedLines={diffComments.commentedLines}
+          onLineClick={diffComments.onLineClick}
+        />
+      )}
     </>
   );
 }

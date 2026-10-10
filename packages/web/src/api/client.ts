@@ -8,8 +8,11 @@ import type {
   AddRepoRequest,
   ChangesFilter,
   ContributionsResponse,
+  CreateCommentRequest,
+  CreateCommentResponse,
   CreateReviewRequest,
   DeleteContributionResponse,
+  ExistingCommentsResponse,
   HealthResponse,
   Job,
   JobPromptResponse,
@@ -18,19 +21,21 @@ import type {
   ModelsResponse,
   PromptsResponse,
   RefreshResponse,
+  ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
   ReviewAction,
   ReviewSnapshot,
   Settings,
+  SubmitPreview,
   SubmitReviewRequest,
   SubmitReviewResponse,
   SummarizeHunkResponse,
-  ThreadMessage,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
   UpdateHunkRequest,
   UpdateReviewResponse,
+  ViewerResponse,
 } from "@unvibe/shared";
 // Static import keeps mock timing deterministic in dev; the mock modules are
 // data + an in-memory client with no side effects on import, so bundlers can
@@ -119,20 +124,38 @@ const realApi = {
   summarizeHunk: (id: string, hash: string): Promise<SummarizeHunkResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/hunks/${encodeURIComponent(hash)}/summarize`),
 
-  updateComment: (reviewId: string, commentId: string, body: UpdateCommentRequest): Promise<{ messages: ThreadMessage[] }> =>
+  createComment: (reviewId: string, body: CreateCommentRequest): Promise<CreateCommentResponse> =>
+    request(`/api/reviews/${encodeURIComponent(reviewId)}/comments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  replyComment: (reviewId: string, commentId: string, body: ReplyCommentRequest): Promise<{ ok: boolean }> =>
+    post(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}/replies`, body),
+  updateComment: (reviewId: string, commentId: string, body: UpdateCommentRequest): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  deleteComment: (reviewId: string, commentId: string): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}`, {
+      method: "DELETE",
+    }),
 
-  updateDescription: (id: string, body: UpdateDescriptionRequest): Promise<{ ok: boolean }> =>
+  updateDescription: (id: string, body: UpdateDescriptionRequest): Promise<{ ok: boolean; changed?: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}/description`, {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  revertDescription: (id: string): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/description`, { method: "DELETE" }),
   submit: (id: string, body: SubmitReviewRequest): Promise<SubmitReviewResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/submit`, body),
+  submitPreview: (id: string): Promise<{ preview: SubmitPreview }> =>
+    get(`/api/reviews/${encodeURIComponent(id)}/submit/preview`),
+  prComments: (id: string): Promise<ExistingCommentsResponse> =>
+    get(`/api/reviews/${encodeURIComponent(id)}/pr-comments`),
 
+  viewer: (): Promise<ViewerResponse> => get("/api/viewer"),
   settings: (): Promise<Settings> => get("/api/settings"),
   saveSettings: (body: Partial<Settings>): Promise<Settings> =>
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
