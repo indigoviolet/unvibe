@@ -58,8 +58,9 @@ export async function examplesAction(
     onJob: (job: Job) => capture.onJob(job),
   });
 
-  void done.then(
-    async (res) => {
+  const handled: Promise<string | null> = done.then(
+    async (res): Promise<string | null> => {
+      capture.settled();
       const fresh = res.cards.flatMap((c) => c.blocks) as Block[];
       // Examples may also arrive nested in the reply's own structure;
       // collect every Example aside recursively.
@@ -90,14 +91,24 @@ export async function examplesAction(
           // Logging never fails the action.
         }
       }
+      return null;
     },
-    async () => {
-      // Job error is the visible failure; the card is unchanged.
+    async (err: Error): Promise<string | null> => {
+      capture.settled();
+      // With a job, its error state is the visible failure; without one
+      // (fail-fast agent) the message goes into the HTTP response.
+      return err instanceof Error ? err.message : String(err);
     },
   );
 
   const job = await capture.wait();
-  return job ? { cardId, jobId: job.id } : { cardId };
+  if (job) {
+    handled.catch(() => {});
+    return { cardId, jobId: job.id };
+  }
+  const fillError = await handled;
+  if (fillError) throw new Error(fillError);
+  return { cardId };
 }
 
 function collectExamples(blocks: Block[]): Block[] {

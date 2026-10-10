@@ -122,7 +122,8 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   const streams = useReview((s) => s.streams);
   const streamTail = streams[thread.id];
   const serverWorking = thread.working !== undefined && thread.working !== null && thread.working !== "";
-  const working = awaitingReply && (serverWorking || isAskWorking(thread.id));
+  // A failed turn shows the error + Retry instead of any spinner.
+  const working = awaitingReply && !thread.error && (serverWorking || isAskWorking(thread.id));
   const waiting = awaitingReply && !working && !thread.error;
   useAskWorkingTick(thread.id, working);
   const posted = thread.postedAt !== undefined;

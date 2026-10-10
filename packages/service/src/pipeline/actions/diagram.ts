@@ -63,13 +63,19 @@ export async function diagramAction(
     onJob: (job: Job) => capture.onJob(job),
   });
 
-  void done.then(
-    async (res) => {
+  const handled: Promise<string | null> = done.then(
+    async (res): Promise<string | null> => {
+      capture.settled();
       let fresh = res.cards.flatMap((c) => c.blocks) as Block[];
       const bad = fresh.filter((b) => b.type === "diagram" && !isValidMermaid(b.mermaid));
       if (bad.length > 0) {
-        // One repair turn for the unparseable diagram.
-        fresh = await repairDiagrams(ctx, cardId, level, fresh, bad as Block[]);
+        // One repair turn for the unparseable diagram; a failed repair
+        // leaves the card unchanged (job error is the visible failure).
+        try {
+          fresh = await repairDiagrams(ctx, cardId, level, fresh, bad as Block[]);
+        } catch {
+          return null;
+        }
       }
       let added = 0;
       await reviews.mutate(reviewId, (draft) => {
@@ -97,14 +103,24 @@ export async function diagramAction(
           // Logging never fails the action.
         }
       }
+      return null;
     },
-    async () => {
-      // Job error is the visible failure; the card is unchanged.
+    async (err: Error): Promise<string | null> => {
+      capture.settled();
+      // With a job, its error state is the visible failure; without one
+      // (fail-fast agent) the message goes into the HTTP response.
+      return err instanceof Error ? err.message : String(err);
     },
   );
 
   const job = await capture.wait();
-  return job ? { cardId, jobId: job.id } : { cardId };
+  if (job) {
+    handled.catch(() => {});
+    return { cardId, jobId: job.id };
+  }
+  const fillError = await handled;
+  if (fillError) throw new Error(fillError);
+  return { cardId };
 }
 
 /** One repair turn: re-ask with the parse problem + previous source inline. */

@@ -11,8 +11,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AgentEvent, ReviewSnapshot } from "@unvibe/shared";
+import type { AgentEvent, McpServerConfig, ReviewSnapshot, Session } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
+import { NO_AGENT_MESSAGE } from "../src/agent/none.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
 import { isValidMermaid } from "../src/interaction/mermaid.js";
@@ -766,6 +767,250 @@ describe("M4 failure paths (scripted fakes)", () => {
       expect(problem.blocks.filter((x) => x.type === "aside").length).toBe(2);
       expect(central.blocks.filter((x) => x.type === "aside").length).toBe(2);
       expect(central.level).toBe("simple");
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("M4 actions under UNVIBE_AGENT=none", () => {
+  beforeEach(() => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+  });
+
+  /**
+   * Replay until the guide exists, then none semantics with the exact
+   * production message (NoAgentRunner fails the same way: start throws,
+   * prompts yield a non-retryable error).
+   */
+  class FlippableRunner extends ReplayAgentRunner {
+    useNone = false;
+    override async start(opts: {
+      provider: string;
+      model: string;
+      cwd: string;
+      systemPrompt: string;
+      mcpServers: McpServerConfig[];
+    }): Promise<Session> {
+      if (this.useNone) throw new Error(NO_AGENT_MESSAGE);
+      return super.start(opts);
+    }
+    override async fork(session: Session): Promise<Session> {
+      if (this.useNone) throw new Error(NO_AGENT_MESSAGE);
+      return super.fork(session);
+    }
+    override async *prompt(session: Session, text: string, signal?: AbortSignal): AsyncIterable<AgentEvent> {
+      if (this.useNone) {
+        yield { type: "error", message: NO_AGENT_MESSAGE, retryable: false };
+        return;
+      }
+      yield* super.prompt(session, text, signal);
+    }
+  }
+
+  function firstDiffLine(snapshot: ReviewSnapshot): { fileKey: string; line: number } {
+    for (const f of snapshot.files) {
+      for (const h of f.hunks) {
+        const row = h.lines.find((l) => l.newLine !== undefined);
+        if (row?.newLine) return { fileKey: f.fileKey, line: row.newLine };
+      }
+    }
+    throw new Error("demo review has no diff lines");
+  }
+
+  /**
+   * Strict RFC 6902 applier mirroring the web store contract: throws on
+   * missing parents and out-of-bounds indices instead of corrupting state.
+   */
+  function strictApply(root: unknown, op: { op: string; path: string; value?: unknown }): unknown {
+    const clone = (v: unknown): unknown =>
+      Array.isArray(v) ? [...v] : v && typeof v === "object" ? { ...(v as object) } : v;
+    const segs = op.path.split("/").slice(1).map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
+    if (segs.length === 0) {
+      if (op.op === "remove") return undefined;
+      return (op as { value: unknown }).value;
+    }
+    const newRoot = clone(root);
+    let node = newRoot as Record<string, unknown> & unknown[];
+    for (let i = 0; i < segs.length - 1; i++) {
+      const next = (node as Record<string, unknown>)[segs[i]];
+      if (next === null || typeof next !== "object") throw new Error(`patch parent missing at ${op.path}`);
+      const copy = clone(next);
+      (node as Record<string, unknown>)[segs[i]] = copy;
+      node = copy as never;
+    }
+    const last = segs[segs.length - 1];
+    if (Array.isArray(node)) {
+      const idx = last === "-" ? node.length : Number(last);
+      if (!Number.isInteger(idx) || idx < 0) throw new Error(`patch index out of bounds at ${op.path}`);
+      if (op.op === "remove") {
+        if (idx >= node.length) throw new Error(`patch index out of bounds at ${op.path}`);
+        node.splice(idx, 1);
+      } else if (op.op === "add") {
+        if (idx > node.length) throw new Error(`patch index out of bounds at ${op.path}`);
+        node.splice(idx, 0, (op as { value: unknown }).value);
+      } else {
+        if (idx >= node.length) throw new Error(`patch index out of bounds at ${op.path}`);
+        node[idx] = (op as { value: unknown }).value;
+      }
+    } else {
+      if (op.op === "remove") delete (node as Record<string, unknown>)[last];
+      else (node as Record<string, unknown>)[last] = (op as { value: unknown }).value;
+    }
+    return newRoot;
+  }
+
+  it("non-agent actions work and every patch chains + applies strictly", { timeout: 90000 }, async () => {
+    const agents = new FlippableRunner({ fixturesDir, chunkChars: 256, delayMs: 0 });
+    const { app, ctx } = await createApp("tok", { agents });
+    try {
+      const id = await createDemoReview(app);
+      await waitFor(() => {
+        const s = ctx.reviews.getSnapshot(id);
+        return !!s?.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "central")?.blocks.length;
+      });
+      // Flip to none: background pipeline jobs fail fast from here on.
+      agents.useNone = true;
+
+      // Collect every patch from here. Subscribe-then-clone is atomic
+      // (the bus delivers synchronously; no publish can interleave), so
+      // the observed chain must be gapless starting at the clone's rev.
+      const patches: { baseRev: number; headRev: number; ops: { op: string; path: string; value?: unknown }[] }[] = [];
+      const unsub = ctx.bus.subscribe(id, (ev) => {
+        if (ev.type === "patch") patches.push(ev);
+      });
+      const base = JSON.parse(JSON.stringify(ctx.reviews.getSnapshot(id)!)) as ReviewSnapshot;
+      const diff = firstDiffLine(ctx.reviews.getSnapshot(id)!);
+
+      const note = await postAction(app, id, {
+        kind: "note",
+        quote: "",
+        anchor: { where: "diff-line", fileKey: diff.fileKey, line: diff.line },
+        text: "none-mode note",
+      });
+      expect(note.status).toBe(200);
+      const noteId = note.json.threadId as string;
+
+      expect((await postAction(app, id, { kind: "read", cardId: "central", read: true })).status).toBe(200);
+      expect((await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true })).status).toBe(200);
+      expect((await postAction(app, id, { kind: "bookmark", pageId: "root", saved: true })).status).toBe(200);
+      // Cached depth switch needs no agent.
+      const depth = await postAction(app, id, { kind: "depth", cardId: "central", direction: "simpler" });
+      expect(depth.status).toBe(200);
+      expect(depth.json.jobId).toBeUndefined();
+      expect((await postAction(app, id, { kind: "undo", cardId: "central" })).status).toBe(200);
+      expect((await postAction(app, id, { kind: "close", annotationId: noteId })).status).toBe(200);
+      const note2 = await postAction(app, id, {
+        kind: "note",
+        quote: "",
+        anchor: { where: "diff-line", fileKey: diff.fileKey, line: diff.line },
+      });
+      expect((await postAction(app, id, { kind: "delete", targetId: note2.json.threadId as string })).status).toBe(200);
+
+      const snap = ctx.reviews.getSnapshot(id)!;
+      expect(snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.level).toBe("standard");
+      expect(snap.pages.find((p) => p.id === "root")!.saved).toBe(true);
+      expect(snap.annotations.find((a) => a.id === noteId)!.open).toBe(false);
+      expect(snap.annotations.some((a) => a.id === (note2.json.threadId as string))).toBe(false);
+      unsub();
+
+      // Gapless rev chain from the clone…
+      expect(patches.length).toBeGreaterThan(0);
+      expect(patches[0].baseRev).toBe(base.rev);
+      let cur: unknown = base;
+      for (const p of patches) {
+        expect(p.baseRev).toBe((cur as ReviewSnapshot).rev);
+        // …and every op applies strictly (missing parents and
+        // out-of-bounds indices throw, like the web store). The rev
+        // itself travels outside the ops (headRev), as on the client.
+        for (const op of p.ops) cur = strictApply(cur, op);
+        (cur as ReviewSnapshot).rev = p.headRev;
+      }
+      // Replaying the observed patches from the clone converges exactly
+      // on the live server snapshot.
+      expect(cur).toEqual(snap);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("agent actions fail fast with a clear state under none (no stuck working)", { timeout: 90000 }, async () => {
+    const agents = new FlippableRunner({ fixturesDir, chunkChars: 256, delayMs: 0 });
+    const { app, ctx } = await createApp("tok", { agents });
+    try {
+      const id = await createDemoReview(app);
+      await waitFor(() => {
+        const s = ctx.reviews.getSnapshot(id);
+        return !!s?.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "central")?.blocks.length;
+      });
+      agents.useNone = true;
+      const diff = firstDiffLine(ctx.reviews.getSnapshot(id)!);
+
+      // Ask with an EMPTY quote (diff-line clicks carry none): accepted
+      // (not 400), thread created, then the clear no-agent error with no
+      // stuck working state — and no 10 s job-id wait.
+      const t0 = Date.now();
+      const ask = await postAction(app, id, {
+        kind: "ask",
+        quote: "",
+        anchor: { where: "diff-line", fileKey: diff.fileKey, line: diff.line },
+        message: "Why?",
+      });
+      const askMs = Date.now() - t0;
+      expect(ask.status).toBe(200);
+      expect(ask.json.jobId).toBeUndefined();
+      expect(askMs).toBeLessThan(8000);
+      const threadId = ask.json.threadId as string;
+      await waitFor(() => {
+        const t = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId);
+        return !!t && (t.error != null || t.messages.some((m) => m.who === "ai"));
+      });
+      const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
+      expect(thread.working).toBeNull();
+      expect(thread.error).toContain("no agent configured");
+
+      // Explain behaves the same way.
+      const ex = await postAction(app, id, {
+        kind: "explain",
+        quote: "",
+        anchor: { where: "diff-line", fileKey: diff.fileKey, line: diff.line },
+      });
+      expect(ex.status).toBe(200);
+      expect(ex.json.jobId).toBeUndefined();
+      const expansionId = ex.json.annotationId as string;
+      await waitFor(() => {
+        const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === expansionId);
+        return !!a && (a.error != null || (a.expansion?.blocks.length ?? 0) > 0);
+      });
+      const expansion = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === expansionId)!;
+      expect(expansion.working).toBeNull();
+      expect(expansion.error).toContain("no agent configured");
+
+      // Card rewrites needing generation fail fast with the message in
+      // the response; the card is unchanged.
+      const depth = await postAction(app, id, { kind: "depth", cardId: "g-design", direction: "simpler" });
+      expect(depth.status).toBe(500);
+      expect(String(depth.json.error)).toContain("no agent configured");
+      expect(
+        ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-design")!.level,
+      ).toBe("standard");
+
+      const examples = await postAction(app, id, { kind: "examples", cardId: "central" });
+      expect(examples.status).toBe(500);
+      expect(String(examples.json.error)).toContain("no agent configured");
+
+      // Retry rebuilds and fails the same fast way (error state persists,
+      // nothing stuck working; still 200 — the error lives on the thread).
+      const retry = await postAction(app, id, { kind: "retry", threadId });
+      expect(retry.status).toBe(200);
+      expect(retry.json.jobId).toBeUndefined();
+      await waitFor(() => {
+        const t = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId);
+        return !!t?.error && t.working === null;
+      });
+      expect(
+        ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!.error,
+      ).toContain("no agent configured");
     } finally {
       await app.close();
     }

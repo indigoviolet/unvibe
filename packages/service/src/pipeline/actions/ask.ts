@@ -53,7 +53,10 @@ export async function askAction(
 ): Promise<{ threadId: string; jobId?: string; deduplicated?: boolean }> {
   const { jobs, reviews, reviewId } = ctx;
   if (!req.message || req.message.trim() === "") throw new Error("ask message is required");
-  if (!req.quote) throw new Error("quote is required");
+  // Empty quotes are legal: diff-line clicks and description flows often
+  // carry no quote (the header falls back to file:line). Only the type is
+  // enforced (the dispatcher 400s a missing quote).
+  if (typeof req.quote !== "string") throw new Error("quote is required");
   const before = getSnapshotOrThrow(reviews, reviewId);
   const normalized = normalizeBlockAnchor(before, req.anchor);
   const anchor = buildAnchor(before, normalized, req.quote);
@@ -154,8 +157,13 @@ export async function runAskFill(
     },
   });
 
-  void done.then(
-    async (res) => {
+  // Handlers return the fill error (or null); with no job the response
+  // awaits the handler so fail-fast errors surface synchronously.
+  const handled: Promise<string | null> = done.then(
+    async (res): Promise<string | null> => {
+      // Unblock the HTTP response even when no job was ever enqueued
+      // (fail-fast agent); the fill below proceeds in the background.
+      capture.settled();
       const { html, citations } = replyHtml(res.cards);
       const fixedCitations = canonicalizeCitations(citations, getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
       // The app removes the trailing JSON block before display (reply-format
@@ -203,9 +211,11 @@ export async function runAskFill(
       } catch {
         // Logging never fails the action.
       }
+      return null;
     },
-    async (err: Error) => {
-      if (await suppressFillError(ctx, threadId)) return;
+    async (err: Error): Promise<string | null> => {
+      capture.settled();
+      if (await suppressFillError(ctx, threadId)) return null;
       const messageText = err instanceof Error ? err.message : String(err);
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
@@ -214,11 +224,20 @@ export async function runAskFill(
         found.error = messageText;
       });
       // Failures produce no shared knowledge: visible error only, no log.
+      return messageText;
     },
   );
 
   const job = await capture.wait();
-  return job ? { jobId: job.id } : {};
+  if (job) {
+    handled.catch(() => {});
+    return { jobId: job.id };
+  }
+  // No job: the fill settled inline (fail-fast agent). Its error, if any,
+  // is already on the thread's visible error state, so the response stays
+  // 200 with no job to stream on.
+  await handled;
+  return {};
 }
 
 /** Render the agent's reply cards to thread HTML (paragraphs joined). */

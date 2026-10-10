@@ -80,8 +80,18 @@ export function getSnapshotOrThrow(reviews: ReviewStore, reviewId: string): Revi
  * seam enqueues after the base lookup, so the id arrives via the `onJob`
  * callback shortly after the call; this waits for it (bounded) so the
  * HTTP response can carry the `jobId` the UI streams on.
+ *
+ * When the fill settles without ever enqueuing (fail-fast agent, e.g.
+ * `UNVIBE_AGENT=none`), callers invoke `settled()` in their completion
+ * handlers so `wait()` resolves at once instead of hitting the timeout.
+ * Promise resolution is first-wins, so a later `onJob`/`settled` is a
+ * no-op once the other has fired.
  */
-export function captureJobId(): { onJob: (job: Job) => void; wait: () => Promise<Job | null> } {
+export function captureJobId(): {
+  onJob: (job: Job) => void;
+  settled: () => void;
+  wait: () => Promise<Job | null>;
+} {
   let resolve: (j: Job | null) => void = () => {};
   const done = new Promise<Job | null>((res) => {
     resolve = res;
@@ -91,6 +101,10 @@ export function captureJobId(): { onJob: (job: Job) => void; wait: () => Promise
     onJob: (job: Job) => {
       clearTimeout(timer);
       resolve(job);
+    },
+    settled: () => {
+      clearTimeout(timer);
+      resolve(null);
     },
     wait: () => done,
   };

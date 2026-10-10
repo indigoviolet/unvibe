@@ -126,8 +126,9 @@ export async function followupAction(
     },
   });
 
-  void done.then(
-    async (res) => {
+  const handled: Promise<string | null> = done.then(
+    async (res): Promise<string | null> => {
+      capture.settled();
       const canon = aliasCanonicalizer(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
       const fixed = remapAliasTargets(res.cards.flatMap((c) => c.blocks) as Block[], res.validation.tokens, canon);
       await reviews.mutate(reviewId, (draft) => {
@@ -153,8 +154,10 @@ export async function followupAction(
       } catch {
         // Logging never fails the action.
       }
+      return null;
     },
-    async (err: Error) => {
+    async (err: Error): Promise<string | null> => {
+      capture.settled();
       const msg = err instanceof Error ? err.message : String(err);
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
@@ -164,11 +167,19 @@ export async function followupAction(
         found.error = msg;
         found.expansion.error = msg;
       });
+      return msg;
     },
   );
 
   const job = await capture.wait();
-  return job ? { annotationId, jobId: job.id } : { annotationId };
+  if (job) {
+    handled.catch(() => {});
+    return { annotationId, jobId: job.id };
+  }
+  // No job: the fill settled inline (fail-fast agent). Its error, if any,
+  // is already on the expansion's visible error state.
+  await handled;
+  return { annotationId };
 }
 
 function findFollowUp(

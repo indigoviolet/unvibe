@@ -124,8 +124,9 @@ async function depthViaAgent(
     onJob: (job: Job) => capture.onJob(job),
   });
 
-  void done.then(
-    async (res) => {
+  const handled: Promise<string | null> = done.then(
+    async (res): Promise<string | null> => {
+      capture.settled();
       const replyBlocks = res.cards.flatMap((c) => c.blocks) as Block[];
       await reviews.mutate(reviewId, (draft) => {
         const t = findCardTargetInDraft(draft, cardId);
@@ -155,14 +156,24 @@ async function depthViaAgent(
       } catch {
         // Logging never fails the action.
       }
+      return null;
     },
-    async () => {
-      // No card-level error field: the job's error state (Jobs view) is
-      // the visible failure; the card is unchanged and retryable via the
-      // same action (dedupe cleared once the job settles).
+    async (err: Error): Promise<string | null> => {
+      capture.settled();
+      // No card-level error field: with a job, its error state (Jobs view)
+      // is the visible failure; without one (fail-fast agent) the message
+      // goes into the HTTP response. Either way the card is unchanged and
+      // retryable via the same action.
+      return err instanceof Error ? err.message : String(err);
     },
   );
 
   const job = await capture.wait();
-  return job ? { cardId, jobId: job.id, level: target } : { cardId, level: target };
+  if (job) {
+    handled.catch(() => {});
+    return { cardId, jobId: job.id, level: target };
+  }
+  const fillError = await handled;
+  if (fillError) throw new Error(fillError);
+  return { cardId, level: target };
 }
