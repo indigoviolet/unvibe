@@ -39,7 +39,7 @@ describe("review routes", () => {
   });
 
   it("validates create payloads", async () => {
-    const { app } = await createApp("tok", { runner: real });
+    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
     try {
       const noRepo = await app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: {} });
       expect(noRepo.statusCode).toBe(400);
@@ -66,7 +66,7 @@ describe("review routes", () => {
 
   it("creates a review + version 1 snapshot and serves it back", async () => {
     const dir = await makeRepo();
-    const { app } = await createApp("tok", { runner: real });
+    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
     try {
       const added = await app.inject({
         method: "POST",
@@ -74,7 +74,7 @@ describe("review routes", () => {
         headers: authed,
         payload: { path: dir },
       });
-      const repoId = (added.json() as { repos: { id: string }[] }).repos[0].id;
+      const repoId = (added.json() as { repos: { id: string; localPath?: string }[] }).repos.find((r) => r.id !== "demo")!.id;
 
       const created = await app.inject({
         method: "POST",
@@ -107,7 +107,7 @@ describe("review routes", () => {
 
   it("refresh creates version n+1 on head movement (M5)", async () => {
     const dir = await makeRepo();
-    const { app } = await createApp("tok", { runner: real });
+    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
     try {
       const added = await app.inject({
         method: "POST",
@@ -115,7 +115,7 @@ describe("review routes", () => {
         headers: authed,
         payload: { path: dir },
       });
-      const repoId = (added.json() as { repos: { id: string }[] }).repos[0].id;
+      const repoId = (added.json() as { repos: { id: string; localPath?: string }[] }).repos.find((r) => r.id !== "demo")!.id;
       const created = await app.inject({
         method: "POST",
         url: "/api/reviews",
@@ -156,9 +156,9 @@ describe("hunk routes", () => {
     process.env.UNVIBE_REPO_ROOTS = "";
   });
 
-  it("PATCH updates hunk state through ReviewStore; summarize stays 501", async () => {
+  it("PATCH updates hunk state through ReviewStore; summarize enqueues (M3)", async () => {
     const dir = await makeRepo();
-    const { app, ctx } = await createApp("tok", { runner: real });
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
     try {
       const added = await app.inject({
         method: "POST",
@@ -166,7 +166,7 @@ describe("hunk routes", () => {
         headers: authed,
         payload: { path: dir },
       });
-      const repoId = (added.json() as { repos: { id: string }[] }).repos[0].id;
+      const repoId = (added.json() as { repos: { id: string; localPath?: string }[] }).repos.find((r) => r.id !== "demo")!.id;
       const created = await app.inject({
         method: "POST",
         url: "/api/reviews",
@@ -225,7 +225,8 @@ describe("hunk routes", () => {
         url: `/api/reviews/${id}/hunks/${hash}/summarize`,
         headers: authed,
       });
-      expect(summarize.statusCode).toBe(501);
+      expect(summarize.statusCode).toBe(202);
+      expect(typeof (summarize.json() as { jobId: string }).jobId).toBe("string");
     } finally {
       await app.close();
     }
