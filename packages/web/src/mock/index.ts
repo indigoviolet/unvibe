@@ -26,6 +26,7 @@ import type {
   PromptExpanded,
   PromptsResponse,
   PromptTemplate,
+  ReadinessResponse,
   RefreshResponse,
   Repo,
   RepoChange,
@@ -34,6 +35,8 @@ import type {
   Review,
   ReviewAction,
   ReviewSnapshot,
+  ReviewsListResponse,
+  ReviewSummary,
   Settings,
   UpdateHunkRequest,
   UpdateReviewResponse,
@@ -297,6 +300,12 @@ let mockContributions: Contribution[] = seedContributions();
  * fixture (component tests share this module's in-memory state).
  */
 export function resetMockState(): void {
+  mockReviewList = seedReviewList();
+  try {
+    localStorage.removeItem(READINESS_KEY);
+  } catch {
+    // Ignore.
+  }
   hunkStates.clear();
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
   annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
@@ -316,6 +325,92 @@ export function resetMockState(): void {
   mockJobs = seedJobs();
   mockContributions = seedContributions();
   rev = 1;
+}
+
+function seedReviewList(): ReviewSummary[] {
+  const total = MOCK_FILES.reduce((n, f) => n + f.hunks.length, 0);
+  const reviewed = [...seedHunkStates().values()].filter((s) => s.reviewed).length;
+  return [
+    {
+      id: "demo",
+      repoId: "urllib3",
+      repoOwner: "urllib3",
+      repoName: "urllib3",
+      title: "Unfold obsolete folded response header values",
+      branch: "fix-obs-fold",
+      prNumber: 5020,
+      createdAt: NOW - 3600000,
+      lastOpened: NOW - 600000,
+      versionCount: 1,
+      currentVersion: 1,
+      stale: false,
+      totalHunks: total,
+      reviewedHunks: reviewed,
+      pendingComments: 1,
+      guideStatus: "ready",
+    },
+    {
+      id: "r-old",
+      repoId: "urllib3",
+      repoOwner: "urllib3",
+      repoName: "urllib3",
+      title: "Fix retry backoff on 429s",
+      branch: "fix-retry-backoff",
+      prNumber: 5011,
+      createdAt: NOW - 86400000 * 2,
+      lastOpened: NOW - 86400000,
+      versionCount: 2,
+      currentVersion: 2,
+      stale: true,
+      totalHunks: total,
+      reviewedHunks: 0,
+      pendingComments: 0,
+      guideStatus: "running",
+      guideDetail: "Running: critic",
+    },
+  ];
+}
+
+let mockReviewList: ReviewSummary[] = seedReviewList();
+
+function mockSummaries(): ReviewSummary[] {
+  return [...mockReviewList].sort((a, b) => b.lastOpened - a.lastOpened);
+}
+
+const READINESS_KEY = "unvibe.mock.readiness";
+
+function readMockReadiness(): ReadinessResponse {
+  try {
+    const raw = localStorage.getItem(READINESS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ReadinessResponse;
+      if (Array.isArray(parsed.checks)) return { ...parsed, cached: false };
+    }
+  } catch {
+    // Fall through to healthy default.
+  }
+  return {
+    checks: [
+      { id: "git", label: "git", status: "ok", summary: "git found", fix: "", settingsAnchor: "#environment" },
+      { id: "gh", label: "gh (GitHub CLI)", status: "ok", summary: "gh logged in as you", fix: "", settingsAnchor: "#environment" },
+      { id: "agent:main", label: "Agent · main", status: "ok", summary: "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:small", label: "Agent · small", status: "ok", summary: "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:secondOpinion", label: "Agent · second opinion", status: "ok", summary: "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
+      { id: "agents-distinct", label: "Second opinion independence", status: "ok", summary: "Second opinion differs from main", fix: "", settingsAnchor: "#models" },
+    ],
+    generatedAt: Date.now(),
+    cached: false,
+  };
+}
+
+/** Test-only: seed a failing readiness report (e2e for callouts). */
+export function setMockReadiness(next: ReadinessResponse | null): void {
+  try {
+    if (next) localStorage.setItem(READINESS_KEY, JSON.stringify(next));
+    else localStorage.removeItem(READINESS_KEY);
+  } catch {
+    // Ignore.
+  }
 }
 
 /** Reviews that carry M5 staleness in mock mode (start page flags `r-old`). */
@@ -600,6 +695,24 @@ export const mockApi = {
     void body;
     await wait(150);
     return currentSnapshot("demo");
+  },
+
+  reviews: async (): Promise<ReviewsListResponse> => {
+    await wait(50);
+    return { reviews: mockSummaries() };
+  },
+
+  deleteReview: async (id: string): Promise<{ ok: boolean }> => {
+    await wait(50);
+    const i = mockReviewList.findIndex((r) => r.id === id);
+    if (i < 0) throw new Error(`DELETE /api/reviews/${id}: 404 {"error":"unknown review"}`);
+    mockReviewList.splice(i, 1);
+    return { ok: true };
+  },
+
+  readiness: async (): Promise<ReadinessResponse> => {
+    await wait(50);
+    return readMockReadiness();
   },
 
   review: async (id: string, version?: number): Promise<ReviewSnapshot> => {

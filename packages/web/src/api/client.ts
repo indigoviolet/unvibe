@@ -20,12 +20,14 @@ import type {
   JobsResponse,
   ModelsResponse,
   PromptsResponse,
+  ReadinessResponse,
   RefreshResponse,
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
   ReviewAction,
   ReviewSnapshot,
+  ReviewsListResponse,
   Settings,
   SubmitPreview,
   SubmitReviewRequest,
@@ -109,6 +111,11 @@ const realApi = {
 
   createReview: (body: CreateReviewRequest): Promise<ReviewSnapshot> =>
     post("/api/reviews", body),
+  reviews: (): Promise<ReviewsListResponse> => get("/api/reviews"),
+  deleteReview: (id: string): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  readiness: (force?: boolean): Promise<ReadinessResponse> =>
+    get(`/api/readiness${force ? "?force=1" : ""}`),
   review: (id: string, version?: number): Promise<ReviewSnapshot> =>
     get(`/api/reviews/${encodeURIComponent(id)}${version !== undefined ? `?version=${version}` : ""}`),
   refresh: (id: string): Promise<RefreshResponse> => post(`/api/reviews/${encodeURIComponent(id)}/refresh`),
