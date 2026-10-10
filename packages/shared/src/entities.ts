@@ -410,6 +410,13 @@ export interface ExpansionState {
    * block and the UI shows the collapsed-card fallback (PRD §4.7).
    */
   anchorStale?: boolean;
+  /**
+   * M4 second opinion (PRD §4.10): results attached to the expansion, not
+   * part of its revisable content — depth changes and undo operate on
+   * `blocks` / `level` / `undoStack` only, so these survive both. Keep one
+   * per mode+model; re-running replaces the matching entry.
+   */
+  secondOpinions?: SecondOpinionResult[];
 }
 
 /** An expansion card, comment thread, or opened-as-page link on an anchor. */
