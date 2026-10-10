@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/server.js";
 
 describe("HTTP auth gate", () => {
-  it("/api/health is open; /api/* needs the token; stubs 501 with it", async () => {
+  beforeEach(() => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+  });
+
+  it("/api/health is open; /api/* needs the token", async () => {
     const { app } = await createApp("test-token");
     try {
       const health = await app.inject({ method: "GET", url: "/api/health" });
@@ -23,28 +27,22 @@ describe("HTTP auth gate", () => {
         url: "/api/repos",
         headers: { authorization: "Bearer test-token" },
       });
-      expect(header.statusCode).toBe(501);
+      expect(header.statusCode).toBe(200);
 
       const query = await app.inject({ method: "GET", url: "/api/repos?token=test-token" });
-      expect(query.statusCode).toBe(501);
+      expect(query.statusCode).toBe(200);
     } finally {
       await app.close();
     }
   });
 
-  it("every PRD §14.1 stub endpoint is registered and gated", async () => {
+  it("every PRD §14.1 endpoint is registered and gated", async () => {
     const { app } = await createApp("test-token");
     const authed = { authorization: "Bearer test-token" };
-    const cases: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string }[] = [
-      { method: "GET", url: "/api/repos" },
-      { method: "POST", url: "/api/repos" },
-      { method: "GET", url: "/api/repos/r1/changes" },
-      { method: "POST", url: "/api/reviews" },
-      { method: "GET", url: "/api/reviews/r1" },
-      { method: "POST", url: "/api/reviews/r1/refresh" },
+    // Later milestones own these; they stay 501 stubs on this branch.
+    const stubs: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string }[] = [
       { method: "POST", url: "/api/reviews/r1/update" },
       { method: "POST", url: "/api/reviews/r1/actions" },
-      { method: "PATCH", url: "/api/reviews/r1/hunks/abc" },
       { method: "POST", url: "/api/reviews/r1/hunks/abc/summarize" },
       { method: "PATCH", url: "/api/reviews/r1/comments/c1" },
       { method: "PUT", url: "/api/reviews/r1/description" },
@@ -54,12 +52,33 @@ describe("HTTP auth gate", () => {
       { method: "GET", url: "/api/prompts" },
       { method: "GET", url: "/api/jobs" },
     ];
+    // M1 service implements these (functional status, not 501).
+    const live: { method: "GET" | "POST" | "PATCH"; url: string; status: number }[] = [
+      { method: "GET", url: "/api/repos", status: 200 },
+      { method: "POST", url: "/api/repos", status: 400 },
+      { method: "GET", url: "/api/repos/r1/changes", status: 404 },
+      { method: "POST", url: "/api/reviews", status: 400 },
+      { method: "GET", url: "/api/reviews/r1", status: 404 },
+      { method: "POST", url: "/api/reviews/r1/refresh", status: 404 },
+      { method: "PATCH", url: "/api/reviews/r1/hunks/abc", status: 400 },
+    ];
     try {
-      for (const c of cases) {
+      for (const c of [...stubs, ...live]) {
         const anon = await app.inject({ method: c.method, url: c.url });
         expect(anon.statusCode, c.url).toBe(401);
-        const authedRes = await app.inject({ method: c.method, url: c.url, headers: authed });
-        expect(authedRes.statusCode, c.url).toBe(501);
+      }
+      for (const c of stubs) {
+        const res = await app.inject({ method: c.method, url: c.url, headers: authed });
+        expect(res.statusCode, c.url).toBe(501);
+      }
+      for (const c of live) {
+        const res = await app.inject({
+          method: c.method,
+          url: c.url,
+          headers: authed,
+          ...(c.method === "POST" || c.method === "PATCH" ? { payload: {} } : {}),
+        });
+        expect(res.statusCode, c.url).toBe(c.status);
       }
     } finally {
       await app.close();
