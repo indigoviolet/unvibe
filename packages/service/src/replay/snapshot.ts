@@ -1,0 +1,461 @@
+/**
+ * Snapshot builder: runs every `fixtures/urllib3-5020/` recording through
+ * the parser + validator and assembles a complete `ReviewSnapshot`
+ * (files, pages, cards, annotations seeded as in the prototype's `seed()`,
+ * hunk states). Every citation must validate — the build throws otherwise.
+ *
+ * File keys keep the prototype's short slugs (`conn`, `tconn`, `tsock`,
+ * `log`); `meta.json` maps each alias to its repo path, and the same map
+ * is passed to the lookup as `aliases`, so the scheme can change later
+ * without touching the recordings.
+ */
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import type {
+  Annotation,
+  Block,
+  Card,
+  Hunk,
+  Page,
+  ReviewFile,
+  ReviewSnapshot,
+} from "@unvibe/shared";
+import { parseReply, collectTargets } from "@unvibe/shared";
+import type { ManifestEntry } from "./runner.js";
+import { createSnapshotLookup, validateReply } from "../validate/index.js";
+
+export interface FixtureMeta {
+  repo: string;
+  pr: number;
+  title: string;
+  headSha: string;
+  mergeBaseSha: string;
+  baseRef: string;
+  fileKeys: Record<string, string>;
+  descParagraphs: string[];
+  concepts: string[];
+}
+
+export interface BuildFailure {
+  file: string;
+  detail: string;
+}
+
+function sha16(s: string): string {
+  return crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
+}
+
+interface RawHunk {
+  header: string;
+  context?: string;
+  oldStart: number;
+  oldEnd: number;
+  newStart: number;
+  newEnd: number;
+  added: number;
+  removed: number;
+  rows: string[];
+}
+
+/** Parse unified-diff hunks (git's own: changed lines + ≤3 context). */
+function parseHunks(diffText: string): RawHunk[] {
+  const hunks: RawHunk[] = [];
+  let cur: RawHunk | null = null;
+  const push = (): void => {
+    if (!cur) return;
+    const newRows = cur.rows.filter((r) => r[0] === " " || r[0] === "+").length;
+    const oldRows = cur.rows.filter((r) => r[0] === " " || r[0] === "-").length;
+    cur.newEnd = newRows > 0 ? cur.newStart + newRows - 1 : cur.newStart;
+    cur.oldEnd = oldRows > 0 ? cur.oldStart + oldRows - 1 : cur.oldStart;
+    hunks.push(cur);
+  };
+  for (const line of diffText.split("\n")) {
+    const m = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/);
+    if (m) {
+      push();
+      cur = {
+        header: line,
+        context: m[5] || undefined,
+        oldStart: Number(m[1]),
+        oldEnd: Number(m[1]),
+        newStart: Number(m[3]),
+        newEnd: Number(m[3]),
+        added: 0,
+        removed: 0,
+        rows: [],
+      };
+      continue;
+    }
+    if (!cur || line.startsWith("\\")) continue;
+    const k = line[0];
+    if (k !== "+" && k !== "-" && k !== " ") continue;
+    cur.rows.push(line);
+    if (k === "+") cur.added++;
+    else if (k === "-") cur.removed++;
+  }
+  push();
+  return hunks;
+}
+
+/**
+ * Fixture-local content hash (PRD §8: ignores line numbers and whitespace).
+ * Canonical hunk hashing is owned by the ingest agent; this documents the
+ * fixture algorithm so it can be aligned later.
+ */
+export function hunkContentHash(rows: string[]): string {
+  const norm = rows.map((r) => `${r[0]}${r.slice(1).trim().replace(/\s+/g, " ")}`).join("\n");
+  return sha16(norm);
+}
+
+function fnContext(trailing: string | undefined): string | undefined {
+  if (!trailing) return undefined;
+  const m = trailing.match(/(?:def|class)\s+(\w+)/);
+  return m ? m[1] : trailing || undefined;
+}
+
+function fileCategory(p: string, gen: boolean): ReviewFile["category"] {
+  if (gen) return "generated";
+  if (/(^|\/)tests?\//.test(p)) return "tests";
+  if (/\.(md|rst)$/.test(p) || /(^|\/)(changelog|docs)\//.test(p)) return "docs";
+  if (p.endsWith(".py")) return "source";
+  return "config";
+}
+
+function descText(html: string, id: string): string | null {
+  const m = html.match(new RegExp(`id="${id}"[^>]*>([\\s\\S]*?)</(p|li|ul)>`, "i"));
+  if (!m) return null;
+  return m[1].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || null;
+}
+
+function mkCard(id: string, pageId: string, title: string | null, blocks: Block[]): Card {
+  return {
+    id,
+    pageId,
+    title,
+    level: "standard",
+    read: false,
+    collapsed: false,
+    revision: 1,
+    blocks,
+    undoStack: [],
+  };
+}
+
+export interface BuiltSnapshot {
+  snapshot: ReviewSnapshot;
+  /** Per-recording citation counts (for the build log). */
+  counts: { file: string; citations: number; links: number }[];
+}
+
+/**
+ * Build the urllib3#5020 snapshot from a fixtures dir. Throws an `Error`
+ * listing every unverified citation / bad anchor / malformed trailer.
+ */
+export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
+  const read = (p: string): string => fs.readFileSync(path.join(fixturesDir, p), "utf8");
+  const meta = JSON.parse(read("meta.json")) as FixtureMeta;
+  const diffEntries = JSON.parse(read("diff.json")) as {
+    key: string;
+    path: string;
+    gen: boolean;
+    diff: string;
+  }[];
+  const descriptionHtml = read("description.html");
+  const manifest = JSON.parse(read("manifest.json")) as { recordings: ManifestEntry[] };
+
+  const descTexts: Record<string, string> = {};
+  for (const id of meta.descParagraphs) {
+    const t = descText(descriptionHtml, id);
+    if (t !== null) descTexts[id] = t;
+  }
+
+  // --- files -----------------------------------------------------------
+  const files: ReviewFile[] = diffEntries.map((e) => {
+    const hunks: Hunk[] = parseHunks(e.diff).map((h) => ({
+      contentHash: hunkContentHash(h.rows),
+      header: h.header,
+      ...(fnContext(h.context) ? { context: fnContext(h.context) } : {}),
+      newStart: h.newStart,
+      newEnd: h.newEnd,
+      oldStart: h.oldStart,
+      oldEnd: h.oldEnd,
+      added: h.added,
+      removed: h.removed,
+    }));
+    return { fileKey: e.key, path: meta.fileKeys[e.key] ?? e.path, category: fileCategory(e.path, e.gen), hunks };
+  });
+  const hashOf = (key: string, index: number): string => files.find((f) => f.fileKey === key)!.hunks[index].contentHash;
+
+  const textOf = (file: string): string => read(path.join("recordings", file));
+
+  // --- pages -----------------------------------------------------------
+  const reader = parseReply(textOf("reader.md"));
+  const readerCardIds = (reader.data?.cardIds as string[] | undefined) ?? [];
+  const rootCards: Card[] = reader.cards.map((c, i) =>
+    mkCard(readerCardIds[i] ?? `reader-${i}`, "root", c.title, c.blocks),
+  );
+
+  for (const key of ["flow", "design", "regex", "check"]) {
+    const entry = manifest.recordings.find((e) => e.kind === "go-deeper" && e.key === key)!;
+    const parsed = parseReply(textOf(entry.file));
+    const cardId = (parsed.data?.cardId as string | undefined) ?? `g-${key}`;
+    const title = (parsed.data?.title as string | undefined) ?? null;
+    rootCards.push(mkCard(cardId, "root", title, parsed.blocks));
+  }
+
+  const pages: Page[] = [
+    {
+      id: "root",
+      kind: "root",
+      title: meta.title,
+      saved: false,
+      cards: rootCards,
+    },
+  ];
+
+  for (const entry of manifest.recordings.filter((e) => e.kind === "critic")) {
+    const parsed = parseReply(textOf(entry.file));
+    const finding = (parsed.data?.finding ?? {}) as {
+      confidence?: string;
+      summary?: string;
+    };
+    const cardIds = (parsed.data?.cardIds as string[] | undefined) ?? [];
+    const title = (parsed.data?.title as string | undefined) ?? entry.key ?? "Finding";
+    pages.push({
+      id: entry.key!,
+      kind: "finding",
+      title,
+      saved: false,
+      parent: "root",
+      ...(finding.confidence ? { confidence: finding.confidence } : {}),
+      ...(finding.summary ? { summary: finding.summary } : {}),
+      cards: parsed.cards.map((c, i) => mkCard(cardIds[i] ?? `${entry.key}-${i}`, entry.key!, c.title, c.blocks)),
+    });
+  }
+
+  const conceptTitles: Record<string, string> = {};
+  for (const entry of manifest.recordings.filter((e) => e.kind === "concept-page")) {
+    const parsed = parseReply(textOf(entry.file));
+    const title = (parsed.data?.title as string | undefined) ?? entry.key!;
+    conceptTitles[entry.key!] = title;
+    pages.push({
+      id: `c-${entry.key}`,
+      kind: "concept",
+      title,
+      saved: true,
+      parent: "root",
+      cards: [mkCard(`cc-${entry.key}`, `c-${entry.key}`, null, parsed.blocks)],
+    });
+  }
+
+  // --- annotations (prototype seed()) ----------------------------------
+  const annotations: Annotation[] = [
+    {
+      id: "x-seed",
+      type: "expansion",
+      anchor: {
+        host: { kind: "block", blockId: "problem#b1" },
+        quotedText: "raw CRLF",
+        prefix: "value as it arrived, with the",
+        suffix: "inside it, and urllib3 copied",
+        position: 0,
+        version: 1,
+      },
+      open: true,
+      messages: [],
+      post: false,
+      note: false,
+    },
+    {
+      id: "t-seed",
+      type: "thread",
+      anchor: {
+        host: { kind: "block", blockId: "central#b4" },
+        quotedText: "fast path",
+        prefix: "them.",
+        suffix: ", which is almost all",
+        position: 0,
+        version: 1,
+      },
+      open: true,
+      messages: [
+        { who: "you", text: "Does the fast path still catch a fold that uses a bare LF?" },
+        {
+          who: "ai",
+          html: `Not with this PR. The fast path checks for <code>"\\r\\n"</code> and the pattern requires <code>\\r\\n</code>. <code>http.client</code> also accepts header lines that end in a bare LF. The tests only send CRLF folds. See the finding about bare LF folds.`,
+        },
+      ],
+      post: false,
+      note: false,
+    },
+    {
+      id: "t-sglf",
+      type: "thread",
+      anchor: {
+        host: { kind: "diff-line", fileKey: "conn", line: 82 },
+        quotedText: "_OBSOLETE_FOLD_RE",
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version: 1,
+      },
+      open: true,
+      messages: [
+        {
+          who: "ai",
+          suggested: true,
+          text: "http.client also accepts header lines that end in a bare LF, so a fold like `a=1\\n b=2` keeps its line break: both the `\"\\r\\n\" not in value` fast path and this pattern only look for CRLF. Would `\\r?\\n` here (and in the fast path), plus a test, make sense?",
+        },
+      ],
+      post: false,
+      note: false,
+    },
+    {
+      id: "t-sgperf",
+      type: "thread",
+      anchor: {
+        host: { kind: "diff-line", fileKey: "conn", line: 80 },
+        quotedText: "Starting the optional OWS match",
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version: 1,
+      },
+      open: true,
+      messages: [
+        {
+          who: "ai",
+          suggested: true,
+          text: "Could we add a test that normalizes a value with a very long run of spaces, so a later simplification of this pattern can't bring back the quadratic case?",
+        },
+      ],
+      post: false,
+      note: false,
+    },
+    {
+      id: "t-diff",
+      type: "thread",
+      anchor: {
+        host: { kind: "diff-line", fileKey: "tconn", line: 220 },
+        quotedText: "one  three",
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version: 1,
+      },
+      open: true,
+      messages: [
+        { who: "you", text: "Is the double space here intended?" },
+        {
+          who: "ai",
+          html: `Yes. RFC 9112 allows replacing each fold with <em>one or more</em> spaces, and the helper replaces each fold with exactly one. <code>"one\\r\\n \\r\\n\\tthree"</code> contains two folds back to back, so it becomes two spaces. Collapsing them further would change whitespace the server actually sent.`,
+        },
+      ],
+      post: false,
+      note: false,
+    },
+  ];
+
+  // --- hunk states ------------------------------------------------------
+  const hunkStates = files.flatMap((f) =>
+    f.hunks.map((h) => ({ contentHash: h.contentHash, folded: false, reviewed: false })),
+  );
+  const setState = (key: string, index: number, patch: Record<string, unknown>): void => {
+    const hash = hashOf(key, index);
+    const s = hunkStates.find((x) => x.contentHash === hash)!;
+    Object.assign(s, patch);
+  };
+  setState("tconn", 2, { reviewed: true, folded: true });
+  setState("conn", 1, { note: "Only call site; everything else is the helper." });
+
+  const version = {
+    n: 1,
+    headSha: meta.headSha,
+    mergeBaseSha: meta.mergeBaseSha,
+    baseRef: meta.baseRef,
+    fetchedAt: 1760000000000,
+    idMapping: {} as Record<string, string>,
+  };
+  const snapshot: ReviewSnapshot = {
+    review: {
+      id: "urllib3-5020",
+      repoId: meta.repo,
+      branch: meta.baseRef,
+      prNumber: meta.pr,
+      versions: [version],
+      currentVersion: 1,
+      createdAt: 1760000000000,
+    },
+    version,
+    files,
+    pages,
+    annotations,
+    hunkStates,
+    jobs: [
+      { id: "job-reader", kind: "reader", model: "fixture", priority: 1, state: "done" },
+      { id: "job-critic-lf", kind: "critic", model: "fixture", priority: 2, state: "done" },
+      { id: "job-critic-perf", kind: "critic", model: "fixture", priority: 2, state: "done" },
+      { id: "job-hunk-pass", kind: "hunk-pass", model: "fixture", priority: 3, state: "done" },
+    ],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+  };
+
+  // --- validate every recording -----------------------------------------
+  const lookup = createSnapshotLookup(snapshot, {
+    aliases: meta.fileKeys,
+    descTexts,
+    concepts: meta.concepts,
+  });
+  const failures: BuildFailure[] = [];
+  const counts: { file: string; citations: number; links: number }[] = [];
+  for (const entry of manifest.recordings) {
+    const text = textOf(entry.file);
+    const parsed = parseReply(text);
+    if (parsed.splitError && parsed.splitError.kind !== "missing") {
+      failures.push({ file: entry.file, detail: `trailing JSON ${parsed.splitError.kind}: ${parsed.splitError.message}` });
+      continue;
+    }
+    if (parsed.splitError?.kind === "missing") {
+      failures.push({ file: entry.file, detail: `missing trailing JSON block` });
+      continue;
+    }
+    const anchor = parsed.data?.anchor as { quote?: string; host?: string } | undefined;
+    const report = validateReply(parsed.blocks, lookup, {
+      ...(anchor?.quote && anchor?.host ? { anchor: { quote: anchor.quote, host: anchor.host } } : {}),
+    });
+    const collected = collectTargets(parsed.blocks);
+    counts.push({ file: entry.file, citations: collected.citations.length, links: collected.links.length });
+    for (const t of report.tokens) {
+      if (t.status === "unverified") {
+        failures.push({ file: entry.file, detail: `unverified ${t.target}: ${t.reason}` });
+      } else if (t.status === "repaired") {
+        failures.push({ file: entry.file, detail: `needs repair ${t.target} → ${t.repairedTo}: ${t.reason}` });
+      }
+    }
+    if (report.anchor && !report.anchor.ok) {
+      failures.push({ file: entry.file, detail: `bad anchor on ${report.anchor.host}: ${report.anchor.reason}` });
+    }
+  }
+
+  if (Object.keys(conceptTitles).length !== meta.concepts.length) {
+    throw new Error(
+      `snapshot build failed: concept pages cover [${Object.keys(conceptTitles).join(", ")}] but meta lists [${meta.concepts.join(", ")}]`,
+    );
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `snapshot build failed: ${failures.length} problem(s):\n` +
+        failures.map((f) => `  ${f.file}: ${f.detail}`).join("\n"),
+    );
+  }
+  return { snapshot, counts };
+}
+
+/** Default fixtures dir from a `dist/replay/` runtime location. */
+export function defaultFixturesDir(distFileUrl: string): string {
+  const here = path.dirname(new URL(distFileUrl).pathname);
+  return path.resolve(here, "..", "..", "..", "..", "fixtures", "urllib3-5020");
+}

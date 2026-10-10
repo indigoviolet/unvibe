@@ -35,3 +35,7 @@ run = "mise run lint && mise run typecheck && mise run test"
 [tasks.start]
 description = "Run the built service"
 run = "node packages/service/dist/index.js"
+
+[tasks.fixture-snapshot]
+description = "Build fixtures/urllib3-5020/snapshot.json from the recordings (fails on unverified citations)"
+run = "npm run fixture:snapshot --workspace @unvibe/service"
