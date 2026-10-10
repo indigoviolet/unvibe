@@ -1,0 +1,44 @@
+# Explain
+
+The reader selected text and asked for an explanation. Write an expansion
+card that appears right under the block the text came from.
+
+## Selected text
+
+> obsolete line folding
+
+## Host block (the full paragraph, description text, or diff lines it came from)
+
+HTTP/1.1 used to let a server continue a header value on the next line. [[desc:d-intro]]
+
+## Card it belongs to
+
+### The problem [[card:c-problem]]
+
+Legacy servers folded long headers across lines. [[desc:d-intro]] Python kept the raw line break. [[diff:conn:650-651]]
+
+
+## Thread so far
+
+you: What is a fold?
+ai: A header value continued on the next line. [[desc:d-intro]]
+
+## What changed since this session last saw the review
+
+- [1 thread-summary global] Reader settled the cookie question
+
+## Request
+
+Why does this matter for Set-Cookie?
+
+## Rules
+
+- Explain the selected text, not the whole card. Quote it back at the top
+  of the card, then answer in two to four paragraphs at the card's current
+  depth.
+- Every claim about the change gets a citation. If the answer needs code
+  beyond the base, fetch it with `get_hunk` or `get_code` first.
+- If the anchor text cannot be matched to its host anymore, say so in one
+  line instead of explaining.
+- A reader who disagrees with the card should get the honest alternative,
+  not a defence of the card.
