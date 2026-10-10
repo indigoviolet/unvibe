@@ -165,11 +165,183 @@ function mockAnswerFor(message: string, quote: string): string {
   return `Mock answer${q}: the live agent would answer this from the repo and the PR. In mock mode this is a canned reply so threads can be exercised end to end.`;
 }
 
+/** Canned explanation blocks (fixture-shaped: depth variants + citations). */
+function mockExplainBlocks(quote: string): import("@unvibe/shared").Block[] {
+  const q = quote.replace(/</g, "&lt;").slice(0, 120) || "this text";
+  return [
+    {
+      type: "paragraph",
+      id: `b-mock-exp-${Date.now().toString(36)}`,
+      text: {
+        simple: `In short: <em>${q}</em> is about unfolding folded header values.`,
+        standard: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value. [[diff:src-urllib3-connection.py:80-82]]`,
+        deep: `Mock deep explanation of <em>${q}</em>: obs-fold handling sits at the recipient per RFC 9112 §5.2, before interpretation or forwarding, so every consumer sees one semantic value. [[diff:src-urllib3-connection.py:80-88]]`,
+      },
+      citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
+    },
+  ] as unknown as import("@unvibe/shared").Block[];
+}
+
+function mockExampleAside(): import("@unvibe/shared").Block {
+  return {
+    type: "aside",
+    id: `b-mock-ex-${Date.now().toString(36)}`,
+    kind: "Example",
+    inner: [
+      { type: "code", id: `b-mock-ex-${Date.now().toString(36)}-c`, code: "# mock example\n# urllib3 now returns: 'a=1; path=/ Max-Age=900'", citations: [] },
+    ],
+    citations: [],
+  } as unknown as import("@unvibe/shared").Block;
+}
+
+function mockDiagramAside(): import("@unvibe/shared").Block {
+  return {
+    type: "diagram",
+    id: `b-mock-dg-${Date.now().toString(36)}`,
+    mermaid: "flowchart LR\n  A[folded value] --> B[unfold]\n  B --> C[HTTPHeaderDict]",
+    caption: "Mock diagram: unfolding before interpretation.",
+    citations: [],
+  } as unknown as import("@unvibe/shared").Block;
+}
+
+function mockPrincipleAside(): import("@unvibe/shared").Block {
+  return {
+    type: "aside",
+    id: `b-mock-pr-${Date.now().toString(36)}`,
+    kind: "Underlying principle",
+    inner: [
+      { type: "paragraph", id: `b-mock-pr-${Date.now().toString(36)}-p`, text: { standard: "Resolve encoding at the recipient, before interpretation." }, citations: [] },
+    ],
+    citations: [],
+  } as unknown as import("@unvibe/shared").Block;
+}
+
+type MockCardRef =
+  | { kind: "page"; pageId: string; card: import("@unvibe/shared").Card }
+  | { kind: "expansion"; annotation: import("@unvibe/shared").Annotation };
+
+function findMockCard(cardId: string): MockCardRef | null {
+  for (const p of mockPages) {
+    const card = p.cards.find((c) => c.id === cardId);
+    if (card) return { kind: "page", pageId: p.id, card };
+  }
+  const annotation = annotations.find((a) => a.id === cardId);
+  if (annotation?.type === "expansion" && annotation.expansion) {
+    return { kind: "expansion", annotation };
+  }
+  return null;
+}
+
+function mockCardBlocks(ref: MockCardRef): import("@unvibe/shared").Block[] {
+  return (ref.kind === "page" ? ref.card.blocks : ref.annotation.expansion!.blocks) as import("@unvibe/shared").Block[];
+}
+
+function mockCardLevel(ref: MockCardRef): import("@unvibe/shared").DepthLevel {
+  return (ref.kind === "page" ? ref.card.level : ref.annotation.expansion!.level) as import("@unvibe/shared").DepthLevel;
+}
+
+/** Card controls in mock: depth/examples/diagram/undo through the patch path. */
+function mockCardControl(a: { kind: string; cardId: string; direction?: string }): { accepted: boolean; cardId: string; jobId?: string } {
+  const ref = findMockCard(a.cardId);
+  if (!ref) throw new Error(`unknown card ${a.cardId}`);
+  const ORDER = ["simple", "standard", "deep"];
+  if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
+    const level = mockCardLevel(ref);
+    const i = ORDER.indexOf(level);
+    const next = a.direction === "simpler" ? ORDER[i - 1] : ORDER[i + 1];
+    const blocks = mockCardBlocks(ref);
+    if (!next) {
+      // + at the deepest level adds the Underlying principle block once.
+      if (a.direction === "deeper" && !blocks.some((b) => b.type === "aside" && (b as { kind: string }).kind === "Underlying principle")) {
+        const cur = [...blocks];
+        if (ref.kind === "page") {
+          ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level });
+          ref.card.blocks = [...cur, mockPrincipleAside()] as never;
+          ref.card.revision += 1;
+        } else {
+          ref.annotation.expansion!.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level });
+          ref.annotation.expansion!.blocks = [...cur, mockPrincipleAside()] as never;
+          ref.annotation.expansion!.revision += 1;
+        }
+        emitPages();
+        emitAnnotations();
+        return { accepted: true, cardId: a.cardId };
+      }
+      return { accepted: true, cardId: a.cardId };
+    }
+    const from = level;
+    const cur = [...blocks];
+    if (ref.kind === "page") {
+      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: from as never });
+      ref.card.level = next as never;
+      ref.card.revision += 1;
+    } else {
+      ref.annotation.expansion!.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: from as never });
+      ref.annotation.expansion!.level = next as never;
+      ref.annotation.expansion!.revision += 1;
+    }
+    emitPages();
+    emitAnnotations();
+    return { accepted: true, cardId: a.cardId };
+  }
+  if (a.kind === "examples" || a.kind === "diagram") {
+    const blocks = mockCardBlocks(ref);
+    const level = mockCardLevel(ref);
+    const want = a.kind === "examples" ? "Example" : null;
+    if (want && blocks.some((b) => b.type === "aside" && (b as { kind: string }).kind === want)) {
+      return { accepted: true, cardId: a.cardId };
+    }
+    if (a.kind === "diagram" && blocks.some((b) => b.type === "diagram")) {
+      return { accepted: true, cardId: a.cardId };
+    }
+    const cur = [...blocks];
+    const insert = a.kind === "examples" ? mockExampleAside() : mockDiagramAside();
+    // Blocks appear after the paragraphs they relate to: insert after the
+    // first paragraph when one exists, else append.
+    const at = cur.findIndex((b) => b.type === "paragraph");
+    const nextBlocks = at >= 0 ? [...cur.slice(0, at + 1), insert, ...cur.slice(at + 1)] : [...cur, insert];
+    if (ref.kind === "page") {
+      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: level as never });
+      ref.card.blocks = nextBlocks as never;
+      ref.card.revision += 1;
+    } else {
+      ref.annotation.expansion!.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: level as never });
+      ref.annotation.expansion!.blocks = nextBlocks as never;
+      ref.annotation.expansion!.revision += 1;
+    }
+    emitPages();
+    emitAnnotations();
+    return { accepted: true, cardId: a.cardId };
+  }
+  if (a.kind === "undo") {
+    if (ref.kind === "page") {
+      const prev = ref.card.undoStack.pop();
+      if (!prev) return { accepted: true, cardId: a.cardId };
+      ref.card.blocks = prev.blocks as never;
+      ref.card.level = prev.level as never;
+      ref.card.revision += 1;
+    } else {
+      const prev = ref.annotation.expansion!.undoStack.pop();
+      if (!prev) return { accepted: true, cardId: a.cardId };
+      ref.annotation.expansion!.blocks = prev.blocks as never;
+      ref.annotation.expansion!.level = prev.level as never;
+      ref.annotation.expansion!.revision += 1;
+    }
+    emitPages();
+    emitAnnotations();
+    return { accepted: true, cardId: a.cardId };
+  }
+  throw new Error(`unknown mock card control ${(a as { kind: string }).kind}`);
+}
+
 let rev = 1;
 const hunkStates = seedHunkStates();
 let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
   JSON.stringify(MOCK_ANNOTATIONS),
 ) as import("@unvibe/shared").Annotation[];
+let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
+  JSON.stringify(MOCK_PAGES),
+) as import("@unvibe/shared").Page[];
 let description = { ...MOCK_DESCRIPTION };
 let existingComments: import("@unvibe/shared").ExistingReviewComment[] = [
   {
@@ -309,6 +481,7 @@ export function resetMockState(): void {
   hunkStates.clear();
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
   annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
+  mockPages = JSON.parse(JSON.stringify(MOCK_PAGES));
   description = { ...MOCK_DESCRIPTION };
   existingComments = [
     {
@@ -471,7 +644,7 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     version: stale ? { ...MOCK_VERSION, n: viewing } : MOCK_VERSION,
     files: MOCK_FILES,
     description,
-    pages: MOCK_PAGES,
+    pages: reviewId === "demo" ? mockPages : MOCK_PAGES,
     annotations,
     hunkStates: stale && viewing === 2 ? staleHunkStates() : [...hunkStates.values()],
     jobs: mockJobs.filter((j) => j.reviewId === reviewId || (reviewId === "demo" && !j.reviewId)),
@@ -513,6 +686,30 @@ function emitAnnotations(): void {
     baseRev,
     headRev: rev,
     ops: [{ op: "replace", path: "/annotations", value: JSON.parse(JSON.stringify(annotations)) }],
+  });
+}
+
+/** Emit the pages list through the WS-patch path (card state converges). */
+function emitPages(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [{ op: "replace", path: "/pages", value: JSON.parse(JSON.stringify(mockPages)) }],
+  });
+}
+
+/** Emit contributions (accept/dismiss flips status without a refetch). */
+function emitContributions(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [{ op: "replace", path: "/contributions", value: JSON.parse(JSON.stringify(mockContributions)) }],
   });
 }
 
@@ -765,7 +962,42 @@ export const mockApi = {
       const verdict = a.mode === "blind" ? "partly" : "disagrees";
       const missed =
         a.mode === "blind" ? "A lone CR ending is untested too." : "Set-Cookie comma handling is out of scope.";
+      const result = {
+        id: `so-${a.cardId}-${a.mode}-mock-second`,
+        cardId: a.cardId,
+        mode: a.mode,
+        provider: "codex",
+        model: "mock-second",
+        verdict,
+        reasoning: verdict === "partly" ? "Checked the helper; gap is real but narrow." : "Only CRLF-folded values are rewritten.",
+        blocks: [
+          {
+            type: "paragraph",
+            id: "b-so-1",
+            text: {
+              standard:
+                verdict === "partly"
+                  ? `Partly — the gap is real but narrow. The helper handles the fold. [[diff:src-urllib3-connection.py:80-82]]`
+                  : `Disagrees — only CRLF-folded values are rewritten. [[diff:src-urllib3-connection.py:80-88]]`,
+            },
+            citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
+          },
+        ],
+        missed,
+        version: 1,
+        createdAt: Date.now(),
+        jobId,
+      };
       window.setTimeout(() => {
+        // Expansions store the result on the expansion body (survives
+        // depth/undo); page cards store on the card.
+        const exp = annotations.find((x) => x.id === a.cardId && x.type === "expansion");
+        if (exp?.expansion) {
+          const rest = (exp.expansion.secondOpinions ?? []).filter((s) => (s as { mode: string }).mode !== a.mode);
+          exp.expansion.secondOpinions = [...rest, { ...result, cardId: exp.id } as never];
+          emitAnnotations();
+          return;
+        }
         const snap = useReview.getState().snapshot;
         if (!snap) return;
         const pages = snap.pages.map((p) => ({
@@ -775,46 +1007,12 @@ export const mockApi = {
             const rest = (c.secondOpinions ?? []).filter((s) => s.mode !== a.mode);
             return {
               ...c,
-              secondOpinions: [
-                ...rest,
-                {
-                  id: `so-${a.cardId}-${a.mode}-mock-second`,
-                  cardId: c.id,
-                  mode: a.mode,
-                  provider: "codex",
-                  model: "mock-second",
-                  verdict,
-                  reasoning: verdict === "partly" ? "Checked the helper; gap is real but narrow." : "Only CRLF-folded values are rewritten.",
-                  blocks: [
-                    {
-                      type: "paragraph",
-                      id: "b-so-1",
-                      text: {
-                        standard:
-                          verdict === "partly"
-                            ? `Partly — the gap is real but narrow. The helper handles the fold. [[diff:src-urllib3-connection.py:80-82]]`
-                            : `Disagrees — only CRLF-folded values are rewritten. [[diff:src-urllib3-connection.py:80-88]]`,
-                      },
-                      citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
-                    },
-                  ],
-                  missed,
-                  version: 1,
-                  createdAt: Date.now(),
-                  jobId,
-                },
-              ],
+              secondOpinions: [...rest, { ...result, cardId: c.id } as never],
             };
           }),
         }));
-        const baseRev = rev;
-        rev += 1;
-        useReview.getState().applyEvent({
-          type: "patch",
-          baseRev,
-          headRev: rev,
-          ops: [{ op: "replace", path: "/pages", value: pages }],
-        });
+        mockPages = JSON.parse(JSON.stringify(pages));
+        emitPages();
       }, 400);
       return { accepted: true, jobId };
     }
@@ -822,6 +1020,28 @@ export const mockApi = {
       const target = (a as { targetId?: string }).targetId ?? "";
       const m = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
       if (m) {
+        // Expansion results first (stored on the expansion body).
+        let removedExp = false;
+        for (const ann of annotations) {
+          if (ann.type !== "expansion" || !ann.expansion) continue;
+          const before = ann.expansion.secondOpinions ?? [];
+          let after = before;
+          if (m[1].startsWith("so-")) {
+            after = before.filter((s) => (s as { id: string }).id !== m[1]);
+          } else {
+            const mm = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
+            if (ann.id !== mm[1]) continue;
+            after = before.filter((s) => (s as { mode: string }).mode !== mm[2]);
+          }
+          if (after.length !== before.length) {
+            ann.expansion.secondOpinions = after as never;
+            removedExp = true;
+          }
+        }
+        if (removedExp) {
+          emitAnnotations();
+          return { accepted: true };
+        }
         const snap = useReview.getState().snapshot;
         if (!snap) return { accepted: false };
         const pages = snap.pages.map((p) => ({
@@ -837,16 +1057,18 @@ export const mockApi = {
             return { ...c, secondOpinions: before.filter((s) => s.mode !== mode) };
           }),
         }));
-        const baseRev = rev;
-        rev += 1;
-        useReview.getState().applyEvent({
-          type: "patch",
-          baseRev,
-          headRev: rev,
-          ops: [{ op: "replace", path: "/pages", value: pages }],
-        });
+        mockPages = JSON.parse(JSON.stringify(pages));
+        emitPages();
         return { accepted: true };
       }
+      // Annotation deletion (expansions + threads via the actions route).
+      const annIdx = annotations.findIndex((x) => x.id === target);
+      if (annIdx >= 0) {
+        annotations.splice(annIdx, 1);
+        emitAnnotations();
+        return { accepted: true, annotationId: target };
+      }
+      throw new Error(`DELETE actions ${target}: 404 {"error":"unknown annotation"}`);
     }
     // Ask turns (M4): create/answer through the patch path like the
     // service (working flag, delayed canned answer, patch delivery).
@@ -864,18 +1086,40 @@ export const mockApi = {
       if (a.kind === "reply" || a.kind === "retry") {
         const threadId = a.threadId;
         const thread = annotations.find((x) => x.id === threadId);
-        if (!thread || thread.type !== "thread") throw new Error(`unknown comment ${threadId}`);
-        if (a.kind === "retry" && !thread.error) throw new Error(`thread ${thread.id} has no failed reply to retry`);
-        if (a.kind === "reply") {
-          thread.messages.push({ who: "you", text: a.message });
+        // Expansion retry refills the expansion in place (same id).
+        if (thread?.type === "expansion" && thread.expansion && a.kind === "retry") {
+          thread.error = null;
+          thread.expansion.error = null;
+          thread.working = "Thinking…";
+          thread.expansion.working = "Thinking…";
+          thread.open = true;
+          emitAnnotations();
+          const tid = thread.id;
+          const quote = thread.anchor.quotedText;
+          window.setTimeout(() => {
+            const live = annotations.find((x) => x.id === tid);
+            if (!live || live.type !== "expansion" || !live.expansion) return;
+            live.expansion.blocks = mockExplainBlocks(quote) as never;
+            live.expansion.revision += 1;
+            live.working = null;
+            live.expansion.working = null;
+            emitAnnotations();
+          }, 700);
+          return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-retry-${thread.id}` };
+        } else {
+          if (!thread || thread.type !== "thread") throw new Error(`unknown comment ${threadId}`);
+          if (a.kind === "retry" && !thread.error) throw new Error(`thread ${thread.id} has no failed reply to retry`);
+          if (a.kind === "reply") {
+            thread.messages.push({ who: "you", text: a.message });
+          }
+          thread.error = null;
+          thread.working = "Reading…";
+          thread.open = true;
+          emitAnnotations();
+          const lastYou = [...thread.messages].reverse().find((m) => m.who === "you" && m.text);
+          answerLater(thread.id, lastYou?.text ?? "", thread.anchor.quotedText);
+          return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-${a.kind}-${thread.id}` };
         }
-        thread.error = null;
-        thread.working = "Reading…";
-        thread.open = true;
-        emitAnnotations();
-        const lastYou = [...thread.messages].reverse().find((m) => m.who === "you" && m.text);
-        answerLater(thread.id, lastYou?.text ?? "", thread.anchor.quotedText);
-        return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-${a.kind}-${thread.id}` };
       }
       if (a.kind === "ask") {
         const anchor = a.anchor;
@@ -908,39 +1152,278 @@ export const mockApi = {
         return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-ask-${thread.id}` };
       }
     }
+    // M4 interaction (mock): explain, depth, examples, diagram, undo,
+    // generate, followup, concept, promote, close + instant card state.
+    // Canned content derives from the fixture snapshot so the UI exercises
+    // the real shapes (working → streamed text → blocks, error + retry via
+    // `retry`, anchor-stale fallback, dotted-link close).
+    if (a.kind === "explain") {
+      const anchor = a.anchor;
+      const host =
+        anchor.where === "block"
+          ? { kind: "block", blockId: anchor.blockId }
+          : anchor.where === "description"
+            ? { kind: "description", paragraphId: anchor.paragraphId }
+            : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+      const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
+      const jobId = `mock-explain-${id}`;
+      annotations.push({
+        id,
+        type: "expansion",
+        anchor: {
+          host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
+          quotedText: a.quote,
+          prefix: "",
+          suffix: "",
+          position: 0,
+          version: 1,
+        },
+        open: true,
+        messages: [],
+        post: false,
+        note: false,
+        working: "Thinking…",
+        expansion: {
+          blocks: [],
+          level: "standard",
+          read: false,
+          collapsed: false,
+          revision: 1,
+          undoStack: [],
+          working: "Thinking…",
+        },
+      } as unknown as import("@unvibe/shared").Annotation);
+      emitAnnotations();
+      // Streamed deltas, then the final blocks (same patch path as live).
+      const deltas = ["Reading the diff…", "Checking citations…"];
+      deltas.forEach((d, i) => {
+        window.setTimeout(() => {
+          useReview.getState().applyEvent({ type: "text", jobId, threadId: id, delta: d.slice(0, 24) } as never);
+        }, 120 * (i + 1));
+      });
+      window.setTimeout(() => {
+        const found = annotations.find((x) => x.id === id);
+        if (!found || found.type !== "expansion" || !found.expansion) return;
+        if (!found.open) {
+          // Closed while filling: keep content for the dotted-link preview.
+          found.expansion.blocks = mockExplainBlocks(a.quote) as never;
+          found.expansion.revision += 1;
+          found.working = null;
+          found.expansion.working = null;
+          emitAnnotations();
+          return;
+        }
+        found.expansion.blocks = mockExplainBlocks(a.quote) as never;
+        found.expansion.revision += 1;
+        found.working = null;
+        found.expansion.working = null;
+        found.error = null;
+        found.expansion.error = null;
+        emitAnnotations();
+      }, 700);
+      return { accepted: true, annotationId: id, jobId };
+    }
+    if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
+      const res = mockCardControl(a as never);
+      return res as ActionResponse;
+    }
+    if (a.kind === "generate") {
+      const card = mockPages.flatMap((p) => p.cards).find((c) => c.id === a.cardId);
+      if (!card) throw new Error(`unknown card ${a.cardId}`);
+      if (!card.pending) return { accepted: true, jobId: `mock-generate-${card.id}` };
+      const jobId = `mock-generate-${card.id}`;
+      window.setTimeout(() => {
+        useReview.getState().applyEvent({ type: "text", jobId, cardId: card.id, delta: "Reading the diff…" } as never);
+      }, 120);
+      window.setTimeout(() => {
+        const target = mockPages.flatMap((p) => p.cards).find((c) => c.id === card.id);
+        if (!target || !target.pending) return;
+        delete target.pending;
+        target.blocks = [
+          {
+            type: "paragraph",
+            id: `${card.id}-b1`,
+            text: { standard: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo. [[diff:src-urllib3-connection.py:80-82]]` },
+            citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
+          },
+          { type: "follow-up", id: `${card.id}-f1`, items: [{ label: "What happens to a fold that ends in a bare LF?", ask: "bare lf" }], citations: [] },
+        ] as never;
+        target.revision += 1;
+        emitPages();
+      }, 700);
+      return { accepted: true, jobId };
+    }
+    if (a.kind === "followup") {
+      const { cardId, blockId, index } = a as { cardId: string; blockId: string; index: number };
+      const holder = mockPages.flatMap((p) => p.cards).find((c) => c.id === cardId);
+      const block = holder?.blocks.find((b) => b.id === blockId && b.type === "follow-up") as
+        | { items: { label: string; ask?: string }[] }
+        | undefined;
+      if (!block || !block.items[index]) throw new Error(`unknown follow-up ${index} on block ${blockId}`);
+      const item = block.items[index];
+      block.items.splice(index, 1);
+      emitPages();
+      const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
+      const jobId = `mock-followup-${id}`;
+      annotations.push({
+        id,
+        type: "expansion",
+        anchor: {
+          host: { kind: "block", blockId },
+          quotedText: item.label,
+          prefix: "",
+          suffix: "",
+          position: 0,
+          version: 1,
+        },
+        open: true,
+        messages: [],
+        post: false,
+        note: false,
+        working: "Thinking…",
+        expansion: { blocks: [], level: "standard", read: false, collapsed: false, revision: 1, undoStack: [], working: "Thinking…" },
+      } as unknown as import("@unvibe/shared").Annotation);
+      emitAnnotations();
+      window.setTimeout(() => {
+        const found = annotations.find((x) => x.id === id);
+        if (!found || found.type !== "expansion" || !found.expansion) return;
+        found.expansion.blocks = mockExplainBlocks(item.label) as never;
+        found.expansion.revision += 1;
+        found.working = null;
+        found.expansion.working = null;
+        emitAnnotations();
+      }, 700);
+      return { accepted: true, annotationId: id, cardId, jobId };
+    }
+    if (a.kind === "concept") {
+      const slug = (a as { slug: string }).slug;
+      const pageId = `c-${slug}`;
+      let page = mockPages.find((p) => p.id === pageId);
+      if (page && (page.cards[0]?.blocks.length ?? 0) > 1) return { accepted: true, pageId };
+      if (!page) {
+        mockPages.push({
+          id: pageId,
+          kind: "concept",
+          title: slug,
+          saved: true,
+          parent: "root",
+          cards: [{ id: `cc-${slug}`, pageId, title: null, level: "standard", read: false, collapsed: false, revision: 1, blocks: [], undoStack: [] }],
+        });
+        emitPages();
+        page = mockPages.find((p) => p.id === pageId)!;
+      }
+      const jobId = `mock-concept-${slug}`;
+      window.setTimeout(() => {
+        const live = mockPages.find((p) => p.id === pageId);
+        if (!live) return;
+        live.title = `${slug} (mock concept)`;
+        live.cards = [
+          {
+            id: `cc-${slug}`,
+            pageId,
+            title: null,
+            level: "standard",
+            read: false,
+            collapsed: false,
+            revision: 2,
+            blocks: [
+              { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open. [[diff:src-urllib3-connection.py:80-82]]` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
+            ] as never,
+            undoStack: [],
+          },
+        ];
+        emitPages();
+      }, 700);
+      return { accepted: true, pageId, jobId };
+    }
+    if (a.kind === "promote") {
+      const annId = (a as { annotationId: string }).annotationId;
+      const found = annotations.find((x) => x.id === annId);
+      if (!found || found.type !== "expansion" || !found.expansion) throw new Error(`annotation ${annId} is not an expansion`);
+      const quote = found.anchor.quotedText;
+      const title = quote.length > 60 ? `${quote.slice(0, 58)}…` : quote || "(untitled)";
+      const pageId = `p-mock-${Date.now().toString(36)}`;
+      const cardId = `c-mock-${Date.now().toString(36)}`;
+      mockPages.push({
+        id: pageId,
+        kind: "opened-expansion",
+        title,
+        saved: false,
+        parent: "root",
+        cards: [{ id: cardId, pageId, title: null, level: found.expansion.level, read: false, collapsed: false, revision: 1, blocks: JSON.parse(JSON.stringify(found.expansion.blocks)), undoStack: [] }],
+      });
+      found.type = "link" as never;
+      found.open = false;
+      found.working = null;
+      found.error = null;
+      found.jobId = undefined;
+      (found as { promotedToPage?: string }).promotedToPage = pageId;
+      delete (found as { expansion?: unknown }).expansion;
+      emitPages();
+      emitAnnotations();
+      return { accepted: true, annotationId: annId, pageId };
+    }
+    if (a.kind === "close") {
+      const annId = (a as { annotationId: string }).annotationId;
+      const found = annotations.find((x) => x.id === annId);
+      if (!found) throw new Error(`unknown annotation ${annId}`);
+      found.open = false;
+      found.working = null;
+      if (found.type === "expansion" && found.expansion) found.expansion.working = null;
+      emitAnnotations();
+      return { accepted: true, annotationId: annId };
+    }
     // Guide instant state (PRD §4.3/§4.4) applies locally through the patch
-    // path; everything else agent-driven answers `accepted: false` until the
-    // service implements it (the UI toasts).
+    // path — page cards and expansion cards alike.
+    // (Expansion retries are handled in the ask/reply/retry branch above.)
     if (a.kind !== "read" && a.kind !== "collapse" && a.kind !== "bookmark") {
       return { accepted: false };
     }
-    const snap = useReview.getState().snapshot;
-    if (!snap) return { accepted: false };
-    const action = a;
-    const pages = snap.pages.map((p) => {
-      if (action.kind === "bookmark") {
-        return p.id === action.pageId ? { ...p, saved: action.saved } : p;
+    if (a.kind === "bookmark") {
+      const page = mockPages.find((p) => p.id === (a as { pageId: string }).pageId);
+      if (!page) return { accepted: false };
+      page.saved = (a as { saved: boolean }).saved;
+      emitPages();
+      return { accepted: true };
+    }
+    // read / collapse on page cards…
+    for (const p of mockPages) {
+      for (const c of p.cards) {
+        if (c.id !== (a as { cardId: string }).cardId) continue;
+        if (a.kind === "read") {
+          c.read = (a as { read: boolean }).read;
+          c.collapsed = (a as { read: boolean }).read ? true : false;
+        } else {
+          c.collapsed = (a as { collapsed: boolean }).collapsed;
+        }
+        emitPages();
+        return { accepted: true };
       }
-      return {
-        ...p,
-        cards: p.cards.map((c) => {
-          if (c.id !== action.cardId) return c;
-          if (action.kind === "read") {
-            return { ...c, read: action.read, collapsed: action.read ? true : c.collapsed };
+    }
+    // …and on expansion cards (marking read closes like Close does).
+    {
+      const ann = annotations.find((x) => x.id === (a as { cardId: string }).cardId);
+      if (ann?.type === "expansion" && ann.expansion) {
+        if (a.kind === "read") {
+          const read = (a as { read: boolean }).read;
+          ann.expansion.read = read;
+          if (read) {
+            ann.expansion.collapsed = true;
+            ann.open = false;
+            ann.working = null;
+            ann.expansion.working = null;
+          } else {
+            ann.expansion.collapsed = false;
+            ann.open = true;
           }
-          return { ...c, collapsed: action.collapsed };
-        }),
-      };
-    });
-    const baseRev = rev;
-    rev += 1;
-    useReview.getState().applyEvent({
-      type: "patch",
-      baseRev,
-      headRev: rev,
-      ops: [{ op: "replace", path: "/pages", value: pages }],
-    });
-    return { accepted: true };
+        } else {
+          ann.expansion.collapsed = (a as { collapsed: boolean }).collapsed;
+        }
+        emitAnnotations();
+        return { accepted: true };
+      }
+    }
+    return { accepted: false };
   },
 
   // Mirrors the service PATCH semantics: null clears note/summary.
@@ -1041,7 +1524,17 @@ export const mockApi = {
 
   updateComment: async (_id: string, commentId: string, body: import("@unvibe/shared").UpdateCommentRequest) => {
     const thread = annotations.find((a) => a.id === commentId);
-    if (!thread || thread.type !== "thread") throw new Error("unknown comment");
+    if (!thread) throw new Error("unknown comment");
+    // M4 service fix: `open` applies to expansions too (dotted-link click).
+    if (thread.type === "expansion") {
+      if (body.open !== undefined) thread.open = body.open;
+      if (body.post !== undefined || body.draft !== undefined || body.reply !== undefined) {
+        throw new Error(`annotation ${commentId} is not a thread`);
+      }
+      emitAnnotations();
+      return { ok: true };
+    }
+    if (thread.type !== "thread") throw new Error("unknown comment");
     if (body.post !== undefined) {
       thread.post = body.post;
       if (body.post) thread.open = true;
@@ -1203,7 +1696,49 @@ export const mockApi = {
       throw new Error(`DELETE /api/reviews/demo/contributions/${contributionId}: 404`);
     }
     mockContributions = mockContributions.filter((c) => c.id !== contributionId);
+    emitContributions();
     return { ok: true as const, deletedId: contributionId };
+  },
+
+  acceptContribution: async (reviewId: string, contributionId: string) => {
+    void reviewId;
+    const found = mockContributions.find((c) => c.id === contributionId);
+    if (!found) throw new Error(`POST /api/reviews/demo/contributions/${contributionId}/accept: 404`);
+    const correction = found.items.find((i) => i.kind === "correction");
+    if (found.status !== "pending" || !correction?.target) {
+      throw new Error(`POST /api/reviews/demo/contributions/${contributionId}/accept: 409 {"error":"not a pending correction"}`);
+    }
+    // Accept creates a new card revision (undoable): push the current blocks
+    // and bump the revision on the target card when it exists in mock.
+    const target = correction.target ?? "";
+    const cardId = target.startsWith("card:") ? target.slice("card:".length).split("#")[0] : "central";
+    const ref = findMockCard(cardId);
+    let revision = 2;
+    if (ref?.kind === "page") {
+      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(ref.card.blocks)), level: ref.card.level });
+      ref.card.revision += 1;
+      revision = ref.card.revision;
+      emitPages();
+    }
+    mockContributions = mockContributions.map((c) =>
+      c.id === contributionId ? { ...c, status: "accepted" as const } : c,
+    );
+    emitContributions();
+    return { ok: true as const, acceptedId: contributionId, cardId, revision };
+  },
+
+  dismissContribution: async (reviewId: string, contributionId: string) => {
+    void reviewId;
+    const found = mockContributions.find((c) => c.id === contributionId);
+    if (!found) throw new Error(`POST /api/reviews/demo/contributions/${contributionId}/dismiss: 404`);
+    if (found.status !== "pending") {
+      throw new Error(`POST /api/reviews/demo/contributions/${contributionId}/dismiss: 409 {"error":"not a pending correction"}`);
+    }
+    mockContributions = mockContributions.map((c) =>
+      c.id === contributionId ? { ...c, status: "dismissed" as const } : c,
+    );
+    emitContributions();
+    return { ok: true as const, dismissedId: contributionId };
   },
 } satisfies ApiClient;
 
