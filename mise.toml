@@ -1,0 +1,37 @@
+[tools]
+node = "24"
+
+[tasks.install]
+description = "Install npm workspace dependencies"
+run = "npm install"
+sources = ["package.json", "packages/*/package.json"]
+
+[tasks.dev]
+description = "Run service + Vite dev server together"
+run = "node ./scripts/dev.mjs"
+sources = ["packages/service/src/**/*.ts", "packages/web/src/**/*", "packages/shared/src/**/*"]
+
+[tasks.build]
+description = "Build shared, service and web"
+run = "npm run build --workspaces --if-present && npm run build --workspace @unvibe/web --if-present"
+sources = ["packages/*/src/**/*", "packages/*/package.json"]
+
+[tasks.test]
+description = "Run vitest across workspaces"
+run = "npm run test --workspaces --if-present"
+
+[tasks.lint]
+description = "Run ESLint"
+run = "npx eslint ."
+
+[tasks.typecheck]
+description = "Typecheck all workspaces"
+run = "npm run typecheck --workspaces --if-present"
+
+[tasks.check]
+description = "lint + typecheck + test"
+run = "mise run lint && mise run typecheck && mise run test"
+
+[tasks.start]
+description = "Run the built service"
+run = "node packages/service/dist/index.js"
