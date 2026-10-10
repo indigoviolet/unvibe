@@ -533,6 +533,10 @@ export class Pipeline {
         if (stages.critic !== "done") jobIds.push(...this.enqueueCritic(reviewId).map((j) => j.id));
         if (stages.concepts !== "done") jobIds.push(...this.enqueueConcepts(reviewId).map((j) => j.id));
         if (stages["hunk-pass"] !== "done") jobIds.push(...this.enqueueHunkPass(reviewId).map((j) => j.id));
+        // Demo auto-fill is part of enqueueAfterReader, not a stage: a
+        // restart after the base finished would otherwise leave pending
+        // placeholders unfilled. No-op when nothing is pending.
+        jobIds.push(...this.enqueueDemoFill(reviewId).map((j) => j.id));
       }
     }
     const after = this.stageStates(reviewId);

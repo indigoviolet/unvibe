@@ -3,7 +3,7 @@
  * timers, no agents.
  */
 import { describe, expect, it } from "vitest";
-import { JOB_PRIORITY, type Job, type ReviewEvent } from "@unvibe/shared";
+import { JOB_PRIORITY, jobDedupeKeyString, type Job, type ReviewEvent } from "@unvibe/shared";
 import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
 import { computeBackoffDelay } from "../src/jobs/backoff.js";
@@ -374,7 +374,7 @@ describe("usage, prompts and events", () => {
 });
 
 describe("persistence and restart recovery", () => {
-  it("persists jobs so the view survives; running jobs are interrupted, queued are orphaned", async () => {
+  it("persists jobs so the view survives; open jobs come back interrupted, never blocking re-enqueue", async () => {
     const db = makeDb();
     seedReview(db, "r1");
     const store = new JobStore(db);
@@ -403,10 +403,11 @@ describe("persistence and restart recovery", () => {
     expect(q2.get(running.id)?.state).toBe("done");
   });
 
-  it("queued jobs reload as orphans until rebound", async () => {
+  it("queued jobs come back interrupted (never orphaned): a resume re-enqueues fresh work", async () => {
     const db = makeDb();
     seedReview(db, "r9");
     const store = new JobStore(db);
+    const key = { anchor: "guide", requestKind: "reader", baseVersion: "v1" };
     store.save({
       id: "q-1",
       kind: "ask",
@@ -415,13 +416,26 @@ describe("persistence and restart recovery", () => {
       reviewId: "r9",
       priority: 10,
       state: "queued",
+      dedupeKey: jobDedupeKeyString(key),
     });
     const q2 = new JobQueue({ clock: new ManualClock(), persist: store });
     const { interrupted, orphaned } = q2.recover(store.listOpen());
-    expect(interrupted).toEqual([]);
-    expect(orphaned.map((j) => j.id)).toEqual(["q-1"]);
+    expect(orphaned).toEqual([]);
+    expect(interrupted.map((j) => j.id)).toEqual(["q-1"]);
+    expect(interrupted[0].error).toBe(INTERRUPTED_MESSAGE);
+    // The dead job's dedupe key is freed: re-enqueueing the same request
+    // starts fresh work instead of attaching to the dead job.
     let ran = false;
-    q2.rebind("q-1", async () => void (ran = true));
+    const fresh = q2.enqueue({
+      reviewId: "r9",
+      kind: "ask",
+      provider: "claude",
+      model: "m",
+      priority: 10,
+      dedupe: key,
+      run: async () => void (ran = true),
+    });
+    expect(fresh.id).not.toBe("q-1");
     await q2.drain();
     expect(ran).toBe(true);
   });
