@@ -1,0 +1,23 @@
+{
+  "name": "@unvibe/acp-spike-m0",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "M0 ACP fork/cache spike (throwaway, not part of the build)",
+  "scripts": {
+    "claude": "tsx src/claude-spike.ts",
+    "codex": "tsx src/codex-spike.ts",
+    "mcp": "tsx src/mcp-server.ts",
+    "pack": "tsx src/make-pack.ts"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.8.0",
+    "@modelcontextprotocol/sdk": "1.18.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "tsx": "4.20.5",
+    "typescript": "5.9.2",
+    "@types/node": "22.18.4"
+  }
+}
