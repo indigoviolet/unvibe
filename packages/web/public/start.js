@@ -1,3 +1,4 @@
+/*global window document localStorage fetch setTimeout URLSearchParams */
 /* Unvibe offline page poller (PRD §14): external file so the offline page
  * can serve a strict CSP without `unsafe-inline` for scripts.
  *
@@ -19,7 +20,7 @@
     if (!localStorage.getItem("unvibe_token")) {
       document.getElementById("notoken").hidden = false;
     }
-  } catch (e) {
+  } catch {
     /* storage unavailable: polling still works */
   }
   var status = document.getElementById("status");

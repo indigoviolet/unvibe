@@ -123,7 +123,8 @@ describe("static network guards", () => {
         reason: "ACP stdio subprocesses (adapters spawn claude/codex CLIs; no sockets)",
       },
     ];
-    const NETWORK_RE = /node:(http|https|net|tls|dgram|dns)|from ["']ws["']|require\(["']ws["']|@agentclientprotocol\/|fastify|@fastify\//;
+    const NETWORK_RE =
+      /node:(http|https|net|tls|dgram|dns)|from ["']ws["']|require\(["']ws["']|@agentclientprotocol\/|fastify|@fastify\/|[^._a-zA-Z]fetch\s*\(/;
     const offenders: string[] = [];
     for (const f of listFiles(srcRoot, [".ts"])) {
       // ACP adapters are subprocesses by design (allowed as a directory).

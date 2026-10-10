@@ -20,7 +20,6 @@ import tls from "node:tls";
 import dns from "node:dns";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __unvibeNonLoopbackAttempts: string[] | undefined;
 }
 

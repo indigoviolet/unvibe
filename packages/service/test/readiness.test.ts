@@ -36,7 +36,6 @@ describe("readiness checks", () => {
 
   it("reports gh states distinctly (not installed / not logged in / api fails)", async () => {
     // Not installed: PATH without gh.
-    const noGh = new FakeCommandRunner();
     const r1 = await getReadiness(
       {
         runner: real,
