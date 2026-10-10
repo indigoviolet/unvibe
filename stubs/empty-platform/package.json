@@ -1,0 +1,6 @@
+{
+  "name": "@unvibe/empty-platform",
+  "version": "0.0.1",
+  "description": "Empty stub replacing bundled agent platform binaries (Unvibe runs the user's installed claude/codex CLIs).",
+  "files": []
+}

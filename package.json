@@ -16,6 +16,7 @@
     "packages/web/dist/**",
     "prompts/**",
     "fixtures/urllib3-5020/**",
+    "stubs/empty-platform/**",
     "README.md"
   ],
   "dependencies": {
@@ -28,6 +29,22 @@
     "fastify": "^5.2.0",
     "immer": "^11.1.21",
     "ws": "^8.22.0"
+  },
+  "overrides": {
+    "@openai/codex-linux-x64": "file:./stubs/empty-platform",
+    "@openai/codex-linux-arm64": "file:./stubs/empty-platform",
+    "@openai/codex-darwin-x64": "file:./stubs/empty-platform",
+    "@openai/codex-darwin-arm64": "file:./stubs/empty-platform",
+    "@openai/codex-win32-x64": "file:./stubs/empty-platform",
+    "@openai/codex-win32-arm64": "file:./stubs/empty-platform",
+    "@anthropic-ai/claude-agent-sdk-linux-x64": "file:./stubs/empty-platform",
+    "@anthropic-ai/claude-agent-sdk-linux-arm64": "file:./stubs/empty-platform",
+    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "file:./stubs/empty-platform",
+    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "file:./stubs/empty-platform",
+    "@anthropic-ai/claude-agent-sdk-darwin-x64": "file:./stubs/empty-platform",
+    "@anthropic-ai/claude-agent-sdk-darwin-arm64": "file:./stubs/empty-platform",
+    "@anthropic-ai/claude-agent-sdk-win32-x64": "file:./stubs/empty-platform",
+    "@anthropic-ai/claude-agent-sdk-win32-arm64": "file:./stubs/empty-platform"
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
