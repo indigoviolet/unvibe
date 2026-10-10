@@ -7,7 +7,7 @@
  */
 import type { Card, Contribution } from "@unvibe/shared";
 import { useState } from "react";
-import { api } from "../../api/client.js";
+import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { revealSource } from "../../source/reveal.js";
 
@@ -45,7 +45,7 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
     fn()
       .then(() => toast(done))
       .catch((err: unknown) => {
-        toast(`Couldn't update the suggestion: ${err instanceof Error ? err.message : String(err)}`);
+        toast(`Couldn't update the suggestion: ${friendlyError(err)}`);
       })
       .finally(() => setBusy(null));
   };

@@ -24,7 +24,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { ActionAnchor } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { toast } from "./Toast.js";
@@ -243,7 +243,7 @@ export function SelectionToolbar() {
         if (/no agent configured/i.test(msg)) {
           toast("No agent configured — set up Claude or Codex in Settings → Models to generate explanations.");
         } else {
-          toast(`Explain failed: ${msg}`);
+          toast(`Explain failed: ${friendlyError(err)}`);
         }
       });
   };

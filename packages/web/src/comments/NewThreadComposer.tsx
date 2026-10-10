@@ -10,7 +10,7 @@
  */
 import { useState } from "react";
 import type { ActionAnchor } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { markAskSent } from "./askState.js";
 
@@ -42,7 +42,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
           onCreated(id);
         })
         .catch((err: unknown) => {
-          toast(`Couldn't ask the agent: ${err instanceof Error ? err.message : String(err)}`);
+          toast(`Couldn't ask the agent: ${friendlyError(err)}`);
         })
         .finally(() => setSending(false));
       return;
@@ -53,7 +53,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
         onCreated(res.id);
       })
       .catch((err: unknown) => {
-        toast(`Couldn't create the comment: ${err instanceof Error ? err.message : String(err)}`);
+        toast(`Couldn't create the comment: ${friendlyError(err)}`);
       })
       .finally(() => setSending(false));
   };

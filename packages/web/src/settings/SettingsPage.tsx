@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { Settings } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { ContributionsSection } from "./ContributionsSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { JobsSection } from "./JobsSection.js";
@@ -32,7 +32,7 @@ export function SettingsPage(): React.JSX.Element {
         if (!cancelled) setSettings(s);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(friendlyError(err));
       });
     // Front-screen callouts link to /settings#environment / #models:
     // scroll the anchored section into view after first paint.
@@ -60,9 +60,11 @@ export function SettingsPage(): React.JSX.Element {
   return (
     <div className="app">
       <header className="top">
+        <Link className="brand" to="/" title="Back to the start screen">
+          Unvibe
+        </Link>
         <div className="pr">
           <b>Settings</b>
-          {reviewId ? <span className="num">for review {reviewId}</span> : null}
         </div>
         <Link className="tbtn" to={back}>
           {reviewId ? "Back to review" : "Back to start"}

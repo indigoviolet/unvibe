@@ -1500,6 +1500,17 @@ export class Pipeline {
         payload: { summary: `go-deeper ${cardId}`, unverified: validation.unverified },
         scope: { scope: "global" },
       });
+      // On-demand stage bookkeeping: once the last placeholder is filled,
+      // the go-deeper stage is done (readiness ignores a pending go-deeper,
+      // but the stored stage should still settle).
+      if (r && !r.cards.some((x) => x.pending)) {
+        if (!draft.pipeline) {
+          draft.pipeline = {
+            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+          };
+        }
+        (draft.pipeline.stages as Record<string, string>)["go-deeper"] = "done";
+      }
     });
     await this.updateRestatedMapping(reviewId);
     await this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data });
@@ -1760,8 +1771,14 @@ export class Pipeline {
       const jobs = this.opts.jobs.listByReview(reviewId);
       const kinds: Record<string, JobKind[]> = { critic: ["critic"], "hunk-pass": ["hunk-pass"] };
       const relevant = jobs.filter((j) => (kinds[stage] as string[]).includes(j.kind));
+      // Called on the success path inside a relevant job's run(), before the
+      // queue flips it to done — so the caller is still "running". Count it
+      // as completing (+1); without this the last job always sees
+      // done = expected-1 and the stage stays "running" forever. Never
+      // overwrite an error set by a failed sibling.
       const done = relevant.filter((j) => j.state === "done").length;
-      if (done >= expectedJobs) this.setStage(reviewId, stage, "done");
+      const errored = relevant.some((j) => j.state === "error");
+      if (!errored && done + 1 >= expectedJobs) this.setStage(reviewId, stage, "done");
     } catch {
       // ignore
     }

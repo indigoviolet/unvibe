@@ -30,7 +30,7 @@ test("prior sessions list across repos, most recent first, with summaries", asyn
   const old = page.locator('[data-testid="session-r-old"]');
   await expect(old).toContainText("Fix retry backoff on 429s");
   await expect(old).toContainText("new commits · Update");
-  await expect(old).toContainText("Running: critic");
+  await expect(old).toContainText("Checking findings…");
 
   // Click resumes the review.
   await demo.locator("button.cj").click();

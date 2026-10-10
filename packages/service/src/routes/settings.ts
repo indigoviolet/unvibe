@@ -1,29 +1,121 @@
 /**
  * Settings routes (PRD §14.1, §4.14).
  *
- * - `GET /api/settings` — full settings (defaults merged over stored).
+ * - `GET /api/settings` — full settings. Roles never explicitly saved take
+ *   live defaults computed from what each adapter offers (`listModels` via
+ *   `selectDefaultModels`); with no live adapter the static defaults stand.
+ *   A second opinion with no Codex available comes back unset
+ *   (`{ provider: "codex", model: "" }`); the UI explains a second provider
+ *   is needed.
  * - `PUT /api/settings` — partial update; 400 with `{ errors }` when
- *   invalid, otherwise the full updated settings.
- * - `GET /api/models?provider=:id` — models the provider offers (static
- *   default until the ACP adapter implements `listModels`, PRD §4.14).
+ *   invalid (including a model id the adapter does not offer), otherwise
+ *   the full updated settings.
+ * - `GET /api/models?provider=:id` — models the provider offers (live, or
+ *   the static fallback offline).
  *
  * Without wired stores the endpoints stay 501 stubs (scaffold behaviour).
  */
 import type { FastifyInstance } from "fastify";
-import type { Settings } from "@unvibe/shared";
+import type { ModelPick, Settings } from "@unvibe/shared";
+import { selectDefaultModels, validateSettings } from "../settings/index.js";
 import type { RouteDeps } from "./deps.js";
+
+type Role = "main" | "small" | "secondOpinion";
+
+const ROLES: Role[] = ["main", "small", "secondOpinion"];
+
+/** Unset second-opinion marker: no Codex model chosen yet. */
+export function unsetSecondOpinion(): ModelPick {
+  return { provider: "codex", model: "" };
+}
+
+/**
+ * Effective settings: stored values, with live adapter defaults filled in
+ * for roles the user never saved. Never throws (falls back to stored).
+ */
+export async function effectiveSettings(deps: RouteDeps): Promise<Settings> {
+  const stored = deps.settings!.get();
+  const offered = deps.models?.offered;
+  if (typeof offered !== "function") return stored;
+  let saved: string[] = [];
+  try {
+    saved = deps.settings!.savedKeys();
+  } catch {
+    saved = [];
+  }
+  if (ROLES.every((r) => saved.includes(r))) return stored;
+  const next: Settings = structuredClone(stored);
+  try {
+    const [claude, codex] = await Promise.all([
+      offered.call(deps.models, "claude"),
+      offered.call(deps.models, "codex"),
+    ]);
+    if (!saved.includes("main") || !saved.includes("small")) {
+      if (claude && claude.models.length > 0) {
+        const picked = selectDefaultModels({
+          claude: claude.models,
+          codex: codex?.models ?? [],
+          ...(codex?.defaultId ? { codexDefault: codex.defaultId } : {}),
+        });
+        if (!saved.includes("main")) next.main = picked.main;
+        if (!saved.includes("small")) next.small = picked.small;
+      }
+    }
+    if (!saved.includes("secondOpinion")) {
+      if (codex && codex.models.length > 0) {
+        const picked = selectDefaultModels({
+          claude: claude?.models ?? [],
+          codex: codex.models,
+          ...(codex.defaultId ? { codexDefault: codex.defaultId } : {}),
+        });
+        next.secondOpinion = picked.secondOpinion ?? unsetSecondOpinion();
+      } else if (codex) {
+        // Definitive empty offering (live adapter, no Codex): unset.
+        next.secondOpinion = unsetSecondOpinion();
+      }
+      // Unknown (null): leave the stored/static default alone.
+    }
+  } catch {
+    // Adapter probe hiccup: stored values stand.
+  }
+  return next;
+}
 
 export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {}): Promise<void> {
   const TODO = { error: "not implemented" };
 
   app.get("/api/settings", async (_req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
-    return deps.settings.get();
+    return effectiveSettings(deps);
   });
 
   app.put("/api/settings", async (req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
     const patch = ((req.body ?? {}) as Partial<Settings>) ?? {};
+    const syncErrors = validateSettings(patch as Record<string, unknown>);
+    if (syncErrors.length > 0) return reply.code(400).send({ errors: syncErrors });
+    // Never persist a model id the adapter does not offer. Unknown
+    // offerings (adapter down) skip validation; readiness flags the pick
+    // if it later disappears.
+    const offered = deps.models?.offered;
+    if (typeof offered === "function") {
+      const problems: string[] = [];
+      for (const role of ROLES) {
+        const pick = patch[role];
+        if (!pick || pick.model === "") continue;
+        try {
+          const live = await offered.call(deps.models, pick.provider);
+          if (live && !live.models.includes(pick.model)) {
+            problems.push(
+              `${role} model "${pick.model}" is not offered by ${pick.provider} (offers: ${live.models.join(", ") || "none"}) — pick one of the offered models`,
+            );
+          }
+        } catch {
+          // Probe hiccup: stored value stands; readiness flags it later.
+        }
+      }
+      if (problems.length > 0) return reply.code(400).send({ errors: problems });
+    }
     const res = deps.settings.update(patch);
     if (res.errors) return reply.code(400).send({ errors: res.errors });
     return res.settings;

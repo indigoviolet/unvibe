@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
-import { api } from "../../api/client.js";
+import { api, friendlyError } from "../../api/client.js";
 import { highlightAnchorInRoot } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
@@ -87,7 +87,7 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
       if (!found) return;
       if (found.type === "expansion" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
-          toast(`Couldn't expand: ${err instanceof Error ? err.message : String(err)}`);
+          toast(`Couldn't expand: ${friendlyError(err)}`);
         });
         window.setTimeout(() => {
           document.getElementById(`B-${id}`)?.scrollIntoView({ block: "nearest" });

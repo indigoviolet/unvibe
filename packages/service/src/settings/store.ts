@@ -33,8 +33,15 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   for (const role of ["main", "small", "secondOpinion"] as const) {
     const v = patch[role];
     if (v === undefined) continue;
-    if (!isModelPick(v) || !v.provider || !v.model) {
-      errors.push(`${role} must be { provider, model } with non-empty strings`);
+    // An empty second-opinion model is the unset marker (no Codex yet);
+    // main/small must always name a model.
+    const allowEmptyModel = role === "secondOpinion";
+    if (!isModelPick(v) || !v.provider || (!allowEmptyModel && !v.model)) {
+      errors.push(
+        role === "secondOpinion"
+          ? `${role} must be { provider, model } (model may be empty when unset)`
+          : `${role} must be { provider, model } with non-empty strings`,
+      );
     }
   }
   const int = (name: string, min: number, max: number): void => {
@@ -68,8 +75,7 @@ export class SettingsStore {
   }
 
   /** Full settings: stored values merged over defaults. */
-  get(): Settings {
-    const rows = this.db.prepare("SELECT key, value FROM settings").all() as {
+  get(): Settings {    const rows = this.db.prepare("SELECT key, value FROM settings").all() as {
       key: string;
       value: string;
     }[];
@@ -79,6 +85,16 @@ export class SettingsStore {
       (out as unknown as Record<string, unknown>)[row.key] = JSON.parse(row.value);
     }
     return out;
+  }
+
+  /** Keys the user (or a test) explicitly saved. Never-saved roles take live defaults. */
+  savedKeys(): string[] {
+    try {
+      const rows = this.db.prepare("SELECT key FROM settings").all() as { key: string }[];
+      return rows.map((r) => r.key);
+    } catch {
+      return [];
+    }
   }
 
   /** Merge a partial update over current settings and persist it. */

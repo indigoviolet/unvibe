@@ -48,6 +48,14 @@ function titleFor(dataTitle: string, snapshot: ReviewSnapshot | null, branch: st
 
 type GuideStatus = ReviewSummary["guideStatus"];
 
+/**
+ * Pipeline stages that must finish before the guide counts as ready.
+ * `go-deeper` is on demand (placeholder cards generate when asked, demo
+ * auto-fill aside), so a pending go-deeper never blocks readiness — live
+ * `go-deeper` jobs still report as running through `liveJobs` above.
+ */
+const CORE_STAGES = ["reader", "base", "critic", "concepts", "hunk-pass"] as const;
+
 function guideStatusFor(
   snapshot: ReviewSnapshot | null,
   liveJobs: Job[],
@@ -68,18 +76,21 @@ function guideStatusFor(
     | Record<string, "pending" | "running" | "done" | "error">
     | undefined;
   if (stages) {
-    const values = Object.values(stages);
-    if (values.length > 0 && values.every((v) => v === "done")) return { status: "ready" };
-    if (values.some((v) => v === "error")) {
+    const core = CORE_STAGES.map((s) => stages[s] ?? "pending");
+    if (core.every((v) => v === "done")) return { status: "ready" };
+    if (core.some((v) => v === "error")) {
       const errs = snapshot?.pipeline?.errors;
       const first = errs ? Object.values(errs)[0] : undefined;
       return { status: "error", detail: typeof first === "string" ? first : "A pipeline stage failed" };
     }
-    if (values.some((v) => v === "running")) return { status: "running", detail: "Pipeline running" };
+    if (core.some((v) => v === "running")) {
+      const names = CORE_STAGES.filter((s) => stages[s] === "running").slice(0, 3).join(", ");
+      return { status: "running", detail: `Running: ${names}` };
+    }
   }
+  if (pipelineDisabled) return { status: "disabled", detail: "Pipeline disabled (UNVIBE_AGENT=none)" };
   const hasCards = (snapshot?.pages ?? []).some((p) => (p.cards ?? []).length > 0);
   if (hasCards) return { status: "ready" };
-  if (pipelineDisabled) return { status: "disabled", detail: "Pipeline disabled (UNVIBE_AGENT=none)" };
   return { status: "idle", detail: "Guide not started yet" };
 }
 

@@ -18,7 +18,7 @@ import type { Annotation, Page } from "@unvibe/shared";
 import { Fragment } from "react";
 import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
-import { api } from "../../api/client.js";
+import { api, friendlyError } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
 import { performAction } from "../actions.js";
 import { BlockView } from "../BlockView.js";
@@ -111,7 +111,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   const run = (action: Parameters<typeof performAction>[1]): void => {
     void performAction(reviewId, action).catch((err: unknown) => {
       if (isNoAgentError(err)) toast(NO_AGENT_COPY);
-      else toast(`Action failed: ${actionErrorMessage(err)}`);
+      else toast(`Action failed: ${friendlyError(err)}`);
     });
   };
 
@@ -130,7 +130,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           })
           .catch((e2: unknown) => {
             if (isNoAgentError(e2) || isNoAgentError(err)) toast(NO_AGENT_COPY);
-            else toast(`Retry failed: ${actionErrorMessage(e2)}`);
+            else toast(`Retry failed: ${friendlyError(e2)}`);
           });
       });
   };
@@ -143,7 +143,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         else if (!res.accepted) toast("Needs the service to open this as a page.");
       })
       .catch((err: unknown) => {
-        toast(`Couldn't open as a page: ${actionErrorMessage(err)}`);
+        toast(`Couldn't open as a page: ${friendlyError(err)}`);
       });
   };
 
@@ -151,7 +151,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     void api
       .action(reviewId, { kind: "delete", targetId: expansion.id })
       .catch((err: unknown) => {
-        toast(`Couldn't delete: ${actionErrorMessage(err)}`);
+        toast(`Couldn't delete: ${friendlyError(err)}`);
       });
   };
 
@@ -168,7 +168,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
 
   const onExpand = (): void => {
     void api.updateComment(reviewId, expansion.id, { open: true }).catch((err: unknown) => {
-      toast(`Couldn't expand: ${actionErrorMessage(err)}`);
+      toast(`Couldn't expand: ${friendlyError(err)}`);
     });
   };
 

@@ -1,13 +1,15 @@
 /**
  * Second-opinion action control (PRD §4.10, §4.15).
  *
- * Icon with tooltip in the card control row, plus a small mode switch
- * showing the default for that kind of card (blind for findings, check
- * for cards). While the job runs the card shows the standard working
- * state (via streams + `jobForCard`). When no distinct second-opinion
- * model is configured, the action explains that and links to Settings.
+ * One icon button in the card control row (icons with tooltips): clicking
+ * it runs the default mode for that kind of card (blind for findings,
+ * check-this-claim for cards). A caret beside it opens a small menu to
+ * run the other mode instead. While the job runs the card shows the
+ * standard working state (via streams + `jobForCard`). When no distinct
+ * second-opinion model is configured, the action explains that and links
+ * to Settings.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Card, Page, SecondOpinionMode, Settings } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
@@ -24,14 +26,16 @@ function defaultMode(page: Page | undefined): SecondOpinionMode {
   return page?.kind === "finding" ? "blind" : "check";
 }
 
+function modeHint(mode: SecondOpinionMode): string {
+  return mode === "blind" ? "Only the topic and the cited code" : "The claim plus the cited code";
+}
+
 export function SecondOpinionControl({ reviewId, card, page }: Props): React.JSX.Element {
   const def = defaultMode(page);
-  const [mode, setMode] = useState<SecondOpinionMode>(def);
   const [settings, setSettings] = useState<Settings | null>(null);
-
-  useEffect(() => {
-    setMode(defaultMode(page));
-  }, [page?.kind]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const caretRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +52,27 @@ export function SecondOpinionControl({ reviewId, card, page }: Props): React.JSX
       cancelled = true;
     };
   }, []);
+
+  // Close the mode menu on outside press or Escape (PRD §4.5 hover rules
+  // apply to previews; menus close the same way).
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointer = (e: PointerEvent): void => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        caretRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   const distinct =
     !settings ||
@@ -67,37 +92,55 @@ export function SecondOpinionControl({ reviewId, card, page }: Props): React.JSX
     );
   }
 
+  const run = (mode: SecondOpinionMode): void => {
+    setMenuOpen(false);
+    void performAction(reviewId, { kind: "second_opinion", cardId: card.id, mode });
+  };
+
+  const defLabel = def === "blind" ? "blind" : "check this claim";
+
   return (
     <span className="so-ctl" data-so-ctl={card.id}>
-      <span className="seg so-switch" role="group" aria-label="Second-opinion mode">
-        <button
-          type="button"
-          aria-pressed={mode === "blind"}
-          data-tip="Blind: only the topic and cited code"
-          aria-label="Blind mode"
-          onClick={() => setMode("blind")}
-        >
-          Blind
-        </button>
-        <button
-          type="button"
-          aria-pressed={mode === "check"}
-          data-tip="Check this claim: the claim plus cited code"
-          aria-label="Check mode"
-          onClick={() => setMode("check")}
-        >
-          Check
-        </button>
-      </span>
       <button
         className="ib"
         type="button"
-        data-tip={`Second opinion (${mode === "blind" ? "blind" : "check this claim"}${mode === def ? ", default" : ""})`}
-        aria-label={`Second opinion (${mode})`}
-        onClick={() => void performAction(reviewId, { kind: "second_opinion", cardId: card.id, mode })}
+        data-tip={`Second opinion (${defLabel})`}
+        aria-label={`Second opinion (${defLabel})`}
+        onClick={() => run(def)}
       >
         <Icon name="spark" />
       </button>
+      <button
+        ref={caretRef}
+        className="ib"
+        type="button"
+        data-tip="Choose a second-opinion mode"
+        aria-label="Choose a second-opinion mode"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((v) => !v)}
+      >
+        <Icon name="down" />
+      </button>
+      {menuOpen ? (
+        <div ref={menuRef} className="so-menu" role="menu" aria-label="Second-opinion mode">
+          {(["blind", "check"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              role="menuitemradio"
+              aria-checked={mode === def}
+              onClick={() => run(mode)}
+            >
+              <span>
+                {mode === "blind" ? "Blind" : "Check this claim"}
+                {mode === def ? " (default)" : ""}
+              </span>
+              <span className="hint">{modeHint(mode)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </span>
   );
 }

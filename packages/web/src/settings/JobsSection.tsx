@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { Job } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { connectEvents } from "../api/ws.js";
 import {
   formatCacheRate,
@@ -28,7 +28,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
     try {
       setJobs((await api.jobs(reviewId)).jobs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(friendlyError(err));
     }
   }, [reviewId]);
 
@@ -104,7 +104,7 @@ function JobRow({ job, onCancel }: { job: Job; onCancel: () => void }): React.JS
       try {
         setPrompt((await api.jobPrompt(job.id)).promptSnapshot);
       } catch (err) {
-        setPromptError(err instanceof Error ? err.message : String(err));
+        setPromptError(friendlyError(err));
       }
     }
   };

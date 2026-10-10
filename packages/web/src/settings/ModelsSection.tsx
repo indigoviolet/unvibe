@@ -8,14 +8,14 @@
  */
 import { useEffect, useState } from "react";
 import type { ModelPick, ReadinessCheck, Settings } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 
 type Role = "main" | "small" | "secondOpinion";
 
 const ROLES: { role: Role; label: string; blurb: string }[] = [
   { role: "main", label: "Main", blurb: "Everything that needs the review's context." },
   { role: "small", label: "Small", blurb: "Hunk summaries, titles, contribution cleanup." },
-  { role: "secondOpinion", label: "Second opinion", blurb: "A different model from main (PRD §4.10)." },
+  { role: "secondOpinion", label: "Second opinion", blurb: "A different model from main, for an independent take." },
 ];
 
 const KNOWN_PROVIDERS = ["claude", "codex"];
@@ -112,7 +112,7 @@ function ModelPicker({
         if (!cancelled) setModels(r.models);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(modelsError(err));
+        if (!cancelled) setError(friendlyError(err));
       });
     return () => {
       cancelled = true;
@@ -121,13 +121,18 @@ function ModelPicker({
 
   const providers = KNOWN_PROVIDERS.includes(provider) ? KNOWN_PROVIDERS : [provider, ...KNOWN_PROVIDERS];
 
+  // The saved pick may have disappeared from the adapter's list (model
+  // retired or renamed): flag it plainly instead of silently keeping it.
+  const offeredMissing = models !== null && error === null && pick.model !== "" && !models.includes(pick.model);
+  const unset = role === "secondOpinion" && pick.model === "";
+
   const save = async (next: ModelPick): Promise<void> => {
     setSaving(true);
     setSaveError(null);
     try {
       onSaved(await api.saveSettings({ [role]: next }));
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(friendlyError(err));
     } finally {
       setSaving(false);
     }
@@ -139,6 +144,18 @@ function ModelPicker({
         <b style={{ minWidth: 110 }}>{label}</b>
         <span className="hint">{blurb}</span>
       </div>
+      {unset ? (
+        <p className="hint" role="status" data-testid={`model-${role}-unset`} style={{ margin: "6px 0" }}>
+          Not set — second opinions need a second provider (Codex). Pick one below, or leave this
+          unset; everything else works with one provider.
+        </p>
+      ) : null}
+      {offeredMissing ? (
+        <p className="err" role="alert" data-testid={`model-${role}-missing`} style={{ margin: "6px 0" }}>
+          Saved model “{pick.model}” is no longer offered by {pick.provider} — pick one of the
+          models below.
+        </p>
+      ) : null}
       <div className="setgrid">
         <label htmlFor={`prov-${role}`}>Provider</label>
         <select
@@ -169,11 +186,12 @@ function ModelPicker({
           ) : (
             <select
               id={`model-${role}`}
-              value={models.includes(pick.model) ? pick.model : pick.model}
+              value={pick.model}
               onChange={(e) => void save({ provider: pick.provider, model: e.target.value })}
               disabled={saving}
             >
-              {models.includes(pick.model) ? null : <option value={pick.model}>{pick.model} (current)</option>}
+              {pick.model === "" ? <option value="">Not set</option> : null}
+              {models.includes(pick.model) ? null : pick.model !== "" ? <option value={pick.model}>{pick.model} (current)</option> : null}
               {models.map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -206,18 +224,4 @@ function ModelPicker({
       </div>
     </div>
   );
-}
-
-function modelsError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  const body = msg.match(/\{.*\}$/)?.[0];
-  if (body) {
-    try {
-      const parsed = JSON.parse(body) as { error?: string };
-      if (parsed.error) return parsed.error;
-    } catch {
-      // Fall through to the raw message.
-    }
-  }
-  return msg;
 }

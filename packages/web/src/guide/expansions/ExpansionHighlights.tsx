@@ -14,7 +14,7 @@
  * `[data-fallback]` stub the card list renders under the block.
  */
 import { useEffect } from "react";
-import { api } from "../../api/client.js";
+import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
 import { useReview } from "../../state/store.js";
@@ -101,7 +101,7 @@ export function ExpansionHighlights() {
       if (!reviewId || !found) return;
       if (found.type === "expansion" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
-          toast(`Couldn't expand: ${err instanceof Error ? err.message : String(err)}`);
+          toast(`Couldn't expand: ${friendlyError(err)}`);
         });
       }
       window.setTimeout(() => {

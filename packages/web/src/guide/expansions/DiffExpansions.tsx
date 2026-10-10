@@ -12,7 +12,7 @@
  */
 import { useEffect, useMemo } from "react";
 import type { Annotation, Page } from "@unvibe/shared";
-import { api } from "../../api/client.js";
+import { api, friendlyError } from "../../api/client.js";
 import { markTextInElement } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
@@ -84,7 +84,7 @@ export function useDiffExpansionBindings(
       if (!found || found.anchor.host.kind !== "diff-line") return;
       if (found.type === "expansion" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
-          toast(`Couldn't expand: ${err instanceof Error ? err.message : String(err)}`);
+          toast(`Couldn't expand: ${friendlyError(err)}`);
         });
       }
       window.setTimeout(() => {

@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { Annotation } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
 import { revealSource } from "../source/reveal.js";
@@ -176,13 +176,13 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
     window.clearTimeout(saveTimer.current);
     if (isNew && draft.trim() === "") {
       api.deleteComment(reviewId, thread.id).catch((err: unknown) => {
-        toast(`Couldn't discard the comment: ${err instanceof Error ? err.message : String(err)}`);
+        toast(`Couldn't discard the comment: ${friendlyError(err)}`);
       });
       return;
     }
     setDraft("");
     api.updateComment(reviewId, thread.id, { reply: null }).catch((err: unknown) => {
-      toast(`Couldn't clear the reply: ${err instanceof Error ? err.message : String(err)}`);
+      toast(`Couldn't clear the reply: ${friendlyError(err)}`);
     });
   };
 
@@ -202,7 +202,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
         if (ask) markAskSent(thread.id);
       })
       .catch((err: unknown) => {
-        toast(`Couldn't send the reply: ${err instanceof Error ? err.message : String(err)}`);
+        toast(`Couldn't send the reply: ${friendlyError(err)}`);
       })
       .finally(() => setSending(false));
   };
@@ -216,26 +216,26 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
         markAskSent(thread.id);
       })
       .catch((err: unknown) => {
-        toast(`Couldn't retry the reply: ${err instanceof Error ? err.message : String(err)}`);
+        toast(`Couldn't retry the reply: ${friendlyError(err)}`);
       })
       .finally(() => setSending(false));
   };
 
   const togglePost = (): void => {
     api.updateComment(reviewId, thread.id, { post: !thread.post }).catch((err: unknown) => {
-      toast(`Couldn't mark the comment: ${err instanceof Error ? err.message : String(err)}`);
+      toast(`Couldn't mark the comment: ${friendlyError(err)}`);
     });
   };
 
   const onDelete = (): void => {
     api.deleteComment(reviewId, thread.id).catch((err: unknown) => {
-      toast(`Couldn't delete the comment: ${err instanceof Error ? err.message : String(err)}`);
+      toast(`Couldn't delete the comment: ${friendlyError(err)}`);
     });
   };
 
   const onClose = (): void => {
     api.updateComment(reviewId, thread.id, { open: false }).catch((err: unknown) => {
-      toast(`Couldn't close the comment: ${err instanceof Error ? err.message : String(err)}`);
+      toast(`Couldn't close the comment: ${friendlyError(err)}`);
     });
   };
 
@@ -324,12 +324,12 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
       ) : null}
       {waiting ? (
         <div className="hint" role="status">
-          Still waiting for the agent — its reply will appear here when the pipeline answers.
+          Still waiting for the agent — its reply will appear here.
         </div>
       ) : null}
       {thread.error && !readOnly ? (
         <div className="perr" role="alert">
-          <span>Couldn't get an answer: {thread.error}</span>
+          <span>Couldn't get an answer: {friendlyError(thread.error)}</span>
           <button className="btn" type="button" data-retry={thread.id} onClick={onRetry}>
             Retry
           </button>

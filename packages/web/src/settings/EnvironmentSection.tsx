@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { ReadinessResponse } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 
 export function EnvironmentSection(): React.JSX.Element {
   const [report, setReport] = useState<ReadinessResponse | null>(null);
@@ -18,7 +18,7 @@ export function EnvironmentSection(): React.JSX.Element {
     try {
       setReport(await api.readiness(force));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(friendlyError(err));
     } finally {
       setChecking(false);
     }

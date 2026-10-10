@@ -25,6 +25,7 @@ import {
   VersionBanner,
   type BannerCounts,
 } from "../../versions/VersionBanner.js";
+import { refreshErrorNotice } from "../../versions/versionUtils.js";
 import { useReviewVersion } from "../../versions/useReviewVersion.js";
 import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } from "./FileSection.js";
 import {
@@ -154,10 +155,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
   }, [reviewId, versionParam, snapshot, setSnapshot]);
 
   // Refresh on open: a cheap fetch-and-compare, no agent time (PRD §8).
-  // Skipped while viewing an older version. Counts come from the refresh
-  // `comparison`, or from `versionStatus` already on the snapshot.
+  // Skipped while viewing an older version, and a no-op for reviews with
+  // no git source (demo). Counts come from the refresh `comparison`, or
+  // from `versionStatus` already on the snapshot.
+  const sourceRepoId = snapshot?.review.repoId;
   useEffect(() => {
-    if (versionParam !== undefined) return;
+    if (versionParam !== undefined || !sourceRepoId || sourceRepoId === "demo") return;
     let cancelled = false;
     api
       .refresh(reviewId)
@@ -169,11 +172,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
           setBanner(comparisonToBanner(r.comparison, current));
         }
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        if (!cancelled) toast(refreshErrorNotice(err));
+      });
     return () => {
       cancelled = true;
     };
-  }, [reviewId, versionParam]);
+  }, [reviewId, versionParam, sourceRepoId]);
 
   const doRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -188,8 +193,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
         setBanner(null);
         toast("Already up to date");
       }
-    } catch {
-      toast("Couldn't refresh the review");
+    } catch (err) {
+      toast(refreshErrorNotice(err));
     } finally {
       setRefreshing(false);
     }

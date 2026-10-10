@@ -119,7 +119,12 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
     // Demo entry point (M3): repo-less `demo` change. The start page lists
     // it without a checkout; creating a review with `repoId: "demo"` (or
     // `{ demo: true }`) ingests the fixture and runs the same pipeline path.
+    // The demo answers no filtered section: PR/branch filters return [] so
+    // the demo never leaks into "authoring" / "review-requested" / branches.
     if (id === "demo") {
+      if (rawFilter !== "all") {
+        return { changes: [] } satisfies RepoChangesResponse;
+      }
       return {
         changes: [
           {

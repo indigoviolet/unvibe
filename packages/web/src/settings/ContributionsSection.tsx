@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Contribution, ContributionItem } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 
 export function ContributionsSection({ reviewId }: { reviewId: string | null }): React.JSX.Element {
   const [items, setItems] = useState<Contribution[] | null>(null);
@@ -20,7 +20,7 @@ export function ContributionsSection({ reviewId }: { reviewId: string | null }):
     try {
       setItems((await api.contributions(reviewId)).contributions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(friendlyError(err));
     }
   }, [reviewId]);
 
@@ -35,7 +35,7 @@ export function ContributionsSection({ reviewId }: { reviewId: string | null }):
       await api.deleteContribution(reviewId, id);
       setItems((prev) => (prev === null ? prev : prev.filter((c) => c.id !== id)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(friendlyError(err));
     }
   };
 

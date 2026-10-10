@@ -15,8 +15,9 @@
  */
 import { useEffect, useState } from "react";
 import type { SubmitPreview } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
+import { refreshErrorNotice } from "../versions/versionUtils.js";
 import { useViewer } from "../comments/viewer.js";
 import { pendingCount } from "../comments/threads.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
@@ -93,7 +94,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setState({ status: "error", error: err instanceof Error ? err.message : String(err) });
+          setState({ status: "error", error: friendlyError(err) });
         }
       });
     return () => {
@@ -121,7 +122,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
         else setState({ status: "error", error: res.reason ?? "Couldn't load the submit preview." });
       })
       .catch((err: unknown) => {
-        setState({ status: "error", error: err instanceof Error ? err.message : String(err) });
+        setState({ status: "error", error: friendlyError(err) });
       });
   };
 
@@ -135,7 +136,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
         toast("Review refreshed — check the preview before submitting.");
       })
       .catch((err: unknown) => {
-        toast(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+        toast(refreshErrorNotice(err));
       });
   };
 

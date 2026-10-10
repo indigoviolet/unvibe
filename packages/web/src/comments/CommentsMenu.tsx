@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Annotation, ExistingReviewComment, ReviewSnapshot } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
 import { anchorMatchesBlock } from "../guide/guideUtils.js";
@@ -155,7 +155,7 @@ function DraftArea({
         const next = e.target.value;
         timer.current = window.setTimeout(() => {
           api.updateComment(reviewId, thread.id, { draft: next }).catch((err: unknown) => {
-            toast(`Couldn't save the draft: ${err instanceof Error ? err.message : String(err)}`);
+            toast(`Couldn't save the draft: ${friendlyError(err)}`);
           });
         }, 400);
       }}
