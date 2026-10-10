@@ -28,9 +28,13 @@ async function renderDiff(extra?: { lineSlots?: Record<string, React.ReactNode>;
   return r;
 }
 
+const CONN = "src-urllib3-connection.py";
+const TCONN = "test-test_connection.py";
+const TSOCK = "test-with_dummyserver-test_socketlevel.py";
+
 function connSection(): HTMLElement {
-  const el = document.getElementById("F-conn");
-  if (!el) throw new Error("missing #F-conn");
+  const el = document.getElementById(`F-${CONN}`);
+  if (!el) throw new Error(`missing #F-${CONN}`);
   return el;
 }
 
@@ -50,7 +54,7 @@ describe("DiffView", () => {
   it("folds and unfolds a hunk, keeping its card", async () => {
     await renderDiff();
     const conn = within(connSection());
-    // conn:1 carries the seeded note, so its card is visible unfolded.
+    // The second conn hunk carries the seeded note, so its card is visible unfolded.
     expect(conn.getByText("Only call site; everything else is the helper.")).toBeInTheDocument();
     await fireEvent.click(conn.getAllByRole("button", { name: "Fold code" })[1]);
     expect(await conn.findByText("3 changed lines folded · show")).toBeInTheDocument();
@@ -91,21 +95,21 @@ describe("DiffView", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Show files panel" }));
     const input = screen.getByLabelText("Filter files by name");
     await fireEvent.change(input, { target: { value: "socketlevel" } });
-    expect(document.getElementById("F-conn")).toBeNull();
-    expect(document.getElementById("F-tsock")).not.toBeNull();
+    expect(document.getElementById(`F-${CONN}`)).toBeNull();
+    expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
     // Header plus the files-panel tree row both name the file.
     expect(document.querySelectorAll("button.fr:not(.dir)")).toHaveLength(1);
   });
 
   it("emits line-number clicks and renders slots with comment icons", async () => {
     const onLineClick = vi.fn();
-    await renderDiff({ lineSlots: { "conn:77": <span>inline thread</span> }, onLineClick });
-    const cell = document.querySelector('[data-line="conn:77"]');
+    await renderDiff({ lineSlots: { [`${CONN}:77`]: <span>inline thread</span> }, onLineClick });
+    const cell = document.querySelector(`[data-line="${CONN}:77"]`);
     expect(cell).not.toBeNull();
     expect(cell!.classList.contains("hc")).toBe(true);
     expect(screen.getByText("inline thread")).toBeInTheDocument();
     await fireEvent.click(cell!);
-    expect(onLineClick).toHaveBeenCalledWith("conn", 77);
+    expect(onLineClick).toHaveBeenCalledWith(CONN, 77);
   });
 
   it("adds and deletes a hunk note", async () => {
@@ -131,12 +135,12 @@ describe("DiffView", () => {
 
   it("revealSource unhides a hidden hunk and highlights the line", async () => {
     await renderDiff();
-    expect(revealSource("diff:tconn:5")).toBe(true);
-    const line = await screen.findByText((_c, el) => el?.id === "L-tconn-5", {}, { timeout: 3000 });
+    expect(revealSource(`diff:${TCONN}:5`)).toBe(true);
+    const line = await screen.findByText((_c, el) => el?.id === `L-${TCONN}-5`, {}, { timeout: 3000 });
     void line;
     // The hidden run expanded: hunk headers are back.
     expect(screen.getByText("Hunk 1 of 3")).toBeInTheDocument();
-    expect(document.getElementById("L-tconn-5")?.className).toMatch(/hl/);
+    expect(document.getElementById(`L-${TCONN}-5`)?.className).toMatch(/hl/);
     expect(revealSource("card:nope")).toBe(false);
   });
 
@@ -145,17 +149,17 @@ describe("DiffView", () => {
     const conn = within(connSection());
     await fireEvent.click(conn.getAllByRole("button", { name: "Fold code" })[1]);
     expect(await conn.findByText("3 changed lines folded · show")).toBeInTheDocument();
-    expect(revealSource("diff:conn:650-651")).toBe(true);
-    await screen.findByText((_c, el) => el?.id === "L-conn-650", {}, { timeout: 3000 });
+    expect(revealSource(`diff:${CONN}:650-651`)).toBe(true);
+    await screen.findByText((_c, el) => el?.id === `L-${CONN}-650`, {}, { timeout: 3000 });
     expect(conn.queryByText("3 changed lines folded · show")).not.toBeInTheDocument();
-    expect(document.getElementById("L-conn-650")?.className).toMatch(/hl/);
-    expect(document.getElementById("L-conn-651")?.className).toMatch(/hl/);
+    expect(document.getElementById(`L-${CONN}-650`)?.className).toMatch(/hl/);
+    expect(document.getElementById(`L-${CONN}-651`)?.className).toMatch(/hl/);
   });
 
   it("switches to split view with paired columns", async () => {
     await renderDiff();
     await fireEvent.click(screen.getByRole("button", { name: "Split" }));
-    const table = document.querySelector("#F-conn table.diff.split");
+    const table = document.querySelector(`#${CSS.escape(`F-${CONN}`)} table.diff.split`);
     expect(table).not.toBeNull();
     expect(table!.querySelector("colgroup")).not.toBeNull();
   });

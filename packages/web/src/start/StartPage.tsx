@@ -1,37 +1,26 @@
 /**
  * Start page (`/`, PRD §4.2): repo picker + per-repo lists.
  *
- * - Repo picker remembers recent repos, shows detected checkouts, and adds
- *   by path. The selection is remembered in `localStorage`.
+ * - Repo picker: remembered repos first, detected checkouts (marked
+ *   `detected: true` by the service) after, add-by-path. The selection is
+ *   remembered in `localStorage`.
  * - For the selected repo: PRs you author (`authoring`), PRs waiting on your
  *   review (`review-requested`), recent branches (`branches`), and reviews
- *   opened before with unread/stale state.
+ *   opened before with stale state (`kind: "review"` from `recent`, carrying
+ *   `reviewId` so they open directly without a new ingest).
  * - Opening a PR/branch calls `POST /api/reviews` and navigates to
- *   `/review/:id`. In mock mode the previous-reviews list comes from the
- *   mock layer; against the service it is kept locally.
+ *   `/review/:id`.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { CreateReviewRequest, Repo, RepoChange } from "@unvibe/shared";
 import { api } from "../api/client.js";
-import type { OpenedReview } from "../mock/index.js";
 import { toast } from "../floating/Toast.js";
 
 const REPO_KEY = "unvibe.start.repoId";
-const OPENED_KEY = "unvibe.start.openedReviews";
-const MOCK = typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK === "1";
-
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function changeKey(c: RepoChange, i: number): string {
-  return `${c.kind}-${c.prNumber ?? c.branch ?? i}`;
+  return `${c.kind}-${c.reviewId ?? c.prNumber ?? c.branch ?? i}`;
 }
 
 export function StartPage(): React.JSX.Element {
@@ -47,7 +36,7 @@ export function StartPage(): React.JSX.Element {
   const [authoring, setAuthoring] = useState<RepoChange[]>([]);
   const [requested, setRequested] = useState<RepoChange[]>([]);
   const [branches, setBranches] = useState<RepoChange[]>([]);
-  const [opened, setOpened] = useState<OpenedReview[]>([]);
+  const [previous, setPrevious] = useState<RepoChange[]>([]);
   const [path, setPath] = useState("");
   const [opening, setOpening] = useState<string | null>(null);
 
@@ -65,7 +54,7 @@ export function StartPage(): React.JSX.Element {
         });
       })
       .catch(() => {
-        // Service stubs return 501 until Service M1 lands.
+        // Offline service: the page stays empty.
       });
     return () => {
       cancelled = true;
@@ -82,15 +71,19 @@ export function StartPage(): React.JSX.Element {
     let cancelled = false;
     const load = async (): Promise<void> => {
       try {
-        const [a, r, b] = await Promise.all([
+        const [a, r, rec] = await Promise.all([
           api.repoChanges(selectedId, "authoring"),
           api.repoChanges(selectedId, "review-requested"),
-          api.repoChanges(selectedId, "branches"),
+          api.repoChanges(selectedId, "recent"),
         ]);
         if (cancelled) return;
         setAuthoring(a.changes);
         setRequested(r.changes);
-        setBranches(b.changes);
+        // `recent` mixes branches and previous reviews; split them here so
+        // each section renders from one call (gh failures still leave the
+        // git-backed sections intact).
+        setBranches(rec.changes.filter((c) => c.kind === "branch"));
+        setPrevious(rec.changes.filter((c) => c.kind === "review"));
       } catch {
         // Leave previous lists in place.
       }
@@ -101,47 +94,11 @@ export function StartPage(): React.JSX.Element {
     };
   }, [selectedId]);
 
-  const refreshOpened = useCallback(async () => {
-    if (MOCK) {
-      try {
-        const m = await import("../mock/index.js");
-        setOpened(m.getOpenedReviews());
-        return;
-      } catch {
-        // Fall through to the local list.
-      }
-    }
-    setOpened(readJson<OpenedReview[]>(OPENED_KEY, []));
-  }, []);
-
-  useEffect(() => {
-    void refreshOpened();
-  }, [refreshOpened]);
-
-  const recordOpened = useCallback((entry: OpenedReview) => {
-    if (MOCK) return; // the mock layer records it in createReview
-    try {
-      const list = readJson<OpenedReview[]>(OPENED_KEY, []).filter((r) => r.reviewId !== entry.reviewId);
-      localStorage.setItem(OPENED_KEY, JSON.stringify([entry, ...list].slice(0, 20)));
-    } catch {
-      // Ignore.
-    }
-  }, []);
-
   const openReview = useCallback(
-    async (key: string, body: CreateReviewRequest, title: string) => {
+    async (key: string, body: CreateReviewRequest) => {
       setOpening(key);
       try {
         const snap = await api.createReview(body);
-        recordOpened({
-          reviewId: snap.review.id,
-          title,
-          prNumber: body.pr,
-          branch: body.branch,
-          stale: false,
-          unread: 0,
-        });
-        await refreshOpened();
         navigate(`/review/${snap.review.id}`);
       } catch {
         toast("Couldn't open review");
@@ -149,7 +106,7 @@ export function StartPage(): React.JSX.Element {
         setOpening(null);
       }
     },
-    [navigate, recordOpened, refreshOpened],
+    [navigate],
   );
 
   const addRepo = useCallback(async () => {
@@ -166,8 +123,8 @@ export function StartPage(): React.JSX.Element {
     }
   }, [path]);
 
-  const recent = [...repos].sort((a, b) => b.lastOpened - a.lastOpened).slice(0, 3);
-  const detected = repos.filter((r) => !recent.some((x) => x.id === r.id));
+  const remembered = repos.filter((r) => !r.detected);
+  const detected = repos.filter((r) => r.detected);
 
   return (
     <div className="app">
@@ -204,20 +161,13 @@ export function StartPage(): React.JSX.Element {
             <p className="hint">No repos yet. Add a checkout by path, or start the service to detect them.</p>
           ) : (
             <>
-              <div className="frow" role="group" aria-label="Recent repos" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {recent.map((r) => (
-                  <button
-                    key={r.id}
-                    className="chip"
-                    type="button"
-                    aria-pressed={r.id === selectedId}
-                    title={r.localPath}
-                    onClick={() => setSelectedId(r.id)}
-                  >
-                    {r.owner}/{r.name}
-                  </button>
-                ))}
-              </div>
+              {remembered.length > 0 ? (
+                <div className="frow" role="group" aria-label="Recent repos" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {remembered.map((r) => (
+                    <RepoChip key={r.id} repo={r} selected={r.id === selectedId} onSelect={setSelectedId} />
+                  ))}
+                </div>
+              ) : null}
               {detected.length > 0 ? (
                 <>
                   <p className="hint" style={{ margin: "8px 0 4px" }}>
@@ -225,16 +175,7 @@ export function StartPage(): React.JSX.Element {
                   </p>
                   <div className="frow" role="group" aria-label="Detected checkouts" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                     {detected.map((r) => (
-                      <button
-                        key={r.id}
-                        className="chip"
-                        type="button"
-                        aria-pressed={r.id === selectedId}
-                        title={r.localPath}
-                        onClick={() => setSelectedId(r.id)}
-                      >
-                        {r.owner}/{r.name}
-                      </button>
+                      <RepoChip key={r.id} repo={r} selected={r.id === selectedId} onSelect={setSelectedId} />
                     ))}
                   </div>
                 </>
@@ -250,11 +191,7 @@ export function StartPage(): React.JSX.Element {
                 opening={opening}
                 empty="Nothing found."
                 onOpen={(c, i) =>
-                  openReview(
-                    changeKey(c, i),
-                    { repoId: selectedId, pr: c.prNumber, branch: c.branch },
-                    c.title,
-                  )
+                  openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
                 }
               />
               <ChangeSection
@@ -263,11 +200,7 @@ export function StartPage(): React.JSX.Element {
                 opening={opening}
                 empty="Nothing waiting."
                 onOpen={(c, i) =>
-                  openReview(
-                    changeKey(c, i),
-                    { repoId: selectedId, pr: c.prNumber, branch: c.branch },
-                    c.title,
-                  )
+                  openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
                 }
               />
               <ChangeSection
@@ -275,26 +208,22 @@ export function StartPage(): React.JSX.Element {
                 changes={branches}
                 opening={opening}
                 empty="No branches."
-                onOpen={(c, i) =>
-                  openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch }, c.title)
-                }
+                onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
               />
             </>
           ) : null}
 
           <div className="divider">Previous reviews</div>
-          {opened.length === 0 ? (
+          {previous.length === 0 ? (
             <p className="hint">Reviews you open will appear here.</p>
           ) : (
-            opened.map((r) => (
-              <div key={r.reviewId} className="ci">
+            previous.map((r, i) => (
+              <div key={changeKey(r, i)} className="ci">
                 <button
                   className="cj"
                   type="button"
                   disabled={opening !== null}
-                  onClick={() =>
-                    openReview(`opened-${r.reviewId}`, { repoId: selectedId ?? "", pr: r.prNumber, branch: r.branch }, r.title)
-                  }
+                  onClick={() => r.reviewId && navigate(`/review/${r.reviewId}`)}
                 >
                   <span className="cw">
                     {r.prNumber ? `#${r.prNumber}` : r.branch} · {r.branch ?? ""}
@@ -302,13 +231,34 @@ export function StartPage(): React.JSX.Element {
                   <span className="cx2">{r.title}</span>
                 </button>
                 {r.stale ? <span className="prtag">new commits · Update</span> : null}
-                {r.unread > 0 ? <span className="hint">{r.unread} unread</span> : null}
               </div>
             ))
           )}
         </div>
       </main>
     </div>
+  );
+}
+
+function RepoChip({
+  repo,
+  selected,
+  onSelect,
+}: {
+  repo: Repo;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}): React.JSX.Element {
+  return (
+    <button
+      className="chip"
+      type="button"
+      aria-pressed={selected}
+      title={repo.localPath}
+      onClick={() => onSelect(repo.id)}
+    >
+      {repo.owner}/{repo.name}
+    </button>
   );
 }
 

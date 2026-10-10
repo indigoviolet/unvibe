@@ -214,6 +214,37 @@ describe("hunk routes", () => {
         { contentHash: hash, folded: true, reviewed: true },
       ]);
 
+      // Summary: string sets, null deletes, other types are rejected.
+      const badSummary = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/hunks/${hash}`,
+        headers: authed,
+        payload: { summary: 42 },
+      });
+      expect(badSummary.statusCode).toBe(400);
+
+      const setSummary = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/hunks/${hash}`,
+        headers: authed,
+        payload: { summary: "unfolds folded headers" },
+      });
+      expect(setSummary.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)?.hunkStates).toEqual([
+        { contentHash: hash, folded: true, reviewed: true, summary: "unfolds folded headers" },
+      ]);
+
+      const delSummary = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/hunks/${hash}`,
+        headers: authed,
+        payload: { summary: null },
+      });
+      expect(delSummary.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)?.hunkStates).toEqual([
+        { contentHash: hash, folded: true, reviewed: true },
+      ]);
+
       const summarize = await app.inject({
         method: "POST",
         url: `/api/reviews/${id}/hunks/${hash}/summarize`,

@@ -21,9 +21,11 @@ import type {
   Job,
   RefreshResponse,
   Repo,
+  RepoChange,
   RepoChangesResponse,
   ReposResponse,
   Review,
+  ReviewDescription,
   ReviewSnapshot,
   Settings,
   UpdateHunkRequest,
@@ -45,20 +47,17 @@ const NOW = Date.now();
 
 const SEED_REPOS: Repo[] = [
   { id: "urllib3", owner: "urllib3", name: "urllib3", localPath: "~/code/urllib3", lastOpened: NOW },
-  { id: "demo-lib", owner: "you", name: "demo-lib", localPath: "~/code/demo-lib", lastOpened: NOW - 86400000 },
+  {
+    id: "demo-lib",
+    owner: "you",
+    name: "demo-lib",
+    localPath: "~/code/demo-lib",
+    lastOpened: 0,
+    detected: true,
+  },
 ];
 
-const OPENED_KEY = "unvibe.mock.openedReviews";
 const ADDED_KEY = "unvibe.mock.addedRepos";
-
-export interface OpenedReview {
-  reviewId: string;
-  title: string;
-  prNumber?: number;
-  branch?: string;
-  stale: boolean;
-  unread: number;
-}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -66,50 +65,6 @@ function readJson<T>(key: string, fallback: T): T {
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
-  }
-}
-
-function seedOpened(): OpenedReview[] {
-  return [
-    {
-      reviewId: "demo",
-      title: "Unfold obsolete folded response header values",
-      prNumber: 5020,
-      branch: "fix-obs-fold",
-      stale: false,
-      unread: 0,
-    },
-    {
-      reviewId: "r-old",
-      title: "Fix retry backoff on 429s",
-      prNumber: 5011,
-      branch: "fix-retry-backoff",
-      stale: true,
-      unread: 2,
-    },
-  ];
-}
-
-export function getOpenedReviews(): OpenedReview[] {
-  const list = readJson<OpenedReview[]>(OPENED_KEY, []);
-  if (list.length === 0) {
-    const seed = seedOpened();
-    try {
-      localStorage.setItem(OPENED_KEY, JSON.stringify(seed));
-    } catch {
-      // Storage unavailable (private mode): fall through with the seed.
-    }
-    return seed;
-  }
-  return list;
-}
-
-export function rememberOpened(review: OpenedReview): void {
-  try {
-    const list = getOpenedReviews().filter((r) => r.reviewId !== review.reviewId);
-    localStorage.setItem(OPENED_KEY, JSON.stringify([review, ...list].slice(0, 20)));
-  } catch {
-    // Non-fatal: recency is a convenience.
   }
 }
 
@@ -144,9 +99,9 @@ function seedHunkStates(): Map<string, HunkState> {
   for (const f of MOCK_FILES) {
     f.hunks.forEach((h, i) => {
       // Mirror the prototype's mid-use seed: one reviewed+folded hunk, one note.
-      if (f.fileKey === "tconn" && i === 2) {
+      if (f.path === "test/test_connection.py" && i === 2) {
         map.set(h.contentHash, { contentHash: h.contentHash, folded: true, reviewed: true });
-      } else if (f.fileKey === "conn" && i === 1) {
+      } else if (f.path === "src/urllib3/connection.py" && i === 1) {
         map.set(h.contentHash, {
           contentHash: h.contentHash,
           folded: false,
@@ -158,6 +113,29 @@ function seedHunkStates(): Map<string, HunkState> {
   }
   return map;
 }
+
+/**
+ * Static PR-description fixture in the service's `ReviewDescription` shape
+ * (stable paragraph ids, PR source, read-only: someone else's merged PR).
+ * Content follows the real urllib3#5020 description.
+ */
+const MOCK_DESCRIPTION: ReviewDescription = {
+  html: [
+    '<div class="desc">',
+    '<p class="para" id="d-p1">Addresses the original obs-fold response-header case discussed in #1362. ' +
+      "Python's <code>http.client</code> preserves obsolete folded response header lines in " +
+      "<code>HTTPMessage</code> values.</p>",
+    '<p class="para" id="d-p2">This change replaces each RFC 9112 <code>OWS CRLF RWS</code> sequence with a ' +
+      "single space before urllib3 or downstream consumers interpret the value, keeping urllib3's " +
+      "<code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> synchronized.</p>",
+    '<p class="para" id="d-p3">This intentionally does not address the separate whitespace-before-colon ' +
+      "header name validation scope discussed on #1362.</p>",
+    "</div>",
+  ].join(""),
+  rev: "1",
+  source: "pr",
+  editable: false,
+};
 
 let rev = 1;
 const hunkStates = seedHunkStates();
@@ -177,6 +155,7 @@ function currentSnapshot(reviewId = "demo"): ReviewSnapshot {
     review: { ...MOCK_REVIEW, id: reviewId },
     version: MOCK_VERSION,
     files: MOCK_FILES,
+    description: MOCK_DESCRIPTION,
     pages: MOCK_PAGES,
     annotations: MOCK_ANNOTATIONS,
     hunkStates: [...hunkStates.values()],
@@ -233,77 +212,87 @@ export const mockApi = {
   },
 
   repoChanges: async (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> => {
-    const all = {
-      authoring: [
-        {
-          kind: "pr" as const,
-          title: "Unfold obsolete folded response header values",
-          prNumber: 5020,
-          branch: "fix-obs-fold",
-          author: "you",
-          updatedAt: NOW - 3600000,
-        },
-        {
-          kind: "pr" as const,
-          title: "Fix retry backoff on 429s",
-          prNumber: 5011,
-          branch: "fix-retry-backoff",
-          author: "you",
-          updatedAt: NOW - 86400000 * 2,
-        },
-      ],
-      requested: [
-        {
-          kind: "pr" as const,
-          title: "Pool: reuse connections across redirects",
-          prNumber: 5018,
-          branch: "pool-redirect-reuse",
-          author: "teammate",
-          updatedAt: NOW - 7200000,
-        },
-      ],
-      branches: [
-        { kind: "branch" as const, title: "fix-obs-fold", branch: "fix-obs-fold", updatedAt: NOW - 3600000 },
-        { kind: "branch" as const, title: "main", branch: "main", updatedAt: NOW - 86400000 },
-        {
-          kind: "branch" as const,
-          title: "experiment/lazy-headers",
-          branch: "experiment/lazy-headers",
-          updatedAt: NOW - 86400000 * 3,
-        },
-      ],
-    };
+    const authoring: RepoChange[] = [
+      {
+        kind: "pr",
+        title: "Unfold obsolete folded response header values",
+        prNumber: 5020,
+        branch: "fix-obs-fold",
+        author: "you",
+        updatedAt: NOW - 3600000,
+      },
+      {
+        kind: "pr",
+        title: "Fix retry backoff on 429s",
+        prNumber: 5011,
+        branch: "fix-retry-backoff",
+        author: "you",
+        updatedAt: NOW - 86400000 * 2,
+      },
+    ];
+    const requested: RepoChange[] = [
+      {
+        kind: "pr",
+        title: "Pool: reuse connections across redirects",
+        prNumber: 5018,
+        branch: "pool-redirect-reuse",
+        author: "teammate",
+        updatedAt: NOW - 7200000,
+      },
+    ];
+    const branches: RepoChange[] = [
+      { kind: "branch", title: "fix-obs-fold", branch: "fix-obs-fold", updatedAt: NOW - 3600000 },
+      { kind: "branch", title: "main", branch: "main", updatedAt: NOW - 86400000 },
+      {
+        kind: "branch",
+        title: "experiment/lazy-headers",
+        branch: "experiment/lazy-headers",
+        updatedAt: NOW - 86400000 * 3,
+      },
+    ];
+    // Previous reviews with stale state, like the service's `repoChanges`.
+    const previous: RepoChange[] = [
+      {
+        kind: "review",
+        title: "#5020 · fix-obs-fold",
+        prNumber: 5020,
+        branch: "fix-obs-fold",
+        reviewId: "demo",
+        stale: false,
+      },
+      {
+        kind: "review",
+        title: "#5011 · fix-retry-backoff",
+        prNumber: 5011,
+        branch: "fix-retry-backoff",
+        reviewId: "r-old",
+        stale: true,
+      },
+    ];
     void id;
     switch (filter) {
       case "authoring":
-        return { changes: all.authoring };
+        return { changes: authoring };
       case "review-requested":
-        return { changes: all.requested };
+        return { changes: requested };
       case "branches":
-        return { changes: all.branches };
+        return { changes: branches };
       case "recent":
-        return { changes: [...all.authoring.slice(0, 1), ...all.branches.slice(0, 2)] };
+        return { changes: [...branches, ...previous] };
       default:
-        return { changes: [...all.authoring, ...all.requested, ...all.branches] };
+        return { changes: [...authoring, ...requested, ...branches, ...previous] };
     }
   },
 
   createReview: async (body: CreateReviewRequest): Promise<ReviewSnapshot> => {
-    rememberOpened({
-      reviewId: "demo",
-      title: body.pr === 5020 ? "Unfold obsolete folded response header values" : `Review ${body.branch ?? body.pr}`,
-      prNumber: body.pr,
-      branch: body.branch,
-      stale: false,
-      unread: 0,
-    });
+    void body;
     await wait(150);
     return currentSnapshot("demo");
   },
 
   review: async (id: string): Promise<ReviewSnapshot> => {
     await wait(50);
-    return currentSnapshot(id === "r-old" ? "demo" : id);
+    return currentSnapshot(id);
   },
 
   refresh: async (id: string): Promise<RefreshResponse> => {
@@ -320,15 +309,16 @@ export const mockApi = {
 
   action: async () => ({ accepted: true, jobId: "mock-job-1" }),
 
+  // Mirrors the service PATCH semantics: null clears note/summary.
   updateHunk: async (_id: string, hash: string, body: UpdateHunkRequest): Promise<{ ok: boolean }> => {
     const prev = hunkStates.get(hash) ?? { contentHash: hash, folded: false, reviewed: false };
-    const next: HunkState = {
-      ...prev,
-      ...(body.folded !== undefined ? { folded: body.folded } : {}),
-      ...(body.reviewed !== undefined ? { reviewed: body.reviewed } : {}),
-      ...(body.note !== undefined ? { note: body.note || undefined } : {}),
-      ...(body.summary !== undefined ? { summary: body.summary ?? undefined } : {}),
-    };
+    const next: HunkState = { ...prev };
+    if (body.folded !== undefined) next.folded = body.folded;
+    if (body.reviewed !== undefined) next.reviewed = body.reviewed;
+    if (body.note === null) delete next.note;
+    else if (body.note !== undefined) next.note = body.note;
+    if (body.summary === null) delete next.summary;
+    else if (body.summary !== undefined) next.summary = body.summary;
     hunkStates.set(hash, next);
     emitHunkStates();
     return { ok: true };
@@ -363,6 +353,8 @@ export const mockApi = {
     inlineBudgetTokens: 40000,
     rebuildSupersededRatio: 0.2,
     rebuildAppendedTokens: 10000,
+    cacheLifetimeMs: 300000,
+    idleExitMinutes: 10,
   }),
 
   saveSettings: async (body: Settings): Promise<Settings> => body,

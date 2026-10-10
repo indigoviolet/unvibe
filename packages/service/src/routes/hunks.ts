@@ -1,8 +1,9 @@
 /**
  * Hunk state (PRD §4.13):
- * - `PATCH /api/reviews/:id/hunks/:hash` — folded / reviewed / note, keyed
- *   by content hash so state survives rebases, applied through
- *   `ReviewStore.mutate` (rev bump + RFC 6902 patch event on the WS bus).
+ * - `PATCH /api/reviews/:id/hunks/:hash` — folded / reviewed / note /
+ *   summary (null clears note/summary), keyed by content hash so state
+ *   survives rebases, applied through `ReviewStore.mutate` (rev bump +
+ *   RFC 6902 patch event on the WS bus).
  * - `POST …/hunks/:hash/summarize` stays 501: the agent milestone owns it.
  */
 import type { FastifyInstance } from "fastify";
@@ -19,7 +20,7 @@ export async function registerHunks(app: FastifyInstance, ctx: ServiceContext): 
     if (typeof body !== "object" || Array.isArray(body)) {
       return reply.code(400).send({ error: "invalid hunk patch body" });
     }
-    const { folded, reviewed, note } = body;
+    const { folded, reviewed, note, summary } = body;
     if (folded !== undefined && typeof folded !== "boolean") {
       return reply.code(400).send({ error: "folded must be a boolean" });
     }
@@ -29,7 +30,10 @@ export async function registerHunks(app: FastifyInstance, ctx: ServiceContext): 
     if (note !== undefined && note !== null && typeof note !== "string") {
       return reply.code(400).send({ error: "note must be a string or null" });
     }
-    if (folded === undefined && reviewed === undefined && note === undefined) {
+    if (summary !== undefined && summary !== null && typeof summary !== "string") {
+      return reply.code(400).send({ error: "summary must be a string or null" });
+    }
+    if (folded === undefined && reviewed === undefined && note === undefined && summary === undefined) {
       return reply.code(400).send({ error: "nothing to update" });
     }
 
@@ -51,6 +55,11 @@ export async function registerHunks(app: FastifyInstance, ctx: ServiceContext): 
           delete entry.note;
         } else if (note !== undefined) {
           entry.note = note;
+        }
+        if (summary === null) {
+          delete entry.summary;
+        } else if (summary !== undefined) {
+          entry.summary = summary;
         }
       });
     } catch (err) {

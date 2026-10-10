@@ -1,7 +1,8 @@
 /** Unit tests for the pure diff-pane logic (PRD §4.13). */
 import { describe, expect, it } from "vitest";
 import type { Hunk, HunkLine, Page, ReviewFile } from "@unvibe/shared";
-import { MOCK_FILES, hashHunkContent } from "../../mock/diff.js";
+import { hashHunkLines } from "@unvibe/shared";
+import { MOCK_FILES } from "../../mock/diff.js";
 import {
   buildFileTree,
   citedHunkHashes,
@@ -25,6 +26,7 @@ function hunk(over: Partial<Hunk> = {}): Hunk {
     oldEnd: 2,
     added: 1,
     removed: 1,
+    lines: [],
     ...over,
   };
 }
@@ -154,7 +156,7 @@ describe("hunkOverlaps", () => {
 
 describe("citedHunkHashes", () => {
   it("resolves diff: ranges to overlapping hunks and h: ids directly", () => {
-    const conn = MOCK_FILES.find((f) => f.fileKey === "conn")!;
+    const conn = MOCK_FILES.find((f) => f.fileKey === "src-urllib3-connection.py")!;
     const target = conn.hunks[0];
     const pages: Page[] = [
       {
@@ -177,7 +179,10 @@ describe("citedHunkHashes", () => {
                 type: "paragraph",
                 id: "b1",
                 text: { standard: "x" },
-                citations: [{ target: `diff:conn:${target.newStart}-${target.newEnd}` }, { target: "card:other" }],
+                citations: [
+                  { target: `diff:src-urllib3-connection.py:${target.newStart}-${target.newEnd}` },
+                  { target: "card:other" },
+                ],
               },
             ],
           },
@@ -190,31 +195,43 @@ describe("citedHunkHashes", () => {
 });
 
 describe("mock fixture", () => {
-  it("carries the four prototype files with parsed hunks and reasons", () => {
-    expect(MOCK_FILES.map((f) => f.fileKey)).toEqual(["conn", "tconn", "tsock", "log"]);
+  it("carries the four prototype files with ingest-canonical keys and reasons", () => {
+    expect(MOCK_FILES.map((f) => f.fileKey)).toEqual([
+      "src-urllib3-connection.py",
+      "test-test_connection.py",
+      "test-with_dummyserver-test_socketlevel.py",
+      "changelog-1362.bugfix.rst",
+    ]);
     const byKey = Object.fromEntries(MOCK_FILES.map((f) => [f.fileKey, f]));
-    expect(byKey.conn.hunks).toHaveLength(2);
-    expect(byKey.tconn.hunks).toHaveLength(3);
-    expect(byKey.tsock.hunks).toHaveLength(2);
-    expect(byKey.log.hunks).toHaveLength(1);
-    expect(byKey.conn.hunks[0].hiddenReason).toBeUndefined();
-    expect(byKey.tconn.hunks[0].hiddenReason).toBe("imports");
-    expect(byKey.tconn.hunks[1].hiddenReason).toBe("imports");
-    expect(byKey.tsock.hunks[0].hiddenReason).toBe("imports");
-    expect(byKey.log.hunks[0].hiddenReason).toBe("docs / config");
-    expect(byKey.conn.hunks[0].newStart).toBe(77);
-    expect(byKey.conn.hunks[0].newEnd).toBe(113);
+    const conn = byKey["src-urllib3-connection.py"];
+    const tconn = byKey["test-test_connection.py"];
+    const tsock = byKey["test-with_dummyserver-test_socketlevel.py"];
+    const log = byKey["changelog-1362.bugfix.rst"];
+    expect(conn.hunks).toHaveLength(2);
+    expect(tconn.hunks).toHaveLength(3);
+    expect(tsock.hunks).toHaveLength(2);
+    expect(log.hunks).toHaveLength(1);
+    expect(conn.hunks[0].hiddenReason).toBeUndefined();
+    expect(tconn.hunks[0].hiddenReason).toBe("imports");
+    expect(tconn.hunks[1].hiddenReason).toBe("imports");
+    // Single added import row: never hidden (PRD §4.13 one-line rule).
+    expect(tsock.hunks[0].hiddenReason).toBeUndefined();
+    expect(log.hunks[0].hiddenReason).toBe("docs / config");
+    expect(conn.hunks[0].newStart).toBe(77);
+    expect(conn.hunks[0].newEnd).toBe(113);
+    expect(conn.path).toBe("src/urllib3/connection.py");
     const hashes = MOCK_FILES.flatMap((f) => f.hunks.map((h) => h.contentHash));
     expect(new Set(hashes).size).toBe(hashes.length);
+    expect(hashes[0]).toMatch(/^[0-9a-f]{16}$/);
   });
 });
 
-describe("hashHunkContent", () => {
+describe("hashHunkLines (shared)", () => {
   it("is stable and ignores whitespace but not content", () => {
-    const a = [{ kind: "add", text: "foo  bar" }];
-    const b = [{ kind: "add", text: "foo bar" }];
-    const c = [{ kind: "add", text: "foo baz" }];
-    expect(hashHunkContent(a)).toBe(hashHunkContent(b));
-    expect(hashHunkContent(a)).not.toBe(hashHunkContent(c));
+    const a = [{ kind: "add" as const, text: "foo  bar" }];
+    const b = [{ kind: "add" as const, text: "foo bar" }];
+    const c = [{ kind: "add" as const, text: "foo baz" }];
+    expect(hashHunkLines(a)).toBe(hashHunkLines(b));
+    expect(hashHunkLines(a)).not.toBe(hashHunkLines(c));
   });
 });

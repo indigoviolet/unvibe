@@ -121,7 +121,7 @@ function inHighlight(highlight: LineRange | null, n: number | undefined): boolea
 }
 
 function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick }: RowProps): ReactNode {
-  const lines = hunk.lines ?? [];
+  const lines = hunk.lines;
   return (
     <>
       {lines.map((r, ri) => {
@@ -158,7 +158,7 @@ function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineCl
 }
 
 function SplitRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick }: RowProps): ReactNode {
-  const rows: SplitRow[] = pairSplitRows(hunk.lines ?? []);
+  const rows: SplitRow[] = pairSplitRows(hunk.lines);
   const cell = (line: HunkLine | undefined, side: "o" | "n"): ReactNode => {
     if (!line) {
       return (
@@ -512,10 +512,12 @@ export function FileSection(props: SectionProps): ReactNode {
         >
           <Icon name={props.folded ? "right" : "down"} />
         </button>
-        <span className="path" title={file.path}>
+        <span className="path" title={file.isRename && file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}>
           <span className="dir">{dir}</span>
           <b>{base}</b>
         </span>
+        {file.isRename && file.oldPath ? <span className="hint">← {file.oldPath.split("/").pop()}</span> : null}
+        {file.isBinary ? <span className="gtag">binary</span> : null}
         {file.category === "generated" ? <span className="gtag">generated</span> : null}
         <span className="st">
           <span className="a">+{stats.added}</span> <span className="d">−{stats.removed}</span>
@@ -536,7 +538,11 @@ export function FileSection(props: SectionProps): ReactNode {
       </div>
       {props.folded ? null : (
         <div className="dwrap" ref={bodyRef}>
-          {visible ? (
+          {file.isBinary ? (
+            <p className="hint" style={{ padding: "6px 10px" }}>
+              Binary file · changes not shown.
+            </p>
+          ) : visible ? (
             <table className={`diff ${view}`}>
               {view === "split" ? (
                 <colgroup>

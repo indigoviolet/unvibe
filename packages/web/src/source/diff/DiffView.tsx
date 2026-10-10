@@ -347,7 +347,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
           delete next[hash];
           return next;
         });
-        void patchHunk(hash, { note: draft });
+        // Empty draft clears (service: explicit null deletes the note).
+        void patchHunk(hash, { note: draft === "" ? null : draft });
       },
       discardNote: (hash) =>
         setEditingNote((prev) => {
@@ -355,7 +356,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
           delete next[hash];
           return next;
         }),
-      deleteNote: (hash) => void patchHunk(hash, { note: "" }),
+      deleteNote: (hash) => void patchHunk(hash, { note: null }),
       toggleReviewed: (hash, reviewed) => void patchHunk(hash, { reviewed: !reviewed, folded: !reviewed }),
     }),
     [patchHunk, reviewId, editingNote],
