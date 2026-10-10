@@ -30,11 +30,21 @@ const { app, ctx } = await createApp("tok", {
 });
 ```
 
-Runner selection (`src/agent/factory.ts`): `UNVIBE_AGENT=replay` uses the
-recorded runner over `fixtures/urllib3-5020/` (demo + tests, no tokens).
-Any other value hits the ACP seam, which fails with a helpful error until
-`src/agent/acp/` merges (do not import ACP elsewhere). The future ACP
-runner will also expose `listModels(provider)` for Settings → Models.
+Runner selection (`src/agent/factory.ts`, `UNVIBE_AGENT`):
+- `replay` uses the recorded runner over `fixtures/urllib3-5020/` (demo +
+  tests, no tokens). The recordings are matched by prompt markers/keywords,
+  not scoped to the fixture repo, so on any other repo replay still matches
+  and writes the fixture's guide content there — only use it on the fixture
+  or in specs that test agent behaviour (demo review, second opinion).
+- `none` disables the pipeline: `startReview`/`resumeReview` enqueue
+  nothing and every agent call fails fast with a clear "no agent
+  configured" error. Use it in real-service specs that do not test agent
+  behaviour (comments, diff, versions), so no background pipeline mutates
+  the review mid-test and no misleading fixture content lands on temp repos.
+- Any other value (or unset) hits the ACP seam, which fails with a helpful
+  error until `src/agent/acp/` merges (do not import ACP elsewhere). The
+  future ACP runner will also expose `listModels(provider)` for
+  Settings → Models.
 
 ## Demo mode
 

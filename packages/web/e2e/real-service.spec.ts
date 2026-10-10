@@ -63,7 +63,10 @@ async function startService(dataDir: string): Promise<RunningService> {
       ...process.env,
       UNVIBE_DATA_DIR: dataDir,
       UNVIBE_PORT: "0",
-      UNVIBE_REPO_ROOTS: "", UNVIBE_AGENT: "replay",
+      UNVIBE_REPO_ROOTS: "",
+      // No agent behaviour under test: keep the pipeline disabled so no
+      // background job mutates the review mid-test.
+      UNVIBE_AGENT: "none",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

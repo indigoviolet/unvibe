@@ -1,11 +1,21 @@
 /**
  * AgentRunner factory (M3 pipeline + ACP default).
  *
- * Runner selection: `UNVIBE_AGENT=replay` uses the recorded-session runner
- * over `fixtures/urllib3-5020/`, so the whole product runs without tokens
- * in tests and demo mode. The default (unset or anything else) is the real
- * ACP runner (`src/agent/acp/`, via `createAcpRunner()`): one subprocess
- * per provider (claude/codex), multiplexing all sessions.
+ * Runner selection:
+ * - `UNVIBE_AGENT=replay` uses the recorded-session runner over
+ *   `fixtures/urllib3-5020/`, so the whole product runs without tokens in
+ *   tests and demo mode. On a non-fixture repo the recordings still match
+ *   (they are keyword/marker matched, not repo scoped), so replay writes
+ *   the fixture's guide content there — only use it on the fixture or in
+ *   specs that test agent behaviour (demo review, second opinion).
+ * - `UNVIBE_AGENT=none` disables the pipeline: `startReview`/`resumeReview`
+ *   enqueue nothing and every agent call fails fast with a clear "no agent
+ *   configured" error. Use it in real-service specs that do not test agent
+ *   behaviour (comments, diff, versions), so no background pipeline mutates
+ *   the review mid-test.
+ * - The default (unset or anything else) is the real ACP runner
+ *   (`src/agent/acp/`, via `createAcpRunner()`): one subprocess per
+ *   provider (claude/codex), multiplexing all sessions.
  *
  * Provider + model per role come from settings (main, small, second
  * opinion); the pipeline passes them to `runner.start({provider, model,
@@ -21,6 +31,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRunner } from "@unvibe/shared";
+import { NoAgentRunner } from "./none.js";
 import { ReplayAgentRunner } from "../replay/runner.js";
 import { createAcpRunner } from "./acp-runner.js";
 
@@ -67,12 +78,19 @@ export function isReplayEnv(env: NodeJS.ProcessEnv = process.env): boolean {
   return (env.UNVIBE_AGENT ?? "").toLowerCase() === "replay";
 }
 
+export function isNoneEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.UNVIBE_AGENT ?? "").toLowerCase() === "none";
+}
+
 /**
  * Create the configured AgentRunner. Tests inject fakes directly and never
  * call this; `buildApp` calls it when no explicit runner is provided.
  */
 export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
   const env = opts.env ?? process.env;
+  if (isNoneEnv(env)) {
+    return new NoAgentRunner();
+  }
   if (isReplayEnv(env)) {
     const dir = opts.fixturesDir ?? resolveFixturesDir();
     return new ReplayAgentRunner({
@@ -88,6 +106,11 @@ export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
 export function isReplayRunner(runner: AgentRunner): boolean {
   // ReplayAgentRunner has a `resolve(prompt)` method; the interface does not.
   return typeof (runner as unknown as { resolve?: unknown }).resolve === "function";
+}
+
+/** True when the pipeline is disabled (`UNVIBE_AGENT=none`). */
+export function isNoneRunner(runner: AgentRunner): boolean {
+  return (runner as unknown as { none?: unknown }).none === true;
 }
 
 /** True when the runner is the real ACP runner (has listModels/dispose). */
