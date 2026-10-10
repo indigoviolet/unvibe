@@ -96,7 +96,9 @@ export function StartPage(): React.JSX.Element {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     try {
-      return localStorage.getItem(REPO_KEY);
+      const saved = localStorage.getItem(REPO_KEY);
+      // The demo pseudo-repo is never a selection (an old build stored it).
+      return saved && saved !== "demo" ? saved : null;
     } catch {
       return null;
     }
@@ -141,9 +143,10 @@ export function StartPage(): React.JSX.Element {
         if (cancelled) return;
         setRepos(r.repos);
         setSelectedId((prev) => {
-          if (prev && r.repos.some((x) => x.id === prev)) return prev;
-          const first = r.repos[0]?.id ?? null;
-          return first;
+          if (prev && prev !== "demo" && r.repos.some((x) => x.id === prev)) return prev;
+          // Never auto-select the demo pseudo-repo: PR sections below only
+          // make sense for a real checkout.
+          return r.repos.find((x) => x.id !== "demo")?.id ?? null;
         });
       })
       .catch(() => {
@@ -287,16 +290,15 @@ export function StartPage(): React.JSX.Element {
     <div className="app">
       <header className="top">
         <div className="pr">
-          <b>Unvibe</b>
+          <Link className="brand" to="/">
+            Unvibe
+          </Link>
           {allReady ? (
             <span className="hint" data-testid="readiness-ready">
               Ready · gh + agents ok
             </span>
           ) : null}
         </div>
-        <button className="btn" type="button" onClick={scrollToNew}>
-          New review
-        </button>
         <Link className="tbtn" to="/settings">
           Settings
         </Link>
@@ -528,7 +530,7 @@ export function StartPage(): React.JSX.Element {
               </p>
             ) : null}
 
-            {selectedId ? (
+            {selectedId && selectedId !== "demo" ? (
               <>
                 <ChangeSection
                   title="PRs you're authoring"

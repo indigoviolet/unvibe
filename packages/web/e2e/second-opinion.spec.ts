@@ -1,8 +1,9 @@
 /**
  * Second opinion in mock mode (generated urllib3#5020 snapshot):
- * control row with blind/check switch (defaults: blind on findings, check
- * on cards), run → verdict shows, disagreement uses warn styling, re-run
- * and remove work.
+ * one icon button per card control row (tooltip names the default mode:
+ * check on cards, blind on findings), a caret menu for the other mode,
+ * run → verdict shows, disagreement uses warn styling, re-run and
+ * remove work.
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
@@ -15,15 +16,15 @@ async function gotoReview(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready).catch(() => {});
 }
 
-test("card control shows check by default; run shows disagrees prominently", async ({ page }) => {
+test("card control is one icon button running check by default; run shows disagrees prominently", async ({ page }) => {
   await gotoReview(page);
   const ctl = page.locator('#C-central [data-so-ctl="central"]');
   await expect(ctl).toBeVisible();
-  // Default for a guide card is Check.
-  await expect(ctl.getByRole("button", { name: "Check mode" })).toHaveAttribute("aria-pressed", "true");
-  await expect(ctl.getByRole("button", { name: "Blind mode" })).toHaveAttribute("aria-pressed", "false");
+  // One icon button (default for a guide card is check) plus a mode caret.
+  await expect(ctl.getByRole("button", { name: "Second opinion (check this claim)" })).toBeVisible();
+  await expect(ctl.getByRole("button", { name: "Choose a second-opinion mode" })).toBeVisible();
   // Run (check → disagrees in mock).
-  await ctl.getByRole("button", { name: /Second opinion \(check\)/ }).click();
+  await ctl.getByRole("button", { name: "Second opinion (check this claim)" }).click();
   const block = page.locator('#C-central [data-so][data-verdict="disagrees"]');
   await expect(block).toBeVisible({ timeout: 5000 });
   await expect(block).toHaveClass(/so-dis/);
@@ -40,12 +41,13 @@ test("card control shows check by default; run shows disagrees prominently", asy
   await expect(page.locator('#C-central [data-so]')).toHaveCount(0);
 });
 
-test("mode switch selects blind; finding defaults to blind", async ({ page }) => {
+test("mode menu runs blind; finding defaults to blind", async ({ page }) => {
   await gotoReview(page);
   const ctl = page.locator('#C-central [data-so-ctl="central"]');
-  await ctl.getByRole("button", { name: "Blind mode" }).click();
-  await expect(ctl.getByRole("button", { name: "Blind mode" })).toHaveAttribute("aria-pressed", "true");
-  await ctl.getByRole("button", { name: /Second opinion \(blind\)/ }).click();
+  await ctl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
+  const menu = ctl.getByRole("menu", { name: "Second-opinion mode" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitemradio", { name: /Blind/ }).click();
   await expect(page.locator('#C-central [data-so][data-verdict="partly"]')).toBeVisible({ timeout: 5000 });
 
   // Findings default to blind.
@@ -53,10 +55,18 @@ test("mode switch selects blind; finding defaults to blind", async ({ page }) =>
   await expect(page.locator("#page .eyebrow")).toContainText("Agent finding", { timeout: 10000 });
   const findingCtl = page.locator('[data-so-ctl="flf-ev"]');
   await expect(findingCtl).toBeVisible();
-  await expect(findingCtl.getByRole("button", { name: "Blind mode" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await findingCtl.getByRole("button", { name: /Second opinion \(blind\)/ }).click();
+  await expect(
+    findingCtl.getByRole("button", { name: "Second opinion (blind)" }),
+  ).toBeVisible();
+  await findingCtl.getByRole("button", { name: "Second opinion (blind)" }).click();
   await expect(page.locator('[data-so][data-verdict="partly"]')).toBeVisible({ timeout: 5000 });
+});
+
+test("mode menu closes on Escape", async ({ page }) => {
+  await gotoReview(page);
+  const ctl = page.locator('#C-central [data-so-ctl="central"]');
+  await ctl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
+  await expect(ctl.getByRole("menu", { name: "Second-opinion mode" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(ctl.getByRole("menu", { name: "Second-opinion mode" })).toHaveCount(0);
 });

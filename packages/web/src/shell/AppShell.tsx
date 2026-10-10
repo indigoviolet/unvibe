@@ -109,7 +109,6 @@ export function AppShell({ reviewId }: { reviewId: string }) {
   return (
     <div className="app">
       <TopBar
-        title={reviewId}
         reviewId={reviewId}
         pendingCount={pending}
         sourceOpen={open}

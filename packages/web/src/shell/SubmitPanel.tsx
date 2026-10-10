@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import type { SubmitPreview } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
+import { refreshErrorNotice } from "../versions/versionUtils.js";
 import { useViewer } from "../comments/viewer.js";
 import { pendingCount } from "../comments/threads.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
@@ -135,7 +136,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
         toast("Review refreshed — check the preview before submitting.");
       })
       .catch((err: unknown) => {
-        toast(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+        toast(refreshErrorNotice(err));
       });
   };
 

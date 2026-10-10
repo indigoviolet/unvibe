@@ -142,3 +142,17 @@ export function versionCountsText(s: {
 export function staleHeadline(status: VersionStatus): string {
   return `New commits on this branch: v${status.fromVersion} → v${status.toVersion} (${versionCountsText(status)} hunks)`;
 }
+
+/**
+ * Quiet refresh failure, in words: what happened and that the current
+ * view is still usable. Never a console error, never a status code.
+ */
+export function refreshErrorNotice(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/failed to fetch|networkerror|load failed|offline/i.test(msg)) {
+    return "You're offline — showing the last fetched version.";
+  }
+  if (/\b404\b/.test(msg)) return "The service no longer has this review.";
+  if (/\b502\b/.test(msg)) return "Couldn't reach the repo — showing the last fetched version.";
+  return "Couldn't check for new commits — showing the last fetched version.";
+}

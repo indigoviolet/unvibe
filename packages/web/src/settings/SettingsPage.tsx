@@ -60,9 +60,11 @@ export function SettingsPage(): React.JSX.Element {
   return (
     <div className="app">
       <header className="top">
+        <Link className="brand" to="/" title="Back to the start screen">
+          Unvibe
+        </Link>
         <div className="pr">
           <b>Settings</b>
-          {reviewId ? <span className="num">for review {reviewId}</span> : null}
         </div>
         <Link className="tbtn" to={back}>
           {reviewId ? "Back to review" : "Back to start"}
