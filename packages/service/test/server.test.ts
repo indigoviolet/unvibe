@@ -51,7 +51,6 @@ describe("HTTP auth gate", () => {
       { method: "POST", url: "/api/reviews/r1/submit" },
       { method: "GET", url: "/api/settings" },
       { method: "PUT", url: "/api/settings" },
-      { method: "GET", url: "/api/prompts" },
       { method: "GET", url: "/api/jobs" },
     ];
     try {
@@ -61,6 +60,31 @@ describe("HTTP auth gate", () => {
         const authedRes = await app.inject({ method: c.method, url: c.url, headers: authed });
         expect(authedRes.statusCode, c.url).toBe(501);
       }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("GET /api/prompts lists templates (implemented, not a stub)", async () => {
+    const { app } = await createApp("test-token");
+    try {
+      const anon = await app.inject({ method: "GET", url: "/api/prompts" });
+      expect(anon.statusCode).toBe(401);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/prompts",
+        headers: { authorization: "Bearer test-token" },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { templates: { name: string }[] };
+      expect(body.templates.length).toBe(18);
+      // Review expansion is unwired by default (no snapshot provider).
+      const review = await app.inject({
+        method: "GET",
+        url: "/api/prompts?review=r1",
+        headers: { authorization: "Bearer test-token" },
+      });
+      expect(review.statusCode).toBe(501);
     } finally {
       await app.close();
     }
