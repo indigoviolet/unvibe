@@ -1,4 +1,4 @@
-/*global console process setTimeout */
+/*global console process setTimeout Buffer */
 // Restart resilience (PRD §16): SIGKILL the service at awkward moments,
 // restart, and verify no user data is lost, interrupted jobs are visible
 // and retryable, and sessions rebuild.
