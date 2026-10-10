@@ -8,10 +8,12 @@
  * - default width max(400, min(820, w * 0.42)) until the user changes it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { pendingCount } from "../comments/threads.js";
 import { GuidePage } from "../guide/GuidePage.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { SourcePane } from "../source/SourcePane.js";
 import { WIDEN_EVENT } from "../source/diff/DiffView.js";
+import { useReview } from "../state/store.js";
 import { TopBar } from "./TopBar.js";
 
 const DOCK_WIDTH = 900;
@@ -40,6 +42,7 @@ export function AppShell({ reviewId }: { reviewId: string }) {
 
   const open = sourceOpen ?? window.innerWidth >= DOCK_WIDTH;
   const docked = window.innerWidth >= DOCK_WIDTH && open;
+  const pending = pendingCount(useReview((s) => s.snapshot));
 
   // Re-render on resize so dock/overlay follows the window.
   const [, setTick] = useState(0);
@@ -107,7 +110,8 @@ export function AppShell({ reviewId }: { reviewId: string }) {
     <div className="app">
       <TopBar
         title={reviewId}
-        pendingCount={0}
+        reviewId={reviewId}
+        pendingCount={pending}
         sourceOpen={open}
         onToggleSource={() => setSourceOpen(!open)}
       />

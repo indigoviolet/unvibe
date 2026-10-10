@@ -1,14 +1,17 @@
 /** Top bar: title, Tips, Submit review slot, Source toggle. */
 import { Icon } from "../components/Icon.js";
+import { SubmitPanel } from "./SubmitPanel.js";
 
 interface Props {
   title: string;
+  reviewId: string;
   pendingCount: number;
   sourceOpen: boolean;
   onToggleSource: () => void;
 }
 
-export function TopBar({ title, pendingCount, sourceOpen, onToggleSource }: Props) {
+export function TopBar({ title, reviewId, pendingCount, sourceOpen, onToggleSource }: Props) {
+  void pendingCount;
   return (
     <header className="top">
       <div className="pr">
@@ -18,11 +21,7 @@ export function TopBar({ title, pendingCount, sourceOpen, onToggleSource }: Prop
       <button className="tbtn" type="button" title="Usage tips">
         Tips
       </button>
-      <span id="submitSlot">
-        <button className="tbtn" type="button">
-          Submit review{pendingCount > 0 && <span className="count">{pendingCount}</span>}
-        </button>
-      </span>
+      <SubmitPanel reviewId={reviewId} />
       <button
         className="tbtn"
         id="toggleRight"
