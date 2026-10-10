@@ -490,8 +490,100 @@ export const mockApi = {
   },
 
   action: async (_id: string, a: ReviewAction): Promise<ActionResponse> => {
+    // Second opinion (mock): canned verdicts through the patch path so
+    // mock-mode e2e exercises the result block, disagreement styling and
+    // the mode switch without a service. Blind → partly, check →
+    // disagrees (prominent warn styling).
+    if (a.kind === "second_opinion") {
+      const jobId = `mock-so-${a.cardId}-${a.mode}`;
+      const verdict = a.mode === "blind" ? "partly" : "disagrees";
+      const missed =
+        a.mode === "blind" ? "A lone CR ending is untested too." : "Set-Cookie comma handling is out of scope.";
+      window.setTimeout(() => {
+        const snap = useReview.getState().snapshot;
+        if (!snap) return;
+        const pages = snap.pages.map((p) => ({
+          ...p,
+          cards: p.cards.map((c) => {
+            if (c.id !== a.cardId) return c;
+            const rest = (c.secondOpinions ?? []).filter((s) => s.mode !== a.mode);
+            return {
+              ...c,
+              secondOpinions: [
+                ...rest,
+                {
+                  id: `so-${a.cardId}-${a.mode}-mock-second`,
+                  cardId: c.id,
+                  mode: a.mode,
+                  provider: "codex",
+                  model: "mock-second",
+                  verdict,
+                  reasoning: verdict === "partly" ? "Checked the helper; gap is real but narrow." : "Only CRLF-folded values are rewritten.",
+                  blocks: [
+                    {
+                      type: "paragraph",
+                      id: "b-so-1",
+                      text: {
+                        standard:
+                          verdict === "partly"
+                            ? `Partly — the gap is real but narrow. The helper handles the fold. [[diff:src-urllib3-connection.py:80-82]]`
+                            : `Disagrees — only CRLF-folded values are rewritten. [[diff:src-urllib3-connection.py:80-88]]`,
+                      },
+                      citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
+                    },
+                  ],
+                  missed,
+                  version: 1,
+                  createdAt: Date.now(),
+                  jobId,
+                },
+              ],
+            };
+          }),
+        }));
+        const baseRev = rev;
+        rev += 1;
+        useReview.getState().applyEvent({
+          type: "patch",
+          baseRev,
+          headRev: rev,
+          ops: [{ op: "replace", path: "/pages", value: pages }],
+        });
+      }, 400);
+      return { accepted: true, jobId };
+    }
+    if (a.kind === "delete") {
+      const target = (a as { targetId?: string }).targetId ?? "";
+      const m = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
+      if (m) {
+        const snap = useReview.getState().snapshot;
+        if (!snap) return { accepted: false };
+        const pages = snap.pages.map((p) => ({
+          ...p,
+          cards: p.cards.map((c) => {
+            const before = c.secondOpinions ?? [];
+            if (m[1].startsWith("so-")) {
+              const after = before.filter((s) => s.id !== m[1]);
+              return after.length === before.length ? c : { ...c, secondOpinions: after };
+            }
+            const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
+            if (c.id !== cardId) return c;
+            return { ...c, secondOpinions: before.filter((s) => s.mode !== mode) };
+          }),
+        }));
+        const baseRev = rev;
+        rev += 1;
+        useReview.getState().applyEvent({
+          type: "patch",
+          baseRev,
+          headRev: rev,
+          ops: [{ op: "replace", path: "/pages", value: pages }],
+        });
+        return { accepted: true };
+      }
+    }
     // Guide instant state (PRD §4.3/§4.4) applies locally through the patch
-    // path; everything agent-driven answers `accepted: false` until the
+    // path; everything else agent-driven answers `accepted: false` until the
     // service implements it (the UI toasts).
     if (a.kind !== "read" && a.kind !== "collapse" && a.kind !== "bookmark") {
       return { accepted: false };

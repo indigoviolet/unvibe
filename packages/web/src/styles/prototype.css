@@ -336,3 +336,23 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .submit ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow: auto; }
 .submit .cw { font: 11px var(--mono); color: var(--accent); }
 #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 7px 14px; border-radius: 8px; font-size: 13px; z-index: 40; max-width: calc(100vw - 32px); }
+
+/* ---------- second opinion (PRD §4.10) ---------- */
+.so-ctl { display: inline-flex; align-items: center; gap: 4px; }
+.so-switch button { font-size: 11px; padding: 2px 7px; }
+.so-warn { font-size: 11.5px; color: var(--muted); }
+.so-warn a { color: var(--accent); }
+.so { margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--surface); }
+.so-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.so-tag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: 600; }
+.so-model { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.so-verd { font-size: 11px; font-weight: 600; border-radius: 99px; padding: 1px 8px; border: 1px solid var(--line); }
+.so-verd.so-agrees { color: var(--ok); border-color: var(--ok); }
+.so-verd.so-partly { color: var(--note); border-color: var(--note); }
+.so-verd.so-disagrees { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+/* Disagreement is shown prominently in the prototype's warn colours. */
+.so-dis { border-color: var(--warn); border-left: 3px solid var(--warn); background: var(--warn-soft); }
+.so-dis .so-tag { color: var(--warn); }
+.so-b .prose { font-size: 15px; }
+.so-missed { font-size: 13px; color: var(--muted); margin: 6px 0 2px; }
+.so-missed b { color: var(--ink); font-weight: 600; }
