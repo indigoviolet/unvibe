@@ -27,7 +27,7 @@ import {
   type TokenUsage,
 } from "@unvibe/shared";
 import { computeBackoffDelay } from "./backoff.js";
-import { FakeRandom, RealClock, type Clock, type RandomSource } from "./clock.js";
+import { MathRandom, RealClock, type Clock, type RandomSource } from "./clock.js";
 import { isAbortError, RetryableError } from "./errors.js";
 import type { JobPersistence } from "./store.js";
 
@@ -112,7 +112,7 @@ export class JobQueue {
     this.backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
     this.backoffMaxMs = opts.backoffMaxMs ?? DEFAULT_BACKOFF_MAX_MS;
     this.clock = opts.clock ?? new RealClock();
-    this.random = opts.random ?? new FakeRandom([0]);
+    this.random = opts.random ?? new MathRandom();
     this.getConcurrencyCap = opts.getConcurrencyCap ?? (() => DEFAULT_CONCURRENCY_CAP);
     this.onEvent = opts.onEvent ?? (() => {});
     this.persist = opts.persist ?? null;
