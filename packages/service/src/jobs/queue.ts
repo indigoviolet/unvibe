@@ -174,7 +174,14 @@ export class JobQueue {
     return [...this.entries.values()]
       .filter((e) => e.reviewId === reviewId)
       .sort((a, b) => a.seq - b.seq)
-      .map((e) => copy(e.job));
+      .map((e) => {
+        const job = copy(e.job);
+        // Prompt snapshots ride separately (`GET /api/jobs/:id/prompt`):
+        // lists stay small after hundreds of jobs (PRD §16 snapshot size).
+        // `get()` keeps the full job.
+        delete job.promptSnapshot;
+        return job;
+      });
   }
 
   /**

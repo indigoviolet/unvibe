@@ -403,8 +403,7 @@ describe("persistence and restart recovery", () => {
     expect(q2.get(running.id)?.state).toBe("done");
   });
 
-  it("queued jobs come back interrupted (never orphaned): a resume re-enqueues fresh work", async () => {
-    const db = makeDb();
+  it("queued jobs come back interrupted (never orphaned): a resume re-enqueues fresh work", async () => {    const db = makeDb();
     seedReview(db, "r9");
     const store = new JobStore(db);
     const key = { anchor: "guide", requestKind: "reader", baseVersion: "v1" };
@@ -438,5 +437,19 @@ describe("persistence and restart recovery", () => {
     expect(fresh.id).not.toBe("q-1");
     await q2.drain();
     expect(ran).toBe(true);
+  });
+
+  it("listByReview omits prompt snapshots (single get keeps them)", async () => {
+    const db = makeDb();
+    seedReview(db, "r1");
+    const store = new JobStore(db);
+    const q = new JobQueue({ persist: store });
+    const job = q.enqueue(
+      spec({ reviewId: "r1", promptSnapshot: "P".repeat(1000), run: async () => {} }),
+    );
+    await q.drain();
+    expect(q.listByReview("r1")).toHaveLength(1);
+    expect(q.listByReview("r1")[0].promptSnapshot).toBeUndefined();
+    expect(q.get(job.id)?.promptSnapshot).toBe("P".repeat(1000));
   });
 });
