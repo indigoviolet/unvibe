@@ -1,19 +1,18 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Behaviour tests run against mock mode (`VITE_MOCK=1`), so no service is
+// needed. Browsers come from `mise run playwright-install` and are never
+// required by `mise run check`.
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    baseURL: "http://127.0.0.1:4173",
-    trace: "retain-on-failure",
-  },
+  timeout: 30_000,
+  use: { baseURL: "http://127.0.0.1:5199" },
   webServer: {
-    command: "node ./e2e/serve.mjs",
-    url: "http://127.0.0.1:4173/",
+    command: "VITE_MOCK=1 npx vite --port 5199 --strictPort",
+    url: "http://127.0.0.1:5199/",
     reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    timeout: 60_000,
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  outputDir: "./test-results",
 });

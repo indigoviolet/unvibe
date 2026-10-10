@@ -1,20 +1,22 @@
 /**
- * Card rendering (M2, web-guide owner; PRD §4.4 display side).
+ * Card rendering (web-guide owner; PRD §4.4 display side + §8 stale state).
  *
  * Collapse chevron (collapsed shows the title row, or the first line if
  * untitled); control row (depth stepper with three dots, Use examples,
- * Add diagram, Undo, Mark read) wired to `POST /api/reviews/:id/actions`
- * via `performAction`; read greys and collapses; "Go deeper" placeholder
+ * Add diagram, Undo, Mark read) wired to `POST /api/reviews/:id/actions`;
+ * read greys and collapses; stale cards show the cited-hunks count with an
+ * Update button (`POST /api/reviews/:id/update`); "Go deeper" placeholder
  * cards with Generate showing job progress; working dots whenever a job
- * runs for the card.
+ * runs for the card or streamed text arrives for it.
  */
-import type { Card, DepthLevel, Job, Page } from "@unvibe/shared";
+import type { Annotation, Card, DepthLevel, Page } from "@unvibe/shared";
+import { Fragment } from "react";
 import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
-import { performAction } from "./actions.js";
-import { blockThreads } from "./annotations.js";
+import { performAction, performUpdate } from "./actions.js";
+import { blockExpansions, blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
-import { cardPreview } from "./guideUtils.js";
+import { cardPreview, jobForCard } from "./guideUtils.js";
 
 const DEPTH_ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
@@ -43,7 +45,7 @@ function ControlButton({
     <button
       className="ib"
       type="button"
-      title={label}
+      data-tip={label}
       aria-label={label}
       aria-pressed={pressed}
       disabled={disabled}
@@ -67,10 +69,19 @@ function Working({ text }: { text: string }) {
   );
 }
 
-/** The running/queued job for a card, if any (PRD §4.4 pending state). */
-export function jobForCard(jobs: Job[], cardId: string): Job | undefined {
-  return jobs.find(
-    (j) => j.cardId === cardId && (j.state === "running" || j.state === "queued"),
+/** Rendered content of an open expansion with something to show. */
+function ExpansionCard({ expansion }: { expansion: Annotation }) {
+  const html = expansion.messages
+    .map((m) => m.html ?? (m.text ? `<p>${m.text.replace(/</g, "&lt;")}</p>` : ""))
+    .join("");
+  if (!html.trim()) return null;
+  return (
+    <section className="card child" id={`B-${expansion.id}`}>
+      <div className="exp-h">
+        {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
+      </div>
+      <div className="exp-b" dangerouslySetInnerHTML={{ __html: html }} />
+    </section>
   );
 }
 
@@ -78,13 +89,16 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const snapshot = useReview((s) => s.snapshot);
   const jobs = snapshot?.jobs ?? [];
   const annotations = snapshot?.annotations ?? [];
+  const streams = useReview((s) => s.streams);
   const job = jobForCard(jobs, card.id);
+  const streamText = streams[card.id];
+  const progress = job?.progress ?? (streamText ? streamText.slice(-160) : undefined);
 
   if (card.pending) {
     return (
       <section className="card pend" id={`C-${card.id}`}>
-        {job ? (
-          <Working text={job.progress ?? "Working…"} />
+        {job || streamText ? (
+          <Working text={progress ?? "Working…"} />
         ) : (
           <>
             <div className="pl">{card.pending.label}</div>
@@ -104,8 +118,28 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   }
 
   const depthIndex = DEPTH_ORDER.indexOf(card.level);
-  const threadsFor = (blockId: string): ReturnType<typeof blockThreads> =>
-    blockThreads(annotations, blockId);
+  const threadsFor = (blockId: string): Annotation[] =>
+    blockThreads(annotations, card.id, blockId);
+  const expansionsFor = (blockId: string): Annotation[] =>
+    blockExpansions(annotations, card.id, blockId);
+
+  const blocks = card.blocks.map((block) => (
+    // Fragment (not a div): prototype.css child selectors (`.card.read > …`)
+    // depend on blocks being direct children of the section.
+    <Fragment key={block.id}>
+      <BlockView
+        block={block}
+        level={card.level}
+        threads={threadsFor(block.id)}
+        lookupPage={lookupPage}
+        onOpenPage={onOpenPage}
+        onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
+      />
+      {expansionsFor(block.id).map((e) => (
+        <ExpansionCard key={e.id} expansion={e} />
+      ))}
+    </Fragment>
+  ));
 
   if (card.collapsed) {
     return (
@@ -150,11 +184,22 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         />
         {card.title ? <h2 className="ct">{card.title}</h2> : null}
       </div>
+      {card.stale ? (
+        <div className="stale" role="status">
+          <span>
+            {card.staleChangedHunks ?? 0} cited{" "}
+            {(card.staleChangedHunks ?? 0) === 1 ? "hunk" : "hunks"} changed
+          </span>
+          <button className="x" type="button" onClick={() => performUpdate(reviewId)}>
+            Update
+          </button>
+        </div>
+      ) : null}
       <div className="ctl">
         <span className="depth" role="group" aria-label="Depth">
           <button
             type="button"
-            title="Simpler"
+            data-tip="Simpler"
             aria-label="Simpler"
             disabled={depthIndex <= 0}
             onClick={() =>
@@ -163,7 +208,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           >
             −
           </button>
-          <span className="dl" title="Depth">
+          <span className="dl" data-tip="Depth">
             <span className="pips" aria-hidden="true">
               {DEPTH_ORDER.map((_, j) => (
                 <i key={j} className={j <= depthIndex ? "on" : ""} />
@@ -172,7 +217,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           </span>
           <button
             type="button"
-            title="Deeper"
+            data-tip="Deeper"
             aria-label="Deeper"
             onClick={() =>
               void performAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
@@ -207,18 +252,8 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           }
         />
       </div>
-      {job ? <Working text={job.progress ?? "Working…"} /> : null}
-      {card.blocks.map((block) => (
-        <BlockView
-          key={block.id}
-          block={block}
-          level={card.level}
-          threads={threadsFor(block.id)}
-          lookupPage={lookupPage}
-          onOpenPage={onOpenPage}
-          onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
-        />
-      ))}
+      {job || streamText ? <Working text={progress ?? "Working…"} /> : null}
+      {blocks}
     </section>
   );
 }

@@ -1,9 +1,11 @@
 /**
- * Hover popover (M2, web-guide owner; PRD §4.5).
+ * Hover popover (web-guide owner; PRD §4.5).
  *
  * Dotted page links preview title + first paragraph (click opens the page);
  * `<>` citation markers preview the cited lines (click reveals the source);
- * comment markers and suggested-comment links preview the thread.
+ * comment markers and suggested-comment links preview the thread, including
+ * the outdated banner (original snippet + link to the new code) when the
+ * anchor moved.
  *
  * Rules (ported from the prototype):
  * - opens after ~0.2 s of hovering;
@@ -15,11 +17,13 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { Annotation, Page } from "@unvibe/shared";
+import type { Anchor, Annotation, Page } from "@unvibe/shared";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
+import { activeAliases } from "../guide/aliases.js";
 import { resolveBlockCitations } from "../guide/citations.js";
-import { depthText } from "../guide/guideUtils.js";
+import { lookupConceptPage, pagePreviewHtml } from "../guide/guideUtils.js";
+import { openLinkTarget, previewLinkTarget } from "../guide/RichText.js";
 
 const OPEN_DELAY_MS = 200;
 const CLOSE_DELAY_MS = 220;
@@ -40,28 +44,42 @@ function renderMsgs(msgs: Annotation["messages"]): string {
     .join("");
 }
 
-function previewThread(thread: Annotation | undefined): string {
-  if (!thread) return "";
-  return `<div class="pv">${thread.anchor.quotedText ? `<div class="q">“${esc(thread.anchor.quotedText)}”</div>` : ""}${renderMsgs(thread.messages.slice(0, 2))}${thread.messages.length > 2 ? `<span class="hint">+${thread.messages.length - 2} more</span>` : ""}</div>`;
+/** `diff:` target for an anchor successor (outdated "new code" link). */
+function successorTarget(successor: Anchor): string | null {
+  const host = successor.host;
+  if (host.kind === "diff-line") {
+    const range = host.endLine && host.endLine !== host.line ? `${host.line}-${host.endLine}` : `${host.line}`;
+    return `diff:${host.fileKey}:${range}`;
+  }
+  if (host.kind === "description") return `desc:${host.paragraphId}`;
+  return null;
 }
 
-function pagePreviewHtml(page: Page): string {
-  for (const card of page.cards) {
-    if (card.pending) continue;
-    for (const block of card.blocks) {
-      if (block.type === "paragraph") {
-        return `<b>${esc(page.title)}</b><div class="xprev">${depthText(block.text, card.level)}</div>`;
-      }
-      if (block.type === "html") {
-        return `<b>${esc(page.title)}</b><div class="xprev">${block.html}</div>`;
-      }
-    }
-  }
-  return `<b>${esc(page.title)}</b>`;
+function previewThread(thread: Annotation | undefined): string {
+  if (!thread) return "";
+  const outdated = thread.outdated
+    ? `<div class="pv outdated"><div class="q">Outdated · the code changed</div>` +
+      (thread.originalSnippet
+        ? `<div class="snip">${esc(thread.originalSnippet).slice(0, 200)}</div>`
+        : "") +
+      (thread.successor && successorTarget(thread.successor)
+        ? `<button class="cite" data-src="${esc(successorTarget(thread.successor) as string)}"><span class="loc">See the new code →</span></button>`
+        : "") +
+      `</div>`
+    : "";
+  return (
+    outdated +
+    `<div class="pv">${thread.anchor.quotedText ? `<div class="q">“${esc(thread.anchor.quotedText)}”</div>` : ""}${renderMsgs(thread.messages.slice(0, 2))}${thread.messages.length > 2 ? `<span class="hint">+${thread.messages.length - 2} more</span>` : ""}</div>`
+  );
+}
+
+function pagePreview(page: Page): string {
+  const html = pagePreviewHtml(page);
+  return `<b>${esc(page.title)}</b>${html ? `<div class="xprev">${html}</div>` : ""}`;
 }
 
 const ANCHOR_SELECTOR =
-  "[data-refs], [data-threads], a.cx[data-node], [data-cprev], [data-cjump]";
+  "[data-refs], [data-threads], a.cx[data-node], a.cx[data-link], [data-cprev], [data-cjump]";
 
 export function HoverPopover() {
   const [html, setHtml] = useState<string | null>(null);
@@ -71,8 +89,6 @@ export function HoverPopover() {
   const closeTimer = useRef<number | undefined>(undefined);
   const overAnchor = useRef<Element | null>(null);
   const scrollQuiet = useRef(false);
-  const htmlRef = useRef<string | null>(null);
-  htmlRef.current = html;
   const navigate = useNavigate();
   const { id: reviewId } = useParams<{ id: string }>();
 
@@ -89,12 +105,16 @@ export function HoverPopover() {
   const openFor = (anchor: Element): void => {
     const snap = useReview.getState().snapshot;
     if (!snap) return;
+    const aliases = activeAliases();
+    const byId = new Map(snap.pages.map((p) => [p.id, p]));
+    const lookup = (id: string): Page | undefined => byId.get(id);
     let content = "";
     if (anchor instanceof HTMLElement && anchor.dataset.refs) {
       const targets = anchor.dataset.refs.split("|");
       const resolved = resolveBlockCitations(
         snap,
         targets.map((target) => ({ target })),
+        aliases,
       );
       content = resolved
         .map(
@@ -113,10 +133,21 @@ export function HoverPopover() {
       content =
         previewThread(snap.annotations.find((a) => a.id === id)) +
         `<span class="hint">Click to go to it in the diff</span>`;
-    } else if (anchor.matches("a.cx[data-node]")) {
-      const page = snap.pages.find((p) => p.id === (anchor as HTMLAnchorElement).dataset.node);
-      if (!page) return;
-      content = `${pagePreviewHtml(page)}<span class="hint">Click to open</span>`;
+    } else if (anchor.matches("a.cx[data-node], a.cx[data-link]")) {
+      const target =
+        (anchor as HTMLAnchorElement).dataset.link ??
+        (anchor as HTMLAnchorElement).dataset.node ??
+        "";
+      let page: Page | undefined;
+      if (target.startsWith("page:")) page = lookup(target.slice(5));
+      else if (target.startsWith("concept:")) page = lookupConceptPage(lookup, target.slice(8));
+      else page = lookup(target);
+      if (page) {
+        content = `${pagePreview(page)}<span class="hint">Click to open</span>`;
+      } else {
+        const preview = previewLinkTarget(target, snap.pages);
+        content = preview ?? "";
+      }
     }
     if (!content) return;
     anchorRef.current = anchor;
@@ -227,17 +258,20 @@ export function HoverPopover() {
           hideRef.current();
           return;
         }
-        const link = target.closest?.("a.cx[data-node]");
+        const link = target.closest?.("a.cx[data-node], a.cx[data-link]");
         if (link) {
           e.preventDefault();
-          const pageId = link.getAttribute("data-node") ?? "";
-          const snap = useReview.getState().snapshot;
-          const page = snap?.pages.find((p) => p.id === pageId);
-          navigate(
-            page?.kind === "root" || pageId === "root"
-              ? `/review/${reviewId}`
-              : `/review/${reviewId}/page/${encodeURIComponent(pageId)}`,
-          );
+          const t =
+            (link as HTMLElement).dataset.link ?? (link as HTMLElement).dataset.node ?? "";
+          openLinkTarget(t, useReview.getState().snapshot?.pages, (pageId) => {
+            const snap = useReview.getState().snapshot;
+            const page = snap?.pages.find((p) => p.id === pageId);
+            navigate(
+              page?.kind === "root"
+                ? `/review/${reviewId}`
+                : `/review/${reviewId}/page/${encodeURIComponent(pageId)}`,
+            );
+          });
           hideRef.current();
         }
       }}

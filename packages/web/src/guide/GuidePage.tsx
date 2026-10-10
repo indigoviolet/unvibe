@@ -1,39 +1,22 @@
 /**
- * Guide column (`/review/:id` left pane). Owner: guide agent.
+ * Guide column (`/review/:id` left pane). Owner: web-guide agent.
  *
- * - Mock mode (`VITE_MOCK=1`) loads `src/mock/guide.ts` into the store;
- *   real mode fetches the snapshot from the service (WS patches converge it).
- * - In-app navigation between pages with the page id in the URL and browser
- *   back/forward working: the root lives at `/review/:id`, other pages at
- *   `/review/:id/page/:pageId` (the route is `/review/:id/*`; see `App.tsx`).
- * - Listens for `unvibe:guide-block` (`{ cardId, blockId }` in `detail`,
- *   sent by "Restated →" links in the description tab): opens the block's
- *   page, expands its card, scrolls and highlights it.
+ * Loads the snapshot through the unified `api` client (in-memory `mockApi`
+ * under `VITE_MOCK=1`, the real service otherwise; WS patches converge it).
+ * In-app navigation keeps the page id in the URL with browser back/forward
+ * working: the root lives at `/review/:id`, other pages at
+ * `/review/:id/page/:pageId` (the route is `/review/:id/*`; see `App.tsx`).
+ * Listens for `unvibe:guide-block` (`{ cardId, blockId }` in `detail`,
+ * sent by "Restated →" links in the description tab): opens the block's
+ * page, expands its card, scrolls and highlights it.
  */
 import { useCallback, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
-import { scrollToBlock } from "./actions.js";
-import { performAction } from "./actions.js";
+import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { PageView } from "./PageView.js";
-import { ensureMockSnapshot, isMockMode } from "../mock/loadGuideFixture.js";
-import { reapplySavedState } from "./actions.js";
 import "./guide-m2.css";
-
-export const GUIDE_BLOCK_EVENT = "unvibe:guide-block";
-
-export interface GuideBlockRequest {
-  cardId: string;
-  blockId: string;
-}
-
-/** Ask the guide to show a block (used by "Restated →" description links). */
-export function requestGuideBlock(cardId: string, blockId: string): void {
-  window.dispatchEvent(
-    new CustomEvent<GuideBlockRequest>(GUIDE_BLOCK_EVENT, { detail: { cardId, blockId } }),
-  );
-}
 
 function pageIdFromSplat(splat: string | undefined): string | null {
   if (!splat) return null;
@@ -48,11 +31,6 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isMockMode()) {
-      ensureMockSnapshot(reviewId);
-      reapplySavedState(reviewId);
-      return;
-    }
     let cancelled = false;
     api
       .review(reviewId)
@@ -60,7 +38,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
         if (!cancelled) setSnapshot(snap);
       })
       .catch(() => {
-        // Service stubs return 501 until the service milestone lands.
+        // Unreachable reviews keep the loading state; the shell shows it.
       });
     return () => {
       cancelled = true;

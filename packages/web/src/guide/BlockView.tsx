@@ -1,22 +1,21 @@
 /**
- * Block rendering (M2, web-guide owner; PRD §4.4 display side + §4.5 + §4.9).
+ * Block rendering (web-guide owner; PRD §4.4 display side + §4.5 + §4.9).
  *
- * Paragraph, list (per-item citations), table, code, diagram (Mermaid),
- * html, aside (Example / Diagram / Underlying principle), finding-link
- * (orange agent-finding card), follow-up chips, comment-link (suggested
- * review comment on a diff line).
+ * Paragraph, list (per-item citations plus the block-level union the
+ * parser emits), table, code, diagram (Mermaid), aside (Example / Diagram /
+ * Underlying principle), finding-link (orange agent-finding card),
+ * follow-up chips, comment-link (suggested review comment on a diff line).
  */
 import type { Annotation, Block, DepthLevel, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
-
-import type { ResolvedCitation } from "./citations.js";
+import { activeAliases } from "./aliases.js";
 import { resolveBlockCitations, resolveCitation } from "./citations.js";
 import { DiagramView } from "./DiagramView.js";
 import { depthText, isPageRead } from "./guideUtils.js";
 import { BlockMarkers } from "./Markers.js";
-import { RichText } from "./RichText.js";
+import { handleHtmlLinkClick, RichText } from "./RichText.js";
 
 export interface BlockCallbacks {
   onOpenPage: (pageId: string) => void;
@@ -40,7 +39,7 @@ function Paragraph({
 }: {
   id: string;
   html: string;
-  citations: ResolvedCitation[];
+  citations: ReturnType<typeof resolveBlockCitations>;
   threads: Annotation[];
   blockId: string;
   onOpenPage: (pageId: string) => void;
@@ -61,18 +60,14 @@ function AsideInner({ inner, top, onOpenPage }: { inner: Block; top: string; onO
           <RichText html={inner.text.standard} className="rt" top={top} onOpenPage={onOpenPage} />
         </p>
       );
-    case "html":
-      return (
-        <div className="sel" data-top={top} dangerouslySetInnerHTML={{ __html: inner.html }} />
-      );
-    case "diagram":
-      return <DiagramView source={inner.mermaid} caption={inner.caption} />;
     case "code":
       return (
         <pre className="code sel" data-top={top}>
           {inner.code}
         </pre>
       );
+    case "diagram":
+      return <DiagramView source={inner.mermaid} caption={inner.caption} />;
     case "list":
       return (
         <ul className="lst">
@@ -88,11 +83,21 @@ function AsideInner({ inner, top, onOpenPage }: { inner: Block; top: string; onO
   }
 }
 
+/** Clicks on dotted links inside non-RichText HTML (list items, tables). */
+function onHtmlClick(
+  e: React.MouseEvent,
+  pages: Page[] | undefined,
+  onOpenPage: (pageId: string) => void,
+): void {
+  handleHtmlLinkClick(e, pages, onOpenPage);
+}
+
 export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFollowUp }: Props) {
   const snapshot = useReview((s) => s.snapshot);
+  const pages = snapshot?.pages;
   const citations =
     "citations" in block && Array.isArray(block.citations) ? block.citations : [];
-  const resolved = snapshot ? resolveBlockCitations(snapshot, citations) : [];
+  const resolved = snapshot ? resolveBlockCitations(snapshot, citations, activeAliases()) : [];
   const id = `B-${block.id}`;
 
   switch (block.type) {
@@ -113,30 +118,22 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     }
     case "list": {
       const items = block.items.map((item, i) => {
-        const itemResolved = snapshot ? resolveBlockCitations(snapshot, item.citations) : [];
+        const itemResolved = snapshot
+          ? resolveBlockCitations(snapshot, item.citations, activeAliases())
+          : [];
         return (
           <li key={i} id={`${id}-${i}`}>
             <span
               className="sel"
               data-top={block.id}
               dangerouslySetInnerHTML={{ __html: item.html }}
-              onClick={(e) => {
-                const link = (e.target as HTMLElement).closest?.("a.cx[data-node]");
-                if (link) {
-                  e.preventDefault();
-                  onOpenPage(link.getAttribute("data-node") ?? "");
-                }
-              }}
+              onClick={(e) => onHtmlClick(e, pages, onOpenPage)}
             />
             <BlockMarkers citations={itemResolved} threads={i === 0 ? threads : []} blockId={block.id} />
           </li>
         );
       });
-      const list = block.ordered ? (
-        <ol className="lst">{items}</ol>
-      ) : (
-        <ul className="lst">{items}</ul>
-      );
+      const list = block.ordered ? <ol className="lst">{items}</ol> : <ul className="lst">{items}</ul>;
       return (
         <div className="blk" id={id}>
           {list}
@@ -151,7 +148,12 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     case "table":
       return (
         <div className="blk" id={id}>
-          <div className="md sel" data-top={block.id} dangerouslySetInnerHTML={{ __html: block.html }} />
+          <div
+            className="md sel"
+            data-top={block.id}
+            dangerouslySetInnerHTML={{ __html: block.html }}
+            onClick={(e) => onHtmlClick(e, pages, onOpenPage)}
+          />
           {(resolved.length > 0 || threads.length > 0) && (
             <div className="lo-row">
               <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />
@@ -176,17 +178,6 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
       return (
         <div className="blk" id={id}>
           <DiagramView source={block.mermaid} caption={block.caption} />
-          {(resolved.length > 0 || threads.length > 0) && (
-            <div className="lo-row">
-              <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />
-            </div>
-          )}
-        </div>
-      );
-    case "html":
-      return (
-        <div className="blk" id={id}>
-          <div className="sel" data-top={block.id} dangerouslySetInnerHTML={{ __html: block.html }} />
           {(resolved.length > 0 || threads.length > 0) && (
             <div className="lo-row">
               <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />
@@ -229,7 +220,9 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     }
     case "comment-link": {
       const thread = snapshot?.annotations.find((a) => a.id === block.threadId);
-      const label = snapshot ? resolveCitation(snapshot, { target: block.diffRef }).label : block.diffRef;
+      const label = snapshot
+        ? resolveCitation(snapshot, { target: block.diffRef }, activeAliases()).label
+        : block.diffRef;
       return (
         <div className="blk" id={id}>
           <button

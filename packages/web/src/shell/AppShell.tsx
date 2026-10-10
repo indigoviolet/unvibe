@@ -9,17 +9,25 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePage } from "../guide/GuidePage.js";
-import { REVEAL_EVENT } from "../source/reveal.js";
+import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { SourcePane } from "../source/SourcePane.js";
+import { WIDEN_EVENT } from "../source/diff/DiffView.js";
 import { TopBar } from "./TopBar.js";
 
 const DOCK_WIDTH = 900;
+const PANE_WIDTH_KEY = "unvibe.paneWidth";
 
 function clampWidth(v: number): number {
   return Math.max(320, Math.min(window.innerWidth - 420, v));
 }
 
 function defaultWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(PANE_WIDTH_KEY));
+    if (Number.isFinite(saved) && saved >= 320) return clampWidth(saved);
+  } catch {
+    // Private mode: fall through to the default.
+  }
   const w = window.innerWidth;
   return Math.max(400, Math.min(820, Math.round(w * 0.42)));
 }
@@ -41,19 +49,35 @@ export function AppShell({ reviewId }: { reviewId: string }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // `revealSource` (guide citations): switch to the right tab and open the
-  // pane. The diff pane scrolls/highlights once its handler lands.
+  // `revealSource` (guide citations): open the pane. Tab switching lives
+  // in `SourcePane` (it inspects the ref); the diff pane scrolls and
+  // highlights once mounted.
   useEffect(() => {
-    const onReveal = (e: Event): void => {
-      const ref = (e as CustomEvent<{ ref: string }>).detail?.ref;
-      if (typeof ref !== "string") return;
-      setTab(ref.startsWith("desc:") ? "desc" : "diff");
+    const onReveal = (): void => {
       setSourceOpen(true);
     };
     window.addEventListener(REVEAL_EVENT, onReveal);
     return () => window.removeEventListener(REVEAL_EVENT, onReveal);
   }, []);
 
+  // Persist the pane width (a diff view preference, PRD §4.13).
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANE_WIDTH_KEY, String(paneWidth));
+    } catch {
+      // Private mode: ignore.
+    }
+  }, [paneWidth]);
+
+  // Choosing Split in a narrow pane widens it (prototype rule).
+  useEffect(() => {
+    const onWiden = (): void =>
+      setPaneWidth((w) =>
+        w < window.innerWidth * 0.48 ? clampWidth(Math.round(window.innerWidth * 0.52)) : w,
+      );
+    window.addEventListener(WIDEN_EVENT, onWiden);
+    return () => window.removeEventListener(WIDEN_EVENT, onWiden);
+  }, []);
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       drag.current = { x0: e.clientX, w0: paneWidth };

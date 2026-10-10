@@ -1,26 +1,47 @@
 import type { FastifyInstance } from "fastify";
-import type { EventBus } from "../events.js";
+import { registerMcp } from "../mcp/index.js";
+import type { ServiceContext } from "./context.js";
 import { registerComments } from "./comments.js";
 import { registerDescription } from "./description.js";
+import type { RouteDeps } from "./deps.js";
 import { registerEvents } from "./events.js";
 import { registerHunks } from "./hunks.js";
 import { registerJobs } from "./jobs.js";
-import { registerPrompts } from "./prompts.js";
+import { registerPrompts, toPromptSnapshot } from "./prompts.js";
 import { registerRepos } from "./repos.js";
-import { registerReviews } from "./reviews.js";
+import { registerReviews, type ReviewsRouteDeps } from "./reviews.js";
 import { registerSettings } from "./settings.js";
 import { registerSubmit } from "./submit.js";
 
-/** One route module per area; each registers its PRD §14.1 endpoints. */
-export async function registerRoutes(app: FastifyInstance, bus: EventBus): Promise<void> {
-  await registerRepos(app);
-  await registerReviews(app);
-  await registerHunks(app);
-  await registerComments(app);
-  await registerDescription(app);
-  await registerSubmit(app);
-  await registerSettings(app);
-  await registerPrompts(app);
-  await registerJobs(app);
-  await registerEvents(app, bus);
+/**
+ * One route module per area; each registers its PRD §14.1 endpoints.
+ * `ctx` carries the core stores; `deps` the optional M3 singletons plus
+ * the M5 update-pass wiring (`ReviewsRouteDeps`: job queue + base runner).
+ */
+export async function registerRoutes(
+  app: FastifyInstance,
+  ctx: ServiceContext,
+  deps: RouteDeps & ReviewsRouteDeps = {},
+): Promise<void> {
+  await registerRepos(app, ctx);
+  await registerReviews(app, ctx, deps);
+  await registerHunks(app, ctx);
+  await registerComments(app, ctx);
+  await registerDescription(app, ctx);
+  await registerSubmit(app, ctx);
+  await registerSettings(app, deps);
+  await registerPrompts(app, {
+    snapshots: {
+      getSnapshot: async (reviewId: string) => {
+        const snap = ctx.reviews.getSnapshot(reviewId);
+        return snap ? toPromptSnapshot(snap) : null;
+      },
+    },
+  });
+  await registerJobs(app, deps);
+  await registerEvents(app, ctx.bus);
+  if (deps.mcp) await registerMcp(app, deps.mcp);
 }
+
+export type { RouteDeps } from "./deps.js";
+export type { ReviewsRouteDeps, RegisterReviewsDeps } from "./reviews.js";

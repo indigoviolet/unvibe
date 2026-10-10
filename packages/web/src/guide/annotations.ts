@@ -1,17 +1,16 @@
 /**
- * Thread hooks for guide blocks (M2, web-guide owner).
+ * Thread hooks for guide blocks (web-guide owner).
  *
  * Threads themselves are a later milestone (comments agent). Until then:
- * - `useBlockThreads(blockId)` returns the snapshot annotations anchored on
- *   the block, so `BlockView` can render the speech-bubble comment marker
- *   (PRD §4.5) with a count.
- * - `onOpenBlockThread` is the seam the threads milestone plugs into:
- *   the default implementation previews the thread in the hover popover
- *   (the marker carries `data-threads`, which `HoverPopover` resolves).
+ * - `blockThreads(annotations, cardId, blockId)` returns the thread
+ *   annotations anchored on the block. Anchors store `cardId#blockId`
+ *   (service form) or a bare block id (prototype form); both match.
+ * - `onOpenBlockThread` is the seam the threads milestone plugs into.
  */
 import { useMemo } from "react";
 import type { Annotation } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
+import { anchorMatchesBlock } from "./guideUtils.js";
 
 export type OpenThreadHandler = (threadId: string, blockId: string) => void;
 
@@ -30,20 +29,47 @@ export function openBlockThread(threadId: string, blockId: string): void {
   openHandler?.(threadId, blockId);
 }
 
-/** All thread annotations anchored on a guide block. */
+/** All thread annotations anchored on a guide card + block. */
 export function blockThreads(
   annotations: Annotation[],
+  cardId: string,
   blockId: string,
 ): Annotation[] {
   return annotations.filter(
-    (a) => a.type === "thread" && a.anchor.host.kind === "block" && a.anchor.host.blockId === blockId,
+    (a) =>
+      a.type === "thread" &&
+      a.anchor.host.kind === "block" &&
+      anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
   );
 }
 
-export function useBlockThreads(blockId: string): Annotation[] {
+/** Open (in-place) expansion annotations anchored on a card + block. */
+export function blockExpansions(
+  annotations: Annotation[],
+  cardId: string,
+  blockId: string,
+): Annotation[] {
+  return annotations.filter(
+    (a) =>
+      a.type === "expansion" &&
+      a.open &&
+      a.anchor.host.kind === "block" &&
+      anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
+  );
+}
+
+export function useBlockThreads(cardId: string, blockId: string): Annotation[] {
   const annotations = useReview((s) => s.snapshot?.annotations);
   return useMemo(
-    () => (annotations ? blockThreads(annotations, blockId) : []),
-    [annotations, blockId],
+    () => (annotations ? blockThreads(annotations, cardId, blockId) : []),
+    [annotations, cardId, blockId],
+  );
+}
+
+export function useBlockExpansions(cardId: string, blockId: string): Annotation[] {
+  const annotations = useReview((s) => s.snapshot?.annotations);
+  return useMemo(
+    () => (annotations ? blockExpansions(annotations, cardId, blockId) : []),
+    [annotations, cardId, blockId],
   );
 }

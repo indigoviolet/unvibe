@@ -26,6 +26,33 @@
   background: var(--sunk);
 }
 
+/* Stale card banner (PRD §8): cited hunks changed, update available. */
+.stale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12.5px;
+}
+
+/* Outdated thread preview in the hover popover (PRD §8). */
+.pv.outdated {
+  border-left-color: var(--warn);
+  margin-bottom: 6px;
+}
+
+.pv.outdated .snip {
+  font: 11px/1.4 var(--mono);
+  color: var(--muted);
+  white-space: pre-wrap;
+  margin: 2px 0 4px;
+}
+
 /* Narrow panes (PRD §4.1): the card control row wraps instead of clipping. */
 .ctl {
   row-gap: 6px;
@@ -41,3 +68,4 @@
     font-size: 16px;
   }
 }
+

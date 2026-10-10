@@ -12,6 +12,7 @@
  * URL into localStorage + cookie). Documented for later agents.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fastifyStatic from "@fastify/static";
@@ -19,14 +20,79 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { hasValidToken } from "./auth.js";
 import { EventBus } from "./events.js";
-import { registerRoutes } from "./routes/index.js";
+import { RealCommandRunner, type CommandRunner } from "./exec/index.js";
+import { DEFAULT_IDLE_MS, IdleMonitor } from "./lifecycle/index.js";
+import { MCP_ROUTE_PREFIX } from "./mcp/index.js";
+import { RepoStore } from "./repos/store.js";
+import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/index.js";
+import type { ServiceContext } from "./routes/context.js";
+import { ReviewStore } from "./state/store.js";
 import type { ServiceConfig } from "./config.js";
+import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
 
 export const SERVICE_VERSION = "0.0.1";
 
 export interface AppContext {
   app: FastifyInstance;
   bus: EventBus;
+  ctx: ServiceContext;
+  deps: RouteDeps;
+}
+
+export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
+  /** Defaults to an in-memory database (tests) — production passes its own. */
+  db?: DatabaseSync;
+  /** Defaults to a fresh temp dir — production passes the real data dir. */
+  dataDir?: string;
+  /** Defaults to the real runner — tests inject fakes. */
+  runner?: CommandRunner;
+  /**
+   * Idle-exit wiring (PRD §14, owned by the shell milestone). `idleMs`
+   * defaults to 10 minutes; non-positive disables. `hasJobs` should report
+   * running/queued jobs (the service passes the real queue); `onIdleExit`
+   * runs clean shutdown. Omitted in tests that don't care.
+   */
+  lifecycle?: {
+    idleMs?: number | null;
+    hasJobs?: () => boolean;
+    onIdleExit?: () => void | Promise<void>;
+  };
+}
+
+/**
+ * Static files that carry no review data and are served without a token:
+ * fingerprinted build assets plus the installable-app pieces (manifest,
+ * service worker, icons, offline start page). The HTML shell, API and WS
+ * stay gated. Query strings are ignored when matching.
+ */
+const PUBLIC_STATIC_EXACT = new Set([
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/start.html",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png",
+  "/favicon.ico",
+]);
+
+function urlPathname(url: string): string {
+  const q = url.indexOf("?");
+  return q < 0 ? url : url.slice(0, q);
+}
+
+/** Friendly HTML for a browser navigation that arrived without a token. */
+export function missingTokenHtml(): string {
+  return [
+    "<!doctype html>",
+    '<html lang="en"><head><meta charset="utf-8" />',
+    "<title>Unvibe — sign in</title></head><body>",
+    "<h1>Unvibe needs its per-install token</h1>",
+    "<p>This page was opened without a token. Get one by running:</p>",
+    "<p><code>unvibe open</code></p>",
+    "<p>That starts the service if needed and opens the app URL (the token lives in the URL once, then in the app's local storage).</p>",
+    "</body></html>",
+  ].join("\n");
 }
 
 function webDistDir(): string {
@@ -35,32 +101,88 @@ function webDistDir(): string {
   return path.resolve(here, "..", "..", "web", "dist");
 }
 
-export async function createApp(token: string): Promise<AppContext> {
+export async function createApp(token: string, opts: CreateAppOptions = {}): Promise<AppContext> {
   const app = Fastify({ logger: false });
   const bus = new EventBus();
 
+  const db = opts.db ?? openDatabase(":memory:");
+  migrate(db);
+  const dataDir =
+    opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
+  const runner = opts.runner ?? new RealCommandRunner();
+  const ctx: ServiceContext = {
+    db,
+    dataDir,
+    runner,
+    bus,
+    repos: new RepoStore(db),
+    reviews: new ReviewStore(db, bus),
+  };
+
   await app.register(websocket);
+
+  // Idle-exit activity tracking (PRD §14, shell milestone): open WebSocket
+  // clients and recent HTTP requests both count as an open window. The bus
+  // is wrapped here (rather than in the events route) to keep the change
+  // local to this file; the wrap is transparent to subscribers.
+  let wsClients = 0;
+  let lastHttpAt: number | null = null;
+  const subscribeRaw = bus.subscribe.bind(bus);
+  bus.subscribe = (reviewId, send) => {
+    wsClients += 1;
+    const unsub = subscribeRaw(reviewId, send);
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      wsClients -= 1;
+      unsub();
+    };
+  };
 
   // Global auth gate.
   app.addHook("onRequest", async (req, reply) => {
     const url = req.url;
     if (url === "/api/health" || url.startsWith("/api/health?")) return;
-    // Static build assets carry no review data; the shell + API + WS are gated.
-    if (url.startsWith("/assets/")) return;
+    const pathname = urlPathname(url);
+    // Static build assets and installable-app files carry no review data;
+    // the shell + API + WS are gated.
+    if (pathname.startsWith("/assets/") || PUBLIC_STATIC_EXACT.has(pathname)) return;
+    // MCP sessions carry their own 256-bit secret in the URL (agent
+    // subprocesses present the secret, not the install token).
+    if (url.startsWith(MCP_ROUTE_PREFIX)) return;
     if (!hasValidToken({ headers: req.headers, query: req.query as Record<string, string> }, token)) {
+      // A browser navigation without a token gets human help (how to get
+      // one: `unvibe open`); API/WS callers keep the JSON 401.
+      const accept = String(req.headers["accept"] ?? "");
+      if (req.method === "GET" && !url.startsWith("/api/") && accept.includes("text/html")) {
+        reply.code(401).type("text/html").send(missingTokenHtml());
+        return;
+      }
       reply.code(401).send({ error: "missing or invalid token" });
     }
   });
 
+  // HTTP activity counts toward "open window", except health probes: the
+  // `start` waiter (and any external prober) must not keep the service
+  // alive. Kept as a separate hook so the auth gate above stays untouched.
+  app.addHook("onRequest", async (req) => {
+    const url = req.url;
+    if (url === "/api/health" || url.startsWith("/api/health?")) return;
+    lastHttpAt = Date.now();
+  });
+
   app.get("/api/health", async () => ({ ok: true, version: SERVICE_VERSION }));
 
-  await registerRoutes(app, bus);
+  await registerRoutes(app, ctx, opts);
 
   // Static web app with SPA fallback. The Vite build emits dist/index.html
   // plus dist/assets/* (hashed, no review data — served without a token so
   // the shell can load after the first authenticated navigation).
   const dist = webDistDir();
-  await app.register(fastifyStatic, { root: dist });
+  if (fs.existsSync(dist)) {
+    await app.register(fastifyStatic, { root: dist });
+  }
   app.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith("/api/")) return reply.code(404).send({ error: "unknown api route" });
     const indexFile = path.join(dist, "index.html");
@@ -74,7 +196,27 @@ export async function createApp(token: string): Promise<AppContext> {
     return reply.sendFile("index.html");
   });
 
-  return { app, bus };
+  // Idle exit (PRD §14, shell milestone): exit after `idleMs` with no open
+  // window (no WS clients, no recent HTTP) and no running/queued jobs.
+  // The timer is unref'd so it never keeps the process alive by itself.
+  const idleMs = opts.lifecycle?.idleMs ?? DEFAULT_IDLE_MS;
+  if (idleMs > 0) {
+    const monitor = new IdleMonitor({
+      state: {
+        wsClients: () => wsClients,
+        lastHttpAt: () => lastHttpAt,
+        hasActiveJobs: opts.lifecycle?.hasJobs ?? (() => false),
+      },
+      idleMs,
+      onIdle: () => {
+        void opts.lifecycle?.onIdleExit?.();
+      },
+    });
+    monitor.start();
+    app.addHook("onClose", async () => monitor.stop());
+  }
+
+  return { app, bus, ctx, deps: opts };
 }
 
 export async function listen(app: FastifyInstance, config: ServiceConfig): Promise<string> {

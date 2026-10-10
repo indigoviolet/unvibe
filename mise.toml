@@ -11,6 +11,19 @@ description = "Run service + Vite dev server together"
 run = "node ./scripts/dev.mjs"
 sources = ["packages/service/src/**/*.ts", "packages/web/src/**/*", "packages/shared/src/**/*"]
 
+[tasks."dev:mock"]
+description = "Run the web UI against the in-memory mock API (no service needed)"
+run = "VITE_MOCK=1 npm run dev --workspace @unvibe/web --if-present"
+sources = ["packages/web/src/**/*", "packages/shared/src/**/*"]
+
+[tasks."test:e2e"]
+description = "Playwright behaviour tests against mock mode (needs browsers: mise run playwright-install)"
+run = "npm run test:e2e --workspace @unvibe/web --if-present"
+
+[tasks."playwright-install"]
+description = "Install Playwright browsers for e2e tests"
+run = "npx --workspace @unvibe/web playwright install chromium"
+
 [tasks.build]
 description = "Build shared, service and web"
 run = "npm run build --workspaces --if-present && npm run build --workspace @unvibe/web --if-present"
@@ -18,11 +31,11 @@ sources = ["packages/*/src/**/*", "packages/*/package.json"]
 
 [tasks.test]
 description = "Run vitest across workspaces"
-run = "npm run test --workspaces --if-present"
+run = "npm run build --workspace @unvibe/shared && npm run test --workspaces --if-present"
 
-[tasks."test:e2e"]
-description = "Playwright e2e for the guide against the mock fixture (guide agent; the diff agent may subsume this into its own test:e2e)"
-run = "VITE_MOCK=1 npm run build --workspace @unvibe/web && npm exec --workspace @unvibe/web -- playwright test"
+[tasks."test:live"]
+description = "Live ACP adapter tests (needs claude/codex logins; small token spend)"
+run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 npm run test:live --workspace @unvibe/service"
 
 [tasks.lint]
 description = "Run ESLint"
@@ -30,7 +43,7 @@ run = "npx eslint ."
 
 [tasks.typecheck]
 description = "Typecheck all workspaces"
-run = "npm run typecheck --workspaces --if-present"
+run = "npm run build --workspace @unvibe/shared && npm run typecheck --workspaces --if-present"
 
 [tasks.check]
 description = "lint + typecheck + test"
@@ -39,3 +52,27 @@ run = "mise run lint && mise run typecheck && mise run test"
 [tasks.start]
 description = "Run the built service"
 run = "node packages/service/dist/index.js"
+
+[tasks.fixture-snapshot]
+description = "Build fixtures/urllib3-5020/snapshot.json from the recordings (fails on unverified citations)"
+run = "npm run fixture:snapshot --workspace @unvibe/service"
+
+[tasks.setup]
+description = "Build, then run unvibe setup (token + unvibe:// handler)"
+run = "mise run build && node packages/service/dist/index.js setup"
+
+[tasks.doctor]
+description = "Build, then run unvibe doctor (environment checks)"
+run = "mise run build && node packages/service/dist/index.js doctor"
+
+[tasks.e2e]
+description = "Linux end-to-end: setup, handler start, reuse, idle exit, uninstall"
+run = "mise run build && node scripts/e2e-linux.mjs"
+
+[tasks.check-global-install]
+description = "Pack + global-install a tarball into a temp prefix, run doctor/start/stop outside the repo"
+run = "mise run build && node scripts/global-install-check.mjs"
+
+[tasks."test:live:submit"]
+description = "Live M6 submit test on indigoviolet/lvu (draft PR only; never run by check)"
+run = "node ./scripts/live-submit.mjs"

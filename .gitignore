@@ -4,3 +4,4 @@ packages/*/node_modules/
 *.local
 .DS_Store
 test-results/
+playwright-report/

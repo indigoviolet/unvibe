@@ -3,3 +3,7 @@ export * from "./ids.js";
 export * from "./links.js";
 export * from "./api.js";
 export * from "./agent.js";
+export * from "./content/index.js";
+export * from "./prompts.js";
+export * from "./versions.js";
+export * from "./diff.js";

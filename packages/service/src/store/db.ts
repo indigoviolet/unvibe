@@ -16,16 +16,17 @@ export function openDatabase(file: string): DatabaseSync {
   return new sqlite.DatabaseSync(file);
 }
 
-/** Run a function inside a transaction. */
+/** Run a function inside a transaction (savepoint-based: safely nestable). */
 export function transaction<T>(db: DatabaseSync, fn: () => T): T {
-  db.exec("BEGIN");
+  db.exec("SAVEPOINT unvibe_txn");
   try {
     const out = fn();
-    db.exec("COMMIT");
+    db.exec("RELEASE unvibe_txn");
     return out;
   } catch (err) {
     try {
-      db.exec("ROLLBACK");
+      db.exec("ROLLBACK TO unvibe_txn");
+      db.exec("RELEASE unvibe_txn");
     } catch {
       // ignore rollback errors
     }

@@ -32,7 +32,7 @@ export function BlockMarkers({ citations, threads, blockId }: Props) {
           data-refs={verified.map((c) => c.target).join("|")}
           data-src={verified[0].target}
           aria-label={verified.length > 1 ? `${verified.length} sources` : "Source"}
-          title="Show in source"
+          data-tip="Show in source"
           onClick={() => revealSource(verified[0].target)}
         >
           <Icon name="code" />
@@ -47,7 +47,7 @@ export function BlockMarkers({ citations, threads, blockId }: Props) {
           data-refs={c.target}
           data-src={c.target}
           aria-label="Unverified source"
-          title="This citation could not be checked, so it is shown as unverified."
+          data-tip="This citation could not be checked, so it is shown as unverified."
           onClick={() => revealSource(c.target)}
         >
           <Icon name="code" />
@@ -59,7 +59,7 @@ export function BlockMarkers({ citations, threads, blockId }: Props) {
           type="button"
           data-threads={threads.map((t) => t.id).join("|")}
           aria-label={`${threads.length} comments`}
-          title="Preview the comment thread"
+          data-tip="Preview the comment thread"
           onClick={() => openBlockThread(threads[0].id, blockId)}
         >
           <Icon name="comment" />

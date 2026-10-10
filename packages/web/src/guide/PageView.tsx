@@ -22,7 +22,28 @@ interface Props {
 
 /** Bookmark state: explicit flag wins, concept pages default to saved. */
 export function isSaved(page: Page): boolean {
-  return page.saved ?? page.kind === "concept";
+  return page.saved || page.kind === "concept";
+}
+
+/** Finding recheck status line (PRD §8): set by refresh / the update pass. */
+function RecheckStatus({ page }: { page: Page }) {
+  if (page.kind !== "finding") return null;
+  const { needsRecheck, recheckStatus, recheckNote } = page;
+  if (!needsRecheck && !recheckStatus) return null;
+  const text =
+    recheckStatus === "still-applies"
+      ? "Rechecked · still applies"
+      : recheckStatus === "resolved"
+        ? "Rechecked · resolved"
+        : recheckStatus === "changed"
+          ? "Rechecked · changed"
+          : "Cited code changed · awaiting recheck";
+  return (
+    <div className="meta" data-recheck={recheckStatus ?? "pending"}>
+      <span>{text}</span>
+      {recheckNote ? <span>{recheckNote}</span> : null}
+    </div>
+  );
 }
 
 export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard }: Props) {
@@ -90,7 +111,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
         <button
           className="ib save"
           type="button"
-          title={saved ? "Saved to this repo · click to unsave" : "Save to this repo"}
+          data-tip={saved ? "Saved to this repo · click to unsave" : "Save to this repo"}
           aria-label={saved ? "Saved to this repo · click to unsave" : "Save to this repo"}
           aria-pressed={saved}
           data-save={page.id}
@@ -103,12 +124,13 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       </div>
       <h1 className="title">{page.title}</h1>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
+      <RecheckStatus page={page} />
       <nav className="toc" aria-label="Contents">
         <div className="toc-h">
           <button
             className="ib"
             type="button"
-            title={tocOpen ? "Hide contents" : "Show contents"}
+            data-tip={tocOpen ? "Hide contents" : "Show contents"}
             aria-label={tocOpen ? "Hide contents" : "Show contents"}
             data-toc=""
             onClick={() => setTocOpen((v) => !v)}

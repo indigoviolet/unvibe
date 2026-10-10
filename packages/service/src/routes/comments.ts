@@ -1,10 +1,194 @@
+/**
+ * Comment threads (M6, PRD 4.8-4.9, 7, 14.1).
+ *
+ * - `POST /api/reviews/:id/comments` — create a thread as a Note or as the
+ *   user's first message (guide block, description paragraph, or diff line),
+ *   or an agent-suggested comment (`suggested` on a diff line, never marked
+ *   For PR initially).
+ * - `POST …/comments/:commentId/replies` — user reply.
+ * - `PATCH …/comments/:commentId` — `{ post?, draft?, open?, reply? }`:
+ *   mark For PR, edit the For-PR draft, open/close, reply-box content.
+ * - `DELETE …/comments/:commentId` — delete the thread.
+ *
+ * Everything goes through `ReviewStore.mutate`. The `POST …/actions`
+ * union (`note`, `close`, `delete`) overlaps: the actions route should call
+ * `createNoteThread`, `closeAnnotation`, and `deleteAnnotation` from
+ * `src/comments/threads.ts`; `ask` creates via `createAskThread` and gets
+ * its agent reply through the `appendAgentReply` seam.
+ */
 import type { FastifyInstance } from "fastify";
+import type { ActionAnchor, CreateCommentRequest, UpdateCommentRequest } from "@unvibe/shared";
+import {
+  createSuggestedComment,
+  createThread,
+  deleteAnnotation,
+  replyToThread,
+} from "../comments/index.js";
+import type { ServiceContext } from "./context.js";
 
-const TODO = { error: "not implemented" };
+function validAnchor(a: unknown): a is ActionAnchor {
+  if (typeof a !== "object" || a === null) return false;
+  const w = (a as { where?: unknown }).where;
+  if (w === "block") return typeof (a as { blockId?: unknown }).blockId === "string";
+  if (w === "description") {
+    return typeof (a as { paragraphId?: unknown }).paragraphId === "string";
+  }
+  if (w === "diff-line") {
+    const f = a as { fileKey?: unknown; line?: unknown };
+    return typeof f.fileKey === "string" && Number.isSafeInteger(f.line);
+  }
+  return false;
+}
 
-/** PATCH /api/reviews/:id/comments/:commentId */
-export async function registerComments(app: FastifyInstance): Promise<void> {
-  app.patch("/api/reviews/:id/comments/:commentId", async (_req, reply) =>
-    reply.code(501).send(TODO),
-  );
+/** PATCH /api/reviews/:id/comments/:commentId + creation/reply/delete */
+export async function registerComments(app: FastifyInstance, ctx?: ServiceContext): Promise<void> {
+  if (!ctx) {
+    app.patch("/api/reviews/:id/comments/:commentId", async (_req, reply) =>
+      reply.code(501).send({ error: "not implemented" }),
+    );
+    return;
+  }
+  const reviews = ctx.reviews;
+
+  app.post("/api/reviews/:id/comments", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as CreateCommentRequest;
+    if (!validAnchor(body.anchor)) {
+      return reply.code(400).send({ error: "anchor.where must be block, description, or diff-line with ids" });
+    }
+    if (typeof body.quote !== "string") {
+      return reply.code(400).send({ error: "quote is required" });
+    }
+    if (body.suggested) {
+      if (body.anchor.where !== "diff-line") {
+        return reply.code(400).send({ error: "suggested comments must anchor on a diff line" });
+      }
+      if (typeof body.suggestionText !== "string" || body.suggestionText.trim() === "") {
+        return reply.code(400).send({ error: "suggestionText is required" });
+      }
+      try {
+        const { id: cid } = await createSuggestedComment(reviews, id, {
+          anchor: body.anchor,
+          quote: body.quote,
+          ...(body.prefix !== undefined ? { prefix: body.prefix } : {}),
+          ...(body.suffix !== undefined ? { suffix: body.suffix } : {}),
+          ...(body.position !== undefined ? { position: body.position } : {}),
+          suggestionText: body.suggestionText,
+        });
+        return reply.code(201).send({ id: cid });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg.startsWith("unknown review")) return reply.code(404).send({ error: msg });
+        return reply.code(400).send({ error: msg });
+      }
+    }
+    if (body.text !== undefined && typeof body.text !== "string") {
+      return reply.code(400).send({ error: "text must be a string" });
+    }
+    try {
+      const { id: cid } = await createThread(reviews, id, {
+        anchor: body.anchor,
+        quote: body.quote,
+        ...(body.prefix !== undefined ? { prefix: body.prefix } : {}),
+        ...(body.suffix !== undefined ? { suffix: body.suffix } : {}),
+        ...(body.position !== undefined ? { position: body.position } : {}),
+        note: body.note ?? true,
+        ...(body.text !== undefined ? { text: body.text } : {}),
+      });
+      return reply.code(201).send({ id: cid });
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith("unknown review")) return reply.code(404).send({ error: msg });
+      return reply.code(400).send({ error: msg });
+    }
+  });
+
+  app.post("/api/reviews/:id/comments/:commentId/replies", async (req, reply) => {
+    const { id, commentId } = req.params as { id: string; commentId: string };
+    const body = (req.body ?? {}) as { text?: unknown };
+    if (typeof body.text !== "string" || body.text.trim() === "") {
+      return reply.code(400).send({ error: "text is required" });
+    }
+    try {
+      await replyToThread(reviews, id, commentId, body.text);
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith("unknown review") || msg.startsWith("unknown comment")) {
+        return reply.code(404).send({ error: msg });
+      }
+      return reply.code(400).send({ error: msg });
+    }
+    return { ok: true };
+  });
+
+  app.patch("/api/reviews/:id/comments/:commentId", async (req, reply) => {
+    const { id, commentId } = req.params as { id: string; commentId: string };
+    const body = (req.body ?? {}) as UpdateCommentRequest;
+    if (typeof body !== "object" || Array.isArray(body)) {
+      return reply.code(400).send({ error: "invalid comment patch body" });
+    }
+    const { post, draft, open, reply: replyBox } = body;
+    if (post !== undefined && typeof post !== "boolean") {
+      return reply.code(400).send({ error: "post must be a boolean" });
+    }
+    if (draft !== undefined && draft !== null && typeof draft !== "string") {
+      return reply.code(400).send({ error: "draft must be a string or null" });
+    }
+    if (open !== undefined && typeof open !== "boolean") {
+      return reply.code(400).send({ error: "open must be a boolean" });
+    }
+    if (replyBox !== undefined && replyBox !== null && typeof replyBox !== "string") {
+      return reply.code(400).send({ error: "reply must be a string or null" });
+    }
+    if (post === undefined && draft === undefined && open === undefined && replyBox === undefined) {
+      return reply.code(400).send({ error: "nothing to update" });
+    }
+    const snapshot = reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
+    try {
+      await reviews.mutate(id, (draftState) => {
+        const found = (
+          draftState.annotations as Array<{ id: string; type: string; post: boolean; open: boolean; draft?: string; reply?: string }>
+        ).find((a) => a.id === commentId);
+        if (!found) throw new Error(`unknown comment ${commentId}`);
+        if (found.type !== "thread") throw new Error(`annotation ${commentId} is not a thread`);
+        if (post !== undefined) {
+          found.post = post;
+          if (post) found.open = true;
+        }
+        if (draft === null) {
+          delete found.draft;
+        } else if (draft !== undefined) {
+          found.draft = draft;
+        }
+        if (open !== undefined) found.open = open;
+        if (replyBox === null) {
+          delete found.reply;
+        } else if (replyBox !== undefined) {
+          found.reply = replyBox;
+        }
+      });
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith("unknown review") || msg.startsWith("unknown comment")) {
+        return reply.code(404).send({ error: msg });
+      }
+      return reply.code(400).send({ error: msg });
+    }
+    return { ok: true };
+  });
+
+  app.delete("/api/reviews/:id/comments/:commentId", async (req, reply) => {
+    const { id, commentId } = req.params as { id: string; commentId: string };
+    try {
+      await deleteAnnotation(reviews, id, commentId);
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith("unknown review") || msg.startsWith("unknown comment")) {
+        return reply.code(404).send({ error: msg });
+      }
+      return reply.code(400).send({ error: msg });
+    }
+    return { ok: true };
+  });
 }

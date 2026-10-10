@@ -143,6 +143,41 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: "002-review-snapshots",
+    up: `
+      -- Durable ReviewStore snapshots (M1 service): one row per review holding
+      -- the full ReviewSnapshot JSON plus its monotonic rev. The row is the
+      -- source of truth across restarts; WS patches carry baseRev/headRev.
+      -- Deliberately no REFERENCES clause: ReviewStore is standalone (other
+      -- agents call putSnapshot without touching the reviews table), so the
+      -- id link is by convention, not by foreign key.
+      CREATE TABLE IF NOT EXISTS review_snapshots (
+        review_id TEXT PRIMARY KEY,
+        rev INTEGER NOT NULL,
+        snapshot JSON NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
+  {
+    version: 3,
+    name: "003-version-files",
+    up: `
+      -- Per-version diff files (M5): older versions stay viewable via
+      -- GET /api/reviews/:id?version=n. One row per (review, version)
+      -- holding the ReviewFile[] JSON for that version's diff. The live
+      -- snapshot keeps the current version's files; this table keeps every
+      -- version ever fetched.
+      CREATE TABLE IF NOT EXISTS review_version_files (
+        review_id TEXT NOT NULL,
+        n INTEGER NOT NULL,
+        files_json JSON NOT NULL DEFAULT '[]',
+        PRIMARY KEY (review_id, n)
+      );
+    `,
+  },
 ];
 
 export function currentVersion(db: DatabaseSync): number {

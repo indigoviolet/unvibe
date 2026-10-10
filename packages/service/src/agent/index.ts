@@ -10,3 +10,4 @@ export type {
   Session,
 } from "@unvibe/shared";
 export { FakeAgentRunner } from "./fake.js";
+export { createAcpRunner, type AcpRunnerOptions } from "./acp-runner.js";
