@@ -1,8 +1,9 @@
 /**
  * M6 guardrail: nothing outside the Submit review path may write to GitHub.
  *
- * Allowed writers: `src/submit/**` (review POST + `gh pr edit`) and
- * `src/routes/submit.ts` (the HTTP wrapper calling into `src/submit/`).
+ * Allowed writers: `src/submit/**` (review POST + `gh pr edit` +
+ * submit-lease reconcile reads) and `src/routes/submit.ts` (the HTTP
+ * wrapper calling into `src/submit/`).
  * Every other `runGh` call site must be a read (`gh pr view`, `gh api user`,
  * `gh api …/comments` GET, `git …`). If this test fails, a write leaked
  * outside Submit — move it into `src/submit/`.
@@ -29,6 +30,7 @@ describe("gh write guardrail", () => {
       path.join(src, "submit", "description.ts"),
       path.join(src, "submit", "existing.ts"),
       path.join(src, "submit", "index.ts"),
+      path.join(src, "submit", "lease.ts"),
       path.join(src, "routes", "submit.ts"),
     ]);
     // Write indicators: review POST body, description body-file, edit calls.

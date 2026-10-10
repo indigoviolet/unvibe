@@ -31,6 +31,14 @@ import type {
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
 import { locatePendingThreads, postedThreadIds } from "../comments/location.js";
+import {
+  SUBMIT_LEASE_GRACE_MS,
+  clearSubmitLease,
+  findLeasedReviewOnGitHub,
+  markLeasePosted,
+  readSubmitLease,
+  writeSubmitLease,
+} from "./lease.js";
 import type { ReviewStore } from "../state/store.js";
 import type { RepoStore } from "../repos/store.js";
 import type { DatabaseSync } from "../store/index.js";
@@ -138,6 +146,7 @@ export async function runSubmit(
   const preview = buildPreview(snapshot);
   const hasPendingDescription = snapshot.description?.pendingMarkdown !== undefined;
   const emptyText = pending.filter((p) => p.text.trim() === "");
+  const inflight = readSubmitLease(ctx.db, reviewId);
   if (opts.dryRun) {
     return {
       status: 200,
@@ -145,7 +154,7 @@ export async function runSubmit(
         posted: false,
         commentCount: 0,
         descriptionUpdated: false,
-        preview,
+        preview: inflight ? { ...preview, inflight: true } : preview,
       },
     };
   }
@@ -168,6 +177,9 @@ export async function runSubmit(
   }
   if (pending.length === 0 && !hasPendingDescription) {
     const already = postedThreadIds(snapshot);
+    // Nothing left to post: any lease is a leftover (its posted-mark
+    // landed). Clear it so it never blocks a future submit.
+    clearSubmitLease(ctx.db, reviewId);
     return {
       status: 200,
       body: {
@@ -211,6 +223,46 @@ export async function runSubmit(
     const inline = pending.filter((p) => p.location.kind === "inline");
     const general = pending.filter((p) => p.location.kind !== "inline");
     const reviewBody = general.map((p) => p.text).filter((t) => t.trim() !== "").join("\n\n---\n\n");
+    // Crash safety: a lease means a previous attempt may have posted
+    // without marking. Reconcile against GitHub before posting again —
+    // never silently double-post.
+    const prior = readSubmitLease(ctx.db, reviewId);
+    if (prior) {
+      let found: { id: number; url?: string } | null = null;
+      try {
+        found = await findLeasedReviewOnGitHub(ctx.runner, repo, prNumber, prior);
+      } catch (err) {
+        return { status: 502, body: { error: (err as Error).message } };
+      }
+      if (found) {
+        const at = Date.now();
+        const recovered = await markLeasePosted(ctx.reviews, reviewId, prior, found.url, at);
+        clearSubmitLease(ctx.db, reviewId);
+        return {
+          status: 200,
+          body: {
+            posted: true,
+            recovered: true,
+            commentCount: recovered.marked,
+            descriptionUpdated: false,
+            ...(recovered.stillPending > 0 ? { stillPending: recovered.stillPending } : {}),
+            ...(found.url ? { reviewUrl: found.url } : {}),
+          },
+        };
+      }
+      if (Date.now() - prior.startedAt < SUBMIT_LEASE_GRACE_MS) {
+        return {
+          status: 409,
+          body: {
+            error: "a submit for this review is already in progress; wait for it to finish, then retry",
+            reason: "submit in progress",
+          },
+        };
+      }
+      // Stale lease with nothing matching on GitHub: the poster died
+      // before posting. Clear it and proceed.
+      clearSubmitLease(ctx.db, reviewId);
+    }
     const comments = inline.map((p) => {
       const loc = p.location;
       if (loc.kind !== "inline") throw new Error("unreachable");
@@ -230,6 +282,20 @@ export async function runSubmit(
       comments,
     };
     const apiArgs = ["api", `repos/${repo.owner}/${repo.name}/pulls/${prNumber}/reviews`, "-X", "POST", "--input", "-"];
+    // The lease covers the crash window between the POST and the local
+    // posted-mark (see lease.ts). Payload mirrors exactly what we post so
+    // the retry can reconcile against GitHub.
+    writeSubmitLease(ctx.db, {
+      reviewId,
+      startedAt: Date.now(),
+      commitId,
+      body: reviewBody,
+      comments: pending.map((p) => ({
+        threadId: p.thread.id,
+        ...(p.location.kind === "inline" ? { path: p.location.path, line: p.location.line } : {}),
+        body: p.text,
+      })),
+    });
     let apiRes;
     try {
       apiRes = await runGh(ctx.runner, apiArgs, {
@@ -238,9 +304,11 @@ export async function runSubmit(
         stdin: JSON.stringify(payload),
       });
     } catch (err) {
+      clearSubmitLease(ctx.db, reviewId);
       return { status: 502, body: { error: `submit review failed: ${(err as Error).message}` } };
     }
     if (apiRes.code !== 0) {
+      clearSubmitLease(ctx.db, reviewId);
       return {
         status: 502,
         body: { error: `submit review failed: ${apiRes.stderr.trim() || apiRes.stdout.trim()}` },
@@ -264,6 +332,8 @@ export async function runSubmit(
         if (reviewUrl) a.postedUrl = reviewUrl;
       }
     });
+    // The POST is now durably recorded: the lease has served its purpose.
+    clearSubmitLease(ctx.db, reviewId);
   }
 
   // Description update (when a pending edit exists).

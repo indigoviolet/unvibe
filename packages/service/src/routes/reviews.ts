@@ -117,6 +117,13 @@ export async function registerReviews(
         : {}),
     }, id);
     if (!result.deleted) return reply.code(404).send({ error: "unknown review" });
+    // The review's agent sessions are gone: its MCP secrets die with it, so
+    // a stale agent URL can never reach another review's data.
+    try {
+      (deps as RouteDeps).mcp?.revokeForReview(id);
+    } catch {
+      // Best effort: secrets are process-local and die on restart anyway.
+    }
     return { ok: true };
   });
 

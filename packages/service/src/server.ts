@@ -21,6 +21,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { AgentRunner } from "@unvibe/shared";
 import { hasValidToken } from "./auth.js";
 import { CONTENT_SECURITY_POLICY } from "./security/csp.js";
+import { hostCheckAllows } from "./security/host.js";
 import type { CommandRunner } from "./exec/index.js";
 import { DEFAULT_IDLE_MS, IdleMonitor } from "./lifecycle/index.js";
 import { MCP_ROUTE_PREFIX } from "./mcp/index.js";
@@ -168,6 +169,15 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   // Global auth gate.
   app.addHook("onRequest", async (req, reply) => {
     const url = req.url;
+    // DNS-rebinding / cross-site defense (defense in depth behind the
+    // install token): only loopback Host and loopback Origin/Referer ever
+    // reach a handler. Applies to every route including /api/health and
+    // the MCP mount (WebSocket handshakes pass through here too).
+    const allowed = hostCheckAllows({ headers: req.headers as Record<string, string | string[] | undefined> });
+    if (!allowed.ok) {
+      reply.code(403).send({ error: `forbidden: ${allowed.reason}` });
+      return;
+    }
     if (url === "/api/health" || url.startsWith("/api/health?")) return;
     const pathname = urlPathname(url);
     // Static build assets and installable-app files carry no review data;

@@ -816,6 +816,12 @@ export class Pipeline {
       mcpServers,
       pack: packText,
     });
+    if (!handle.fresh) {
+      // Warm base: the build params (including this call's MCP URL) were
+      // ignored, so the just-issued secret was never handed to any session.
+      // Revoke it immediately instead of leaking one secret per call.
+      this.opts.mcp.revokeSession(mcp.secret);
+    }
     if (handle.fresh) {
       try {
         this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack.tokens);
@@ -970,6 +976,8 @@ export class Pipeline {
           } catch {
             // ignore
           }
+          // The reader session is closed: its MCP secret dies with it.
+          this.opts.mcp.revokeSession(mcp.secret);
         }
       },
     });

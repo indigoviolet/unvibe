@@ -78,6 +78,8 @@ function errorResult(text: string): CallToolResult {
 
 export class McpRegistry {
   private readonly sessions = new Map<string, SessionState>();
+  /** Live secrets per review, so a review's secrets die with it. */
+  private readonly byReview = new Map<string, Set<string>>();
   private readonly pins: PinRecord[] = [];
 
   constructor(private readonly opts: McpRegistryOptions) {}
@@ -115,6 +117,12 @@ export class McpRegistry {
       }
     });
     this.sessions.set(secret, state);
+    let set = this.byReview.get(reviewId);
+    if (!set) {
+      set = new Set();
+      this.byReview.set(reviewId, set);
+    }
+    set.add(secret);
     const issued: IssuedSession = {
       secret: state.secret,
       path: state.path,
@@ -129,7 +137,48 @@ export class McpRegistry {
     const state = this.sessions.get(secret);
     if (!state) return;
     this.sessions.delete(secret);
+    const set = this.byReview.get(state.reviewId);
+    if (set) {
+      set.delete(secret);
+      if (set.size === 0) this.byReview.delete(state.reviewId);
+    }
     void state.transport.close().catch(() => {});
+  }
+
+  /**
+   * Revoke every live secret for a review (review delete, base rebuild of
+   * that review). Secrets are also process-local, so a restart expires all
+   * of them implicitly. Returns the number revoked.
+   */
+  revokeForReview(reviewId: string): number {
+    const set = this.byReview.get(reviewId);
+    if (!set) return 0;
+    const secrets = [...set];
+    for (const secret of secrets) this.revokeSession(secret);
+    return secrets.length;
+  }
+
+  /**
+   * Revoke live secrets issued under one agent-session label
+   * (`base-<reviewId>`, `reader-<reviewId>`, …). Used when the owning
+   * session closes or is rebuilt while the review lives on. Returns the
+   * number revoked.
+   */
+  revokeBySessionId(sessionId: string): number {
+    let n = 0;
+    for (const [secret, state] of [...this.sessions]) {
+      if (state.sessionId === sessionId) {
+        this.revokeSession(secret);
+        n += 1;
+      }
+    }
+    return n;
+  }
+
+  /** Live (unrevoked) secret count — observability for tests. */
+  liveSecretCount(reviewId?: string): number {
+    if (reviewId) return this.byReview.get(reviewId)?.size ?? 0;
+    return this.sessions.size;
   }
 
   hasSession(secret: string): boolean {
