@@ -92,7 +92,9 @@ if (distPresent(rootDir)) {
       },
     });
     console.log("prepare: installing dependencies in the isolated copy…");
-    const inst = spawnSync("npm", ["install", "--no-audit", "--no-fund", "--allow-scripts=esbuild"], {
+    // NOTE: no --allow-scripts here: that flag is global-only (EALLOWSCRIPTS
+    // in project scope). Local installs run lifecycle scripts by default.
+    const inst = spawnSync("npm", ["install", "--no-audit", "--no-fund"], {
       cwd: copy,
       stdio: "inherit",
       shell: WIN,
