@@ -1,0 +1,165 @@
+# M3 pipeline: reader → base → forks → hunk pass
+
+The live pipeline (PRD §11) that turns an ingested review into the guide.
+This doc is the seam for the next agents (interaction actions, shared
+context, second opinion): how to "run this prompt in a fork of the base for
+this review and apply the streamed result".
+
+## Composition root
+
+`src/app.ts:buildApp` constructs everything once and hands route modules
+one unified context (`AppContext`):
+
+```
+db, bus, repos, reviews (ReviewStore), jobs (JobQueue with recovery),
+settings, models, runner (CommandRunner for git/gh), agents (AgentRunner:
+replay or ACP seam), sessions (SessionManager), mcp (McpRegistry with a
+real ReviewReader over ReviewStore + <dataDir>/worktrees/<id>), pipeline,
+updateRunner, promptsDir, fixturesDir, mcpBaseUrl
+```
+
+`ServiceContext` (core stores) + `RouteDeps` (M3 singletons) +
+`ReviewsRouteDeps` (update wiring) are views over the same `AppContext`.
+Tests construct the app with fakes via `createApp` overrides:
+
+```ts
+const { app, ctx } = await createApp("tok", {
+  runner: new FakeCommandRunner(),
+  agents: new FakeAgentRunner([...]),
+  autoPipeline: false, // do not auto-trigger on POST /api/reviews
+});
+```
+
+Runner selection (`src/agent/factory.ts`): `UNVIBE_AGENT=replay` uses the
+recorded runner over `fixtures/urllib3-5020/` (demo + tests, no tokens).
+Any other value hits the ACP seam, which fails with a helpful error until
+`src/agent/acp/` merges (do not import ACP elsewhere). The future ACP
+runner will also expose `listModels(provider)` for Settings → Models.
+
+## Demo mode
+
+With the replay runner, `POST /api/reviews { repoId: "demo" }` (or
+`{ demo: true }`) ingests `fixtures/urllib3-5020/diff.json` +
+`description.md` (no git/gh) and runs the *same pipeline code path*
+against the recordings, streaming with a small delay (`delayMs: 5`).
+
+Start-page entry (coordinated through the `changes` API, repo-less):
+
+```
+GET /api/repos                     → [{ id: "demo", ... }, ...remembered]
+GET /api/repos/demo/changes        → [{ kind: "demo", title: "Demo: urllib3#5020 …", demo: "urllib3-5020" }]
+POST /api/reviews { repoId: "demo" } → 201 + pipeline starts
+```
+
+In demo, the pipeline also auto-fills go-deeper placeholders and concept
+stubs to full pages (background jobs, same `runInFork` path) so the demo
+snapshot ends up complete without clicks.
+
+## Stages (all jobs on the queue)
+
+1. **Reader** (main model, one session, `cwd` = worktree, `system` =
+   `instructions`, MCP role `reader` with `pin_context`). Prompt from
+   `reader` template with L1 (`source` + `diff_inline`). Streams cards via
+   `parseCardsPartial` → `ReviewStore.mutate` (problem, central, Go deeper
+   placeholders from `pendingCards`, hidden concept candidates from
+   `concepts`). `text` events stream while a card is in flight; pins arrive
+   via MCP `onPin` and land in `snapshot.pinnedCode`.
+2. **Base** (`SessionManager.getBase`) from `buildBasePack` once the reader
+   is done. Key `(version, guideRevision, model)`; per-model caches.
+3. **Parallel forks** (`fanOut`): **critic** ×2 (findings as separate pages
+   with Evidence/Assessment/confidence + drafted suggested comment as a
+   thread on a diff line, `suggested: true`, `post: false`; finding-link
+   block in the guide) and **concept stubs** ×1 (hidden candidates; full
+   pages via `ensureConceptPage`).
+4. **Hunk pass** (small model, no fork, one prompt per hunk, background).
+   Summary + `hiddenReason` per hunk, replacing the rule-based
+   pre-classification. Never hide a hunk the guide cites (recomputed after
+   the reader) nor a one-line change. `POST …/hunks/:hash/summarize` runs
+   one hunk on demand at user priority (`kind: "summarize"`); **Fold all**
+   is the client calling summarize per hunk missing a summary (jobs dedupe
+   per hunk hash, so no batch endpoint is needed).
+
+Every reply: `splitReply` → `parseCards` → citation validator.
+Valid/repaired tokens stored resolved; unverified stored flagged
+(`unverified: true`, UI dims) + recorded in `logTail`; one repair turn
+when `needsRepairTurn`, then accept. Malformed / non-object trailers are
+job errors. Every call is a job (kind, model, priority, prompt snapshot,
+usage with cached tokens, `cardId` for UI), cancellable, retried on
+retryable errors, deduped.
+
+## The seam
+
+```ts
+// Fork of the base (main model, L4 = rendered template)
+const res = await pipeline.runInFork({
+  reviewId, kind: "go-deeper", template: "go_deeper",
+  variables: { direction: "Data flow …\nWhy it matters …" },
+  priority: JOB_PRIORITY.userRequested,
+  dedupeKey: { anchor: "go-deeper:g-flow", requestKind: "go-deeper", baseVersion: "v1" },
+  cardId: "g-flow",
+  onPartial: async (cards) => { /* progress UI */ },
+  signal, replay: { kind: "go-deeper", key: "flow" }, // replay/tests only
+});
+// res: { job, text, cards, data (trailing JSON), validation, usage, viaFork, repaired }
+
+// Small model, no fork, no base
+const small = await pipeline.runSmall({
+  reviewId, kind: "hunk-pass", template: "hunk_pass",
+  variables: { hunk: "### [[h:…]] …", path: "src/x.py" },
+  priority: JOB_PRIORITY.background,
+});
+
+// Full concept page on demand (stub → full)
+await pipeline.ensureConceptPage(reviewId, "obs-fold");
+
+// One-hunk summarize on demand (user priority)
+pipeline.summarizeHunk(reviewId, contentHash);
+
+// Update pass (versions module)
+const runner = pipeline.updateRunner(); // { runUpdatePrompt(prompt, { reviewId, toVersion, signal }) }
+// wired as POST /api/reviews/:id/update via enqueueUpdatePass
+```
+
+Worked example (Go deeper → Generate, the first consumer):
+
+```ts
+// POST /api/reviews/:id/actions { kind: "generate", cardId: "g-flow" }
+// → dispatcher (src/pipeline/actions/dispatcher.ts) → generate.ts:
+await pipeline.fillGoDeeper(reviewId, "g-flow", signal,
+  (delta) => jobCtx.reportText(delta), jobCtx);
+// placeholder (pending: { label, why }) shows text-event progress,
+// then fills with blocks + Follow-ups; revision bumps; logTail grows.
+```
+
+`runInFork` handles: base lookup/rebuild (`decideRebuild` thresholds from
+settings; new key → new base, old pruned), fork-or-fallback (PRD §6:
+`runner.fork` else fresh session + byte-identical base pack), job
+bookkeeping, streaming, validation + one repair turn. `runSmall` is the
+same without base/fork. Both return parsed content + trailing JSON; callers
+apply it (see `src/pipeline/apply.ts` for reader/critic/concept shapes).
+
+One file per action kind (`src/pipeline/actions/<kind>.ts`); the dispatcher
+stays 501 for unimplemented kinds so the next agent extends it.
+
+## Resilience
+
+Restart loses no stored content (snapshots + revs in SQLite; jobs
+persisted). Interrupted stages are `error`/`orphaned` in `JobStore` and
+resumable via `POST /api/reviews/:id/resume` (idempotent; skips done
+stages) or automatically on open. Sessions reopen with `load` or rebuild
+from the pack (`SessionManager`).
+
+## Measurement
+
+Per-review totals in `snapshot.usageTotals`
+(`inputTokens/cachedTokens/outputTokens/cacheHitRate`) updated after every
+job; per-job usage + `cacheHitRate` in `GET /api/jobs?review=:id`.
+Time-to-first-card in `usageTotals.firstCardAt` (set on the first streamed
+card) and `logTail` (`new-card` with `unverified` count).
+
+## Fold-all choice
+
+No batch endpoint: the client calls `POST …/hunks/:hash/summarize` per
+hunk missing a summary. Jobs dedupe per hunk hash, run at user priority,
+and never hide cited/one-line hunks. Documented here so web and service
+agree.
