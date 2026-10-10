@@ -175,6 +175,19 @@ export interface Settings {
   /** Base-rebuild thresholds (PRD §9.4). */
   rebuildSupersededRatio: number;
   rebuildAppendedTokens: number;
+  /** Provider cache lifetime in ms: idle sessions close after this (PRD §12). */
+  cacheLifetimeMs: number;
+  /** Service exits after this many idle minutes (PRD §14; 0 = never). */
+  idleExitMinutes: number;
+}
+
+/** PUT /api/settings accepts a partial update; GET returns full Settings. */
+export type UpdateSettingsRequest = Partial<Settings>;
+
+/** GET /api/models?provider=:id — models an ACP adapter offers (PRD §4.14). */
+export interface ModelsResponse {
+  provider: string;
+  models: string[];
 }
 
 // --- prompts -------------------------------------------------------------
@@ -205,6 +218,17 @@ export interface PromptsResponse {
 
 export interface JobsResponse {
   jobs: Job[];
+}
+
+/** GET /api/jobs/:id — one job. */
+export interface JobResponse {
+  job: Job;
+}
+
+/** GET /api/jobs/:id/prompt — the exact prompt the job sent. */
+export interface JobPromptResponse {
+  jobId: string;
+  promptSnapshot: string;
 }
 
 // --- WebSocket events ----------------------------------------------------

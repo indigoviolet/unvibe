@@ -320,7 +320,7 @@ export type JobKind =
   | "update-pass"
   | "summarize";
 
-export type JobState = "queued" | "running" | "done" | "error" | "cancelled";
+export type JobState = "queued" | "running" | "backing-off" | "done" | "error" | "cancelled";
 
 export interface TokenUsage {
   inputTokens: number;
@@ -333,6 +333,10 @@ export interface Job {
   id: string;
   kind: JobKind;
   model: string;
+  /** Provider the job runs on (per-provider concurrency cap, PRD §12). */
+  provider?: string;
+  /** Review this job belongs to (for `GET /api/jobs?review=:id` + WS fan-out). */
+  reviewId?: string;
   priority: number;
   state: JobState;
   sessionId?: string;
@@ -341,6 +345,41 @@ export interface Job {
   usage?: TokenUsage;
   cacheHitRate?: number;
   error?: string;
+  /**
+   * Dedupe key (canonical `anchor|requestKind|depth|baseVersion`, see
+   * `jobDedupeKeyString`): identical requests share one job/result (PRD §12).
+   */
+  dedupeKey?: string;
+  /** Attempts so far (initial run = 1 once started). */
+  attempts?: number;
+  /** Epoch ms of the next retry while `backing-off`. */
+  nextRetryAt?: number;
+}
+
+/**
+ * Priority bands for the job queue (PRD §12): what the user asked for first,
+ * then what's visible on screen, then background work.
+ */
+export const JOB_PRIORITY = {
+  userRequested: 100,
+  visible: 50,
+  background: 10,
+} as const;
+
+/**
+ * Dedupe identity for a job (PRD §12): (anchor, kind of request, depth,
+ * base version). Jobs with the same key share one job/result.
+ */
+export interface JobDedupeKey {
+  anchor: string;
+  requestKind: string;
+  depth?: string;
+  baseVersion: string;
+}
+
+/** Canonical string form of a {@link JobDedupeKey} (stored as `Job.dedupeKey`). */
+export function jobDedupeKeyString(key: JobDedupeKey): string {
+  return [key.anchor, key.requestKind, key.depth ?? "", key.baseVersion].join("|");
 }
 
 export type LogScope = { scope: "global" } | { scope: "card"; cardId: string };
