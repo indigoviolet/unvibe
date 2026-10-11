@@ -1,0 +1,10 @@
+shape: sequence_diagram
+client: Test client
+pool: ConnectionPool
+conn: HTTPConnection
+hc: http.client
+client -> pool: request() with folded response
+pool -> conn: getresponse()
+conn -> hc: parse_headers() keeps CRLF
+hc -> conn: HTTPMessage with raw fold
+conn -> pool: HTTPHeaderDict + same HTTPMessage
