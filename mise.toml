@@ -82,6 +82,10 @@ run = "mise run release && node scripts/global-install-check.mjs"
 description = "Assemble the self-contained release tree, tarball, and local release branch"
 run = "mise run build && node scripts/release.mjs"
 
+[tasks."release:tag"]
+description = "Cut a release tag: clean/main/CI-green checks, version bump for finals, tag (rc tags: no bump)"
+run = "node scripts/release-tag.mjs"
+
 [tasks."test:live:installed"]
 description = "Live sessions per provider from the installed copy (needs logins; tiny spend; never run by check)"
 run = "mise run release && UNVIBE_LIVE=1 node scripts/live-installed.mjs"
