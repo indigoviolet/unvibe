@@ -198,7 +198,7 @@ test("description tab shows paragraphs with stable ids", async ({ page }) => {
 
 test("go-deeper card renders the D2 diagram and follow-ups", async ({ page }) => {
   await gotoReview(page);
-  await expect(page.locator("#B-b-mock-d2-flow .dg-svg svg")).toBeVisible({ timeout: 15000 });
+  await expect(page.locator("#C-g-flow #B-b1 .dg-svg > svg")).toBeVisible({ timeout: 15000 });
   await expect(page.locator("#C-g-flow")).toContainText("Follow up:");
 });
 

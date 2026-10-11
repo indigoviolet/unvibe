@@ -344,15 +344,17 @@ let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
 ) as import("@unvibe/shared").Page[];
 
 /**
- * Seed mock D2 diagrams into the go-deeper flow card: one rendered (stand-in
- * SVGs served by `diagramSvg` below) and one unavailable (no binary), so
- * mock-mode tests exercise both branches without touching the fixture.
+ * Seed mock D2 edge cases into the go-deeper flow card: the fixture's own
+ * diagram block (rendered fixture SVGs served by `diagramSvg` below)
+ * covers the ok path; the seeds add an unverified-anchor block and an
+ * unavailable block (no binary), so mock-mode tests exercise those
+ * branches without touching the fixture.
  */
 function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
   const card = pages
     .find((p) => p.id === "root")
     ?.cards.find((c) => c.id === "g-flow");
-  if (!card || card.blocks.some((b) => b.id === "b-mock-d2-flow")) return;
+  if (!card || card.blocks.some((b) => b.id === "b-mock-d2-edge")) return;
   card.blocks = [
     ...card.blocks,
     mockSeedD2Block() as never,

@@ -1,14 +1,17 @@
 /**
  * D2 diagrams in mock mode (D2 decision addendum): the mock review carries
- * a rendered D2 block (stand-in SVGs served by `mockApi.diagramSvg`) and an
- * unavailable block (no binary), so this spec exercises render, theme
- * switch, citation hover/click/keyboard, sizes, fallbacks and the `d2`
- * readiness callout without a service.
+ * the fixture's real pre-rendered D2 block (fixture SVGs served by
+ * `mockApi.diagramSvg`) plus seeded edge cases — an unverified-anchor
+ * block and an unavailable block (no binary) — so this spec exercises
+ * render, theme switch, citation hover/click/keyboard, sizes, fallbacks
+ * and the `d2` readiness callout without a service.
  */
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
 
-const FLOW = "#B-b-mock-d2-flow";
+// Fixture's real diagram block (card g-flow, hash f23beae236cc0685).
+const FLOW = "#C-g-flow #B-b1";
+const EDGE = "#B-b-mock-d2-edge";
 const UNAVAILABLE = "#B-b-mock-d2-unavailable";
 
 async function gotoReview(page: Page): Promise<void> {
@@ -36,37 +39,48 @@ async function hoverFresh(page: Page, locator: Locator): Promise<void> {
 
 test("D2 diagram renders in light with caption and citation anchors", async ({ page }) => {
   await gotoReview(page);
-  const svg = page.locator(`${FLOW} .dg-svg svg`);
+  const svg = page.locator(`${FLOW} .dg-svg > svg`);
   await expect(svg).toBeVisible({ timeout: 15000 });
-  await expect(page.locator(FLOW)).toContainText("unfolding before interpretation");
+  await expect(page.locator(FLOW)).toContainText("Where a response's headers go");
   const anchors = page.locator(`${FLOW} .dg-svg a[href][data-refs]`);
   await expect(anchors).toHaveCount(2);
-  await expect(anchors.first()).toHaveAttribute("data-src", "diff:src-urllib3-connection.py:80-82");
-  // Unverified citations are dimmed.
-  await expect(page.locator(`${FLOW} .dg-svg a[data-unverified="true"]`)).toHaveCount(1);
-  await expect(page.locator(`${FLOW} .dg-svg a[data-unverified="true"]`)).toHaveCSS(
-    "opacity",
-    "0.55",
+  await expect(anchors.first()).toHaveAttribute(
+    "data-src",
+    "diff:src-urllib3-connection.py:650-651",
   );
+  // The served light render carries the light palette.
+  await expect(page.locator(`${FLOW} .dg-svg`)).toContainText("HTTPMessage", { timeout: 5000 });
+});
+
+test("unverified citations are dimmed", async ({ page }) => {
+  await gotoReview(page);
+  await expect(page.locator(`${EDGE} .dg-svg > svg`)).toBeVisible({ timeout: 15000 });
+  const unverified = page.locator(`${EDGE} .dg-svg a[data-unverified="true"]`);
+  await expect(unverified).toHaveCount(1);
+  await expect(unverified).toHaveCSS("opacity", "0.55");
 });
 
 test("theme switch refetches the dark render", async ({ page }) => {
   await gotoReview(page);
-  await expect(page.locator(`${FLOW} .dg-svg svg[data-mock-theme="light"]`)).toBeVisible({
-    timeout: 15000,
-  });
+  const host = page.locator(`${FLOW} .dg-svg`);
+  await expect(host.locator(":scope > svg")).toBeVisible({ timeout: 15000 });
+  await expect(host).toContainText("HTTPMessage");
+  const lightHtml = await host.innerHTML();
+  expect(lightHtml).toContain("#FFFFFF");
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
-  await expect(page.locator(`${FLOW} .dg-svg svg[data-mock-theme="dark"]`)).toBeVisible({
-    timeout: 10000,
-  });
+  await expect
+    .poll(async () => host.innerHTML(), { timeout: 10000 })
+    .toContain("1E1E2E");
+  const darkHtml = await host.innerHTML();
+  expect(darkHtml).not.toBe(lightHtml);
 });
 
 test("hover on a cited shape shows the code preview", async ({ page }) => {
   await gotoReview(page);
-  await expect(page.locator(`${FLOW} .dg-svg svg`)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(`${FLOW} .dg-svg > svg`)).toBeVisible({ timeout: 15000 });
   await hoverFresh(page, page.locator(`${FLOW} .dg-svg a[data-refs]`).first());
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
-  await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:80");
+  await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:650");
   await expect(page.locator("#pop .cite .snip").first()).not.toBeEmpty();
 });
 
@@ -74,19 +88,19 @@ test("click on a cited shape reveals in the diff without changing the URL", asyn
   page,
 }) => {
   await gotoReview(page);
-  await expect(page.locator(`${FLOW} .dg-svg svg`)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(`${FLOW} .dg-svg > svg`)).toBeVisible({ timeout: 15000 });
   const before = page.url();
   await page.locator(`${FLOW} .dg-svg a[data-refs]`).first().click();
   expect(page.url()).toBe(before);
   await expect(page.locator('#right [role="tab"][aria-selected="true"]')).toContainText("Diff");
   await expect(
-    page.locator('[id="L-src-urllib3-connection.py-80"].hl'),
+    page.locator('[id="L-src-urllib3-connection.py-650"].hl'),
   ).toBeVisible({ timeout: 5000 });
 });
 
 test("keyboard Enter on a cited shape reveals without changing the URL", async ({ page }) => {
   await gotoReview(page);
-  await expect(page.locator(`${FLOW} .dg-svg svg`)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(`${FLOW} .dg-svg > svg`)).toBeVisible({ timeout: 15000 });
   const before = page.url();
   const anchor = page.locator(`${FLOW} .dg-svg a[data-refs]`).first();
   await anchor.focus();
@@ -94,15 +108,15 @@ test("keyboard Enter on a cited shape reveals without changing the URL", async (
   await page.keyboard.press("Enter");
   expect(page.url()).toBe(before);
   await expect(
-    page.locator('[id="L-src-urllib3-connection.py-80"].hl'),
+    page.locator('[id="L-src-urllib3-connection.py-650"].hl'),
   ).toBeVisible({ timeout: 5000 });
 });
 
 test("800px window keeps the diagram readable with scroll, not breakage", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 900 });
   await gotoReview(page);
-  await expect(page.locator(`${FLOW} .dg-svg svg`)).toBeVisible({ timeout: 15000 });
-  const box = await page.locator(`${FLOW} .dg-svg svg`).boundingBox();
+  await expect(page.locator(`${FLOW} .dg-svg > svg`)).toBeVisible({ timeout: 15000 });
+  const box = await page.locator(`${FLOW} .dg-svg > svg`).boundingBox();
   expect(box).not.toBeNull();
   expect(box!.width).toBeGreaterThan(0);
   // The diagram container scrolls rather than overflowing the page.
@@ -135,9 +149,9 @@ test("d2 warning readiness shows a callout linking to Settings → Environment",
           { id: "gh", label: "gh (GitHub CLI)", status: "ok", summary: "gh ready", fix: "", settingsAnchor: "#environment" },
           {
             id: "d2",
-            label: "d2",
+            label: "Diagrams · d2",
             status: "warning",
-            summary: "Diagrams need d2",
+            summary: "Diagrams need d2 (not found on login-shell PATH)",
             fix: "Install d2 (see Settings → Environment), or diagrams show their source.",
             settingsAnchor: "#environment",
           },
@@ -167,7 +181,7 @@ test("d2 warning readiness shows a callout linking to Settings → Environment",
 test("Add diagram in mock inserts a D2 block with a stand-in render", async ({ page }) => {
   await gotoReview(page);
   const card = page.locator("#C-central");
-  const before = await card.locator(".dg-svg svg").count();
+  const before = await card.locator(".dg-svg > svg").count();
   await card.getByRole("button", { name: "Add diagram" }).click();
-  await expect(card.locator(".dg-svg svg")).toHaveCount(before + 1, { timeout: 10000 });
+  await expect(card.locator(".dg-svg > svg")).toHaveCount(before + 1, { timeout: 10000 });
 });

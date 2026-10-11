@@ -23,7 +23,7 @@ test("main screens make no non-local requests and raise no CSP violations", asyn
   // Review with guide + diff + D2 diagram (service-rendered SVG inlined
   // with its styles; fonts embedded as data:).
   await page.goto("/review/demo");
-  await expect(page.locator("#B-b-mock-d2-flow .dg-svg svg")).toBeVisible({ timeout: 15000 });
+  await expect(page.locator("#C-g-flow #B-b1 .dg-svg > svg")).toBeVisible({ timeout: 15000 });
   await expect(page.locator('[id^="F-"]').first()).toBeVisible();
 
   // Settings: models + environment (readiness fetch over loopback).
