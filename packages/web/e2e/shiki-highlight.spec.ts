@@ -42,37 +42,50 @@ async function selectSpanning(page: Page, rootSelector: string, anchor: string):
     ({ rootSelector, anchor }) => {
       const root = document.querySelector(rootSelector);
       if (!root) return false;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      const nodes: Text[] = [];
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
-      const joined = nodes.map((n) => n.data).join("");
-      const at = joined.indexOf(anchor);
-      if (at < 0) return false;
-      const end = at + anchor.length;
-      const nodeAt = (offset: number): { node: Text; at: number } | null => {
-        let acc = 0;
-        for (const n of nodes) {
-          const next = acc + n.data.length;
-          if (offset <= next) return { node: n, at: Math.min(offset - acc, n.data.length) };
-          acc = next;
+      // Scoped per code cell: joining the whole table would match across
+      // line-number/code boundaries and anchor the selection in the gutter.
+      const cells = [...root.querySelectorAll("td.c")];
+      const scopes = cells.length > 0 ? cells : [root];
+      for (const scope of scopes) {
+        const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+        const nodes: Text[] = [];
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
+        const joined = nodes.map((n) => n.data).join("");
+        const at = joined.indexOf(anchor);
+        if (at < 0) continue;
+        const end = at + anchor.length;
+        const nodeAt = (offset: number): { node: Text; at: number } | null => {
+          let acc = 0;
+          for (let i = 0; i < nodes.length; i++) {
+            const n = nodes[i];
+            const next = acc + n.data.length;
+            // Boundary offsets prefer the next node (a range starting at
+            // the end of one node behaves as starting in the gutter).
+            if (offset < next) return { node: n, at: offset - acc };
+            if (offset === next) {
+              return i + 1 < nodes.length ? { node: nodes[i + 1], at: 0 } : { node: n, at: n.data.length };
+            }
+            acc = next;
+          }
+          return null;
+        };
+        const s = nodeAt(at);
+        const e = nodeAt(end);
+        if (!s || !e) continue;
+        const range = document.createRange();
+        try {
+          range.setStart(s.node, s.at);
+          range.setEnd(e.node, e.at);
+        } catch {
+          continue;
         }
-        return null;
-      };
-      const s = nodeAt(at);
-      const e = nodeAt(end);
-      if (!s || !e) return false;
-      const range = document.createRange();
-      try {
-        range.setStart(s.node, s.at);
-        range.setEnd(e.node, e.at);
-      } catch {
-        return false;
+        const sel = getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        (range.endContainer as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        return true;
       }
-      const sel = getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-      (range.endContainer as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-      return true;
+      return false;
     },
     { rootSelector, anchor },
   );
@@ -164,6 +177,11 @@ test("revealSource highlights lines that are also token-highlighted", async ({ p
   await expect(page.locator(`[id="L-${CONN}-651"].hl`)).toBeVisible();
   // The reveal highlight and the token spans coexist in the same row.
   await expect(row.locator("td.c [class*='shk-']").first()).toBeVisible();
+  // Same in split view: paired cells keep their own side's tokens.
+  await page.getByRole("button", { name: "Split" }).click();
+  const splitTable = page.locator(`${connFile} table.diff.split`);
+  await expect(splitTable).toBeVisible();
+  await expect(splitTable.locator("td.c [class*='shk-']").first()).toBeVisible();
 });
 
 test("highlighted rows copy as plain text without artefacts", async ({ page }) => {
@@ -176,6 +194,6 @@ test("highlighted rows copy as plain text without artefacts", async ({ page }) =
   expect(text).not.toBeNull();
   expect(text!.startsWith("+")).toBe(true);
   // No zero-width / object-replacement artefacts from the spans.
-  expect(text!).not.toMatch(/[​‌‍￼]/);
+  expect(text!).not.toMatch(/(?:\u200B|\u200C|\u200D|\uFFFC)/u);
   expect(text!.length).toBeLessThan(2000);
 });
