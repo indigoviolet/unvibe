@@ -297,8 +297,8 @@ export interface CodeBlock {
 export interface DiagramBlock {
   type: "diagram";
   id: string;
-  /** Mermaid source (PRD §13 proposal; prototype used hand-drawn SVG). */
-  mermaid: string;
+  /** Validated JSON diagram spec (PRD §13/§19.4; replaces Mermaid). */
+  spec: import("./content/diagram-spec.js").DiagramSpec;
   caption?: string;
   citations: Citation[];
 }

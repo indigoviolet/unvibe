@@ -25,3 +25,21 @@ export {
   splitCardSections,
 } from "./parse.js";
 export type { CollectedTargets, ParsedReply, RenderedInline } from "./parse.js";
+export {
+  DIAGRAM_LIMITS,
+  diagramCites,
+  diagramProblem,
+  validateDiagram,
+} from "./diagram-spec.js";
+export type {
+  DiagramDirection,
+  DiagramFlowEdge,
+  DiagramFlowNode,
+  DiagramKind,
+  DiagramMessage,
+  DiagramPanel,
+  DiagramSpec,
+  DiagramState,
+  DiagramValidation,
+} from "./diagram-spec.js";
+export { renderDiagramSvg } from "./diagram-render.js";
