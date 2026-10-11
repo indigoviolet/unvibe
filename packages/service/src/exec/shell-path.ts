@@ -1,54 +1,25 @@
 /**
  * macOS gotcha (PRD §14): apps opened from Finder don't inherit the shell's
- * PATH. On startup the service reads it from a login shell so it can find
- * `gh`, `git`, `claude`, `codex` and mise-installed tools.
+ * PATH. On startup the service reads it from a login+interactive shell so
+ * it can find `gh`, `git`, `claude`, `codex` and mise-installed tools.
  *
- * Handles zsh (the macOS default), bash, sh and fish: the login shell is
- * probed via the user's `$SHELL` first, then common fallbacks. Each probe
- * has a timeout so a slow dotfile can never hang startup. The resolved
- * login PATH is *merged* with the inherited PATH (login entries first,
- * inherited extras appended) so nothing already visible is ever lost.
+ * This module is a thin compat wrapper over the shared diagnostics PATH
+ * probe (`../diagnostics/path-probe.js`), so `unvibe doctor` and the
+ * running service cannot disagree. See that module for the full algorithm:
+ * scrubbed env (only what a GUI process would have), login+interactive
+ * shells (so `.zshrc`/`.bashrc`/fish config are read), delimiters around
+ * the value (robust to prompts/banners/garbage), per-shell timeout with a
+ * fallback chain. The resolved probed PATH is *merged* with the inherited
+ * PATH (probed entries first, inherited extras appended) so nothing
+ * already visible is ever lost.
  */
-import { execFile } from "node:child_process";
-import fs from "node:fs";
+import {
+  INTERACTIVE_SHELL_TIMEOUT_MS,
+  mergePaths as mergePathsNew,
+  probeEffectivePath,
+} from "../diagnostics/path-probe.js";
 
-export const LOGIN_SHELL_TIMEOUT_MS = 10_000;
-
-const FALLBACK_SHELLS = ["/bin/zsh", "/bin/bash", "/bin/sh"];
-
-function shellCandidates(explicit?: string): string[] {
-  const list: string[] = [];
-  const push = (s: string | undefined): void => {
-    if (s && !list.includes(s)) list.push(s);
-  };
-  push(explicit ?? process.env.SHELL);
-  for (const s of FALLBACK_SHELLS) push(s);
-  return list;
-}
-
-function isExecutable(file: string): Promise<boolean> {
-  return fs.promises
-    .access(file, fs.constants.X_OK)
-    .then(() => true)
-    .catch(() => false);
-}
-
-/** fish needs `-l -c` as separate words; POSIX shells take `-lc`. */
-function probeArgs(shell: string): string[] {
-  const base = shell.split("/").pop() ?? "";
-  if (base === "fish") return ["-l", "-c", "echo $PATH"];
-  return ["-lc", "echo $PATH"];
-}
-
-function echoPathWith(shell: string, timeoutMs: number): Promise<string | null> {
-  return new Promise((resolve) => {
-    execFile(shell, probeArgs(shell), { timeout: timeoutMs }, (err, stdout) => {
-      if (err) return resolve(null);
-      const p = stdout.trim();
-      resolve(p || null);
-    });
-  });
-}
+export const LOGIN_SHELL_TIMEOUT_MS = INTERACTIVE_SHELL_TIMEOUT_MS;
 
 export interface LoginShellPath {
   /** The raw PATH printed by the login shell. */
@@ -61,14 +32,7 @@ export interface LoginShellPath {
 
 /** Deduplicated merge: `first` wins order, then unseen entries of `second`. */
 export function mergePaths(first: string, second: string): string {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const part of [...first.split(":"), ...second.split(":")]) {
-    if (part === "" || seen.has(part)) continue;
-    seen.add(part);
-    out.push(part);
-  }
-  return out.join(":");
+  return mergePathsNew(first, second);
 }
 
 /**
@@ -80,18 +44,13 @@ export async function resolveLoginShellPath(
   opts: { shell?: string; timeoutMs?: number } = {},
 ): Promise<LoginShellPath | null> {
   const timeoutMs = opts.timeoutMs ?? LOGIN_SHELL_TIMEOUT_MS;
-  for (const shell of shellCandidates(opts.shell)) {
-    if (!(await isExecutable(shell))) continue;
-    try {
-      const loginPath = await echoPathWith(shell, timeoutMs);
-      if (loginPath) {
-        return { loginPath, shell, merged: mergePaths(loginPath, process.env.PATH ?? "") };
-      }
-    } catch {
-      // try the next shell
-    }
+  try {
+    const probed = await probeEffectivePath({ shell: opts.shell, timeoutMs });
+    if (!probed) return null;
+    return { loginPath: probed.probedPath, shell: probed.shell, merged: probed.effectivePath };
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /**

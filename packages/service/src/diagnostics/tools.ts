@@ -1,0 +1,465 @@
+/**
+ * Tool discovery for the shared diagnostics module (issue #20).
+ *
+ * For each tool (`git`, `gh`, `claude`, `codex`, `d2`, `node`) we enumerate
+ * EVERY candidate on the effective PATH in order and report for each:
+ * - what it is (real file, symlink → target, shim + manager where
+ *   detectable: mise/asdf/nvm/homebrew/npm-global),
+ * - whether it runs (`--version` with a timeout: exit code + full
+ *   stdout/stderr, untruncated),
+ * - the parsed version ONLY from a successful run (exit 0; a failed run
+ *   never yields a version, so mise's version from error text can no
+ *   longer leak into the UI),
+ * - the minimum-version verdict,
+ * - and which candidate was CHOSEN and why (first that runs and meets
+ *   the minimum; broken shims are skipped and the next entry is tried).
+ *
+ * Overrides (`UNVIBE_*_BIN`, plus the adapter-native `CLAUDE_CODE_EXECUTABLE`
+ * / `CODEX_PATH`) are reported as such (source `env …`, kind
+ * `override`/`missing-override`).
+ */
+import fs from "node:fs";
+import path from "node:path";
+import type { CommandRunner } from "../exec/runner.js";
+import { RealCommandRunner } from "../exec/runner.js";
+import type { DiagnosticCandidate, DiagnosticTool } from "@unvibe/shared";
+import { agentBinSpec, compareVersions, type AgentProvider } from "../exec/agent-bins.js";
+import { D2_MIN } from "../diagrams/bins.js";
+
+export interface ToolSpec {
+  tool: string;
+  /** Binary name(s) to look for on PATH, in order. */
+  names: string[];
+  /** Env override(s) that win over PATH, in priority order. */
+  overrideEnvs: string[];
+  /** Minimum version, when enforced (claude/codex/d2/node). */
+  minVersion?: string;
+  /** Args for the version probe. */
+  versionArgs: string[];
+  /** Human install hint for the not-found case. */
+  installHint: string;
+}
+
+export const TOOL_SPECS: ToolSpec[] = [
+  {
+    tool: "git",
+    names: ["git"],
+    overrideEnvs: [],
+    versionArgs: ["--version"],
+    installHint: "Install git and ensure it is on your login-shell PATH.",
+  },
+  {
+    tool: "gh",
+    names: ["gh"],
+    overrideEnvs: [],
+    versionArgs: ["--version"],
+    installHint: "Install gh (https://cli.github.com) and ensure it is on your login-shell PATH.",
+  },
+  {
+    tool: "claude",
+    names: ["claude"],
+    overrideEnvs: ["UNVIBE_CLAUDE_BIN", "CLAUDE_CODE_EXECUTABLE"],
+    minVersion: agentBinSpec("claude").minVersion,
+    versionArgs: ["--version"],
+    installHint: agentBinSpec("claude").installHint,
+  },
+  {
+    tool: "codex",
+    names: ["codex"],
+    overrideEnvs: ["UNVIBE_CODEX_BIN", "CODEX_PATH"],
+    minVersion: agentBinSpec("codex").minVersion,
+    versionArgs: ["--version"],
+    installHint: agentBinSpec("codex").installHint,
+  },
+  {
+    tool: "d2",
+    names: ["d2"],
+    overrideEnvs: ["UNVIBE_D2_BIN"],
+    minVersion: D2_MIN,
+    versionArgs: ["--version"],
+    installHint: "Install d2 (≥ 0.9.0) and ensure it is on your login-shell PATH.",
+  },
+  {
+    tool: "node",
+    names: ["node"],
+    overrideEnvs: [],
+    minVersion: "24.0.0",
+    versionArgs: ["--version"],
+    installHint: "Install Node 24 (mise.toml) and ensure it is on your login-shell PATH.",
+  },
+];
+
+function isExecutableFile(p: string): boolean {
+  try {
+    fs.accessSync(p, fs.constants.X_OK);
+    return fs.statSync(p).isFile() || fs.lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function readLinkChain(p: string): { isSymlink: boolean; target?: string } {
+  try {
+    const st = fs.lstatSync(p);
+    if (!st.isSymbolicLink()) return { isSymlink: false };
+    let cur = p;
+    const seen = new Set<string>([cur]);
+    for (let i = 0; i < 10; i++) {
+      let next: string;
+      try {
+        next = fs.readlinkSync(cur);
+      } catch {
+        break;
+      }
+      if (!path.isAbsolute(next)) next = path.resolve(path.dirname(cur), next);
+      if (seen.has(next)) break;
+      seen.add(next);
+      cur = next;
+      try {
+        if (!fs.lstatSync(cur).isSymbolicLink()) break;
+      } catch {
+        break;
+      }
+    }
+    return { isSymlink: true, target: cur };
+  } catch {
+    return { isSymlink: false };
+  }
+}
+
+function sniffShimManager(absPath: string, symlinkTarget?: string): string | undefined {
+  const hay = `${absPath}\n${symlinkTarget ?? ""}`.toLowerCase();
+  if (hay.includes("/mise/shims/") || hay.includes(".local/share/mise")) return "mise";
+  if (hay.includes("/.asdf/shims/") || hay.includes("/.asdf/")) return "asdf";
+  if (hay.includes("/.nvm/versions/node/") || hay.includes("/.nvm/")) return "nvm";
+  if (hay.includes("/cellar/") || hay.includes("/opt/homebrew/") || hay.includes("/usr/local/homebrew")) return "homebrew";
+  if (hay.includes("node_modules/.bin") || hay.includes("/lib/node_modules/")) return "npm-global";
+  // Content sniff for shims (mise/asdf shims are small shell wrappers).
+  try {
+    const st = fs.statSync(symlinkTarget ?? absPath);
+    if (st.isFile() && st.size < 32 * 1024) {
+      const head = fs.readFileSync(symlinkTarget ?? absPath, "utf8").slice(0, 4000).toLowerCase();
+      if (head.includes("mise")) return "mise";
+      if (head.includes("asdf")) return "asdf";
+      if (head.includes("nvm")) return "nvm";
+    }
+  } catch {
+    // ignore: content sniff is best-effort
+  }
+  return undefined;
+}
+
+function describeKind(absPath: string): { kind: string; symlinkTarget?: string; shimManager?: string } {
+  const link = readLinkChain(absPath);
+  const manager = sniffShimManager(absPath, link.target);
+  if (manager === "mise" || manager === "asdf") {
+    return {
+      kind: `shim (${manager})`,
+      ...(link.target ? { symlinkTarget: link.target } : {}),
+      shimManager: manager,
+    };
+  }
+  if (link.isSymlink) {
+    return {
+      kind: manager ? `symlink (${manager})` : "symlink",
+      ...(link.target ? { symlinkTarget: link.target } : {}),
+      ...(manager ? { shimManager: manager } : {}),
+    };
+  }
+  if (manager) return { kind: `file (${manager})`, shimManager: manager };
+  return { kind: "file" };
+}
+
+/** Every candidate for `name` on `pathValue`, in order (deduped). */
+export function enumerateCandidates(name: string, pathValue: string): string[] {
+  const dirs = pathValue.split(path.delimiter).filter(Boolean);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const dir of dirs) {
+    const full = path.join(dir, name);
+    try {
+      if (isExecutableFile(full) && !seen.has(full)) {
+        seen.add(full);
+        out.push(full);
+      }
+    } catch {
+      // keep looking
+    }
+  }
+  return out;
+}
+
+export function parseVersionOnly(output: string): string | null {
+  const m = output.match(/(\d+)\.(\d+)\.(\d+)/);
+  return m ? `${m[1]}.${m[2]}.${m[3]}` : null;
+}
+
+async function probeVersion(
+  runner: CommandRunner,
+  binPath: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<{ runs: boolean; code: number; stdout: string; stderr: string }> {
+  try {
+    const r = await Promise.race([
+      runner.run(binPath, { args, timeoutMs }),
+      new Promise<{ stdout: string; stderr: string; code: number }>((resolve) =>
+        setTimeout(() => resolve({ stdout: "", stderr: `timed out after ${timeoutMs}ms`, code: 124 }), timeoutMs + 500),
+      ),
+    ]);
+    return {
+      runs: r.code === 0,
+      code: r.code,
+      stdout: String(r.stdout ?? ""),
+      stderr: String(r.stderr ?? ""),
+    };
+  } catch (e) {
+    return { runs: false, code: 127, stdout: "", stderr: String(e instanceof Error ? e.message : e) };
+  }
+}
+
+export interface DiagnoseOptions {
+  pathValue: string;
+  env?: NodeJS.ProcessEnv;
+  runner?: CommandRunner;
+  timeoutMs?: number;
+}
+
+/**
+ * Diagnose one tool: every candidate + override, version probes, choice.
+ * Never throws.
+ */
+export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promise<DiagnosticTool> {
+  const env = opts.env ?? process.env;
+  const runner = opts.runner ?? new RealCommandRunner();
+  const timeoutMs = opts.timeoutMs ?? 8000;
+  const warnings: string[] = [];
+  const candidates: DiagnosticCandidate[] = [];
+
+  let overrideEnv: string | undefined;
+  let overrideValue: string | undefined;
+
+  for (const envName of spec.overrideEnvs) {
+    const raw = (env[envName] ?? "").trim();
+    if (!raw) continue;
+    overrideEnv = envName;
+    overrideValue = raw;
+    // UNVIBE_*_BIN must be absolute; adapter vars may be bare commands.
+    const isPathLike = path.isAbsolute(raw) || raw.includes(path.sep) || envName.startsWith("UNVIBE_");
+    if (isPathLike) {
+      let exists = false;
+      try {
+        exists = isExecutableFile(raw);
+      } catch {
+        exists = false;
+      }
+      if (!exists) {
+        candidates.push({
+          path: raw,
+          source: `env ${envName} (missing)`,
+          kind: "missing-override",
+          runs: false,
+          exitCode: 127,
+          stdout: "",
+          stderr: `override ${envName} points at ${raw}, which does not exist or is not executable`,
+          version: null,
+        });
+        warnings.push(`Override ${envName} points at a missing file (${raw}); fix the path or unset it.`);
+        continue;
+      }
+      const kind = describeKind(raw);
+      const probed = await probeVersion(runner, raw, spec.versionArgs, timeoutMs);
+      const version = probed.runs ? parseVersionOnly(`${probed.stdout}\n${probed.stderr}`) : null;
+      const meetsMin = spec.minVersion && version ? compareVersions(version, spec.minVersion) >= 0 : undefined;
+      candidates.push({
+        path: raw,
+        source: `env ${envName}`,
+        kind: `override (${kind.kind})`,
+        ...(kind.symlinkTarget ? { symlinkTarget: kind.symlinkTarget } : {}),
+        ...(kind.shimManager ? { shimManager: kind.shimManager } : {}),
+        runs: probed.runs,
+        exitCode: probed.code,
+        stdout: probed.stdout,
+        stderr: probed.stderr,
+        version,
+        ...(meetsMin !== undefined ? { meetsMin } : {}),
+      });
+      if (!probed.runs) warnings.push(`Override ${envName} (${raw}) does not run (exit ${probed.code}); fix it or unset it to use PATH.`);
+      else if (meetsMin === false) warnings.push(`Override ${envName} (${raw}) is version ${version}, need ≥ ${spec.minVersion}.`);
+    } else {
+      // Bare command in an adapter var: resolve on PATH like the normal case.
+      const onPath = enumerateCandidates(raw, opts.pathValue);
+      if (onPath.length === 0) {
+        candidates.push({
+          path: raw,
+          source: `env ${envName} (missing)`,
+          kind: "missing-override",
+          runs: false,
+          exitCode: 127,
+          stdout: "",
+          stderr: `override ${envName}=${raw} not found on PATH`,
+          version: null,
+        });
+        warnings.push(`Override ${envName}=${raw} not found on PATH.`);
+      } else {
+        for (const p of onPath) {
+          const kind = describeKind(p);
+          const probed = await probeVersion(runner, p, spec.versionArgs, timeoutMs);
+          const version = probed.runs ? parseVersionOnly(`${probed.stdout}\n${probed.stderr}`) : null;
+          const meetsMin = spec.minVersion && version ? compareVersions(version, spec.minVersion) >= 0 : undefined;
+          candidates.push({
+            path: p,
+            source: `env ${envName}`,
+            kind: kind.kind,
+            ...(kind.symlinkTarget ? { symlinkTarget: kind.symlinkTarget } : {}),
+            ...(kind.shimManager ? { shimManager: kind.shimManager } : {}),
+            runs: probed.runs,
+            exitCode: probed.code,
+            stdout: probed.stdout,
+            stderr: probed.stderr,
+            version,
+            ...(meetsMin !== undefined ? { meetsMin } : {}),
+          });
+        }
+      }
+    }
+    // First set override wins; do not fall through to PATH when an
+    // override is set (explicit config must be honoured, even when broken,
+    // so the error names the bad override).
+    break;
+  }
+
+  const hasOverride = overrideEnv !== undefined;
+  if (!hasOverride) {
+    for (const name of spec.names) {
+      for (const p of enumerateCandidates(name, opts.pathValue)) {
+        if (candidates.some((c) => c.path === p)) continue;
+        const kind = describeKind(p);
+        const probed = await probeVersion(runner, p, spec.versionArgs, timeoutMs);
+        // Only parse a version from a SUCCESSFUL run (exit 0). A failed
+        // `--version` (broken shim) previously leaked mise's version from
+        // the error text into the UI; now version is null.
+        const version = probed.runs ? parseVersionOnly(`${probed.stdout}\n${probed.stderr}`) : null;
+        const meetsMin = spec.minVersion && version ? compareVersions(version, spec.minVersion) >= 0 : undefined;
+        candidates.push({
+          path: p,
+          source: "login-shell PATH",
+          kind: kind.kind,
+          ...(kind.symlinkTarget ? { symlinkTarget: kind.symlinkTarget } : {}),
+          ...(kind.shimManager ? { shimManager: kind.shimManager } : {}),
+          runs: probed.runs,
+          exitCode: probed.code,
+          stdout: probed.stdout,
+          stderr: probed.stderr,
+          version,
+          ...(meetsMin !== undefined ? { meetsMin } : {}),
+        });
+      }
+    }
+  }
+
+  // Choice: first candidate that runs AND meets the minimum (skip broken
+  // shims and try the next). When none meets the minimum but some run,
+  // choose the first that runs (version warning). When an explicit
+  // override is set, honour it (even when broken) so the error names it.
+  let chosen: string | null = null;
+  let chosenReason = "";
+  if (hasOverride) {
+    const first = candidates[0];
+    if (first && first.runs && (first.meetsMin ?? true)) {
+      chosen = first.path;
+      chosenReason = `explicit override ${overrideEnv} runs (version ${first.version ?? "unknown"})`;
+    } else if (first && first.runs) {
+      chosen = first.path;
+      chosenReason = `explicit override ${overrideEnv} runs but is version ${first.version ?? "unknown"} (need ≥ ${spec.minVersion}); update it`;
+    } else if (first) {
+      chosen = null;
+      chosenReason = `explicit override ${overrideEnv} (${first.path}) does not run (exit ${first.exitCode}); fix it or unset it`;
+    } else {
+      chosen = null;
+      chosenReason = `override ${overrideEnv} set but no candidate`;
+    }
+  } else if (candidates.length === 0) {
+    chosen = null;
+    chosenReason = `not found on PATH. ${spec.installHint}`;
+  } else {
+    const runnable = candidates.filter((c) => c.runs);
+    if (runnable.length === 0) {
+      chosen = null;
+      const first = candidates[0];
+      chosenReason = `found ${candidates.length} candidate(s) but none runs (first: ${first.path}, exit ${first.exitCode}); see full error text`;
+      warnings.push(`All ${candidates.length} candidate(s) for ${spec.tool} fail to run — the first error names the problem; a later entry may work once the broken shim is fixed.`);
+    } else if (spec.minVersion) {
+      const good = runnable.find((c) => c.meetsMin !== false);
+      if (good) {
+        chosen = good.path;
+        const skipped = candidates.indexOf(good);
+        chosenReason =
+          skipped === 0
+            ? `first on PATH runs (version ${good.version ?? "unknown"})`
+            : `candidate ${skipped + 1} of ${candidates.length} (${good.path}) is the first that runs and meets ≥ ${spec.minVersion}; skipped ${skipped} broken/too-old candidate(s)`;
+        if (skipped > 0) warnings.push(`Skipped ${skipped} broken or too-old ${spec.tool} candidate(s) before ${good.path}.`);
+      } else {
+        chosen = runnable[0].path;
+        chosenReason = `newest runnable is ${runnable[0].version ?? "unknown"} at ${runnable[0].path}, need ≥ ${spec.minVersion}; update it`;
+        warnings.push(`${spec.tool} at ${chosen} is version ${runnable[0].version ?? "unknown"}, need ≥ ${spec.minVersion}.`);
+      }
+    } else {
+      const good = runnable[0];
+      chosen = good.path;
+      const skipped = candidates.indexOf(good);
+      chosenReason =
+        skipped === 0 ? `first on PATH runs` : `candidate ${skipped + 1} of ${candidates.length} is the first that runs; skipped ${skipped} broken candidate(s)`;
+      if (skipped > 0) warnings.push(`Skipped ${skipped} broken ${spec.tool} candidate(s) before ${good.path}.`);
+    }
+  }
+
+  // Plain-language warnings for anything odd.
+  const runnablePaths = new Set(candidates.filter((c) => c.runs).map((c) => c.path));
+  if (candidates.length >= 2) {
+    const managers = new Set(candidates.map((c) => c.shimManager).filter(Boolean));
+    if (managers.size >= 2) warnings.push(`Two installs of ${spec.tool} (${[...managers].join(" + ")}); using ${chosen ?? "none"}.`);
+    else if (candidates.length >= 2 && runnablePaths.size >= 2)
+      warnings.push(`Two installs of ${spec.tool}; using ${chosen}.`);
+  }
+  for (const c of candidates) {
+    if (c.kind.startsWith("shim") && !c.runs)
+      warnings.push(`A ${c.kind} at ${c.path} does not run (exit ${c.exitCode}) — likely a broken manager shim; the next working entry is used.`);
+  }
+
+  return {
+    tool: spec.tool,
+    ...(overrideEnv ? { overrideEnv, overrideValue } : {}),
+    ...(spec.minVersion ? { minVersion: spec.minVersion } : {}),
+    candidates,
+    chosen,
+    chosenReason,
+    warnings,
+  };
+}
+
+/** Diagnose every known tool from the same effective PATH. */
+export async function diagnoseAllTools(opts: DiagnoseOptions): Promise<DiagnosticTool[]> {
+  const out: DiagnosticTool[] = [];
+  for (const spec of TOOL_SPECS) {
+    try {
+      out.push(await diagnoseTool(spec, opts));
+    } catch (e) {
+      out.push({
+        tool: spec.tool,
+        candidates: [],
+        chosen: null,
+        chosenReason: `diagnosis failed: ${String(e)}`,
+        warnings: [`Diagnosis for ${spec.tool} failed: ${String(e)}`],
+      });
+    }
+  }
+  return out;
+}
+
+/** Backwards-compatible single-path resolution: first runnable that meets min. */
+export function pickChosenPath(diag: DiagnosticTool): string | null {
+  return diag.chosen;
+}
+
+export type { AgentProvider };

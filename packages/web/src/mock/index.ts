@@ -1672,9 +1672,16 @@ export const mockApi = {
   },
 
   models: async (provider: string): Promise<ModelsResponse> => {
-    const catalog: Record<string, string[]> = {
-      claude: ["mock-main", "mock-small", "mock-opus"],
-      codex: ["mock-second", "mock-mini"],
+    const catalog: Record<string, import("@unvibe/shared").ModelInfo[]> = {
+      claude: [
+        { id: "mock-main", name: "Mock Main", description: "Mock main model for tests" },
+        { id: "mock-small", name: "Mock Small", description: "Mock small model for tests" },
+        { id: "mock-opus", name: "Mock Opus", description: "Mock opus-class model for tests" },
+      ],
+      codex: [
+        { id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" },
+        { id: "mock-mini", name: "Mock Mini", description: "Mock mini model" },
+      ],
     };
     const models = catalog[provider];
     if (!models) {

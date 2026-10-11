@@ -28,6 +28,7 @@ import {
   parseD2Version,
   resolveD2Bin,
 } from "../diagrams/bins.js";
+import { diagnoseTool, TOOL_SPECS } from "../diagnostics/tools.js";
 
 /** Minimal `command -v`: search PATH for an executable file. */
 export function findOnPath(name: string, pathValue: string = process.env.PATH ?? ""): string | null {
@@ -252,19 +253,36 @@ const CLI_FOR_PROVIDER: Record<string, string> = {
 
 /**
  * Cheapest reliable ACP probe: initialise + list models (no prompt, no
- * tokens). Returns the model ids or throws with the adapter's auth error.
+ * tokens). Returns the model infos (id + display name/description) or
+ * throws with the adapter's auth error.
  */
 export async function probeAgentModels(
   agents: AgentRunner,
   provider: string,
   timeoutMs = 10000,
-): Promise<string[]> {
-  const list = (agents as unknown as { listModels?: (p: string) => Promise<{ id: string }[] | string[]> }).listModels;
+): Promise<{ id: string; name?: string; description?: string }[]> {
+  const list = (
+    agents as unknown as {
+      listModels?: (p: string) => Promise<{ id: string; name?: string; description?: string }[] | string[]>;
+    }
+  ).listModels;
   if (typeof list !== "function") return [];
-  const res = await runWithTimeout(list.call(agents, provider) as Promise<{ id: string }[] | string[]>, timeoutMs, () => {
+  const res = await runWithTimeout(list.call(agents, provider) as Promise<{ id: string; name?: string; description?: string }[] | string[]>, timeoutMs, () => {
     throw new Error(`probe timed out after ${timeoutMs}ms`);
   });
-  return (res as ({ id: string } | string)[]).map((m) => (typeof m === "string" ? m : m.id)).filter(Boolean);
+  return (res as ({ id: string; name?: string; description?: string } | string)[])
+    .map((m) => (typeof m === "string" ? { id: m } : { id: m.id, ...(m.name ? { name: m.name } : {}), ...(m.description ? { description: m.description } : {}) }))
+    .filter((m) => Boolean(m.id));
+}
+
+/** Display label for a model id the same way pickers show it (#21). */
+export function modelDisplayLabel(
+  modelId: string,
+  known: { id: string; name?: string; description?: string }[],
+): string {
+  const found = known.find((m) => m.id === modelId);
+  if (found?.name) return `${found.name} (${modelId})`;
+  return modelId;
 }
 
 export async function agentCheck(opts: {
@@ -329,48 +347,60 @@ export async function agentCheck(opts: {
       settingsAnchor: "#models",
     };
   }
-  // Resolve the exact executable the adapter will run (user's installed CLI
-  // on the login-shell PATH, overridable via UNVIBE_*_BIN / adapter vars).
-  const bin = resolveAgentBin(provider as "claude" | "codex", { env, pathValue });
-  if (!bin) {
+  // Resolve the exact executable the adapter will run via the shared
+  // diagnostics module (skips broken shims, version only from a successful
+  // run, so doctor and service cannot disagree).
+  const spec = TOOL_SPECS.find((s) => s.tool === provider) ?? {
+    tool: provider,
+    names: [cli],
+    overrideEnvs: [],
+    versionArgs: ["--version"],
+    installHint: "",
+  };
+  let diag: import("@unvibe/shared").DiagnosticTool | null = null;
+  try {
+    diag = await diagnoseTool(spec, {
+      pathValue,
+      env,
+      ...(opts.runner ? { runner: opts.runner } : {}),
+      timeoutMs: Math.min(timeoutMs, 8000),
+    });
+  } catch {
+    diag = null;
+  }
+  const binPath = diag?.chosen ?? resolveAgentBin(provider as "claude" | "codex", { env, pathValue })?.path ?? null;
+  const binVersion = diag?.candidates.find((c) => c.path === binPath)?.version ?? null;
+  if (!binPath) {
+    // Specific diagnostic: which path was tried, what it printed, Doctor link.
+    const first = diag?.candidates[0];
+    const tried = first
+      ? `Tried ${first.path} (via ${first.source}, ${first.kind}): exit ${first.exitCode ?? "?"}${first.stderr ? ` — ${first.stderr.slice(0, 2000)}` : first.stdout ? ` — ${first.stdout.slice(0, 2000)}` : ""}. `
+      : "";
     return {
       id,
       label,
       status: "error",
-      summary: missingBinMessage(provider as "claude" | "codex"),
-      fix: `${agentBinSpec(provider as "claude" | "codex").installHint} Then Re-check.`,
+      summary: `${tried}${missingBinMessage(provider as "claude" | "codex")}`,
+      fix: `${agentBinSpec(provider as "claude" | "codex").installHint} Then Re-check. See the Doctor page (/doctor) for every candidate and full error text.`,
       settingsAnchor: "#models",
     };
   }
+  const bin = { path: binPath, source: diag?.candidates.find((c) => c.path === binPath)?.source ?? "login-shell PATH" };
   // Version gate: adapters were written against specific CLI versions; a
   // too-old CLI fails as a generic adapter crash, so report the specific
-  // minimum here instead. Best-effort (a CLI that won't run --version still
-  // gets the login probe below).
-  let binVersion: string | null = null;
-  if (opts.runner) {
-    try {
-      const r = await runWithTimeout(
-        opts.runner.run(bin.path, { args: ["--version"] }),
-        Math.min(timeoutMs, 8000),
-        () => ({ stdout: "", stderr: "timed out", code: 1 }),
-      );
-      binVersion = parseVersion(`${r.stdout}\n${r.stderr}`);
-    } catch {
-      binVersion = null;
-    }
-    if (binVersion && !meetsMinVersion(provider as "claude" | "codex", binVersion)) {
-      return {
-        id,
-        label,
-        status: "error",
-        summary: `${versionTooOldMessage(provider as "claude" | "codex", binVersion)} (running ${bin.path})`,
-        fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check.`,
-        settingsAnchor: "#models",
-      };
-    }
+  // minimum here instead. binVersion comes only from a successful run.
+  if (binVersion && !meetsMinVersion(provider as "claude" | "codex", binVersion)) {
+    return {
+      id,
+      label,
+      status: "error",
+      summary: `${versionTooOldMessage(provider as "claude" | "codex", binVersion)} (running ${bin.path})`,
+      fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check. See the Doctor page (/doctor) for every candidate.`,
+      settingsAnchor: "#models",
+    };
   }
   const binSuffix = binVersion ? ` (running ${cli} ${binVersion} at ${bin.path})` : ` (running ${bin.path})`;
-  let models: string[];
+  let models: { id: string; name?: string; description?: string }[];
   try {
     models = await probeAgentModels(agents, provider, timeoutMs);
   } catch (e) {
@@ -382,7 +412,7 @@ export async function agentCheck(opts: {
         label,
         status: "warning",
         summary: `${provider} probe timed out${binSuffix}`,
-        fix: `The ${provider} adapter didn't answer. Re-check; ensure ${cli} is logged in.`,
+        fix: `The ${provider} adapter didn't answer. Re-check; ensure ${cli} is logged in. See the Doctor page (/doctor) for the full diagnostic.`,
         settingsAnchor: "#models",
       };
     }
@@ -391,18 +421,20 @@ export async function agentCheck(opts: {
         id,
         label,
         status: "error",
-        summary: `${provider} not logged in (${msg.slice(0, 120)})${binSuffix}`,
-        fix: `Log in with ${cli}, then Re-check.`,
+        summary: `${provider} not logged in (${msg})${binSuffix}`,
+        fix: `Log in with ${cli}, then Re-check. See the Doctor page (/doctor) for the full diagnostic.`,
         settingsAnchor: "#models",
       };
     }
     if (/enoent|not found|spawn|no such|not installed/.test(lower)) {
+      const first = diag?.candidates[0];
+      const tried = first ? `Tried ${first.path} (via ${first.source}): ${first.stderr || first.stdout || `exit ${first.exitCode}`}. ` : "";
       return {
         id,
         label,
         status: "error",
-        summary: `${provider} adapter not usable (${msg.slice(0, 120)})${binSuffix}`,
-        fix: `Reinstall the ${provider} adapter/CLI and ensure ${cli} is on your login-shell PATH, then Re-check. Unvibe does not install ${cli} for you.`,
+        summary: `${provider} adapter not usable (${msg})${binSuffix}. ${tried}`,
+        fix: `Reinstall the ${provider} adapter/CLI and ensure ${cli} is on your login-shell PATH, then Re-check. Unvibe does not install ${cli} for you. See the Doctor page (/doctor).`,
         settingsAnchor: "#models",
       };
     }
@@ -414,8 +446,8 @@ export async function agentCheck(opts: {
         id,
         label,
         status: "error",
-        summary: `${provider} CLI incompatible (${msg.slice(0, 100)}; running ${cli} ${found} at ${bin.path}). ${versionTooOldMessage(provider as "claude" | "codex", binVersion ?? agentBinSpec(provider as "claude" | "codex").minVersion)}`,
-        fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check.`,
+        summary: `${provider} CLI incompatible (${msg}; running ${cli} ${found} at ${bin.path}). ${versionTooOldMessage(provider as "claude" | "codex", binVersion ?? agentBinSpec(provider as "claude" | "codex").minVersion)}`,
+        fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check. See the Doctor page (/doctor).`,
         settingsAnchor: "#models",
       };
     }
@@ -423,8 +455,8 @@ export async function agentCheck(opts: {
       id,
       label,
       status: "error",
-      summary: `${provider} unusable: ${msg.slice(0, 140)}${binSuffix}`,
-      fix: `Check ${cli} login and the adapter install, then Re-check.`,
+      summary: `${provider} unusable: ${msg}${binSuffix}`,
+      fix: `Check ${cli} login and the adapter install, then Re-check. See the Doctor page (/doctor) for the full diagnostic.`,
       settingsAnchor: "#models",
     };
   }
@@ -434,25 +466,27 @@ export async function agentCheck(opts: {
       label,
       status: "error",
       summary: `${provider} logged in but returned no models${binSuffix}`,
-      fix: `Check ${cli} login, then Re-check.`,
+      fix: `Check ${cli} login, then Re-check. See the Doctor page (/doctor).`,
       settingsAnchor: "#models",
     };
   }
-  if (!models.includes(pick.model)) {
+  const modelIds = models.map((m) => m.id);
+  if (!modelIds.includes(pick.model)) {
     return {
       id,
       label,
       status: "warning",
       summary: `${provider} ready${binSuffix}, but model "${pick.model}" not offered (has ${models.length} models)`,
-      fix: "Pick one of the offered models in Settings → Models.",
+      fix: "Pick one of the offered models in Settings → Models. See the Doctor page (/doctor) for display names.",
       settingsAnchor: "#models",
     };
   }
+  const display = modelDisplayLabel(pick.model, models);
   return {
     id,
     label,
     status: "ok",
-    summary: `${provider}/${pick.model} ready${binSuffix}`,
+    summary: `${provider}/${display} ready${binSuffix}`,
     fix: "",
     settingsAnchor: "#models",
   };
@@ -497,14 +531,29 @@ export async function d2Check(opts: {
 }): Promise<ReadinessCheck> {
   const pathValue = opts.pathValue ?? process.env.PATH ?? "";
   const env = opts.env ?? process.env;
-  const bin = resolveD2Bin({ env, pathValue });
+  // Shared diagnostics: skips broken shims, version only from success.
+  const d2spec = TOOL_SPECS.find((s) => s.tool === "d2")!;
+  let diag: import("@unvibe/shared").DiagnosticTool | null = null;
+  try {
+    diag = await diagnoseTool(d2spec, {
+      pathValue,
+      env,
+      ...(opts.runner ? { runner: opts.runner } : {}),
+      timeoutMs: Math.min(opts.timeoutMs ?? 8000, 8000),
+    });
+  } catch {
+    diag = null;
+  }
+  const bin = diag?.chosen
+    ? { path: diag.chosen, source: diag.candidates.find((c) => c.path === diag!.chosen)?.source ?? "login-shell PATH" }
+    : resolveD2Bin({ env, pathValue });
   if (!bin) {
     return {
       id: "d2",
       label: "Diagrams · d2",
       status: "warning",
       summary: "Diagrams need d2 (not found on login-shell PATH)",
-      fix: `${d2InstallHint()} Then Re-check. Reviews still work; diagrams show their source until d2 is installed.`,
+      fix: `${d2InstallHint()} Then Re-check. Reviews still work; diagrams show their source until d2 is installed. See the Doctor page (/doctor).`,
       settingsAnchor: "#environment",
     };
   }
@@ -518,44 +567,49 @@ export async function d2Check(opts: {
       label: "Diagrams · d2",
       status: "warning",
       summary: `${D2_ENV_OVERRIDE} points at a missing file (${bin.path}); diagrams show their source`,
-      fix: `Point ${D2_ENV_OVERRIDE} at your d2 executable (≥ ${D2_MIN}), or unset it to use the login-shell PATH. ${d2InstallHint()} Then Re-check.`,
+      fix: `Point ${D2_ENV_OVERRIDE} at your d2 executable (≥ ${D2_MIN}), or unset it to use the login-shell PATH. ${d2InstallHint()} Then Re-check. See the Doctor page (/doctor).`,
       settingsAnchor: "#environment",
     };
   }
-  let version: string | null = null;
-  if (opts.runner) {
+  let version: string | null = diag?.candidates.find((c) => c.path === bin.path)?.version ?? null;
+  if (opts.runner && version === null && !diag) {
     try {
       const r = await runWithTimeout(
         opts.runner.run(bin.path, { args: ["--version"] }),
         Math.min(opts.timeoutMs ?? 8000, 8000),
         () => ({ stdout: "", stderr: "timed out", code: 1 }),
       );
-      version = parseD2Version(`${r.stdout}\n${r.stderr}`);
+      // Only parse from a successful run (exit 0); a failed run never yields a version.
+      if (r.code === 0) version = parseD2Version(`${r.stdout}\n${r.stderr}`);
+      else version = null;
     } catch {
       version = null;
     }
-    if (version && !meetsD2MinVersion(version)) {
-      return {
-        id: "d2",
-        label: "Diagrams · d2",
-        status: "warning",
-        summary: `Diagrams need d2 ≥ ${D2_MIN} (running ${version} at ${bin.path})`,
-        fix: `Update d2, then Re-check. Reviews still work; diagrams show their source until d2 is updated.`,
-        settingsAnchor: "#environment",
-      };
-    }
-    // Probed but unanswerable (not executable, crashes, timed out): warn
-    // rather than reporting ok for a binary that cannot render (issue #17).
-    if (version === null) {
-      return {
-        id: "d2",
-        label: "Diagrams · d2",
-        status: "warning",
-        summary: `d2 at ${bin.path} (via ${bin.source}) did not answer --version; diagrams show their source`,
-        fix: `Check the binary runs (${bin.path} --version), or unset ${D2_ENV_OVERRIDE} to use the login-shell PATH. ${d2InstallHint()} Then Re-check.`,
-        settingsAnchor: "#environment",
-      };
-    }
+  }
+  if (version && !meetsD2MinVersion(version)) {
+    return {
+      id: "d2",
+      label: "Diagrams · d2",
+      status: "warning",
+      summary: `Diagrams need d2 ≥ ${D2_MIN} (running ${version} at ${bin.path})`,
+      fix: `Update d2, then Re-check. Reviews still work; diagrams show their source until d2 is updated. See the Doctor page (/doctor).`,
+      settingsAnchor: "#environment",
+    };
+  }
+  // Probed but unanswerable (not executable, crashes, timed out): warn
+  // rather than reporting ok for a binary that cannot render (issue #17).
+  // When diagnostics found candidates but none runs, name the first error.
+  if (opts.runner && version === null) {
+    const firstBad = diag?.candidates[0];
+    const tried = firstBad ? `Tried ${firstBad.path}: ${firstBad.stderr || firstBad.stdout || `exit ${firstBad.exitCode}`}. ` : "";
+    return {
+      id: "d2",
+      label: "Diagrams · d2",
+      status: "warning",
+      summary: `d2 at ${bin.path} (via ${bin.source}) did not answer --version; diagrams show their source. ${tried}`,
+      fix: `Check the binary runs (${bin.path} --version), or unset ${D2_ENV_OVERRIDE} to use the login-shell PATH. ${d2InstallHint()} Then Re-check. See the Doctor page (/doctor).`,
+      settingsAnchor: "#environment",
+    };
   }
   return {
     id: "d2",

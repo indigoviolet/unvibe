@@ -7,8 +7,13 @@
  * different one).
  */
 import { useEffect, useState } from "react";
-import type { ModelPick, ReadinessCheck, Settings } from "@unvibe/shared";
+import type { ModelInfo, ModelPick, ReadinessCheck, Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+
+/** Display label the same way everywhere (#21): name beside the id. */
+export function modelLabel(m: ModelInfo): string {
+  return m.name ? `${m.name} (${m.id})` : m.id;
+}
 
 type Role = "main" | "small" | "secondOpinion";
 
@@ -92,7 +97,7 @@ function ModelPicker({
 }): React.JSX.Element {
   const pick: ModelPick = settings[role];
   const [provider, setProvider] = useState(pick.provider);
-  const [models, setModels] = useState<string[] | null>(null);
+  const [models, setModels] = useState<ModelInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -123,7 +128,8 @@ function ModelPicker({
 
   // The saved pick may have disappeared from the adapter's list (model
   // retired or renamed): flag it plainly instead of silently keeping it.
-  const offeredMissing = models !== null && error === null && pick.model !== "" && !models.includes(pick.model);
+  const modelIds = models?.map((m) => m.id) ?? null;
+  const offeredMissing = modelIds !== null && error === null && pick.model !== "" && !modelIds.includes(pick.model);
   const unset = role === "secondOpinion" && pick.model === "";
 
   const save = async (next: ModelPick): Promise<void> => {
@@ -184,20 +190,34 @@ function ModelPicker({
           ) : models === null ? (
             <span className="hint">Loading models…</span>
           ) : (
-            <select
-              id={`model-${role}`}
-              value={pick.model}
-              onChange={(e) => void save({ provider: pick.provider, model: e.target.value })}
-              disabled={saving}
-            >
-              {pick.model === "" ? <option value="">Not set</option> : null}
-              {models.includes(pick.model) ? null : pick.model !== "" ? <option value={pick.model}>{pick.model} (current)</option> : null}
-              {models.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                id={`model-${role}`}
+                value={pick.model}
+                onChange={(e) => void save({ provider: pick.provider, model: e.target.value })}
+                disabled={saving}
+              >
+                {pick.model === "" ? <option value="">Not set</option> : null}
+                {modelIds?.includes(pick.model) ? null : pick.model !== "" ? <option value={pick.model}>{pick.model} (current)</option> : null}
+                {models.map((m) => (
+                  <option key={m.id} value={m.id} title={m.description ?? undefined}>
+                    {modelLabel(m)}
+                  </option>
+                ))}
+              </select>
+              {/* Description as secondary text for the current pick + all options (#21). */}
+              {(() => {
+                const current = models.find((m) => m.id === pick.model);
+                if (current?.description) {
+                  return (
+                    <span className="hint" data-testid={`model-${role}-desc`}>
+                      {current.description}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+            </>
           )}
           {saving ? <span className="hint">Saving…</span> : null}
           {saveError ? (

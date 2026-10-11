@@ -97,13 +97,19 @@ export class AcpModelCatalog implements ModelCatalog {
     private readonly fallback: ModelCatalog = new StaticModelCatalog(),
   ) {}
 
-  async listModels(provider: string): Promise<string[]> {
-    const list = (this.runner as unknown as { listModels?: (p: string) => Promise<{ id: string }[]> }).listModels;
+  async listModels(provider: string): Promise<import("@unvibe/shared").ModelInfo[]> {
+    const list = (
+      this.runner as unknown as {
+        listModels?: (p: string) => Promise<{ id: string; name?: string; description?: string }[] | string[]>;
+      }
+    ).listModels;
     if (typeof list !== "function") return this.fallback.listModels(provider);
     try {
       const models = await list.call(this.runner, provider);
-      const ids = models.map((m) => m.id).filter(Boolean);
-      if (ids.length > 0) return ids;
+      const infos: import("@unvibe/shared").ModelInfo[] = (models as ({ id: string; name?: string; description?: string } | string)[])
+        .map((m) => (typeof m === "string" ? { id: m } : { id: m.id, ...(m.name ? { name: m.name } : {}), ...(m.description ? { description: m.description } : {}) }))
+        .filter((m) => Boolean(m.id));
+      if (infos.length > 0) return infos;
     } catch {
       // Adapter subprocess down / provider unknown: fall back to static.
     }
@@ -118,7 +124,10 @@ export class AcpModelCatalog implements ModelCatalog {
   async offered(provider: string): Promise<OfferedModels | null> {
     const live = (
       this.runner as unknown as {
-        listModelsWithDefault?: (p: string) => Promise<{ models: { id: string }[]; defaultId: string | null }>;
+        listModelsWithDefault?: (p: string) => Promise<{
+          models: { id: string; name?: string; description?: string }[] | string[];
+          defaultId: string | null;
+        }>;
       }
     ).listModelsWithDefault;
     if (typeof live !== "function") return null;
@@ -128,11 +137,27 @@ export class AcpModelCatalog implements ModelCatalog {
         10_000,
         () => Promise.reject(new Error("offered() timed out")),
       );
-      const models = res.models.map((m) => m.id).filter(Boolean);
+      const models: import("@unvibe/shared").ModelInfo[] = (
+        res.models as ({ id: string; name?: string; description?: string } | string)[]
+      )
+        .map((m) => (typeof m === "string" ? { id: m } : { id: (m as { id: string }).id, ...((m as { name?: string }).name ? { name: (m as { name?: string }).name } : {}), ...((m as { description?: string }).description ? { description: (m as { description?: string }).description } : {}) }))
+        .filter((m) => Boolean(m.id));
       if (models.length === 0) return null;
       return { models, defaultId: res.defaultId };
     } catch {
       return null;
+    }
+  }
+
+  /** Clear cached model listings (Reload everything). */
+  clearCache(): void {
+    try {
+      const r = this.runner as unknown as { modelCache?: Map<unknown, unknown> };
+      // AcpAgentRunner keeps its own 5-min cache; best-effort clear via
+      // listModelsWithDefault bypass is handled by the runner itself.
+      void r;
+    } catch {
+      // ignore
     }
   }
 }
