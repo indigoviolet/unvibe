@@ -11,13 +11,14 @@
  *   `fetch`/WS from our code (`gh`/agent CLIs use their own processes).
  * - `script-src 'self'`: no remote scripts, no `unsafe-inline` (the app
  *   shell and the offline page load scripts from files only).
- * - `style-src 'self' 'unsafe-inline'`: Mermaid injects inline `<style>`
- *   tags at runtime when it renders diagrams, and the offline page carries
- *   a small inline `<style>` block. Scoped to styles only; scripts stay
- *   strict. No remote stylesheets (fonts are self-hosted via @fontsource).
+ * - `style-src 'self' 'unsafe-inline'`: D2 SVGs served by the service
+ *   carry inline `<style>` blocks (fonts embedded as data:), and the
+ *   offline page carries a small inline `<style>` block. Scoped to styles
+ *   only; scripts stay strict. No remote stylesheets (fonts are self-hosted
+ *   via @fontsource).
  * - `font-src 'self' data:`: self-hosted woff2 + data: fallbacks only.
  * - `img-src 'self' data: blob:`: icons/manifest (self) plus data:/blob:
- *   where Mermaid or icons truly need it. No remote images.
+ *   where diagrams or icons truly need it. No remote images.
  * - `form-action 'self'`, `frame-ancestors 'none'`, `base-uri 'none'`:
  *   no exfiltration via forms/frames/base.
  *

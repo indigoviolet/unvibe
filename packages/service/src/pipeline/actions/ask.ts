@@ -260,7 +260,7 @@ function replyHtml(cards: ParsedCard[]): {
         parts.push(body);
         for (const c of b.citations ?? []) citations.push({ ...c });
       } else if (b.type === "diagram") {
-        parts.push(`<pre class="mermaid">${escapeHtml(b.mermaid)}</pre>`);
+        parts.push(`<pre class="d2">${escapeHtml(b.source)}</pre>`);
         if (b.caption) parts.push(`<p>${escapeHtml(b.caption)}</p>`);
         for (const c of b.citations ?? []) citations.push({ ...c });
       } else if (b.type === "aside") {

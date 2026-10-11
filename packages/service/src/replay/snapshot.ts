@@ -24,7 +24,7 @@ import type {
   ReviewFile,
   ReviewSnapshot,
 } from "@unvibe/shared";
-import { canonicalizeTarget, parseId, parseReply, collectTargets } from "@unvibe/shared";
+import { canonicalizeTarget, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION } from "@unvibe/shared";
 import { classifyFile, fileKeyForPath } from "../ingest/classify.js";
 import { renderMarkdownBlocks } from "../ingest/description.js";
 import { parseUnifiedDiff } from "../ingest/diff.js";
@@ -162,6 +162,14 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
           };
         case "aside":
           return { ...b, inner: canonBlocks(b.inner), citations: canonCites(b.citations) };
+        case "diagram": {
+          // D2 fixture diagrams: hash with the gated version (== the real
+          // binary in dev/CI) and status ok. Pre-rendered light+dark SVGs
+          // ship in fixtures/urllib3-5020/diagrams/<hash>.<theme>.svg; the
+          // endpoint serves them (seeded cache) without needing `d2`.
+          const hash = diagramHash(b.source, D2_MIN_VERSION);
+          return { ...b, citations: canonCites(b.citations), render: { hash, status: "ok" as const } };
+        }
         default:
           return { ...b, citations: canonCites((b as { citations: { target: string }[] }).citations) };
       }

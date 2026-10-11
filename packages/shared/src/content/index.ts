@@ -25,3 +25,12 @@ export {
   splitCardSections,
 } from "./parse.js";
 export type { CollectedTargets, ParsedReply, RenderedInline } from "./parse.js";
+export {
+  D2_MIN_VERSION,
+  D2_RENDER_OPTIONS,
+  D2_VERSION_UNKNOWN,
+  DIAGRAM_HASH_LEN,
+  canonicalizeD2Source,
+  diagramHash,
+  extractD2Links,
+} from "./d2.js";

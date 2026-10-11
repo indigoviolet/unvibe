@@ -2,9 +2,10 @@
  * Block rendering (web-guide owner; PRD §4.4 display side + §4.5 + §4.9).
  *
  * Paragraph, list (per-item citations plus the block-level union the
- * parser emits), table, code, diagram (Mermaid), aside (Example / Diagram /
- * Underlying principle), finding-link (orange agent-finding card),
- * follow-up chips, comment-link (suggested review comment on a diff line).
+ * parser emits), table, code, diagram (D2, service-rendered), aside
+ * (Example / Diagram / Underlying principle), finding-link (orange
+ * agent-finding card), follow-up chips, comment-link (suggested review
+ * comment on a diff line).
  */
 import type { Annotation, Block, DepthLevel, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
@@ -51,7 +52,17 @@ function Paragraph({
   );
 }
 
-function AsideInner({ inner, top, onOpenPage }: { inner: Block; top: string; onOpenPage: (p: string) => void }) {
+function AsideInner({
+  inner,
+  top,
+  reviewId,
+  onOpenPage,
+}: {
+  inner: Block;
+  top: string;
+  reviewId: string;
+  onOpenPage: (p: string) => void;
+}) {
   switch (inner.type) {
     case "paragraph":
       return (
@@ -66,7 +77,7 @@ function AsideInner({ inner, top, onOpenPage }: { inner: Block; top: string; onO
         </pre>
       );
     case "diagram":
-      return <DiagramView source={inner.mermaid} caption={inner.caption} />;
+      return <DiagramView reviewId={reviewId} block={inner} />;
     case "list":
       return (
         <ul className="lst">
@@ -98,6 +109,7 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     "citations" in block && Array.isArray(block.citations) ? block.citations : [];
   const resolved = snapshot ? resolveBlockCitations(snapshot, citations) : [];
   const id = `B-${block.id}`;
+  const reviewId = snapshot?.review.id ?? "";
 
   switch (block.type) {
     case "paragraph": {
@@ -176,7 +188,7 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     case "diagram":
       return (
         <div className="blk" id={id}>
-          <DiagramView source={block.mermaid} caption={block.caption} />
+          <DiagramView reviewId={reviewId} block={block} />
           {(resolved.length > 0 || threads.length > 0) && (
             <div className="lo-row">
               <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />
@@ -189,7 +201,7 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
         <div className="blk gen-aside fresh" id={id}>
           <div className="tag">{block.kind}</div>
           {block.inner.map((inner) => (
-            <AsideInner key={inner.id} inner={inner} top={block.id} onOpenPage={onOpenPage} />
+            <AsideInner key={inner.id} inner={inner} top={block.id} reviewId={reviewId} onOpenPage={onOpenPage} />
           ))}
           {threads.length > 0 && (
             <div className="lo-row">

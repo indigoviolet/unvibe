@@ -4,7 +4,7 @@
  *
  * Tolerated: trailing whitespace after the fence, a `json`/`jsonc`/empty
  * language tag, and non-fence prose after the block (ignored). Earlier
- * fenced code blocks (examples, Mermaid) are content, never the trailer:
+ * fenced code blocks (examples, diagrams) are content, never the trailer:
  * only the LAST fenced block in the reply can be the trailer.
  *
  * Never throws: a missing or malformed trailer is a typed {@link SplitError}.

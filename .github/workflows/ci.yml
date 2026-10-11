@@ -57,6 +57,9 @@ jobs:
         run: mise run install
         timeout-minutes: 10
 
+      - name: Install d2 (diagram tests; unit tests still pass without it)
+        run: mise install d2 || true
+
       - name: Lint + typecheck + unit tests
         run: mise run check
         timeout-minutes: 20

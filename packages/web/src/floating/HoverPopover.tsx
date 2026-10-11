@@ -131,9 +131,12 @@ export function HoverPopover() {
     if (!snap) return;
     const byId = new Map(snap.pages.map((p) => [p.id, p]));
     const lookup = (id: string): Page | undefined => byId.get(id);
+    // `dataset` lives on HTMLElement and SVGElement alike (diagram anchors
+    // are SVG `<a>` elements); never narrow to `instanceof HTMLElement`.
+    const ds = (anchor as HTMLElement).dataset;
     let content = "";
-    if (anchor instanceof HTMLElement && anchor.dataset.refs) {
-      const targets = anchor.dataset.refs.split("|");
+    if (ds.refs) {
+      const targets = ds.refs.split("|");
       const resolved = resolveBlockCitations(
         snap,
         targets.map((target) => ({ target })),
@@ -144,19 +147,19 @@ export function HoverPopover() {
             `<button class="cite" data-src="${esc(c.target)}"><span class="loc">${esc(c.label)}${c.unverified ? " · unverified" : ""}</span><span class="snip">${esc(c.snippet)}</span></button>`,
         )
         .join("");
-    } else if (anchor instanceof HTMLElement && anchor.dataset.threads) {
-      const ids = anchor.dataset.threads.split("|");
+    } else if (ds.threads) {
+      const ids = ds.threads.split("|");
       content =
         ids
           .map((id) => previewThread(snap.annotations.find((a) => a.id === id)))
           .join("") + `<span class="hint">Click to open</span>`;
-    } else if (anchor instanceof HTMLElement && (anchor.dataset.cprev || anchor.dataset.cjump)) {
-      const id = anchor.dataset.cprev ?? anchor.dataset.cjump ?? "";
+    } else if (ds.cprev || ds.cjump) {
+      const id = ds.cprev ?? ds.cjump ?? "";
       content =
         previewThread(snap.annotations.find((a) => a.id === id)) +
         `<span class="hint">Click to go to it in the diff</span>`;
-    } else if (anchor instanceof HTMLElement && anchor.dataset.jump) {
-      const id = anchor.dataset.jump;
+    } else if (ds.jump) {
+      const id = ds.jump;
       const found = snap.annotations.find((a) => a.id === id);
       if (found && (found.type === "expansion" || found.type === "link")) {
         if (found.promotedToPage) {

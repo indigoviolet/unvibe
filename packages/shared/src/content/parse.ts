@@ -18,10 +18,10 @@
  *   a paragraph attaches its content to that paragraph's `text.simple` /
  *   `text.deep`. With no preceding paragraph it becomes its own paragraph.
  * - Card titles are plain text (`## Title`).
- * - Diagrams: a fenced `mermaid` block → `DiagramBlock`. A paragraph
+ * - Diagrams: a fenced `d2` block → `DiagramBlock`. A paragraph
  *   starting with `Caption:` right after it becomes the caption. Citation
- *   tokens inside Mermaid node labels are collected (PRD §13/§19.4); the
- *   source keeps them verbatim.
+ *   targets from `link:` values are collected; the source keeps them
+ *   verbatim. A fenced `mermaid` block is ordinary code, not a diagram.
  * - Follow-ups: a `### Follow-ups` heading turns the next list into a
  *   `FollowUpBlock`. Items are `Label` or `Label | ask: question`.
  * - Finding references: a paragraph holding exactly
@@ -52,6 +52,7 @@ import { parseId, type ParsedId } from "../ids.js";
 import { tokenizeLinks } from "../links.js";
 import type { ParsedCard, ParseOptions, ReplyData, SplitError } from "./types.js";
 import { splitReply } from "./split.js";
+import { extractD2Links, canonicalizeD2Source, diagramHash, D2_MIN_VERSION } from "./d2.js";
 
 const CITATION_KINDS = new Set(["diff", "code", "desc", "h"]);
 
@@ -343,16 +344,23 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
   }
 
   function closeFence(f: { lang: string; lines: string[] }): void {
-    if (f.lang === "mermaid") {
+    if (f.lang === "d2") {
       const source = f.lines.join("\n").trim();
       const citations: Citation[] = [];
-      for (const t of tokenizeLinks(source)) {
-        const parsed = parseId(t.idText);
-        if (parsed === null || CITATION_KINDS.has(parsed.kind)) {
-          pushCitation({ citations, links: [] }, t.idText);
-        }
+      for (const target of extractD2Links(source)) {
+        pushCitation({ citations, links: [] }, target);
       }
-      blocks.push({ type: "diagram", id: nextId(), mermaid: source, citations });
+      // Placeholder render: hashed with the gated version (== the seed
+      // version) so the endpoint can serve pre-rendered fixture SVGs — and
+      // render on demand when the binary is present — before the pipeline
+      // finalizes the block. Never empty: the web fetches by hash.
+      blocks.push({
+        type: "diagram",
+        id: nextId(),
+        source,
+        citations,
+        render: { hash: diagramHash(canonicalizeD2Source(source), D2_MIN_VERSION), status: "unavailable" },
+      });
       diagramAwaitingCaption = true;
     } else {
       blocks.push({
@@ -600,7 +608,6 @@ export function collectTargets(blocks: Block[]): CollectedTargets {
           break; // Fence content is literal; tokens there are not citations.
         case "diagram": {
           for (const c of b.citations) push(citations, c.target);
-          for (const t of tokenizeLinks(b.mermaid)) push(links, t.idText);
           if (b.caption) scanHtml(b.caption);
           break;
         }
@@ -852,8 +859,8 @@ export function renderMarkdown(blocks: Block[]): string {
         parts.push(`\`\`\`${b.language ?? ""}\n${b.code}\n\`\`\``);
         break;
       case "diagram":
-        parts.push(`\`\`\`mermaid\n${b.mermaid}\n\`\`\``);
-        // Block citations cover node-label tokens (kept verbatim above)
+        parts.push(`\`\`\`d2\n${b.source}\n\`\`\``);
+        // Block citations are the `link:` values (kept verbatim above)
         // plus caption tokens; re-parsing dedupes them back to this set.
         if (b.caption) parts.push(`Caption: ${withCitations(inlineToMarkdown(b.caption), b.citations)}`);
         break;

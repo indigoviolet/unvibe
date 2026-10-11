@@ -1,40 +1,25 @@
 /**
- * Mermaid diagram rendering (M2, web-guide owner).
+ * D2 diagram rendering (web-guide owner; D2 decision addendum).
  *
- * The `mermaid` package loads lazily so the guide stays fast when no card
- * shows a diagram. Light/dark follows the page theme; a parse failure (or
- * load failure) falls back to the readable source in a code block.
+ * Every diagram block renders through `D2Diagram`: the service runs the
+ * `d2` binary and caches light + dark SVGs, the web app inlines the one
+ * matching the current theme. Mermaid is gone (no compatibility path).
  */
-import { Suspense, lazy, useId } from "react";
-
-const MermaidSvg = lazy(() => import("./MermaidSvg.js"));
+import type { DiagramBlock } from "@unvibe/shared";
+import { D2Diagram } from "./D2Diagram.js";
 
 interface Props {
-  source: string;
-  caption?: string;
+  reviewId: string;
+  block: DiagramBlock;
 }
 
-export function DiagramView({ source, caption }: Props) {
-  const fallbackId = useId();
+export function DiagramView({ reviewId, block }: Props) {
   return (
     <>
-      <div className="dg">
-        <Suspense
-          fallback={
-            <div className="working" role="status">
-              <span className="dots" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-              <span>Rendering diagram…</span>
-            </div>
-          }
-        >
-          <MermaidSvg source={source} fallbackId={fallbackId} />
-        </Suspense>
+      <div className="dg dg-d2">
+        <D2Diagram reviewId={reviewId} block={block} />
       </div>
-      {caption ? <p className="dg-cap">{caption}</p> : null}
+      {block.caption ? <p className="dg-cap">{block.caption}</p> : null}
     </>
   );
 }

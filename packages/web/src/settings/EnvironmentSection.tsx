@@ -32,7 +32,7 @@ export function EnvironmentSection(): React.JSX.Element {
     <section aria-label="Environment" id="environment" style={{ scrollMarginTop: 12 }}>
       <div className="divider">Environment</div>
       <p className="hint">
-        git, gh and the configured agent CLIs — the same checks as the front-screen callouts.
+        git, gh, d2 and the configured agent CLIs — the same checks as the front-screen callouts.
       </p>
       {error ? (
         <p className="err" role="alert">
