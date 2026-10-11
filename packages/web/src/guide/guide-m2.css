@@ -26,6 +26,18 @@
   background: var(--sunk);
 }
 
+/* Diagram cited nodes (JSON spec): same behaviour as markers. */
+.dg [data-cite].unverified,
+.dg [data-cite-badge].unverified {
+  opacity: 0.38;
+}
+
+.dg [data-cite]:focus-visible,
+.dg [data-cite-badge]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Stale card banner (PRD §8): cited hunks changed, update available. */
 .stale {
   display: flex;
