@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "sequence",
+  "title": "Folded Set-Cookie travelling from socket to both header views",
+  "actors": ["Test client", "ConnectionPool", "HTTPConnection", "http.client"],
+  "messages": [
+    { "from": 0, "to": 1, "label": "request() with folded response", "cite": "diff:tsock:99-118" },
+    { "from": 1, "to": 2, "label": "getresponse()", "cite": "diff:conn:650-651" },
+    { "from": 2, "to": 3, "label": "parse_headers() keeps CRLF", "cite": "diff:conn:650-651" },
+    { "from": 3, "to": 2, "label": "HTTPMessage with raw fold", "cite": "diff:conn:80-88" },
+    { "from": 2, "to": 1, "label": "HTTPHeaderDict + same HTTPMessage", "cite": "diff:tsock:139-146" }
+  ]
+}
