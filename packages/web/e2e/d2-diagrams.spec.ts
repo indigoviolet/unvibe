@@ -26,15 +26,55 @@ async function gotoReview(page: Page): Promise<void> {
  * Hover an anchor deterministically (same reason as `guide.spec.ts`:
  * Playwright's `hover()` may scroll with the pointer already over the
  * target, and a scroll with a stationary pointer must NOT open the
- * popover).
+ * popover). Waits for scroll quiet, then aims at the anchor's own line
+ * boxes (a wrapped anchor's union-box center can land on plain text)
+ * until the cursor verifiably lands on it.
  */
 async function hoverFresh(page: Page, locator: Locator): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __lastScrollAt?: number; __scrollHook?: boolean };
+    w.__lastScrollAt = Date.now();
+    if (!w.__scrollHook) {
+      w.__scrollHook = true;
+      document.addEventListener(
+        "scroll",
+        () => {
+          w.__lastScrollAt = Date.now();
+        },
+        true,
+      );
+    }
+  });
   await locator.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(200);
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("anchor has no box");
+  await page.waitForFunction(
+    () => Date.now() - ((window as unknown as { __lastScrollAt?: number }).__lastScrollAt ?? 0) > 400,
+    { polling: 250, timeout: 10_000 },
+  );
   await page.mouse.move(8, 200);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+  const measure = (): Promise<{ x: number; y: number; width: number; height: number }[]> =>
+    locator.evaluate((target) => {
+      const out: { x: number; y: number; width: number; height: number }[] = [];
+      const rs = target.getClientRects();
+      for (let i = 0; i < rs.length; i++) out.push({ x: rs[i].x, y: rs[i].y, width: rs[i].width, height: rs[i].height });
+      return out;
+    });
+  for (let i = 0; i < 4; i++) {
+    const rects = await measure();
+    if (rects.length === 0) throw new Error("anchor has no rects");
+    const r = rects[Math.min(i, rects.length - 1)];
+    const x = r.x + r.width / 2;
+    const y = r.y + r.height / 2;
+    await page.mouse.move(x, y, { steps: 5 });
+    const onAnchor = await locator.evaluate(
+      (target, p: { x: number; y: number }) => {
+        const hit = document.elementFromPoint(p.x, p.y);
+        return !!hit && (hit === target || target.contains(hit));
+      },
+      { x, y },
+    );
+    if (onAnchor) return;
+  }
+  throw new Error("hover missed the anchor after 4 aims (layout still shifting?)");
 }
 
 test("D2 diagram renders in light with caption and citation anchors", async ({ page }) => {
