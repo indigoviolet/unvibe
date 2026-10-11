@@ -257,8 +257,8 @@ ls: /Users/you/Applications/Unvibe.app: No such file or directory
 ```
 
 Token and data are kept. Re-run uninstall ⇒ `not present; nothing to
-remove`. Full removal: delete `~/.local/share/unvibe` (see README “data
-location”).
+remove`. Full removal: delete `~/.local/share/unvibe` (see README “Your data
+and the network”).
 
 ## What this checklist does NOT cover
 
