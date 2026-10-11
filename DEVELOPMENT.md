@@ -41,7 +41,12 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 runs on `ubuntu-latest` and `macos-latest`: `check` + `build` +
 `test:e2e`, then the shell end-to-end (`e2e` on Linux, `e2e:macos` on
 macOS), `check-global-install` (both), and
-`node scripts/restart-resilience.mjs` (both). There is no `d2` task yet; the diagram work (issues #2, #3) has not landed.
+`node scripts/restart-resilience.mjs` (both). Diagrams render service-side
+with the `d2` binary (`d2 = "0.9.0"` in `mise.toml`; `mise install d2`
+fetches it via the aqua backend): unit tests pass without it, the
+real-binary vitest suites and the Playwright D2 specs skip visibly, and
+`node scripts/d2-seed-check.mjs` compares fresh renders against the
+pre-rendered fixture SVGs (strict on Linux, report-only on macOS).
 
 ## CI organisation
 
