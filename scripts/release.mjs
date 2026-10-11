@@ -132,6 +132,24 @@ sh("git", ["update-ref", "refs/heads/release", commitTree()], ROOT);
 console.log(`release: branch release -> ${sh("git", ["rev-parse", "--short", "release"], ROOT)}`);
 console.log(`release: tree ${RELEASE} (no push performed)`);
 
+/**
+ * Identity for the machine-made release commit: the user's own git identity
+ * when configured, else a fixed fallback. `git commit-tree` fails without
+ * an author/committer, and CI runners (and fresh machines) have no git
+ * identity configured — without this, `mise run release` fails there.
+ */
+function releaseIdentityArgs() {
+  const configured = (key, envKey) => {
+    if (process.env[envKey]) return true;
+    const r = spawnSync("git", ["config", key], { cwd: ROOT, encoding: "utf8" });
+    return r.status === 0 && Boolean((r.stdout ?? "").trim());
+  };
+  const args = [];
+  if (!configured("user.name", "GIT_AUTHOR_NAME")) args.push("-c", "user.name=unvibe");
+  if (!configured("user.email", "GIT_AUTHOR_EMAIL")) args.push("-c", "user.email=unvibe@localhost");
+  return args;
+}
+
 function commitTree() {
   const { tmpdir } = process.getBuiltinModule("node:os");
   const tmpIndex = path.join(tmpdir(), `unvibe-release-index-${process.pid}`);
@@ -159,7 +177,7 @@ function commitTree() {
     `unvibe release ${version} (source ${(head.stdout ?? "").trim().slice(0, 12)} ${new Date().toISOString().slice(0, 10)})\n` +
     `\nSelf-contained install tree: no prepare/postinstall, no devDependencies. ` +
     `Install with \`npm install -g github:<org>/unvibe#release\`.`;
-  const commit = spawnSync("git", ["commit-tree", (tree.stdout ?? "").trim(), "-m", msg], {
+  const commit = spawnSync("git", [...releaseIdentityArgs(), "commit-tree", (tree.stdout ?? "").trim(), "-m", msg], {
     cwd: ROOT,
     env,
     encoding: "utf8",
