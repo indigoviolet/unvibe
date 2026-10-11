@@ -98,11 +98,13 @@ async function hoverFresh(page: Page, locator: Locator): Promise<void> {
     { polling: 250, timeout: 10_000 },
   );
   await page.mouse.move(8, 200);
+  let last: { x: number; y: number } = { x: -1, y: -1 };
   for (let i = 0; i < 3; i++) {
     const box = await locator.boundingBox();
     if (!box) throw new Error("anchor has no box");
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
+    last = { x, y };
     await page.mouse.move(x, y, { steps: 5 });
     const onAnchor = await locator.evaluate(
       (target, p: { x: number; y: number }) => {
@@ -113,7 +115,25 @@ async function hoverFresh(page: Page, locator: Locator): Promise<void> {
     );
     if (onAnchor) return;
   }
-  throw new Error("hover missed the anchor after 3 aims (layout still shifting?)");
+  // Diagnose the miss with the covering stack instead of guessing: what is
+  // topmost at the aim point, and what (if anything) is actually hovered.
+  const diag = await page.evaluate((p: { x: number; y: number }) => {
+    const stack = document
+      .elementsFromPoint(p.x, p.y)
+      .slice(0, 5)
+      .map((el) => {
+        const h = el as HTMLElement;
+        const r = h.getBoundingClientRect();
+        const cls = typeof h.className === "string" && h.className ? `.${h.className.trim().split(/\s+/).join(".")}` : "";
+        return `${el.tagName.toLowerCase()}${h.id ? `#${h.id}` : ""}${cls} @(${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)})`;
+      });
+    const hovered = [...document.querySelectorAll(":hover")].map((el) => el.tagName.toLowerCase()).join(",");
+    return { stack, hovered, scrollY: Math.round(window.scrollY), inner: `${window.innerWidth}x${window.innerHeight}` };
+  }, last);
+  throw new Error(
+    `hover missed the anchor at (${last.x},${last.y}): top=[${diag.stack.join(" < ") || "(none)"}] ` +
+      `:hover=[${diag.hovered || "(none)"}] scrollY=${diag.scrollY} viewport=${diag.inner}`,
+  );
 }
 
 test.describe("reader journey over the real service (replay)", () => {
