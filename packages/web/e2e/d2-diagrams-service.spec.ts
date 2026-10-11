@@ -28,6 +28,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "./network-guard.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import type { Locator, Page } from "@playwright/test";
 import {
   canonicalizeD2Source,
@@ -36,70 +37,11 @@ import {
   type DiagramBlock,
 } from "@unvibe/shared";
 
-const SERVICE_ENTRY = fileURLToPath(new URL("../../service/dist/index.js", import.meta.url));
 const FIXTURE_DIR = fileURLToPath(new URL("../../../fixtures/urllib3-5020", import.meta.url));
 const SEED_REVIEW_ID = "d2-seed";
 const SEED_HASH = "f23beae236cc0685";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
-
-interface RunningService {
-  origin: string;
-  token: string;
-  stop: () => Promise<void>;
-}
-
-/** Spawn the built service on an ephemeral port; parse origin + token. */
-async function startService(dataDir: string, extraEnv: Record<string, string>): Promise<RunningService> {
-  const { spawn } = await import("node:child_process");
-  const proc = spawn(process.execPath, [SERVICE_ENTRY], {
-    env: {
-      ...process.env,
-      UNVIBE_DATA_DIR: dataDir,
-      UNVIBE_PORT: "0",
-      UNVIBE_REPO_ROOTS: "",
-      UNVIBE_AGENT: "replay",
-      ...extraEnv,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let out = "";
-  const started = new Promise<{ origin: string; token: string }>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`service did not start: ${out}`)), 30_000);
-    proc.stdout?.on("data", (d: Buffer) => {
-      out += d.toString();
-      const m = out.match(/Unvibe listening on (http:\/\/127\.0\.0\.1:\d+)\/\?token=(\S+)/);
-      if (m) {
-        clearTimeout(timer);
-        resolve({ origin: m[1], token: m[2] });
-      }
-    });
-    proc.on("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    proc.on("exit", (code) => {
-      if (code !== 0 && code !== null) {
-        clearTimeout(timer);
-        reject(new Error(`service exited with ${code}: ${out}`));
-      }
-    });
-  });
-  const { origin, token } = await started;
-  return {
-    origin,
-    token,
-    stop: () =>
-      new Promise<void>((resolve) => {
-        proc.on("exit", () => resolve());
-        proc.kill("SIGTERM");
-        setTimeout(() => {
-          if (proc.exitCode === null) proc.kill("SIGKILL");
-          resolve();
-        }, 5000).unref?.();
-      }),
-  };
-}
 
 interface ApiResult {
   status: number;
@@ -217,13 +159,59 @@ function seedD2Review(dataDir: string): void {
   }
 }
 
+/**
+ * Hover an anchor deterministically: scroll, wait for scroll quiet (a
+ * scroll landing mid-hover dismisses the popover, PRD §4.5), move the
+ * pointer in genuine steps, then aim at the anchor's own line boxes (a
+ * wrapped anchor's union-box center can land on plain text) until the
+ * cursor verifiably lands on it.
+ */
 async function hoverFresh(page: Page, locator: Locator): Promise<void> {
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  await page.evaluate(() => {
+    const w = window as unknown as { __lastScrollAt?: number; __scrollHook?: boolean };
+    w.__lastScrollAt = Date.now();
+    if (!w.__scrollHook) {
+      w.__scrollHook = true;
+      document.addEventListener(
+        "scroll",
+        () => {
+          w.__lastScrollAt = Date.now();
+        },
+        true,
+      );
+    }
+  });
   await locator.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(200);
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("anchor has no box");
+  await page.waitForFunction(
+    () => Date.now() - ((window as unknown as { __lastScrollAt?: number }).__lastScrollAt ?? 0) > 400,
+    { polling: 250, timeout: 10_000 },
+  );
   await page.mouse.move(8, 200);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+  const measure = (): Promise<{ x: number; y: number; width: number; height: number }[]> =>
+    locator.evaluate((target) => {
+      const out: { x: number; y: number; width: number; height: number }[] = [];
+      const rs = target.getClientRects();
+      for (let i = 0; i < rs.length; i++) out.push({ x: rs[i].x, y: rs[i].y, width: rs[i].width, height: rs[i].height });
+      return out;
+    });
+  for (let i = 0; i < 4; i++) {
+    const rects = await measure();
+    if (rects.length === 0) throw new Error("anchor has no rects");
+    const r = rects[Math.min(i, rects.length - 1)];
+    const x = r.x + r.width / 2;
+    const y = r.y + r.height / 2;
+    await page.mouse.move(x, y, { steps: 5 });
+    const onAnchor = await locator.evaluate(
+      (target, p: { x: number; y: number }) => {
+        const hit = document.elementFromPoint(p.x, p.y);
+        return !!hit && (hit === target || target.contains(hit));
+      },
+      { x, y },
+    );
+    if (onAnchor) return;
+  }
+  throw new Error("hover missed the anchor after 4 aims (layout still shifting?)");
 }
 
 for (const mode of [
@@ -242,9 +230,14 @@ for (const mode of [
       expect(SEEDED_HASHES.has(EXTRA_HASH)).toBe(false);
       dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-data-"));
       seedD2Review(dataDir);
-      svc = await startService(dataDir, mode.extraEnv);
-      // The d2 readiness check exists on the merged service; its status
-      // proves which binary situation this suite runs in.
+      svc = await startService(dataDir, {
+        agent: "replay",
+        extraEnv: mode.extraEnv,
+        label: mode.expectBinary ? "d2-with" : "d2-without",
+      });
+      // The d2 readiness check exists on the merged service; fetch it to
+      // prove which binary situation this suite runs in (issue #17: a
+      // missing UNVIBE_D2_BIN override warns instead of reporting ok).
       const readiness = await api(svc.origin, svc.token, "GET", "/api/readiness");
       expect(readiness.status).toBe(200);
       const checks = (
@@ -254,12 +247,11 @@ for (const mode of [
       ).checks;
       const d2 = checks.find((c) => c.id === "d2");
       expect(d2, "merged service must report a d2 readiness check").toBeTruthy();
-      // The readiness status stays "ok" even for an unprobable override
-      // path (service wart, reported); the summary names the source, which
-      // is what proves which binary situation this suite runs in.
       if (mode.expectBinary) {
+        expect(d2!.status).toBe("ok");
         expect(d2!.summary).not.toContain("UNVIBE_D2_BIN");
       } else {
+        expect(d2!.status).toBe("warning");
         expect(d2!.summary).toContain("UNVIBE_D2_BIN");
       }
       // Fresh replay demo review for the pipeline-emitted block path.
