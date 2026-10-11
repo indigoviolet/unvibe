@@ -684,9 +684,8 @@ items noticed while passing through (not verified, listed only):
    with no flags on npm 10 and 11 (verified in `check-global-install`).
    Stale-pointer fix (audit-10): PRD §14 still says the bare
    `github:<org>/unvibe` command — see #18 (now points at `#release`).
-   Open: the repo has no LICENSE file, so the release ships no licence
-   statement for Unvibe's own code (third-party notices ship in
-   THIRD-PARTY-NOTICES.md) — pick a licence.
+   Licence: MIT (`LICENSE`, issue #4), shipped in the release beside
+   `THIRD-PARTY-NOTICES.md`.
 2. **Install size**: RESOLVED — ~66 MB installed in ~4 s, nothing
    downloaded beyond 6 small runtime deps (was ~736 MB with bundled agent
    binaries). No decision needed.
