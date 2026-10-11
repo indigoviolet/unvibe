@@ -1,4 +1,4 @@
-/*global console process setTimeout */
+/*global console process setTimeout clearTimeout */
 // `mise run test:live:installed` (needs UNVIBE_LIVE=1, agent logins; tiny
 // token spend: one short prompt per provider). Runs one real session per
 // provider (claude, codex; UNVIBE_LIVE_PROVIDERS filters) against the
@@ -121,7 +121,6 @@ async function runProvider({ provider, adapterEntry }) {
     const pending = [];
     const wakers = new Set();
     const wake = () => { for (const w of [...wakers]) w(); };
-    /* eslint-disable @typescript-eslint/no-explicit-any */
     const conn = acp.client({ name: "unvibe-live-installed" })
       .onRequest("session/request_permission", async () => ({ outcome: { outcome: "cancelled" } }))
       .onNotification("session/update", async (ctx) => {
@@ -129,7 +128,6 @@ async function runProvider({ provider, adapterEntry }) {
         wake();
       })
       .connect(stream);
-    /* eslint-enable @typescript-eslint/no-explicit-any */
     const request = (method, params) => conn.agent.request(method, params);
 
     await request("initialize", {
