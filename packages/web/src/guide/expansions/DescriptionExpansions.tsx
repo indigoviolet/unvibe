@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { highlightAnchorInRoot } from "../../comments/anchor.js";
+import { clearMarks, highlightAnchorInRoot, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionCard } from "./ExpansionCard.js";
@@ -57,22 +57,28 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
     const root = document.querySelector("#right .desc");
     if (!root || exps.length === 0) return;
     const timer = window.setTimeout(() => {
-      let changed = false;
-      for (const a of exps) {
-        if (isAnchorStale(a) || !a.anchor.quotedText) continue;
-        if (a.type === "link" || a.promotedToPage) {
-          const target = a.promotedToPage ?? "";
-          if (target && highlightAnchorInRoot(root, paragraphId, a.anchor.quotedText, () => makePageLink(target))) {
+      // Idempotent re-mark (issue #15): clear our own stale marks first,
+      // then re-mark inside one selection-preserving window. Thread marks
+      // (`mark[data-thr]`, owned by DescriptionView) are never touched.
+      withPreservedSelection(root, () => {
+        clearMarks(root, "mark.anc.ex[data-jump], mark.anc.exl[data-jump], a.cx.pg[data-node]");
+        let changed = false;
+        for (const a of exps) {
+          if (isAnchorStale(a) || !a.anchor.quotedText) continue;
+          if (a.type === "link" || a.promotedToPage) {
+            const target = a.promotedToPage ?? "";
+            if (target && highlightAnchorInRoot(root, paragraphId, a.anchor.quotedText, () => makePageLink(target))) {
+              changed = true;
+            }
+            continue;
+          }
+          const closed = !a.open;
+          if (highlightAnchorInRoot(root, paragraphId, a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
             changed = true;
           }
-          continue;
         }
-        const closed = !a.open;
-        if (highlightAnchorInRoot(root, paragraphId, a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
-          changed = true;
-        }
-      }
-      if (changed) setTick((t) => t + 1);
+        if (changed) setTick((t) => t + 1);
+      });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [annotations, paragraphId, exps]);

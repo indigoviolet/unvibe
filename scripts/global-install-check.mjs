@@ -244,6 +244,31 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
   checkAdapterBundles(installedPkg, label);
   console.log(`${label}: install size ${mb(dirSizeBytes(prefix))} (prefix ${prefix})`);
 
+  // Third-party notices (issue #14): the installed package must contain the
+  // complete notices — web bundle rows, font licences, fixture + D2 notes.
+  {
+    const noticesPath = path.join(installedPkg, "THIRD-PARTY-NOTICES.md");
+    assert(fs.existsSync(noticesPath), `${label}: ships THIRD-PARTY-NOTICES.md`);
+    let notices = "";
+    try {
+      notices = fs.readFileSync(noticesPath, "utf8");
+    } catch {
+      notices = "";
+    }
+    for (const marker of [
+      "web dist/assets",
+      "react",
+      "Web bundle MIT licences",
+      "Web fonts (SIL Open Font License 1.1)",
+      "urllib3/urllib3/pull/5020",
+      "Andrey Petrov",
+      "Source Sans Pro",
+      "Unvibe's own licence",
+    ]) {
+      assert(notices.includes(marker), `${label}: notices cover ${marker}`);
+    }
+  }
+
   const runInstalled = (cmdArgs) => {
     const r = spawnSync(process.execPath, [UNVIBE, ...cmdArgs], {
       cwd: os.tmpdir(),

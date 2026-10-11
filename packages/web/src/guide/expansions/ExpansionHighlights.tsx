@@ -18,7 +18,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
 import { useReview } from "../../state/store.js";
-import { highlightAnchorInRoot } from "../../comments/anchor.js";
+import { highlightAnchorInRoot, withPreservedSelection, clearMarks } from "../../comments/anchor.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
 function makeExpMark(id: string, closed: boolean): HTMLElement {
@@ -44,48 +44,56 @@ export function ExpansionHighlights() {
     const root = document.getElementById("page");
     if (!root) return;
     const timer = window.setTimeout(() => {
-      const highlighted = new Set<string>();
-      for (const a of annotations ?? []) {
-        if (a.type !== "expansion" && a.type !== "link") continue;
-        if (isAnchorStale(a)) continue;
-        if (!a.anchor.quotedText) continue;
-        if (a.anchor.host.kind !== "block") continue;
-        const pageId = a.promotedToPage ?? (a.type === "link" ? a.promotedToPage : undefined);
-        if (a.type === "link" || pageId) {
-          const target = pageId ?? "";
-          if (!target) continue;
+      // Idempotent re-mark (issue #15): drop our own stale marks first
+      // (deleted / anchor-stale / quote-gone annotations are skipped below
+      // and would otherwise leave ghosts), then re-mark everything inside
+      // one selection-preserving window. Thread marks (`mark[data-thr]`)
+      // belong to GuideThreads and are never touched (narrow selectors).
+      withPreservedSelection(root, () => {
+        clearMarks(root, "mark.anc.ex[data-jump], mark.anc.exl[data-jump], a.cx.pg[data-node]");
+        const highlighted = new Set<string>();
+        for (const a of annotations ?? []) {
+          if (a.type !== "expansion" && a.type !== "link") continue;
+          if (isAnchorStale(a)) continue;
+          if (!a.anchor.quotedText) continue;
+          if (a.anchor.host.kind !== "block") continue;
+          const pageId = a.promotedToPage ?? (a.type === "link" ? a.promotedToPage : undefined);
+          if (a.type === "link" || pageId) {
+            const target = pageId ?? "";
+            if (!target) continue;
+            const { cardId, block } = splitBlock(a.anchor.host.blockId);
+            const tops = cardId ? [`${cardId}#${block}`, block, a.anchor.host.blockId] : [block, a.anchor.host.blockId];
+            for (const top of tops) {
+              if (highlightAnchorInRoot(root, top, a.anchor.quotedText, () => makePageLink(target))) {
+                highlighted.add(a.id);
+                break;
+              }
+            }
+            continue;
+          }
+          const closed = !a.open;
           const { cardId, block } = splitBlock(a.anchor.host.blockId);
-          const tops = cardId ? [`${cardId}#${block}`, block, a.anchor.host.blockId] : [block, a.anchor.host.blockId];
+          // Match the same block-matching rule as the card list so marks land
+          // on the host the card renders under.
+          void cardId;
+          const tops = [a.anchor.host.blockId, block];
           for (const top of tops) {
-            if (highlightAnchorInRoot(root, top, a.anchor.quotedText, () => makePageLink(target))) {
+            if (highlightAnchorInRoot(root, top, a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
               highlighted.add(a.id);
               break;
             }
           }
-          continue;
         }
-        const closed = !a.open;
-        const { cardId, block } = splitBlock(a.anchor.host.blockId);
-        // Match the same block-matching rule as the card list so marks land
-        // on the host the card renders under.
-        void cardId;
-        const tops = [a.anchor.host.blockId, block];
-        for (const top of tops) {
-          if (highlightAnchorInRoot(root, top, a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
-            highlighted.add(a.id);
-            break;
-          }
+        // Closed expansions whose quote is gone: reveal the fallback stub.
+        for (const el of root.querySelectorAll("[data-fallback]")) {
+          const id = (el as HTMLElement).dataset.fallback ?? "";
+          if (id && !highlighted.has(id)) (el as HTMLElement).hidden = false;
+          else if (id && highlighted.has(id)) (el as HTMLElement).hidden = true;
         }
-      }
-      // Closed expansions whose quote is gone: reveal the fallback stub.
-      for (const el of root.querySelectorAll("[data-fallback]")) {
-        const id = (el as HTMLElement).dataset.fallback ?? "";
-        if (id && !highlighted.has(id)) (el as HTMLElement).hidden = false;
-        else if (id && highlighted.has(id)) (el as HTMLElement).hidden = true;
-      }
-      // Open expansions always have their card in place; their fallback
-      // stays hidden.
-      void pages;
+        // Open expansions always have their card in place; their fallback
+        // stays hidden.
+        void pages;
+      });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [annotations, pages]);

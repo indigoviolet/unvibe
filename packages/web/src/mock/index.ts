@@ -710,6 +710,16 @@ function emitAnnotations(): void {
   });
 }
 
+// Playwright hook (mock mode only, like DiffView's `window.__revealSource`):
+// stream N no-op annotation patches through the WS-patch path so specs can
+// assert highlight idempotence under many snapshot updates without moving
+// focus or disturbing the selection (issue #15).
+if (MOCK_MODE && typeof window !== "undefined") {
+  (window as unknown as { __streamPatches?: (n: number) => void }).__streamPatches = (n: number) => {
+    for (let i = 0; i < n; i++) emitAnnotations();
+  };
+}
+
 /** Emit the pages list through the WS-patch path (card state converges). */
 function emitPages(): void {
   const baseRev = rev;

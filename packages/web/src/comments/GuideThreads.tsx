@@ -23,7 +23,7 @@ import { toast } from "../floating/Toast.js";
 import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { onOpenBlockThread } from "../guide/annotations.js";
 import { useReview } from "../state/store.js";
-import { highlightAnchorInRoot } from "./anchor.js";
+import { clearMarks, highlightAnchorInRoot, withPreservedSelection } from "./anchor.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
@@ -81,6 +81,10 @@ export function GuideThreadHooks() {
 
   // Anchor highlights + marker pruning. Re-runs when threads or guide
   // content change (depth rewrites re-render blocks and drop DOM marks).
+  // Idempotent (issue #15): our own thread marks are cleared first so N
+  // store patches leave depth 1, inside one selection-preserving window.
+  // Expansion marks (`mark.anc.ex/exl`, `a.cx.pg`) belong to
+  // ExpansionHighlights and are never touched (narrow selector).
   useEffect(() => {
     const page = document.getElementById("page");
     if (!page) return;
@@ -90,23 +94,26 @@ export function GuideThreadHooks() {
     const highlighted = new Set<string>();
     // One frame: let the guide's own render commit first.
     const timer = window.setTimeout(() => {
-      for (const thread of threads) {
-        const host = thread.anchor.host;
-        if (host.kind !== "block") continue;
-        // Anchor ids may be `card#block` (service) or bare (prototype).
-        const hash = host.blockId.indexOf("#");
-        const bare = hash >= 0 ? host.blockId.slice(hash + 1) : host.blockId;
-        const candidates = [host.blockId, bare];
-        let done = false;
-        for (const top of candidates) {
-          if (highlightAnchorInRoot(page, top, thread.anchor.quotedText, () => makeMark(thread.id))) {
-            done = true;
-            break;
+      withPreservedSelection(page, () => {
+        clearMarks(page, "mark.anc[data-thr]");
+        for (const thread of threads) {
+          const host = thread.anchor.host;
+          if (host.kind !== "block") continue;
+          // Anchor ids may be `card#block` (service) or bare (prototype).
+          const hash = host.blockId.indexOf("#");
+          const bare = hash >= 0 ? host.blockId.slice(hash + 1) : host.blockId;
+          const candidates = [host.blockId, bare];
+          let done = false;
+          for (const top of candidates) {
+            if (highlightAnchorInRoot(page, top, thread.anchor.quotedText, () => makeMark(thread.id))) {
+              done = true;
+              break;
+            }
           }
+          if (done) highlighted.add(thread.id);
         }
-        if (done) highlighted.add(thread.id);
-      }
-      pruneMarkers(page, highlighted);
+        pruneMarkers(page, highlighted);
+      });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [annotations, pages]);

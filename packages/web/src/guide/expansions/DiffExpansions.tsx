@@ -13,7 +13,7 @@
 import { useEffect, useMemo } from "react";
 import type { Annotation, Page } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { markTextInElement } from "../../comments/anchor.js";
+import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
 import { useReview } from "../../state/store.js";
@@ -50,26 +50,33 @@ export function useDiffExpansionBindings(
   }, [annotations]);
 
   // Highlight quotes inside diff rows (open + closed); anchor-stale skips.
+  // Idempotent (issue #15): each cell's own expansion marks are cleared
+  // first (per-cell scoping never touches guide/description marks), then
+  // re-marked inside one selection-preserving window. `markTextInElement`
+  // itself also unwraps same-id marks, so re-renders that wipe DOM marks
+  // and re-applied timers both converge on depth 1, and open <-> closed
+  // class flips update instead of nesting.
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      for (const [key, exps] of byLine) {
-        const [fileKey, lineStr] = key.split(":");
-        const row = document.getElementById(`L-${fileKey}-${lineStr}`);
-        if (!row) continue;
-        for (const cell of row.querySelectorAll("td.c")) {
-          for (const a of exps) {
-            if (isAnchorStale(a) || !a.anchor.quotedText) continue;
-            // Skip if already marked (re-renders wipe DOM marks; the timer
-            // re-applies them, but avoid double-wrapping).
-            if (cell.querySelector(`mark[data-jump="${CSS.escape(a.id)}"]`)) continue;
-            try {
-              markTextInElement(cell, a.anchor.quotedText, () => makeExpMark(a.id, !a.open));
-            } catch {
-              // Ignore.
+      const scope = document.body;
+      withPreservedSelection(scope, () => {
+        for (const [key, exps] of byLine) {
+          const [fileKey, lineStr] = key.split(":");
+          const row = document.getElementById(`L-${fileKey}-${lineStr}`);
+          if (!row) continue;
+          for (const cell of row.querySelectorAll("td.c")) {
+            clearMarks(cell, "mark.anc.ex[data-jump], mark.anc.exl[data-jump]");
+            for (const a of exps) {
+              if (isAnchorStale(a) || !a.anchor.quotedText) continue;
+              try {
+                markTextInElement(cell, a.anchor.quotedText, () => makeExpMark(a.id, !a.open));
+              } catch {
+                // Ignore.
+              }
             }
           }
         }
-      }
+      });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [byLine, annotations]);
