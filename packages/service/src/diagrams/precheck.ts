@@ -44,7 +44,7 @@ const DENY_PATTERNS: { re: RegExp; reason: string }[] = [
     // icon: https://… or icon: local.svg — both trigger bundling fetches.
     // Probe §9 #1: the binary GETs icon URLs at compile; unfetchable URLs
     // fail the whole render. Reject pre-compile (no flag disables it).
-    re: /(^|\n)\s*[a-zA-Z0-9_."'\][*{}()| -]*\bicon\s*:/im,
+    re: /\bicon\s*:/i,
     reason: "`icon` is not allowed (it fetches remote/local images)",
   },
   {
@@ -103,7 +103,7 @@ const DENY_PATTERNS: { re: RegExp; reason: string }[] = [
     // Native tooltips fight the app's rich hover preview; the prompt says
     // no tooltip:. Strip per contract, but also reject at pre-check so the
     // agent learns the convention (repair turn).
-    re: /(^|\n)\s*[a-zA-Z0-9_."'\][*{}()| -]*\btooltip\s*:/im,
+    re: /\btooltip\s*:/i,
     reason: "`tooltip:` is not allowed (citations use link:, never tooltips)",
   },
   {

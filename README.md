@@ -11,7 +11,9 @@ behaviour reference, not code).
 
 Requires Node 24+ (`node:sqlite` must work without flags), `git`, and —
 for PRs and posting — `gh` logged in. Agents run through
-your existing Claude Code / Codex logins; no new accounts.
+your existing Claude Code / Codex logins; no new accounts. Diagrams need
+the `d2` binary (≥ 0.9.0) on your login-shell PATH (`brew install d2`;
+without it diagrams show their source and everything else still works).
 
 ```sh
 npm install -g github:<org>/unvibe#release   # install or update (same command)
@@ -49,7 +51,7 @@ starts the service and the page reloads. Nothing starts at login
 
 Useful commands: `unvibe start` (reuses the running service), `unvibe stop`,
 `unvibe status`, `unvibe token` (print the token URL), `unvibe doctor`
-(environment checks: node, `git`, `gh` + auth, `claude`, `codex`,
+(environment checks: node, `git`, `gh` + auth, `claude`, `codex`, `d2`,
 login-shell PATH, data dir, port).
 
 ## First run
@@ -114,6 +116,7 @@ Env vars:
 | `UNVIBE_ACP_DEBUG` | — | `1` logs permission decisions, `2` full payloads. |
 | `UNVIBE_CLAUDE_BIN` | — | Override: path to the `claude` executable (else login-shell PATH; also respects `CLAUDE_CODE_EXECUTABLE`). |
 | `UNVIBE_CODEX_BIN` | — | Override: path to the `codex` executable (else login-shell PATH; also respects `CODEX_PATH`). |
+| `UNVIBE_D2_BIN` | — | Override: path to the `d2` executable (else login-shell PATH). Minimum 0.9.0. |
 
 In-app Settings (persisted): models per role (main/small/second opinion),
 prompt templates + per-review expansions, concurrency caps, inline budget
@@ -140,8 +143,10 @@ reconciled against GitHub before posting again
 `unvibe doctor` (and Settings → environment in the app) checks node, git,
 `gh` (+ auth, with `GITHUB_TOKEN` unset per PRD §15), `claude`/`codex`
 (path + version each agent will run, login state; missing → how to install,
-Unvibe does not install them for you), the login-shell PATH (the macOS
-Finder-PATH gotcha), the data dir, and the port — each with a fix hint.
+Unvibe does not install them for you), `d2` (diagrams need ≥ 0.9.0;
+missing/too old is a warning, not an error — reviews work, diagrams show
+source), the login-shell PATH (the macOS Finder-PATH gotcha), the data
+dir, and the port — each with a fix hint.
 Common cases:
 
 - `gh not logged in` → `gh auth login`; local branches
@@ -149,6 +154,9 @@ Common cases:
 - `claude`/`codex` missing or too old → install/update the CLI (see the
   hints; Unvibe needs Codex ≥ 0.160.1, Claude Code ≥ 2.1.293), ensure it is
   on the login-shell PATH, Re-check.
+- `d2` missing or too old → `brew install d2` (or the official install
+  script / `mise use -g d2`), ensure it is on the login-shell PATH,
+  Re-check. Everything but diagram rendering works without it.
 - `port … in use by something else` → set `UNVIBE_PORT` (and reinstall
   the web app, see above).
 - Agent failures surface on the job/card with retryable errors and
@@ -190,13 +198,18 @@ outside are the user's own tools that Unvibe launches:
 - `gh` (GitHub, with `GITHUB_TOKEN` unset) and `git` (fetching from the
   repo's remote);
 - the coding-agent CLIs/adapters (provider calls, through the user's own
-  Claude/Codex logins).
+  Claude/Codex logins);
+- `d2` (diagrams only: the user's installed binary, stdin source in,
+  SVG on stdout, `--bundle=false`, empty temp dir, scrubbed env with
+  bogus proxies — it never reaches the network or the filesystem on the
+  agent's behalf; `icon:`/image/import sources are rejected before it runs).
 
 Unvibe's own code — the service process and the web app in the browser —
 contacts nothing but `127.0.0.1`. Fonts are self-hosted (`@fontsource/*`,
-latin subsets bundled by Vite), Mermaid is bundled (no CDN, no remote
-fonts/styles at runtime), and links the user clicks to github.com are
-navigations (marked `rel="noreferrer noopener"`), not subresource loads.
+latin subsets bundled by Vite), D2 SVGs carry only embedded data: fonts
+(no CDN, no remote fonts/styles at runtime), and links the user clicks to
+github.com are navigations (marked `rel="noreferrer noopener"`), not
+subresource loads.
 
 What enforces it:
 
@@ -217,8 +230,10 @@ What enforces it:
   `packages/service/src` outside the allowlist in the test (loopback
   clients, the 127.0.0.1-only server, ACP stdio adapters).
 - Subprocesses: a guard test asserts the service spawns only `git`, `gh`,
-  the login shell, the agent adapters/CLIs, and the `unvibe setup` helpers
-  (`osacompile`, `lsregister`, `xdg-mime`, `open`/`xdg-open`).
+  the login shell, the agent adapters/CLIs, `d2` (stdin-only renders,
+  pre-checked sources, empty temp dir, scrubbed env), and the
+  `unvibe setup` helpers (`osacompile`, `lsregister`, `xdg-mime`,
+  `open`/`xdg-open`).
 - Requests additionally require a loopback `Host` and loopback
   `Origin`/`Referer` (DNS-rebinding / cross-site defense in depth behind
   the per-install token).

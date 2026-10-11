@@ -10,17 +10,19 @@ If a step fails: run its **Send back** commands and paste all output.
 ## 0. Prereqs (1 min)
 
 ```
-$ node --version; git --version; gh auth status 2>&1 | head -3; echo $SHELL; which claude codex zsh
+$ node --version; git --version; gh auth status 2>&1 | head -3; echo $SHELL; which claude codex d2 zsh
 v24.x.x
 git version 2.x
 Logged in to github.com account <you> ...
 /bin/zsh
-.../claude .../codex /bin/zsh
+.../claude .../codex .../d2 /bin/zsh
 ```
 
-`gh`/`claude`/`codex` may be missing — `doctor` then reports `[warn]`,
-which is fine. `echo $SHELL` may print `/bin/zsh`, `/bin/bash` or
-`/opt/homebrew/bin/fish` — all three are handled (step 2 checks).
+`gh`/`claude`/`codex`/`d2` may be missing — `doctor` then reports `[warn]`,
+which is fine (reviews work without `d2`; diagrams show their source
+until it is installed: `brew install d2`). `echo $SHELL` may print
+`/bin/zsh`, `/bin/bash` or `/opt/homebrew/bin/fish` — all three are
+handled (step 2 checks).
 
 **Send back:** the full output above.
 
@@ -54,6 +56,7 @@ Expected (values vary):
 [ok] gh: Logged in to github.com account …     # or [warn] when logged out
 [ok] claude: …                                 # or [warn]
 [ok] codex: …                                  # or [warn]
+[ok] d2: …                                     # or [warn]; diagrams need d2 ≥ 0.9.0 (`brew install d2`)
 [ok] login-shell PATH: from /bin/zsh: …        # your interactive PATH
 [ok] data dir: /Users/you/.local/share/unvibe (writable)
 [ok] port: 4517 is free

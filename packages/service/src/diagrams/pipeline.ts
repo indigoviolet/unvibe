@@ -77,8 +77,12 @@ export async function finalizeDiagramBlock(source: string, caption: string | und
   // source links are the contract; captions rarely carry cites.)
 
   // --- binary unavailable: mark unavailable, skip compile + render ------
+  // Hash with the gated version (== the seed version) so the seeded cache
+  // hits without `d2`; re-validated when the binary appears (endpoint
+  // on-demand render recomputes with the real version).
   if (!deps.d2bin || !deps.d2version) {
-    const hash = diagramHash(canonSource, D2_VERSION_UNKNOWN);
+    const { D2_MIN_VERSION } = await import("@unvibe/shared");
+    const hash = diagramHash(canonSource, D2_MIN_VERSION);
     const block: DiagramBlock = {
       type: "diagram",
       id: "b-d2",

@@ -349,13 +349,20 @@ describe("M4 actions on the demo review (replay)", () => {
       const dg = await postAction(app, id, { kind: "diagram", cardId: "central" });
       expect(dg.status).toBe(200);
       await waitForJob(ctx, dg.json.jobId as string);
+      // The D2 finalize (compile-check + render) lands just after the job
+      // settles; wait for the block, not just the job.
+      await waitFor(() => {
+        const s = ctx.reviews.getSnapshot(id);
+        const c = s?.pages.find((p) => p.id === "root")?.cards.find((x) => x.id === "central");
+        return !!c?.blocks.some((b) => b.type === "diagram");
+      });
       const withDiagram = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!;
       const diagrams = withDiagram.blocks.filter((b) => b.type === "diagram");
       expect(diagrams.length).toBe(1);
-      const dg = diagrams[0] as { source: string; render?: { hash: string; status: string } };
-      expect(dg.source).toContain("->");
-      expect(precheckD2Source(dg.source).ok).toBe(true);
-      expect(["ok", "unavailable"]).toContain(dg.render?.status);
+      const dgb = diagrams[0] as { source: string; render?: { hash: string; status: string } };
+      expect(dgb.source).toContain("->");
+      expect(precheckD2Source(dgb.source).ok).toBe(true);
+      expect(["ok", "unavailable"]).toContain(dgb.render?.status);
 
       // Undo reverts the diagram; annotations attached to the card survive.
       const undo = await postAction(app, id, { kind: "undo", cardId: "central" });

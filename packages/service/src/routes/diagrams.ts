@@ -64,9 +64,21 @@ export async function registerDiagrams(
 
     const cache = new DiagramCache({ dataDir: ctx.dataDir, ...(deps.fixturesDir ? { fixturesDir: deps.fixturesDir } : {}) });
 
-    // Fast path: cached (or fixture-seeded) SVG.
+    // Fast path: cached (or fixture-seeded) SVG. Serve whenever the bytes
+    // exist — seeds prove the render — and heal an `unavailable` block to
+    // `ok` best-effort so later reads skip on-demand work.
     const cached = cache.get(hash, theme);
-    if (cached && block.render?.status === "ok") {
+    if (cached) {
+      if (block.render?.status !== "ok") {
+        try {
+          await ctx.reviews.mutate(id, (draft) => {
+            const b = findDiagram(draft as never, hash);
+            if (b && b.render?.status !== "ok") b.render = { hash, status: "ok" };
+          });
+        } catch {
+          // serve anyway
+        }
+      }
       return reply
         .code(200)
         .header("content-type", "image/svg+xml")
