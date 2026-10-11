@@ -260,6 +260,44 @@ Token and data are kept. Re-run uninstall ⇒ `not present; nothing to
 remove`. Full removal: delete `~/.local/share/unvibe` (see README “Your data
 and the network”).
 
+## CI coverage on macOS (`.github/workflows/ci.yml`, issue #7)
+
+The `macos-latest` leg runs headless on a runner — no GUI session, no
+Keychain logins, no Apple ID. What it genuinely verifies:
+
+- Step 1 (`install`, `build`, `check`): fully covered, from a clean tree.
+- Step 2 (`doctor`): covered headless — node/git/gh/agent executables,
+  login-shell PATH, data dir, port. Keychain-backed logins report
+  `[warn]` (nothing is logged in); the Keychain path itself (step 6's
+  helper-started service using your login) still needs a person.
+- Step 3 (`setup`): covered by `mise run e2e:macos` — real `osacompile`,
+  `Info.plist` scheme entries asserted, no quarantine attribute,
+  `lsregister` registration, idempotent uninstall. Gatekeeper behaviour
+  beyond the quarantine flag still needs a person.
+- Step 4 (URL dispatch): **partly**. CI tries `open "unvibe://start"` for
+  real; when LaunchServices cannot dispatch headless, `e2e-macos` invokes
+  the helper's handler binary directly (proving the generated app starts
+  the service) and says so in its output. Dispatch through
+  `open`/Safari/Finder double-click **still needs a person at a Mac**.
+- Step 5 (token flow, installed web app, offline page): not covered —
+  needs Chrome + a GUI. Still human.
+- Step 6 (first review with real logins from a helper start): not covered —
+  needs Keychain logins + token spend. Still human. (CI's real-service
+  specs cover the same UI flows with `UNVIBE_AGENT=none`/`replay` and a
+  stubbed `gh`.)
+- Step 7 (idle exit + restart): covered by `e2e-macos` (idle exit) and
+  `restart-resilience.mjs` (SIGKILL mid-stage + resume).
+- Step 8 (global install): covered — tarball + `#release` git ref under
+  npm 10 and 11, with doctor/start/demo-pipeline checks from the
+  installed copy. `darwin-arm64` adapter behaviour (finding your installed
+  `claude`/`codex`) still needs a person with the CLIs installed.
+- Step 9 (uninstall): covered by `e2e-macos` (helper gone, token/data
+  kept, second uninstall a no-op).
+- Platform assumptions (`/private/var` temp paths, case-insensitive
+  filesystem, `fish` login shell): exercised implicitly wherever the
+  suite touches temp dirs, repos and the login shell; `fish` as `$SHELL`
+  is still unverified (runners use bash).
+
 ## What this checklist does NOT cover
 
 - Windows (unsupported: AGENTS.md is macOS + Linux only).

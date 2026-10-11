@@ -25,9 +25,10 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `start` | Run the built service | `build` first |
 | `setup` / `doctor` | Build, then `unvibe setup` / `unvibe doctor` | — |
 | `fixture-snapshot` | Rebuild `fixtures/urllib3-5020/snapshot.json`; fails on unverified citations | — |
-| `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | Browsers: `mise run playwright-install` |
+| `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` + browsers (`mise run playwright-install`) |
 | `playwright-install` | Install the Playwright Chromium browser | — |
 | `e2e` | Linux shell end-to-end (setup, handler, reuse, idle exit, uninstall, in temp HOME/port) | Linux |
+| `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
 | `check-global-install` | `release`, then install the tarball and the `#release` git ref into temp prefixes (npm 10 and 11, no flags) | npm 10 + 11 |
 | `release` | Self-contained release tree + tarball + local `release` branch; no push | `build` first |
 | `test:live` | Live adapter tests over real CLIs | `claude`/`codex` logins; small token spend |
@@ -36,7 +37,62 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:live:installed` | Live sessions from the installed copy | Logins; tiny spend |
 | `test:live:submit` | Submit path against a scratch repo (draft PR only) | Login; opt-in, writes a draft PR |
 
-`test:live:*` never runs under `check` or CI (`.github/workflows/ci.yml` runs `check` + `build` + `test:e2e` + `e2e` + `check-global-install` on macOS and Ubuntu, plus `node scripts/restart-resilience.mjs` on Linux). There is no `d2` task yet; the diagram work (issues #2, #3) has not landed.
+`test:live:*` never runs under `check` or CI. CI (`.github/workflows/ci.yml`)
+runs on `ubuntu-latest` and `macos-latest`: `check` + `build` +
+`test:e2e`, then the shell end-to-end (`e2e` on Linux, `e2e:macos` on
+macOS), `check-global-install` (both), and
+`node scripts/restart-resilience.mjs` (both). There is no `d2` task yet; the diagram work (issues #2, #3) has not landed.
+
+## CI organisation
+
+- **Trigger:** branch pushes only (`push: branches: ["**"]`). There is no
+  `pull_request` trigger on purpose: for a branch with an open PR both
+  events fire for the same commit and the workflow would run twice.
+- **Concurrency:** `ci-${{ github.ref }}` with `cancel-in-progress`, so a
+  new push supersedes the previous run on the same branch.
+- **Caches (safe):** the npm cache (`~/.npm`, keyed by
+  `package-lock.json`) and the Playwright browsers
+  (`~/.cache/ms-playwright`, keyed by OS + `@playwright/test` version).
+  `mise run playwright-install` stays the installer; a cache hit makes it a
+  fast no-op check.
+- **Failure evidence:** Playwright keeps traces + screenshots on failure
+  (`playwright.config.ts`), and the real-service specs tee the spawned
+  services' output to `packages/web/test-results/service-logs/` (shared
+  helper `packages/web/e2e/service-harness.ts`). The whole
+  `test-results/` directory is uploaded as an artifact when the job fails
+  (7-day retention).
+- **Timeouts:** the job allows 60 minutes; each step has its own
+  `timeout-minutes` (10–30) so a hung step fails loudly instead of burning
+  the job budget.
+- **No secrets, no network beyond npm:** tests run with
+  `UNVIBE_AGENT=none`/`replay` and a stubbed `gh`; the harness strips
+  `GITHUB_TOKEN` from spawned test services (PRD §15). Only npm-registry
+  traffic (installs, `npx --yes npm@10`) is needed.
+
+## Reproducing a CI failure locally
+
+- **Vite never reachable (`Timed out ... from config.webServer`):** bare
+  `vite` listens on `localhost`, which is resolution-order-dependent. Force
+  the runner's order with
+  `NODE_OPTIONS=--dns-result-order=ipv6first VITE_MOCK=1 npx vite --port 5999 --strictPort`
+  and probe `http://127.0.0.1:5999/` (fails) vs `http://[::1]:5999/`
+  (answers). The config pins `--host 127.0.0.1` so the bind is explicit;
+  verify with the same probe after any webServer change.
+- **Release fails with `Author identity unknown`:** runners have no git
+  identity. Reproduce with `HOME=$(mktemp -d) GIT_CONFIG_NOSYSTEM=1 mise run release`
+  (`scripts/release.mjs` falls back to `unvibe <unvibe@localhost>` only
+  when nothing is configured).
+- **Hover/popover flakes in Playwright:** `hoverFresh` (copied in the
+  guide/interaction/journey specs) waits for fonts + scroll quiet and aims
+  at the anchor's own line boxes until the cursor verifiably lands on it
+  (union-box centers miss wrapped anchors). If a hover still misses, its
+  error names the covering stack, `:hover` chain, scroll and viewport;
+  download the `playwright-<os>-<attempt>` artifact and open the
+  `trace.zip` (`npx playwright show-trace …`).
+- **macOS-only paths on Linux:** `scripts/e2e-macos.mjs` exits 2 off
+  macOS; `node --check` it and read it instead. The LaunchServices
+  dispatch itself (`open "unvibe://start"`) needs a GUI session — see
+  `docs/macos-testing.md` step 4 for what stays human-verified.
 
 ## Agent modes (`UNVIBE_AGENT`)
 
