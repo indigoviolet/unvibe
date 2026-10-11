@@ -226,7 +226,7 @@ if (version !== srcPkg.version) {
     console.error(`release: cannot patch versions in the bundle (want ${svcFrom} and ${mcpFrom})`);
     process.exit(1);
   }
-  dist = dist.replace(svcFrom, `SERVICE_VERSION = "${version}"`).replace(mcpFrom, `MCP_SERVICE_VERSION = "${version}"`);
+  dist = dist.split(svcFrom).join(`SERVICE_VERSION = "${version}"`).split(mcpFrom).join(`MCP_SERVICE_VERSION = "${version}"`);
   writeFileSync(distIndex, dist);
   console.log(`release: patched bundle versions ${srcPkg.version} -> ${version}`);
 }

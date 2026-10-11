@@ -241,8 +241,10 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
   }
   // No lifecycle scripts: the release package.json defines none, and npm
   // must not have run any (would print `> pkg@ver <script>` lines).
+  let installedVersion = null;
   try {
     const pj = JSON.parse(fs.readFileSync(installedPkgJson, "utf8"));
+    installedVersion = pj.version ?? null;
     assert(!pj.scripts || Object.keys(pj.scripts).length === 0, `${label}: release package.json defines no scripts`);
     assert(!pj.workspaces, `${label}: release package.json defines no workspaces`);
     assert(!pj.devDependencies, `${label}: release package.json has no devDependencies`);
@@ -250,6 +252,20 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
     assert(false, `${label}: installed package.json parses`);
   }
   assert(!/^> \S+ (postinstall|prepare|preinstall|install)\b/m.test(npmOut), `${label}: no lifecycle script ran during install`);
+  // The built service bundle must report the release version (for tag
+  // builds the bundle is patched from the source version to the tag).
+  if (installedVersion) {
+    const ver = spawnSync(process.execPath, [UNVIBE, "--version"], {
+      cwd: os.tmpdir(),
+      env: ENV,
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    assert(
+      ver.status === 0 && (ver.stdout ?? "").trim() === installedVersion,
+      `${label}: unvibe --version matches package ${installedVersion} (got ${JSON.stringify((ver.stdout ?? "").trim())})`,
+    );
+  }
 
   checkAdapterBundles(installedPkg, label);
   console.log(`${label}: install size ${mb(dirSizeBytes(prefix))} (prefix ${prefix})`);
