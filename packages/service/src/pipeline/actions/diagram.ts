@@ -67,7 +67,7 @@ export async function diagramAction(
     async (res): Promise<string | null> => {
       capture.settled();
       let fresh = res.cards.flatMap((c) => c.blocks) as Block[];
-      const bad = fresh.filter((b) => b.type === "diagram" && !isValidMermaid(b.mermaid));
+      const bad = fresh.filter((b) => b.type === "diagram" && !isValidMermaid(b.source));
       if (bad.length > 0) {
         // One repair turn for the unparseable diagram; a failed repair
         // leaves the card unchanged (job error is the visible failure).
@@ -135,7 +135,7 @@ async function repairDiagrams(
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const problems = bad
     .filter((b) => b.type === "diagram")
-    .map((b) => `- ${mermaidProblem((b as { mermaid: string }).mermaid)}:\n\`\`\`mermaid\n${(b as { mermaid: string }).mermaid}\n\`\`\``)
+    .map((b) => `- ${mermaidProblem((b as { source: string }).source)}:\n\`\`\`mermaid\n${(b as { source: string }).source}\n\`\`\``)
     .join("\n");
   const variables = {
     card: `${cardPromptText(snapshot, cardId)}\n\nThe previous diagram failed to parse:\n${problems}\nFix the Mermaid source and reply again.`,
@@ -157,15 +157,15 @@ async function repairDiagrams(
     ...(isReplayRunner(pipeline.runner) ? { replay: { kind: "diagram" } } : {}),
   });
   const retry = res.cards.flatMap((c) => c.blocks) as Block[];
-  const stillBad = retry.filter((b) => b.type === "diagram" && !isValidMermaid(b.mermaid));
+  const stillBad = retry.filter((b) => b.type === "diagram" && !isValidMermaid(b.source));
   if (stillBad.length > 0) {
-    throw new Error(`diagram repair failed: ${mermaidProblem((stillBad[0] as { mermaid: string }).mermaid)}`);
+    throw new Error(`diagram repair failed: ${mermaidProblem((stillBad[0] as { source: string }).source)}`);
   }
   // Merge: repaired diagrams replace the broken ones; keep the rest.
   const repairedSources = new Set(
-    retry.filter((b) => b.type === "diagram").map((b) => (b as { mermaid: string }).mermaid),
+    retry.filter((b) => b.type === "diagram").map((b) => (b as { source: string }).source),
   );
-  const kept = fresh.filter((b) => b.type !== "diagram" || isValidMermaid((b as { mermaid: string }).mermaid));
+  const kept = fresh.filter((b) => b.type !== "diagram" || isValidMermaid((b as { source: string }).source));
   void repairedSources;
   return [...kept, ...retry.filter((b) => b.type === "diagram" || (b.type === "aside" && b.kind === "Diagram"))];
 }
