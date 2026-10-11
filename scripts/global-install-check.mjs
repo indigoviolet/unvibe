@@ -5,8 +5,12 @@
 // local `release` branch), then this script. Every install below is a
 // LITERAL command from the README, with no extra flags:
 //
-//   npm install -g github:<org>/unvibe#release   (git ref; git+file://<bare>#release stands in locally)
-//   npm install -g https://…/unvibe-<v>.tgz       (tarball file)
+//   npm install -g github:<org>/unvibe#release      (git ref; git+file://<bare>#<ref> stands in locally)
+//   npm install -g github:<org>/unvibe#release-rc   (release-candidate ref; same mechanism)
+//   npm install -g https://…/unvibe-<v>.tgz          (tarball file)
+//
+// --release-ref <name> (or UNVIBE_RELEASE_REF) selects the git ref under test
+// (default `release`); --tarball <path> selects the tarball explicitly.
 //
 // Each source is installed with npm 11 (default `npm`) and npm 10
 // (`npx --yes npm@10`; `--npms 11,10` selects), into a temp prefix with a
@@ -40,6 +44,12 @@ const PHASES = String(flag("--phases", process.env.UNVIBE_GLOBAL_CHECK_PHASES ??
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+// Which local release branch the git phase installs (release for finals,
+// release-rc for candidates). Set by the release workflow to the ref it pushed.
+const RELEASE_REF = flag("--release-ref", process.env.UNVIBE_RELEASE_REF ?? process.env.UNVIBE_RELEASE_BRANCH ?? "release");
+// Explicit tarball path (the release workflow passes the versioned file);
+// otherwise resolved from UNVIBE_RELEASE_VERSION or package.json.
+const TARBALL_FLAG = flag("--tarball", process.env.UNVIBE_RELEASE_TARBALL ?? null);
 
 let failures = 0;
 function assert(cond, msg) {
@@ -400,20 +410,20 @@ async function phaseTarball(npmMajor, tarballPath, port) {
 }
 
 async function phaseGit(npmMajor, bareRepo, port) {
-  const label = `git-npm${npmMajor}`;
-  console.log(`--- ${label}: npm ${npmVersion(npmMajor, process.env)} ---`);
+  const label = `git-${RELEASE_REF}-npm${npmMajor}`;
+  console.log(`--- ${label}: npm ${npmVersion(npmMajor, process.env)} (ref ${RELEASE_REF}) ---`);
   const PREFIX = path.join(TMP, `prefix-${label}`);
   fs.mkdirSync(PREFIX, { recursive: true });
-  // Literal README command (git-ref variant); git+file://<bare>#release
-  // stands in for github:<org>/unvibe#release with no network to GitHub.
+  // Literal README command (git-ref variant); git+file://<bare>#<ref>
+  // stands in for github:<org>/unvibe#<ref> with no network to GitHub.
   const { code, out, ms, cacheDir } = installLiteral({
     npmMajor,
-    installArgs: [`git+file://${bareRepo}#release`],
+    installArgs: [`git+file://${bareRepo}#${RELEASE_REF}`],
     prefix: PREFIX,
     label,
   });
   if (code !== 0) console.error(out.slice(-3000));
-  assert(code === 0, `${label}: npm install -g git+file://<bare>#release --prefix (exit ${code})`);
+  assert(code === 0, `${label}: npm install -g git+file://<bare>#${RELEASE_REF} --prefix (exit ${code})`);
   if (code !== 0) return;
   console.log(`${label}: install time ${s(ms)}`);
   await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out });
@@ -422,15 +432,22 @@ async function phaseGit(npmMajor, bareRepo, port) {
 
 const main = async () => {
   // `mise run release` must have run first (check-global-install chains it):
-  // the tarball and the local `release` branch are its outputs.
-  const version = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
-  const tarballPath = path.join(ROOT, `unvibe-${version}.tgz`);
+  // the tarball and the local release branch are its outputs.
+  const pkgVersion = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
+  const stripV = (v) => (v.startsWith("v") ? v.slice(1) : v);
+  const refName = process.env.GITHUB_REF_NAME ?? "";
+  const wantVersion =
+    TARBALL_FLAG != null
+      ? null
+      : stripV((process.env.UNVIBE_RELEASE_VERSION ?? (/^v\d/.test(refName) ? refName : "")) || pkgVersion);
+  const tarballPath =
+    TARBALL_FLAG != null ? path.resolve(ROOT, TARBALL_FLAG) : path.join(ROOT, `unvibe-${wantVersion}.tgz`);
   assert(fs.existsSync(tarballPath), `release tarball exists (${tarballPath}; run \`mise run release\` first)`);
-  const hasRelease = spawnSync("git", ["rev-parse", "--verify", "--quiet", "refs/heads/release"], {
+  const hasRelease = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${RELEASE_REF}`], {
     cwd: ROOT,
     encoding: "utf8",
   });
-  assert(hasRelease.status === 0, "local release branch exists (run `mise run release` first)");
+  assert(hasRelease.status === 0, `local release branch exists (${RELEASE_REF}; run \`mise run release\` first)`);
   if (failures > 0) process.exit(1);
 
   // A local bare clone stands in for github:<org>/unvibe (same mechanism).
