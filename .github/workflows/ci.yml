@@ -5,13 +5,20 @@
 # spend tokens. The global-install check installs the self-contained release
 # tree (tarball + git ref, npm 10 and 11) with no flags and no tokens
 # (replay-mode demo).
+#
+# Triggers on branch pushes only (no `pull_request` trigger): for a branch
+# with an open PR both events would fire for the same commit and run the
+# workflow twice. `concurrency` cancels superseded runs on the same branch.
 
 name: ci
 
 on:
   push:
     branches: ["**"]
-  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -20,7 +27,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -28,32 +35,92 @@ jobs:
         with:
           install: true
 
+      - name: Restore npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Playwright version
+        id: pw
+        run: node -p "'version=' + require('./packages/web/package.json').devDependencies['@playwright/test']" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
       - name: Install workspace dependencies
         run: mise run install
+        timeout-minutes: 10
+
+      - name: d2 version
+        id: d2
+        run: node -p "'version=' + require('fs').readFileSync('mise.toml', 'utf8').match(/^d2 = \"([^\"]+)\"/m)[1]" >> "$GITHUB_OUTPUT"
+
+      - name: Restore d2 binary (mise/aqua install)
+        uses: actions/cache@v4
+        with:
+          # mise installs tools under ~/.local/share/mise/installs; a hit
+          # makes `mise install d2` below a fast no-op check.
+          path: ~/.local/share/mise/installs/d2
+          key: d2-${{ runner.os }}-${{ steps.d2.outputs.version }}
 
       - name: Install d2 (diagram tests; unit tests still pass without it)
         run: mise install d2 || true
+        timeout-minutes: 10
 
       - name: Lint + typecheck + unit tests
         run: mise run check
+        timeout-minutes: 20
 
       - name: Build (shared, service, web)
         run: mise run build
+        timeout-minutes: 10
 
       - name: Playwright browsers
         run: mise run playwright-install
+        timeout-minutes: 10
 
       - name: Playwright behaviour tests (mock + real service)
         run: mise run test:e2e
+        timeout-minutes: 30
+
+      # Fresh d2 renders must reproduce the pre-rendered fixture SVGs byte
+      # for byte on both platforms (darwin/arm64 output proved identical to
+      # the Linux-made seeds, which is what makes content-hash addressing +
+      # immutable caching sound cross-platform). Strict everywhere.
+      - name: D2 seed determinism (fresh renders vs fixture SVGs)
+        run: node scripts/d2-seed-check.mjs --strict
+        timeout-minutes: 10
 
       - name: Linux shell end-to-end (setup, handler, reuse, idle, uninstall)
         if: matrix.os == 'ubuntu-latest'
         run: mise run e2e
+        timeout-minutes: 10
+
+      - name: macOS shell end-to-end (setup, helper app, handler, idle, uninstall)
+        if: matrix.os == 'macos-latest'
+        run: mise run e2e:macos
+        timeout-minutes: 10
 
       - name: Global-install check (release tarball + git ref, npm 10+11)
-        if: matrix.os == 'ubuntu-latest'
         run: mise run check-global-install
+        timeout-minutes: 30
 
       - name: Restart resilience (SIGKILL mid-stage + restart)
-        if: matrix.os == 'ubuntu-latest'
         run: node scripts/restart-resilience.mjs
+        timeout-minutes: 20
+
+      - name: Upload Playwright results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ matrix.os }}-${{ github.run_attempt }}
+          # Traces + screenshots (retained on failure by playwright.config.ts)
+          # plus the tee'd real-service logs (test-results/service-logs/).
+          path: packages/web/test-results/
+          retention-days: 7

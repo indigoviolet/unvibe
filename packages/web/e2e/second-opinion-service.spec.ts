@@ -18,8 +18,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "./network-guard.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 
-const SERVICE_ENTRY = fileURLToPath(new URL("../../service/dist/index.js", import.meta.url));
 const FIXTURE_DIR = fileURLToPath(new URL("../../../fixtures/urllib3-5020", import.meta.url));
 const REVIEW_ID = "so-seed";
 
@@ -80,62 +80,6 @@ async function seedFixture(dataDir: string): Promise<void> {
   }
 }
 
-interface RunningService {
-  origin: string;
-  token: string;
-  stop: () => Promise<void>;
-}
-
-async function startService(dataDir: string): Promise<RunningService> {
-  const { spawn } = await import("node:child_process");
-  const proc = spawn(process.execPath, [SERVICE_ENTRY], {
-    env: {
-      ...process.env,
-      UNVIBE_DATA_DIR: dataDir,
-      UNVIBE_PORT: "0",
-      UNVIBE_REPO_ROOTS: "",
-      UNVIBE_AGENT: "replay",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let out = "";
-  const started = new Promise<{ origin: string; token: string }>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`service did not start: ${out}`)), 30_000);
-    proc.stdout?.on("data", (d: Buffer) => {
-      out += d.toString();
-      const m = out.match(/Unvibe listening on (http:\/\/127\.0\.0\.1:\d+)\/\?token=(\S+)/);
-      if (m) {
-        clearTimeout(timer);
-        resolve({ origin: m[1], token: m[2] });
-      }
-    });
-    proc.on("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    proc.on("exit", (code) => {
-      if (code !== 0 && code !== null) {
-        clearTimeout(timer);
-        reject(new Error(`service exited with ${code}: ${out}`));
-      }
-    });
-  });
-  const { origin, token } = await started;
-  return {
-    origin,
-    token,
-    stop: () =>
-      new Promise<void>((resolve) => {
-        proc.on("exit", () => resolve());
-        proc.kill("SIGTERM");
-        setTimeout(() => {
-          if (proc.exitCode === null) proc.kill("SIGKILL");
-          resolve();
-        }, 5000).unref?.();
-      }),
-  };
-}
-
 async function apiFetch(
   origin: string,
   token: string,
@@ -162,7 +106,7 @@ test.describe("second opinion over real service (replay)", () => {
   test.beforeAll(async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-so-data-"));
     await seedFixture(dataDir);
-    svc = await startService(dataDir);
+    svc = await startService(dataDir, { agent: "replay" });
   });
 
   test.afterAll(async () => {

@@ -16,65 +16,14 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import type { Locator, Page } from "@playwright/test";
 
 const exec = promisify(execFile);
-const SERVICE_ENTRY = fileURLToPath(new URL("../../service/dist/index.js", import.meta.url));
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
-
-interface RunningService {
-  origin: string;
-  token: string;
-  stop: () => Promise<void>;
-}
-
-async function startService(dataDir: string, agent: string): Promise<RunningService> {
-  const { spawn } = await import("node:child_process");
-  const proc = spawn(process.execPath, [SERVICE_ENTRY], {
-    env: { ...process.env, UNVIBE_DATA_DIR: dataDir, UNVIBE_PORT: "0", UNVIBE_REPO_ROOTS: "", UNVIBE_AGENT: agent },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let out = "";
-  const started = new Promise<{ origin: string; token: string }>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`service did not start: ${out}`)), 30_000);
-    proc.stdout?.on("data", (d: Buffer) => {
-      out += d.toString();
-      const m = out.match(/Unvibe listening on (http:\/\/127\.0\.0\.1:\d+)\/\?token=(\S+)/);
-      if (m) {
-        clearTimeout(timer);
-        resolve({ origin: m[1], token: m[2] });
-      }
-    });
-    proc.on("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    proc.on("exit", (code) => {
-      if (code !== 0 && code !== null) {
-        clearTimeout(timer);
-        reject(new Error(`service exited with ${code}: ${out}`));
-      }
-    });
-  });
-  const { origin, token } = await started;
-  return {
-    origin,
-    token,
-    stop: () =>
-      new Promise<void>((resolve) => {
-        proc.on("exit", () => resolve());
-        proc.kill("SIGTERM");
-        setTimeout(() => {
-          if (proc.exitCode === null) proc.kill("SIGKILL");
-          resolve();
-        }, 5000).unref?.();
-      }),
-  };
-}
 
 async function apiJson(origin: string, token: string, method: string, urlPath: string, body?: unknown): Promise<unknown> {
   const args = ["-s", "-X", method, `${origin}${urlPath}`, "-H", `Authorization: Bearer ${token}`, "-H", "content-type: application/json"];
@@ -114,13 +63,90 @@ async function selectText(page: Page, rootSelector: string, text: string): Promi
   await expect(page.locator("#selbar")).toBeVisible({ timeout: 5000 });
 }
 
+/**
+ * Hover an anchor deterministically. Playwright's `hover()` may scroll with
+ * the pointer already over the target, and a scroll with a stationary
+ * pointer must NOT open the popover (PRD §4.5) — so scroll, settle, move
+ * the pointer in genuine steps, and never let `hover()` scroll again.
+ *
+ * Two extra guards for loaded runners (found when this flow failed on the
+ * macOS CI leg while passing on Linux): webfonts swap layout after load,
+ * and async diagram/font rendering can move the anchor between measuring
+ * and arriving. So wait for fonts + scroll quiet, then aim at the anchor's
+ * own line boxes (a wrapped anchor's union-box center can land on plain
+ * text between the lines) until the cursor verifiably lands on it.
+ */
 async function hoverFresh(page: Page, locator: Locator): Promise<void> {
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  await page.evaluate(() => {
+    const w = window as unknown as { __lastScrollAt?: number; __scrollHook?: boolean };
+    w.__lastScrollAt = Date.now();
+    if (!w.__scrollHook) {
+      w.__scrollHook = true;
+      document.addEventListener(
+        "scroll",
+        () => {
+          w.__lastScrollAt = Date.now();
+        },
+        true,
+      );
+    }
+  });
   await locator.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(200);
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("anchor has no box");
+  await page.waitForFunction(
+    () => Date.now() - ((window as unknown as { __lastScrollAt?: number }).__lastScrollAt ?? 0) > 400,
+    { polling: 250, timeout: 10_000 },
+  );
   await page.mouse.move(8, 200);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+  // Aim at the anchor's own line boxes, not the union-box center: when the
+  // anchor wraps across lines, the union center can land on plain text
+  // between the lines (topmost element is then the paragraph, no mouseover
+  // ever fires). Measure fresh each attempt and walk the line boxes until
+  // the cursor verifiably lands on the anchor.
+  const measure = (): Promise<{ x: number; y: number; width: number; height: number }[]> =>
+    locator.evaluate((target) => {
+      const out: { x: number; y: number; width: number; height: number }[] = [];
+      const rs = target.getClientRects();
+      for (let i = 0; i < rs.length; i++) out.push({ x: rs[i].x, y: rs[i].y, width: rs[i].width, height: rs[i].height });
+      return out;
+    });
+  let last: { x: number; y: number } = { x: -1, y: -1 };
+  for (let i = 0; i < 4; i++) {
+    const rects = await measure();
+    if (rects.length === 0) throw new Error("anchor has no rects");
+    const r = rects[Math.min(i, rects.length - 1)];
+    const x = r.x + r.width / 2;
+    const y = r.y + r.height / 2;
+    last = { x, y };
+    await page.mouse.move(x, y, { steps: 5 });
+    const onAnchor = await locator.evaluate(
+      (target, p: { x: number; y: number }) => {
+        const hit = document.elementFromPoint(p.x, p.y);
+        return !!hit && (hit === target || target.contains(hit));
+      },
+      { x, y },
+    );
+    if (onAnchor) return;
+  }
+  // Diagnose the miss with the covering stack instead of guessing: what is
+  // topmost at the aim point, and what (if anything) is actually hovered.
+  const diag = await page.evaluate((p: { x: number; y: number }) => {
+    const stack = document
+      .elementsFromPoint(p.x, p.y)
+      .slice(0, 5)
+      .map((el) => {
+        const h = el as HTMLElement;
+        const r = h.getBoundingClientRect();
+        const cls = typeof h.className === "string" && h.className ? `.${h.className.trim().split(/\s+/).join(".")}` : "";
+        return `${el.tagName.toLowerCase()}${h.id ? `#${h.id}` : ""}${cls} @(${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)})`;
+      });
+    const hovered = [...document.querySelectorAll(":hover")].map((el) => el.tagName.toLowerCase()).join(",");
+    return { stack, hovered, scrollY: Math.round(window.scrollY), inner: `${window.innerWidth}x${window.innerHeight}` };
+  }, last);
+  throw new Error(
+    `hover missed the anchor at (${last.x},${last.y}): top=[${diag.stack.join(" < ") || "(none)"}] ` +
+      `:hover=[${diag.hovered || "(none)"}] scrollY=${diag.scrollY} viewport=${diag.inner}`,
+  );
 }
 
 test.describe("reader journey over the real service (replay)", () => {
@@ -130,7 +156,7 @@ test.describe("reader journey over the real service (replay)", () => {
 
   test.beforeAll(async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-journey-data-"));
-    svc = await startService(dataDir, "replay");
+    svc = await startService(dataDir, { agent: "replay" });
     const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
       review: { id: string };
     };

@@ -15,14 +15,13 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import type { Page } from "@playwright/test";
 import { fileKeyForPath } from "@unvibe/shared";
 
 const exec = promisify(execFile);
-const SERVICE_ENTRY = fileURLToPath(new URL("../../service/dist/index.js", import.meta.url));
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -102,72 +101,22 @@ exit 1
   writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
 }
 
-interface RunningService {
-  origin: string;
-  token: string;
-  stop: () => Promise<void>;
-}
-
-async function startService(dataDir: string, fakeBin: string): Promise<RunningService> {
-  const { spawn } = await import("node:child_process");
-  const env = { ...process.env } as Record<string, string | undefined>;
-  delete env.GITHUB_TOKEN;
-  // The service resolves tools through the login shell (`$SHELL` first),
-  // which would put the real `gh` ahead of our fake. Point SHELL at a stub
-  // that prints the fake bin first (real tools stay visible after it).
+/**
+ * Spawn the service with the fake `gh` first on PATH (tests never hit real
+ * GitHub or real agents). The service resolves tools through the login
+ * shell (`$SHELL` first), which would put the real `gh` ahead of our fake:
+ * point SHELL at a stub that prints the fake bin first (real tools stay
+ * visible after it).
+ */
+async function startServiceWithFakeGh(dataDir: string, fakeBin: string): Promise<RunningService> {
   const fakeShell = path.join(fakeBin, "fakeshell");
   writeFileSync(fakeShell, `#!/bin/sh\necho "${fakeBin}:$PATH"\n`, { mode: 0o755 });
-  const proc = spawn(process.execPath, [SERVICE_ENTRY], {
-    env: {
-      ...env,
-      UNVIBE_DATA_DIR: dataDir,
-      UNVIBE_PORT: "0",
-      UNVIBE_REPO_ROOTS: "",
-      // Never start real agents in tests: the pipeline is disabled
-      // (`UNVIBE_AGENT=none`), so no background job mutates the review
-      // while comments are created (AGENTS.md).
-      UNVIBE_AGENT: "none",
+  return startService(dataDir, {
+    extraEnv: {
       SHELL: fakeShell,
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}`,
     },
-    stdio: ["ignore", "pipe", "pipe"],
   });
-  let out = "";
-  const started = new Promise<{ origin: string; token: string }>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`service did not start: ${out}`)), 30_000);
-    proc.stdout?.on("data", (d: Buffer) => {
-      out += d.toString();
-      const m = out.match(/Unvibe listening on (http:\/\/127\.0\.0\.1:\d+)\/\?token=(\S+)/);
-      if (m) {
-        clearTimeout(timer);
-        resolve({ origin: m[1], token: m[2] });
-      }
-    });
-    proc.on("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    proc.on("exit", (code) => {
-      if (code !== 0 && code !== null) {
-        clearTimeout(timer);
-        reject(new Error(`service exited with ${code}: ${out}`));
-      }
-    });
-  });
-  const { origin, token } = await started;
-  return {
-    origin,
-    token,
-    stop: () =>
-      new Promise<void>((resolve) => {
-        proc.on("exit", () => resolve());
-        proc.kill("SIGTERM");
-        setTimeout(() => {
-          if (proc.exitCode === null) proc.kill("SIGKILL");
-          resolve();
-        }, 5000).unref?.();
-      }),
-  };
 }
 
 async function apiJson(
@@ -209,7 +158,7 @@ test.describe("comments over the real service", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-m6-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-m6-bin-"));
     writeFakeGh(fakeBin, logDir, repo.headSha);
-    svc = await startService(dataDir, fakeBin);
+    svc = await startServiceWithFakeGh(dataDir, fakeBin);
     // Register the repo and open a PR review through the real API.
     const repos = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", {
       path: repoDir,
