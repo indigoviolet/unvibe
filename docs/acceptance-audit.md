@@ -67,6 +67,14 @@ checkouts; job-list snapshot bloat; doctor port diagnosis; broken
   user's `claude`/`codex` CLIs on the login-shell PATH
   (`agent/acp/connection.ts:41`, `exec/shell-path.ts`). `doctor` reports
   each login state.
+- **Diagnostics + Doctor + Reload (#20)** — met: one diagnostics module for
+  doctor + service (scrubbed login+interactive PATH probe with delimiters,
+  timeout, fallback; every candidate with shim/symlink/version-only-from-
+  success/choice; `unvibe doctor --strict` + service-view diff); Doctor page
+  (`/doctor`) with full errors, PATH diff, service identity, warnings, Copy
+  diagnostics (home+token redacted); Reload everything re-probes PATH,
+  restarts adapters (in-flight fail as retryable, jobs retry), clears
+  caches, re-checks d2, without restart.
 - **Nothing hosted publicly** — met. Fastify binds `127.0.0.1` only
   (`server.ts:278`); static network guards (`network-guards.test.ts`,
   `network-privacy.test.ts`, Playwright `network-privacy.spec.ts`,
