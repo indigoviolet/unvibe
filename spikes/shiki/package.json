@@ -1,0 +1,11 @@
+{
+  "name": "shiki-spike",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Evaluation harness for issue #23 (Shiki-direct highlighting). Not part of the build; lives on spike/shiki-highlighting only.",
+  "type": "module",
+  "scripts": {
+    "perf": "node scripts/perf.mjs",
+    "shots": "node scripts/shots.mjs"
+  }
+}

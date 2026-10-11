@@ -1,0 +1,23 @@
+[harness] mock web up at http://127.0.0.1:5931 pid=2826347
+### demo.ttfp.before.ms: {"runs":[1398,384,366],"median":384}
+### demo.ttfp.after.ms: {"runs":[360,377,361],"median":361}
+### demo.timeToHighlighted.ms: {"runs":[514,603,625],"median":603}
+### demo.highlighted: {"spans":238,"msToSettle":1283,"cache":{"cached":5,"langs":["python"]}}
+### demo.rerender: {"ms":685,"spansBefore":238,"spansAfter":238,"cache":{"cached":7,"langs":["python"]}}
+### demo.scroll.before: {"longtasks":{"count":0,"max":0,"total":0},"heapMB":15.4}
+### demo.scroll.after: {"longtasks":{"count":0,"max":0,"total":0},"heapMB":20.7}
+[harness] service up at http://127.0.0.1:36307 pid=2826664
+### multilang.ingest.ms: 116
+### multilang.files: [{"path":"README.md","fileKey":"README.md","hunks":1},{"path":"config.json","fileKey":"config.json","hunks":1},{"path":"notes.rst","fileKey":"notes.rst","hunks":1},{"path":"run.sh","fileKey":"run.sh","hunks":1},{"path":"src/app.py","fileKey":"src-app.py","hunks":2},{"path":"src/index.ts","fileKey":"src-index.ts","hunks":1},{"path":"src/widget.tsx","fileKey":"src-widget.tsx","hunks":1}]
+### multilang.ttfp.ms: 151
+### multilang.spansPerFile: {"README.md":9,"config.json":13,"notes.rst":0,"run.sh":17,"src/app.py":52,"src/index.ts":55,"src/widget.tsx":46}
+### large.ingest.ms: 442
+### large.shape: {"files":300,"hunks":5100}
+### large.headerMount.ms: 570
+### large.tablesMounted: 3
+### large.timeToHighlighted.ms: 15
+### large.scroll.after: {"longtasks":{"count":428,"max":470,"total":47402},"heapMB":{"before":20.7,"after":20.7}}
+### large.spansFull: 68102
+### large.scroll.before: {"longtasks":{"count":364,"max":240,"total":31476},"heapMB":{"before":16.3,"after":16.3}}
+### large.patch: {"ms":1648,"spansAfterPatch":833}
+[harness] wrote out/perf.json
