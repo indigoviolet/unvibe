@@ -143,6 +143,8 @@ describe("static network guards", () => {
       if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(text)) {
         offenders.push(`${path.relative(webRoot, f)}: google fonts reference`);
       }
+      // Sentry is dev-server only (issue #29): neither SDK nor DSN is built in.
+      if (/sentry/i.test(text)) offenders.push(`${path.relative(webRoot, f)}: sentry reference`);
     }
     expect(offenders, "remote loads in packages/web/dist").toEqual([]);
   });
