@@ -70,12 +70,16 @@ description = "Linux end-to-end: setup, handler start, reuse, idle exit, uninsta
 run = "mise run build && node scripts/e2e-linux.mjs"
 
 [tasks.check-global-install]
-description = "Pack + global-install a tarball into a temp prefix, run doctor/start/stop outside the repo"
-run = "mise run build && node scripts/global-install-check.mjs"
+description = "Release-install the tarball + git ref into temp prefixes (npm 10+11), run doctor/start/demo outside the repo"
+run = "mise run release && node scripts/global-install-check.mjs"
 
 [tasks.release]
 description = "Assemble the self-contained release tree, tarball, and local release branch"
 run = "mise run build && node scripts/release.mjs"
+
+[tasks."test:live:installed"]
+description = "Live sessions per provider from the installed copy (needs logins; tiny spend; never run by check)"
+run = "mise run release && UNVIBE_LIVE=1 node scripts/live-installed.mjs"
 
 [tasks."test:live:submit"]
 description = "Live M6 submit test on indigoviolet/lvu (draft PR only; never run by check)"
