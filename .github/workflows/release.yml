@@ -1,0 +1,56 @@
+# Unvibe release: build the self-contained release tree on tag, push the
+# `release` branch (orphan, one commit with only the release tree), and
+# attach `unvibe-<version>.tgz` to the GitHub release.
+#
+# Users install with NO flags (no prepare/postinstall, no devDependencies):
+#   npm install -g github:<org>/unvibe#release
+#   npm install -g https://github.com/<org>/unvibe/releases/download/<v>/unvibe-<v>.tgz
+# Live agent tasks never run here (need user logins + token spend).
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Install workspace dependencies
+        run: mise run install
+
+      - name: Lint + typecheck + unit tests
+        run: mise run check
+
+      - name: Assemble release tree + tarball + local release branch
+        run: mise run release
+
+      - name: Verify the release installs with no flags (tarball + git ref)
+        run: node scripts/global-install-check.mjs
+
+      - name: Push the release branch (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: git push origin refs/heads/release:refs/heads/release
+
+      - name: Attach the tarball to the GitHub release (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: unvibe-*.tgz

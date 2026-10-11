@@ -16,8 +16,11 @@
  *   terminal + client-fs requests are denied outright.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { Readable, Writable } from "node:stream";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { resolvePathFromLoginShell } from "../../exec/shell-path.js";
 import { agentBinEnv, resolveAgentBin } from "../../exec/agent-bins.js";
@@ -57,7 +60,26 @@ async function loginPathEnv(): Promise<string> {
   return cachedLoginPath;
 }
 
+export const ADAPTER_FILE: Record<ProviderId, string> = {
+  claude: "claude.js",
+  codex: "codex.js",
+};
+
 export function resolveAdapterEntry(provider: ProviderId): string {
+  // Prefer the adapter bundle shipped next to the service bundle
+  // (`dist/adapters/<provider>.js`, produced by `build:adapters` and shipped
+  // in the release tree). The release install has no adapter packages in
+  // node_modules at all. In a source checkout without a build, fall back to
+  // resolving the adapter package from node_modules.
+  try {
+    const here = new URL(import.meta.url);
+    if (here.protocol === "file:") {
+      const bundled = join(dirname(fileURLToPath(here)), "adapters", ADAPTER_FILE[provider]);
+      if (existsSync(bundled)) return bundled;
+    }
+  } catch {
+    // fall through to node_modules resolution
+  }
   const req = createRequire(import.meta.url);
   try {
     return req.resolve(`${ADAPTER_PKG[provider]}/dist/index.js`);

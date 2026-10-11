@@ -36,16 +36,24 @@ Service dependencies (so a global npm install brings the adapters along):
   (else the adapter-native vars when pre-set). `NO_BROWSER=1` is always set
   (safe: stored ChatGPT OAuth login is still used, no browser, no new
   credentials).
-- **No bundled platform binaries.** The adapters' `optionalDependencies`
-  would pull `@openai/codex-<platform>` (427 MB) and
-  `@anthropic-ai/claude-agent-sdk-<platform>` (242 MB). Unvibe stubs them
-  via npm `overrides` (`stubs/empty-platform`, local installs) and deletes
-  any fetched copies in `postinstall` (`scripts/prune-binaries.mjs`, global
-  installs where npm ignores overrides) — final install ~69 MB (was ~736
-  MB). Minimum versions: Codex ≥ 0.160.1 (adapter dep `^0.160.1`), Claude
-  Code ≥ 2.1.293 (SDK 0.3.293 bundles 2.1.293); readiness/doctor enforce
-  them with update hints. MCP `server/discover` (newer CLIs) is answered
-  with Method Not Found so the CLI falls back to `initialize`.
+- **No agent platform binaries, bundled adapters.** The adapters
+  (`@agentclientprotocol/claude-agent-acp` 0.89.0,
+  `@agentclientprotocol/codex-acp` 2.2.2) are bundled as plain JS into the
+  service build (`dist/adapters/claude.js`, `dist/adapters/codex.js`,
+  spawned as stdio subprocesses as before) together with their JS
+  dependencies (ACP SDK, Claude Agent SDK JS, zod, diff). Their
+  `optionalDependencies` (`@openai/codex-<platform>` 427 MB,
+  `@anthropic-ai/claude-agent-sdk-<platform>` 242 MB) are never installed:
+  the release tree does not depend on `@openai/codex` or
+  `@anthropic-ai/claude-agent-sdk` at all, and the adapter code paths that
+  would resolve the bundled binaries are never reached (the service always
+  sets `CLAUDE_CODE_EXECUTABLE`/`CODEX_PATH`, and throws a clear install
+  hint when the user's CLI is missing). Source checkouts keep npm
+  `overrides` (`stubs/empty-platform`) so dev installs stay lean. Final
+  install ~66 MB (was ~736 MB). Minimum versions: Codex ≥ 0.160.1, Claude
+  Code ≥ 2.1.293; readiness/doctor enforce them with update hints. MCP
+  `server/discover` (newer CLIs) is answered with Method Not Found so the
+  CLI falls back to `initialize`.
 - **One subprocess per provider**, started lazily on first `start()` /
   `listModels()`, multiplexing all sessions for that provider. Crash: the
   transport drops, in-flight prompts fail as **retryable** errors, and the

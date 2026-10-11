@@ -470,25 +470,18 @@ UI); nothing below was edited by this pass.
 - Nothing starts at login; idle exit (10 min, no window + no jobs) — met
   (`e2e-linux.mjs` idle-exit; empirical 8 s idle exit + stays up with
   jobs — ran).
-- Install `npm install -g --install-links --allow-scripts=unvibe
-  github:<org>/unvibe` + `unvibe setup` + same command updates — **met**:
-  tarball AND git-source phases fully green (adapters resolve, demo
-  completes from the installed copy, 2.3 MB tarball / ~69 MB installed on
-  Linux — ran; was ~736 MB before the bundled agent binaries were removed).
-  `prepare` fixed for global-mode bugs (workspaces env, missing bins,
-  concurrent tree → isolated build; global-only npm flags stripped for
-  nested installs). Git-URL npm handling: `--install-links` defeats the npm
-  11 dangling-symlink bug (links the git clone, then guts it — reproduced
-  with a trivial package, npm-side); `--allow-scripts=unvibe` lets our
-  `postinstall` prune the bundled platform binaries (npm 11 blocks install
-  scripts by default). Same flags work on npm 10. The check's git phase
-  installs from a fresh clone of the bare source (exercising devDeps +
-  `prepare` build) after npm's git-URL preparation proved too racy for
-  non-trivial trees on npm 10/11 (ENOTEMPTY extraction races on deep
-  trees — reproduced with and without our changes; see
-  `scripts/global-install-check.mjs`). Agents run the user's installed
-  `claude`/`codex` (no bundled binaries; readiness/doctor report path +
-  version).
+- Install `npm install -g github:<org>/unvibe#release` + `unvibe setup` +
+  same command updates — **met**: the `#release` ref serves a
+  self-contained tree (built service + web, no build step, no lifecycle
+  scripts, no devDependencies), installed with **no flags** on npm 11 and
+  npm 10 — ran both, tarball AND git-ref phases fully green (adapter
+  bundles present, demo completes from the installed copy, readiness
+  reports the user's executables, 3.3 MB tarball / ~66 MB installed on
+  Linux in ~4 s; no agent platform binary downloaded — verified against
+  the isolated npm cache). Agents run the user's installed `claude`/`codex`
+  (readiness/doctor report path + version). Tarballs attached to GitHub
+  releases install identically. Installing from the default branch (source
+  tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
 
@@ -584,11 +577,15 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 
 ## Intentional deviations from the PRD (confirm)
 
-1. Git-URL installs need `--install-links --allow-scripts=unvibe`
-   (npm 11 dangling-symlink + script-blocking, both npm-side; same flags
-   work on npm 10). Resolved in this branch — no decision needed unless you
-   want release tarballs as the *primary* route (both are verified; tarball
-   is faster to install since npm skips the source build).
+1. Install is `npm install -g github:<org>/unvibe#release` (PRD §14 says
+   `npm install -g github:<org>/unvibe`, no ref). **Deviation, stated
+   plainly:** the default branch is the source tree, not an installable
+   package — it needs devDependencies + a build, and npm's git-URL handling
+   for packages with a `prepare` script is broken upstream on npm 10/11
+   (dangling symlinks; ENOTEMPTY preparation races on non-trivial trees).
+   The `#release` ref serves a self-contained tree that installs with no
+   flags; updating is the same command. Release tarballs (attached per tag)
+   install identically.
 2. Fold-all is client-fan-out per-hunk `summarize` (no batch endpoint) —
    recorded in `docs/pipeline.md`; same observable behaviour.
 3. Suggested-comment links are app-built `comment-link` blocks, not
@@ -618,10 +615,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 Stale-dist guard; Host/Origin gate; MCP secret lifecycle; submit crash
 lease; orphan-dedupe resume block; reply-after-restart; resume demo fill;
 demo refresh 502; missing-checkout errors; job-list bloat; doctor port
-diagnosis; prepare global-install robustness; git-URL install with
---install-links (real passing check); user's CLIs via adapters (no bundled
-binaries, ~69 MB installed); readiness/doctor path+version gates; MCP
-server/discover shim for new CLIs.
+diagnosis; user's CLIs via adapters (bundled `dist/adapters/`, no platform
+binaries downloaded, ~66 MB installed); readiness/doctor path+version
+gates; MCP server/discover shim for new CLIs; self-contained `#release`
+install tree (no prepare/postinstall, literal no-flag installs verified on
+npm 10+11, tarball + git ref).
 
 ### Web defects for the web agent
 
@@ -631,13 +629,14 @@ errors). One item to confirm visually when card controls land (§4.4
 
 ### Needs the user's decision or a Mac
 
-1. **Install path**: RESOLVED — `--install-links --allow-scripts=unvibe`
-   makes both git-URL and tarball installs green (this branch). Tarballs
-   remain the faster route (no source build); git URL is the PRD §14 route
-   and is verified via fresh-clone install in `check-global-install`.
-2. **Install size**: RESOLVED — ~69 MB installed (was ~736 MB; bundled
-   Codex 427 MB + Claude 242 MB platform binaries removed — Unvibe runs
-   your installed CLIs). No decision needed.
+1. **Install path**: RESOLVED — `#release` ref + tarballs, both installing
+   with no flags on npm 10 and 11 (verified in `check-global-install`).
+   Open: the repo has no LICENSE file, so the release ships no licence
+   statement for Unvibe's own code (third-party notices ship in
+   THIRD-PARTY-NOTICES.md) — pick a licence.
+2. **Install size**: RESOLVED — ~66 MB installed in ~4 s, nothing
+   downloaded beyond 6 small runtime deps (was ~736 MB with bundled agent
+   binaries). No decision needed.
 3. **Mac**: run `docs/macos-testing.md` (15 min) — untested: osacompile
    applet, lsregister delivery, Gatekeeper xattr, Finder PATH, Chrome
    install flow on macOS.
