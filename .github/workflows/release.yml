@@ -1,11 +1,18 @@
-# Unvibe release: build the self-contained release tree on tag, push the
-# `release` branch (orphan, one commit with only the release tree), and
-# attach `unvibe-<version>.tgz` to the GitHub release.
+# Unvibe release: on tag v*, verify, build the self-contained release tree,
+# push the release branch (orphan, one commit with only the release tree),
+# and attach `unvibe-<version>.tgz` to the GitHub release.
+#
+# Version and branch come from the tag: v0.0.1 → version 0.0.1, branch
+# `release`; v0.0.1-rc.1 → version 0.0.1-rc.1, branch `release-rc` (marked
+# pre-release). Candidates never overwrite the `release` ref users install
+# from. The generated package.json version and the tarball name both come
+# from the tag, so they always agree.
 #
 # Users install with NO flags (no prepare/postinstall, no devDependencies):
-#   npm install -g github:<org>/unvibe#release
-#   npm install -g https://github.com/<org>/unvibe/releases/download/<v>/unvibe-<v>.tgz
-# Live agent tasks never run here (need user logins + token spend).
+#   npm install -g github:indigoviolet/unvibe#release
+# The repo is private: the git ref needs git credentials (`gh auth setup-git`),
+# and the tarball needs `gh release download` (a bare releases/download URL
+# 401s without auth). Live agent tasks never run here (need user logins).
 
 name: release
 
@@ -16,6 +23,12 @@ on:
 permissions:
   contents: write
 
+# Tags are immutable; concurrent runs for the same tag queue instead of
+# cancelling each other.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     strategy:
@@ -25,6 +38,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
+      # Detached tag checkout with full history: `git push origin
+      # refs/heads/<branch>` below pushes the local branch created by
+      # scripts/release.mjs (via update-ref), so no branch checkout is needed.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -33,24 +49,80 @@ jobs:
         with:
           install: true
 
+      - name: Restore npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: d2 version
+        id: d2
+        run: node -p "'version=' + require('fs').readFileSync('mise.toml', 'utf8').match(/^d2 = \"([^\"]+)\"/m)[1]" >> "$GITHUB_OUTPUT"
+
+      - name: Restore d2 binary (mise/aqua install)
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/mise/installs/d2
+          key: d2-${{ runner.os }}-${{ steps.d2.outputs.version }}
+
+      - name: Install d2 (diagram tests; unit tests still pass without it)
+        run: mise install d2 || true
+        timeout-minutes: 10
+
       - name: Install workspace dependencies
         run: mise run install
+        timeout-minutes: 10
 
+      # Runs before the build on purpose, from a clean tree with no dist/
+      # (same order as CI): the dist-dependent guards must skip, never fail.
       - name: Lint + typecheck + unit tests
         run: mise run check
+        timeout-minutes: 20
+
+      - name: Derive version + branch from the tag
+        id: rel
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          if [[ "$VERSION" == *"-rc."* ]]; then
+            BRANCH="release-rc"
+            PRERELEASE="true"
+          else
+            BRANCH="release"
+            PRERELEASE="false"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG version=$VERSION branch=$BRANCH prerelease=$PRERELEASE"
 
       - name: Assemble release tree + tarball + local release branch
         run: mise run release
+        env:
+          UNVIBE_RELEASE_VERSION: ${{ steps.rel.outputs.version }}
+          UNVIBE_RELEASE_BRANCH: ${{ steps.rel.outputs.branch }}
+        timeout-minutes: 10
 
       - name: Verify the release installs with no flags (tarball + git ref)
-        run: node scripts/global-install-check.mjs
+        run: node scripts/global-install-check.mjs --release-ref "${{ steps.rel.outputs.branch }}" --tarball "unvibe-${{ steps.rel.outputs.version }}.tgz"
+        env:
+          UNVIBE_RELEASE_REF: ${{ steps.rel.outputs.branch }}
+        timeout-minutes: 30
 
       - name: Push the release branch (ubuntu only)
         if: matrix.os == 'ubuntu-latest'
-        run: git push origin refs/heads/release:refs/heads/release
+        run: git push origin "refs/heads/${{ steps.rel.outputs.branch }}:refs/heads/${{ steps.rel.outputs.branch }}"
+
+      - name: Write release notes
+        if: matrix.os == 'ubuntu-latest'
+        run: node scripts/release-notes.mjs "${{ steps.rel.outputs.version }}" --tag "${{ github.ref_name }}" --output release-notes.md
 
       - name: Attach the tarball to the GitHub release (ubuntu only)
         if: matrix.os == 'ubuntu-latest'
         uses: softprops/action-gh-release@v2
         with:
-          files: unvibe-*.tgz
+          files: unvibe-${{ steps.rel.outputs.version }}.tgz
+          body_path: release-notes.md
+          prerelease: ${{ steps.rel.outputs.prerelease == 'true' }}
