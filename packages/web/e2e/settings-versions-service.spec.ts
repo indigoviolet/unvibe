@@ -10,17 +10,16 @@
  * (`mise run build` first), temp data dir, temp git repo, no agent.
  */
 import { execFile } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
+import { startService, type RunningService } from "./service-harness.js";
 import type { Page } from "@playwright/test";
 import { fileKeyForPath } from "@unvibe/shared";
 
 const exec = promisify(execFile);
-const SERVICE_ENTRY = fileURLToPath(new URL("../../service/dist/index.js", import.meta.url));
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
   const { stdout } = await exec("git", args, { cwd });
@@ -64,67 +63,6 @@ async function makeRepo(): Promise<string> {
   await git(dir, "add", ".");
   await git(dir, "commit", "-m", "feature work");
   return dir;
-}
-
-interface RunningService {
-  origin: string;
-  token: string;
-  stop: () => Promise<void>;
-}
-
-async function startService(dataDir: string): Promise<RunningService> {
-  if (!existsSync(SERVICE_ENTRY)) {
-    throw new Error(`service not built: run \`mise run build\` first (missing ${SERVICE_ENTRY})`);
-  }
-  const { spawn } = await import("node:child_process");
-  const proc = spawn(process.execPath, [SERVICE_ENTRY], {
-    env: {
-      ...process.env,
-      UNVIBE_DATA_DIR: dataDir,
-      UNVIBE_PORT: "0",
-      UNVIBE_REPO_ROOTS: "",
-      // No agent behaviour under test: keep the pipeline disabled so no
-      // background job mutates the review mid-test.
-      UNVIBE_AGENT: "none",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let out = "";
-  const started = new Promise<{ origin: string; token: string }>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`service did not start: ${out}`)), 30_000);
-    proc.stdout?.on("data", (d: Buffer) => {
-      out += d.toString();
-      const m = out.match(/Unvibe listening on (http:\/\/127\.0\.0\.1:\d+)\/\?token=(\S+)/);
-      if (m) {
-        clearTimeout(timer);
-        resolve({ origin: m[1], token: m[2] });
-      }
-    });
-    proc.on("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    proc.on("exit", (code) => {
-      if (code !== 0 && code !== null) {
-        clearTimeout(timer);
-        reject(new Error(`service exited with ${code}: ${out}`));
-      }
-    });
-  });
-  const { origin, token } = await started;
-  return {
-    origin,
-    token,
-    stop: () =>
-      new Promise<void>((resolve) => {
-        proc.on("exit", () => resolve());
-        proc.kill("SIGTERM");
-        setTimeout(() => {
-          if (proc.exitCode === null) proc.kill("SIGKILL");
-          resolve();
-        }, 5000).unref?.();
-      }),
-  };
 }
 
 async function curlJson(origin: string, token: string, method: string, urlPath: string, body?: unknown): Promise<unknown> {
