@@ -16,7 +16,7 @@ import { FakeAgentRunner } from "../src/agent/fake.js";
 import { NO_AGENT_MESSAGE } from "../src/agent/none.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
-import { isValidMermaid } from "../src/interaction/mermaid.js";
+import { precheckD2Source } from "../src/diagrams/precheck.js";
 import { applyUndo, insertExamples, mergeDepthText, pushUndo } from "../src/interaction/cards.js";
 import {
   getInteractionHandler,
@@ -349,10 +349,20 @@ describe("M4 actions on the demo review (replay)", () => {
       const dg = await postAction(app, id, { kind: "diagram", cardId: "central" });
       expect(dg.status).toBe(200);
       await waitForJob(ctx, dg.json.jobId as string);
+      // The D2 finalize (compile-check + render) lands just after the job
+      // settles; wait for the block, not just the job.
+      await waitFor(() => {
+        const s = ctx.reviews.getSnapshot(id);
+        const c = s?.pages.find((p) => p.id === "root")?.cards.find((x) => x.id === "central");
+        return !!c?.blocks.some((b) => b.type === "diagram");
+      });
       const withDiagram = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!;
       const diagrams = withDiagram.blocks.filter((b) => b.type === "diagram");
       expect(diagrams.length).toBe(1);
-      expect(isValidMermaid((diagrams[0] as { mermaid: string }).mermaid)).toBe(true);
+      const dgb = diagrams[0] as { source: string; render?: { hash: string; status: string } };
+      expect(dgb.source).toContain("->");
+      expect(precheckD2Source(dgb.source).ok).toBe(true);
+      expect(["ok", "unavailable"]).toContain(dgb.render?.status);
 
       // Undo reverts the diagram; annotations attached to the card survive.
       const undo = await postAction(app, id, { kind: "undo", cardId: "central" });
@@ -1018,12 +1028,11 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
 });
 
 describe("M4 interaction pure logic", () => {
-  it("mermaid validation accepts flowcharts and rejects broken sources", () => {
-    expect(isValidMermaid("flowchart LR\n    A --> B")).toBe(true);
-    expect(isValidMermaid("sequenceDiagram\n    A->>B: hi")).toBe(true);
-    expect(isValidMermaid("")).toBe(false);
-    expect(isValidMermaid("just some text")).toBe(false);
-    expect(isValidMermaid("flowchart LR\n    A[unclosed --> B")).toBe(false);
+  it("d2 precheck accepts clean sources and rejects denied constructs", () => {
+    expect(precheckD2Source('direction: right\na -> b: go {link: "diff:conn:1-2"}').ok).toBe(true);
+    expect(precheckD2Source("").ok).toBe(false);
+    expect(precheckD2Source('a: {icon: https://example.com/x.svg}\na -> b').ok).toBe(false);
+    expect(precheckD2Source('a -> b: x\n  link: "diff:conn:1"').ok).toBe(true);
   });
 
   it("insertExamples never duplicates; applyUndo restores without touching annotations", () => {

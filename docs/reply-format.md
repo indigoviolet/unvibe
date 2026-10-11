@@ -89,18 +89,30 @@ Underlying-principle inserts. Inner content is ordinary Markdown.
 
 ## 5. Diagrams
 
-Diagrams are fenced `mermaid` blocks (PRD §13/§19.4). Citation tokens are
-allowed in node labels. An optional `Caption: …` paragraph right after the
-fence becomes the caption:
+Diagrams are fenced `d2` blocks (D2; Mermaid was removed — a `mermaid`
+fence is ordinary code, not a diagram). Citations are written on
+shapes/connections as `link: "diff:<fileKey>:<lines>"` (also `code:` and
+`desc:` forms): a quoted bare token, no `[[ ]]`, no `tooltip:`, always
+inline in braces (a `link:` on its own indented line is silently dropped).
+An optional `Caption: …` paragraph right after the fence becomes the
+caption:
 
 ````md
-```mermaid
-flowchart LR
-    A["http.client keeps CRLF [[diff:conn:650-651]]"] --> B["normalize"]
+```d2
+direction: right
+client -> norm: parse {link: "diff:conn:650-651"}
+norm: "_normalize_header_values" {link: "diff:conn:80-88"}
 ```
 
 Caption: Where response headers go after parsing.
 ````
+
+Limits: at most 12 shapes and 16 connections; no `icon:`, no
+`shape: image`, no imports, no Markdown/LaTeX/code-block labels, no
+`vars`/`d2-config`/`classes:`, no layers/scenarios/steps/boards, no
+`tooltip:`. Flows open with `direction: right`; sequences use
+`shape: sequence_diagram`. The full convention lives in
+`prompts/includes/d2-convention.md` (single source; templates copy it).
 
 ## 6. Follow-up suggestions
 

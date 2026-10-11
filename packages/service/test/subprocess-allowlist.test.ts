@@ -34,6 +34,7 @@ const ALLOWED_LITERAL: { cmd: string; reason: string }[] = [
   { cmd: "gh", reason: "GitHub via the GITHUB_TOKEN-unset wrapper (PRD §15); writes only in src/submit" },
   { cmd: "claude", reason: "user's installed agent CLI (login-shell PATH; adapter runs it via CLAUDE_CODE_EXECUTABLE, version-checked by readiness/doctor; Unvibe ships no bundled binary)" },
   { cmd: "codex", reason: "user's installed agent CLI (login-shell PATH; adapter runs it via CODEX_PATH app-server, version-checked by readiness/doctor; Unvibe ships no bundled binary)" },
+  { cmd: "d2", reason: "user's installed diagram binary (login-shell PATH or UNVIBE_D2_BIN, version-gated ≥ 0.9.0 by readiness/doctor; stdin-only, --bundle=false, empty temp dir, scrubbed env; Unvibe ships no bundled binary)" },
   { cmd: "osacompile", reason: "unvibe setup on macOS (builds the local helper app)" },
   { cmd: "xdg-mime", reason: "unvibe setup on Linux (registers unvibe://)" },
   { cmd: "update-desktop-database", reason: "unvibe setup on Linux (refreshes desktop entries)" },
@@ -84,11 +85,15 @@ describe("subprocess allowlist", () => {
           return;
         }
         // Dynamic command (variable): only allowed in the known dispatchers.
-        if (/\.run\(\s*(cmd|shell|opener|LSREGISTER|bin\.path)\b/.test(line)) {
+        if (/\.run\(\s*(cmd|shell|opener|LSREGISTER|bin\.path|opts\.binPath|binPath)\b/.test(line)) {
           if (/cli\/setup|exec\/shell-path|cli\/commands/.test(rel)) return;
           // readiness version probes run the resolved user CLI (absolute path
           // from login-shell PATH or UNVIBE_*_BIN override; never a bundle).
           if (/readiness\/checks/.test(rel) && /bin\.path/.test(line)) return;
+          // D2 renders run the resolved user binary (absolute path from
+          // login-shell PATH or UNVIBE_D2_BIN; stdin-only, --bundle=false,
+          // empty temp dir, scrubbed env; never a bundle).
+          if (/diagrams\/render/.test(rel) && /binPath/.test(line)) return;
           offenders.push(`${rel}:${i + 1}: dynamic spawn ${line.trim().slice(0, 80)}`);
           return;
         }

@@ -60,8 +60,8 @@ describe("network and privacy", () => {
         expect(policy, `CSP contains ${part}`).toContain(part);
       }
       expect(policy).not.toContain("https://");
-      // Style unsafe-inline is scoped + justified (see csp.ts): Mermaid
-      // injects inline <style> at runtime; scripts never use it.
+      // Style unsafe-inline is scoped + justified (see csp.ts): D2 SVGs
+      // carry inline <style> blocks; scripts never use it.
       expect(CONTENT_SECURITY_POLICY).toContain("style-src 'self' 'unsafe-inline'");
       expect(CONTENT_SECURITY_POLICY).not.toMatch(/script-src[^;]*unsafe-inline/);
     } finally {

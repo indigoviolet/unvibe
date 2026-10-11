@@ -207,7 +207,7 @@ export function insertExamples(blocks: Block[], fresh: Block[]): { blocks: Block
 function diagramKey(b: DiagramBlock | AsideBlock): string {
   if ((b as DiagramBlock).type === "diagram") {
     const d = b as DiagramBlock;
-    return `mermaid:${(d.mermaid ?? "").replace(/\s+/g, " ").trim().slice(0, 2000)}`;
+    return `d2:${(d.source ?? "").replace(/\s+/g, " ").trim().slice(0, 2000)}`;
   }
   return exampleKey((b as AsideBlock).inner);
 }

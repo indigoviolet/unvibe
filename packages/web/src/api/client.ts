@@ -13,6 +13,8 @@ import type {
   CreateCommentResponse,
   CreateReviewRequest,
   DeleteContributionResponse,
+  DiagramStatusBody,
+  DiagramTheme,
   DismissContributionResponse,
   ExistingCommentsResponse,
   HealthResponse,
@@ -126,6 +128,62 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+import { DiagramStatusError } from "./diagram.js";
+
+/**
+ * `409` from the diagram endpoint: the hash is known but has no SVG
+ * (binary missing/too old, or the source failed to compile). Thrown typed
+ * so the diagram component renders the matching fallback branch.
+ * Re-exported here (the class itself lives in the leaf `./diagram.js`
+ * so the mock can import it without an import cycle).
+ */
+export { DiagramStatusError };
+
+/**
+ * Same auth as `request`, but returns raw text: diagram SVGs are
+ * `image/svg+xml`, and an `<img src>` could neither carry the
+ * `Authorization` header nor keep the citation anchors interactive.
+ */
+async function requestText(path: string, init?: RequestInit): Promise<string> {
+  const token = getToken();
+  const res = await fetch(path, {
+    ...init,
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
+  });
+  if (res.status === 401) throw new Error("unauthorized: missing or invalid token");
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${body}`);
+  }
+  return res.text();
+}
+
+/** Fetch one cached diagram SVG, throwing `DiagramStatusError` on 409. */
+async function fetchDiagramSvg(reviewId: string, hash: string, theme: DiagramTheme): Promise<string> {
+  const path = `/api/reviews/${encodeURIComponent(reviewId)}/diagrams/${encodeURIComponent(hash)}?theme=${theme}`;
+  try {
+    return await requestText(path);
+  } catch (err) {
+    if (err instanceof Error) {
+      const m = err.message.match(/: 409 ([\s\S]*)$/);
+      if (m) {
+        try {
+          const parsed = JSON.parse(m[1]) as DiagramStatusBody;
+          if (parsed.status === "unavailable" || parsed.status === "error") {
+            throw new DiagramStatusError(parsed.status, parsed.error);
+          }
+        } catch (nested) {
+          if (nested instanceof DiagramStatusError) throw nested;
+        }
+      }
+    }
+    throw err;
+  }
+}
+
 const get = <T>(path: string): Promise<T> => request<T>(path);
 const post = <T>(path: string, body?: unknown): Promise<T> =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
@@ -222,7 +280,9 @@ const realApi = {
 
   contributions: (reviewId: string): Promise<ContributionsResponse> =>
     get(`/api/reviews/${encodeURIComponent(reviewId)}/contributions`),
-  deleteContribution: (reviewId: string, contributionId: string): Promise<DeleteContributionResponse> =>
+
+  diagramSvg: (reviewId: string, hash: string, theme: DiagramTheme): Promise<string> =>
+    fetchDiagramSvg(reviewId, hash, theme),  deleteContribution: (reviewId: string, contributionId: string): Promise<DeleteContributionResponse> =>
     request(`/api/reviews/${encodeURIComponent(reviewId)}/contributions/${encodeURIComponent(contributionId)}`, {
       method: "DELETE",
     }),

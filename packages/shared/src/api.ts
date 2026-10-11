@@ -286,6 +286,23 @@ export interface ActionResponse {
   deduplicated?: boolean;
 }
 
+// --- diagrams (D2 decision addendum) ---------------------------------------
+// `GET /api/reviews/:id/diagrams/:hash?theme=light|dark` serves the cached,
+// sanitised SVG (`200 image/svg+xml`), `404` for an unknown hash, and `409`
+// with a `DiagramStatusBody` when the hash is known but not rendered.
+
+/** Render theme for the diagram endpoint. */
+export type DiagramTheme = "light" | "dark";
+
+/**
+ * `409` body when a diagram hash is known but has no SVG to serve
+ * (binary missing/too old, or the source failed to compile).
+ */
+export interface DiagramStatusBody {
+  status: "unavailable" | "error";
+  error?: string;
+}
+
 // --- hunks ---------------------------------------------------------------
 
 export interface UpdateHunkRequest {

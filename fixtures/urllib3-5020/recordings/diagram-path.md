@@ -1,14 +1,14 @@
-```mermaid
-flowchart TB
-    server["Server<br>folded header"]
-    client["http.client parse_headers"]
-    msg["HTTPMessage<br>value keeps CRLF"]
-    norm["normalize_header_values [[diff:conn:91-110]]<br>OWS CRLF RWS becomes one space"]
-    dict["HTTPHeaderDict<br>r.headers [[diff:conn:650-651]]"]
-    same["HTTPMessage, same object<br>Requests' cookie jar [[diff:tsock:139-146]]"]
-    server --> client --> msg --> norm
-    norm -->|"new dict"| dict
-    norm -->|"rebuilt in place"| same
+```d2
+direction: right
+server: "Server folded header"
+client: "http.client parse_headers"
+msg: "HTTPMessage value keeps CRLF"
+norm: "_normalize_header_values" {link: "diff:conn:91-110"}
+dict: "HTTPHeaderDict r.headers" {link: "diff:conn:650-651"}
+same: "HTTPMessage same object" {link: "diff:tsock:139-146"}
+server -> client -> msg -> norm
+norm -> dict: "new dict"
+norm -> same: "rebuilt in place"
 ```
 
 Caption: Where a response's headers go after parsing, and the one place they are now unfolded.

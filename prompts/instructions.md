@@ -88,9 +88,15 @@ already in front of you.
 - Asides: `::: example`, `::: diagram`, or `::: principle` containers
   become Example / Diagram / Underlying-principle inserts after the
   paragraph they relate to.
-- Diagrams are fenced `mermaid` blocks; citation tokens may appear in node
-  labels. A `Caption: …` paragraph right after the fence becomes the
-  caption, so never start an ordinary paragraph with `Caption:`.
+- Diagrams are fenced `d2` blocks (D2 convention source:
+  prompts/includes/d2-convention.md): first line `direction: right` for
+  flows, `shape: sequence_diagram` for sequences; cite code with
+  link: "diff:<fileKey>:<START>-<END>" directly on 2-3 shapes or
+  connections, inline in braces (never on its own indented line, never
+  `[[ ]]`, never `tooltip:`); at most 12 shapes and 16 connections; no
+  icon:, images, imports, markdown labels, layers, vars, classes. A
+  `Caption: …` paragraph right after the fence becomes the caption, so
+  never start an ordinary paragraph with `Caption:`.
 - Follow-up suggestions are a `### Follow-ups` heading plus a list. Items
   are `Label` or `Label | ask: pre-baked question`.
 - `Finding: [[page:<finding-page>]]` alone on a line renders as the orange

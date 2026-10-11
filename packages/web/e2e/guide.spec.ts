@@ -2,7 +2,7 @@
  * Guide e2e against mock mode (the generated urllib3#5020 snapshot):
  * hover-preview timing + dismissal rules, scroll-then-no-hover, citation
  * click → revealSource (canonicalized) with diff highlight, navigation +
- * trail + back, mark read, description tab, findings, mermaid diagrams.
+ * trail + back, mark read, description tab, findings, D2 diagrams.
  *
  * File keys are service-canonical path slugs, so element ids contain dots:
  * select them with `[id="…"]`.
@@ -196,9 +196,9 @@ test("description tab shows paragraphs with stable ids", async ({ page }) => {
   await expect(page.locator("#right #d-p5")).toContainText("2,279 passed");
 });
 
-test("go-deeper card renders the mermaid diagram and follow-ups", async ({ page }) => {
+test("go-deeper card renders the D2 diagram and follow-ups", async ({ page }) => {
   await gotoReview(page);
-  await expect(page.locator("#C-g-flow .dg svg")).toBeVisible({ timeout: 15000 });
+  await expect(page.locator("#C-g-flow #B-b1 .dg-svg > svg")).toBeVisible({ timeout: 15000 });
   await expect(page.locator("#C-g-flow")).toContainText("Follow up:");
 });
 
