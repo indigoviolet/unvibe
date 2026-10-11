@@ -30,6 +30,7 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 - Nothing outside `packages/service/src/agent/acp/` may import ACP. Everything else uses the `AgentRunner` interface (PRD §6).
 - Nothing is posted to GitHub except by the Submit review path (crash-safe via in-flight leases in `src/submit/lease.ts`). Tests never hit real GitHub or real agents: use the fake `AgentRunner` and stub `gh`/`git` through an injectable command runner. Only tasks named `test:live:*` may use real logins (and spend tokens). See `DEVELOPMENT.md` for the test rules and the full task list.
 - Run `gh` with `GITHUB_TOKEN` unset (PRD §15).
+- Secrets come from the 1Password Environment through `mise run op -- <cmd>` (see `DEVELOPMENT.md`). Never print their values and never commit `.env`.
 - API types live in `packages/shared`; service and web both import them. Change the contract there first.
 - Keep `mise run check` green from a clean tree with no `dist/`. The full gates (`build`, `test:e2e`, `e2e`, `check-global-install`, `test:live`, restart resilience) are listed in `DEVELOPMENT.md`.
 - `docs/acceptance-audit.md` is the requirement-by-requirement verdict + open list; update it when behaviour changes.

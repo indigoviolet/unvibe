@@ -1,6 +1,36 @@
 [tools]
 node = "24"
 d2 = "0.9.0"
+# `op run --environment` needs 2.39.1-beta.01 or later; 2.40.0 stable
+# dropped the flag, so pin a beta that still has it.
+1password-cli = "2.40.0-beta.02"
+
+[env]
+# OP_SERVICE_ACCOUNT_TOKEN and OP_ENVIRONMENT_ID only (gitignored; absent in
+# CI). App secrets (Sentry DSNs, Axiom) come from the 1Password Environment
+# via `mise run op -- <cmd>`.
+_.file = ".env"
+
+[tasks.op]
+hide = true
+description = "Run a command with 1Password Environment secrets"
+usage = 'arg "<cmd>..." double_dash="preserve" help="Command to run with secrets"'
+raw = true
+quiet = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "set -- $usage_cmd"
+[[ "${1:-}" == "--" ]] && shift
+(( $# )) || { echo "usage: mise run op -- <cmd>" >&2; exit 2; }
+wrap=()
+# Nested calls (dev -> build) already have the secrets. With no `.env` (CI,
+# fresh clones) the command runs without secrets.
+if [[ -z "${UNVIBE_OP_RUN:-}" && -n "${OP_ENVIRONMENT_ID:-}" ]]; then
+  wrap=(op run --environment "$OP_ENVIRONMENT_ID" --)
+fi
+UNVIBE_OP_RUN=1 exec "${wrap[@]}" "$@"
+'''
 
 [tasks.install]
 description = "Install npm workspace dependencies"
@@ -9,12 +39,14 @@ sources = ["package.json", "packages/*/package.json"]
 
 [tasks.dev]
 description = "Run service + Vite dev server together"
-run = "node ./scripts/dev.mjs"
+raw = true
+run = "mise run op -- node ./scripts/dev.mjs"
 sources = ["packages/service/src/**/*.ts", "packages/web/src/**/*", "packages/shared/src/**/*"]
 
 [tasks."dev:mock"]
 description = "Run the web UI against the in-memory mock API (no service needed)"
-run = "VITE_MOCK=1 npm run dev --workspace @unvibe/web --if-present"
+raw = true
+run = "VITE_MOCK=1 mise run op -- npm run dev --workspace @unvibe/web --if-present"
 sources = ["packages/web/src/**/*", "packages/shared/src/**/*"]
 
 [tasks."test:e2e"]
@@ -27,7 +59,7 @@ run = "npx --workspace @unvibe/web playwright install chromium"
 
 [tasks.build]
 description = "Build shared, service and web"
-run = "npm run build --workspaces --if-present && npm run build --workspace @unvibe/web --if-present"
+run = "mise run op -- sh -c 'npm run build --workspaces --if-present && npm run build --workspace @unvibe/web --if-present'"
 sources = ["packages/*/src/**/*", "packages/*/package.json"]
 
 [tasks.test]
@@ -52,7 +84,8 @@ run = "mise run lint && mise run typecheck && mise run test"
 
 [tasks.start]
 description = "Run the built service"
-run = "node packages/service/dist/index.js"
+raw = true
+run = "mise run op -- node packages/service/dist/index.js"
 
 [tasks.fixture-snapshot]
 description = "Build fixtures/urllib3-5020/snapshot.json from the recordings (fails on unverified citations)"

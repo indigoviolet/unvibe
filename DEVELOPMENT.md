@@ -8,6 +8,8 @@ mise run build
 mise run dev        # service + Vite dev server together
 ```
 
+Secrets (Sentry DSNs, Axiom) come from a 1Password Environment, never from files in the repo. `.env` (gitignored, loaded by `mise.toml`) holds only `OP_SERVICE_ACCOUNT_TOKEN` and `OP_ENVIRONMENT_ID`; `mise run op -- <cmd>` runs `<cmd>` under `op run --environment`. `dev`, `dev:mock`, `build` and `start` go through it; tests, `check` and the `test:live:*` tasks do not. With no `.env` (CI, a fresh clone) the wrapper runs the command without secrets. Never print secret values. `paseo.json` copies `.env` into new Paseo worktrees.
+
 The repo is npm workspaces (`packages/*`), TypeScript strict ESM. SQLite comes from the built-in `node:sqlite`, so installs need no compiler. Code must work on macOS and Linux: use `node:path`/`node:os`, never hard-code home dirs, no GNU-only flags.
 
 ## Tasks
@@ -17,6 +19,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | Task | What it does | Needs |
 |---|---|---|
 | `install` | `npm install` across workspaces | — |
+| `op -- <cmd>` | Run `<cmd>` with the 1Password Environment secrets (hidden helper) | `.env`, else runs without secrets |
 | `build` | Build shared → service → web | — |
 | `dev` | Service + Vite dev server together | — |
 | `dev:mock` | Web UI against the in-memory mock API, no service | — |
