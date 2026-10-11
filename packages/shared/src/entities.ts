@@ -297,10 +297,29 @@ export interface CodeBlock {
 export interface DiagramBlock {
   type: "diagram";
   id: string;
-  /** Mermaid source (PRD §13 proposal; prototype used hand-drawn SVG). */
-  mermaid: string;
+  /** D2 source (the agent writes a fenced `d2` block; Mermaid is gone). */
+  source: string;
   caption?: string;
   citations: Citation[];
+  /**
+   * Service-side render state (content-hash cache key). The parser fills a
+   * placeholder; the pipeline replaces it with the real hash + status after
+   * rendering light + dark through the `d2` binary.
+   */
+  render: DiagramRenderState;
+}
+
+/** Service-side render state of one D2 diagram (D2 decision addendum). */
+export interface DiagramRenderState {
+  /** Content-hash cache key; also the `:hash` in the diagram endpoint. */
+  hash: string;
+  /**
+   * `"ok"` = both themes rendered; `"unavailable"` = no usable `d2`
+   * binary; `"error"` = the source failed to compile.
+   */
+  status: "ok" | "unavailable" | "error";
+  /** Human-readable reason for `"unavailable"` / `"error"`. */
+  error?: string;
 }
 
 /** Orange "Agent finding" reference card inside the guide. */

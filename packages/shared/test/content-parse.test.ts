@@ -28,9 +28,11 @@ Simpler: old servers split headers across lines.
 x = _normalize("a")
 \`\`\`
 
-\`\`\`mermaid
-flowchart LR
-    A["wire [[diff:conn:650-651]]"] --> B["clean"]
+\`\`\`d2
+unfold: "unfold [[diff:conn:650-651]]" {
+  link: "diff:conn:650-651"
+}
+unfold -> dict: "clean"
 \`\`\`
 
 Caption: The flow. [[diff:tsock:139-146]]
@@ -105,6 +107,8 @@ describe("parseBlocks golden", () => {
     const diagram = blocks[4];
     expect(diagram.type).toBe("diagram");
     if (diagram.type !== "diagram") return;
+    expect(diagram.source).toContain("unfold");
+    expect(diagram.render.status).toBe("unavailable");
     expect(diagram.caption).toContain("The flow.");
     expect(diagram.citations.map((c) => c.target).sort()).toEqual(
       ["diff:conn:650-651", "diff:tsock:139-146"].sort(),
@@ -152,7 +156,7 @@ describe("parseBlocks golden", () => {
   it("round-trips blocks through renderMarkdown", () => {
     // Citation tokens are block-level: rendering appends them at the end,
     // so interior spacing may differ while structure stays identical.
-    // Compare with prose whitespace-normalised (code/mermaid/tables exact).
+    // Compare with prose whitespace-normalised (code/d2/tables exact).
     const normText = (s: string): string => s.replace(/\s+/g, " ").trim();
     const norm = (blocks: import("../src/entities.js").Block[]): unknown =>
       blocks.map((b) => {
@@ -204,11 +208,19 @@ Growing tail with a token cut off mid-[[diff:conn:8`;
   });
 
   it("withholds an unclosed fence but keeps closed ones", () => {
-    const closed = "```mermaid\nA-->B\n```\n\nTail growing";
+    const closed = "```d2\na -> b\n```\n\nTail growing";
     const partial = parsePartial(closed);
     expect(partial.map((b) => b.type)).toEqual(["diagram"]);
     const unclosed = "Done.\n\n```python\nx = 1";
     expect(parsePartial(unclosed).map((b) => b.type)).toEqual(["paragraph"]);
+  });
+
+  it("treats a fenced mermaid block as an ordinary code block", () => {
+    const blocks = parseBlocks("```mermaid\nA-->B\n```\n");
+    expect(blocks.map((b) => b.type)).toEqual(["code"]);
+    if (blocks[0].type !== "code") return;
+    expect(blocks[0].language).toBe("mermaid");
+    expect(blocks[0].code).toBe("A-->B");
   });
 
   it("streams cards as they finish", () => {

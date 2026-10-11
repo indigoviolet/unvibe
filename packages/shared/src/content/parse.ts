@@ -18,10 +18,11 @@
  *   a paragraph attaches its content to that paragraph's `text.simple` /
  *   `text.deep`. With no preceding paragraph it becomes its own paragraph.
  * - Card titles are plain text (`## Title`).
- * - Diagrams: a fenced `mermaid` block → `DiagramBlock`. A paragraph
+ * - Diagrams: a fenced `d2` block → `DiagramBlock` (D2 only). A paragraph
  *   starting with `Caption:` right after it becomes the caption. Citation
- *   tokens inside Mermaid node labels are collected (PRD §13/§19.4); the
- *   source keeps them verbatim.
+ *   tokens inside `link:` values are collected; the
+ *   source keeps them verbatim. A fenced `mermaid` block is an ordinary
+ *   code block.
  * - Follow-ups: a `### Follow-ups` heading turns the next list into a
  *   `FollowUpBlock`. Items are `Label` or `Label | ask: question`.
  * - Finding references: a paragraph holding exactly
@@ -343,7 +344,7 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
   }
 
   function closeFence(f: { lang: string; lines: string[] }): void {
-    if (f.lang === "mermaid") {
+    if (f.lang === "d2") {
       const source = f.lines.join("\n").trim();
       const citations: Citation[] = [];
       for (const t of tokenizeLinks(source)) {
@@ -352,7 +353,15 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
           pushCitation({ citations, links: [] }, t.idText);
         }
       }
-      blocks.push({ type: "diagram", id: nextId(), mermaid: source, citations });
+      // Placeholder render: the pipeline replaces it with the real
+      // content hash + status after running the `d2` binary.
+      blocks.push({
+        type: "diagram",
+        id: nextId(),
+        source,
+        citations,
+        render: { hash: "", status: "unavailable", error: "Diagram not rendered yet." },
+      });
       diagramAwaitingCaption = true;
     } else {
       blocks.push({
@@ -600,7 +609,8 @@ export function collectTargets(blocks: Block[]): CollectedTargets {
           break; // Fence content is literal; tokens there are not citations.
         case "diagram": {
           for (const c of b.citations) push(citations, c.target);
-          for (const t of tokenizeLinks(b.mermaid)) push(links, t.idText);
+          // `?? ""`: blocks stored before D2 rendering carry no `source`.
+          for (const t of tokenizeLinks(b.source ?? "")) push(links, t.idText);
           if (b.caption) scanHtml(b.caption);
           break;
         }
@@ -851,12 +861,13 @@ export function renderMarkdown(blocks: Block[]): string {
       case "code":
         parts.push(`\`\`\`${b.language ?? ""}\n${b.code}\n\`\`\``);
         break;
-      case "diagram":
-        parts.push(`\`\`\`mermaid\n${b.mermaid}\n\`\`\``);
+      case "diagram": {
+        parts.push(`\`\`\`d2\n${b.source}\n\`\`\``);
         // Block citations cover node-label tokens (kept verbatim above)
         // plus caption tokens; re-parsing dedupes them back to this set.
         if (b.caption) parts.push(`Caption: ${withCitations(inlineToMarkdown(b.caption), b.citations)}`);
         break;
+      }
       case "finding-link":
         parts.push(`Finding: [[page:${b.pageId}]]`);
         break;
