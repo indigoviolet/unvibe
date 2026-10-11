@@ -505,10 +505,14 @@ UI); nothing below was edited by this pass.
   bundles present, demo completes from the installed copy, readiness
   reports the user's executables, 3.3 MB tarball / ~66 MB installed on
   Linux in ~4 s; no agent platform binary downloaded — verified against
-  the isolated npm cache). Agents run the user's installed `claude`/`codex`
-  (readiness/doctor report path + version). Tarballs attached to GitHub
-  releases install identically. Installing from the default branch (source
-  tree, needs devDependencies + build) is unsupported and undocumented.
+   the isolated npm cache). Agents run the user's installed `claude`/`codex`
+   (readiness/doctor report path + version). Tarballs attached to GitHub
+   releases install identically (verified 2026-10-11 from GitHub itself:
+   `gh release download v0.0.1-rc.3` + `npm install -g` on npm 10 and 11,
+   doctor/start/demo/diagrams/stop green; the repo is private so the git ref
+   needs `gh auth setup-git` and the tarball needs `gh release download` —
+   a bare download URL 404s). Installing from the default branch (source
+   tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
 
