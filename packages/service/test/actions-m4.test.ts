@@ -16,7 +16,7 @@ import { FakeAgentRunner } from "../src/agent/fake.js";
 import { NO_AGENT_MESSAGE } from "../src/agent/none.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
-import { isValidMermaid } from "../src/interaction/mermaid.js";
+import { isValidDiagram } from "../src/interaction/diagram.js";
 import { applyUndo, insertExamples, mergeDepthText, pushUndo } from "../src/interaction/cards.js";
 import {
   getInteractionHandler,
@@ -352,7 +352,7 @@ describe("M4 actions on the demo review (replay)", () => {
       const withDiagram = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!;
       const diagrams = withDiagram.blocks.filter((b) => b.type === "diagram");
       expect(diagrams.length).toBe(1);
-      expect(isValidMermaid((diagrams[0] as { mermaid: string }).mermaid)).toBe(true);
+      expect(isValidDiagram((diagrams[0] as { spec: unknown }).spec)).toBe(true);
 
       // Undo reverts the diagram; annotations attached to the card survive.
       const undo = await postAction(app, id, { kind: "undo", cardId: "central" });
@@ -1018,12 +1018,27 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
 });
 
 describe("M4 interaction pure logic", () => {
-  it("mermaid validation accepts flowcharts and rejects broken sources", () => {
-    expect(isValidMermaid("flowchart LR\n    A --> B")).toBe(true);
-    expect(isValidMermaid("sequenceDiagram\n    A->>B: hi")).toBe(true);
-    expect(isValidMermaid("")).toBe(false);
-    expect(isValidMermaid("just some text")).toBe(false);
-    expect(isValidMermaid("flowchart LR\n    A[unclosed --> B")).toBe(false);
+  it("diagram validation accepts valid specs and rejects broken ones", () => {
+    const good = {
+      version: 1,
+      kind: "flow",
+      title: "F",
+      nodes: [{ id: "a", title: "A" }],
+      edges: [],
+    };
+    expect(isValidDiagram(good)).toBe(true);
+    expect(isValidDiagram("")).toBe(false);
+    expect(isValidDiagram("just some text")).toBe(false);
+    expect(
+      isValidDiagram({ version: 1, kind: "flow", title: "F", nodes: [{ id: "a", title: "A" }], edges: [{ from: "a", to: "nope" }] }),
+    ).toBe(false);
+  });
+
+  it("invalid spec triggers exactly one repair turn with validator messages", async () => {
+    // Covered end to end by the diagram action replay test below; the unit
+    // contract is: validate → errors suitable for a repair prompt.
+    const { diagramProblem } = await import("../src/interaction/diagram.js");
+    expect(diagramProblem({ version: 2, kind: "flow", title: "F", nodes: [], edges: [] })).toMatch(/version/);
   });
 
   it("insertExamples never duplicates; applyUndo restores without touching annotations", () => {

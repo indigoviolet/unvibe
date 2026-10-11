@@ -19,7 +19,7 @@ function blockPlainText(block: Block): string {
     case "code":
       return block.code;
     case "diagram":
-      return [block.mermaid, block.caption ?? ""].join("\n");
+      return [JSON.stringify(block.spec ?? null), block.caption ?? ""].join("\n");
     case "finding-link":
       return `(finding: ${block.pageId})`;
     case "comment-link":

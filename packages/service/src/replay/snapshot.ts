@@ -143,6 +143,22 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   };
   const canonCites = (cites: { target: string }[]): { target: string }[] =>
     cites.map((c) => ({ target: canonicalizeTarget(c.target, resolveKey) }));
+  const canonSpec = (spec: unknown): unknown => {
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) return spec;
+    const out = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
+    for (const key of ["nodes", "edges", "panels", "messages"]) {
+      const list = out[key];
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+        const o = item as Record<string, unknown>;
+        if (typeof o["cite"] === "string" && o["cite"]) {
+          o["cite"] = canonicalizeTarget(o["cite"] as string, resolveKey);
+        }
+      }
+    }
+    return out;
+  };
   const canonBlocks = (blocks: Block[]): Block[] =>
     blocks.map((b) => {
       switch (b.type) {
@@ -152,6 +168,12 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
           return {
             ...b,
             items: b.items.map((it) => ({ ...it, citations: canonCites(it.citations) })),
+            citations: canonCites(b.citations),
+          };
+        case "diagram":
+          return {
+            ...b,
+            spec: canonSpec((b as { spec: unknown }).spec) as typeof b.spec,
             citations: canonCites(b.citations),
           };
         case "comment-link":

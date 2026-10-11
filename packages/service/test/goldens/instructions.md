@@ -82,9 +82,13 @@ already in front of you.
 - Asides: `::: example`, `::: diagram`, or `::: principle` containers
   become Example / Diagram / Underlying-principle inserts after the
   paragraph they relate to.
-- Diagrams are fenced `mermaid` blocks; citation tokens may appear in node
-  labels. A `Caption: …` paragraph right after the fence becomes the
-  caption, so never start an ordinary paragraph with `Caption:`.
+- Diagrams are fenced `diagram` blocks holding the JSON spec (`version`,
+  `kind` flow|panels|sequence, `title`, `nodes`/`edges` or
+  `panels` or `actors`/`messages`; caps ≤12 nodes, ≤16 edges; titles
+  plain text, citations in `cite` fields as bare payloads like
+  `diff:conn:91-110`). A `Caption: …` paragraph right after the fence
+  becomes the caption, so never start an ordinary paragraph with
+  `Caption:`.
 - Follow-up suggestions are a `### Follow-ups` heading plus a list. Items
   are `Label` or `Label | ask: pre-baked question`.
 - `Finding: [[page:<finding-page>]]` alone on a line renders as the orange
