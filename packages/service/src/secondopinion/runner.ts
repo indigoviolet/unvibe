@@ -403,14 +403,56 @@ function withValidation(
 }
 
 /**
- * Enqueue a second-opinion run. Returns the job (deduped). The job's
- * `promptSnapshot` is the per-request turn; its `cardId` is the target
- * card (or finding page) so the UI can show working state.
+ * Find a stored second-opinion result for the identical request
+ * (card, mode, model, version). Used for PRD §12 cross-request reuse (#10):
+ * a repeat returns the stored result with no agent call. A deleted result
+ * (removeSecondOpinion) or a new base version (version mismatch) or a
+ * model change is legitimately a new request.
+ */
+export function findStoredSecondOpinion(
+  snapshot: ReviewSnapshot,
+  cardId: string,
+  mode: SecondOpinionMode,
+  provider: string,
+  model: string,
+  version: number,
+): SecondOpinionResult | null {
+  const matches = (s: SecondOpinionResult): boolean =>
+    s.mode === mode && s.provider === provider && s.model === model && s.version === version;
+  const expansion = snapshot.annotations.find(
+    (a) => a.id === cardId && a.type === "expansion" && a.expansion,
+  );
+  if (expansion?.expansion?.secondOpinions) {
+    const hit = expansion.expansion.secondOpinions.find(matches);
+    if (hit) return hit;
+  }
+  for (const page of snapshot.pages) {
+    // Finding page id: results attach to its cards (first card normally).
+    if (page.id === cardId) {
+      for (const c of page.cards) {
+        const hit = (c.secondOpinions ?? []).find(matches);
+        if (hit) return hit;
+      }
+    }
+    for (const c of page.cards) {
+      if (c.id !== cardId) continue;
+      const hit = (c.secondOpinions ?? []).find(matches);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * Enqueue a second-opinion run. Returns the job (deduped), or a reused
+ * marker when the stored result for the identical request already exists.
+ * The job's `promptSnapshot` is the per-request turn; its `cardId` is the
+ * target card (or finding page) so the UI can show working state.
  */
 export async function requestSecondOpinion(
   deps: SecondOpinionDeps,
   req: SecondOpinionRequest,
-): Promise<Job> {
+): Promise<Job | { reused: true }> {
   const snapshot = deps.reviews.getSnapshot(req.reviewId);
   if (!snapshot) throw new Error(`unknown review ${req.reviewId}`);
   const settings = deps.settings.get();
@@ -420,6 +462,11 @@ export async function requestSecondOpinion(
   const provider = settings.secondOpinion.provider;
   const model = settings.secondOpinion.model;
   const kind: JobKind = "second-opinion";
+  // PRD §12 reuse (#10): identical stored result (same card, mode, model,
+  // base version) returns without an agent call — no job, no tokens.
+  if (findStoredSecondOpinion(snapshot, req.cardId, req.mode, provider, model, version)) {
+    return { reused: true };
+  }
   // Dedupe by (card, mode, model, version): identical requests share one
   // job/result while the first is still active (PRD §12).
   const dedupe = {

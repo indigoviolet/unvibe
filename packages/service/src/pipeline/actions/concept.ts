@@ -12,16 +12,20 @@ import { findActiveJob, getSnapshotOrThrow, type ActionContext } from "./common.
 export async function conceptAction(
   ctx: ActionContext,
   slug: string,
-): Promise<{ pageId: string; jobId?: string; deduplicated?: boolean }> {
+): Promise<{ pageId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
   const { pipeline, jobs, reviews, reviewId } = ctx;
   if (!slug || !/^[\w-]+$/.test(slug)) throw new Error(`bad concept slug ${JSON.stringify(slug)}`);
   const pageId = `c-${slug}`;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const existing = snapshot.pages.find((p) => p.id === pageId);
 
-  // Already full: instant, no job.
+  // Already full: instant, no job. PRD §12 reuse (#10): the stored concept
+  // page is the cache for (anchor=concept:slug, kind=concept-page, base
+  // version). A new base version does not invalidate here: concept content
+  // is derived from cited code, and the update pass revises stale cards —
+  // the page itself stays the stored result until deleted.
   if (existing && existing.cards.length > 0 && existing.cards[0].blocks.length > 1) {
-    return { pageId };
+    return { pageId, reused: true };
   }
   // Identical active request: reuse it.
   const key = {

@@ -12,6 +12,7 @@ export { buildSecondOpinionBaseText, ensureSecondOpinionBase, forkSecondOpinionB
 export {
   buildSecondOpinionPrompt,
   checkDistinctModel,
+  findStoredSecondOpinion,
   removeSecondOpinion,
   requestSecondOpinion,
   resolveTarget,

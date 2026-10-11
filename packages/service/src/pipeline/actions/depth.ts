@@ -37,7 +37,7 @@ export async function depthAction(
   ctx: ActionContext,
   cardId: string,
   direction: "simpler" | "deeper",
-): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; level?: string }> {
+): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean; level?: string }> {
   const { jobs, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const target = (() => {
@@ -54,13 +54,16 @@ export async function depthAction(
   const blocks = (target.kind === "page-card" ? target.card.blocks : target.annotation.expansion?.blocks) as Block[];
   const next = stepLevel(level, direction);
 
-  // + at the deepest level with no principle yet: the agent may supply
-  // one (see below); when the card already has it, there is nothing to do.
+  // + at the deepest level with no principle yet: the agent supplies one
+  // (principleOnly path below); when the card already has it, there is
+  // nothing to do.
+  // PRD §12 reuse (#10): stored depth levels and the stored principle block
+  // are the cache — no agent call, flagged as reused.
   if (!next) {
     if (direction === "deeper" && !hasPrinciple(blocks)) {
-      return depthViaAgent(ctx, cardId, "deep");
+      return depthViaAgent(ctx, cardId, "deep", true);
     }
-    return { cardId, level };
+    return { cardId, level, reused: true };
   }
 
   // Stored per block per level: switching back is instant, no agent call.
@@ -77,7 +80,7 @@ export async function depthAction(
       markStaleAnchors(draft, cardId);
     });
     await recordInteraction({ kind: "depth-state", reviewId, cardId, text: `Depth ${next}: "${cardTitle(getSnapshotOrThrow(reviews, reviewId), cardId)}"` });
-    return { cardId, level: next };
+    return { cardId, level: next, reused: true };
   }
 
   const key = {
@@ -89,13 +92,17 @@ export async function depthAction(
   const active = findActiveJob(jobs, reviewId, key);
   if (active) return { cardId, jobId: active.id, deduplicated: true };
 
-  return depthViaAgent(ctx, cardId, next);
+  // Normal depth steps fill text levels only; the Underlying-principle block
+  // is added solely by + at the deepest level (principleOnly path above),
+  // per PRD §4.4 — even when the fixture reply carries one.
+  return depthViaAgent(ctx, cardId, next, false);
 }
 
 async function depthViaAgent(
   ctx: ActionContext,
   cardId: string,
   target: "simple" | "standard" | "deep",
+  addPrinciple = false,
 ): Promise<{ cardId: string; jobId?: string; level?: string }> {
   const { pipeline, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
@@ -110,7 +117,12 @@ async function depthViaAgent(
     level: target,
   };
   const capture = captureJobId();
-  const replay = isReplayRunner(pipeline.runner) ? { kind: "depth", key: `${cardId}:${target}` } : undefined;
+  // Replay fixtures are keyed by stable card ids (central/problem); expansion
+  // ids are dynamic (`ann_…`), so expansions share one `expansion:<level>`
+  // recording (audit #10 E2E). Added as `depth-expansion-deep.md` in the
+  // existing reply format.
+  const replayKey = cardId.startsWith("ann_") ? `expansion:${target}` : `${cardId}:${target}`;
+  const replay = isReplayRunner(pipeline.runner) ? { kind: "depth", key: replayKey } : undefined;
 
   const done = pipeline.runInFork({
     reviewId,
@@ -135,8 +147,10 @@ async function depthViaAgent(
         const from = t.kind === "page-card" ? t.card.level : t.annotation.expansion!.level;
         pushUndo(t, [...current], from);
         let merged = mergeDepthText(current, replyBlocks, target);
-        // + at the deepest level may add one Underlying-principle block (once).
-        if (target === "deep" && !hasPrinciple(merged)) {
+        // + at the deepest level adds one Underlying-principle block (once,
+        // PRD §4.4). Normal depth steps never add it, even when the reply
+        // carries one (fixtures include it for the principle path).
+        if (addPrinciple && target === "deep" && !hasPrinciple(merged)) {
           const principle = replyBlocks.find((b) => b.type === "aside" && b.kind === "Underlying principle");
           if (principle) merged = [...merged, { ...principle, id: `b-pr-${Date.now().toString(36)}` }];
         }

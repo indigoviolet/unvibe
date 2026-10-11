@@ -135,6 +135,17 @@ export async function performAction(
     return res;
   }
   if (notAvailable(res)) return res;
+  // Audit-10 (#10) reuse: the service returned the stored result with no job.
+  // Tell the user when a repeat adds nothing (deepest + with principle
+  // already, saturated examples/diagram); other reuses are silent since the
+  // stored content is already visible.
+  if (res.reused) {
+    if (action.kind === "depth") {
+      toast("Already at the deepest level — nothing more to add.");
+    } else if (action.kind === "examples" || action.kind === "diagram") {
+      toast("Nothing more to add to this card.");
+    }
+  }
   return res;
 }
 

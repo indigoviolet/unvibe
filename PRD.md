@@ -255,7 +255,7 @@ Every card and every expansion card has the same controls:
 
 ## 6. Agent runner
 
-ACP (Agent Client Protocol) comes first, through `@agentclientprotocol/sdk`, with `claude-agent-acp` and `codex-acp` as subprocesses. **Nothing outside this module may depend on ACP.**
+ACP (Agent Client Protocol) comes first, through `@agentclientprotocol/sdk`, with `@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` as subprocesses. **Nothing outside this module may depend on ACP.** (Package names corrected; see `docs/m0-acp-spike.md` § "Packages and versions".)
 
 ```ts
 interface AgentRunner {
@@ -275,8 +275,8 @@ type AgentEvent =
 ```
 
 - **Facts checked in the source, October 2026:**
-  - **Claude:** `claude-agent-acp` is built on the Claude Agent SDK. It implements session fork (including fork from a given message), load, list and resume, and accepts per-session MCP servers and a system prompt.
-  - **Codex:** `agentclientprotocol/codex-acp` is built on `codex app-server`, implements the same session calls, and supports ChatGPT login.
+  - **Claude:** `@agentclientprotocol/claude-agent-acp` is built on the Claude Agent SDK. It implements session fork (including fork from a given message), load, list and resume, and accepts per-session MCP servers and a system prompt.
+  - **Codex:** `@agentclientprotocol/codex-acp` is built on `codex app-server`, implements the same session calls, and supports ChatGPT login.
   - **The spec:** `session/fork` is in the unstable part of the ACP spec.
 - **If fork isn't available:** the context builder sends the same layers as the first message of a fresh session (§9). The prefix still matches byte for byte, so caching still works.
 - **Replacements** must implement the same interface: Paseo (no fork), or the Claude Agent SDK and `codex app-server` directly (both can fork).
@@ -491,7 +491,7 @@ A new base is built when any of these happens:
 | `consolidate` | Small model | `{{contributions}}` |
 | `second_opinion_blind`, `second_opinion_check` | Second opinion | `{{topic}}` or `{{claim}}`, `{{cited_code}}` |
 
-**Diagrams:** the proposal is for agents to write Mermaid, rendered on the page, with citation tokens allowed in node labels. The prototype used hand-drawn SVG. To be confirmed (§19).
+**Diagrams:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/diagram-options.md` §7 and §9). Superseded proposal (kept as history): agents were to write Mermaid, rendered on the page, with citation tokens allowed in node labels; the prototype used hand-drawn SVG.
 
 ---
 
@@ -503,7 +503,7 @@ A new base is built when any of these happens:
   - `unvibe setup` writes a small helper app to `~/Applications`. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing, and it registers the `unvibe://` URL scheme.
   - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The helper starts the service, and the page reloads.
   - The service exits after a period with no open window and no running jobs (default 10 minutes).
-- **Install:** `npm install -g github:<org>/unvibe`, then `unvibe setup`. Updates use the same install command.
+- **Install:** `npm install -g github:<org>/unvibe#release`, then `unvibe setup`. Updates use the same install command. The agent CLIs (`claude`/`codex`) are the user's own installs (see `DEVELOPMENT.md` "Releases" and `docs/acceptance-audit.md` "Intentional deviations" item 1).
 - **macOS gotcha:** apps opened from Finder don't inherit the shell's `PATH`. On startup the service must read it from a login shell (`zsh -lc 'echo $PATH'`) so it can find `gh`, `git`, `claude`, `codex` and mise-installed tools.
 - **Storage:** `~/.local/share/unvibe/` holds a SQLite database plus a folder per review (`<owner>/<repo>/<review-id>/`) for the log and snapshots. Nothing is written into the user's checkout, apart from the worktree, which is created alongside it under a managed path.
 
@@ -583,7 +583,7 @@ WS   /api/events?review=:id              job progress, streamed text, state patc
 1. **Where the code lives:** its own `unvibe` repo (recommended), or a package inside an existing monorepo.
 2. **The size budget** and the rebuild thresholds. Set them from M0 and M2 measurements.
 3. **Structured output over ACP:** whether the trailing JSON block is reliable enough, or whether each adapter's metadata passthrough should be used.
-4. **The diagram format:** Mermaid with citation tokens in labels, or a small JSON diagram spec.
+4. **The diagram format:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/diagram-options.md` §7 and §9). Superseded options (kept as history): Mermaid with citation tokens in labels, or a small JSON diagram spec.
 5. **Subscription terms:** Anthropic's rules for Agent SDK and `claude -p` usage changed several times in 2026. Recheck them before release.
 6. **Saved pages:** sharing and refresh across PRs, when concept identity across reviews is tackled. Deferred.
 7. **Reading other content:** the source pane and anchor scheme for web pages. Deferred.

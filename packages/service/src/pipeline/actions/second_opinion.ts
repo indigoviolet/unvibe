@@ -26,10 +26,11 @@ export async function secondOpinionAction(
   reviewId: string,
   cardId: string,
   mode: SecondOpinionMode,
-): Promise<{ jobId: string }> {
+): Promise<{ jobId?: string; reused?: boolean }> {
   const deps = depsFromPipeline(pipeline);
-  const job = await requestSecondOpinion(deps, { reviewId, cardId, mode });
-  return { jobId: job.id };
+  const res = await requestSecondOpinion(deps, { reviewId, cardId, mode });
+  if ("reused" in res) return { reused: true };
+  return { jobId: res.id };
 }
 
 export async function removeSecondOpinionAction(

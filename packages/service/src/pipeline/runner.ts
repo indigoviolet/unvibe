@@ -634,13 +634,20 @@ export class Pipeline {
     return job;
   }
 
-  summarizeHunk(reviewId: string, contentHash: string): Job {
+  summarizeHunk(reviewId: string, contentHash: string): Job | { reused: true; summary: string } {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const found = snapshot.files.flatMap((f) => f.hunks.map((h) => ({ file: f, hunk: h }))).find(
       (x) => x.hunk.contentHash === contentHash,
     );
     if (!found) throw new Error(`unknown hunk ${contentHash}`);
+    // PRD §12 reuse (#10): a hunk that already carries a stored summary for
+    // the same content hash returns it with no agent call. Hunk state is
+    // keyed by content hash so it survives rebases (PRD §8); a deleted
+    // summary (PATCH null) or changed content (new hash) is legitimately a
+    // new request.
+    const stored = snapshot.hunkStates.find((s) => s.contentHash === contentHash)?.summary;
+    if (stored) return { reused: true, summary: stored };
     const settings = this.opts.settings.get();
     const hunkText = this.formatHunkForPrompt(snapshot, found.file.fileKey, found.hunk.contentHash);
     const prompt = withReplayMark(
