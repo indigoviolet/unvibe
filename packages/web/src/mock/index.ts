@@ -47,6 +47,12 @@ import type { ApiClient } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } from "./guide.js";
+import {
+  mockAddedD2Block,
+  mockDiagramSvg,
+  mockSeedD2Block,
+  mockUnavailableD2Block,
+} from "./d2diagrams.js";
 
 export const MOCK_MODE: boolean =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK === "1";
@@ -195,13 +201,7 @@ function mockExampleAside(): import("@unvibe/shared").Block {
 }
 
 function mockDiagramAside(): import("@unvibe/shared").Block {
-  return {
-    type: "diagram",
-    id: `b-mock-dg-${Date.now().toString(36)}`,
-    mermaid: "flowchart LR\n  A[folded value] --> B[unfold]\n  B --> C[HTTPHeaderDict]",
-    caption: "Mock diagram: unfolding before interpretation.",
-    citations: [],
-  } as unknown as import("@unvibe/shared").Block;
+  return mockAddedD2Block() as unknown as import("@unvibe/shared").Block;
 }
 
 function mockPrincipleAside(): import("@unvibe/shared").Block {
@@ -342,6 +342,24 @@ let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
 let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
   JSON.stringify(MOCK_PAGES),
 ) as import("@unvibe/shared").Page[];
+
+/**
+ * Seed mock D2 diagrams into the go-deeper flow card: one rendered (stand-in
+ * SVGs served by `diagramSvg` below) and one unavailable (no binary), so
+ * mock-mode tests exercise both branches without touching the fixture.
+ */
+function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
+  const card = pages
+    .find((p) => p.id === "root")
+    ?.cards.find((c) => c.id === "g-flow");
+  if (!card || card.blocks.some((b) => b.id === "b-mock-d2-flow")) return;
+  card.blocks = [
+    ...card.blocks,
+    mockSeedD2Block() as never,
+    mockUnavailableD2Block() as never,
+  ];
+}
+seedMockD2Diagrams(mockPages);
 let description = { ...MOCK_DESCRIPTION };
 let existingComments: import("@unvibe/shared").ExistingReviewComment[] = [
   {
@@ -482,6 +500,7 @@ export function resetMockState(): void {
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
   annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
   mockPages = JSON.parse(JSON.stringify(MOCK_PAGES));
+  seedMockD2Diagrams(mockPages);
   description = { ...MOCK_DESCRIPTION };
   existingComments = [
     {
@@ -910,6 +929,15 @@ export const mockApi = {
   readiness: async (): Promise<ReadinessResponse> => {
     await wait(50);
     return readMockReadiness();
+  },
+
+  diagramSvg: async (
+    _reviewId: string,
+    hash: string,
+    theme: "light" | "dark",
+  ): Promise<string> => {
+    await wait(30);
+    return mockDiagramSvg(hash, theme);
   },
 
   review: async (id: string, version?: number): Promise<ReviewSnapshot> => {
