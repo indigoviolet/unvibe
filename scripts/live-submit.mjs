@@ -196,7 +196,11 @@ async function main() {
     const submitted = await api(base, token, "POST", `/api/reviews/${reviewId}/submit`, {});
     log("submit:", JSON.stringify(submitted));
 
-    // Verify through gh api.
+    // Verify through gh api. The sandbox PR is reused across runs by design,
+    // so prior runs may have left matching reviews/comments already — expect
+    // at least one (audit #10: repeat runs accumulate; the submit itself
+    // posted exactly one review with both comments, asserted above via
+    // `submitted.commentCount === 2`).
     const reviewsJson = JSON.parse(run("gh", ["api", `repos/${OWNER}/${REPO}/pulls/${prNumber}/reviews`, "--paginate"], { cwd: cloneDir }));
     const matchingReviews = reviewsJson.filter((r) => (r.body ?? "").includes(GENERAL_TEXT));
     const commentsJson = JSON.parse(run("gh", ["api", `repos/${OWNER}/${REPO}/pulls/${prNumber}/comments`], { cwd: cloneDir }));
@@ -205,7 +209,8 @@ async function main() {
     log(`reviews with general text: ${matchingReviews.length} (of ${reviewsJson.length})`);
     log(`inline comments with marker: ${matchingComments.length} (of ${commentsJson.length})`);
     log(`description edited: ${prBody.includes(DESC_MARK)}`);
-    if (matchingReviews.length !== 1) throw new Error(`expected exactly 1 review with the general comment, found ${matchingReviews.length}`);
+    if (submitted.commentCount !== 2) throw new Error(`expected the submit to post 2 comments, got ${submitted.commentCount}`);
+    if (matchingReviews.length < 1) throw new Error(`expected at least 1 review with the general comment, found ${matchingReviews.length}`);
     if (matchingComments.length < 1) throw new Error("inline comment not found on the PR");
     if (!prBody.includes(DESC_MARK)) throw new Error("PR body does not contain the edit marker");
 

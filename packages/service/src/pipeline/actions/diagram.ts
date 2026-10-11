@@ -38,7 +38,7 @@ import { DiagramCache } from "../../diagrams/cache.js";
 export async function diagramAction(
   ctx: ActionContext,
   cardId: string,
-): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean }> {
+): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
   const { pipeline, jobs, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const target = findCardTarget(snapshot, cardId);
@@ -50,6 +50,15 @@ export async function diagramAction(
   };
   const active = findActiveJob(jobs, reviewId, key);
   if (active) return { cardId, jobId: active.id, deduplicated: true };
+
+  // PRD §12 reuse (#10): a card that already carries a diagram returns the
+  // stored block with no agent call ("never duplicating one already there",
+  // PRD §4.4). A card whose diagram was removed (undo/delete) is
+  // legitimately a new request.
+  const blocks = target.kind === "page-card" ? target.card.blocks : (target.annotation.expansion?.blocks ?? []);
+  if (blocks.some((b) => b.type === "diagram")) {
+    return { cardId, reused: true };
+  }
 
   const level = targetLevel(target);
   const variables = { card: cardPromptText(snapshot, cardId), level };

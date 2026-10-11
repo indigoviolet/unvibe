@@ -38,7 +38,7 @@ export interface ExplainRequest {
 export async function explainAction(
   ctx: ActionContext,
   req: ExplainRequest,
-): Promise<{ annotationId: string; jobId?: string; deduplicated?: boolean }> {
+): Promise<{ annotationId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
   const { reviews, reviewId } = ctx;
   // Empty quotes are legal (see ask.ts): the anchor still scopes the turn.
   if (typeof req.quote !== "string") throw new Error("quote is required");
@@ -52,7 +52,7 @@ export async function explainAction(
     baseVersion: baseVersionOf(before),
   };
 
-  // Dedupe: identical active request, or an already-open identical expansion.
+  // Dedupe: identical active request, or an already-stored identical expansion.
   const active = findActiveJob(ctx.jobs, reviewId, key);
   if (active) {
     const existing = before.annotations.find(
@@ -64,17 +64,29 @@ export async function explainAction(
       deduplicated: true,
     };
   }
-  const openDup = before.annotations.find(
+  // PRD §12 reuse (#10): the same anchor+quote on the same base version
+  // reopens the stored expansion instead of generating a second one. Closed
+  // expansions reopen (dotted-link → expand in place); deleted expansions
+  // are gone so a repeat is legitimately a new request. A new base version
+  // (new commits) invalidates: anchor.version must match current version.
+  const storedDup = before.annotations.find(
     (a) =>
       a.type === "expansion" &&
       a.anchor.quotedText === req.quote &&
       anchorSameHost(a.anchor, anchor) &&
-      a.open &&
+      a.anchor.version === before.version.n &&
       !a.error &&
+      !a.expansion?.error &&
       (a.expansion?.blocks.length ?? 0) > 0,
   );
-  if (openDup) {
-    return { annotationId: openDup.id, deduplicated: true };
+  if (storedDup) {
+    if (!storedDup.open) {
+      await reviews.mutate(reviewId, (draft) => {
+        const found = (draft.annotations as unknown as Annotation[]).find((x) => x.id === storedDup.id);
+        if (found) found.open = true;
+      });
+    }
+    return { annotationId: storedDup.id, reused: true };
   }
 
   // Immediately visible working state.

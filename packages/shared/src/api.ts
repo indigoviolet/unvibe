@@ -284,6 +284,12 @@ export interface ActionResponse {
   cardId?: string;
   /** M4: true when an identical active request was reused (dedupe, PRD §12). */
   deduplicated?: boolean;
+  /**
+   * Audit-10 (#10): true when a stored result for the identical request
+   * (anchor, kind, depth, base version, PRD §12) was returned without an
+   * agent call. No job is created and no tokens are spent.
+   */
+  reused?: boolean;
 }
 
 // --- diagrams (D2 decision addendum) ---------------------------------------
@@ -318,7 +324,15 @@ export interface UpdateHunkRequest {
 }
 
 export interface SummarizeHunkResponse {
-  jobId: string;
+  /** Job started for the summarize, absent when a stored summary was reused. */
+  jobId?: string;
+  /**
+   * Audit-10 (#10): true when the hunk already carried a stored summary for
+   * the same content hash, so no agent call was made (PRD §12 reuse).
+   */
+  reused?: boolean;
+  /** Present when `reused` is true: the stored summary. */
+  summary?: string;
 }
 
 /**

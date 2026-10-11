@@ -1,10 +1,11 @@
-# Acceptance audit (hardening pass, branch `hardening`)
+# Acceptance audit (hardening pass, branch `hardening`; audit-10 update 2026-10-11)
 
 Method: every verdict below is backed by code (`file:line`), a named test,
 or a command run against the **built** service (`mise run build` output) in
 demo mode (`UNVIBE_AGENT=replay`, recorded pipeline, no tokens) against real
-temporary git repos, plus Playwright (61 e2e green, plus a manual UI walk
-with 0 console errors). A test that exists is cited as evidence only with
+temporary git repos, plus Playwright (61 e2e green at audit time, plus a manual UI walk
+with 0 console errors; audit-10 adds 2 principle specs + 6 reuse unit tests —
+see §4.4/§12). A test that exists is cited as evidence only with
 its name; behaviours were re-run where marked “ran”.
 
 Verdicts: **met / partly / not met / cannot verify here**.
@@ -17,7 +18,7 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §4.1 layout (4) | 4 | 0 | 0 | 0 |
 | §4.2 start page (5) | 5 | 0 | 0 | 0 |
 | §4.3 pages (7) | 7 | 0 | 0 | 0 |
-| §4.4 cards (6) | 5 | 1 | 0 | 0 |
+| §4.4 cards (6) | 6 | 0 | 0 | 0 |
 | §4.5 links/citations (8) | 8 | 0 | 0 | 0 |
 | §4.6 selecting text (4) | 4 | 0 | 0 | 0 |
 | §4.7 explanations (5) | 5 | 0 | 0 | 0 |
@@ -35,15 +36,20 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §9 context layers/log/rebuild/contributions (12) | 12 | 0 | 0 | 0 |
 | §10 linking/MCP/validation (9) | 9 | 0 | 0 | 0 |
 | §11 pipelines (7) | 7 | 0 | 0 | 0 |
-| §12 models/concurrency (9) | 8 | 1 | 0 | 0 |
+| §12 models/concurrency (9) | 9 | 0 | 0 | 0 |
 | §13 prompts (5) | 5 | 0 | 0 | 0 |
 | §14 shell/install/security/storage (8) | 8 | 0 | 0 | 0 |
 | §14.1 endpoints (17) | 17 | 0 | 0 | 0 |
-| §15 gh/git (10) | 9 | 1 | 0 | 0 |
+| §15 gh/git (10) | 10 | 0 | 0 | 0 |
 | §16 non-functional (5) | 5 | 0 | 0 | 0 |
 | §17 M0–M6 done-when (7) | 7 | 0 | 0 | 0 |
 | §18 test kinds (4) | 4 | 0 | 0 | 0 |
-| **Total** | **204** | **2** | **0** | **1** |
+| **Total** | **211** | **0** | **0** | **1** |
+
+(Audit-10 correction: the prior total (204/2) was stale — the row values
+already summed to 208 met + 3 partly + 1 cannot-verify = 212 requirements.
+After closing the three partly items below, the rows sum to 211 met + 0
+partly + 1 cannot-verify = 212.)
 
 Fixed in this branch (was failing/missing before): stale-dist `check`
 failure; missing Host/Origin gate; MCP secrets never revoked; submit
@@ -122,23 +128,28 @@ UI); nothing below was edited by this pass.
 - Bookmark + state exists (sharing deferred) — met (`Page.saved`,
   `reviews/list.ts` summaries).
 
-### §4.4 Cards — 5 met, 1 partly
+### §4.4 Cards — all met (audit-10)
 
 - Collapse chevron, title-row-only collapsed — met (`guide.spec.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”).
 - Examples / Add diagram inserts, never duplicated — met
-  (`actions/examples.ts`, `diagram.ts`, dedupe in apply).
+  (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
+  upfront `reused:true` short-circuit so repeats cost no agent call —
+  `reuse.test.ts`).
 - Undo (depth/examples/diagram, no redo, comments/expansions survive) —
   met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Mark read (grey + collapse), roll-up to page, muted links — met
   (`guide-service.spec.ts` “card read action”).
-- **Partly:** “Underlying principle” block at deepest `+` — the
-  `::: principle` parsing exists (`reply-format.md` §3,
-  `shared/src/content`), but no e2e drives the deepest-stepper case end
-  to end; the web agent owns card controls. Left for the web agent to
-  confirm visually.
+- “Underlying principle” block at deepest `+` — met (audit-10):
+  `e2e/depth-principle-service.spec.ts` (real service, `UNVIBE_AGENT:
+  "replay"`, shared harness, demo review) steps a page card to deep,
+  presses + → exactly one principle block; presses + again → still one
+  plus `#toast` “deepest/nothing more”; undo removes it; same flow on an
+  expansion card (new `depth-expansion-deep.md` fixture + manifest entry;
+  normal standard→deep steps strip the fixture principle, only + at
+  deepest adds it — `actions/depth.ts` `addPrinciple` flag; ran 2/2 green).
 
 ### §4.5 Links and citations — all met
 
@@ -409,7 +420,7 @@ UI); nothing below was edited by this pass.
 7. Update pass (changed/new hunks only) — met (`versions/update.ts`,
    `enqueueUpdatePass`, `versions-update.test.ts`).
 
-## §12 Models and concurrency — 8 met, 1 partly
+## §12 Models and concurrency — all met (audit-10)
 
 - Main/small/second-opinion roles; one base per model; small jobs get only
   what they need — met (`settings.models`, `runSmall` no-fork).
@@ -429,12 +440,25 @@ UI); nothing below was edited by this pass.
   dedupe freed on interrupt — this branch).
 - Idle close + `load` reopen — met (`sessions/manager.ts:430 sweepIdle`,
   `ensureConversation`; restart script proves reopen-or-rebuild).
-- **Partly:** “reuse results for identical requests, keyed by
-  (anchor, kind, depth, base version)” — in-flight dedupe exists, but
-  there is no cross-request result cache (a repeated Explain re-prompts;
-  depth round-trips via cached levels, `actions-m4.test.ts:292`). No
-  evidence this costs users (depth cached levels cover the hot case);
-  recorded as future work, not a regression.
+- “Reuse results for identical requests, keyed by (anchor, kind, depth,
+  base version)” — met (audit-10): stored-result reuse with `reused:true`,
+  no job, no tokens (`shared/src/api.ts` `ActionResponse.reused`,
+  `SummarizeHunkResponse.reused`; dispatcher propagates). Per-action:
+  explain reopens stored expansion (closed too) same version, deleted/new
+  version → new; ask same message+anchor+version reuses (key now includes
+  the message — previously different questions shared in-flight dedupe),
+  different/deleted/new-version → new; depth cached levels + principle
+  reuse; examples saturated / diagram present reuse; generate filled and
+  concept full reuse; second-opinion same card+mode+model+version reuses
+  (`findStoredSecondOpinion`); hunk summary same hash reuses
+  (`POST …/summarize` 200 `reused`); follow-up/reply one-shot by design
+  (suggestion consumed / new message — no stored reuse). Invalidated by
+  new base version for explain/ask/second-opinion via `anchor.version` /
+  stored `version`; card-scoped caches invalidate via content replacement
+  (guide regen clears levels/examples/diagrams) — version-bump with card
+  untouched correctly reuses (hash-preserved, like hunk state). Evidence:
+  `test/reuse.test.ts` 6 tests, scripted fake, zero `prompts.length`
+  growth on every repeat (ran).
 
 ## §13 Prompts — all met
 
@@ -503,7 +527,7 @@ priority) ✓, `WS /api/events` ✓. Extras (all token-gated):
 `GET /api/viewer`, contributions routes. No stubs remain except the
 no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 
-## §15 GitHub/git — 9 met, 1 partly
+## §15 GitHub/git — all met (audit-10)
 
 - PR lists (`gh search … --author @me / --review-requested`) — met
   (`repos/changes.ts`, start page).
@@ -520,9 +544,16 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
   `gh-writes.test.ts`, doctor/readiness share the wrapper).
-- **Partly:** live GitHub submit (`test:live:submit` draft-PR script
-  exists, `mise run test:live:submit`) — not run here (needs a real repo
-  + login + writes a draft PR; user-gated by design).
+- Live GitHub submit — met (audit-10, ran 2026-10-11):
+  `mise run test:live:submit` green against sandbox draft PR
+  `indigoviolet/lvu#2` (fresh temp clone, never `~/dev/lvu`, never merged,
+  no other PRs/issues touched). Posted one review (`commentCount: 2`,
+  inline + general) + description edit (`descriptionUpdated: true`,
+  review URL `…/pull/2#pullrequestreview-5482002501`); PR still OPEN draft
+  unmerged afterwards. Repeat-run verification fixed to `>=1` matching
+  review (the sandbox PR accumulates reviews by design;
+  `scripts/live-submit.mjs`). Guard still green: `gh-writes.test.ts`
+  (only `src/submit/**` + `routes/submit.ts` write).
 
 ## §16 Non-functional — all met (measured 2026-10-10, Linux)
 
@@ -632,14 +663,27 @@ npm 10+11, tarball + git ref).
 
 ### Web defects for the web agent
 
-None found. 61 e2e green + manual walk (guide/diff/submit, 0 console
-errors). One item to confirm visually when card controls land (§4.4
-“Underlying principle” deepest-stepper case has no end-to-end drive).
+None found at audit time (61 e2e green + manual walk, 0 console errors).
+Audit-10: §4.4 principle now has an end-to-end drive
+(`depth-principle-service.spec.ts` 2/2 green), so the visual-confirm item
+is closed. UI sections were NOT re-audited wholesale per #10; suspicious
+items noticed while passing through (not verified, listed only):
+- Depth + at deepest now toasts via `performAction` `reused` handling
+  (`web/src/guide/actions.ts`) — confirm the copy (“deepest/nothing
+  more”) reads naturally alongside the examples/diagram “Nothing more”
+  toast in `CardView.runInsertAction`.
+- `depthViaAgent` normal steps now strip the fixture principle
+  (service-only change) — the guide still renders pre-existing principle
+  blocks from older snapshots; no migration was added.
+- Second-opinion repeat is now silent reuse (no job); the Jobs view shows
+  only the original job — confirm that reads correctly in Settings.
 
 ### Needs the user's decision or a Mac
 
 1. **Install path**: RESOLVED — `#release` ref + tarballs, both installing
    with no flags on npm 10 and 11 (verified in `check-global-install`).
+   Stale-pointer fix (audit-10): PRD §14 still says the bare
+   `github:<org>/unvibe` command — see #18 (now points at `#release`).
    Open: the repo has no LICENSE file, so the release ships no licence
    statement for Unvibe's own code (third-party notices ship in
    THIRD-PARTY-NOTICES.md) — pick a licence.
@@ -649,8 +693,21 @@ errors). One item to confirm visually when card controls land (§4.4
 3. **Mac**: run `docs/macos-testing.md` (15 min) — untested: osacompile
    applet, lsregister delivery, Gatekeeper xattr, Finder PATH, Chrome
    install flow on macOS.
-4. **Live gates**: `test:live:submit` (draft PR), full live pipeline on a
-   real PR — need logins + token spend + a scratch repo.
-5. **Result reuse** (§12): no cross-request cache beyond in-flight dedupe
-   + cached depth levels — accept or schedule.
-6. Push the repo (CI workflow runs on push) and read the macOS leg.
+4. **Live gates**: RESOLVED (submit) — `test:live:submit` ran green
+   2026-10-11 on `indigoviolet/lvu#2` (still OPEN draft, unmerged; see
+   §15). Remaining: full live pipeline on a real PR — needs logins +
+   token spend + a scratch repo.
+5. **Result reuse** (§12): RESOLVED (audit-10) — cross-request cache
+   implemented + tested (`reuse.test.ts`); per-action decisions in §12.
+   Owner review: card-scoped reuse across version bumps when the card is
+   untouched (documented as intentional); ask reuse returns the existing
+   thread (no new thread on identical repeat).
+6. **CI**: RESOLVED — workflow exists (`.github/workflows/ci.yml`) and the
+   base merge (`2eec7cb`) notes green on macOS and Ubuntu (check +
+   build + `test:e2e`, shell e2e per OS, `check-global-install`,
+   restart-resilience, strict D2 seed gate). Audit-10 did not re-run CI
+   (runs on push); `mise run check` + `build` + `test:e2e`
+   (incl. the 2 new principle specs) are green locally — see Done-when
+   report.
+7. **Diagrams**: D2 decision already noted (§13); PRD text itself still
+   contradicts (§13/§19.4) — fixed in #18, not here.

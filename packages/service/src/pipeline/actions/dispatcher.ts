@@ -79,7 +79,9 @@ export async function dispatchAction(
         }
         try {
           const res = await generateAction(deps.pipeline, deps.jobs, deps.reviews, deps.reviewId, action.cardId);
-          const out: ActionResponse = { accepted: true, jobId: res.jobId };
+          const out: ActionResponse = { accepted: true };
+          if (res.jobId) out.jobId = res.jobId;
+          if (res.reused) out.reused = true;
           return out;
         } catch (err) {
           const msg = (err as Error).message;
@@ -94,6 +96,7 @@ export async function dispatchAction(
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
+        if (res.reused) out.reused = true;
         return out;
       }
       case "ask": {
@@ -105,6 +108,7 @@ export async function dispatchAction(
         const out: ActionResponse = { accepted: true, annotationId: res.threadId, threadId: res.threadId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
+        if (res.reused) out.reused = true;
         return out;
       }
       case "note": {
@@ -145,6 +149,7 @@ export async function dispatchAction(
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
+        if (res.reused) out.reused = true;
         return out;
       }
       case "examples": {
@@ -154,6 +159,7 @@ export async function dispatchAction(
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
+        if (res.reused) out.reused = true;
         return out;
       }
       case "diagram": {
@@ -163,6 +169,7 @@ export async function dispatchAction(
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
+        if (res.reused) out.reused = true;
         return out;
       }
       case "undo": {
@@ -244,6 +251,7 @@ export async function dispatchAction(
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, cardId: action.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
+        if ((res as { reused?: boolean }).reused) out.reused = true;
         return out;
       }
       case "concept": {
@@ -253,6 +261,7 @@ export async function dispatchAction(
         const out: ActionResponse = { accepted: true, pageId: res.pageId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
+        if (res.reused) out.reused = true;
         return out;
       }
       case "second_opinion": {
@@ -263,7 +272,10 @@ export async function dispatchAction(
         }
         try {
           const res = await secondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, action.cardId, action.mode);
-          return { accepted: true, jobId: res.jobId } satisfies ActionResponse;
+          const out: ActionResponse = { accepted: true };
+          if (res.jobId) out.jobId = res.jobId;
+          if (res.reused) out.reused = true;
+          return out satisfies ActionResponse;
         } catch (err) {
           const msg = (err as Error).message;
           if (/unknown review|unknown card/.test(msg)) return reply.code(404).send({ error: msg });

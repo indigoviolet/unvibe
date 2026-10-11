@@ -27,6 +27,7 @@
     {"kind": "depth", "key": "problem:deep", "file": "depth-problem-deep.md"},
     {"kind": "depth", "key": "central:simple", "file": "depth-central-simple.md"},
     {"kind": "depth", "key": "central:deep", "file": "depth-central-deep.md"},
+    {"kind": "depth", "key": "expansion:deep", "file": "depth-expansion-deep.md"},
     {"kind": "examples", "key": "problem", "file": "examples-problem.md"},
     {"kind": "examples", "key": "central", "file": "examples-central.md"},
     {"kind": "diagram", "key": "fold", "file": "diagram-fold.md"},

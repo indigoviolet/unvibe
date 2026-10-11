@@ -40,6 +40,7 @@ import {
 import { canonicalizeCitations } from "./validate-apply.js";
 import { hasOutOfBaseCitations } from "./events.js";
 import { changeListVariable, ingestAgentTurn } from "../sharedctx-wire.js";
+import { anchorSameHost } from "./explain.js";
 
 export interface AskRequest {
   quote: string;
@@ -50,7 +51,7 @@ export interface AskRequest {
 export async function askAction(
   ctx: ActionContext,
   req: AskRequest,
-): Promise<{ threadId: string; jobId?: string; deduplicated?: boolean }> {
+): Promise<{ threadId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
   const { jobs, reviews, reviewId } = ctx;
   if (!req.message || req.message.trim() === "") throw new Error("ask message is required");
   // Empty quotes are legal: diff-line clicks and description flows often
@@ -60,8 +61,11 @@ export async function askAction(
   const before = getSnapshotOrThrow(reviews, reviewId);
   const normalized = normalizeBlockAnchor(before, req.anchor);
   const anchor = buildAnchor(before, normalized, req.quote);
+  // PRD §12 key (#10): the question itself is part of the identity — two
+  // different messages on the same anchor must not share a job/result.
+  const messageKey = req.message.trim().slice(0, 120);
   const key = {
-    anchor: `${anchorKey(normalized)}:${req.quote.slice(0, 80)}`,
+    anchor: `${anchorKey(normalized)}:${req.quote.slice(0, 80)}:${messageKey}`,
     requestKind: "ask",
     baseVersion: baseVersionOf(before),
   };
@@ -70,6 +74,26 @@ export async function askAction(
   if (active) {
     const existing = before.annotations.find((a) => a.type === "thread" && a.jobId === active.id);
     return { threadId: existing?.id ?? "", jobId: active.id, deduplicated: true };
+  }
+
+  // PRD §12 reuse (#10): the same message on the same anchor and base
+  // version returns the stored thread without an agent call. A different
+  // message is legitimately a new request; a deleted thread is gone so a
+  // repeat is a new request; a new base version invalidates via
+  // anchor.version.
+  const storedDup = before.annotations.find((a) => {
+    if (a.type !== "thread" || a.note) return false;
+    if (a.anchor.quotedText !== req.quote) return false;
+    if (!anchorSameHost(a.anchor, anchor)) return false;
+    if (a.anchor.version !== before.version.n) return false;
+    if (a.error) return false;
+    const firstUser = a.messages.find((m) => m.who === "you" && m.text);
+    if (!firstUser || firstUser.text?.trim() !== req.message.trim()) return false;
+    const hasAi = a.messages.some((m) => m.who === "ai" && (m.text || m.html));
+    return hasAi;
+  });
+  if (storedDup) {
+    return { threadId: storedDup.id, reused: true };
   }
 
   // Thread with the user's first message (guide threads start closed,

@@ -424,12 +424,13 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
     };
   }
 
-  it("stores the result with verdict, citations, usage and prompt snapshot; re-run replaces same mode", async () => {
+  it("stores the result with verdict, citations, usage and prompt snapshot; repeat reuses without a job", async () => {
     const s = await setup();
     try {
       const agents = fakeWithVerdict("agrees");
       const deps = depsFor(s, agents);
       const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      if (!("id" in job)) throw new Error("first run should enqueue a job");
       expect(job.kind).toBe("second-opinion");
       expect(job.provider).toBe(s.ctx.settings.get().secondOpinion.provider);
       await s.ctx.jobs.drain(10000);
@@ -449,15 +450,20 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
       expect(storedJob.promptSnapshot).not.toContain("GUIDE-PROBE");
       expect(storedJob.usage?.inputTokens).toBeGreaterThan(0);
       expect(snap.usageTotals?.inputTokens).toBeGreaterThan(0);
-      // Re-run same mode+model replaces (still one entry).
+      // Repeat of the identical request (same card, mode, model, version)
+      // reuses the stored result: no job, no runner call (PRD §12, #10).
+      const promptsBefore = agents.prompts.length;
+      const jobsBefore = s.ctx.jobs.listByReview(s.reviewId).length;
       const job2 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
-      await s.ctx.jobs.drain(10000);
-      expect(s.ctx.jobs.get(job2.id)?.state).toBe("done");
+      expect(job2).toMatchObject({ reused: true });
+      expect(agents.prompts.length).toBe(promptsBefore);
+      expect(s.ctx.jobs.listByReview(s.reviewId).length).toBe(jobsBefore);
       const snap2 = s.ctx.reviews.getSnapshot(s.reviewId)!;
       const card2 = snap2.pages.flatMap((p) => p.cards).find((c) => c.id === "central")!;
       expect(card2.secondOpinions).toHaveLength(1);
       // Other mode coexists (one per mode).
       const job3 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "blind" });
+      if (!("id" in job3)) throw new Error("other mode should enqueue a job");
       await s.ctx.jobs.drain(10000);
       expect(s.ctx.jobs.get(job3.id)?.state).toBe("done");
       const snap3 = s.ctx.reviews.getSnapshot(s.reviewId)!;

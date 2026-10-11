@@ -12,6 +12,7 @@ import {
   pushUndo,
   recordInteraction,
   setTargetContent,
+  targetBlocks,
   targetLevel,
   findCardTarget,
 } from "../../interaction/index.js";
@@ -28,7 +29,7 @@ import {
 export async function examplesAction(
   ctx: ActionContext,
   cardId: string,
-): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean }> {
+): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
   const { pipeline, jobs, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const target = findCardTarget(snapshot, cardId);
@@ -40,6 +41,14 @@ export async function examplesAction(
   };
   const active = findActiveJob(jobs, reviewId, key);
   if (active) return { cardId, jobId: active.id, deduplicated: true };
+
+  // PRD §12 reuse (#10): when every paragraph already has an example after
+  // it, a repeat returns the stored blocks with no agent call. A card with
+  // new paragraphs (open slots) or with examples deleted (undo) is
+  // legitimately a new request.
+  if (examplesSaturated(targetBlocks(target))) {
+    return { cardId, reused: true };
+  }
 
   const level = targetLevel(target);
   const variables = { card: cardPromptText(snapshot, cardId), level };
@@ -118,4 +127,21 @@ function collectExamples(blocks: Block[]): Block[] {
     else if (b.type === "aside") out.push(...collectExamples(b.inner));
   }
   return out;
+}
+
+/**
+ * True when the card already carries examples on every paragraph that can
+ * take one (the same open-slot rule `insertExamples` uses). A repeat then
+ * reuses the stored blocks with no agent call (PRD §12, #10).
+ */
+function examplesSaturated(blocks: Block[]): boolean {
+  let paragraphs = 0;
+  let covered = 0;
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].type !== "paragraph") continue;
+    paragraphs++;
+    const next = blocks[i + 1];
+    if (next?.type === "aside" && (next as { kind?: string }).kind === "Example") covered++;
+  }
+  return paragraphs > 0 && covered >= paragraphs;
 }
