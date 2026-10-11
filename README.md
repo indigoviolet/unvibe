@@ -191,18 +191,20 @@ outside are the user's own tools that Unvibe launches:
 
 Unvibe's own code — the service process and the web app in the browser —
 contacts nothing but `127.0.0.1`. Fonts are self-hosted (`@fontsource/*`,
-latin subsets bundled by Vite), Mermaid is bundled (no CDN, no remote
-fonts/styles at runtime), and links the user clicks to github.com are
+latin subsets bundled by Vite), diagrams are static SVG through the
+prototype's own classes (no dependencies, no inline styles, strict-CSP
+clean), and links the user clicks to github.com are
 navigations (marked `rel="noreferrer noopener"`), not subresource loads.
 
 What enforces it:
 
-- Browser: the service serves a strict `Content-Security-Policy` on the
-  HTML shell (mirrored as a `<meta>` in `public/start.html` for the offline
-  page); a shared Playwright fixture fails the whole e2e suite on any
-  non-local request, plus a dedicated spec walks the front screen, a review
-  with guide + diff + Mermaid diagram, and settings asserting zero
-  non-local requests and zero CSP violations.
+- Browser: the service serves a strict `Content-Security-Policy`
+  (`style-src 'self'`, no `unsafe-inline`) on the HTML shell (mirrored as
+  a `<meta>` in `public/start.html` for the offline page, whose styles
+  live in `public/start.css`); a shared Playwright fixture fails the whole
+  e2e suite on any non-local request, plus a dedicated spec walks the
+  front screen, a review with guide + diff + JSON diagram, and settings
+  asserting zero non-local requests and zero CSP violations.
 - Service: the vitest setup makes non-loopback sockets fail suite-wide
   (`net`/`tls`/`dns`/`fetch` wrapped); an end-to-end test boots the app,
   creates the demo review with the replay runner, runs actions, and asserts

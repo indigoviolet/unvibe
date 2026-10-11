@@ -1,5 +1,16 @@
 # Diagram options: measured comparison
 
+> **Adopted (2026-10-11, branch `diagram-spec`): option B.** Mermaid
+> support removed entirely (no stored user data to migrate): fenced
+> `diagram` blocks hold the JSON spec, `DiagramBlock` carries
+> `{ spec, caption }` with cites lifted into citations, service validates
+> structure + citations with one repair turn, the web renders static SVG
+> through the prototype's classes (`DiagramSvg.tsx` + shared
+> `renderDiagramSvg`), cited nodes behave like all citations, and the CSP
+> is strict (`style-src 'self'`, offline styles in `/start.css`). Web
+> `dist` went 4.4 MB / 79 assets (Mermaid lazy chunks ~0.93 MB gzip) →
+> 924 KB / 18 assets, no Mermaid/cytoscape/katex chunks.
+
 Evaluation spike for PRD §19.4 ("Mermaid with citation tokens in labels, or a
 small JSON diagram spec"). Time-boxed, hands-on: every number below was
 measured on 2026-10-11 in this worktree (branch `diagram-spike`), not guessed.

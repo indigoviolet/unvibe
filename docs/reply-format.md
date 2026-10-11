@@ -89,18 +89,33 @@ Underlying-principle inserts. Inner content is ordinary Markdown.
 
 ## 5. Diagrams
 
-Diagrams are fenced `mermaid` blocks (PRD §13/§19.4). Citation tokens are
-allowed in node labels. An optional `Caption: …` paragraph right after the
+Diagrams are fenced `diagram` blocks holding the JSON spec (PRD
+§13/§19.4). Every node, edge, panel or message may carry a `cite` with a
+bare link-token payload (never `[[…]]`); the parser lifts each into the
+block's citations. An optional `Caption: …` paragraph right after the
 fence becomes the caption:
 
 ````md
-```mermaid
-flowchart LR
-    A["http.client keeps CRLF [[diff:conn:650-651]]"] --> B["normalize"]
+```diagram
+{
+  "version": 1,
+  "kind": "flow",
+  "title": "Header data flow",
+  "nodes": [
+    {"id": "cli", "title": "http.client", "col": 0},
+    {"id": "norm", "title": "normalize", "cite": "diff:conn:91-110", "col": 1, "state": "ok"}
+  ],
+  "edges": [{"from": "cli", "to": "norm", "label": "parse"}]
+}
 ```
 
 Caption: Where response headers go after parsing.
 ````
+
+Caps: ≤12 nodes, ≤16 edges, ≤6 actors, ≤16 messages; node titles ≤48
+chars, subs/labels/lines ≤80. Titles, subs, labels and panel lines are
+plain text (no tokens). `col`/`row` hint layout (0–5); `state` is
+`ok`, `bad` or `neutral`.
 
 ## 6. Follow-up suggestions
 
@@ -183,7 +198,7 @@ The `anchor.quote` must be a real substring of its host block.
 ## 10. The trailing JSON block
 
 - It is the **last** fenced block in the reply, tagged `json` (or
-  untagged). Earlier fences (code examples, Mermaid) are content.
+  untagged). Earlier fences (code examples, diagrams) are content.
 - Trailing whitespace and non-fence prose after it are ignored.
 - A missing block is fine for replies with no metadata. A `json`-tagged
   fence that does not parse, or parses to a non-object, is an error.

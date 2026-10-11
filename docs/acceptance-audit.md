@@ -446,8 +446,10 @@ UI); nothing below was edited by this pass.
   `routes/prompts.ts` serves template + expanded).
 - Settings shows template + expanded with L0–L4 marks, tokens, cache part
   — met (`settings.spec.ts`, `prompts-route.test.ts`).
-- Diagrams: Mermaid with citation tokens in labels — met
-  (`reply-format.md` §5, `interaction/mermaid.ts`, bundled Mermaid, no CDN).
+- Diagrams: JSON spec + own SVG (replaces Mermaid) — met
+  (`reply-format.md` §5, `content/diagram-spec.ts` + `diagram-render.ts`,
+  `interaction/diagram.ts`, `guide/DiagramSvg.tsx`; cites in `cite` fields
+  with hover preview + click reveal; strict CSP, no Mermaid chunks).
 
 ## §14 Shell, install, security, storage — all met
 
@@ -541,9 +543,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Restart loses no user data; sessions reopen/rebuild: restart script
   (SIGKILL mid-reader, mid-ask) all green; jobs interrupted-visible +
   resumable; reply falls back to fresh fork.
-- Privacy: loopback-only enforced at three layers (browser CSP + suite
-  network tripwires + static guards + subprocess allowlist —
-  `network-*.test.ts`, `subprocess-allowlist.test.ts`, all in `check`).
+- Privacy: loopback-only enforced at three layers (browser CSP
+  (`style-src 'self'`, no `unsafe-inline`: diagrams are class-only SVG,
+  offline styles in `/start.css`) + suite network tripwires + static
+  guards + subprocess allowlist — `network-*.test.ts`,
+  `subprocess-allowlist.test.ts`, all in `check`).
 - Snapshot size: 300-file ingest 0.15 s; `GET` 20 ms @ 433 KB;
   +361 B/annotation (200 annotations measured); jobs lists omit prompt
   snapshots (per-job fetch) — `GET` stays reasonable after hundreds of
@@ -606,8 +610,9 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
    were slightly off) — `docs/m0-acp-spike.md` table.
 8. Trailing fenced JSON block for structured output (PRD §19.3 resolved
    for it: 20/20 live parses) — `docs/m0-acp-spike.md`.
-9. Diagrams are Mermaid with citation tokens in labels (PRD §19.4
-   resolved) — bundled, no CDN.
+9. Diagrams are a JSON spec + own SVG renderer (PRD §19.4 resolved;
+   adopted option B from `docs/diagram-options.md`) — no Mermaid, strict
+   CSP (`style-src 'self'`), ~6 KB own code.
 10. Acronym: second-opinion `workspace-write` (not `read-only`) for Codex
     (`read-only` refuses MCP calls) — `docs/acp-runner.md` quirks 6–7.
 
