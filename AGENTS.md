@@ -35,5 +35,6 @@ docs/              write-ups (spike results, decisions)
 - Keep `mise run check` green from a clean tree with no `dist/`. The full gates (`build`, `test:e2e`, `e2e`, `check-global-install`, `test:live`, restart resilience) are listed in `DEVELOPMENT.md`.
 - `docs/acceptance-audit.md` is the requirement-by-requirement verdict + open list; update it when behaviour changes.
 - Work is tracked in GitHub issues at `indigoviolet/unvibe` (`gh issue list`). Each piece of work has an issue; name the issue in your report and in the merge commit (`Closes #N`), tick its checklist as items land, and open a new issue for anything you find but do not fix. Labels: `in-progress`, `needs-decision`, `needs-mac`, `future`.
+- Spikes, evaluations and experiments never go to `main`. They live on a pushed branch named `spike/<topic>` (harness, screenshots and write-up together) and are linked from their issue. Only work that is adopted gets merged.
 - Commit in small logical commits on your branch; do not push, do not merge, do not touch other worktrees.
 - When done, report: what was built, what was verified (commands + results), what is stubbed or missing, and anything in the PRD you deviated from.
