@@ -69,6 +69,10 @@ run = "mise run build && node packages/service/dist/index.js doctor"
 description = "Linux end-to-end: setup, handler start, reuse, idle exit, uninstall"
 run = "mise run build && node scripts/e2e-linux.mjs"
 
+[tasks."e2e:macos"]
+description = "macOS end-to-end: setup, helper app, handler start, reuse, idle exit, uninstall"
+run = "mise run build && node scripts/e2e-macos.mjs"
+
 [tasks.check-global-install]
 description = "Release-install the tarball + git ref into temp prefixes (npm 10+11), run doctor/start/demo outside the repo"
 run = "mise run release && node scripts/global-install-check.mjs"
