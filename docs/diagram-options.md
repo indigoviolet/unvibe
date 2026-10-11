@@ -298,5 +298,88 @@ plumbing. Files in order:
    consume them).
 6. CSP: keep `style-src 'self' 'unsafe-inline'` only until the last Mermaid
    diagram ages out, then drop `'unsafe-inline'` for styles — the first
-   candidate that lets the policy get *strict
+   candidate that lets the policy get *stricter*.
+
+## 7. Addendum 2026-10-11: decision is D2 with a user-installed binary
+
+**Decision:** adopt candidate C (D2), with the `d2` binary required on the
+user's machine and all rendering done service-side. This kills the two worst
+D2 findings outright: no browser bundle (was 8.4 MB gzip) and no
+`wasm-unsafe-eval` (browser WASM is out of the picture). MPL-2.0 largely
+evaporates as a concern: we shell out to a user-installed program, never
+bundle the WASM. Honest remainder: D2 SVGs still carry `<style>` blocks and
+inline `style=` (11 attrs + 2 blocks on a 4-node test), so
+`style-src 'unsafe-inline'` stays — no worse than Mermaid today.
+
+**Binary findings, verified hands-on with d2 v0.9.0** (17 MB tarball,
+downloaded, tested, removed; ~9 ms compiles):
+
+- All cite forms survive compilation byte-identical inside quoted strings —
+  `link: diff:conn:80-88`, `link: "[[diff:conn:91-110]]"`, and marker-style
+  `link: unvibe:cite:1` — each emerging verbatim as `<a href="…">`. The
+  Mermaid `[`-in-label failure mode does not exist here; D2 quoted strings
+  are opaque to the layout engine.
+- `tooltip:` renders as native `<title>` (dumb browser hover text).
+- Fonts are base64-embedded subsets in CLI output too (1 `@font-face` on the
+  test) — fully offline, no system-font dependency.
+- `--theme 200` renders a genuinely different dark SVG (man source also
+  documents `--dark-theme`, `--sketch`, `--scale`, `--font-*` TTF overrides).
+- The glyph-spacing artifact in §2's gallery screenshots was proven
+  environmental (stale font state in the capture session, see correction
+  above), not a D2 defect: the identical source re-rendered byte-identical
+  (15146 bytes) and screenshots cleanly at 1x and 2x in isolation.
+
+**Refined citation design (no sidecar):** the agent writes the cite directly
+on the node — `link: "diff:conn:80-88"` — single channel, one prompt line.
+Service pipeline: (1) extract `link:` values from source (verbatim by
+construction), (2) validate each as a cite token with the existing validator
+(ranges, auto-repair — the standard path), (3) compile-check via the binary,
+either failure → one repair turn, (4) render light + dark, rewrite each
+`href="diff:conn:…"` to the app URL in the SVG string, (5) strip `<title>`
+elements containing token patterns so native tooltips don't fight the app's
+rich hover preview (don't teach `tooltip:` in prompts).
+
+**Build order:** mini reliability run on the `link:` convention first (~16
+generations, spike harness exists — the convention is new and untested);
+then binary discovery + `doctor` (login-shell PATH, `d2 version`, minimum
+version gate — D2 is 0.x and drifts); render cache keyed by content hash;
+web renderer (inline cached SVG, delegate `<a>` clicks, existing hover
+previews, source fallback when binary missing); prompts + fixtures +
+golden tests; keep Mermaid renderer until stored replies age out. Rough size
+3–5 days. Subprocess hygiene throughout: source via stdin only, timeouts,
+byte caps.
+
+**Risks, ranked:** (1) version drift across user machines — validate and
+render with the same binary, gate min version in doctor; (2) D2 0.x syntax
+stability — compile-check converts breakage into repair turns; (3) the
+`link:` convention itself is unproven with models (the gate in the previous
+paragraph); (4) playground extras (boards/layers/scenarios/steps) are
+deliberately out of scope — layers noted only as a future escape hatch for
+before/after diagrams.
+
+## 8. Addendum 2026-10-11: reladraw (candidate F, evaluated after the table)
+
+[reladraw](https://github.com/reladraw/reladraw) (v0.16.0, Apache-2.0,
+~1100 stars): a relative-placement text language ("right of X", no
+coordinates, no auto-layout) with a zero-dependency TS parser/layout/renderer
+(647 KB npm package, ~90 KB gzip est. browser cost). Evaluated hands-on:
+our flow reference rendered cleanly, `url:` on nodes and edges emits
+`<a href>` (verified), output is strict-CSP clean (0 style attrs/tags),
+14 built-in themes, CLI exit codes with errors that name the statement.
+Agent spot check with a condensed 1.2 KB syntax prompt: 4/4 valid first-try
+(2 Claude + 2 Codex), all cites in range — notable given the author states
+models haven't seen the language (a 131 KB `llms-full.txt` + skill exists
+for that reason).
+
+**Gaps for us:** no sequence diagrams (placement language, no native form —
+our "harder" reference has no expression); prompt cost (complex features
+likely need the full syntax doc in context, ~30× our spec's prompt weight,
+per diagram); language unstable pre-1.0 with PRs not accepted (pinned to a
+moving target we can't contribute to); style has no semantic states and a
+hardcoded monospace aesthetic; themes bake in at render time (re-render for
+dark mode, cheap but app-driven).
+
+**Standing:** strongest fallback if D2 adoption fails — it collapses syntax,
+validator, and renderer into one maintained dependency and scores well
+everywhere except sequences and prompt cost. Not pursued while D2 proceeds.
 ...[truncated 2086 chars]
