@@ -111,8 +111,25 @@ describe("renderDiagramSvg", () => {
       edges: maxNodes.slice(1).map((n, i) => ({ from: maxNodes[i].id, to: n.id, label: "a very long edge label that should wrap" })),
     };
     const svg = renderDiagramSvg(max, "m");
-    expect(svg).toContain("<title>");
+    // Long titles wrap to two lines (no truncation) and long edge labels
+    // wrap as well; truncation (with <title>) is a last resort only.
+    expect(svg).toContain("here");
+    expect(svg).toContain("that should wrap");
     expect(svg).not.toContain("style=");
+    // A single 48-char word cannot wrap: it truncates with a tooltip.
+    const trunc: DiagramSpec = {
+      version: 1,
+      kind: "flow",
+      title: "Trunc",
+      nodes: [
+        { id: "a", title: "a".repeat(48) },
+        { id: "b", title: "B" },
+      ],
+      edges: [{ from: "a", to: "b" }],
+    };
+    const svg2 = renderDiagramSvg(trunc, "t2");
+    expect(svg2).toContain("<title>");
+    expect(svg2).toContain("…");
   });
 
   it("renders TB direction and missing hints", () => {

@@ -1226,7 +1226,7 @@
                 "version": 1,
                 "kind": "flow",
                 "title": "Data flow from socket to headers",
-                "direction": "TB",
+                "direction": "LR",
                 "nodes": [
                   {
                     "id": "sock",

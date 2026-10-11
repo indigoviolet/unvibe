@@ -32,6 +32,12 @@
   opacity: 0.38;
 }
 
+/* The whole cited box is the hover/click target (not only the badge). */
+.dg [data-cite],
+.dg [data-cite-badge] {
+  cursor: pointer;
+}
+
 .dg [data-cite]:focus-visible,
 .dg [data-cite-badge]:focus-visible {
   outline: 2px solid var(--accent);

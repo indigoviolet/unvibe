@@ -3,7 +3,7 @@
   "version": 1,
   "kind": "flow",
   "title": "Data flow from socket to headers",
-  "direction": "TB",
+  "direction": "LR",
   "nodes": [
     {"id": "sock", "title": "Server", "sub": "folded header", "col": 0},
     {"id": "client", "title": "http.client", "sub": "parse_headers", "cite": "diff:conn:650-651", "col": 1},
