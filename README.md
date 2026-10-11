@@ -14,26 +14,28 @@ for PRs and posting — `gh` logged in. Agents run through
 your existing Claude Code / Codex logins; no new accounts.
 
 ```sh
-npm install -g --install-links --allow-scripts=unvibe github:<org>/unvibe   # install or update (same command)
-unvibe setup                          # per-install token + unvibe:// handler
-unvibe open                           # start the service, open the app
+npm install -g github:<org>/unvibe#release   # install or update (same command)
+unvibe setup                                  # per-install token + unvibe:// handler
+unvibe open                                   # start the service, open the app
 ```
 
-> npm 11 note: global installs from a **git URL** need `--install-links`
-> (otherwise npm links the git clone and removes it, leaving a dangling
-> symlink when the package has a `prepare` script — reproducible with a
-> trivial package, npm-side) and `--allow-scripts=unvibe` (npm 11 blocks
-> install scripts by default; ours builds from source on git installs and
-> prunes the bundled agent platform binaries — see below). The same flags
-> work on npm 10. Release tarballs work with the same flags:
+> The `#release` ref serves a self-contained release tree (built service +
+> web app, no build step, no lifecycle scripts, no devDependencies), so the
+> install needs **no flags** on npm 10 or 11. A release tarball is attached
+> to every GitHub release and installs the same way:
 >
 > ```sh
-> npm install -g --install-links --allow-scripts=unvibe https://github.com/<org>/unvibe/releases/download/<v>/unvibe-<v>.tgz
+> npm install -g https://github.com/<org>/unvibe/releases/download/<v>/unvibe-<v>.tgz
 > ```
 >
-> Verified: ~2.3 MB tarball, ~69 MB installed on Linux (was ~736 MB before
-> the bundled Codex/Claude platform binaries were removed — Unvibe now runs
-> your installed `claude`/`codex` CLIs and ships none).
+> Verified: ~3.3 MB tarball, ~66 MB installed on Linux in ~4 s. The release
+> ships the ACP adapters bundled into the service (`dist/adapters/`) and
+> runs your installed `claude`/`codex` CLIs — no agent platform binaries
+> are downloaded at all (previously ~736 MB, downloaded then pruned).
+>
+> Installing from the default branch (`npm install -g github:<org>/unvibe`,
+> no ref) is **unsupported**: it is the source tree, not an installable
+> package (it needs devDependencies + a build).
 
 `unvibe setup` writes a small URL helper — `~/Applications/Unvibe.app`
 (macOS, generated locally with `osacompile` so Gatekeeper stays out of the
@@ -169,7 +171,8 @@ mise run lint | mise run typecheck | mise run test
 mise run check      # lint + typecheck + test (stays green; never needs dist)
 mise run test:e2e   # Playwright: mock UI (60) + real service in demo mode
 mise run e2e        # Linux shell e2e: setup, handler, reuse, idle, uninstall
-mise run check-global-install   # tarball + git-URL global install into temp prefixes
+mise run check-global-install   # release tarball + #release git ref into temp prefixes (npm 10+11, no flags)
+mise run release                  # self-contained release tree + tarball + local release branch (no push)
 node scripts/restart-resilience.mjs  # crash recovery against the built service
 ```
 
@@ -245,8 +248,11 @@ Installing/updating (`npm install -g`) naturally uses the network.
   `packages/service/src/lifecycle/` (idle exit + shutdown hooks),
   `packages/web/public/` (manifest, icons, service worker, offline
   start page). The service ships as an esbuild bundle
-  (`packages/service/dist/index.js`, `@unvibe/shared` inlined) so
-  `npm install -g` works from a tarball; registry deps live in the root
+  (`packages/service/dist/index.js`, `@unvibe/shared` inlined) plus bundled
+  ACP adapter entries (`dist/adapters/*.js`); `mise run release` assembles
+  the self-contained release tree (`#release` ref + tarball) with a
+  generated dependency-lean package.json, so user installs need no build
+  and no lifecycle scripts. Source-tree registry deps live in the root
   `dependencies` — keep them in sync with `packages/service/package.json`.
 - Start with `docs/acceptance-audit.md` (requirement-by-requirement
   verdicts + open list), then `docs/pipeline.md` (the agent seam),

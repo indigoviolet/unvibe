@@ -16,9 +16,6 @@
     "packages/web/dist/**",
     "prompts/**",
     "fixtures/urllib3-5020/**",
-    "stubs/empty-platform/**",
-    "scripts/prune-binaries.mjs",
-    "scripts/prepare.mjs",
     "README.md"
   ],
   "dependencies": {
@@ -53,9 +50,7 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check": "npm run lint && npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present",
-    "prepare": "node scripts/prepare.mjs && node scripts/prune-binaries.mjs",
-    "postinstall": "node scripts/prune-binaries.mjs"
+    "check": "npm run lint && npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",

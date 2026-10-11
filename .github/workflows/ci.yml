@@ -2,10 +2,9 @@
 #
 # Runs on macOS and Linux (the two supported platforms, AGENTS.md). Live
 # agent tasks (`test:live:*`) never run here: they need user logins and
-# spend tokens. The global-install git phase is also excluded: npm's
-# handling of global git installs with prepare scripts is currently broken
-# upstream (dangling symlink; see docs/acceptance-audit.md) — the tarball
-# phase runs instead.
+# spend tokens. The global-install check installs the self-contained release
+# tree (tarball + git ref, npm 10 and 11) with no flags and no tokens
+# (replay-mode demo).
 
 name: ci
 
@@ -48,9 +47,9 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: mise run e2e
 
-      - name: Global-install check (tarball phase)
+      - name: Global-install check (release tarball + git ref, npm 10+11)
         if: matrix.os == 'ubuntu-latest'
-        run: node scripts/global-install-check.mjs --phases tarball
+        run: mise run check-global-install
 
       - name: Restart resilience (SIGKILL mid-stage + restart)
         if: matrix.os == 'ubuntu-latest'

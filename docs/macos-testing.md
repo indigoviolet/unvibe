@@ -222,29 +222,23 @@ blocks exit), `unvibe stop`.
 ## 8. Global install as a user would (3 min)
 
 ```
-$ npm install -g --install-links --allow-scripts=unvibe github:<org>/unvibe
+$ npm install -g github:<org>/unvibe#release
 $ unvibe setup && unvibe doctor && unvibe open
 ```
 
-Notes (verified on Linux 2026-10-10; same mechanism holds for
-darwin-arm64 — reasoned from package metadata, not run here):
+Notes (verified on Linux; same mechanism holds for darwin-arm64 —
+reasoned from package metadata, not run here):
 
-- `--install-links` is required on npm 11 for git-URL installs: without it
-  npm links the git clone and removes it, leaving a dangling symlink when
-  the package has a `prepare` script (reproducible with a trivial package,
-  npm-side). The same flags work on npm 10. Release tarballs use the same
-  flags (`npm install -g --install-links --allow-scripts=unvibe
+- The `#release` ref serves a self-contained tree (built service + web,
+  no build step, no lifecycle scripts), so the install needs **no flags**
+  on npm 10 or 11. Release tarballs install the same way (`npm install -g
   https://github.com/<org>/unvibe/releases/download/…/unvibe-….tgz`).
-- `--allow-scripts=unvibe` lets our `postinstall` prune the bundled agent
-  platform binaries (npm 11 blocks install scripts by default).
-- Size: ~2.3 MB tarball, ~69 MB installed on Linux (was ~736 MB before the
-  bundled binaries were removed). macOS installs the same way: npm resolves
-  the darwin-arm64 platform packages (`@openai/codex-darwin-arm64`,
-  `@anthropic-ai/claude-agent-sdk-darwin-arm64` — same `optionalDependencies`
-  names, same `overrides` stub them, same `prune-binaries` deletes them if
-  fetched), and the adapters run your installed `claude`/`codex` via
+- Size: ~3.3 MB tarball, ~66 MB installed on Linux. macOS installs the
+  same way: the release tree has no agent platform packages at all (the
+  adapters are bundled JS in `dist/adapters/`; nothing is resolved per
+  platform), and the adapters run your installed `claude`/`codex` via
   `CLAUDE_CODE_EXECUTABLE`/`CODEX_PATH` (both CLIs ship darwin-arm64 builds
-  with `app-server`/SDK support). Expect the same ~69 MB order of magnitude.
+  with `app-server`/SDK support). Expect the same ~66 MB order of magnitude.
 - Agents: `unvibe doctor` must show your installed `claude`/`codex` with
   path + version (Codex ≥ 0.160.1, Claude Code ≥ 2.1.293); Unvibe does not
   install them for you.
