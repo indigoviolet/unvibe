@@ -196,10 +196,21 @@ if (via === "none" && handlerBin) {
   if (await waitFor(PORT, true, 20_000, "service health via helper handler")) via = "applet-direct";
 }
 assert(via !== "none", `service starts via the helper (${via})`);
+// A late `open` dispatch may still have started the default service after
+// we fell back to the handler: stop it so only the temp-port service below
+// remains (best effort; the dispatch probe already reported its verdict).
+if (via !== "open" && (await health(DEFAULT_PORT))) {
+  console.log(`NOTE: default-port service appeared late; stopping it`);
+  runCli(["stop"], DEFAULT_ENV);
+}
+
+// 4. start through the CLI; a second start reuses --------------------------------
+// (`open`-dispatch ran on defaults, so the temp-port service starts here;
+// the handler path already runs it, and `start` reuses it either way.)
+const start1 = runCli(["start"]);
+assert(start1.code === 0, `start exits 0 (${start1.out.trim().split("\n")[0]})`);
 const pid1 = lockPid(DATA);
 assert(typeof pid1 === "number", "lock file holds the daemon pid");
-
-// 4. second start reuses ------------------------------------------------------
 const start2 = runCli(["start"]);
 assert(start2.code === 0 && lockPid(DATA) === pid1, "second start reuses the running service");
 assert(start2.out.includes("already running"), "second start says it reused the service");
