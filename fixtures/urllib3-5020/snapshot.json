@@ -1222,10 +1222,77 @@
             {
               "type": "diagram",
               "id": "b1",
-              "mermaid": "flowchart TB\n    sock[\"Server sends a folded header\"] --> client[\"http.client parses into HTTPMessage<br>value keeps CRLF [[diff:conn:650-651]]\"]\n    client --> norm[\"_normalize_header_values<br>OWS CRLF RWS becomes one space\"]\n    norm --> dict[\"HTTPHeaderDict<br>r.headers\"]\n    norm --> msg[\"HTTPMessage, same object<br>Requests' cookie jar [[diff:tsock:139-146]]\"]",
+              "spec": {
+                "version": 1,
+                "kind": "flow",
+                "title": "Data flow from socket to headers",
+                "direction": "TB",
+                "nodes": [
+                  {
+                    "id": "sock",
+                    "title": "Server",
+                    "sub": "folded header",
+                    "col": 0
+                  },
+                  {
+                    "id": "client",
+                    "title": "http.client",
+                    "sub": "parse_headers",
+                    "cite": "diff:src-urllib3-connection.py:650-651",
+                    "col": 1
+                  },
+                  {
+                    "id": "norm",
+                    "title": "_normalize_header_values",
+                    "sub": "OWS CRLF RWS to SP",
+                    "state": "ok",
+                    "cite": "diff:src-urllib3-connection.py:85-88",
+                    "col": 2
+                  },
+                  {
+                    "id": "dict",
+                    "title": "HTTPHeaderDict",
+                    "sub": "r.headers",
+                    "state": "ok",
+                    "cite": "diff:src-urllib3-connection.py:650-651",
+                    "col": 3
+                  },
+                  {
+                    "id": "msg",
+                    "title": "HTTPMessage, same object",
+                    "sub": "cookie jar",
+                    "state": "ok",
+                    "cite": "diff:test-with_dummyserver-test_socketlevel.py:139-146",
+                    "col": 3
+                  }
+                ],
+                "edges": [
+                  {
+                    "from": "sock",
+                    "to": "client"
+                  },
+                  {
+                    "from": "client",
+                    "to": "norm"
+                  },
+                  {
+                    "from": "norm",
+                    "to": "dict",
+                    "label": "new dict"
+                  },
+                  {
+                    "from": "norm",
+                    "to": "msg",
+                    "label": "rebuilt in place"
+                  }
+                ]
+              },
               "citations": [
                 {
                   "target": "diff:src-urllib3-connection.py:650-651"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:85-88"
                 },
                 {
                   "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"

@@ -50,7 +50,7 @@ describe("network and privacy", () => {
         "default-src 'self'",
         "connect-src 'self'",
         "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self'",
         "font-src 'self'",
         "img-src 'self'",
         "form-action 'self'",
@@ -60,9 +60,9 @@ describe("network and privacy", () => {
         expect(policy, `CSP contains ${part}`).toContain(part);
       }
       expect(policy).not.toContain("https://");
-      // Style unsafe-inline is scoped + justified (see csp.ts): Mermaid
-      // injects inline <style> at runtime; scripts never use it.
-      expect(CONTENT_SECURITY_POLICY).toContain("style-src 'self' 'unsafe-inline'");
+      // Strict styles: no unsafe-inline anywhere (diagrams use classes,
+      // the offline page loads /start.css, popover positions via CSSOM).
+      expect(CONTENT_SECURITY_POLICY).not.toContain("unsafe-inline");
       expect(CONTENT_SECURITY_POLICY).not.toMatch(/script-src[^;]*unsafe-inline/);
     } finally {
       await app.close();

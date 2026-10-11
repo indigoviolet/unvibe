@@ -28,9 +28,17 @@ Simpler: old servers split headers across lines.
 x = _normalize("a")
 \`\`\`
 
-\`\`\`mermaid
-flowchart LR
-    A["wire [[diff:conn:650-651]]"] --> B["clean"]
+\`\`\`diagram
+{
+  "version": 1,
+  "kind": "flow",
+  "title": "Flow",
+  "nodes": [
+    {"id": "a", "title": "wire", "cite": "diff:conn:650-651", "col": 0},
+    {"id": "b", "title": "clean", "col": 1}
+  ],
+  "edges": [{"from": "a", "to": "b"}]
+}
 \`\`\`
 
 Caption: The flow. [[diff:tsock:139-146]]
@@ -152,7 +160,7 @@ describe("parseBlocks golden", () => {
   it("round-trips blocks through renderMarkdown", () => {
     // Citation tokens are block-level: rendering appends them at the end,
     // so interior spacing may differ while structure stays identical.
-    // Compare with prose whitespace-normalised (code/mermaid/tables exact).
+    // Compare with prose whitespace-normalised (code/diagram/tables exact).
     const normText = (s: string): string => s.replace(/\s+/g, " ").trim();
     const norm = (blocks: import("../src/entities.js").Block[]): unknown =>
       blocks.map((b) => {
@@ -204,11 +212,14 @@ Growing tail with a token cut off mid-[[diff:conn:8`;
   });
 
   it("withholds an unclosed fence but keeps closed ones", () => {
-    const closed = "```mermaid\nA-->B\n```\n\nTail growing";
+    const closed =
+      '```diagram\n{"version": 1, "kind": "flow", "title": "F", "nodes": [{"id": "a", "title": "A"}], "edges": []}\n```\n\nTail growing';
     const partial = parsePartial(closed);
     expect(partial.map((b) => b.type)).toEqual(["diagram"]);
-    const unclosed = "Done.\n\n```python\nx = 1";
+    const unclosed = "Done.\n\n```diagram\n{\"version\": 1";
     expect(parsePartial(unclosed).map((b) => b.type)).toEqual(["paragraph"]);
+    const unclosedCode = "Done.\n\n```python\nx = 1";
+    expect(parsePartial(unclosedCode).map((b) => b.type)).toEqual(["paragraph"]);
   });
 
   it("streams cards as they finish", () => {

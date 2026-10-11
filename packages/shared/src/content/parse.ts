@@ -18,10 +18,11 @@
  *   a paragraph attaches its content to that paragraph's `text.simple` /
  *   `text.deep`. With no preceding paragraph it becomes its own paragraph.
  * - Card titles are plain text (`## Title`).
- * - Diagrams: a fenced `mermaid` block → `DiagramBlock`. A paragraph
- *   starting with `Caption:` right after it becomes the caption. Citation
- *   tokens inside Mermaid node labels are collected (PRD §13/§19.4); the
- *   source keeps them verbatim.
+ * - Diagrams: a fenced `diagram` block holding the JSON spec → `DiagramBlock`.
+ *   A paragraph starting with `Caption:` right after it becomes the caption.
+ *   Every `cite` in the spec is lifted into the block's citations (PRD
+ *   §13/§19.4) so validation, canonicalisation and unverified-flagging work
+ *   exactly as for text.
  * - Follow-ups: a `### Follow-ups` heading turns the next list into a
  *   `FollowUpBlock`. Items are `Label` or `Label | ask: question`.
  * - Finding references: a paragraph holding exactly
@@ -137,6 +138,45 @@ function unionCitations(lists: Citation[][]): Citation[] {
   for (const list of lists) {
     for (const c of list) {
       if (!out.some((o) => o.target === c.target)) out.push({ ...c });
+    }
+  }
+  return out;
+}
+
+/** Walk a parsed diagram value for `cite` strings (no validation here). */
+function collectSpecCites(spec: unknown): string[] {
+  const out: string[] = [];
+  const push = (v: unknown): void => {
+    if (typeof v === "string" && v) out.push(v);
+  };
+  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) return out;
+  const o = spec as Record<string, unknown>;
+  if (Array.isArray(o["nodes"])) {
+    for (const n of o["nodes"] as unknown[]) {
+      if (typeof n === "object" && n !== null && !Array.isArray(n)) {
+        push((n as Record<string, unknown>)["cite"]);
+      }
+    }
+  }
+  if (Array.isArray(o["edges"])) {
+    for (const e of o["edges"] as unknown[]) {
+      if (typeof e === "object" && e !== null && !Array.isArray(e)) {
+        push((e as Record<string, unknown>)["cite"]);
+      }
+    }
+  }
+  if (Array.isArray(o["panels"])) {
+    for (const p of o["panels"] as unknown[]) {
+      if (typeof p === "object" && p !== null && !Array.isArray(p)) {
+        push((p as Record<string, unknown>)["cite"]);
+      }
+    }
+  }
+  if (Array.isArray(o["messages"])) {
+    for (const m of o["messages"] as unknown[]) {
+      if (typeof m === "object" && m !== null && !Array.isArray(m)) {
+        push((m as Record<string, unknown>)["cite"]);
+      }
     }
   }
   return out;
@@ -343,16 +383,25 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
   }
 
   function closeFence(f: { lang: string; lines: string[] }): void {
-    if (f.lang === "mermaid") {
+    if (f.lang === "diagram" || f.lang === "diagram-json") {
       const source = f.lines.join("\n").trim();
-      const citations: Citation[] = [];
-      for (const t of tokenizeLinks(source)) {
-        const parsed = parseId(t.idText);
-        if (parsed === null || CITATION_KINDS.has(parsed.kind)) {
-          pushCitation({ citations, links: [] }, t.idText);
-        }
+      let spec: unknown;
+      try {
+        spec = source ? JSON.parse(source) : { __parseError: "empty diagram block" };
+      } catch (e) {
+        spec = { __parseError: (e as Error).message };
       }
-      blocks.push({ type: "diagram", id: nextId(), mermaid: source, citations });
+      const citations: Citation[] = [];
+      const acc = { citations, links: [] as string[] };
+      for (const cite of collectSpecCites(spec)) {
+        pushCitation(acc, cite);
+      }
+      blocks.push({
+        type: "diagram",
+        id: nextId(),
+        spec: spec as import("./diagram-spec.js").DiagramSpec,
+        citations,
+      });
       diagramAwaitingCaption = true;
     } else {
       blocks.push({
@@ -600,7 +649,6 @@ export function collectTargets(blocks: Block[]): CollectedTargets {
           break; // Fence content is literal; tokens there are not citations.
         case "diagram": {
           for (const c of b.citations) push(citations, c.target);
-          for (const t of tokenizeLinks(b.mermaid)) push(links, t.idText);
           if (b.caption) scanHtml(b.caption);
           break;
         }
@@ -851,12 +899,18 @@ export function renderMarkdown(blocks: Block[]): string {
       case "code":
         parts.push(`\`\`\`${b.language ?? ""}\n${b.code}\n\`\`\``);
         break;
-      case "diagram":
-        parts.push(`\`\`\`mermaid\n${b.mermaid}\n\`\`\``);
-        // Block citations cover node-label tokens (kept verbatim above)
-        // plus caption tokens; re-parsing dedupes them back to this set.
-        if (b.caption) parts.push(`Caption: ${withCitations(inlineToMarkdown(b.caption), b.citations)}`);
+      case "diagram": {
+        parts.push(`\`\`\`diagram\n${JSON.stringify(b.spec, null, 2)}\n\`\`\``);
+        // Spec cites live in the fence; the caption line carries only the
+        // caption's own citations (block cites not already in the spec) so
+        // re-parsing restores the same union without polluting the caption.
+        if (b.caption) {
+          const specTargets = new Set(collectSpecCites(b.spec));
+          const extra = b.citations.filter((c) => !specTargets.has(c.target));
+          parts.push(`Caption: ${withCitations(inlineToMarkdown(b.caption), extra)}`);
+        }
         break;
+      }
       case "finding-link":
         parts.push(`Finding: [[page:${b.pageId}]]`);
         break;

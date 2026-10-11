@@ -19,61 +19,10 @@
          the service-worker cache with no headers when the service is down. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+      content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
     />
     <title>Unvibe — start the service</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        --teal: #0d9488;
-        --ink: #0f172a;
-      }
-      body {
-        font-family: system-ui, -apple-system, sans-serif;
-        max-width: 34rem;
-        margin: 12vh auto;
-        padding: 0 1.5rem;
-        color: var(--ink);
-        line-height: 1.5;
-      }
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #0f172a;
-          color: #e2e8f0;
-        }
-        code {
-          background: #1e293b;
-        }
-      }
-      code {
-        background: #f1f5f9;
-        padding: 0.1em 0.4em;
-        border-radius: 0.3em;
-      }
-      .start {
-        display: inline-block;
-        margin: 1rem 0;
-        padding: 0.7rem 1.4rem;
-        border-radius: 0.6rem;
-        background: var(--teal);
-        color: #fff;
-        font-size: 1.1rem;
-        font-weight: 600;
-        text-decoration: none;
-      }
-      #status {
-        color: #64748b;
-      }
-      #notoken {
-        border: 1px solid #f59e0b;
-        border-radius: 0.6rem;
-        padding: 0.8rem 1rem;
-        margin-top: 1rem;
-      }
-      #notoken[hidden] {
-        display: none;
-      }
-    </style>
+    <link rel="stylesheet" href="/start.css" />
   </head>
   <body>
     <h1>Unvibe isn't running</h1>

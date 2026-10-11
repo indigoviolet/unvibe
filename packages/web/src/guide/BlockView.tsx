@@ -2,7 +2,7 @@
  * Block rendering (web-guide owner; PRD §4.4 display side + §4.5 + §4.9).
  *
  * Paragraph, list (per-item citations plus the block-level union the
- * parser emits), table, code, diagram (Mermaid), aside (Example / Diagram /
+ * parser emits), table, code, diagram (JSON spec), aside (Example / Diagram /
  * Underlying principle), finding-link (orange agent-finding card),
  * follow-up chips, comment-link (suggested review comment on a diff line).
  */
@@ -65,8 +65,10 @@ function AsideInner({ inner, top, onOpenPage }: { inner: Block; top: string; onO
           {inner.code}
         </pre>
       );
-    case "diagram":
-      return <DiagramView source={inner.mermaid} caption={inner.caption} />;
+    case "diagram": {
+      const unverified = inner.citations.filter((c) => c.unverified).map((c) => c.target);
+      return <DiagramView spec={inner.spec} caption={inner.caption} unverified={unverified} />;
+    }
     case "list":
       return (
         <ul className="lst">
@@ -173,10 +175,11 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
           )}
         </div>
       );
-    case "diagram":
+    case "diagram": {
+      const unverifiedTargets = block.citations.filter((c) => c.unverified).map((c) => c.target);
       return (
         <div className="blk" id={id}>
-          <DiagramView source={block.mermaid} caption={block.caption} />
+          <DiagramView spec={block.spec} caption={block.caption} unverified={unverifiedTargets} />
           {(resolved.length > 0 || threads.length > 0) && (
             <div className="lo-row">
               <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />
@@ -184,6 +187,7 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
           )}
         </div>
       );
+    }
     case "aside":
       return (
         <div className="blk gen-aside fresh" id={id}>

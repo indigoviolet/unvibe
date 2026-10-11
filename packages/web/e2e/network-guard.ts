@@ -5,7 +5,7 @@
  * Import `{ test, expect }` from `./network-guard` instead of
  * `@playwright/test`. The `guard` fixture is auto: it records non-local
  * requests plus CSP violations during the test and asserts both are empty
- * afterwards. `data:`/`blob:` (Mermaid/icons) never count as requests.
+ * afterwards. `data:`/`blob:` (icons) never count as requests.
  */
 import { test as base, expect } from "@playwright/test";
 

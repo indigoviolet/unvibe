@@ -755,6 +755,13 @@ export class Pipeline {
       ? this.lookupWithAliases(snapshot).resolveFileKey.bind(this.lookupWithAliases(snapshot))
       : () => null;
     const byTarget = new Map(validation.tokens.map((t) => [t.target, t]));
+    const fixTarget = (target: string): string => {
+      const rep = byTarget.get(target);
+      if (rep?.status === "repaired" && rep.repairedTo) {
+        return canonicalizeTarget(rep.repairedTo, resolve);
+      }
+      return canonicalizeTarget(target, resolve);
+    };
     const mark = (citations: { target: string; unverified?: boolean }[]): { target: string; unverified?: boolean }[] =>
       citations.map((c) => {
         const rep = byTarget.get(c.target);
@@ -764,6 +771,25 @@ export class Pipeline {
         if (rep?.status === "unverified") return { target: c.target, unverified: true };
         return { target: canonicalizeTarget(c.target, resolve) };
       });
+    const fixSpec = (spec: unknown): unknown => {
+      if (typeof spec !== "object" || spec === null || Array.isArray(spec)) return spec;
+      const out = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
+      const fixList = (list: unknown, key: string): void => {
+        if (!Array.isArray(list)) return;
+        for (const item of list) {
+          if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+          const o = item as Record<string, unknown>;
+          if (typeof o[key] === "string" && o[key]) {
+            o[key] = fixTarget(o[key] as string);
+          }
+        }
+      };
+      fixList(out["nodes"], "cite");
+      fixList(out["edges"], "cite");
+      fixList(out["panels"], "cite");
+      fixList(out["messages"], "cite");
+      return out;
+    };
     return blocks.map((b) => {
       switch (b.type) {
         case "paragraph":
@@ -774,9 +800,14 @@ export class Pipeline {
             items: b.items.map((it) => ({ ...it, citations: mark(it.citations) })),
             citations: mark(b.citations),
           };
+        case "diagram":
+          return {
+            ...b,
+            spec: fixSpec((b as { spec: unknown }).spec) as typeof b.spec,
+            citations: mark((b as { citations: { target: string }[] }).citations),
+          };
         case "table":
         case "code":
-        case "diagram":
         case "finding-link":
         case "follow-up":
           return { ...b, citations: mark((b as { citations: { target: string }[] }).citations) };

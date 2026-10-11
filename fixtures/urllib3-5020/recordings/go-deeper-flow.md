@@ -1,9 +1,23 @@
-```mermaid
-flowchart TB
-    sock["Server sends a folded header"] --> client["http.client parses into HTTPMessage<br>value keeps CRLF [[diff:conn:650-651]]"]
-    client --> norm["_normalize_header_values<br>OWS CRLF RWS becomes one space"]
-    norm --> dict["HTTPHeaderDict<br>r.headers"]
-    norm --> msg["HTTPMessage, same object<br>Requests' cookie jar [[diff:tsock:139-146]]"]
+```diagram
+{
+  "version": 1,
+  "kind": "flow",
+  "title": "Data flow from socket to headers",
+  "direction": "TB",
+  "nodes": [
+    {"id": "sock", "title": "Server", "sub": "folded header", "col": 0},
+    {"id": "client", "title": "http.client", "sub": "parse_headers", "cite": "diff:conn:650-651", "col": 1},
+    {"id": "norm", "title": "_normalize_header_values", "sub": "OWS CRLF RWS to SP", "state": "ok", "cite": "diff:conn:85-88", "col": 2},
+    {"id": "dict", "title": "HTTPHeaderDict", "sub": "r.headers", "state": "ok", "cite": "diff:conn:650-651", "col": 3},
+    {"id": "msg", "title": "HTTPMessage, same object", "sub": "cookie jar", "state": "ok", "cite": "diff:tsock:139-146", "col": 3}
+  ],
+  "edges": [
+    {"from": "sock", "to": "client"},
+    {"from": "client", "to": "norm"},
+    {"from": "norm", "to": "dict", "label": "new dict"},
+    {"from": "norm", "to": "msg", "label": "rebuilt in place"}
+  ]
+}
 ```
 
 Caption: Where a response's headers go after parsing, and the one place they are now unfolded.

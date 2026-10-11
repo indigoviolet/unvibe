@@ -1,12 +1,12 @@
 /**
  * Dedicated network-privacy walk (PRD §16): front screen, a review with
- * guide + diff + a Mermaid diagram, and settings — asserting zero
+ * guide + diff + a JSON diagram, and settings — asserting zero
  * non-local requests and zero CSP violations throughout.
  *
  * The shared `./network-guard` fixture already fails every spec on any
  * non-local request or CSP violation; this spec walks the heaviest screens
- * (self-hosted fonts, bundled Mermaid with inline styles, API + WS over
- * loopback) and asserts the collected guard state explicitly.
+ * (self-hosted fonts, static SVG diagrams with no inline styles, API + WS
+ * over loopback) and asserts the collected guard state explicitly.
  */
 import { test, expect } from "./network-guard.js";
 
@@ -19,7 +19,7 @@ test("main screens make no non-local requests and raise no CSP violations", asyn
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   await expect(page.locator('[data-testid^="session-"]').first()).toBeVisible();
 
-  // Review with guide + diff + Mermaid diagram (bundled, inline styles).
+  // Review with guide + diff + JSON diagram (static SVG, strict CSP).
   await page.goto("/review/demo");
   await expect(page.locator("#C-g-flow .dg svg")).toBeVisible({ timeout: 15000 });
   await expect(page.locator('[id^="F-"]').first()).toBeVisible();

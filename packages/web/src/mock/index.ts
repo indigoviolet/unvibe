@@ -198,7 +198,20 @@ function mockDiagramAside(): import("@unvibe/shared").Block {
   return {
     type: "diagram",
     id: `b-mock-dg-${Date.now().toString(36)}`,
-    mermaid: "flowchart LR\n  A[folded value] --> B[unfold]\n  B --> C[HTTPHeaderDict]",
+    spec: {
+      version: 1,
+      kind: "flow",
+      title: "Mock unfolding",
+      nodes: [
+        { id: "a", title: "folded value", col: 0 },
+        { id: "b", title: "unfold", col: 1 },
+        { id: "c", title: "HTTPHeaderDict", col: 2 },
+      ],
+      edges: [
+        { from: "a", to: "b" },
+        { from: "b", to: "c" },
+      ],
+    },
     caption: "Mock diagram: unfolding before interpretation.",
     citations: [],
   } as unknown as import("@unvibe/shared").Block;

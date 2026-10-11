@@ -2,19 +2,19 @@
  * `diagram` action (PRD §4.4): insert a diagram block after the
  * paragraphs it relates to, never duplicating one already there.
  *
- * Diagrams are Mermaid; the source is validated to parse and the agent
- * is asked for one repair when it does not.
+ * Diagrams are JSON specs; the spec is structure-validated and the agent
+ * is asked for one repair turn when it does not validate.
  */
-import type { Block, Job } from "@unvibe/shared";
-import { JOB_PRIORITY } from "@unvibe/shared";
+import type { Block, DiagramBlock, Job } from "@unvibe/shared";
+import { JOB_PRIORITY, validateDiagram } from "@unvibe/shared";
 import {
   cardPromptText,
+  diagramProblem,
   findCardTarget,
   findCardTargetInDraft,
   insertDiagrams,
-  isValidMermaid,
+  isValidDiagram,
   markStaleAnchors,
-  mermaidProblem,
   pushUndo,
   recordInteraction,
   setTargetContent,
@@ -67,7 +67,9 @@ export async function diagramAction(
     async (res): Promise<string | null> => {
       capture.settled();
       let fresh = res.cards.flatMap((c) => c.blocks) as Block[];
-      const bad = fresh.filter((b) => b.type === "diagram" && !isValidMermaid(b.mermaid));
+      const bad = fresh.filter(
+        (b) => b.type === "diagram" && !isValidDiagram((b as DiagramBlock).spec),
+      );
       if (bad.length > 0) {
         // One repair turn for the unparseable diagram; a failed repair
         // leaves the card unchanged (job error is the visible failure).
@@ -123,7 +125,7 @@ export async function diagramAction(
   return { cardId };
 }
 
-/** One repair turn: re-ask with the parse problem + previous source inline. */
+/** One repair turn: re-ask with the validator messages + previous spec inline. */
 async function repairDiagrams(
   ctx: ActionContext,
   cardId: string,
@@ -135,10 +137,14 @@ async function repairDiagrams(
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const problems = bad
     .filter((b) => b.type === "diagram")
-    .map((b) => `- ${mermaidProblem((b as { mermaid: string }).mermaid)}:\n\`\`\`mermaid\n${(b as { mermaid: string }).mermaid}\n\`\`\``)
+    .map((b) => {
+      const spec = (b as DiagramBlock).spec;
+      const errs = validateDiagram(spec).errors.join("; ");
+      return `- ${errs}:\n\`\`\`diagram\n${JSON.stringify(spec, null, 2)}\n\`\`\``;
+    })
     .join("\n");
   const variables = {
-    card: `${cardPromptText(snapshot, cardId)}\n\nThe previous diagram failed to parse:\n${problems}\nFix the Mermaid source and reply again.`,
+    card: `${cardPromptText(snapshot, cardId)}\n\nThe previous diagram failed validation:\n${problems}\nFix the JSON spec and reply again.`,
     level,
   };
   const live = getSnapshotOrThrow(reviews, reviewId);
@@ -157,15 +163,17 @@ async function repairDiagrams(
     ...(isReplayRunner(pipeline.runner) ? { replay: { kind: "diagram" } } : {}),
   });
   const retry = res.cards.flatMap((c) => c.blocks) as Block[];
-  const stillBad = retry.filter((b) => b.type === "diagram" && !isValidMermaid(b.mermaid));
+  const stillBad = retry.filter(
+    (b) => b.type === "diagram" && !isValidDiagram((b as DiagramBlock).spec),
+  );
   if (stillBad.length > 0) {
-    throw new Error(`diagram repair failed: ${mermaidProblem((stillBad[0] as { mermaid: string }).mermaid)}`);
+    throw new Error(
+      `diagram repair failed: ${diagramProblem((stillBad[0] as DiagramBlock).spec)}`,
+    );
   }
   // Merge: repaired diagrams replace the broken ones; keep the rest.
-  const repairedSources = new Set(
-    retry.filter((b) => b.type === "diagram").map((b) => (b as { mermaid: string }).mermaid),
+  const kept = fresh.filter(
+    (b) => b.type !== "diagram" || isValidDiagram((b as DiagramBlock).spec),
   );
-  const kept = fresh.filter((b) => b.type !== "diagram" || isValidMermaid((b as { mermaid: string }).mermaid));
-  void repairedSources;
   return [...kept, ...retry.filter((b) => b.type === "diagram" || (b.type === "aside" && b.kind === "Diagram"))];
 }
