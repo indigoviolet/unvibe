@@ -8,6 +8,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { ReadinessResponse, Settings } from "@unvibe/shared";
 import { FakeCommandRunner, RealCommandRunner } from "../src/exec/index.js";
 import { getReadiness, clearReadinessCache } from "../src/readiness/index.js";
+import { d2Check } from "../src/readiness/checks.js";
 import { DEFAULT_SETTINGS } from "../src/settings/store.js";
 import { createApp } from "../src/server.js";
 
@@ -156,6 +157,42 @@ describe("readiness checks", () => {
       { force: true },
     );
     expect(diff.checks.find((c) => c.id === "agents-distinct")!.status).toBe("ok");
+  });
+
+  it("d2 warns (not ok) when UNVIBE_D2_BIN points at a missing file or cannot be probed", async () => {
+    // Missing override file: warn even though resolveD2Bin returns a path.
+    const missing = await d2Check({
+      env: { UNVIBE_D2_BIN: "/nonexistent/d2" },
+      pathValue: "",
+      runner: new FakeCommandRunner() as never,
+    });
+    expect(missing.id).toBe("d2");
+    expect(missing.status).toBe("warning");
+    expect(missing.summary).toContain("UNVIBE_D2_BIN");
+    expect(missing.summary).toMatch(/missing/i);
+
+    // Present-but-unprobable binary: warn rather than reporting ok.
+    const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "unvibe-d2-broken-"));
+    try {
+      const bin = join(dir, "d2");
+      writeFileSync(bin, "#!/bin/sh\nexit 1\n");
+      chmodSync(bin, 0o755);
+      const fake = new FakeCommandRunner();
+      fake.enqueue({ cmd: bin, args: ["--version"], stdout: "", stderr: "boom", code: 1 });
+      const broken = await d2Check({ env: { UNVIBE_D2_BIN: bin }, pathValue: "", runner: fake as never });
+      expect(broken.status).toBe("warning");
+      expect(broken.summary).toContain(bin);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    // No binary anywhere: the existing not-found warning is unchanged.
+    const absent = await d2Check({ env: {}, pathValue: "/nonexistent-path-xyz" });
+    expect(absent.status).toBe("warning");
+    expect(absent.summary).toMatch(/not found/i);
   });
 
   it("caches briefly and force bypasses", async () => {

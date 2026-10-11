@@ -21,6 +21,7 @@ import {
   versionTooOldMessage,
 } from "../exec/agent-bins.js";
 import {
+  D2_ENV_OVERRIDE,
   D2_MIN,
   d2InstallHint,
   meetsD2MinVersion,
@@ -507,6 +508,20 @@ export async function d2Check(opts: {
       settingsAnchor: "#environment",
     };
   }
+  // An explicit override pointing at a missing file must warn, not report
+  // ok (issue #17): diagrams fall back to source, but the callout and
+  // Settings must say so. `bins.ts` marks this case with a "(missing)"
+  // source suffix.
+  if (bin.source.endsWith("(missing)")) {
+    return {
+      id: "d2",
+      label: "Diagrams · d2",
+      status: "warning",
+      summary: `${D2_ENV_OVERRIDE} points at a missing file (${bin.path}); diagrams show their source`,
+      fix: `Point ${D2_ENV_OVERRIDE} at your d2 executable (≥ ${D2_MIN}), or unset it to use the login-shell PATH. ${d2InstallHint()} Then Re-check.`,
+      settingsAnchor: "#environment",
+    };
+  }
   let version: string | null = null;
   if (opts.runner) {
     try {
@@ -526,6 +541,18 @@ export async function d2Check(opts: {
         status: "warning",
         summary: `Diagrams need d2 ≥ ${D2_MIN} (running ${version} at ${bin.path})`,
         fix: `Update d2, then Re-check. Reviews still work; diagrams show their source until d2 is updated.`,
+        settingsAnchor: "#environment",
+      };
+    }
+    // Probed but unanswerable (not executable, crashes, timed out): warn
+    // rather than reporting ok for a binary that cannot render (issue #17).
+    if (version === null) {
+      return {
+        id: "d2",
+        label: "Diagrams · d2",
+        status: "warning",
+        summary: `d2 at ${bin.path} (via ${bin.source}) did not answer --version; diagrams show their source`,
+        fix: `Check the binary runs (${bin.path} --version), or unset ${D2_ENV_OVERRIDE} to use the login-shell PATH. ${d2InstallHint()} Then Re-check.`,
         settingsAnchor: "#environment",
       };
     }
