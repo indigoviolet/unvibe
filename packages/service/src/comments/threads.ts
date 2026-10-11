@@ -92,7 +92,9 @@ function blockText(block: unknown): string {
   }
   if (typeof b["code"] === "string") return b["code"] as string;
   if (typeof b["html"] === "string") return stripTags(b["html"] as string);
-  if (typeof b["mermaid"] === "string") return b["mermaid"] as string;
+  if (typeof b["source"] === "string" && (b as { type?: string }).type === "diagram") {
+    return b["source"] as string;
+  }
   if (Array.isArray(b["items"])) {
     return (b["items"] as Array<Record<string, unknown>>)
       .map((it) => (typeof it["html"] === "string" ? stripTags(it["html"] as string) : ""))

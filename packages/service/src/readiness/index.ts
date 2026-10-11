@@ -17,6 +17,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { resolveLoginShellPath } from "../exec/shell-path.js";
 import {
   agentCheck,
+  d2Check,
   distinctCheck,
   ghCheck,
   gitCheck,
@@ -119,8 +120,20 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
     ),
   );
 
+  const d2 = await withTimeout(
+    d2Check({ pathValue, timeoutMs, runner: deps.runner, env: process.env }),
+    {
+      id: "d2",
+      label: "Diagrams · d2",
+      status: "warning" as const,
+      summary: "Diagrams need d2 (probe timed out)",
+      fix: "Re-check; ensure d2 is on your login-shell PATH. Reviews still work without it.",
+      settingsAnchor: "#environment",
+    },
+  );
+
   const response: ReadinessResponse = {
-    checks: [gitCheck(gitV), ghCheck(ghProbe), ...agentChecks, distinctCheck(settings)],
+    checks: [gitCheck(gitV), ghCheck(ghProbe), ...agentChecks, distinctCheck(settings), d2],
     generatedAt: Date.now(),
     cached: false,
   };

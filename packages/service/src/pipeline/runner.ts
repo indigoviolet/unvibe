@@ -152,6 +152,19 @@ export class Pipeline {
     return this.opts.runner;
   }
 
+  /** CommandRunner for D2 subprocesses (diagrams module). */
+  get commands(): CommandRunner {
+    return this.opts.commands;
+  }
+
+  get dataDir(): string {
+    return this.opts.dataDir;
+  }
+
+  get fixturesDir(): string | undefined {
+    return this.opts.fixturesDir;
+  }
+
   /** M5 shared context: attach the service after construction (app.ts). */
   setSharedContext(sharedctx: SharedContextService): void {
     this.opts.sharedctx = sharedctx;
@@ -728,6 +741,13 @@ export class Pipeline {
       ...(anchor?.quote && anchor?.host ? { anchor: { quote: anchor.quote, host: anchor.host } } : {}),
     });
     return { cards, data: split.ok ? (split.data as ReplyData) : null, validation, body };
+  }
+
+  /** Alias-aware lookup for diagram cite validation (demo fixture keys). */
+  lookupForDiagrams(reviewId: string): ReturnType<typeof lookupForSnapshot> {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+    return this.lookupWithAliases(snapshot);
   }
 
   private lookupWithAliases(snapshot: ReviewSnapshot): ReturnType<typeof lookupForSnapshot> {

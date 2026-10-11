@@ -294,13 +294,24 @@ export interface CodeBlock {
   citations: Citation[];
 }
 
+export type DiagramRenderStatus = "ok" | "unavailable" | "error";
+
+export interface DiagramRenderState {
+  /** Content hash of (canonicalised source + d2 version + render options). */
+  hash: string;
+  status: DiagramRenderStatus;
+  error?: string;
+}
+
 export interface DiagramBlock {
   type: "diagram";
   id: string;
-  /** Mermaid source (PRD §13 proposal; prototype used hand-drawn SVG). */
-  mermaid: string;
+  /** D2 source text. */
+  source: string;
   caption?: string;
   citations: Citation[];
+  /** D2 render state (always set on stored blocks; absent pre-validation). */
+  render?: DiagramRenderState;
 }
 
 /** Orange "Agent finding" reference card inside the guide. */

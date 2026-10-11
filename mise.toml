@@ -1,5 +1,6 @@
 [tools]
 node = "24"
+d2 = "0.9.0"
 
 [tasks.install]
 description = "Install npm workspace dependencies"

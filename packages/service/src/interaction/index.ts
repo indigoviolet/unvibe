@@ -45,4 +45,4 @@ export {
   l4Variables,
   cardPromptText,
 } from "./l4.js";
-export { isValidMermaid, mermaidProblem } from "./mermaid.js";
+

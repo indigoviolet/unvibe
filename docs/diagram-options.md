@@ -345,9 +345,16 @@ then binary discovery + `doctor` (login-shell PATH, `d2 version`, minimum
 version gate — D2 is 0.x and drifts); render cache keyed by content hash;
 web renderer (inline cached SVG, delegate `<a>` clicks, existing hover
 previews, source fallback when binary missing); prompts + fixtures +
-golden tests; keep Mermaid renderer until stored replies age out. Rough size
-3–5 days. Subprocess hygiene throughout: source via stdin only, timeouts,
-byte caps.
+golden tests. Rough size 3–5 days. Subprocess hygiene throughout: source
+via stdin only, timeouts, byte caps.
+
+**Update (user direction, Mermaid removed entirely):** the "keep Mermaid
+renderer until stored replies age out" line above is superseded. There is
+no stored user data to preserve: Mermaid was removed completely — the
+`mermaid` fence is ordinary code (not a diagram), the shared type is D2
+only with no `lang`/`mermaid` field, and prompts/docs/fixtures carry no
+Mermaid. The `mermaid` npm dependency and `MermaidSvg.tsx` deletion belong
+to the web agent (packages/web/src).
 
 **Risks, ranked:** (1) version drift across user machines — validate and
 render with the same binary, gate min version in doctor; (2) D2 0.x syntax
