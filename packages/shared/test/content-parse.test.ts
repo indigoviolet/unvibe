@@ -173,6 +173,17 @@ describe("parseBlocks golden", () => {
     expect(back[0].source).toBe(blocks[0].source);
   });
 
+  it("stamps a seed-version hash placeholder so the endpoint can serve pre-rendered SVGs", async () => {
+    const { diagramHash, canonicalizeD2Source, D2_MIN_VERSION } = await import("../src/content/d2.js");
+    const blocks = parseBlocks("```d2\na -> b\n```\n");
+    expect(blocks[0].type).toBe("diagram");
+    if (blocks[0].type !== "diagram") return;
+    expect(blocks[0].render).toEqual({
+      hash: diagramHash(canonicalizeD2Source("a -> b"), D2_MIN_VERSION),
+      status: "unavailable",
+    });
+  });
+
   it("round-trips blocks through renderMarkdown", () => {
     // Citation tokens are block-level: rendering appends them at the end,
     // so interior spacing may differ while structure stays identical.

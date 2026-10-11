@@ -52,7 +52,7 @@ import { parseId, type ParsedId } from "../ids.js";
 import { tokenizeLinks } from "../links.js";
 import type { ParsedCard, ParseOptions, ReplyData, SplitError } from "./types.js";
 import { splitReply } from "./split.js";
-import { extractD2Links } from "./d2.js";
+import { extractD2Links, canonicalizeD2Source, diagramHash, D2_MIN_VERSION } from "./d2.js";
 
 const CITATION_KINDS = new Set(["diff", "code", "desc", "h"]);
 
@@ -350,7 +350,17 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
       for (const target of extractD2Links(source)) {
         pushCitation({ citations, links: [] }, target);
       }
-      blocks.push({ type: "diagram", id: nextId(), source, citations });
+      // Placeholder render: hashed with the gated version (== the seed
+      // version) so the endpoint can serve pre-rendered fixture SVGs — and
+      // render on demand when the binary is present — before the pipeline
+      // finalizes the block. Never empty: the web fetches by hash.
+      blocks.push({
+        type: "diagram",
+        id: nextId(),
+        source,
+        citations,
+        render: { hash: diagramHash(canonicalizeD2Source(source), D2_MIN_VERSION), status: "unavailable" },
+      });
       diagramAwaitingCaption = true;
     } else {
       blocks.push({
