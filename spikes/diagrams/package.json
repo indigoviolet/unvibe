@@ -1,0 +1,15 @@
+{
+  "name": "@unvibe/diagram-spike",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Diagram-technology evaluation spike (throwaway, not part of the build)",
+  "scripts": {
+    "gallery": "node src/gallery.mjs",
+    "screenshots": "node src/screenshots.mjs",
+    "reliability": "node src/reliability.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1"
+  }
+}

@@ -1,0 +1,59 @@
+Reading prompt from stdin...
+OpenAI Codex v0.162.1
+--------
+workdir: /home/venky/dev/unvibe.worktrees/diagram-spike/spikes/diagrams
+model: gpt-5.6-terra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a12854-0ef4-72b1-b1a9-5d8794758895
+--------
+user
+Your diagram had these errors:
+Parse error: unquoted [ in node label (the [[diff:...]] token). Quote every label that contains [ or ].
+
+Output ONLY the corrected fenced ```mermaid block, no prose.
+
+Broken diagram:
+```mermaid
+flowchart TB
+    A[Server: folded header]
+    B[http.client parse_headers]
+    C[HTTPMessage keeps CRLF]
+    D["_normalize helpers<br/>OWS CRLF RWS → one space<br/>[[diff:conn:80-88]]"]
+    E[HTTPHeaderDict r.headers<br/>[[diff:conn:650-651]]]
+    F[Same HTTPMessage object<br/>Requests cookie jar reads it]
+    A --> B --> C --> D
+    D --> E
+    D --> F
+```
+warning: Codex's Linux sandbox uses bubblewrap and needs access to create user namespaces.
+codex
+```mermaid
+flowchart TB
+    A[Server: folded header]
+    B[http.client parse_headers]
+    C[HTTPMessage keeps CRLF]
+    D["_normalize helpers<br/>OWS CRLF RWS → one space<br/>[[diff:conn:80-88]]"]
+    E["HTTPHeaderDict r.headers<br/>[[diff:conn:650-651]]"]
+    F[Same HTTPMessage object<br/>Requests cookie jar reads it]
+    A --> B --> C --> D
+    D --> E
+    D --> F
+```
+tokens used
+4,543
+```mermaid
+flowchart TB
+    A[Server: folded header]
+    B[http.client parse_headers]
+    C[HTTPMessage keeps CRLF]
+    D["_normalize helpers<br/>OWS CRLF RWS → one space<br/>[[diff:conn:80-88]]"]
+    E["HTTPHeaderDict r.headers<br/>[[diff:conn:650-651]]"]
+    F[Same HTTPMessage object<br/>Requests cookie jar reads it]
+    A --> B --> C --> D
+    D --> E
+    D --> F
+```

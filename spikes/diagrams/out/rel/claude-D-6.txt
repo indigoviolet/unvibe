@@ -1,0 +1,30 @@
+```json
+[
+  {"type":"rectangle","id":"n1","x":20,"y":40,"width":160,"height":70},
+  {"type":"text","id":"n1-t","x":28,"y":48,"width":144,"height":54,"text":"Server response\nfolded header\n(obs-fold CRLF)","fontSize":13},
+
+  {"type":"rectangle","id":"n2","x":220,"y":40,"width":160,"height":70},
+  {"type":"text","id":"n2-t","x":228,"y":56,"width":144,"height":36,"text":"http.client\nparse_headers","fontSize":13},
+
+  {"type":"rectangle","id":"n3","x":420,"y":40,"width":160,"height":70},
+  {"type":"text","id":"n3-t","x":428,"y":56,"width":144,"height":36,"text":"HTTPMessage\nvalue keeps CRLF","fontSize":13},
+
+  {"type":"rectangle","id":"n4","x":620,"y":40,"width":160,"height":70,"metadata":{"cite":"diff:conn:77-113"}},
+  {"type":"text","id":"n4-t","x":628,"y":48,"width":144,"height":54,"text":"_normalize helpers\nOWS CRLF RWS\n-> one space","fontSize":13},
+
+  {"type":"rectangle","id":"n5","x":420,"y":250,"width":160,"height":70,"metadata":{"cite":"diff:conn:647-654"}},
+  {"type":"text","id":"n5-t","x":428,"y":266,"width":144,"height":36,"text":"HTTPHeaderDict\nr.headers","fontSize":13},
+
+  {"type":"rectangle","id":"n6","x":620,"y":250,"width":160,"height":70},
+  {"type":"text","id":"n6-t","x":628,"y":258,"width":144,"height":54,"text":"same HTTPMessage\nRequests cookie jar\nreads it","fontSize":13},
+
+  {"type":"arrow","id":"e1","x":180,"y":75,"width":40,"height":0,"points":[[0,0],[40,0]]},
+  {"type":"arrow","id":"e2","x":380,"y":75,"width":40,"height":0,"points":[[0,0],[40,0]]},
+  {"type":"arrow","id":"e3","x":580,"y":75,"width":40,"height":0,"points":[[0,0],[40,0]]},
+  {"type":"arrow","id":"e4","x":660,"y":110,"width":160,"height":140,"points":[[0,0],[-160,140]]},
+  {"type":"arrow","id":"e5","x":720,"y":110,"width":0,"height":140,"points":[[0,0],[0,140]]},
+
+  {"type":"text","id":"e4-t","x":430,"y":160,"width":130,"height":32,"text":"returns\nheader_items","fontSize":12},
+  {"type":"text","id":"e5-t","x":726,"y":160,"width":72,"height":32,"text":"del + reset\nin place","fontSize":12}
+]
+```

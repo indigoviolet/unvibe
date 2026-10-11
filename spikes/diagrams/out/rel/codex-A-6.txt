@@ -1,0 +1,12 @@
+```mermaid
+flowchart TB
+    A[Server: folded header]
+    B[http.client parse_headers]
+    C[HTTPMessage keeps CRLF]
+    D[_normalize helpers: OWS CRLF RWS → space [[diff:conn:80-88]]]
+    E[HTTPHeaderDict r.headers]
+    F[Same HTTPMessage: Requests cookie jar reads it [[diff:conn:650-651]]]
+    A --> B --> C --> D
+    D --> E
+    D --> F
+```

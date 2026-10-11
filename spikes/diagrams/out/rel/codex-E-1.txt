@@ -1,0 +1,16 @@
+```dot
+digraph {
+  rankdir=LR;
+  node [shape=box];
+
+  server [label="server\nfolded header"];
+  parser [label="http.client\nparse_headers"];
+  message [label="HTTPMessage\nkeeps CRLF"];
+  normalize [label="_normalize helpers\nOWS CRLF RWS → space", URL="diff:conn:80-113"];
+  headers [label="HTTPHeaderDict\nr.headers", URL="diff:conn:647-654"];
+  cookies [label="same HTTPMessage\nRequests cookie jar"];
+
+  server -> parser -> message -> normalize -> headers;
+  normalize -> cookies;
+}
+```

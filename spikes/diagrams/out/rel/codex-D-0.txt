@@ -1,0 +1,21 @@
+```json
+[
+  {"type":"rectangle","id":"server","x":20,"y":145,"width":110,"height":70},
+  {"type":"text","id":"server-t","x":28,"y":158,"width":94,"height":42,"text":"Server\nfolded header","fontSize":15},
+  {"type":"arrow","id":"e1","x":130,"y":180,"width":25,"height":0,"points":[[0,0],[25,0]]},
+  {"type":"rectangle","id":"parse","x":155,"y":145,"width":110,"height":70},
+  {"type":"text","id":"parse-t","x":163,"y":158,"width":94,"height":42,"text":"http.client\nparse_headers","fontSize":15},
+  {"type":"arrow","id":"e2","x":265,"y":180,"width":25,"height":0,"points":[[0,0],[25,0]]},
+  {"type":"rectangle","id":"message","x":290,"y":145,"width":110,"height":70},
+  {"type":"text","id":"message-t","x":298,"y":158,"width":94,"height":42,"text":"HTTPMessage\nkeeps CRLF","fontSize":15},
+  {"type":"arrow","id":"e3","x":400,"y":180,"width":25,"height":0,"points":[[0,0],[25,0]]},
+  {"type":"rectangle","id":"normalize","x":425,"y":135,"width":135,"height":90,"metadata":{"cite":"diff:conn:80-113"}},
+  {"type":"text","id":"normalize-t","x":433,"y":148,"width":119,"height":62,"text":"_normalize helpers\nOWS CRLF RWS\n→ one space","fontSize":15,"metadata":{"cite":"diff:conn:84-88"}},
+  {"type":"arrow","id":"e4","x":560,"y":160,"width":30,"height":-55,"points":[[0,55],[30,0]]},
+  {"type":"rectangle","id":"headers","x":590,"y":55,"width":180,"height":70},
+  {"type":"text","id":"headers-t","x":598,"y":68,"width":164,"height":42,"text":"HTTPHeaderDict\nr.headers","fontSize":15},
+  {"type":"arrow","id":"e5","x":560,"y":200,"width":30,"height":55,"points":[[0,0],[30,55]]},
+  {"type":"rectangle","id":"cookies","x":590,"y":245,"width":180,"height":80},
+  {"type":"text","id":"cookies-t","x":598,"y":257,"width":164,"height":54,"text":"Same HTTPMessage\n(identity preserved)\nRequests cookie jar reads it","fontSize":15,"metadata":{"cite":"diff:conn:99-109"}}
+]
+```

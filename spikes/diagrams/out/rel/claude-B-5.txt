@@ -1,0 +1,18 @@
+```diagram-json
+{"version":1,"kind":"flow","title":"Obsolete folded header normalization in urllib3","direction":"LR",
+ "nodes":[
+  {"id":"server","title":"Server response","sub":"header value folded across lines","state":"default","col":0},
+  {"id":"parse-headers","title":"http.client parse_headers","sub":"stdlib parses the header block","state":"default","col":1},
+  {"id":"http-message","title":"HTTPMessage keeps CRLF","sub":"value still has CRLF plus whitespace","state":"bad","col":2},
+  {"id":"normalize","title":"_normalize_header_values","sub":"OWS CRLF RWS becomes one space","state":"ok","cite":"diff:conn:80-113","col":3},
+  {"id":"header-dict","title":"HTTPHeaderDict r.headers","sub":"built from returned header items","state":"ok","col":4},
+  {"id":"same-message","title":"Same HTTPMessage object","sub":"rewritten in place, read by Requests cookie jar","state":"ok","col":4}
+ ],
+ "edges":[
+  {"from":"server","to":"parse-headers","label":"raw bytes"},
+  {"from":"parse-headers","to":"http-message","label":"fold preserved"},
+  {"from":"http-message","to":"normalize","label":"getresponse call","cite":"diff:conn:647-654"},
+  {"from":"normalize","to":"header-dict","label":"returns list of pairs"},
+  {"from":"normalize","to":"same-message","label":"del then re-add, order kept"}
+ ]}
+```
