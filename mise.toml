@@ -73,6 +73,10 @@ run = "mise run build && node scripts/e2e-linux.mjs"
 description = "Pack + global-install a tarball into a temp prefix, run doctor/start/stop outside the repo"
 run = "mise run build && node scripts/global-install-check.mjs"
 
+[tasks.release]
+description = "Assemble the self-contained release tree, tarball, and local release branch"
+run = "mise run build && node scripts/release.mjs"
+
 [tasks."test:live:submit"]
 description = "Live M6 submit test on indigoviolet/lvu (draft PR only; never run by check)"
 run = "node ./scripts/live-submit.mjs"

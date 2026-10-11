@@ -5,3 +5,7 @@ packages/*/node_modules/
 .DS_Store
 test-results/
 playwright-report/
+
+# Release artifacts (mise run release)
+release/
+unvibe-*.tgz
