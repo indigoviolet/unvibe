@@ -1,0 +1,22 @@
+direction: right
+
+folded: "On the wire (folded)\nSet-Cookie: a=1;<CRLF>\n<SP>Path=/"
+helper: "_normalize_header_value\n(no CRLF: return as is)" {
+  link: "diff:conn:85-88"
+}
+regex: "_OBSOLETE_FOLD_RE\noptional OWS + CRLF + 1..n SP/TAB" {
+  link: "diff:conn:80-82"
+}
+unfolded: "Unfolded value\nSet-Cookie: a=1; Path=/"
+values: "_normalize_header_values\nrewrites HTTPMessage in place"
+caller: "getresponse call site"
+
+folded -> helper: value contains CRLF
+helper -> regex: sub(" ", value)
+regex -> unfolded: fold becomes one space
+unfolded -> values: changed items written back {
+  link: "diff:conn:91-110"
+}
+caller -> values: passes response headers {
+  link: "diff:conn:647-654"
+}

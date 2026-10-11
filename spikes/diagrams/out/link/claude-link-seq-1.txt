@@ -1,0 +1,23 @@
+```d2
+shape: sequence_diagram
+app: Client app
+pool: ConnectionPool
+conn: HTTPConnection
+stdlib: http.client parse_headers
+
+app -> pool: urlopen(request)
+pool -> conn: getresponse() {
+  link: "diff:conn:647-654"
+}
+conn -> stdlib: parse response headers
+stdlib -> conn: HTTPMessage (raw CRLF fold kept)
+conn -> conn: _normalize_header_values(message) {
+  link: "diff:conn:90-93"
+}
+conn -> conn: rewrite changed headers in the same HTTPMessage {
+  link: "diff:conn:103-109"
+}
+conn -> pool: normalized HTTPHeaderDict + same HTTPMessage object
+pool -> app: response (cookie jar reads the same HTTPMessage)
+```
+Caption: Obsolete line folds left by http.client are collapsed to single spaces at the getresponse call site, and the original HTTPMessage is updated in place so cookie jars see the same normalized values.

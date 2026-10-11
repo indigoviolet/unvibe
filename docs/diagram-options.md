@@ -382,4 +382,124 @@ dark mode, cheap but app-driven).
 **Standing:** strongest fallback if D2 adoption fails — it collapses syntax,
 validator, and renderer into one maintained dependency and scores well
 everywhere except sequences and prompt cost. Not pursued while D2 proceeds.
+
+## 9. Addendum 2026-10-11: `link:` convention reliability run
+
+The §7 gate ("mini reliability run on the `link:` convention first"). Run
+same-day in this worktree; harness `spikes/diagrams/src/linkrun.mjs`
+(generations + scoring), `src/linkprobe.mjs` (failure probes),
+`src/linkshots.mjs` (screenshots); raw outputs in `out/link/`,
+probe logs in `out/probe/`.
+
+**Binary:** v0.9.0, obtained without a system install via
+`mise x d2@latest -- d2 …` (mise backend `aqua:d2lang/d2`, alias
+`github:terrastruct/d2`; `d2@latest` resolved to **0.9.0** on 2026-10-11,
+binary at `~/.local/share/mise/installs/d2/latest/d2-v0.9.0/bin/d2`).
+For the service agent: pin `d2 = "0.9.0"` in `mise.toml` for development;
+`doctor` should gate minimum **0.9.0** (the only version this run vouches
+for — D2 is 0.x and drifts, so re-run this harness when upgrading).
+All compiles below are `d2 - -` via stdin with a 30 s timeout.
+
+**Method:** both providers through the CLIs in print mode, as in §5 —
+`claude` 2.1.296, `codex` 0.162.1, default models. 16 generations:
+per provider 3× data-flow, 2× before/after, 3× four-participant sequence,
+all about the fixture's `connection.py` hunk (citable conn 77–113 and
+647–654). One repair turn was allowed on compile failure (fed the
+compiler's stderr); it never triggered (16/16 first-try).
+
+**Prompt wording that worked (no escalation needed).** Shared context names
+fileKey `conn` and the two citable ranges plus the hunk; each kind adds one
+task sentence (flow: the §5 header-data-flow text; fold: wire-fold LEFT vs
+unfolded RIGHT with the regex/helper as mapping; seq: client→pool→conn→
+http.client and back). Format block (flow/fold; seq swaps the second line
+for `shape: sequence_diagram` + participants):
+
+```
+Output ONLY one fenced ```d2 block, no prose before or after.
+D2 rules: first line `direction: right`; shapes as `id: "Short label"`; edges as `a -> b: label`.
+Cite code by putting link: "diff:conn:START-END" (ranges inside 77-113 or 647-654, no [[ ]], no tooltip:) directly on 2-3 shapes or connections.
+Limits: at most 12 shapes and 16 connections; no icon:, no shape: image, no imports, no markdown labels, no layers, no vars, no classes. Optionally add a `Caption:` line after the block.
+```
+
+The cite instruction is exactly **one line**, as §7 hoped. It was tested
+first and never needed lengthening.
+
+**Scores** (valid-with-correct-cites = compiles first-try ∧ every `link:`
+a valid bare token ∧ every range inside the hunk ∧ ≥2 cites on
+shapes/connections ∧ zero forbidden constructs):
+
+| Provider · kind | Compile 1st try | Tokens valid | Ranges in hunk | Cites ≥2 | `<a href>` byte-identical | Forbidden / cites elsewhere |
+|---|---|---|---|---|---|---|
+| Claude flow (3) | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | — / — |
+| Claude fold (2) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | — / — |
+| Claude seq (3) | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | — / — |
+| Codex flow (3) | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | — / — |
+| Codex fold (2) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | — / — |
+| Codex seq (3) | 3/3 | 3/3 | 3/3 | 3/3 | **2/3** | — / — |
+
+Totals: **16/16 compile first-try, 16/16 tokens valid + in-range,
+15/16 cites reach the SVG first-try, 0 forbidden constructs, 0 cites in
+labels/tooltips/comments.** The one miss is `codex-link-seq-2`: the model
+put each `link:` on its own dedented line under a sequence message, which
+D2 **compiles but silently drops** (no `<a>`, no visible text — verified
+with a minimal repro: dedented `link:` → 0 hrefs; inline
+`a -> b: text { link: "…" }` → 1 byte-identical href). A single cite-repair
+turn ("a `link:` on its own indented line is silently dropped; attach each
+citation inline…", full text in `out/link/codex-link-seq-2.citerepair.txt`)
+recovered it: recompiles, both hrefs byte-identical. **16/16 after ≤1
+repair — above the 15/16 bar with the minimal wording unchanged.**
+
+Conventions held without being asked twice: every output opens with
+`direction: right` (flows) or `shape: sequence_diagram` (seqs); max
+observed 7 shapes / 9 edges (caps 12/16 never approached); Claude adds a
+`Caption:` line after the block in 7/8, Codex in 0/8 — both fine (the
+service extracts the fence only).
+
+**Render facts (binary, v0.9.0):** compile wall 35–59 ms including process
+spawn (binary-internal 5–12 ms per its own report); source 368–681 B,
+SVG 16.8–25.1 KB; every SVG carries 2 `<style>` blocks, 14–30 `style=`
+attrs, 2 `@font-face` (base64 subsets — offline ✓), 0 `foreignObject`.
+Dark: `--theme 200` renders a genuinely dark standalone SVG;
+`--theme 0 --dark-theme 200` emits one SVG with a `prefers-color-scheme`
+media query for +~200–300 B — **ship that variant** (one cached render,
+automatic dark). Screenshots (light + dark, zero page errors) of
+`claude-link-flow/fold/seq-0`: `out/link-flow.{light,dark}.png`,
+`out/link-fold.{light,dark}.png`, `out/link-seq.{light,dark}.png`.
+(A 2×-capture glyph-doubling scare on the flow shot proved to be image
+downscaling in the viewer — full-res crops are crisp, same class of false
+alarm as the §7 correction.)
+
+**Failure probes (hand-written inputs, `src/linkprobe.mjs`):**
+
+| # | Input | What the binary does | Service must |
+|---|---|---|---|
+| 1 | `icon: http://…` | **Fetches the network at compile** (1 `GET` observed against a local probe server), embeds a data URI; unfetchable URL → **exit 1, no SVG at all** | Reject `icon:` pre-compile (privacy: URL fetch leaks; availability: offline agent output kills the render). Belt-and-braces: compile with no network. |
+| 2 | `...@file` / `x: @file` | **Reads arbitrary local files**, absolute or cwd-relative (both verified: file content lands in the SVG); missing file → hard compile error | Reject `...@` and `: @…` pre-compile; run with cwd set to an empty temp dir; sandbox fs. There is **no CLI flag** to disable imports. |
+| 3 | `\|md` label | No `foreignObject`/`<script>`/`on*` (markdown → plain text runs) — but md links become **real external `<a href>`**, md images are dropped without fetching | Reject `\|md\|tex\|latex` and `\|`-block labels pre-compile (already in the prompt limits); post-render href allowlist as backstop. |
+| 4 | `link: "javascript:…"` / mixed-case / `data:text/html` | Passed through **byte-identical into `href`** (emitted twice: `href` + `xlink:href`); `data:` payload HTML-escaped but still a live `data:` href | Validate every `link:` value against the cite grammar pre-compile; post-render, rewrite **only** recognized cite hrefs (both spellings) to app URLs and neutralize the rest. |
+| 5 | 500 / 5000 shapes | 0.21 s / 78 MB peak RSS / 280 KB SVG; 1.56 s / **451 MB** peak / 2.8 MB SVG | Byte-cap input (e.g. 64 KB — legit outputs are <1 KB) so this is unreachable, plus process timeout and a memory limit. |
+| 6 | Invalid UTF-8 on stdin | Exit 0, compiles (replacement chars) | Nothing required. |
+| 7 | ~1 MB input (~14 k shapes) | 5.6 s compile, 8.4 MB SVG | Same byte cap + timeout as #5. |
+
+Recommended subprocess hygiene (all cheap): source via stdin only, input cap
+~64 KB, timeout ~15–30 s (typical is ~10 ms), cwd = empty temp dir, no
+network for the compile sandbox, memory limit, pre-compile denylist
+(`icon:`, `shape: image`, `...@`, `: @`, `|md|tex|latex`, `| `-blocks,
+`layers|scenarios|steps|boards:`, `vars`, `d2-config`, `classes:` with font
+keys, `tooltip:`), post-render asserts (every extracted `link:` has a
+matching `href=`; href count equals cite count), and strip `<title>`
+elements containing token patterns per §7.
+
+**Verdict: proceed as designed.** No change to the convention or the prompt
+wording — the minimal one-line cite instruction clears the gate (15/16
+strict first-try, 16/16 after ≤1 repair). Two amendments to the §7 pipeline
+(not the convention): (a) the repair trigger must include "compiled but a
+cite has no matching `href=` in the SVG" with the inline-placement repair
+wording proven above — exit-code checking alone misses the silent drop;
+(b) adopt the pre-compile denylist + sandbox rows in the table above, since
+the binary fetches network, reads files, and passes `javascript:` hrefs
+through. Residual caveats: the *compile-error* repair turn is still
+untested live for this convention (nothing failed to compile — same
+standing as §5); sequence-diagram edge cites only survive inline, so the
+cite-repair wording should stay sequence-aware.
 ...[truncated 2086 chars]

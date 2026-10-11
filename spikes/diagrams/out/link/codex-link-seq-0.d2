@@ -1,0 +1,20 @@
+shape: sequence_diagram
+client: Client app / cookie jar
+pool: ConnectionPool
+connection: HTTPConnection
+parser: http.client parse_headers
+
+client -> pool: request response
+pool -> connection: getresponse {
+  link: "diff:conn:647-654"
+}
+connection -> parser: parse headers
+parser -> connection: HTTPMessage with raw CRLF fold
+connection -> connection: normalize folded header values {
+  link: "diff:conn:77-113"
+}
+connection -> pool: normalized HTTPHeaderDict + same HTTPMessage object {
+  link: "diff:conn:77-113"
+}
+pool -> client: response and original message
+client -> client: cookie jar reads same HTTPMessage

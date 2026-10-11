@@ -1,0 +1,20 @@
+direction: right
+
+wire: "Folded on the wire: Set-Cookie: a=1; + CRLF + space-indented Path=/"
+values: "_normalize_header_values: walks message.items()"
+helper: "_normalize_header_value: skips values with no CRLF"
+regex: "_OBSOLETE_FOLD_RE: optional OWS, CRLF, then spaces or tabs"
+unfolded: "Unfolded single line: Set-Cookie: a=1; Path=/"
+message: "HTTPMessage rewritten in place, same order"
+
+wire -> values: getresponse passes headers {
+  link: "diff:conn:647-654"
+}
+values -> helper: each value
+helper -> regex: sub with one space {
+  link: "diff:conn:83-88"
+}
+regex -> unfolded: fold becomes one space {
+  link: "diff:conn:78-82"
+}
+values -> message: only if a value changed

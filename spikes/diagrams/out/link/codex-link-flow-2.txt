@@ -1,0 +1,23 @@
+```d2
+direction: right
+
+server: "Server: folded header"
+parser: "http.client.parse_headers"
+message: "HTTPMessage keeps CRLF"
+normalize: "Normalize folded value" {
+  link: "diff:conn:77-113"
+}
+headers: "HTTPHeaderDict: r.headers" {
+  link: "diff:conn:647-654"
+}
+cookies: "Same HTTPMessage for cookie jar" {
+  link: "diff:conn:77-113"
+}
+
+server -> parser: response headers
+parser -> message: parsed header values
+message -> normalize: inspect values
+normalize -> headers: OWS CRLF RWS → space
+normalize -> cookies: update same object
+```
+
