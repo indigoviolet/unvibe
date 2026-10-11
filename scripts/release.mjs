@@ -440,7 +440,18 @@ function webMitTexts(webRows) {
 /** Full text of `node_modules/<name>/LICENSE*` (first match wins). */
 function readWebLicenseText(name) {
   const dir = path.join(ROOT, "node_modules", name);
-  const candidates = ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md"];
+  // Lowercase `license` included: several Shiki-transitive packages
+  // (hast-util-*, mdast-util-*) ship only that name (spike/shiki, Refs #23).
+  const candidates = [
+    "LICENSE",
+    "LICENSE.md",
+    "LICENSE.txt",
+    "LICENCE",
+    "LICENCE.md",
+    "license",
+    "license.md",
+    "license.txt",
+  ];
   for (const c of candidates) {
     const p = path.join(dir, c);
     if (existsSync(p)) return readFileSync(p, "utf8");
