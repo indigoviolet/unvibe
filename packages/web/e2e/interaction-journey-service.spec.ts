@@ -63,13 +63,57 @@ async function selectText(page: Page, rootSelector: string, text: string): Promi
   await expect(page.locator("#selbar")).toBeVisible({ timeout: 5000 });
 }
 
+/**
+ * Hover an anchor deterministically. Playwright's `hover()` may scroll with
+ * the pointer already over the target, and a scroll with a stationary
+ * pointer must NOT open the popover (PRD §4.5) — so scroll, settle, move
+ * the pointer in genuine steps, and never let `hover()` scroll again.
+ *
+ * Two extra guards for loaded runners (found when this flow failed on the
+ * macOS CI leg while passing on Linux): webfonts swap layout after load,
+ * and async diagram/font rendering can move the anchor between measuring
+ * and arriving. So wait for fonts + scroll quiet, then confirm the cursor
+ * actually lands on the anchor (re-aiming from a fresh measurement when
+ * it misses) instead of trusting one stale bounding box.
+ */
 async function hoverFresh(page: Page, locator: Locator): Promise<void> {
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  await page.evaluate(() => {
+    const w = window as unknown as { __lastScrollAt?: number; __scrollHook?: boolean };
+    w.__lastScrollAt = Date.now();
+    if (!w.__scrollHook) {
+      w.__scrollHook = true;
+      document.addEventListener(
+        "scroll",
+        () => {
+          w.__lastScrollAt = Date.now();
+        },
+        true,
+      );
+    }
+  });
   await locator.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(200);
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("anchor has no box");
+  await page.waitForFunction(
+    () => Date.now() - ((window as unknown as { __lastScrollAt?: number }).__lastScrollAt ?? 0) > 400,
+    { polling: 250, timeout: 10_000 },
+  );
   await page.mouse.move(8, 200);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+  for (let i = 0; i < 3; i++) {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error("anchor has no box");
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y, { steps: 5 });
+    const onAnchor = await locator.evaluate(
+      (target, p: { x: number; y: number }) => {
+        const hit = document.elementFromPoint(p.x, p.y);
+        return !!hit && (hit === target || target.contains(hit));
+      },
+      { x, y },
+    );
+    if (onAnchor) return;
+  }
+  throw new Error("hover missed the anchor after 3 aims (layout still shifting?)");
 }
 
 test.describe("reader journey over the real service (replay)", () => {

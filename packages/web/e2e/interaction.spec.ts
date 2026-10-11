@@ -55,13 +55,50 @@ async function selectText(page: Page, rootSelector: string, text: string): Promi
   await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
 }
 
+/**
+ * Hover an anchor deterministically: scroll, wait for scroll quiet (a
+ * scroll landing mid-hover dismisses the popover, PRD §4.5), move the
+ * pointer in genuine steps, then confirm the cursor actually lands on the
+ * anchor — async rendering can move it between measuring and arriving on a
+ * loaded runner, so re-aim from a fresh measurement when it misses.
+ */
 async function hoverFresh(page: Page, locator: ReturnType<Page["locator"]>): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __lastScrollAt?: number; __scrollHook?: boolean };
+    w.__lastScrollAt = Date.now();
+    if (!w.__scrollHook) {
+      w.__scrollHook = true;
+      document.addEventListener(
+        "scroll",
+        () => {
+          w.__lastScrollAt = Date.now();
+        },
+        true,
+      );
+    }
+  });
   await locator.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(200);
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("anchor has no box");
+  await page.waitForFunction(
+    () => Date.now() - ((window as unknown as { __lastScrollAt?: number }).__lastScrollAt ?? 0) > 400,
+    { polling: 250, timeout: 10_000 },
+  );
   await page.mouse.move(8, 200);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+  for (let i = 0; i < 3; i++) {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error("anchor has no box");
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y, { steps: 5 });
+    const onAnchor = await locator.evaluate(
+      (target, p: { x: number; y: number }) => {
+        const hit = document.elementFromPoint(p.x, p.y);
+        return !!hit && (hit === target || target.contains(hit));
+      },
+      { x, y },
+    );
+    if (onAnchor) return;
+  }
+  throw new Error("hover missed the anchor after 3 aims (layout still shifting?)");
 }
 
 test("1. explain fills, closes to a dotted link, previews, re-expands, opens as a page", async ({
