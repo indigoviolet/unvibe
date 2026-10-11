@@ -137,24 +137,19 @@ function smallPack(): { message: string; factA: { q: string; need: string }; fac
 }
 
 describe.skipIf(!LIVE)("ACP live adapters", () => {
+  // Fresh cwd + MCP server per test: agent CLIs write session state under
+  // cwd, and the stateful MCP transport (required for newer CLIs, see
+  // startHunkServer) must not be shared — sharing caused systematic codex
+  // MCP failures after the claude tests.
   let cwd: string;
-
-  beforeAll(async () => {
-    cwd = mkdtempSync(join(tmpdir(), "unvibe-live-"));
-    return async () => {
-      rmSync(cwd, { recursive: true, force: true });
-    };
-  });
-
-  // Fresh MCP server per test: the stateful transport (required for newer
-  // CLIs, see startHunkServer) must not be shared across tests/providers —
-  // sharing caused systematic codex MCP failures after the claude tests.
   let mcp: HunkServer;
   beforeEach(async () => {
+    cwd = mkdtempSync(join(tmpdir(), "unvibe-live-"));
     mcp = await startHunkServer();
   });
   afterEach(async () => {
     await mcp.close();
+    rmSync(cwd, { recursive: true, force: true });
   });
 
   for (const provider of PROVIDERS) {
