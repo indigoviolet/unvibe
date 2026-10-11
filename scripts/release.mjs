@@ -72,6 +72,7 @@ copy("packages/web/dist", "packages/web/dist");
 copy("prompts", "prompts");
 copy("fixtures/urllib3-5020", "fixtures/urllib3-5020");
 copy("README.md", "README.md");
+copy("LICENSE", "LICENSE");
 
 // 3. Notices for everything bundled (service bundle + both adapter bundles).
 const notices = buildNotices();
@@ -113,6 +114,7 @@ const releasePkg = {
   name: "unvibe",
   version,
   description: "Reader for code changes: localhost service + installable web app.",
+  license: "MIT",
   type: "module",
   bin: { unvibe: "./packages/service/dist/index.js" },
   dependencies: deps,
