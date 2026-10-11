@@ -255,7 +255,7 @@ Every card and every expansion card has the same controls:
 
 ## 6. Agent runner
 
-ACP (Agent Client Protocol) comes first, through `@agentclientprotocol/sdk`, with `@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` as subprocesses. **Nothing outside this module may depend on ACP.** (Package names corrected; see `docs/m0-acp-spike.md` § "Packages and versions".)
+ACP (Agent Client Protocol) comes first, through `@agentclientprotocol/sdk`, with `@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` as subprocesses. **Nothing outside this module may depend on ACP.** (Package names corrected; see the `spike/acp` branch (`docs/m0-acp-spike.md`) § "Packages and versions".)
 
 ```ts
 interface AgentRunner {
@@ -491,7 +491,7 @@ A new base is built when any of these happens:
 | `consolidate` | Small model | `{{contributions}}` |
 | `second_opinion_blind`, `second_opinion_check` | Second opinion | `{{topic}}` or `{{claim}}`, `{{cited_code}}` |
 
-**Diagrams:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/diagram-options.md` §7 and §9). Superseded proposal (kept as history): agents were to write Mermaid, rendered on the page, with citation tokens allowed in node labels; the prototype used hand-drawn SVG.
+**Diagrams:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/d2-diagrams.md`). Superseded proposal (kept as history): agents were to write Mermaid, rendered on the page, with citation tokens allowed in node labels; the prototype used hand-drawn SVG.
 
 ---
 
@@ -583,7 +583,7 @@ WS   /api/events?review=:id              job progress, streamed text, state patc
 1. **Where the code lives:** its own `unvibe` repo (recommended), or a package inside an existing monorepo.
 2. **The size budget** and the rebuild thresholds. Set them from M0 and M2 measurements.
 3. **Structured output over ACP:** whether the trailing JSON block is reliable enough, or whether each adapter's metadata passthrough should be used.
-4. **The diagram format:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/diagram-options.md` §7 and §9). Superseded options (kept as history): Mermaid with citation tokens in labels, or a small JSON diagram spec.
+4. **The diagram format:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/d2-diagrams.md`). Superseded options (kept as history): Mermaid with citation tokens in labels, or a small JSON diagram spec.
 5. **Subscription terms:** Anthropic's rules for Agent SDK and `claude -p` usage changed several times in 2026. Recheck them before release.
 6. **Saved pages:** sharing and refresh across PRs, when concept identity across reviews is tackled. Deferred.
 7. **Reading other content:** the source pane and anchor scheme for web pages. Deferred.

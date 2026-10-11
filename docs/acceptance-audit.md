@@ -322,7 +322,7 @@ UI); nothing below was edited by this pass.
 ## §6 Agent runner — all met
 
 - ACP first via SDK, adapters as stdio subprocesses — met
-  (`agent/acp/connection.ts`, M0 spike `docs/m0-acp-spike.md`).
+  (`agent/acp/connection.ts`, M0 spike the `spike/acp` branch (`docs/m0-acp-spike.md`)).
 - Nothing outside `agent/acp/` imports ACP — met (`eslint.config.mjs`
   `no-restricted-imports` + `test/acp-isolation.test.ts`, in `check`).
 - Interface (`start/fork/load/prompt/close`, event union) — met
@@ -595,7 +595,7 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 
 ## §17 Milestones — all met
 
-- M0 ACP spike — met (`docs/m0-acp-spike.md`: fork + cache + trailing
+- M0 ACP spike — met (the `spike/acp` branch (`docs/m0-acp-spike.md`): fork + cache + trailing
   JSON on both adapters, 12/12 and 11/12).
 - M1 service/ingest/diff — met (start page, ingest, full §4.13 except
   agent summaries… summaries now exist too; token service, installable
@@ -651,15 +651,15 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
    all cross-review access is structurally impossible (review-scoped
    registry).
 7. Package names carry the `@agentclientprotocol/` scope (PRD §6 names
-   were slightly off) — `docs/m0-acp-spike.md` table.
+   were slightly off) — the `spike/acp` branch (`docs/m0-acp-spike.md`) table.
 8. Trailing fenced JSON block for structured output (PRD §19.3 resolved
-   for it: 20/20 live parses) — `docs/m0-acp-spike.md`.
+   for it: 20/20 live parses) — the `spike/acp` branch (`docs/m0-acp-spike.md`).
 9. Diagrams are D2 with `link:` citations (PRD §19.4 resolved as D2;
    Mermaid removed entirely at the user's direction — no compat path, no
    stored data to preserve). Honest tension with the PRD's "nothing extra
    to install": D2 needs a user-installed `d2` binary (≥ 0.9.0, the only
    version the reliability run vouches for). This is a user decision
-   recorded in `docs/diagram-options.md` §7: reviews work fully without
+   recorded in `docs/d2-diagrams.md`: reviews work fully without
    it (diagrams show source with a Settings → Environment note), and the
    demo ships pre-rendered SVGs so it needs nothing.
 10. Acronym: second-opinion `workspace-write` (not `read-only`) for Codex

@@ -1,5 +1,5 @@
 /**
- * D2 binary discovery (docs/diagram-options.md §7).
+ * D2 binary discovery (docs/d2-diagrams.md).
  *
  * Unvibe renders D2 diagrams service-side with the user's installed `d2`
  * binary — never a bundled copy. Resolution order:

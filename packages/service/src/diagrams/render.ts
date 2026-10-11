@@ -1,5 +1,5 @@
 /**
- * Safe D2 rendering (docs/diagram-options.md §7, "subprocess hygiene").
+ * Safe D2 rendering (docs/d2-diagrams.md).
  *
  * - Source via **stdin only** (`d2 … - -`), SVG on stdout. Never via files.
  * - Empty temporary working directory per render (relative imports resolve

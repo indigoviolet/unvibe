@@ -1,5 +1,5 @@
 /**
- * D2 diagrams (docs/diagram-options.md §7, §9).
+ * D2 diagrams (docs/d2-diagrams.md).
  *
  * Unit (fake binary via FakeCommandRunner / UNVIBE_D2_BIN override — always
  * run, never needs `d2`): discovery/version gate, pre-check denylist,

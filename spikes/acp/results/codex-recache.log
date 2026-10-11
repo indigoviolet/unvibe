@@ -1,5 +1,0 @@
-(node:254479) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-pack bytes=130961 approxTokens=32740
-fresh-A reply="READY" usage=[total=58279 in=47266 out=5 cachedRead=11008 cachedWrite=0 thought=0] share=18.9%
-fresh-B reply="READY" usage=[total=59459 in=318 out=5 cachedRead=59136 cachedWrite=0 thought=0] share=99.5%

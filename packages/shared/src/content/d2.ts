@@ -1,5 +1,5 @@
 /**
- * D2 diagram convention (docs/diagram-options.md §7 addendum).
+ * D2 diagram convention (docs/d2-diagrams.md).
  *
  * Agents write a fenced `d2` block, optionally followed by a `Caption:` line.
  * Citations are written on shapes/connections as a quoted bare token, no

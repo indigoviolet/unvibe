@@ -1,9 +1,0 @@
-direction: right
-# Citation shaping: D2 `link` fields become <a> in the SVG. The service
-# would rewrite our cite tokens to app URLs before compile.
-srv: Server {
-  link: https://example.invalid/cite/diff-conn-80-88
-  tooltip: "diff:conn:80-88"
-}
-cli: http.client
-srv -> cli: parses

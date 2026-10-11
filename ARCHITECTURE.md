@@ -80,7 +80,7 @@ The service never writes into your checkout; agents read the code in a worktree 
 - `docs/pipeline.md` — pipeline stages and the seam for adding actions. Current.
 - `docs/acp-runner.md` — adapter configuration, permission policy, per-adapter quirks. Current.
 - `docs/reply-format.md` — normative agent reply format. Current.
-- `docs/diagram-options.md` — diagram format evaluation and decision. Current; being extended.
+- `docs/d2-diagrams.md` — the D2 diagram decision, the rules the pipeline implements and its defences. Current.
 - `docs/macos-testing.md` — macOS verification checklist. Current; not yet run.
 - `docs/live-pipeline-results.md` — measured live run against real agents. Historical measurement.
-- `docs/m0-acp-spike.md` — session-fork and cache-sharing spike that de-risked the design. Historical.
+- Spikes and evaluations are not on `main`: see the `spike/*` branches (`spike/acp`, `spike/diagram-options`, `spike/pierre-diffs`, `spike/json-diagram-spec`).

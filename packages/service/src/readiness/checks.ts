@@ -516,7 +516,7 @@ export function distinctCheck(settings: Settings): ReadinessCheck {
 }
 
 /**
- * D2 diagram check (docs/diagram-options.md §7).
+ * D2 diagram check (docs/d2-diagrams.md).
  *
  * Warning, never error: diagrams need `d2` but nothing else in a review
  * may fail because it is absent. Missing/too old → warning with install

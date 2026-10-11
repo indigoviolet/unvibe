@@ -2,7 +2,7 @@
  * `diagram` action (PRD §4.4): insert a D2 diagram block after the
  * paragraphs it relates to, never duplicating one already there.
  *
- * D2 pipeline (docs/diagram-options.md §7, five steps): extract `link:`
+ * D2 pipeline (docs/d2-diagrams.md): extract `link:`
  * values → validate cites → compile-check via the binary → either failure
  * triggers exactly one repair turn → render light + dark → cache by hash.
  * When the binary is unavailable, cite validation is kept, the block is

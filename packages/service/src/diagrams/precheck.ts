@@ -1,5 +1,5 @@
 /**
- * D2 source pre-check (docs/diagram-options.md §7, "subprocess hygiene").
+ * D2 source pre-check (docs/d2-diagrams.md).
  *
  * The binary must not touch the network or the filesystem on the agent's
  * behalf. D2 can fetch `icon:`/image URLs (bundling) and read local files

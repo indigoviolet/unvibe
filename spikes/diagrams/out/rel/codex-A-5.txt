@@ -1,8 +1,0 @@
-```mermaid
-flowchart LR
-    A[Server: folded header] --> B[http.client parse_headers]
-    B --> C[HTTPMessage keeps CRLF]
-    C --> D[_normalize helpers<br/>OWS CRLF RWS → one space<br/>[[diff:conn:80-88]]]
-    D --> E[HTTPHeaderDict r.headers<br/>[[diff:conn:650-651]]]
-    D --> F[Same HTTPMessage object<br/>Requests cookie jar reads it]
-```

@@ -1,5 +1,5 @@
 /**
- * D2 validation pipeline (docs/diagram-options.md §7, five steps).
+ * D2 validation pipeline (docs/d2-diagrams.md).
  *
  * 1. Extract `link:` values from source (parser already did → block.citations).
  * 2. Validate each with the existing citation validator (ranges, auto-repair,

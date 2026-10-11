@@ -22,8 +22,7 @@ packages/service   the Unvibe service (PRD §5): HTTP + WebSocket on 127.0.0.1, 
                    MCP server, AgentRunner (ACP lives ONLY in src/agent/acp/)
 packages/web       React (Vite) UI served by the service
 prompts/           prompt templates (PRD §13)
-spikes/            throwaway experiments with their own package.json; not part of the build
-docs/              write-ups (spike results, decisions)
+docs/              design notes and decisions (spikes live on spike/* branches)
 ```
 
 ## Rules

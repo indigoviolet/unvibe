@@ -1,5 +1,5 @@
 /**
- * D2 diagrams endpoint (docs/diagram-options.md §7).
+ * D2 diagrams endpoint (docs/d2-diagrams.md).
  *
  * `GET /api/reviews/:id/diagrams/:hash?theme=light|dark` →
  * - `200 image/svg+xml` with the sanitised SVG (cacheable by hash),

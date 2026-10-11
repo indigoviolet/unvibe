@@ -3,7 +3,7 @@
   explain.md) copy this text. To apply the reliability verdict, edit HERE
   and copy the block into each template, then refresh goldens
   (UPDATE_GOLDENS=1) and read the diff.
-  Basis: docs/diagram-options.md §9 one-line cite instruction (16/16 after ≤1 repair). -->
+  Basis: docs/d2-diagrams.md; one-line cite instruction (16/16 after ≤1 repair). -->
 
 Diagrams are fenced `d2` blocks, optionally followed by a `Caption:` line.
 Cite code by putting link: "diff:<fileKey>:<START>-<END>" (ranges from your

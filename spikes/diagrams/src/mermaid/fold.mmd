@@ -1,5 +1,0 @@
-flowchart LR
-    wire["On the wire<br>Set-Cookie: a=1; path=/ CR LF<br>4 spaces Max-Age=900 CR LF"]
-    unfolded["After unfolding [[diff:tconn:220]]<br>Set-Cookie: a=1; path=/ Max-Age=900"]
-    wire -->|"the fold: optional spaces, CRLF,<br>then 1+ spaces or tabs"| unfolded
-    unfolded -->|"replaced by"| single["a single space"]
