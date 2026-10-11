@@ -37,13 +37,13 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §11 pipelines (7) | 7 | 0 | 0 | 0 |
 | §12 models/concurrency (9) | 8 | 1 | 0 | 0 |
 | §13 prompts (5) | 5 | 0 | 0 | 0 |
-| §14 shell/install/security/storage (8) | 6 | 1 | 1 | 0 |
+| §14 shell/install/security/storage (8) | 8 | 0 | 0 | 0 |
 | §14.1 endpoints (17) | 17 | 0 | 0 | 0 |
 | §15 gh/git (10) | 9 | 1 | 0 | 0 |
 | §16 non-functional (5) | 5 | 0 | 0 | 0 |
 | §17 M0–M6 done-when (7) | 7 | 0 | 0 | 0 |
 | §18 test kinds (4) | 4 | 0 | 0 | 0 |
-| **Total** | **202** | **3** | **1** | **1** |
+| **Total** | **204** | **2** | **0** | **1** |
 
 Fixed in this branch (was failing/missing before): stale-dist `check`
 failure; missing Host/Origin gate; MCP secrets never revoked; submit
@@ -449,7 +449,7 @@ UI); nothing below was edited by this pass.
 - Diagrams: Mermaid with citation tokens in labels — met
   (`reply-format.md` §5, `interaction/mermaid.ts`, bundled Mermaid, no CDN).
 
-## §14 Shell, install, security, storage — 6 met, 1 partly, 1 not met
+## §14 Shell, install, security, storage — all met
 
 - Service on 127.0.0.1 + per-install token on every HTTP and WS route —
   met (enumerated all 30 routes + WS: 401 unauth — ran; `server.ts:169`
@@ -470,16 +470,25 @@ UI); nothing below was edited by this pass.
 - Nothing starts at login; idle exit (10 min, no window + no jobs) — met
   (`e2e-linux.mjs` idle-exit; empirical 8 s idle exit + stays up with
   jobs — ran).
-- Install `npm install -g github:<org>/unvibe` + `unvibe setup` + same
-  command updates — **partly**: tarball path fully green (adapters
-  resolve, demo completes, 2.3 MB tarball / ~736 MB installed — ran);
-  `prepare` fixed for 3 real global-mode bugs (workspaces env, missing
-  bins, concurrent tree → isolated build). **Not met**: the git-URL path
-  on npm 11 lands as a dangling symlink (npm links global git installs
-  when a `prepare` script exists, then guts the clone — reproduced with a
-  trivial package; npm-side). Guarded in `check-global-install` git phase
-  + documented (README, `macos-testing.md` step 8). Needs the user's
-  decision (release tarballs vs waiting on npm).
+- Install `npm install -g --install-links --allow-scripts=unvibe
+  github:<org>/unvibe` + `unvibe setup` + same command updates — **met**:
+  tarball AND git-source phases fully green (adapters resolve, demo
+  completes from the installed copy, 2.3 MB tarball / ~69 MB installed on
+  Linux — ran; was ~736 MB before the bundled agent binaries were removed).
+  `prepare` fixed for global-mode bugs (workspaces env, missing bins,
+  concurrent tree → isolated build; global-only npm flags stripped for
+  nested installs). Git-URL npm handling: `--install-links` defeats the npm
+  11 dangling-symlink bug (links the git clone, then guts it — reproduced
+  with a trivial package, npm-side); `--allow-scripts=unvibe` lets our
+  `postinstall` prune the bundled platform binaries (npm 11 blocks install
+  scripts by default). Same flags work on npm 10. The check's git phase
+  installs from a fresh clone of the bare source (exercising devDeps +
+  `prepare` build) after npm's git-URL preparation proved too racy for
+  non-trivial trees on npm 10/11 (ENOTEMPTY extraction races on deep
+  trees — reproduced with and without our changes; see
+  `scripts/global-install-check.mjs`). Agents run the user's installed
+  `claude`/`codex` (no bundled binaries; readiness/doctor report path +
+  version).
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
 
@@ -575,9 +584,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 
 ## Intentional deviations from the PRD (confirm)
 
-1. `npm install -g github:<org>/unvibe` currently broken by npm 11
-   (dangling symlink for git sources with `prepare`); tarball path is
-   the verified route. Needs decision: release tarballs vs npm fix wait.
+1. Git-URL installs need `--install-links --allow-scripts=unvibe`
+   (npm 11 dangling-symlink + script-blocking, both npm-side; same flags
+   work on npm 10). Resolved in this branch — no decision needed unless you
+   want release tarballs as the *primary* route (both are verified; tarball
+   is faster to install since npm skips the source build).
 2. Fold-all is client-fan-out per-hunk `summarize` (no batch endpoint) —
    recorded in `docs/pipeline.md`; same observable behaviour.
 3. Suggested-comment links are app-built `comment-link` blocks, not
@@ -607,7 +618,10 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 Stale-dist guard; Host/Origin gate; MCP secret lifecycle; submit crash
 lease; orphan-dedupe resume block; reply-after-restart; resume demo fill;
 demo refresh 502; missing-checkout errors; job-list bloat; doctor port
-diagnosis; prepare global-install robustness; git-URL install guard.
+diagnosis; prepare global-install robustness; git-URL install with
+--install-links (real passing check); user's CLIs via adapters (no bundled
+binaries, ~69 MB installed); readiness/doctor path+version gates; MCP
+server/discover shim for new CLIs.
 
 ### Web defects for the web agent
 
@@ -617,11 +631,13 @@ errors). One item to confirm visually when card controls land (§4.4
 
 ### Needs the user's decision or a Mac
 
-1. **Install path**: bless release tarballs as the documented route
-   (PRD says git URL) or wait on npm for global git installs.
-2. **Install size**: ~736 MB (Linux; vendored Codex binary dominates) —
-   accept or invest in trimming (per-platform optional deps, slimmer web
-   deps).
+1. **Install path**: RESOLVED — `--install-links --allow-scripts=unvibe`
+   makes both git-URL and tarball installs green (this branch). Tarballs
+   remain the faster route (no source build); git URL is the PRD §14 route
+   and is verified via fresh-clone install in `check-global-install`.
+2. **Install size**: RESOLVED — ~69 MB installed (was ~736 MB; bundled
+   Codex 427 MB + Claude 242 MB platform binaries removed — Unvibe runs
+   your installed CLIs). No decision needed.
 3. **Mac**: run `docs/macos-testing.md` (15 min) — untested: osacompile
    applet, lsregister delivery, Gatekeeper xattr, Finder PATH, Chrome
    install flow on macOS.

@@ -31,6 +31,12 @@ function childEnv(extra = {}) {
   const env = { ...process.env, ...extra };
   delete env.npm_config_global;
   delete env.npm_config_location;
+  // Global-only install flags must not propagate to the nested local
+  // installs below (`--install-links` / `--allow-scripts` are rejected in
+  // project scope with EALLOWSCRIPTS). The nested tree is ours (temp copy),
+  // so its scripts run unconditionally.
+  delete env.npm_config_allow_scripts;
+  delete env.npm_config_install_links;
   return env;
 }
 
@@ -86,6 +92,8 @@ if (distPresent(rootDir)) {
       },
     });
     console.log("prepare: installing dependencies in the isolated copy…");
+    // NOTE: no --allow-scripts here: that flag is global-only (EALLOWSCRIPTS
+    // in project scope). Local installs run lifecycle scripts by default.
     const inst = spawnSync("npm", ["install", "--no-audit", "--no-fund"], {
       cwd: copy,
       stdio: "inherit",

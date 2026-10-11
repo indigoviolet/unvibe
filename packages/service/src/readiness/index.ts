@@ -98,7 +98,15 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   const agentChecks = await Promise.all(
     roles.map((role) =>
       withTimeout(
-        agentCheck({ role, pick: picks[role], agents: deps.agents, pathValue, timeoutMs }),
+        agentCheck({
+          role,
+          pick: picks[role],
+          agents: deps.agents,
+          pathValue,
+          timeoutMs,
+          runner: deps.runner,
+          env: process.env,
+        }),
         {
           id: `agent:${role}`,
           label: `Agent · ${role}`,

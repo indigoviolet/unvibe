@@ -12,6 +12,14 @@ import type { ReadinessCheck, Settings } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import type { AgentRunner } from "@unvibe/shared";
+import {
+  agentBinSpec,
+  meetsMinVersion,
+  missingBinMessage,
+  parseVersion,
+  resolveAgentBin,
+  versionTooOldMessage,
+} from "../exec/agent-bins.js";
 
 /** Minimal `command -v`: search PATH for an executable file. */
 export function findOnPath(name: string, pathValue: string = process.env.PATH ?? ""): string | null {
@@ -257,10 +265,13 @@ export async function agentCheck(opts: {
   agents: AgentRunner;
   pathValue?: string;
   timeoutMs?: number;
+  runner?: CommandRunner;
+  env?: NodeJS.ProcessEnv;
 }): Promise<ReadinessCheck> {
   const { role, pick, agents } = opts;
   const timeoutMs = opts.timeoutMs ?? 10000;
   const pathValue = opts.pathValue ?? process.env.PATH ?? "";
+  const env = opts.env ?? process.env;
   const id = `agent:${role}`;
   const label = ROLE_LABEL[role];
 
@@ -310,16 +321,47 @@ export async function agentCheck(opts: {
       settingsAnchor: "#models",
     };
   }
-  if (!findOnPath(cli, pathValue)) {
+  // Resolve the exact executable the adapter will run (user's installed CLI
+  // on the login-shell PATH, overridable via UNVIBE_*_BIN / adapter vars).
+  const bin = resolveAgentBin(provider as "claude" | "codex", { env, pathValue });
+  if (!bin) {
     return {
       id,
       label,
       status: "error",
-      summary: `${cli} CLI not found on PATH`,
-      fix: `Install the ${cli} CLI and ensure it's on your login-shell PATH, then Re-check.`,
+      summary: missingBinMessage(provider as "claude" | "codex"),
+      fix: `${agentBinSpec(provider as "claude" | "codex").installHint} Then Re-check.`,
       settingsAnchor: "#models",
     };
   }
+  // Version gate: adapters were written against specific CLI versions; a
+  // too-old CLI fails as a generic adapter crash, so report the specific
+  // minimum here instead. Best-effort (a CLI that won't run --version still
+  // gets the login probe below).
+  let binVersion: string | null = null;
+  if (opts.runner) {
+    try {
+      const r = await runWithTimeout(
+        opts.runner.run(bin.path, { args: ["--version"] }),
+        Math.min(timeoutMs, 8000),
+        () => ({ stdout: "", stderr: "timed out", code: 1 }),
+      );
+      binVersion = parseVersion(`${r.stdout}\n${r.stderr}`);
+    } catch {
+      binVersion = null;
+    }
+    if (binVersion && !meetsMinVersion(provider as "claude" | "codex", binVersion)) {
+      return {
+        id,
+        label,
+        status: "error",
+        summary: `${versionTooOldMessage(provider as "claude" | "codex", binVersion)} (running ${bin.path})`,
+        fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check.`,
+        settingsAnchor: "#models",
+      };
+    }
+  }
+  const binSuffix = binVersion ? ` (running ${cli} ${binVersion} at ${bin.path})` : ` (running ${bin.path})`;
   let models: string[];
   try {
     models = await probeAgentModels(agents, provider, timeoutMs);
@@ -331,7 +373,7 @@ export async function agentCheck(opts: {
         id,
         label,
         status: "warning",
-        summary: `${provider} probe timed out`,
+        summary: `${provider} probe timed out${binSuffix}`,
         fix: `The ${provider} adapter didn't answer. Re-check; ensure ${cli} is logged in.`,
         settingsAnchor: "#models",
       };
@@ -341,7 +383,7 @@ export async function agentCheck(opts: {
         id,
         label,
         status: "error",
-        summary: `${provider} not logged in (${msg.slice(0, 120)})`,
+        summary: `${provider} not logged in (${msg.slice(0, 120)})${binSuffix}`,
         fix: `Log in with ${cli}, then Re-check.`,
         settingsAnchor: "#models",
       };
@@ -351,8 +393,21 @@ export async function agentCheck(opts: {
         id,
         label,
         status: "error",
-        summary: `${provider} adapter not usable (${msg.slice(0, 120)})`,
-        fix: `Reinstall the ${provider} adapter/CLI and ensure ${cli} is on your login-shell PATH, then Re-check.`,
+        summary: `${provider} adapter not usable (${msg.slice(0, 120)})${binSuffix}`,
+        fix: `Reinstall the ${provider} adapter/CLI and ensure ${cli} is on your login-shell PATH, then Re-check. Unvibe does not install ${cli} for you.`,
+        settingsAnchor: "#models",
+      };
+    }
+    // Incompatible CLI surfaces as a generic adapter crash (bad app-server
+    // protocol, unknown flags, etc.). Report the version constraint instead.
+    if (/app-server|unknown (command|flag|option)|unrecognized|incompatible|protocol|version mismatch|not supported/.test(lower)) {
+      const found = binVersion ?? "unknown version";
+      return {
+        id,
+        label,
+        status: "error",
+        summary: `${provider} CLI incompatible (${msg.slice(0, 100)}; running ${cli} ${found} at ${bin.path}). ${versionTooOldMessage(provider as "claude" | "codex", binVersion ?? agentBinSpec(provider as "claude" | "codex").minVersion)}`,
+        fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check.`,
         settingsAnchor: "#models",
       };
     }
@@ -360,7 +415,7 @@ export async function agentCheck(opts: {
       id,
       label,
       status: "error",
-      summary: `${provider} unusable: ${msg.slice(0, 140)}`,
+      summary: `${provider} unusable: ${msg.slice(0, 140)}${binSuffix}`,
       fix: `Check ${cli} login and the adapter install, then Re-check.`,
       settingsAnchor: "#models",
     };
@@ -370,7 +425,7 @@ export async function agentCheck(opts: {
       id,
       label,
       status: "error",
-      summary: `${provider} logged in but returned no models`,
+      summary: `${provider} logged in but returned no models${binSuffix}`,
       fix: `Check ${cli} login, then Re-check.`,
       settingsAnchor: "#models",
     };
@@ -380,7 +435,7 @@ export async function agentCheck(opts: {
       id,
       label,
       status: "warning",
-      summary: `${provider} ready, but model "${pick.model}" not offered (has ${models.length} models)`,
+      summary: `${provider} ready${binSuffix}, but model "${pick.model}" not offered (has ${models.length} models)`,
       fix: "Pick one of the offered models in Settings → Models.",
       settingsAnchor: "#models",
     };
@@ -389,7 +444,7 @@ export async function agentCheck(opts: {
     id,
     label,
     status: "ok",
-    summary: `${provider}/${pick.model} ready`,
+    summary: `${provider}/${pick.model} ready${binSuffix}`,
     fix: "",
     settingsAnchor: "#models",
   };
