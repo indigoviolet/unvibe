@@ -14,8 +14,7 @@
  * - Never throws: every failure degrades to plain text (null).
  */
 
-import { createCssVariablesTheme, createHighlighterCore, type HighlighterCore } from "shiki/core";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
+import type { HighlighterCore } from "shiki/core";
 import { detectLanguage, importLanguage, type ShikiLangId } from "./language.js";
 import { cacheKey, tokenizeHunk, type LineTokens, type RawToken } from "./tokenize.js";
 import type { Hunk } from "@unvibe/shared";
@@ -74,6 +73,10 @@ async function getHighlighter(): Promise<HighlighterCore | null> {
   if (!highlighterPromise) {
     highlighterPromise = (async () => {
       try {
+        // Dynamic: the Shiki core + JS engine ride a lazy chunk, so the
+        // initial bundle is untouched and first paint never waits for them.
+        const [{ createCssVariablesTheme, createHighlighterCore }, { createJavaScriptRegexEngine }] =
+          await Promise.all([import("shiki/core"), import("shiki/engine/javascript")]);
         const hl = await createHighlighterCore({
           langs: [],
           themes: [createCssVariablesTheme({ name: THEME_NAME, variablePrefix: "--shk-" })],
