@@ -90,11 +90,11 @@ jobs:
         timeout-minutes: 30
 
       # Fresh d2 renders must reproduce the pre-rendered fixture SVGs byte
-      # for byte. Strict on Linux (same lineage as the seeds); report-only
-      # on macOS, where a difference is a hash/cache design finding about
-      # cross-platform render determinism (see DEVELOPMENT.md).
+      # for byte on both platforms (darwin/arm64 output proved identical to
+      # the Linux-made seeds, which is what makes content-hash addressing +
+      # immutable caching sound cross-platform). Strict everywhere.
       - name: D2 seed determinism (fresh renders vs fixture SVGs)
-        run: node scripts/d2-seed-check.mjs ${{ matrix.os == 'ubuntu-latest' && '--strict' || '' }}
+        run: node scripts/d2-seed-check.mjs --strict
         timeout-minutes: 10
 
       - name: Linux shell end-to-end (setup, handler, reuse, idle, uninstall)

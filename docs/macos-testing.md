@@ -294,6 +294,16 @@ Keychain logins, no Apple ID. What it genuinely verifies:
   npm 10 and 11, with doctor/start/demo-pipeline checks from the
   installed copy. `darwin-arm64` adapter behaviour (finding your installed
   `claude`/`codex`) still needs a person with the CLIs installed.
+- D2 diagrams (`d2` discovery and rendering): covered — `mise install d2`
+  works on the runner (aqua backend, cached), the real-binary unit suites
+  run with zero skips (determinism, `icon:`-never-network,
+  imports-cannot-read-files — all precheck/empty-cwd based, no Linux-only
+  mechanisms, so they prove the same on macOS), the D2 Playwright specs
+  pass in both modes, and fresh darwin/arm64 renders reproduce the
+  Linux-made fixture SVGs byte for byte (`d2-seed-check --strict`), which
+  is what makes content-hash addressing + immutable caching sound
+  cross-platform. What still needs a person: `brew install d2` from step
+  0/2 (CI uses mise, not brew) and eyeballing rendered diagrams.
 - Step 9 (uninstall): covered by `e2e-macos` (helper gone, token/data
   kept, second uninstall a no-op).
 - Platform assumptions (`/private/var` temp paths, case-insensitive

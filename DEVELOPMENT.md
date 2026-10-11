@@ -46,7 +46,12 @@ with the `d2` binary (`d2 = "0.9.0"` in `mise.toml`; `mise install d2`
 fetches it via the aqua backend): unit tests pass without it, the
 real-binary vitest suites and the Playwright D2 specs skip visibly, and
 `node scripts/d2-seed-check.mjs` compares fresh renders against the
-pre-rendered fixture SVGs (strict on Linux, report-only on macOS).
+pre-rendered fixture SVGs byte for byte (`--strict` exits nonzero; it
+skips visibly without `d2`). CI runs it strict on both platforms:
+darwin/arm64 output proved byte-identical to the Linux-made seeds, which
+is what makes content-hash addressing + immutable caching sound
+cross-platform — a mismatch there would be a hash/cache design finding,
+not something to paper over.
 
 ## CI organisation
 
