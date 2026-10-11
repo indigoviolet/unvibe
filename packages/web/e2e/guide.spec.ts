@@ -30,9 +30,9 @@ async function gotoReview(page: Page): Promise<void> {
  * Two extra guards for loaded runners (the real-service journey failed on
  * the macOS CI leg while passing on Linux): webfonts swap layout after
  * load, and async rendering can move the anchor between measuring and
- * arriving. So wait for scroll quiet, then confirm the cursor actually
- * lands on the anchor (re-aiming from a fresh measurement when it misses)
- * instead of trusting one stale bounding box.
+ * arriving. So wait for scroll quiet, then aim at the anchor's own line
+ * boxes (a wrapped anchor's union-box center can land on plain text)
+ * until the cursor verifiably lands on it.
  */
 async function hoverFresh(page: Page, locator: Locator): Promise<void> {
   await page.evaluate(() => {
@@ -55,11 +55,19 @@ async function hoverFresh(page: Page, locator: Locator): Promise<void> {
     { polling: 250, timeout: 10_000 },
   );
   await page.mouse.move(8, 200);
-  for (let i = 0; i < 3; i++) {
-    const box = await locator.boundingBox();
-    if (!box) throw new Error("anchor has no box");
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
+  const measure = (): Promise<{ x: number; y: number; width: number; height: number }[]> =>
+    locator.evaluate((target) => {
+      const out: { x: number; y: number; width: number; height: number }[] = [];
+      const rs = target.getClientRects();
+      for (let i = 0; i < rs.length; i++) out.push({ x: rs[i].x, y: rs[i].y, width: rs[i].width, height: rs[i].height });
+      return out;
+    });
+  for (let i = 0; i < 4; i++) {
+    const rects = await measure();
+    if (rects.length === 0) throw new Error("anchor has no rects");
+    const r = rects[Math.min(i, rects.length - 1)];
+    const x = r.x + r.width / 2;
+    const y = r.y + r.height / 2;
     await page.mouse.move(x, y, { steps: 5 });
     const onAnchor = await locator.evaluate(
       (target, p: { x: number; y: number }) => {
@@ -70,7 +78,7 @@ async function hoverFresh(page: Page, locator: Locator): Promise<void> {
     );
     if (onAnchor) return;
   }
-  throw new Error("hover missed the anchor after 3 aims (layout still shifting?)");
+  throw new Error("hover missed the anchor after 4 aims (layout still shifting?)");
 }
 
 async function openPopover(page: Page): Promise<void> {

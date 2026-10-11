@@ -157,12 +157,13 @@ const macosDir = path.join(APP, "Contents", "MacOS");
 let handlerBin = null;
 try {
   const cands = fs.readdirSync(macosDir).filter((n) => !n.endsWith(".dSYM"));
-  handlerBin = cands.length === 1 ? path.join(macosDir, cands[0]) : null;
   console.log(`helper executable: ${cands.join(", ") || "(none)"}`);
+  const pick = cands.includes("applet") ? "applet" : cands.includes("droplet") ? "droplet" : cands.length === 1 ? cands[0] : null;
+  handlerBin = pick ? path.join(macosDir, pick) : null;
 } catch {
   handlerBin = null;
 }
-assert(!!handlerBin, "helper has exactly one handler binary (osacompile output)");
+assert(!!handlerBin, "helper has a handler binary (osacompile output)");
 const xattr = spawnSync("xattr", [APP], { encoding: "utf8", timeout: 15_000 });
 const quarantine = (xattr.stdout ?? "").split("\n").some((l) => l.includes("quarantine"));
 assert(!quarantine, "helper carries no quarantine attribute (locally generated, no signing needed)");
@@ -172,11 +173,17 @@ assert(!quarantine, "helper carries no quarantine attribute (locally generated, 
 // invoking the helper's handler directly when LaunchServices cannot
 // dispatch on a headless runner.
 let via = "none";
+// Set when OUR `open` call may have dispatched (exit 0), even if the
+// service is slow to appear: only then may the script stop the
+// default-port service. A 4517 already healthy beforehand is foreign and
+// must never be touched.
+let mayHaveDispatched = false;
 if (await health(DEFAULT_PORT)) {
   console.log(`NOTE: port ${DEFAULT_PORT} already answers; skipping the dispatch probe (foreign service?)`);
 } else {
   const opened = spawnSync("open", ["unvibe://start"], { env: ENV, encoding: "utf8", timeout: 15_000 });
-  if (opened.status === 0 && (await waitFor(DEFAULT_PORT, true, 20_000, "dispatched service health"))) {
+  mayHaveDispatched = opened.status === 0;
+  if (mayHaveDispatched && (await waitFor(DEFAULT_PORT, true, 20_000, "dispatched service health"))) {
     via = "open";
     const stop = runCli(["stop"], DEFAULT_ENV);
     assert(stop.code === 0 && (await waitFor(DEFAULT_PORT, false, 10_000, "dispatched service shutdown")), "dispatched service stops cleanly");
@@ -197,9 +204,10 @@ if (via === "none" && handlerBin) {
 }
 assert(via !== "none", `service starts via the helper (${via})`);
 // A late `open` dispatch may still have started the default service after
-// we fell back to the handler: stop it so only the temp-port service below
-// remains (best effort; the dispatch probe already reported its verdict).
-if (via !== "open" && (await health(DEFAULT_PORT))) {
+// we fell back to the handler: stop it if it is ours, so only the
+// temp-port service below remains (best effort; the dispatch probe already
+// reported its verdict).
+if (via !== "open" && mayHaveDispatched && (await health(DEFAULT_PORT))) {
   console.log(`NOTE: default-port service appeared late; stopping it`);
   runCli(["stop"], DEFAULT_ENV);
 }
@@ -236,6 +244,13 @@ const uninstall = runCli(["setup", "--uninstall"]);
 assert(uninstall.code === 0 && !fs.existsSync(APP), "uninstall removes the helper");
 const uninstall2 = runCli(["setup", "--uninstall"]);
 assert(uninstall2.code === 0 && uninstall2.out.includes("not present"), "uninstall is idempotent");
+
+// Final cleanup: a service we dispatched (but never confirmed) must not be
+// left running on the defaults. Foreign 4517 owners are never touched.
+if (mayHaveDispatched && via !== "open" && (await health(DEFAULT_PORT))) {
+  const s = runCli(["stop"], DEFAULT_ENV);
+  assert(s.code === 0 && !(await waitFor(DEFAULT_PORT, false, 10_000, "late dispatched service shutdown")), "no dispatched service left running");
+}
 
 if (failures > 0) {
   console.error(`${failures} assertion(s) failed`);
