@@ -10,12 +10,13 @@
  *   link; click re-expands;
  * - anchor-stale shows the collapsed card fallback in the slot.
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 import type { Annotation, Page } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
+import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionCard } from "./ExpansionCard.js";
 import { isAnchorStale } from "./expansionUtils.js";
@@ -56,6 +57,14 @@ export function useDiffExpansionBindings(
   // itself also unwraps same-id marks, so re-renders that wipe DOM marks
   // and re-applied timers both converge on depth 1, and open <-> closed
   // class flips update instead of nesting.
+  //
+  // Spike/shiki-highlighting (Refs #23): token rows arrive after first
+  // paint and React replaces the cell's text nodes with spans, wiping DOM
+  // marks — so this also re-runs on highlight completions (`hlTick`).
+  // Quotes spanning several token spans still resolve: `markTextInElement`
+  // joins text nodes before locating the quote.
+  const [hlTick, bumpHlTick] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => subscribeHighlight(() => bumpHlTick()), []);
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const scope = document.body;
@@ -79,7 +88,7 @@ export function useDiffExpansionBindings(
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [byLine, annotations]);
+  }, [byLine, annotations, hlTick]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent): void => {

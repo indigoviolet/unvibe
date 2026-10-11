@@ -15,7 +15,7 @@
  * mounts ~300 headers instead of 5k hunks. `eager` bypasses the lazy gate
  * (above-the-fold files, file jumps, `revealSource` targets).
  */
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, HunkLine, ReviewFile } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import {
@@ -27,8 +27,14 @@ import {
   type SplitRow,
 } from "./diffLogic.js";
 import { slotKey, type LineSlots } from "./lineSlots.js";
+import { useFileHighlight } from "./highlight/useFileHighlight.js";
+import type { LineTokens } from "./highlight/tokenize.js";
+import "./highlight/highlight.css";
 
 export type DiffViewMode = "unified" | "split";
+
+/** Empty token map fallback (no injected rows, hook not ready yet). */
+const EMPTY_TOKENS: ReadonlyMap<string, { old: (LineTokens | null)[]; new: (LineTokens | null)[] }> = new Map();
 
 export interface LineRange {
   start: number;
@@ -74,6 +80,11 @@ interface SectionProps {
   fileHighlighted: boolean;
   /** Brief copy for hidden rows, keyed `fileKey:index` (mock fixture). */
   briefs: Readonly<Record<string, string>> | null;
+  /**
+   * Highlight token rows per hunk (spike/shiki-highlighting, Refs #23).
+   * Optional: FileSection tokenises itself; tests may inject canned rows.
+   */
+  tokens?: ReadonlyMap<string, { old: (LineTokens | null)[]; new: (LineTokens | null)[] }>;
   states: ReadonlyMap<string, HunkUiState>;
   isHidden: (hunk: Hunk) => boolean;
   actions: HunkActions;
@@ -124,13 +135,45 @@ interface RowProps {
   commentedLines: ReadonlySet<string>;
   highlight: LineRange | null;
   onLineClick: ((fileKey: string, line: number) => void) | undefined;
+  toks: { old: (LineTokens | null)[]; new: (LineTokens | null)[] } | null;
 }
 
 function inHighlight(highlight: LineRange | null, n: number | undefined): boolean {
   return n !== undefined && highlight !== null && n >= highlight.start && n <= highlight.end;
 }
 
-function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick }: RowProps): ReactNode {
+/**
+ * Token spans for one code line (spike/shiki-highlighting, Refs #23).
+ * Null segs render today's plain text (unknown language, caps, failure).
+ * Plain runs stay spanless so the DOM (and copy-paste) carries no
+ * artefacts; only colours change, so there is no layout shift.
+ */
+function CodeSegs({ text, segs }: { text: string; segs: LineTokens | null }): ReactNode {
+  if (segs === null) return <>{text}</>;
+  return (
+    <>
+      {segs.map((s, i) =>
+        s.cls === null && !s.bold && !s.italic ? (
+          <Fragment key={i}>{s.text}</Fragment>
+        ) : (
+          <span
+            key={i}
+            className={[s.cls, s.bold ? "shk-b" : "", s.italic ? "shk-i" : ""].filter(Boolean).join(" ") || undefined}
+          >
+            {s.text}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+/** The `#`-comment fallback only applies to unhighlighted (plain) rows. */
+function plainCommentClass(text: string, segs: LineTokens | null): string | undefined {
+  return segs === null && /^\s*#/.test(text) ? "cm" : undefined;
+}
+
+function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick, toks }: RowProps): ReactNode {
   const lines = hunk.lines;
   return (
     <>
@@ -138,6 +181,9 @@ function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineCl
         const n = r.newLine;
         const hl = inHighlight(highlight, n);
         const commented = n !== undefined && hasComment(slots, commentedLines, fileKey, n);
+        // Unified rows show the new-side tokens (the post-image under
+        // review); deleted rows show the old side.
+        const segs = toks ? (r.kind === "del" ? toks.old[ri] : toks.new[ri]) ?? null : null;
         return (
           <Fragment key={`${r.kind}-${r.oldLine ?? ""}-${n ?? ""}-${ri}`}>
             <tr className={`${r.kind}${hl ? " hl" : ""}`} id={n !== undefined ? `L-${fileKey}-${n}` : undefined}>
@@ -152,8 +198,9 @@ function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineCl
                 {n ?? ""}
               </td>
               <td className="c">
-                <span className={/^\s*#/.test(r.text) ? "cm" : undefined}>
-                  {(r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ") + r.text}
+                <span className={plainCommentClass(r.text, segs)}>
+                  {(r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ") + ""}
+                  <CodeSegs text={r.text} segs={segs} />
                 </span>
               </td>
             </tr>
@@ -167,8 +214,14 @@ function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineCl
   );
 }
 
-function SplitRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick }: RowProps): ReactNode {
+function SplitRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick, toks }: RowProps): ReactNode {
   const rows: SplitRow[] = pairSplitRows(hunk.lines);
+  // Split pairing zips del/add runs; token rows follow the hunk line index,
+  // so resolve each cell's segments from its source line index.
+  const lineIndex = new Map<HunkLine, number>();
+  hunk.lines.forEach((l, i) => {
+    if (!lineIndex.has(l)) lineIndex.set(l, i);
+  });
   const cell = (line: HunkLine | undefined, side: "o" | "n"): ReactNode => {
     if (!line) {
       return (
@@ -182,6 +235,8 @@ function SplitRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClic
     const cls = line.kind === "ctx" ? "" : line.kind;
     const clickable = side === "n" && num !== undefined;
     const commented = clickable && hasComment(slots, commentedLines, fileKey, num);
+    const li = lineIndex.get(line);
+    const segs = toks && li !== undefined ? (side === "o" ? toks.old[li] : toks.new[li]) ?? null : null;
     return (
       <>
         <td
@@ -194,7 +249,9 @@ function SplitRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClic
           {num ?? ""}
         </td>
         <td className={`c ${cls}`}>
-          <span className={/^\s*#/.test(line.text) ? "cm" : undefined}>{line.text}</span>
+          <span className={plainCommentClass(line.text, segs)}>
+            <CodeSegs text={line.text} segs={segs} />
+          </span>
         </td>
       </>
     );
@@ -377,6 +434,7 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
     commentedLines: props.commentedLines,
     highlight: props.highlight,
     onLineClick: props.onLineClick,
+    toks: props.tokens?.get(h.contentHash) ?? null,
   };
   return (
     <>
@@ -497,6 +555,16 @@ export function FileSection(props: SectionProps): ReactNode {
   const dir = file.path.slice(0, Math.max(0, file.path.length - base.length));
   const done = props.reviewed === file.hunks.length;
   const cols = view === "split" ? 4 : 3;
+  // Only rendered (unhidden) hunks tokenise; unhiding later picks up the
+  // cache or tokenises on demand. Folded files skip entirely (no body).
+  const renderedHunks = useMemo(
+    () => (props.folded ? [] : file.hunks.filter((h) => !props.isHidden(h))),
+    [props.folded, file.hunks, props.isHidden],
+  );
+  const fileHl = useFileHighlight(file.path, renderedHunks, visible && !props.folded && !file.isBinary);
+  // Injected (test) rows win when the hook has nothing yet; otherwise the
+  // hook's live rows do.
+  const tokens = fileHl.byHash.size > 0 ? fileHl.byHash : (props.tokens ?? EMPTY_TOKENS);
 
   useEffect(() => {
     if (props.eager) {
@@ -590,7 +658,7 @@ export function FileSection(props: SectionProps): ReactNode {
                       onUnhide={props.onUnhide}
                     />
                   ) : (
-                    <HunkBlock key={`hunk-${file.fileKey}-${g.index}`} index={g.index} cols={cols} {...props} />
+                    <HunkBlock key={`hunk-${file.fileKey}-${g.index}`} index={g.index} cols={cols} {...props} tokens={tokens} />
                   ),
                 )}
               </tbody>

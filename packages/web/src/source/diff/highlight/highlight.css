@@ -1,0 +1,52 @@
+/**
+ * Diff highlight token colours (spike/shiki-highlighting, Refs #23).
+ *
+ * Shiki emits spans with `shk-*` classes whose colours come from app
+ * variables below — never per-token inline colours — so light/dark switches
+ * (the app's own `data-theme` setting, else the OS setting, mirroring
+ * `styles/prototype.css`) restyle without re-tokenising, and the palette
+ * sits with the green/red diff backgrounds.
+ *
+ * Contrast was picked for all three row backgrounds (surface, --add,
+ * --del): every token colour is dark-on-light in light mode and
+ * light-on-dark in dark mode.
+ */
+:root {
+  --shk-kw: #b42318;
+  --shk-str: #0a3069;
+  --shk-com: #57606a;
+  --shk-fn: #6639ba;
+  --shk-const: #0550ae;
+  --shk-param: #953800;
+  --shk-link: #0b6e78;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --shk-kw: #ff7b72;
+    --shk-str: #a5d6ff;
+    --shk-com: #9198a1;
+    --shk-fn: #d2a8ff;
+    --shk-const: #79c0ff;
+    --shk-param: #ffa657;
+    --shk-link: #56c2cb;
+  }
+}
+:root[data-theme="dark"] {
+  --shk-kw: #ff7b72;
+  --shk-str: #a5d6ff;
+  --shk-com: #9198a1;
+  --shk-fn: #d2a8ff;
+  --shk-const: #79c0ff;
+  --shk-param: #ffa657;
+  --shk-link: #56c2cb;
+}
+
+table.diff td.c .shk-kw { color: var(--shk-kw); }
+table.diff td.c .shk-str { color: var(--shk-str); }
+table.diff td.c .shk-com { color: var(--shk-com); }
+table.diff td.c .shk-fn { color: var(--shk-fn); }
+table.diff td.c .shk-const { color: var(--shk-const); }
+table.diff td.c .shk-param { color: var(--shk-param); }
+table.diff td.c .shk-link { color: var(--shk-link); }
+table.diff td.c .shk-b { font-weight: 600; }
+table.diff td.c .shk-i { font-style: italic; }
