@@ -189,3 +189,16 @@ export function resetHighlightForTests(): void {
   highlighter = null;
   highlighterPromise = null;
 }
+
+// Mock-mode introspection for perf scripts (`window.__hlStats()`).
+// Spike-scoped: production never reads it.
+try {
+  if (
+    typeof window !== "undefined" &&
+    (import.meta as unknown as { env?: Record<string, string> }).env?.["VITE_MOCK"] === "1"
+  ) {
+    (window as unknown as { __hlStats?: typeof highlightStats }).__hlStats = highlightStats;
+  }
+} catch {
+  // Never break highlighting for introspection.
+}

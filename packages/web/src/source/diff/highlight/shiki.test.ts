@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hunk, HunkLine } from "@unvibe/shared";
-import { highlightHunk, resetHighlightForTests } from "./shiki.js";
+import { highlightHunk, highlightStats, resetHighlightForTests } from "./shiki.js";
 import type { LineTokens } from "./tokenize.js";
 
 afterEach(() => resetHighlightForTests());
@@ -87,8 +87,7 @@ describe("highlightHunk with real Shiki", () => {
     expect(newTail).not.toContain("shk-str");
   });
 
-  it("highlights JSON keys vs strings and shell comments", async () => {
-    const j = hunk("json1", [add('"name": "unvibe",', 3)]);
+  it("highlights JSON keys vs strings and shell comments", async () => {    const j = hunk("json1", [add('"name": "unvibe",', 3)]);
     const jout = await highlightHunk(j, "pkg.json");
     expect(jout).not.toBeNull();
     expect(classes(jout?.new)?.[0]).toContain("shk-");
@@ -96,5 +95,14 @@ describe("highlightHunk with real Shiki", () => {
     const s = hunk("sh1", [add("# comment", 1), add("echo hi", 2)]);
     const sout = await highlightHunk(s, "run.sh");
     expect(classes(sout?.new)?.[0]).toContain("shk-com");
+  });
+
+  it("caches by content hash + language (no recompute on re-render)", async () => {
+    const h = hunk("cache1", [add("x = 1", 1)]);
+    const first = await highlightHunk(h, "src/a.py");
+    const second = await highlightHunk(h, "src/a.py");
+    expect(first).not.toBeNull();
+    expect(second).toBe(first); // identical object: no re-tokenise
+    expect(highlightStats().cached).toBe(1);
   });
 });
