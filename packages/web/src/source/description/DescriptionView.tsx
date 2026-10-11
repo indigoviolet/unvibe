@@ -27,7 +27,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { markTextInElement } from "../../comments/anchor.js";
+import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../../comments/readOnly.js";
 import { ThreadView } from "../../comments/ThreadView.js";
@@ -308,22 +308,29 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
 
   // Anchor highlights: wrap each thread quote inside its paragraph body.
   // Threads whose quote is gone (or empty) fall back to the marker.
+  // Idempotent (issue #15): our own thread marks are cleared first so N
+  // store patches leave depth 1, inside one selection-preserving window.
+  // Expansion marks (`mark.anc.ex/exl`, `a.cx.pg`) belong to
+  // DescriptionExpansions and are never touched (narrow selector).
   useEffect(() => {
     const root = innerRef.current;
     if (!root) return;
     const timer = window.setTimeout(() => {
-      const found = new Set<string>();
-      for (const [pid, threads] of byPara) {
-        const body = root.querySelector(`[data-top="${CSS.escape(pid)}"] .dseg-body`);
-        if (!body) continue;
-        for (const thread of threads) {
-          if (!thread.anchor.quotedText) continue;
-          if (markTextInElement(body, thread.anchor.quotedText, () => makeMark(thread.id)) > 0) {
-            found.add(thread.id);
+      withPreservedSelection(root, () => {
+        clearMarks(root, "mark.anc[data-thr]");
+        const found = new Set<string>();
+        for (const [pid, threads] of byPara) {
+          const body = root.querySelector(`[data-top="${CSS.escape(pid)}"] .dseg-body`);
+          if (!body) continue;
+          for (const thread of threads) {
+            if (!thread.anchor.quotedText) continue;
+            if (markTextInElement(body, thread.anchor.quotedText, () => makeMark(thread.id)) > 0) {
+              found.add(thread.id);
+            }
           }
         }
-      }
-      setHighlighted((prev: ReadonlySet<string>) => (sameSet(prev, found) ? prev : found));
+        setHighlighted((prev: ReadonlySet<string>) => (sameSet(prev, found) ? prev : found));
+      });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [byPara, segments, setHighlighted]);
