@@ -151,8 +151,8 @@ describe("static network guards", () => {
     const allowlist: { file: string; patterns: RegExp[]; reason: string }[] = [
       {
         file: "cli/doctor.ts",
-        patterns: [/node:net/],
-        reason: "loopback port check (net.connect to 127.0.0.1 only)",
+        patterns: [/node:net/, /node:http/],
+        reason: "loopback port check (net.connect to 127.0.0.1) + service diagnostics fetch (http.get to 127.0.0.1 /api/diagnostics only, issue #20)",
       },
       {
         file: "cli/lock.ts",

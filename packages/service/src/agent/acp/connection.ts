@@ -24,6 +24,8 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { resolvePathFromLoginShell } from "../../exec/shell-path.js";
 import { agentBinEnv, resolveAgentBin } from "../../exec/agent-bins.js";
+import { diagnoseTool, TOOL_SPECS } from "../../diagnostics/tools.js";
+import { RealCommandRunner } from "../../exec/runner.js";
 import {
   decidePermission,
   decisionToOutcome,
@@ -231,8 +233,33 @@ export async function spawnAdapterTransport(
   // user binary is found, surface the install hint instead of letting the
   // adapter fall back to a bundled binary (Unvibe ships none).
   const mergedPath = merged.join(":");
-  const claudeBin = resolveAgentBin("claude", { pathValue: mergedPath });
-  const codexBin = resolveAgentBin("codex", { pathValue: mergedPath });
+  // Shared diagnostics choice: first candidate that runs (skip broken shims),
+  // version only from success — so a broken mise shim is skipped, not used.
+  let claudeBin = resolveAgentBin("claude", { pathValue: mergedPath });
+  let codexBin = resolveAgentBin("codex", { pathValue: mergedPath });
+  try {
+    const runner = new RealCommandRunner();
+    for (const p of ["claude", "codex"] as const) {
+      const spec = TOOL_SPECS.find((s) => s.tool === p);
+      if (!spec) continue;
+      try {
+        const diag = await diagnoseTool(spec, { pathValue: mergedPath, env: process.env, runner, timeoutMs: 8000 });
+        if (diag.chosen) {
+          const chosen = { path: diag.chosen, source: diag.candidates.find((c) => c.path === diag.chosen)?.source ?? "login-shell PATH" };
+          if (p === "claude") claudeBin = chosen;
+          else codexBin = chosen;
+        } else if (diag.candidates.length > 0) {
+          // All candidates broken: keep null so the specific error below names them.
+          if (p === "claude") claudeBin = null;
+          else codexBin = null;
+        }
+      } catch {
+        // Fall back to first-on-PATH (diagnostics best-effort here).
+      }
+    }
+  } catch {
+    // ignore: fall back to first-on-PATH
+  }
   const AutoBins = agentBinEnv({ claude: claudeBin, codex: codexBin }).env;
   const wanted = provider === "claude" ? claudeBin : codexBin;
   const adapterVar = provider === "claude" ? "CLAUDE_CODE_EXECUTABLE" : "CODEX_PATH";
@@ -242,9 +269,24 @@ export async function spawnAdapterTransport(
       provider === "claude"
         ? "Install Claude Code (https://code.claude.com/docs/setup) and ensure `claude` is on your login-shell PATH; Unvibe does not install it for you."
         : "Install the Codex CLI (https://developers.openai.com/codex/cli/) and ensure `codex` is on your login-shell PATH; Unvibe does not install it for you.";
+    // Specific diagnostic: name the broken candidates when we saw them.
+    let tried = "";
+    try {
+      const spec = TOOL_SPECS.find((s) => s.tool === provider);
+      if (spec) {
+        const diag = await diagnoseTool(spec, { pathValue: mergedPath, env: process.env, runner: new RealCommandRunner(), timeoutMs: 5000 });
+        if (diag.candidates.length > 0) {
+          const first = diag.candidates[0];
+          tried = `Tried ${first.path} (via ${first.source}, ${first.kind}): exit ${first.exitCode ?? "?"}${first.stderr ? ` — ${first.stderr.slice(0, 1000)}` : first.stdout ? ` — ${first.stdout.slice(0, 1000)}` : ""}. `;
+        }
+      }
+    } catch {
+      // ignore
+    }
     throw new Error(
-      `${cli} CLI not found on your login-shell PATH (looked for \`${cli}\`). ${hint} ` +
-        `Unusual install? Set ${provider === "claude" ? "UNVIBE_CLAUDE_BIN or CLAUDE_CODE_EXECUTABLE" : "UNVIBE_CODEX_BIN or CODEX_PATH"} to the executable path.`,
+      `${tried}${cli} CLI not usable on your login-shell PATH. ${hint} ` +
+        `Unusual install? Set ${provider === "claude" ? "UNVIBE_CLAUDE_BIN or CLAUDE_CODE_EXECUTABLE" : "UNVIBE_CODEX_BIN or CODEX_PATH"} to the executable path. ` +
+        `See the Doctor page (/doctor) for every candidate and full error text.`,
     );
   }
   void wanted;

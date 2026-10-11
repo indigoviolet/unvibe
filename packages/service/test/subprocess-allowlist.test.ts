@@ -85,7 +85,7 @@ describe("subprocess allowlist", () => {
           return;
         }
         // Dynamic command (variable): only allowed in the known dispatchers.
-        if (/\.run\(\s*(cmd|shell|opener|LSREGISTER|bin\.path|opts\.binPath|binPath)\b/.test(line)) {
+        if (/\.run\(\s*(cmd|shell|opener|LSREGISTER|bin\.path|opts\.binPath|binPath|raw|p)\b/.test(line)) {
           if (/cli\/setup|exec\/shell-path|cli\/commands/.test(rel)) return;
           // readiness version probes run the resolved user CLI (absolute path
           // from login-shell PATH or UNVIBE_*_BIN override; never a bundle).
@@ -94,11 +94,16 @@ describe("subprocess allowlist", () => {
           // login-shell PATH or UNVIBE_D2_BIN; stdin-only, --bundle=false,
           // empty temp dir, scrubbed env; never a bundle).
           if (/diagrams\/render/.test(rel) && /binPath/.test(line)) return;
+          // Diagnostics tool probes run the resolved user CLI (absolute path
+          // from the effective PATH or UNVIBE_*_BIN override; --version only,
+          // timeout-guarded; never a bundle) — issue #20.
+          if (/diagnostics\/tools/.test(rel) && /runner\.run\(\s*binPath/.test(line)) return;
+          if (/diagnostics\/tools/.test(rel) && /runner\.run\(\s*(raw|p)\b/.test(line)) return;
           offenders.push(`${rel}:${i + 1}: dynamic spawn ${line.trim().slice(0, 80)}`);
           return;
         }
         if (/execFile\s*\(\s*(cmd|shell)\b/.test(line)) {
-          if (/cli\/setup|exec\/shell-path|cli\/doctor/.test(rel)) return;
+          if (/cli\/setup|exec\/shell-path|cli\/doctor|diagnostics\/path-probe/.test(rel)) return;
           offenders.push(`${rel}:${i + 1}: dynamic execFile ${line.trim().slice(0, 80)}`);
           return;
         }

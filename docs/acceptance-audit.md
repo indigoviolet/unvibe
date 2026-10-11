@@ -67,6 +67,14 @@ checkouts; job-list snapshot bloat; doctor port diagnosis; broken
   user's `claude`/`codex` CLIs on the login-shell PATH
   (`agent/acp/connection.ts:41`, `exec/shell-path.ts`). `doctor` reports
   each login state.
+- **Diagnostics + Doctor + Reload (#20)** — met: one diagnostics module for
+  doctor + service (scrubbed login+interactive PATH probe with delimiters,
+  timeout, fallback; every candidate with shim/symlink/version-only-from-
+  success/choice; `unvibe doctor --strict` + service-view diff); Doctor page
+  (`/doctor`) with full errors, PATH diff, service identity, warnings, Copy
+  diagnostics (home+token redacted); Reload everything re-probes PATH,
+  restarts adapters (in-flight fail as retryable, jobs retry), clears
+  caches, re-checks d2, without restart.
 - **Nothing hosted publicly** — met. Fastify binds `127.0.0.1` only
   (`server.ts:278`); static network guards (`network-guards.test.ts`,
   `network-privacy.test.ts`, Playwright `network-privacy.spec.ts`,
@@ -285,6 +293,11 @@ UI); nothing below was edited by this pass.
 - Model pickers per role with provider models — met
   (`settings.spec.ts` “model pickers list provider models”, `routes/settings.ts`,
   `GET /api/models` ran 200).
+- Model display names (#21) — met: `GET /api/models` carries `name` +
+  `description` from the adapters; pickers show display name beside the id
+  with description as secondary text (Claude + Codex); readiness, Doctor,
+  jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
+  outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
 - Prompts (Template raw + Expanded with L0–L4 marks, tokens, cache part;
   view-only) — met (`settings.spec.ts`, `prompts-route.test.ts`,
   `GET /api/prompts` ran 200 from the global install).

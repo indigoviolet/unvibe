@@ -13,7 +13,7 @@ import { migrate } from "../src/store/migrate.js";
 import { JobQueue } from "../src/jobs/queue.js";
 import { createApp } from "../src/server.js";
 import { SettingsStore } from "../src/settings/index.js";
-import type { ModelCatalog, OfferedModels } from "../src/settings/index.js";
+import type { ModelCatalog } from "../src/settings/index.js";
 import { claudeCapabilityScore, selectDefaultModels } from "../src/settings/defaults.js";
 
 const CLAUDE_CAPTURED = [
@@ -92,16 +92,35 @@ describe("selectDefaultModels", () => {
     expect(claudeCapabilityScore("opus")).toBeGreaterThan(claudeCapabilityScore("claude-opus-4-6"));
     expect(claudeCapabilityScore("something-new")).toBe(0);
   });
+
+  it("prefers the opus alias (Opus 5.5) over the dated claude-opus-5 pin (older Opus 5) (#21)", () => {
+    // Issue #21 table: `opus` → Opus 5.5 (resolves to claude-opus-5-5),
+    // while `claude-opus-5` in the same list is the older Opus 5.
+    expect(claudeCapabilityScore("opus")).toBeGreaterThan(claudeCapabilityScore("claude-opus-5"));
+    const picked = selectDefaultModels({
+      claude: ["claude-opus-5", "opus", "sonnet", "haiku"],
+      codex: [],
+    });
+    expect(picked.main.model).toBe("opus");
+    expect(picked.small.model).toBe("haiku");
+  });
 });
 
 describe("live settings defaults + validation", () => {
   const auth = { authorization: "Bearer tok" };
 
   /** Stub catalog with live offerings (null = adapter unknown/down). */
-  function stubCatalog(offered: Record<string, OfferedModels | null>): ModelCatalog {
+  function stubCatalog(
+    offered: Record<string, { models: ({ id: string } | string)[]; defaultId: string | null } | null>,
+  ): ModelCatalog {
+    const norm = (m: { id: string } | string): { id: string } => (typeof m === "string" ? { id: m } : m);
     return {
-      listModels: (p: string) => Promise.resolve(offered[p]?.models ?? []),
-      offered: (p: string) => Promise.resolve(offered[p] ?? null),
+      listModels: (p: string) => Promise.resolve((offered[p]?.models ?? []).map(norm)),
+      offered: (p: string) => {
+        const o = offered[p] ?? null;
+        if (!o) return Promise.resolve(null);
+        return Promise.resolve({ models: o.models.map(norm), defaultId: o.defaultId });
+      },
     };
   }
 

@@ -532,10 +532,105 @@ export interface Settings {
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
 export type UpdateSettingsRequest = Partial<Settings>;
 
+/** One model an ACP adapter offers, with display metadata (#21). */
+export interface ModelInfo {
+  /** Adapter config value (e.g. "opus", "claude-opus-5", "gpt-5.4"). Persisted in settings. */
+  id: string;
+  /** Display name beside the id (e.g. "Opus 5.5"). */
+  name?: string;
+  /** Secondary text (e.g. what it resolves to, capabilities). */
+  description?: string;
+}
+
 /** GET /api/models?provider=:id — models an ACP adapter offers (PRD §4.14). */
 export interface ModelsResponse {
   provider: string;
-  models: string[];
+  models: ModelInfo[];
+}
+
+// --- diagnostics (issue #20) ---------------------------------------------
+
+/** One candidate binary found for a tool, in PATH order. */
+export interface DiagnosticCandidate {
+  /** Absolute path, or the override value when it points nowhere. */
+  path: string;
+  /** Where it came from: env override, login-shell PATH entry, etc. */
+  source: string;
+  /** What the file is: real file, symlink (+target), shim (+manager), missing override. */
+  kind: string;
+  /** Symlink target (when kind mentions symlink), resolved chain. */
+  symlinkTarget?: string;
+  /** Shim manager when detectable: mise/asdf/nvm/homebrew/npm-global. */
+  shimManager?: string;
+  /** Whether `--version` ran successfully (exit 0 within the timeout). */
+  runs: boolean;
+  exitCode?: number;
+  /** Full stdout/stderr from the version probe (untruncated, copyable). */
+  stdout?: string;
+  stderr?: string;
+  /** Parsed version, only from a successful run (never from error text). */
+  version?: string | null;
+  /** Whether it meets the tool's minimum version. */
+  meetsMin?: boolean;
+}
+
+/** Diagnosis for one tool: every candidate, which was chosen and why. */
+export interface DiagnosticTool {
+  tool: string;
+  /** Env override name when set (e.g. UNVIBE_CODEX_BIN), else undefined. */
+  overrideEnv?: string;
+  overrideValue?: string;
+  minVersion?: string;
+  candidates: DiagnosticCandidate[];
+  /** Chosen path, or null when nothing usable was found. */
+  chosen: string | null;
+  chosenReason: string;
+  warnings: string[];
+}
+
+/** How the effective PATH was derived (same answer however started). */
+export interface DiagnosticPath {
+  shell: string;
+  /** PATH printed by the scrubbed interactive probe. */
+  probedPath: string;
+  /** PATH inherited by this process. */
+  inheritedPath: string;
+  /** Effective PATH used for tool resolution (probed first, inherited extras appended). */
+  effectivePath: string;
+  onlyInProbed: string[];
+  onlyInInherited: string[];
+}
+
+/** How the service was started (helper/CLI/foreground). */
+export interface DiagnosticService {
+  pid: number;
+  startedAt: string;
+  cwd: string;
+  dataDir: string;
+  port: number;
+  startMode: string;
+  nodeVersion: string;
+  serviceVersion: string;
+}
+
+/** GET /api/diagnostics — full report shared by doctor and the Doctor page. */
+export interface DiagnosticsResponse {
+  generatedAt: number;
+  path: DiagnosticPath;
+  tools: DiagnosticTool[];
+  service: DiagnosticService;
+  warnings: string[];
+  /** Model display names per provider (id → {name, description}), when known. */
+  models?: Record<string, ModelInfo[]>;
+}
+
+/** POST /api/reload — re-probe everything without restarting the service. */
+export interface ReloadResponse {
+  ok: boolean;
+  generatedAt: number;
+  changed: string[];
+  detail: string[];
+  diagnostics: DiagnosticsResponse;
 }
 
 // --- prompts -------------------------------------------------------------

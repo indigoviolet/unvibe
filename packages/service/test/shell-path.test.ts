@@ -24,7 +24,7 @@ describe("mergePaths", () => {
 });
 
 describe("resolveLoginShellPath", () => {
-  it("uses $SHELL first (zsh-style -lc)", async () => {
+  it("uses $SHELL first (login+interactive with delimiters)", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-shell-"));
     const fake = makeFakeShell(dir, "myshell", "#!/bin/sh\necho /login/bin:/usr/bin\n");
     const prevShell = process.env.SHELL;
@@ -44,7 +44,7 @@ describe("resolveLoginShellPath", () => {
     }
   });
 
-  it("probes fish with separate -l -c args", async () => {
+  it("probes fish with login+interactive and delimiters", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-shell-"));
     // A fake `fish` that records its argv, then prints a PATH.
     const argvFile = path.join(dir, "argv");
@@ -55,7 +55,10 @@ describe("resolveLoginShellPath", () => {
     );
     const found = await resolveLoginShellPath({ shell: fake });
     expect(found?.loginPath).toBe("/fish/path");
-    expect(fs.readFileSync(argvFile, "utf8").trim()).toBe("-l -c echo $PATH");
+    const argv = fs.readFileSync(argvFile, "utf8").trim();
+    // Login + interactive with delimiters (robust to banners/garbage).
+    expect(argv.startsWith("-l -i -c")).toBe(true);
+    expect(argv).toContain("__UNVIBE_PATH_START__");
   });
 
   it("a hanging shell times out instead of hanging startup", async () => {

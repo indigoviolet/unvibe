@@ -95,6 +95,26 @@ function JobRow({ job, onCancel }: { job: Job; onCancel: () => void }): React.JS
   const [showPrompt, setShowPrompt] = useState(false);
   const [prompt, setPrompt] = useState<string | null>(job.promptSnapshot ?? null);
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [modelName, setModelName] = useState<string | null>(null);
+
+  // Same display as the pickers (#21): name beside the id when known.
+  useEffect(() => {
+    let cancelled = false;
+    if (!job.provider || !job.model) return;
+    api
+      .models(job.provider)
+      .then((r) => {
+        if (cancelled) return;
+        const found = r.models.find((m) => m.id === job.model);
+        if (found?.name) setModelName(found.name);
+      })
+      .catch(() => {
+        // Jobs stay readable without display names.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [job.provider, job.model]);
 
   const togglePrompt = async (): Promise<void> => {
     const next = !showPrompt;
@@ -118,9 +138,9 @@ function JobRow({ job, onCancel }: { job: Job; onCancel: () => void }): React.JS
         <span className={`st ${job.state}`} data-state={job.state}>
           {job.state === "backing-off" ? `backing-off · ${formatRetryIn(job.nextRetryAt)}` : job.state}
         </span>
-        <span className="hint">
+        <span className="hint" title={modelName ? `${job.provider}/${job.model}` : undefined}>
           {job.provider ? `${job.provider}/` : ""}
-          {job.model}
+          {modelName ? `${modelName} (${job.model})` : job.model}
         </span>
         <span className="sp" />
         {job.usage ? (

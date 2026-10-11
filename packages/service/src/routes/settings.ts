@@ -50,11 +50,13 @@ export async function effectiveSettings(deps: RouteDeps): Promise<Settings> {
       offered.call(deps.models, "claude"),
       offered.call(deps.models, "codex"),
     ]);
+    const claudeIds = (claude?.models ?? []).map((m) => (typeof m === "string" ? m : m.id));
+    const codexIds = (codex?.models ?? []).map((m) => (typeof m === "string" ? m : m.id));
     if (!saved.includes("main") || !saved.includes("small")) {
       if (claude && claude.models.length > 0) {
         const picked = selectDefaultModels({
-          claude: claude.models,
-          codex: codex?.models ?? [],
+          claude: claudeIds,
+          codex: codexIds,
           ...(codex?.defaultId ? { codexDefault: codex.defaultId } : {}),
         });
         if (!saved.includes("main")) next.main = picked.main;
@@ -64,8 +66,8 @@ export async function effectiveSettings(deps: RouteDeps): Promise<Settings> {
     if (!saved.includes("secondOpinion")) {
       if (codex && codex.models.length > 0) {
         const picked = selectDefaultModels({
-          claude: claude?.models ?? [],
-          codex: codex.models,
+          claude: claudeIds,
+          codex: codexIds,
           ...(codex.defaultId ? { codexDefault: codex.defaultId } : {}),
         });
         next.secondOpinion = picked.secondOpinion ?? unsetSecondOpinion();
@@ -105,10 +107,13 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
         if (!pick || pick.model === "") continue;
         try {
           const live = await offered.call(deps.models, pick.provider);
-          if (live && !live.models.includes(pick.model)) {
-            problems.push(
-              `${role} model "${pick.model}" is not offered by ${pick.provider} (offers: ${live.models.join(", ") || "none"}) — pick one of the offered models`,
-            );
+          if (live) {
+            const ids = live.models.map((m) => (typeof m === "string" ? m : m.id));
+            if (!ids.includes(pick.model)) {
+              problems.push(
+                `${role} model "${pick.model}" is not offered by ${pick.provider} (offers: ${ids.join(", ") || "none"}) — pick one of the offered models`,
+              );
+            }
           }
         } catch {
           // Probe hiccup: stored value stands; readiness flags it later.
