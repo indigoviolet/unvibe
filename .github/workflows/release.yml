@@ -111,9 +111,12 @@ jobs:
           UNVIBE_RELEASE_REF: ${{ steps.rel.outputs.branch }}
         timeout-minutes: 30
 
+      # The release branch is an orphan with one commit and no history, so
+      # every publish is a non-fast-forward update by design (force-push is
+      # confined to these refs; nothing else is force-pushed).
       - name: Push the release branch (ubuntu only)
         if: matrix.os == 'ubuntu-latest'
-        run: git push origin "refs/heads/${{ steps.rel.outputs.branch }}:refs/heads/${{ steps.rel.outputs.branch }}"
+        run: git push --force origin "refs/heads/${{ steps.rel.outputs.branch }}:refs/heads/${{ steps.rel.outputs.branch }}"
 
       - name: Write release notes
         if: matrix.os == 'ubuntu-latest'
