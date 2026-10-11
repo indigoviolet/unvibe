@@ -17,12 +17,23 @@ const BASE = `http://127.0.0.1:${PORT}`;
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
-  use: { baseURL: BASE },
+  use: {
+    baseURL: BASE,
+    // Keep failure evidence for CI artifacts (uploaded on failure).
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+  },
   webServer: {
-    command: `VITE_MOCK=1 npx vite --port ${PORT} --strictPort`,
+    // Bind 127.0.0.1 explicitly: bare `vite` listens on `localhost`, which
+    // resolves to ::1 first on machines with IPv6-first resolution (notably
+    // GitHub runners), while this config polls http://127.0.0.1:<port>/
+    // and the service binds 127.0.0.1 by design (PRD §14). Without --host,
+    // the server never becomes reachable and Playwright reports
+    // "Timed out waiting ... from config.webServer".
+    command: `VITE_MOCK=1 npx vite --port ${PORT} --strictPort --host 127.0.0.1`,
     url: `${BASE}/`,
     reuseExistingServer: false,
-    timeout: 60_000,
+    timeout: 120_000,
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   outputDir: "./test-results",
