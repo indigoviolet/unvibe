@@ -54,7 +54,7 @@ No logins, no token spend:
 UNVIBE_AGENT=replay node packages/service/dist/index.js open
 ```
 
-Then open the demo review from the front screen. It replays recorded sessions against a bundled fixture through the same code as a real review.
+If the service is already running, stop it first (`stop`) so the setting takes effect. Then open the demo review from the front screen. It replays recorded sessions against a bundled fixture through the same code as a real review.
 
 ## Settings
 
@@ -92,4 +92,4 @@ The service and the web app talk only to `127.0.0.1`. The only network traffic g
 - `PRD.md` — the product spec.
 - Issues: [github.com/indigoviolet/unvibe/issues](https://github.com/indigoviolet/unvibe/issues).
 
-No licence chosen yet (issue [#4](https://github.com/indigoviolet/unvibe/issues/4)).
+Licence: MIT (see `LICENSE`). Bundled third-party code keeps its own terms; the release lists them in `THIRD-PARTY-NOTICES.md`.
