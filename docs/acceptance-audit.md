@@ -285,6 +285,11 @@ UI); nothing below was edited by this pass.
 - Model pickers per role with provider models — met
   (`settings.spec.ts` “model pickers list provider models”, `routes/settings.ts`,
   `GET /api/models` ran 200).
+- Model display names (#21) — met: `GET /api/models` carries `name` +
+  `description` from the adapters; pickers show display name beside the id
+  with description as secondary text (Claude + Codex); readiness, Doctor,
+  jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
+  outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
 - Prompts (Template raw + Expanded with L0–L4 marks, tokens, cache part;
   view-only) — met (`settings.spec.ts`, `prompts-route.test.ts`,
   `GET /api/prompts` ran 200 from the global install).
