@@ -1,0 +1,27 @@
+```d2
+direction: right
+
+server: "Server sends folded header"
+parse: "http.client parse_headers"
+msg: "HTTPMessage keeps CRLF"
+norm: "_normalize_header_values" {
+  link: "diff:conn:91-113"
+}
+fold: "_OBSOLETE_FOLD_RE: OWS CRLF RWS to one space" {
+  link: "diff:conn:80-88"
+}
+headers: "HTTPHeaderDict r.headers"
+jar: "Requests cookie jar"
+
+server -> parse: raw bytes
+parse -> msg: values unfolded? no
+msg -> norm: getresponse passes message {
+  link: "diff:conn:647-654"
+}
+norm -> fold: each value with CRLF
+fold -> norm: cleaned value
+norm -> headers: returned items
+norm -> msg: rewrite in place, same object
+msg -> jar: reads normalized headers
+```
+Caption: Folded header values are normalized once in getresponse, feeding both r.headers and the original HTTPMessage that cookie jars read.

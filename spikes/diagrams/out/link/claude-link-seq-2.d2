@@ -1,0 +1,21 @@
+shape: sequence_diagram
+app: Client app
+pool: ConnectionPool
+conn: HTTPConnection
+stdlib: http.client parse_headers
+
+app -> pool: urlopen(request)
+pool -> conn: getresponse() {
+  link: "diff:conn:647-654"
+}
+conn -> stdlib: parse response headers
+stdlib -> conn: HTTPMessage (raw CRLF fold kept)
+conn -> conn: _normalize_header_values(message) {
+  link: "diff:conn:91-113"
+}
+conn -> conn: unfold each value to a single space {
+  link: "diff:conn:80-88"
+}
+conn -> conn: rewrite changed headers into same HTTPMessage
+conn -> pool: normalized HTTPHeaderDict + same HTTPMessage object
+pool -> app: response (cookie jar reads same HTTPMessage)

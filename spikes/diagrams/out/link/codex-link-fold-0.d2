@@ -1,0 +1,16 @@
+direction: right
+
+wire: "Wire: Set-Cookie: a=1\r\n b=2"
+wire.link: "diff:conn:77-113"
+
+regex: "_OBSOLETE_FOLD_RE"
+regex.link: "diff:conn:77-80"
+
+helper: "_normalize_header_value"
+helper.link: "diff:conn:83-86"
+
+unfolded: "Set-Cookie: a=1 b=2"
+
+wire -> regex: "matches CRLF + indentation"
+regex -> helper: "substitute with one space"
+helper -> unfolded: "normalized value"
