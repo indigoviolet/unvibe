@@ -1,0 +1,30 @@
+```json
+[
+  {"type":"rectangle","id":"n1","x":20,"y":40,"width":220,"height":80},
+  {"type":"text","id":"n1-t","x":28,"y":52,"width":204,"height":56,"text":"Server response\nfolded header\n(obs-fold: CRLF + SP/HTAB)","fontSize":14},
+
+  {"type":"arrow","id":"e1","x":240,"y":80,"width":50,"height":0,"points":[[0,0],[50,0]]},
+
+  {"type":"rectangle","id":"n2","x":290,"y":40,"width":220,"height":80},
+  {"type":"text","id":"n2-t","x":298,"y":62,"width":204,"height":38,"text":"http.client\nparse_headers","fontSize":14},
+
+  {"type":"arrow","id":"e2","x":510,"y":80,"width":50,"height":0,"points":[[0,0],[50,0]]},
+
+  {"type":"rectangle","id":"n3","x":560,"y":40,"width":220,"height":80},
+  {"type":"text","id":"n3-t","x":568,"y":62,"width":204,"height":38,"text":"HTTPMessage\nvalue still contains CRLF","fontSize":14},
+
+  {"type":"arrow","id":"e3","x":670,"y":120,"width":0,"height":95,"points":[[0,0],[0,95]]},
+
+  {"type":"rectangle","id":"n4","x":560,"y":215,"width":220,"height":90,"metadata":{"cite":"diff:conn:80-88"}},
+  {"type":"text","id":"n4-t","x":568,"y":232,"width":204,"height":56,"text":"_normalize_header_values\nOWS CRLF RWS\nbecomes one space","fontSize":14},
+
+  {"type":"arrow","id":"e4","x":560,"y":245,"width":60,"height":45,"points":[[0,0],[-60,-45]]},
+  {"type":"arrow","id":"e5","x":560,"y":275,"width":60,"height":55,"points":[[0,0],[-60,55]]},
+
+  {"type":"rectangle","id":"n5","x":280,"y":160,"width":220,"height":80},
+  {"type":"text","id":"n5-t","x":288,"y":172,"width":204,"height":56,"text":"HTTPHeaderDict\nr.headers\n(built in getresponse)","fontSize":14},
+
+  {"type":"rectangle","id":"n6","x":280,"y":290,"width":220,"height":80,"metadata":{"cite":"diff:conn:102-108"}},
+  {"type":"text","id":"n6-t","x":288,"y":302,"width":204,"height":56,"text":"Same HTTPMessage object\nrewritten in place\nRequests' cookie jar reads it","fontSize":14}
+]
+```

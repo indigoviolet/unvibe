@@ -1,0 +1,21 @@
+```dot
+digraph header_flow {
+  rankdir=LR;
+  node [shape=box];
+
+  server [label="Server response\nfolded header"];
+  parse [label="http.client\nparse_headers"];
+  msg [label="HTTPMessage\nvalue keeps CRLF"];
+  call [label="getresponse\ncall site", URL="diff:conn:647-654"];
+  norm [label="_normalize helpers\nOWS CRLF RWS -> 1 space", URL="diff:conn:80-110"];
+  hdict [label="HTTPHeaderDict\nr.headers"];
+  same [label="Same HTTPMessage\nRequests cookie jar"];
+
+  server -> parse;
+  parse -> msg;
+  msg -> call;
+  call -> norm;
+  norm -> hdict;
+  norm -> same;
+}
+```

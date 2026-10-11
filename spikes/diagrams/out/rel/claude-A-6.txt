@@ -1,0 +1,12 @@
+```mermaid
+flowchart TB
+    A["Server sends folded header"]
+    B["http.client parse_headers"]
+    C["HTTPMessage keeps CRLF in value"]
+    D["_normalize helpers: OWS CRLF RWS becomes one space [[diff:conn:82-88]]"]
+    E["HTTPHeaderDict r.headers"]
+    F["Same HTTPMessage object, rewritten in place (Requests' cookie jar reads it) [[diff:conn:102-108]]"]
+    A --> B --> C --> D
+    D -->|returned items| E
+    D -->|del and re-set| F
+```

@@ -1,0 +1,17 @@
+```d2
+direction: right
+
+srv: "Server\nfolded header"
+cli: "http.client\nparse_headers"
+msg: "HTTPMessage\nkeeps CRLF" {
+  tooltip: "diff:conn:77-113"
+}
+normalize: "_normalize helpers\nOWS CRLF RWS → space" {
+  tooltip: "diff:conn:80-88"
+}
+headers: "HTTPHeaderDict\nr.headers"
+cookies: "Same HTTPMessage\nRequests cookie jar reads"
+
+srv -> cli -> msg -> normalize -> headers
+normalize -> cookies
+```

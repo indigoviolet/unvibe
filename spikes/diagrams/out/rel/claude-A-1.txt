@@ -1,0 +1,9 @@
+```mermaid
+flowchart LR
+    A["Server sends<br/>folded header"] --> B["http.client<br/>parse_headers"]
+    B --> C["HTTPMessage<br/>value keeps CRLF"]
+    C --> D["_normalize_header_values<br/>OWS CRLF RWS → one space<br/>[[diff:conn:80-88]]"]
+    D --> E["HTTPHeaderDict<br/>r.headers<br/>[[diff:conn:647-654]]"]
+    D --> F["Same HTTPMessage,<br/>rewritten in place<br/>[[diff:conn:104-111]]"]
+    F --> G["Requests cookie jar<br/>reads it"]
+```

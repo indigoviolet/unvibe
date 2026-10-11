@@ -1,0 +1,49 @@
+You are documenting this diff hunk from urllib3 (fileKey "conn",
+src/urllib3/connection.py). Citable new-side line ranges: conn lines 77-113
+(the helpers shown below) and conn lines 647-654 (the getresponse call site,
+not shown). Draw the header data flow in 5-7 nodes: server with folded header
+-> http.client parse_headers -> HTTPMessage keeps CRLF -> _normalize helpers
+(OWS CRLF RWS becomes one space) -> HTTPHeaderDict r.headers AND the same
+HTTPMessage object (Requests' cookie jar reads it).
+
+Diff hunk:
+diff --git a/src/urllib3/connection.py b/src/urllib3/connection.py
+@@ -77,6 +77,37 @@ class BaseSSLError(BaseException):
+ _CONTAINS_CONTROL_CHAR_RE = re.compile(r"[^-!#$%&'*+.^`_|~0-9a-zA-Z]")
++# Starting the optional OWS match at the beginning of a whitespace run avoids
++# quadratic backtracking for long header values.
++_OBSOLETE_FOLD_RE = re.compile(r"(?:(?<![ \t])[ \t]+)?\r\n[ \t]+")
++
++
++def _normalize_header_value(value: str) -> str:
++    if "\r\n" not in value:
++        return value
++    return _OBSOLETE_FOLD_RE.sub(" ", value)
++
++
++def _normalize_header_values(
++    message: http.client.HTTPMessage,
++) -> list[tuple[str, str]]:
++    header_items = message.items()
++    headers_changed = False
++    for index, (name, value) in enumerate(header_items):
++        normalized_value = _normalize_header_value(value)
++        if normalized_value != value:
++            header_items[index] = (name, normalized_value)
++            headers_changed = True
++
++    if headers_changed:
++        # Keep the original message in sync for downstream consumers such as
++        # cookie jars while preserving its identity and header ordering.
++        for name, _ in header_items:
++            del message[name]
++        for name, value in header_items:
++            message[name] = value
++
++    return header_items
+
+Output ONLY one fenced ```dot block (Graphviz DOT):
+digraph with rankdir=LR, node [shape=box], 5-7 nodes with short labels
+("line1\nline2" for two lines), connected a -> b. On 1-2 nodes add
+URL="diff:conn:80-88" (bare form, ranges inside 77-113 or 647-654) to
+record the code citation. No prose before or after.

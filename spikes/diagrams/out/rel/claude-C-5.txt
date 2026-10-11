@@ -1,0 +1,22 @@
+```d2
+direction: right
+
+srv: "Server\nfolded header"
+cli: "http.client\nparse_headers"
+msg: "HTTPMessage\nkeeps CRLF"
+norm: "_normalize helpers\nOWS CRLF RWS -> one space" {
+  tooltip: "diff:conn:80-88"
+}
+hdrs: "HTTPHeaderDict\nr.headers" {
+  tooltip: "diff:conn:647-654"
+}
+same: "Same HTTPMessage\nrewritten in place"
+jar: "Requests\ncookie jar"
+
+srv -> cli
+cli -> msg
+msg -> norm
+norm -> hdrs: "returned items"
+norm -> same: "del + re-set"
+same -> jar: reads
+```
