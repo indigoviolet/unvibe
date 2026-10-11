@@ -57,8 +57,21 @@ jobs:
         run: mise run install
         timeout-minutes: 10
 
+      - name: d2 version
+        id: d2
+        run: node -p "'version=' + require('fs').readFileSync('mise.toml', 'utf8').match(/^d2 = \"([^\"]+)\"/m)[1]" >> "$GITHUB_OUTPUT"
+
+      - name: Restore d2 binary (mise/aqua install)
+        uses: actions/cache@v4
+        with:
+          # mise installs tools under ~/.local/share/mise/installs; a hit
+          # makes `mise install d2` below a fast no-op check.
+          path: ~/.local/share/mise/installs/d2
+          key: d2-${{ runner.os }}-${{ steps.d2.outputs.version }}
+
       - name: Install d2 (diagram tests; unit tests still pass without it)
         run: mise install d2 || true
+        timeout-minutes: 10
 
       - name: Lint + typecheck + unit tests
         run: mise run check
@@ -75,6 +88,14 @@ jobs:
       - name: Playwright behaviour tests (mock + real service)
         run: mise run test:e2e
         timeout-minutes: 30
+
+      # Fresh d2 renders must reproduce the pre-rendered fixture SVGs byte
+      # for byte. Strict on Linux (same lineage as the seeds); report-only
+      # on macOS, where a difference is a hash/cache design finding about
+      # cross-platform render determinism (see DEVELOPMENT.md).
+      - name: D2 seed determinism (fresh renders vs fixture SVGs)
+        run: node scripts/d2-seed-check.mjs ${{ matrix.os == 'ubuntu-latest' && '--strict' || '' }}
+        timeout-minutes: 10
 
       - name: Linux shell end-to-end (setup, handler, reuse, idle, uninstall)
         if: matrix.os == 'ubuntu-latest'
