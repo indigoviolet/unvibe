@@ -115,7 +115,7 @@ test("tips popover opens from the review top bar", async ({ page }) => {
 
 test("settings links carry the review context", async ({ page }) => {
   await page.goto("/review/demo");
-  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?review=demo/);
   await expect(page.getByRole("link", { name: "Back to review" })).toHaveAttribute("href", "/review/demo");
 });
