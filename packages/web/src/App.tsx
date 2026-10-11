@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { ReviewRoute } from "./ReviewRoute.js";
 import { SettingsPage } from "./settings/SettingsPage.js";
 import { StartPage } from "./start/StartPage.js";
+import { DoctorPage } from "./doctor/DoctorPage.js";
 
 export function App() {
   return (
@@ -11,6 +12,7 @@ export function App() {
         {/* Splat: the guide keeps its page in the URL (`/review/:id/page/:pageId`). */}
         <Route path="/review/:id/*" element={<ReviewRoute />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/doctor" element={<DoctorPage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -28,7 +28,7 @@ export const CLI_USAGE = [
   "  setup [--uninstall]    token + unvibe:// handler (idempotent)",
   "  open                   start if needed, open the app URL in a browser",
   "  token                  print the app URL with the per-install token",
-  "  doctor                 check node, git, gh, agents, PATH, data dir, port",
+  "  doctor [--strict]      check node, git, gh, agents, PATH, data dir, port (exit 1 on problems with --strict)",
   "",
   "Env: UNVIBE_PORT (default 4517), UNVIBE_DATA_DIR (default",
   "     ~/.local/share/unvibe), UNVIBE_IDLE_MS (default 600000, <=0 disables).",
@@ -186,10 +186,56 @@ async function cmdToken(): Promise<number> {
   return 0;
 }
 
-async function cmdDoctorCmd(): Promise<number> {
+async function cmdDoctorCmd(args: string[]): Promise<number> {
+  const strict = args.includes("--strict");
   const config = loadConfig();
+  const { runDoctor, formatDoctor, getDoctorDiagnostics, fetchServiceDiagnostics, diffDiagnostics } = await import(
+    "./doctor.js"
+  );
   const checks = await runDoctor({ port: config.port, dataDir: config.dataDir });
   console.log(formatDoctor(checks));
+  // When a service is running, report what it sees and say plainly when
+  // that differs from doctor's own view (issue #20).
+  try {
+    const { isHealthOk, readLock } = await import("./lock.js");
+    const { loadOrCreateToken } = await import("../auth.js");
+    if (await isHealthOk(config.port)) {
+      const lock = readLock(config.dataDir);
+      const port = lock?.port ?? config.port;
+      let token = "";
+      try {
+        token = loadOrCreateToken(config.dataDir);
+      } catch {
+        token = "";
+      }
+      if (token) {
+        const [local, remote] = await Promise.all([
+          getDoctorDiagnostics({ port: config.port, dataDir: config.dataDir }).catch(() => null),
+          fetchServiceDiagnostics(port, token).catch(() => null),
+        ]);
+        if (local && remote) {
+          const diffs = diffDiagnostics(local, remote);
+          if (diffs.length === 0) {
+            console.log(`\nService (pid ${remote.service.pid}, ${remote.service.startMode}) agrees: same PATH and tool choices.`);
+          } else {
+            console.log(`\nService (pid ${remote.service.pid}, ${remote.service.startMode}) differs from doctor:`);
+            for (const d of diffs) console.log(`  ! ${d}`);
+            console.log("Fix the shell config, then restart the service (or POST /api/reload) and see the Doctor page (/doctor).");
+          }
+        } else if (local && !remote) {
+          console.log("\nService is running but did not answer /api/diagnostics; doctor's view above is local only.");
+        }
+      }
+    } else {
+      console.log("\nNo running service; doctor's view above is local only (start the service to compare).");
+    }
+  } catch {
+    // Doctor stays informational; comparison failures never break it.
+  }
+  if (strict) {
+    const bad = checks.some((c) => c.status !== "ok");
+    return bad ? 1 : 0;
+  }
   return 0;
 }
 
@@ -227,7 +273,7 @@ export async function runCli(argv: string[]): Promise<number> {
     case "token":
       return cmdToken();
     case "doctor":
-      return cmdDoctorCmd();
+      return cmdDoctorCmd(rest);
     case "--version":
     case "-v":
     case "version": {

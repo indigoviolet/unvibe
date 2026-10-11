@@ -16,6 +16,7 @@ import { registerReviews, type ReviewsRouteDeps } from "./reviews.js";
 import { registerSettings } from "./settings.js";
 import { registerSubmit } from "./submit.js";
 import { registerViewer } from "./viewer.js";
+import { registerDiagnostics } from "./diagnostics.js";
 
 /**
  * One route module per area; each registers its PRD §14.1 endpoints.
@@ -45,6 +46,7 @@ export async function registerRoutes(
   await registerSubmit(app, ctx);
   await registerViewer(app, ctx);
   await registerSettings(app, deps);
+  await registerDiagnostics(app, ctx, deps);
   await registerPrompts(app, {
     snapshots: {
       getSnapshot: async (reviewId: string) => {

@@ -13,6 +13,7 @@ import type {
   CreateCommentResponse,
   CreateReviewRequest,
   DeleteContributionResponse,
+  DiagnosticsResponse,
   DiagramStatusBody,
   DiagramTheme,
   DismissContributionResponse,
@@ -26,6 +27,7 @@ import type {
   PromptsResponse,
   ReadinessResponse,
   RefreshResponse,
+  ReloadResponse,
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
@@ -263,6 +265,8 @@ const realApi = {
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
   models: (provider: string): Promise<ModelsResponse> =>
     get(`/api/models?provider=${encodeURIComponent(provider)}`),
+  diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
+  reload: (): Promise<ReloadResponse> => post("/api/reload"),
 
   prompts: (reviewId?: string): Promise<PromptsResponse> =>
     get(`/api/prompts${reviewId ? `?review=${encodeURIComponent(reviewId)}` : ""}`),

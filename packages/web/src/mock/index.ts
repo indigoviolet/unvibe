@@ -823,6 +823,77 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
 
 // --- mock client ---------------------------------------------------------
 
+function buildMockDiagnostics(): import("@unvibe/shared").DiagnosticsResponse {
+  return {
+    generatedAt: Date.now(),
+    path: {
+      shell: "/bin/zsh",
+      probedPath: "/mock/bin:/usr/bin:/bin",
+      inheritedPath: "/usr/bin:/bin",
+      effectivePath: "/mock/bin:/usr/bin:/bin",
+      onlyInProbed: ["/mock/bin"],
+      onlyInInherited: [],
+    },
+    tools: [
+      {
+        tool: "claude",
+        minVersion: "2.1.293",
+        candidates: [
+          {
+            path: "/mock/bin/claude",
+            source: "login-shell PATH",
+            kind: "file",
+            runs: true,
+            exitCode: 0,
+            stdout: "2.1.296",
+            stderr: "",
+            version: "2.1.296",
+            meetsMin: true,
+          },
+        ],
+        chosen: "/mock/bin/claude",
+        chosenReason: "first on PATH runs (version 2.1.296)",
+        warnings: [],
+      },
+      {
+        tool: "codex",
+        minVersion: "0.160.1",
+        candidates: [
+          {
+            path: "/mock/bin/codex",
+            source: "login-shell PATH",
+            kind: "file",
+            runs: true,
+            exitCode: 0,
+            stdout: "0.162.1",
+            stderr: "",
+            version: "0.162.1",
+            meetsMin: true,
+          },
+        ],
+        chosen: "/mock/bin/codex",
+        chosenReason: "first on PATH runs (version 0.162.1)",
+        warnings: [],
+      },
+    ],
+    service: {
+      pid: 1234,
+      startedAt: new Date().toISOString(),
+      cwd: "/mock",
+      dataDir: "/mock/data",
+      port: 4517,
+      startMode: "mock",
+      nodeVersion: "v24.0.0",
+      serviceVersion: "0.0.1",
+    },
+    warnings: [],
+    models: {
+      claude: [{ id: "mock-main", name: "Mock Main", description: "Mock main model for tests" }],
+      codex: [{ id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" }],
+    },
+  };
+}
+
 export const mockApi = {
   health: async () => ({ ok: true, version: "mock" }),
 
@@ -1786,6 +1857,17 @@ export const mockApi = {
     );
     emitContributions();
     return { ok: true as const, dismissedId: contributionId };
+  },
+
+  diagnostics: async () => {
+    await wait(50);
+    return buildMockDiagnostics();
+  },
+
+  reload: async () => {
+    await wait(100);
+    const diagnostics = buildMockDiagnostics();
+    return { ok: true as const, generatedAt: Date.now(), changed: ["no changes"], detail: ["Mock reload: nothing changed."], diagnostics };
   },
 } satisfies ApiClient;
 

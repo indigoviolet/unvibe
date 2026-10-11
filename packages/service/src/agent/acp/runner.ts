@@ -657,6 +657,36 @@ export class AcpAgentRunner implements AgentRunner {
     this.conn(normalizeProvider(provider)).noteDeath();
   }
 
+  /** Clear the 5-min model listing cache (Reload everything re-probes). */
+  clearModelCache(): void {
+    this.modelCache.clear();
+  }
+
+  /**
+   * Restart adapter subprocesses without killing in-flight jobs silently
+   * (Reload everything, issue #20).
+   *
+   * Drops each provider transport; the next `ensure()` starts a fresh
+   * subprocess. In-flight `prompt()` calls see the transport die and fail
+   * as retryable errors with a clear message (existing crash-restart
+   * semantics), so jobs back off and retry rather than vanishing. Sessions
+   * and policies are kept (reapplied on restart).
+   */
+  restartTransports(reason = "reload"): void {
+    for (const [provider, conn] of this.conns) {
+      try {
+        // noteDeath drops the transport but keeps the connection restartable
+        // (unlike dispose, which is terminal).
+        conn.noteDeath();
+      } catch {
+        // best-effort
+      }
+      void provider;
+    }
+    this.clearModelCache();
+    void reason;
+  }
+
   async dispose(): Promise<void> {
     for (const c of this.conns.values()) c.dispose();
     this.conns.clear();

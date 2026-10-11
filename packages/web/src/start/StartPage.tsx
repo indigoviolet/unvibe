@@ -366,6 +366,9 @@ export function StartPage(): React.JSX.Element {
                     <Link className="tbtn" to={`/settings${c.settingsAnchor ?? "#environment"}`}>
                       Settings
                     </Link>
+                    <Link className="tbtn" to="/doctor">
+                      Doctor
+                    </Link>
                   </div>
                 </div>
               ))}

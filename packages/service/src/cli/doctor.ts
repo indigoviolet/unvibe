@@ -1,32 +1,24 @@
 /**
  * `unvibe doctor`: environment checks (PRD §14 install path).
  *
- * Informational: always exits 0, marking each check ok / missing / warn so
- * a fresh machine without agent CLIs still reports cleanly. `gh` is probed
+ * Informational: always exits 0 unless `--strict` is given (then exits 1
+ * when any check is not ok), marking each check ok / warn / fail so a
+ * fresh machine without agent CLIs still reports cleanly. `gh` is probed
  * with `GITHUB_TOKEN` unset (PRD §15) so a scoped token in the environment
  * can neither help nor break the check.
  *
- * Shared checks (PATH lookup, `gh` auth, `git` version) live in
- * `../readiness/checks.js` so `GET /api/readiness` reuses the same logic.
+ * One shared diagnostics module (`../diagnostics/`) is used by both
+ * `unvibe doctor` and the running service (`GET /api/diagnostics`), so
+ * they cannot disagree from the same environment. Doctor additionally
+ * reports what the running service sees (over the local API with the
+ * token) and says plainly when they differ.
  */
-import { execFile } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import { isHealthOk } from "./lock.js";
-import { resolveLoginShellPath } from "../exec/shell-path.js";
-import {
-  agentBinSpec,
-  meetsMinVersion,
-  parseVersion,
-  resolveAgentBin,
-} from "../exec/agent-bins.js";
-import {
-  D2_MIN,
-  d2InstallHint,
-  meetsD2MinVersion,
-  parseD2Version,
-  resolveD2Bin,
-} from "../diagrams/bins.js";
+import { collectDiagnostics, formatDiagnosticsText } from "../diagnostics/report.js";
+import type { DiagnosticsResponse } from "@unvibe/shared";
 import {
   findOnPath as sharedFindOnPath,
   ghAuthStatus as sharedGhAuth,
@@ -40,33 +32,22 @@ export interface DoctorCheck {
   detail: string;
 }
 
-function execTimeout(
-  cmd: string,
-  args: string[],
-  opts: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    execFile(cmd, args, { timeout: opts.timeoutMs ?? 10_000, env: opts.env ?? process.env }, (err, stdout, stderr) => {
-      resolve({
-        code: err ? 1 : 0,
-        stdout: String(stdout ?? "").trim(),
-        stderr: String(stderr ?? "").trim(),
-      });
-    });
-  });
-}
-
 /** Minimal `command -v` (shared with readiness; re-exported for compat). */
 export function findOnPath(name: string, pathValue: string = process.env.PATH ?? ""): string | null {
   return sharedFindOnPath(name, pathValue);
 }
 
-async function toolVersion(cmd: string, args: string[]): Promise<string | null> {
-  // Absolute paths (resolved bins) run directly; bare names need a PATH hit.
-  if (!cmd.includes("/") && !sharedFindOnPath(cmd)) return null;
-  const r = await execTimeout(cmd, args);
-  if (r.code !== 0) return null;
-  return r.stdout.split("\n")[0];
+/**
+ * `gh auth status` with GITHUB_TOKEN unset (PRD §15). Shared with
+ * readiness (see `../readiness/checks.js`); kept here for compat.
+ */
+export async function ghAuthStatus(): Promise<{ present: boolean; loggedIn: boolean; detail: string }> {
+  return sharedGhAuth(new RealCommandRunner());
+}
+
+export interface DoctorOptions {
+  port: number;
+  dataDir: string;
 }
 
 function portTaken(port: number, timeoutMs = 2000): Promise<boolean> {
@@ -83,17 +64,86 @@ function portTaken(port: number, timeoutMs = 2000): Promise<boolean> {
   });
 }
 
-/**
- * `gh auth status` with GITHUB_TOKEN unset (PRD §15). Shared with
- * readiness (see `../readiness/checks.js`); kept here for compat.
- */
-export async function ghAuthStatus(): Promise<{ present: boolean; loggedIn: boolean; detail: string }> {
-  return sharedGhAuth(new RealCommandRunner());
+/** Full diagnostics from doctor's own environment (same module as the service). */
+export async function getDoctorDiagnostics(opts: DoctorOptions): Promise<DiagnosticsResponse> {
+  return collectDiagnostics({
+    dataDir: opts.dataDir,
+    port: opts.port,
+    service: {
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      cwd: process.cwd(),
+      dataDir: opts.dataDir,
+      port: opts.port,
+      startMode: "doctor",
+      nodeVersion: process.version,
+      serviceVersion: "doctor",
+    },
+  });
 }
 
-export interface DoctorOptions {
-  port: number;
-  dataDir: string;
+/** Ask the running service what it sees (over the local API with the token). */
+export async function fetchServiceDiagnostics(port: number, token: string, timeoutMs = 8000): Promise<DiagnosticsResponse | null> {
+  return new Promise((resolve) => {
+    try {
+      const req = http.get(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/api/diagnostics",
+          timeout: timeoutMs,
+          headers: { authorization: `Bearer ${token}` },
+        },
+        (res) => {
+          if (res.statusCode !== 200) {
+            res.resume();
+            resolve(null);
+            return;
+          }
+          let body = "";
+          res.on("data", (d) => (body += d.toString()));
+          res.on("end", () => {
+            try {
+              resolve(JSON.parse(body) as DiagnosticsResponse);
+            } catch {
+              resolve(null);
+            }
+          });
+        },
+      );
+      req.on("timeout", () => {
+        req.destroy();
+        resolve(null);
+      });
+      req.on("error", () => resolve(null));
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/** Plain-words diff between doctor's view and the service's view. */
+export function diffDiagnostics(local: DiagnosticsResponse, remote: DiagnosticsResponse): string[] {
+  const out: string[] = [];
+  if (local.path.effectivePath !== remote.path.effectivePath) {
+    out.push(
+      `PATH differs: doctor sees ${local.path.effectivePath.split(":").length} dirs via ${local.path.shell}, service sees ${remote.path.effectivePath.split(":").length} dirs via ${remote.path.shell}. ` +
+        `Only in doctor: ${local.path.onlyInInherited.slice(0, 3).join(", ") || "(none)"}; only in service: ${remote.path.onlyInInherited.slice(0, 3).join(", ") || "(none)"}. ` +
+        `Fix the machine (rc files, then restart the service) and see the Doctor page (/doctor).`,
+    );
+  }
+  const byTool = new Map(remote.tools.map((t) => [t.tool, t]));
+  for (const lt of local.tools) {
+    const rt = byTool.get(lt.tool);
+    if (!rt) continue;
+    if (lt.chosen !== rt.chosen) {
+      out.push(
+        `${lt.tool} differs: doctor chose ${lt.chosen ?? "(none)"} (${lt.chosenReason}), service chose ${rt.chosen ?? "(none)"} (${rt.chosenReason}). ` +
+          `The service was started with a different PATH; restart it after fixing the shell config.`,
+      );
+    }
+  }
+  return out;
 }
 
 export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
@@ -107,7 +157,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
   });
 
   const runner = new RealCommandRunner();
-  const git = (await sharedGitVersion(runner)) ?? (await toolVersion("git", ["--version"]));
+  const git = await sharedGitVersion(runner);
   checks.push({ name: "git", status: git ? "ok" : "fail", detail: git ?? "not on PATH" });
 
   const gh = await ghAuthStatus();
@@ -117,89 +167,45 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
     detail: gh.detail,
   });
 
-  // Agent CLIs: report the exact executable the adapter will run (path +
-  // version) and whether it meets the adapter's minimum. Missing → how to
-  // install (Unvibe never installs them). Login state is probed by readiness
-  // (listModels); doctor stays token-free and only checks presence+version.
-  const loginPathForAgents = (await resolveLoginShellPath().catch(() => null))?.merged ?? process.env.PATH ?? "";
-  for (const agent of ["claude", "codex"] as const) {
-    const spec = agentBinSpec(agent);
-    const bin = resolveAgentBin(agent, { pathValue: loginPathForAgents });
-    if (!bin) {
-      checks.push({
-        name: agent,
-        status: "warn",
-        detail: `not on login-shell PATH. ${spec.installHint}`,
-      });
-      continue;
-    }
-    const raw = await toolVersion(bin.path, ["--version"]);
-    const ver = raw ? parseVersion(raw) : null;
-    if (ver && !meetsMinVersion(agent, ver)) {
-      checks.push({
-        name: agent,
-        status: "warn",
-        detail: `${spec.cli} ${ver} at ${bin.path} (via ${bin.source}); Unvibe needs ≥ ${spec.minVersion}. ${spec.updateHint}`,
-      });
-    } else if (raw) {
-      checks.push({
-        name: agent,
-        status: "ok",
-        detail: `${raw} at ${bin.path} (via ${bin.source})`,
-      });
-    } else {
-      checks.push({
-        name: agent,
-        status: "warn",
-        detail: `found at ${bin.path} (via ${bin.source}) but --version failed; ensure ${spec.cli} runs and is logged in`,
-      });
-    }
-  }
-
-  // D2 diagrams: warning (not failure) when missing/too old. Nothing else
-  // in a review fails because d2 is absent; diagrams show source instead.
-  const d2bin = resolveD2Bin({ pathValue: loginPathForAgents });
-  if (!d2bin) {
-    checks.push({
-      name: "d2",
-      status: "warn",
-      detail: `not on login-shell PATH. ${d2InstallHint()}`,
-    });
-  } else {
-    const raw = await toolVersion(d2bin.path, ["--version"]);
-    const ver = raw ? parseD2Version(raw) : null;
-    if (ver && !meetsD2MinVersion(ver)) {
-      checks.push({
-        name: "d2",
-        status: "warn",
-        detail: `d2 ${ver} at ${d2bin.path} (via ${d2bin.source}); Unvibe needs ≥ ${D2_MIN}. Update d2, then Re-check.`,
-      });
-    } else if (raw) {
-      checks.push({
-        name: "d2",
-        status: "ok",
-        detail: `${raw} at ${d2bin.path} (via ${d2bin.source})`,
-      });
-    } else {
-      checks.push({
-        name: "d2",
-        status: "warn",
-        detail: `found at ${d2bin.path} (via ${d2bin.source}) but --version failed; ensure d2 runs`,
-      });
-    }
-  }
-
+  // Agent CLIs + d2 + node via the shared diagnostics module (same as the
+  // service): every candidate, skip-broken choice, version only from success.
+  let diag: DiagnosticsResponse | null = null;
   try {
-    const login = await resolveLoginShellPath();
+    diag = await getDoctorDiagnostics(opts);
+  } catch {
+    diag = null;
+  }
+  if (diag) {
+    for (const t of diag.tools) {
+      if (t.tool === "node") continue; // already reported above
+      if (t.tool === "git" || t.tool === "gh") continue; // already reported above
+      const status = t.chosen ? (t.warnings.length > 0 ? "ok" : "ok") : "warn";
+      // A tool with warnings but a working choice is still ok (doctor is
+      // informational); the detail names the choice + why + warnings.
+      const warnSuffix = t.warnings.length > 0 ? ` Warnings: ${t.warnings.join(" ")}` : "";
+      const candSuffix =
+        t.candidates.length > 1
+          ? ` (${t.candidates.length} candidates; chose ${t.chosen ?? "none"}: ${t.chosenReason})`
+          : t.chosen
+            ? ` at ${t.chosen} (${t.chosenReason})`
+            : ` (${t.chosenReason})`;
+      // Missing tool → warn (fresh machine without CLIs still reports cleanly).
+      checks.push({
+        name: t.tool,
+        status: t.chosen ? status : "warn",
+        detail: `${t.chosen ? `${t.tool} ${t.candidates.find((c) => c.path === t.chosen)?.version ?? ""}`.trim() : t.tool}${candSuffix}.${warnSuffix} See the Doctor page (/doctor) for every candidate and full error text.`,
+      });
+    }
     checks.push({
       name: "login-shell PATH",
-      status: login ? "ok" : "warn",
-      detail: login
-        ? `from ${login.shell}: ${login.merged}`
-        : "no login shell answered; using inherited PATH",
+      status: diag.path.shell === "(none answered)" ? "warn" : "ok",
+      detail:
+        diag.path.shell === "(none answered)"
+          ? "no login shell answered; using inherited PATH"
+          : `from ${diag.path.shell}: ${diag.path.effectivePath} (probed ${diag.path.probedPath.length > 0 ? "ok" : "empty"}; ${diag.path.onlyInProbed.length} only in shell, ${diag.path.onlyInInherited.length} only inherited)`,
     });
-  } catch (err) {
-    checks.push({ name: "login-shell PATH", status: "warn", detail: String(err) });
+  } else {
+    checks.push({ name: "diagnostics", status: "warn", detail: "diagnostics probe failed; using inherited PATH" });
   }
 
   try {
@@ -214,8 +220,6 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
   if (!taken) {
     checks.push({ name: "port", status: "ok", detail: `${opts.port} is free` });
   } else if (await isHealthOk(opts.port)) {
-    // Our own service (or another Unvibe with the same data dir layout):
-    // the default port stays stable so the installed PWA keeps working.
     checks.push({ name: "port", status: "ok", detail: `${opts.port} is in use by an Unvibe service (unvibe status)` });
   } else {
     checks.push({
@@ -231,3 +235,5 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
 export function formatDoctor(checks: DoctorCheck[]): string {
   return checks.map((c) => `[${c.status}] ${c.name}: ${c.detail}`).join("\n");
 }
+
+export { formatDiagnosticsText };
