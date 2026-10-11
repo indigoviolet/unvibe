@@ -13,7 +13,7 @@
  * - read-only enforcement (write file / shell does not succeed)
  * - model + thinking listing
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
