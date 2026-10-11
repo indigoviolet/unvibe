@@ -10,13 +10,40 @@
 // workspaces. `npm install -g github:<org>/unvibe#release` installs it with
 // no flags. Nothing is pushed (CI pushes on tag).
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RELEASE = path.join(ROOT, "release");
+
+/**
+ * urllib3's licence as it actually is: MIT (upstream `LICENSE.txt`,
+ * https://github.com/urllib3/urllib3/blob/main/LICENSE.txt — do not assume;
+ * this text was read from that file and is quoted here verbatim).
+ */
+const URLLIB3_MIT = `MIT License
+
+Copyright (c) 2008-2020 Andrey Petrov and contributors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`;
 
 const RUNTIME_DEPS = [
   "fastify",
@@ -46,12 +73,21 @@ const needed = [
   "packages/service/dist/adapters/claude.js",
   "packages/service/dist/adapters/codex.js",
   "packages/web/dist/index.html",
+  "packages/web/dist/web-meta.json",
 ];
 for (const f of needed) {
   if (!existsSync(path.join(ROOT, f))) {
     console.error(`release: missing ${f} — run \`mise run build\` first`);
     process.exit(1);
   }
+}
+
+// `--print-notices`: emit THIRD-PARTY-NOTICES.md to stdout without doing a
+// release (used by the staleness test to verify coverage of the current
+// build + fixture without packing a tarball or touching git).
+if (process.argv.includes("--print-notices")) {
+  console.log(buildNotices());
+  process.exit(0);
 }
 
 // 2. Assemble the tree (same relative layout as the repo so the service's
@@ -191,16 +227,29 @@ function commitTree() {
 }
 
 /**
- * THIRD-PARTY-NOTICES.md from the esbuild metafiles of the three bundles:
- * every npm package contributing bundled code, with version + license, the
- * full Apache-2.0 text (covers all Apache-licensed bundled code), and the
- * Anthropic SDK license note.
+ * THIRD-PARTY-NOTICES.md from the esbuild metafiles of the three service
+ * bundles plus the web build's module list (`web-meta.json`, written by the
+ * `unvibe-web-meta` Vite plugin — no hand-kept list):
+ * - every npm package contributing bundled code, with version + license;
+ * - the full Apache-2.0 text (covers all Apache-licensed bundled code) and
+ *   the Anthropic SDK license note (as before);
+ * - the full MIT texts for MIT-licensed web packages (issue #14);
+ * - the bundled web fonts: `@fontsource/*` copyrights, the SIL Open Font
+ *   License 1.1 text, and the shipped font asset files;
+ * - the demo fixture (urllib3/urllib3#5020 diff + PR description) with
+ *   attribution and urllib3's licence;
+ * - the pre-rendered D2 demo diagrams, which embed Source Sans Pro font
+ *   subsets written by `d2` 0.9.0;
+ * - a pointer to Unvibe's own MIT LICENSE (shipped separately).
+ *
+ * Do not change which things are bundled: this only describes them.
  */
 function buildNotices() {
   const bundles = [
     ["service dist/index.js", "packages/service/dist/meta.json"],
     ["adapter dist/adapters/claude.js", "packages/service/dist/adapters/claude-meta.json"],
     ["adapter dist/adapters/codex.js", "packages/service/dist/adapters/codex-meta.json"],
+    ["web dist/assets", "packages/web/dist/web-meta.json"],
   ];
   /** key `${name}@${version}` -> { name, version, license, in: Set } */
   const found = new Map();
@@ -233,13 +282,18 @@ function buildNotices() {
     }
   }
   const rows = [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const webRows = rows.filter((r) => r.in.has("web dist/assets"));
   const lines = [
     "# Third-party notices (bundled code)",
     "",
-    "The release tree ships esbuild bundles that include code from these npm",
+    "The release tree ships bundles that include code from these npm",
     "packages (the release `dependencies` are only the small runtime set the",
-    "service bundle loads externally; everything below is inlined). Legal",
-    "comments from the original sources are also preserved in the bundles.",
+    "service bundle loads externally; everything below is inlined). The",
+    "service and adapter rows come from the esbuild metafiles; the web rows",
+    "come from the Vite/Rollup build's module list",
+    "(`packages/web/dist/web-meta.json`, written by the `unvibe-web-meta`",
+    "plugin — not a hand-kept list). Legal comments from the original",
+    "sources are also preserved in the bundles.",
     "",
     "| Package | Version | License | Bundled in |",
     "|---|---|---|---|",
@@ -264,6 +318,188 @@ function buildNotices() {
     "https://code.claude.com/docs/en/legal-and-compliance.",
     "",
   );
+  lines.push(...webMitTexts(webRows));
+  lines.push(...webFontNotices(webRows));
+  lines.push(...fixtureNotices());
+  lines.push(...d2DiagramNotices());
+  lines.push(
+    "## Unvibe's own licence",
+    "",
+    "Unvibe itself is MIT-licensed. Its licence ships separately as `LICENSE`",
+    "at the root of this release tree and is not repeated here.",
+    "",
+  );
   console.log(`release: notices for ${rows.length} bundled packages`);
   return lines.join("\n");
+}
+
+/**
+ * Full MIT licence texts for the MIT-licensed web rows (deduped by text;
+ * each lists the packages it applies to). The web bundle is minified, so
+ * the table row alone does not carry the copyright + permission notice MIT
+ * requires in redistributions.
+ */
+function webMitTexts(webRows) {
+  /** text -> { text, packages: string[] } */
+  const byText = new Map();
+  for (const r of webRows) {
+    if (r.license !== "MIT") continue;
+    const text = readWebLicenseText(r.name);
+    if (!text) continue;
+    if (!byText.has(text)) byText.set(text, { text, packages: [] });
+    byText.get(text).packages.push(`${r.name}@${r.version}`);
+  }
+  if (byText.size === 0) return [];
+  const lines = ["## Web bundle MIT licences", ""];
+  for (const { text, packages } of [...byText.values()].sort((a, b) => a.packages[0].localeCompare(b.packages[0]))) {
+    lines.push(`The following MIT text applies to: ${packages.sort().join(", ")}.`, "", text.trim(), "");
+  }
+  return lines;
+}
+
+/** Full text of `node_modules/<name>/LICENSE*` (first match wins). */
+function readWebLicenseText(name) {
+  const dir = path.join(ROOT, "node_modules", name);
+  const candidates = ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md"];
+  for (const c of candidates) {
+    const p = path.join(dir, c);
+    if (existsSync(p)) return readFileSync(p, "utf8");
+  }
+  return null;
+}
+
+/**
+ * Bundled web fonts (issue #14): every `@fontsource/*` package in the web
+ * build, with version, the copyright/reserved-name notice as the package
+ * states it, the shipped font asset files, and the SIL Open Font License
+ * 1.1 text the packages license under (confirmed in each package's
+ * `LICENSE` + `package.json` `"license": "OFL-1.1"`).
+ */
+function webFontNotices(webRows) {
+  const fonts = webRows.filter((r) => r.name.startsWith("@fontsource/"));
+  if (fonts.length === 0) return [];
+  const lines = ["## Web fonts (SIL Open Font License 1.1)", ""];
+  const oflBodies = new Map();
+  for (const f of fonts.sort((a, b) => a.name.localeCompare(b.name))) {
+    const full = readWebLicenseText(f.name) ?? "";
+    const { head, body } = splitFontLicense(full);
+    lines.push(`- ${f.name}@${f.version}: ${head.replace(/\s+/g, " ").trim()}`);
+    if (body && !oflBodies.has(body)) oflBodies.set(body, f.name);
+  }
+  lines.push(
+    "",
+    "The fonts are compiled into the web build as",
+    "`packages/web/dist/assets/*.woff` / `*.woff2` (from the `@fontsource/*`",
+    "`files/` directories). This release ships these font files:",
+    "",
+  );
+  for (const f of listDistFiles("packages/web/dist/assets", [".woff", ".woff2"])) {
+    lines.push(`- packages/web/dist/assets/${f}`);
+  }
+  lines.push("");
+  if (oflBodies.size === 1) {
+    lines.push("All of the above fonts use the same licence text (SIL Open Font License 1.1):", "");
+    lines.push(`(as stated in ${[...oflBodies.values()][0]}/LICENSE)`, "", [...oflBodies.keys()][0].trim(), "");
+  } else {
+    for (const [body, owner] of oflBodies) {
+      lines.push(`Licence text (as stated in ${owner}/LICENSE):`, "", body.trim(), "");
+    }
+  }
+  return lines;
+}
+
+/** Split a `@fontsource` LICENSE into copyright head + OFL body. */
+function splitFontLicense(full) {
+  const marker = full.indexOf("SIL OPEN FONT LICENSE");
+  if (marker < 0) return { head: full.trim(), body: "" };
+  // The head is the copyright/reserved-name notice; the body starts at the
+  // dash rule above the OFL title when present.
+  const rule = full.lastIndexOf("---", marker);
+  const bodyStart = rule >= 0 ? rule : marker;
+  const head = full.slice(0, bodyStart).replace(/-+\s*$/, "").trim();
+  return { head, body: full.slice(bodyStart).trim() };
+}
+
+function listDistFiles(relDir, exts) {
+  const dir = path.join(ROOT, relDir);
+  try {
+    return readdirSync(dir).filter((e) => exts.some((x) => e.endsWith(x))).sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Demo fixture (issue #14): `fixtures/urllib3-5020/` carries the diff and
+ * PR description from urllib3/urllib3#5020, shipped in the release tree so
+ * the demo works offline.
+ */
+function fixtureNotices() {
+  const files = listDistFiles("fixtures/urllib3-5020", [".md", ".json"]);
+  const recordings = listDistFiles("fixtures/urllib3-5020/recordings", [".md"]);
+  const diagrams = listDistFiles("fixtures/urllib3-5020/diagrams", [".svg"]);
+  const lines = [
+    "## Demo fixture (urllib3/urllib3#5020)",
+    "",
+    "The `fixtures/urllib3-5020/` directory in this release (demo diff, PR",
+    "description, recordings, snapshot and pre-rendered diagrams) derives",
+    "from urllib3/urllib3 pull request #5020:",
+    "",
+    "- upstream repository: https://github.com/urllib3/urllib3",
+    "- pull request: https://github.com/urllib3/urllib3/pull/5020",
+    "  (\"Unfold obsolete folded response headers\")",
+    "",
+    "Fixture files shipped:",
+    "",
+  ];
+  for (const f of files) lines.push(`- fixtures/urllib3-5020/${f}`);
+  for (const r of recordings) lines.push(`- fixtures/urllib3-5020/recordings/${r}`);
+  for (const d of diagrams) lines.push(`- fixtures/urllib3-5020/diagrams/${d}`);
+  lines.push(
+    "",
+    "urllib3 is MIT-licensed. Its licence file (upstream",
+    "`LICENSE.txt`, verified October 2026) reads:",
+    "",
+    URLLIB3_MIT.trim(),
+    "",
+  );
+  return lines;
+}
+
+/**
+ * Pre-rendered D2 demo diagrams (issue #14): the SVGs in
+ * `fixtures/urllib3-5020/diagrams/` embed WOFF font subsets written by
+ * `d2` 0.9.0 (the pinned diagram renderer). The embedded subsets are
+ * Source Sans Pro Bold and Italic (decoded from the SVGs' own font name
+ * tables): © 2010–2018 Adobe Systems Incorporated, Reserved Font Name
+ * 'Source', licensed under the SIL Open Font License 1.1 — the same
+ * licence text reproduced in the Web fonts section above, which covers
+ * these subsets too.
+ */
+function d2DiagramNotices() {
+  const diagrams = listDistFiles("fixtures/urllib3-5020/diagrams", [".svg"]);
+  if (diagrams.length === 0) return [];
+  return [
+    "## Demo diagrams (D2-embedded Source Sans Pro subsets)",
+    "",
+    "The pre-rendered demo SVGs embed WOFF font subsets produced by `d2`",
+    "(pinned version 0.9.0 in `mise.toml`; rendered with `--bundle=false`,",
+    "so the subsets travel inside the SVG files themselves):",
+    "",
+    ...diagrams.map((d) => `- fixtures/urllib3-5020/diagrams/${d}`),
+    "",
+    "Each SVG's embedded font name table identifies the source font as",
+    "Source Sans Pro (Bold and/or Italic subsets):",
+    "",
+    "- Copyright © 2010-2018 Adobe Systems Incorporated",
+    "  (http://www.adobe.com/), with Reserved Font Name 'Source'.",
+    "- Licence: SIL Open Font License, Version 1.1 — see the full text in",
+    "  the Web fonts section above (same licence, same obligations:",
+    "  keep this copyright notice with the licence text).",
+    "",
+    "`d2` itself is not shipped in this release (it runs on the",
+    "developer's machine to re-render diagrams); only these SVG outputs",
+    "and their embedded subsets ship here.",
+    "",
+  ];
 }
