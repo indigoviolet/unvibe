@@ -1,0 +1,137 @@
+{
+  "annotations.state": {
+    "threads": 12,
+    "deletionsSideT3": 4,
+    "before": "for t1 hello-persist",
+    "after": "for t1 hello-persist",
+    "survived": true,
+    "focusedAfter": "t1"
+  },
+  "annotations.close": {
+    "t2count": 4,
+    "t2textareas": 3
+  },
+  "annotations.split": {
+    "threads": 12
+  },
+  "gutter.shadowStructure": [
+    {
+      "host": "DIFFS-CONTAINER.",
+      "hasShadow": true,
+      "numFound": true,
+      "slots": 6,
+      "slotNames": [
+        "header-prefix",
+        "header-filename-suffix",
+        "header-metadata",
+        "annotation-additions-86",
+        "annotation-additions-86",
+        "annotation-deletions-619"
+      ]
+    },
+    {
+      "host": "DIFFS-CONTAINER.",
+      "hasShadow": true,
+      "numFound": true,
+      "slots": 3,
+      "slotNames": [
+        "header-prefix",
+        "header-filename-suffix",
+        "header-metadata"
+      ]
+    },
+    {
+      "host": "DIFFS-CONTAINER.",
+      "hasShadow": true,
+      "numFound": true,
+      "slots": 3,
+      "slotNames": [
+        "header-prefix",
+        "header-filename-suffix",
+        "header-metadata"
+      ]
+    },
+    {
+      "host": "DIFFS-CONTAINER.",
+      "hasShadow": true,
+      "numFound": true,
+      "slots": 3,
+      "slotNames": [
+        "header-prefix",
+        "header-filename-suffix",
+        "header-metadata"
+      ]
+    }
+  ],
+  "gutter.plusButtons": {
+    "count": 4
+  },
+  "selection.shadow": {
+    "shadowHosts": 4,
+    "selectedText": "src/urllib3/",
+    "selectionVisibleInDocument": true,
+    "hasGetComposedRanges": true,
+    "anchorInfo": {
+      "tag": "BDI",
+      "dataLine": null
+    },
+    "composedRanges": 1
+  },
+  "theming": {
+    "light": {
+      "headerText": "",
+      "headerFile": true,
+      "separators": 497,
+      "fontFamily": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "fontSize": "13px"
+    },
+    "shadowHosts": 4,
+    "darkSample": "rgb(250, 250, 250) / rgb(10, 10, 10)"
+  },
+  "csp.network": {
+    "nonLocalRequests": [],
+    "cspViolations": [
+      "The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element."
+    ],
+    "threadsRendered": 1
+  },
+  "perf.large": {
+    "perfText": "files=300 paintAfterMount=22573ms",
+    "shadowHosts": 300,
+    "memory": "179MB",
+    "afterScroll": {
+      "shadowHosts": 300,
+      "errors": "none"
+    }
+  },
+  "a11y.keyboard": {
+    "firstFocus": "A#.",
+    "canTabToAnnotationTextarea": true
+  },
+  "size.build": {
+    "spikeAssets": 313,
+    "spikeRawKB": 10387,
+    "spikeGzipKB": 2038,
+    "biggest": [
+      "angular-ts-BwZT4LLn.js: raw=180KB gzip=16KB",
+      "asciidoc-Ve4PFQV2.js: raw=128KB gzip=9KB",
+      "blade-D4QpJJKB.js: raw=103KB gzip=28KB",
+      "cpp-CofmeUqb.js: raw=611KB gzip=44KB",
+      "emacs-lisp-C9XAeP06.js: raw=762KB gzip=191KB",
+      "index-9pmgORFm.js: raw=917KB gzip=267KB",
+      "javascript-wDzz0qaB.js: raw=171KB gzip=16KB",
+      "jsx-g9-lgVsj.js: raw=174KB gzip=16KB",
+      "mdx-Cmh6b_Ma.js: raw=133KB gzip=23KB",
+      "objective-c-DXmwc3jG.js: raw=103KB gzip=23KB",
+      "objective-cpp-CLxacb5B.js: raw=168KB gzip=30KB",
+      "php-Dhbhpdrm.js: raw=108KB gzip=28KB",
+      "tsx-COt5Ahok.js: raw=171KB gzip=16KB",
+      "typescript-BPQ3VLAy.js: raw=177KB gzip=16KB",
+      "vue-vine-CQOfvN7w.js: raw=186KB gzip=18KB",
+      "wasm-CG6Dc4jp.js: raw=608KB gzip=225KB",
+      "wolfram-lXgVvXCa.js: raw=256KB gzip=75KB"
+    ],
+    "oursRawKB": 943,
+    "oursGzipKB": 490
+  }
+}

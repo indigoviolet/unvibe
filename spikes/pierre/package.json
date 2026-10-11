@@ -1,0 +1,25 @@
+{
+  "name": "pierre-spike",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Time-boxed evaluation of @pierre/diffs + @pierre/trees (issue #22). Not part of the build.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "shots": "node scripts/shots.mjs",
+    "measure": "node scripts/measure.mjs"
+  },
+  "dependencies": {
+    "@pierre/diffs": "1.5.2",
+    "@pierre/trees": "1.0.0-beta.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "shiki": "^3.7.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
