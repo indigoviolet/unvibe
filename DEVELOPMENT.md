@@ -10,6 +10,16 @@ mise run dev        # service + Vite dev server together
 
 Secrets (Sentry DSNs, Axiom) come from a 1Password Environment, never from files in the repo. `.env` (gitignored, loaded by `mise.toml`) holds only `OP_SERVICE_ACCOUNT_TOKEN` and `OP_ENVIRONMENT_ID`; `mise run op -- <cmd>` runs `<cmd>` under `op run --environment`. `dev`, `dev:mock`, `build` and `start` go through it; tests, `check` and the `test:live:*` tasks do not. With no `.env` (CI, a fresh clone) the wrapper runs the command without secrets. Never print secret values. `paseo.json` copies `.env` into new Paseo worktrees.
 
+### Sentry (dev only)
+
+Errors go to Sentry when the DSNs are in the env, which in practice means under `mise run op`; with no DSN nothing loads and nothing is sent.
+
+- **Service** (`SENTRY_DSN_SERVICE`, `packages/service/src/telemetry/sentry.ts`): uncaught exceptions and unhandled rejections, route faults (5xx, not 4xx replies) and jobs that end in `error`. Applies to `mise run dev` and `mise run start`. Other code reports through `reportError(err, extra)`, a no-op when Sentry is off.
+- **Web** (`SENTRY_DSN_REACT`, `packages/web/src/sentry.ts`): uncaught errors and unhandled rejections, in the Vite dev server only (`mise run dev`, `mise run dev:mock`). `vite build` defines the DSN as `""`, so the built app served by the service does not report.
+- `SENTRY_ENVIRONMENT` overrides the service's environment tag (default `development`).
+
+Neither SDK ships: both are devDependencies, `@sentry/node` is external to the service bundle and imported only when the DSN is set, and `@sentry/react` never enters the web build (`network-guards.test.ts` fails if it does). Releases keep the PRD §16 privacy guarantee.
+
 The repo is npm workspaces (`packages/*`), TypeScript strict ESM. SQLite comes from the built-in `node:sqlite`, so installs need no compiler. Code must work on macOS and Linux: use `node:path`/`node:os`, never hard-code home dirs, no GNU-only flags.
 
 ## Tasks
