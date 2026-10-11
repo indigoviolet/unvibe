@@ -446,8 +446,11 @@ UI); nothing below was edited by this pass.
   `routes/prompts.ts` serves template + expanded).
 - Settings shows template + expanded with L0–L4 marks, tokens, cache part
   — met (`settings.spec.ts`, `prompts-route.test.ts`).
-- Diagrams: Mermaid with citation tokens in labels — met
-  (`reply-format.md` §5, `interaction/mermaid.ts`, bundled Mermaid, no CDN).
+- Diagrams: D2 with `link:` citations on shapes/connections — met
+  (`reply-format.md` §5, `prompts/includes/d2-convention.md` single source,
+  `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
+  SVG sanitisation, `GET /api/reviews/:id/diagrams/:hash?theme=` endpoint;
+  Mermaid removed entirely per user direction, PRD §19.4 resolved as D2).
 
 ## §14 Shell, install, security, storage — all met
 
@@ -603,8 +606,14 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
    were slightly off) — `docs/m0-acp-spike.md` table.
 8. Trailing fenced JSON block for structured output (PRD §19.3 resolved
    for it: 20/20 live parses) — `docs/m0-acp-spike.md`.
-9. Diagrams are Mermaid with citation tokens in labels (PRD §19.4
-   resolved) — bundled, no CDN.
+9. Diagrams are D2 with `link:` citations (PRD §19.4 resolved as D2;
+   Mermaid removed entirely at the user's direction — no compat path, no
+   stored data to preserve). Honest tension with the PRD's "nothing extra
+   to install": D2 needs a user-installed `d2` binary (≥ 0.9.0, the only
+   version the reliability run vouches for). This is a user decision
+   recorded in `docs/diagram-options.md` §7: reviews work fully without
+   it (diagrams show source with a Settings → Environment note), and the
+   demo ships pre-rendered SVGs so it needs nothing.
 10. Acronym: second-opinion `workspace-write` (not `read-only`) for Codex
     (`read-only` refuses MCP calls) — `docs/acp-runner.md` quirks 6–7.
 

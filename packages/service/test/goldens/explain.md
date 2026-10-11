@@ -42,5 +42,9 @@ Why does this matter for Set-Cookie?
   line instead of explaining.
 - A reader who disagrees with the card should get the honest alternative,
   not a defence of the card.
+- If a diagram helps, use a fenced `d2` block per the D2 convention
+  (prompts/includes/d2-convention.md): `direction: right`, link: "diff:…"
+  cites inline on 2-3 shapes/connections, ≤12 shapes/16 connections, no
+  icon/imports/markdown labels/layers/vars/classes/tooltip:.
 - End with the trailing `json` block carrying the `anchor` (the selected
   `quote` and the host block's ID).

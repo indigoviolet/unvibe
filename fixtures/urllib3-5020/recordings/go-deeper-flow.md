@@ -1,9 +1,13 @@
-```mermaid
-flowchart TB
-    sock["Server sends a folded header"] --> client["http.client parses into HTTPMessage<br>value keeps CRLF [[diff:conn:650-651]]"]
-    client --> norm["_normalize_header_values<br>OWS CRLF RWS becomes one space"]
-    norm --> dict["HTTPHeaderDict<br>r.headers"]
-    norm --> msg["HTTPMessage, same object<br>Requests' cookie jar [[diff:tsock:139-146]]"]
+```d2
+direction: right
+sock: "Server sends a folded header"
+client: "http.client parses into HTTPMessage" {link: "diff:conn:650-651"}
+norm: "_normalize_header_values"
+dict: "HTTPHeaderDict r.headers"
+msg: "HTTPMessage same object" {link: "diff:tsock:139-146"}
+sock -> client -> norm
+norm -> dict
+norm -> msg
 ```
 
 Caption: Where a response's headers go after parsing, and the one place they are now unfolded.

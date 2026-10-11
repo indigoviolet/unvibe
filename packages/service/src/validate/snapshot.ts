@@ -31,7 +31,7 @@ function blockText(block: Block): string {
     case "code":
       return block.code;
     case "diagram":
-      return [block.mermaid, block.caption ?? ""].join("\n");
+      return [block.source, block.caption ?? ""].join("\n");
     case "finding-link":
       return block.pageId;
     case "comment-link":

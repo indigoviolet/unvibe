@@ -28,9 +28,10 @@ Simpler: old servers split headers across lines.
 x = _normalize("a")
 \`\`\`
 
-\`\`\`mermaid
-flowchart LR
-    A["wire [[diff:conn:650-651]]"] --> B["clean"]
+\`\`\`d2
+direction: right
+wire -> clean: unfold
+wire: "On the wire" {link: "diff:conn:650-651"}
 \`\`\`
 
 Caption: The flow. [[diff:tsock:139-146]]
@@ -149,10 +150,33 @@ describe("parseBlocks golden", () => {
     expect(blocks[0].citations).toEqual([{ target: "bogus:1" }]);
   });
 
+  it("treats mermaid fences as code, not diagrams (Mermaid removed)", () => {
+    const blocks = parseBlocks("```mermaid\nflowchart LR\n```\n");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("code");
+    if (blocks[0].type !== "code") return;
+    expect(blocks[0].language).toBe("mermaid");
+  });
+
+  it("parses d2 fences with link: cites and round-trips the caption", () => {
+    const blocks = parseBlocks('```d2\ndirection: right\na -> b: go {link: "diff:conn:1-2"}\n```\n\nCaption: Flow.\n');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("diagram");
+    if (blocks[0].type !== "diagram") return;
+    expect(blocks[0].source).toContain('link: "diff:conn:1-2"');
+    expect(blocks[0].citations).toEqual([{ target: "diff:conn:1-2" }]);
+    expect(blocks[0].caption).toContain("Flow.");
+    const back = parseBlocks(renderMarkdown(blocks));
+    expect(back).toHaveLength(1);
+    expect(back[0].type).toBe("diagram");
+    if (back[0].type !== "diagram") return;
+    expect(back[0].source).toBe(blocks[0].source);
+  });
+
   it("round-trips blocks through renderMarkdown", () => {
     // Citation tokens are block-level: rendering appends them at the end,
     // so interior spacing may differ while structure stays identical.
-    // Compare with prose whitespace-normalised (code/mermaid/tables exact).
+    // Compare with prose whitespace-normalised (code/d2/tables exact).
     const normText = (s: string): string => s.replace(/\s+/g, " ").trim();
     const norm = (blocks: import("../src/entities.js").Block[]): unknown =>
       blocks.map((b) => {
@@ -204,7 +228,7 @@ Growing tail with a token cut off mid-[[diff:conn:8`;
   });
 
   it("withholds an unclosed fence but keeps closed ones", () => {
-    const closed = "```mermaid\nA-->B\n```\n\nTail growing";
+    const closed = "```d2\na -> b\n```\n\nTail growing";
     const partial = parsePartial(closed);
     expect(partial.map((b) => b.type)).toEqual(["diagram"]);
     const unclosed = "Done.\n\n```python\nx = 1";

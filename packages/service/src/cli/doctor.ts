@@ -21,6 +21,13 @@ import {
   resolveAgentBin,
 } from "../exec/agent-bins.js";
 import {
+  D2_MIN,
+  d2InstallHint,
+  meetsD2MinVersion,
+  parseD2Version,
+  resolveD2Bin,
+} from "../diagrams/bins.js";
+import {
   findOnPath as sharedFindOnPath,
   ghAuthStatus as sharedGhAuth,
   gitVersion as sharedGitVersion,
@@ -145,6 +152,39 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
         name: agent,
         status: "warn",
         detail: `found at ${bin.path} (via ${bin.source}) but --version failed; ensure ${spec.cli} runs and is logged in`,
+      });
+    }
+  }
+
+  // D2 diagrams: warning (not failure) when missing/too old. Nothing else
+  // in a review fails because d2 is absent; diagrams show source instead.
+  const d2bin = resolveD2Bin({ pathValue: loginPathForAgents });
+  if (!d2bin) {
+    checks.push({
+      name: "d2",
+      status: "warn",
+      detail: `not on login-shell PATH. ${d2InstallHint()}`,
+    });
+  } else {
+    const raw = await toolVersion(d2bin.path, ["--version"]);
+    const ver = raw ? parseD2Version(raw) : null;
+    if (ver && !meetsD2MinVersion(ver)) {
+      checks.push({
+        name: "d2",
+        status: "warn",
+        detail: `d2 ${ver} at ${d2bin.path} (via ${d2bin.source}); Unvibe needs ≥ ${D2_MIN}. Update d2, then Re-check.`,
+      });
+    } else if (raw) {
+      checks.push({
+        name: "d2",
+        status: "ok",
+        detail: `${raw} at ${d2bin.path} (via ${d2bin.source})`,
+      });
+    } else {
+      checks.push({
+        name: "d2",
+        status: "warn",
+        detail: `found at ${d2bin.path} (via ${d2bin.source}) but --version failed; ensure d2 runs`,
       });
     }
   }

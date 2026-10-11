@@ -10,7 +10,7 @@ It works on Linux. macOS is untested (see `docs/macos-testing.md`). The release 
 
 ## Requirements
 
-Node 24 or newer, `git`, and `gh` logged in (needed for PRs and submitting; local branches work without it). For the guide itself, the `claude` and/or `codex` CLIs installed and logged in. Unvibe uses those logins and does not install the CLIs for you. Minimum versions: Codex 0.160.1, Claude Code 2.1.293.
+Node 24 or newer, `git`, and `gh` logged in (needed for PRs and submitting; local branches work without it). For the guide itself, the `claude` and/or `codex` CLIs installed and logged in. Unvibe uses those logins and does not install the CLIs for you. Minimum versions: Codex 0.160.1, Claude Code 2.1.293. Diagrams in the guide are drawn by the `d2` program (0.9.0 or newer; `brew install d2`, or see d2lang.com); without it everything else works and diagrams show as their source text.
 
 ## Install and run
 
@@ -66,13 +66,13 @@ The Settings page picks the model for each role (main, small, second opinion) an
 | `UNVIBE_DATA_DIR` | `~/.local/share/unvibe` | You want data elsewhere. |
 | `UNVIBE_IDLE_MS` | `600000` | Idle exit timeout; `<=0` disables it. |
 | `UNVIBE_AGENT` | live agents | `replay` for the demo without tokens. |
-| `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN` | login-shell PATH | A CLI lives somewhere unusual. |
+| `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN` / `UNVIBE_D2_BIN` | login-shell PATH | A program lives somewhere unusual. |
 
 ## Your data and the network
 
 Everything lives under the data dir: the SQLite database, the token, and a worktree per review where the agents read the code. Removing a review in the UI deletes its data and its worktree; your checkout is left alone. Full removal: `unvibe stop`, `unvibe setup --uninstall`, then delete the data dir and the checkout.
 
-The service and the web app talk only to `127.0.0.1`. The only network traffic goes through tools you already use: `gh` and `git` for GitHub and fetching, and the `claude`/`codex` CLIs for the agent calls, all under your own logins. How this is enforced is in `ARCHITECTURE.md` and `DEVELOPMENT.md`.
+The service and the web app talk only to `127.0.0.1`. The only network traffic goes through tools you already use: `gh` and `git` for GitHub and fetching, and the `claude`/`codex` CLIs for the agent calls, all under your own logins. `d2` runs locally and is given no network access. How this is enforced is in `ARCHITECTURE.md` and `DEVELOPMENT.md`.
 
 ## Troubleshooting
 
@@ -80,6 +80,7 @@ The service and the web app talk only to `127.0.0.1`. The only network traffic g
 
 - `gh not logged in` → `gh auth login`. Local branches still work.
 - `claude`/`codex` missing or too old → install or update the CLI, make sure it is on the login-shell PATH, then Re-check.
+- Diagrams show as text → install `d2` 0.9.0 or newer, make sure it is on the login-shell PATH, then Re-check.
 - Port in use by something else → set `UNVIBE_PORT` to a free port.
 - A failed agent job shows its error on the card with a retry. Jobs interrupted by a restart come back marked and can be resumed.
 - Opening a review whose checkout moved or was deleted says so and names the missing directory.

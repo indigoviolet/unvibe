@@ -20,6 +20,13 @@ import {
   resolveAgentBin,
   versionTooOldMessage,
 } from "../exec/agent-bins.js";
+import {
+  D2_MIN,
+  d2InstallHint,
+  meetsD2MinVersion,
+  parseD2Version,
+  resolveD2Bin,
+} from "../diagrams/bins.js";
 
 /** Minimal `command -v`: search PATH for an executable file. */
 export function findOnPath(name: string, pathValue: string = process.env.PATH ?? ""): string | null {
@@ -471,5 +478,64 @@ export function distinctCheck(settings: Settings): ReadinessCheck {
     summary: "Second opinion differs from main",
     fix: "",
     settingsAnchor: "#models",
+  };
+}
+
+/**
+ * D2 diagram check (docs/diagram-options.md §7).
+ *
+ * Warning, never error: diagrams need `d2` but nothing else in a review
+ * may fail because it is absent. Missing/too old → warning with install
+ * hints; present → ok with path + version.
+ */
+export async function d2Check(opts: {
+  pathValue?: string;
+  timeoutMs?: number;
+  runner?: CommandRunner;
+  env?: NodeJS.ProcessEnv;
+}): Promise<ReadinessCheck> {
+  const pathValue = opts.pathValue ?? process.env.PATH ?? "";
+  const env = opts.env ?? process.env;
+  const bin = resolveD2Bin({ env, pathValue });
+  if (!bin) {
+    return {
+      id: "d2",
+      label: "Diagrams · d2",
+      status: "warning",
+      summary: "Diagrams need d2 (not found on login-shell PATH)",
+      fix: `${d2InstallHint()} Then Re-check. Reviews still work; diagrams show their source until d2 is installed.`,
+      settingsAnchor: "#environment",
+    };
+  }
+  let version: string | null = null;
+  if (opts.runner) {
+    try {
+      const r = await runWithTimeout(
+        opts.runner.run(bin.path, { args: ["--version"] }),
+        Math.min(opts.timeoutMs ?? 8000, 8000),
+        () => ({ stdout: "", stderr: "timed out", code: 1 }),
+      );
+      version = parseD2Version(`${r.stdout}\n${r.stderr}`);
+    } catch {
+      version = null;
+    }
+    if (version && !meetsD2MinVersion(version)) {
+      return {
+        id: "d2",
+        label: "Diagrams · d2",
+        status: "warning",
+        summary: `Diagrams need d2 ≥ ${D2_MIN} (running ${version} at ${bin.path})`,
+        fix: `Update d2, then Re-check. Reviews still work; diagrams show their source until d2 is updated.`,
+        settingsAnchor: "#environment",
+      };
+    }
+  }
+  return {
+    id: "d2",
+    label: "Diagrams · d2",
+    status: "ok",
+    summary: version ? `d2 ${version} at ${bin.path} (via ${bin.source})` : `d2 at ${bin.path} (via ${bin.source})`,
+    fix: "",
+    settingsAnchor: "#environment",
   };
 }

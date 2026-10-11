@@ -62,7 +62,7 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   { re: /go[-_ ]deeper|placeholder card|\bgenerate\b/i, kind: "go-deeper" },
   { re: /\bdepth\b|simpler|\bdeeper\b/i, kind: "depth" },
   { re: /examples?/i, kind: "examples" },
-  { re: /diagram|mermaid/i, kind: "diagram" },
+  { re: /\bdiagram\b|\bd2\b/i, kind: "diagram" },
   { re: /\bexplain\b/i, kind: "explain" },
   { re: /\bask\b|question|thread/i, kind: "ask" },
   { re: /second opinion/i, kind: "second-opinion" },
