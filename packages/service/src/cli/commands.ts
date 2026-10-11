@@ -14,7 +14,6 @@ import os from "node:os";
 import { loadOrCreateToken } from "../auth.js";
 import { loadConfig } from "../config.js";
 import { isHealthOk, isPidAlive, readLock, removeLock, removeOwnLock, waitForHealth, writeLock } from "./lock.js";
-import { formatDoctor, runDoctor } from "./doctor.js";
 import { installSetup, resolveSetupPaths, uninstallSetup } from "./setup/index.js";
 
 export const CLI_USAGE = [

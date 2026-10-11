@@ -16,7 +16,6 @@ import {
   agentBinSpec,
   meetsMinVersion,
   missingBinMessage,
-  parseVersion,
   resolveAgentBin,
   versionTooOldMessage,
 } from "../exec/agent-bins.js";

@@ -13,7 +13,7 @@ import { migrate } from "../src/store/migrate.js";
 import { JobQueue } from "../src/jobs/queue.js";
 import { createApp } from "../src/server.js";
 import { SettingsStore } from "../src/settings/index.js";
-import type { ModelCatalog, OfferedModels } from "../src/settings/index.js";
+import type { ModelCatalog } from "../src/settings/index.js";
 import { claudeCapabilityScore, selectDefaultModels } from "../src/settings/defaults.js";
 
 const CLAUDE_CAPTURED = [
