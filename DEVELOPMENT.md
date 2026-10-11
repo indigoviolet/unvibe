@@ -144,15 +144,91 @@ Minimum agent versions are enforced in code (`src/exec/agent-bins.ts`): Codex �
 
 ## Releases
 
-`mise run release` builds first, then `scripts/release.mjs` assembles `./release/`, packs `unvibe-<version>.tgz` at the repo root, and points the local orphan `release` branch at exactly that tree (one commit, no history). Nothing is pushed; `.github/workflows/release.yml` pushes on tag.
+### How to cut a release
 
-The release tree is self-contained: built service bundle (`packages/service/dist/index.js` plus bundled adapter entries `dist/adapters/`), the web build, `prompts/`, the demo fixture, `README.md`, `THIRD-PARTY-NOTICES.md`, and a generated dependency-lean `package.json` (runtime deps only, no workspaces, no lifecycle scripts). Users install it with no flags:
+Finals go through `mise run release:tag` (see `scripts/release-tag.mjs`):
 
 ```sh
-npm install -g github:indigoviolet/unvibe#release
+git checkout main && git pull
+mise run release:tag -- 0.0.1   # checks clean tree, on main, CI green for HEAD
+git push origin main v0.0.1      # the tag push triggers .github/workflows/release.yml
 ```
 
-Installing from the default branch is unsupported: it is the source tree, not an installable package. The release itself is not published yet (issue #8).
+The script bumps the version everywhere it lives (root + workspace
+`package.json`s, the `@unvibe/shared` cross-dep, `SERVICE_VERSION`,
+`MCP_SERVICE_VERSION`, `package-lock.json`), commits the bump, and creates
+tag `v<version>`. Candidates need no bump — tag the candidate commit
+directly (`git tag v0.0.1-rc.1 && git push origin v0.0.1-rc.1`); the workflow
+takes the version from the tag and patches the built bundle, so the source
+can stay at the base version.
+
+Tag → branch → install command:
+
+| Tag | Version | Branch (pushed) | Pre-release | Install |
+|---|---|---|---|---|
+| `v0.0.1` | `0.0.1` | `release` | no | `npm install -g github:indigoviolet/unvibe#release` |
+| `v0.0.1-rc.1` | `0.0.1-rc.1` | `release-rc` | yes | `npm install -g github:indigoviolet/unvibe#release-rc` |
+
+Candidates never overwrite the `release` ref users install from.
+
+### What the workflow does
+
+`.github/workflows/release.yml` runs on tag pushes (`v*`), on Ubuntu and
+macOS: `mise run install`, `mise run check` (before the build, from a clean
+tree — same order as CI), derive version/branch from the tag, `mise run
+release` (build + `scripts/release.mjs`: release tree, `unvibe-<version>.tgz`
+at the root with stale tarballs removed first, local orphan branch via
+`update-ref`), then `node scripts/global-install-check.mjs` against the
+pushed ref (tarball + git ref on npm 11 and 10, no flags, doctor/start/demo
+from the installed copy, `--version` must match the package). Only Ubuntu
+then force-pushes the release branch (an orphan with one commit, so every
+publish is non-fast-forward by design — force is confined to these refs),
+writes notes with `scripts/release-notes.mjs` (commits since the previous
+tag, or a fixed text for the first release), and attaches the tarball to the
+GitHub release (`softprops/action-gh-release`, `prerelease: true` for
+`-rc.` tags).
+
+### Private-repo install story
+
+The repo is private. The git-ref install needs git credentials with access
+(`gh auth login`, then `gh auth setup-git` so git uses `gh` as credential
+helper). The tarball asset is private too: a bare
+`https://github.com/…/releases/download/…` URL 404s without authentication.
+Download it first, then install the file:
+
+```sh
+gh release download v0.0.1 -p 'unvibe-*.tgz'
+npm install -g ./unvibe-0.0.1.tgz
+```
+
+### How to roll back a bad release
+
+The `release` branch is one orphan commit pointing at a tree; moving it back
+is a ref update, and the GitHub release + tag are deleted and re-cut:
+
+```sh
+# Point release back at the previous good tree (from the workflow's commit list,
+# or rebuild it locally with `mise run release` on the good source commit).
+git push --force origin <good-release-sha>:refs/heads/release
+gh release delete v0.0.1 --repo indigoviolet/unvibe --yes
+git push origin :refs/tags/v0.0.1 && git tag -d v0.0.1
+# Fix forward on main, then re-tag when CI is green.
+```
+
+Deleting a candidate keeps the same shape (`release-rc`, `v0.0.1-rc.N`).
+
+### Local checks
+
+`mise run release` (build + tree + tarball + local branch, no push) and
+`mise run check-global-install` (release, then tarball + git ref on npm
+10/11 with isolated caches) exercise the same scripts the workflow runs.
+`UNVIBE_RELEASE_VERSION` / `UNVIBE_RELEASE_BRANCH` (or `--version` /
+`--branch`) override the version and branch; `--release-ref` / `--tarball`
+select what the install check verifies.
+
+The release tree is self-contained: built service bundle (`packages/service/dist/index.js` plus bundled adapter entries `dist/adapters/`), the web build, `prompts/`, the demo fixture, `README.md`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, and a generated dependency-lean `package.json` (runtime deps only, no workspaces, no lifecycle scripts).
+
+Installing from the default branch is unsupported: it is the source tree, not an installable package.
 
 ## Conventions
 

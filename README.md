@@ -6,7 +6,7 @@ Unvibe reads a branch or pull request with you. It restates the change as a guid
 
 ## Status
 
-It works on Linux. macOS is untested (see `docs/macos-testing.md`). The release install is not published yet (issue [#8](https://github.com/indigoviolet/unvibe/issues/8)), so today you run it from a checkout. Open work is tracked at [github.com/indigoviolet/unvibe/issues](https://github.com/indigoviolet/unvibe/issues).
+It works on Linux. macOS is untested (see `docs/macos-testing.md`). Install the release with `npm install -g github:indigoviolet/unvibe#release` (the repo is private: `gh auth login` and `gh auth setup-git` first, so git can fetch it). Open work is tracked at [github.com/indigoviolet/unvibe/issues](https://github.com/indigoviolet/unvibe/issues).
 
 ## Requirements
 
@@ -14,19 +14,19 @@ Node 24 or newer, `git`, and `gh` logged in (needed for PRs and submitting; loca
 
 ## Install and run
 
-From a checkout (`mise` supplies the Node toolchain):
+```sh
+npm install -g github:indigoviolet/unvibe#release
+unvibe setup
+unvibe open
+```
+
+The same command updates. From a checkout instead (`mise` supplies the Node toolchain; see `DEVELOPMENT.md`):
 
 ```sh
 git clone https://github.com/indigoviolet/unvibe && cd unvibe
 mise run install && mise run build
 node packages/service/dist/index.js setup
 node packages/service/dist/index.js open
-```
-
-Once the release is published, this will install it instead (not yet available):
-
-```sh
-npm install -g github:indigoviolet/unvibe#release
 ```
 
 `unvibe setup` registers the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. Nothing starts at login, and the service exits after 10 minutes with no open window and no running jobs. `unvibe setup --uninstall` removes the handler.

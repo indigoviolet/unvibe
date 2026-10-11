@@ -3,7 +3,13 @@
 // (built service bundle + bundled ACP adapter entries + web build +
 // prompts/fixture/README/notices + a generated dependency-lean package.json),
 // pack `unvibe-<version>.tgz` at the repo root, and point the local orphan
-// `release` branch at exactly that tree (one commit, no history).
+// release branch at exactly that tree (one commit, no history).
+//
+// The version comes from package.json, or from the tag when set
+// (--version / UNVIBE_RELEASE_VERSION / GITHUB_REF_NAME like v0.0.1-rc.1).
+// The branch is --branch / UNVIBE_RELEASE_BRANCH, defaulting to release-rc
+// for -rc versions and release for finals, so candidates never overwrite
+// the `release` ref users install from.
 //
 // The release package needs no build step and no lifecycle scripts on the
 // user's machine: no `prepare`, no `postinstall`, no devDependencies, no
@@ -64,8 +70,56 @@ function sh(cmd, args, cwd) {
 }
 
 const srcPkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
-const version = srcPkg.version;
-console.log(`release: unvibe ${version}`);
+
+function flagValue(name) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : null;
+}
+
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  console.log(`usage: node scripts/release.mjs [--version <semver>] [--branch <name>] [--print-notices]
+  --version  override the release version (default: package.json; in CI, the tag via GITHUB_REF_NAME)
+  --branch   local branch to point at the release tree (default: release-rc for -rc versions, else release)
+  env: UNVIBE_RELEASE_VERSION, UNVIBE_RELEASE_BRANCH, GITHUB_REF_NAME (tag like v0.0.1-rc.1)`);
+  process.exit(0);
+}
+
+function stripV(v) {
+  return v.startsWith("v") ? v.slice(1) : v;
+}
+
+/**
+ * Release version: explicit --version, else UNVIBE_RELEASE_VERSION, else the
+ * tag name when running on a tag (GITHUB_REF_NAME=v0.0.1-rc.1 → 0.0.1-rc.1),
+ * else package.json. The generated package.json version and the tarball name
+ * both come from this, so the tag and the artifact always agree.
+ */
+function resolveVersion() {
+  const explicit = flagValue("--version") ?? process.env.UNVIBE_RELEASE_VERSION ?? null;
+  if (explicit) return stripV(explicit);
+  const ref = process.env.GITHUB_REF_NAME ?? "";
+  if (/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(ref)) return stripV(ref);
+  return srcPkg.version;
+}
+
+/**
+ * Release branch: explicit --branch, else UNVIBE_RELEASE_BRANCH, else
+ * release-rc for -rc versions and release for finals. RC candidates must
+ * never overwrite the `release` ref a user installs from.
+ */
+function resolveBranch(ver) {
+  const explicit = flagValue("--branch") ?? process.env.UNVIBE_RELEASE_BRANCH ?? null;
+  if (explicit) return explicit;
+  return ver.includes("-rc.") ? "release-rc" : "release";
+}
+
+const version = resolveVersion();
+if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
+  console.error(`release: bad version ${JSON.stringify(version)} — want X.Y.Z with optional -rc.N`);
+  process.exit(1);
+}
+const releaseBranch = resolveBranch(version);
+console.log(`release: unvibe ${version} (source package.json ${srcPkg.version}, branch ${releaseBranch})`);
 
 // 1. Required build output must exist (`mise run release` builds first).
 const needed = [
@@ -159,13 +213,39 @@ const releasePkg = {
 writeFileSync(path.join(RELEASE, "package.json"), JSON.stringify(releasePkg, null, 2) + "\n");
 console.log(`release: dependencies: ${Object.entries(deps).map(([k, v]) => `${k}@${v}`).join(", ")}`);
 
-// 5. Tarball at the repo root.
+// 4b. When the release version differs from the source (RC candidates like
+// 0.0.1-rc.1 built from a 0.0.1 tree), patch the release tree's service
+// bundle so `unvibe --version` and /api/health report the tag version.
+// Final releases match by construction (release:tag bumps the source first).
+if (version !== srcPkg.version) {
+  const distIndex = path.join(RELEASE, "packages/service/dist/index.js");
+  let dist = readFileSync(distIndex, "utf8");
+  const svcFrom = `SERVICE_VERSION = "${srcPkg.version}"`;
+  const mcpFrom = `MCP_SERVICE_VERSION = "${srcPkg.version}"`;
+  if (!dist.includes(svcFrom) || !dist.includes(mcpFrom)) {
+    console.error(`release: cannot patch versions in the bundle (want ${svcFrom} and ${mcpFrom})`);
+    process.exit(1);
+  }
+  dist = dist.split(svcFrom).join(`SERVICE_VERSION = "${version}"`).split(mcpFrom).join(`MCP_SERVICE_VERSION = "${version}"`);
+  writeFileSync(distIndex, dist);
+  console.log(`release: patched bundle versions ${srcPkg.version} -> ${version}`);
+}
+
+// 5. Tarball at the repo root (remove stale ones first so unvibe-*.tgz
+// globs in CI attach exactly one file).
+for (const e of readdirSync(ROOT)) {
+  if (e.startsWith("unvibe-") && e.endsWith(".tgz")) rmSync(path.join(ROOT, e), { force: true });
+}
 const tarball = sh("npm", ["pack", "--pack-destination", ROOT], RELEASE);
 console.log(`release: tarball ${tarball}`);
+if (tarball !== `unvibe-${version}.tgz`) {
+  console.error(`release: tarball name ${tarball} does not match version ${version}`);
+  process.exit(1);
+}
 
-// 6. Point the local orphan `release` branch at exactly this tree.
-sh("git", ["update-ref", "refs/heads/release", commitTree()], ROOT);
-console.log(`release: branch release -> ${sh("git", ["rev-parse", "--short", "release"], ROOT)}`);
+// 6. Point the local orphan release branch at exactly this tree.
+sh("git", ["update-ref", `refs/heads/${releaseBranch}`, commitTree()], ROOT);
+console.log(`release: branch ${releaseBranch} -> ${sh("git", ["rev-parse", "--short", releaseBranch], ROOT)}`);
 console.log(`release: tree ${RELEASE} (no push performed)`);
 
 /**
@@ -212,7 +292,7 @@ function commitTree() {
   const msg =
     `unvibe release ${version} (source ${(head.stdout ?? "").trim().slice(0, 12)} ${new Date().toISOString().slice(0, 10)})\n` +
     `\nSelf-contained install tree: no prepare/postinstall, no devDependencies. ` +
-    `Install with \`npm install -g github:<org>/unvibe#release\`.`;
+    `Install with \`npm install -g github:<org>/unvibe#${releaseBranch}\`.`;
   const commit = spawnSync("git", [...releaseIdentityArgs(), "commit-tree", (tree.stdout ?? "").trim(), "-m", msg], {
     cwd: ROOT,
     env,

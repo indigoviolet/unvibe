@@ -249,6 +249,18 @@ reasoned from package metadata, not run here):
 **Send back:** `npm install -g` output, `ls -la $(npm root
 -g)/unvibe | head`, `du -sh $(npm root -g)/unvibe`, and `unvibe doctor`.
 
+> 2026-10-11 (release workflow, issue #8): the `#release` / `#release-rc`
+> git refs and the attached tarballs install with no flags on npm 10 and 11
+> on both CI legs (Ubuntu + macOS), each verified with doctor/start/demo
+> from the installed copy (`global-install-check`: tarball ~4s / git ~6–7s
+> on npm 11, ~8–10s on npm 10; ~42 MB apparent / ~63 MB on disk; demo 6
+> cards, 2 findings, 8 hunk summaries; pre-rendered d2 v0.9.0 diagrams
+> served as SVG). The repo is private: run `gh auth login` and
+> `gh auth setup-git` before the git-ref install, and fetch the tarball with
+> `gh release download <tag> -p 'unvibe-*.tgz'` (a bare releases/download URL
+> 404s without auth). Candidates install from `#release-rc`
+> (`v0.0.1-rc.3` verified from GitHub: `--version` matches the tag).
+
 ## 9. Uninstall the helper (30 s)
 
 ```
