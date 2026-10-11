@@ -462,20 +462,43 @@ describe("diagrams endpoint", () => {
 // --- real binary (skipped without d2) ----------------------------------------
 
 function realD2Available(): boolean {
+  // Synchronous gate only (async probe happens inside the test, which
+  // skips on failure). A shim without an installed version resolves but
+  // fails to run — the test then skips with a notice.
   const bin = resolveD2Bin({});
-  return !!bin;
+  if (!bin) return false;
+  try {
+    fs.accessSync(bin.path, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 describe("real d2 binary", () => {
-  it("renders the three reference diagrams deterministically", async () => {
+  async function realBin(): Promise<{ runner: InstanceType<typeof import("../src/exec/runner.js").RealCommandRunner>; path: string } | null> {
     if (!realD2Available()) {
       console.warn("SKIP real-d2: d2 not on PATH (run `mise install d2` or `brew install d2` to run)");
-      return;
+      return null;
     }
     const { RealCommandRunner } = await import("../src/exec/runner.js");
-    const { renderD2Theme, checkD2Source, D2_THEME_LIGHT, D2_THEME_DARK } = await import("../src/diagrams/render.js");
+    const { probeD2Version } = await import("../src/diagrams/render.js");
     const runner = new RealCommandRunner();
     const bin = resolveD2Bin({})!;
+    const version = await probeD2Version(runner, bin.path).catch(() => null);
+    if (!version || !meetsD2MinVersion(version)) {
+      console.warn(`SKIP real-d2: d2 at ${bin.path} unusable (version ${version ?? "unknown"}; need ≥ 0.9.0)`);
+      return null;
+    }
+    return { runner, path: bin.path };
+  }
+
+  it("renders the three reference diagrams deterministically", async () => {
+    const real = await realBin();
+    if (!real) return;
+    const { renderD2Theme, checkD2Source, D2_THEME_LIGHT, D2_THEME_DARK } = await import("../src/diagrams/render.js");
+    const { runner } = real;
+    const bin = { path: real.path };
     const sources = ["diagram-fold.md", "diagram-path.md"].map((f) =>
       fs.readFileSync(path.join(fixturesDir, "recordings", f), "utf8"),
     );
@@ -496,7 +519,8 @@ describe("real d2 binary", () => {
   });
 
   it("icon: sources never reach the network (precheck blocks; probe sees zero)", async () => {
-    if (!realD2Available()) {
+    const real = await realBin();
+    if (!real) {
       console.warn("SKIP real-d2 network: d2 not on PATH");
       return;
     }
@@ -509,10 +533,9 @@ describe("real d2 binary", () => {
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     const port = (server.address() as { port: number }).port;
     try {
-      const { RealCommandRunner } = await import("../src/exec/runner.js");
       const { renderD2Theme, D2_THEME_LIGHT } = await import("../src/diagrams/render.js");
-      const runner = new RealCommandRunner();
-      const bin = resolveD2Bin({})!;
+      const { runner } = real;
+      const bin = { path: real.path };
       const src = `a: {icon: http://127.0.0.1:${port}/icon.svg}\na -> b`;
       const r = await renderD2Theme(src, { runner, binPath: bin.path, salt: "probe", theme: D2_THEME_LIGHT });
       expect(r.ok).toBe(false);
@@ -524,14 +547,14 @@ describe("real d2 binary", () => {
   });
 
   it("imports cannot read files (precheck blocks; empty cwd fails direct runs)", async () => {
-    if (!realD2Available()) {
+    const real = await realBin();
+    if (!real) {
       console.warn("SKIP real-d2 fs: d2 not on PATH");
       return;
     }
-    const { RealCommandRunner } = await import("../src/exec/runner.js");
     const { renderD2Theme, D2_THEME_LIGHT } = await import("../src/diagrams/render.js");
-    const runner = new RealCommandRunner();
-    const bin = resolveD2Bin({})!;
+    const { runner } = real;
+    const bin = { path: real.path };
     const secretDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-secret-"));
     const secretFile = path.join(secretDir, "secret.txt");
     fs.writeFileSync(secretFile, "TOP-SECRET-CONTENT");

@@ -14,7 +14,7 @@
  * cite validation, mark `unavailable`, and render later on demand when the
  * binary appears (the diagrams endpoint does it).
  */
-import { canonicalizeD2Source, canonicalizeTarget, diagramHash, D2_VERSION_UNKNOWN } from "@unvibe/shared";
+import { canonicalizeD2Source, canonicalizeTarget, diagramHash } from "@unvibe/shared";
 import type { Citation, DiagramBlock } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import type { ReviewLookup } from "../validate/lookup.js";

@@ -140,7 +140,7 @@ async function finalizeFresh(
   ctx: ActionContext,
   fresh: Block[],
 ): Promise<{ blocks: Block[]; needsRepair: boolean; messages: string[] }> {
-  const { pipeline, reviews, reviewId } = ctx;
+  const { pipeline, reviewId } = ctx;
   const lookup = pipeline.lookupForDiagrams(reviewId);
   const d2bin = resolveD2Bin({});
   let d2version: string | null = null;

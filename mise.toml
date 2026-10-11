@@ -93,3 +93,7 @@ run = "mise run build && node scripts/live-pipeline.mjs"
 [tasks."test:live:second-opinion"]
 description = "Live second-opinion check: blind on one finding with real agents (main=Claude, second=Codex; small token spend; never run by check)"
 run = "mise run build && node scripts/live-second-opinion.mjs"
+
+[tasks."test:live:diagram"]
+description = "Live D2 diagram check: real diagram action per provider with cite + render asserts (needs logins, d2; small token spend; never run by check)"
+run = "mise run build && node scripts/live-diagram.mjs"
