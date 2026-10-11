@@ -128,21 +128,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+import { DiagramStatusError } from "./diagram.js";
+
 /**
  * `409` from the diagram endpoint: the hash is known but has no SVG
  * (binary missing/too old, or the source failed to compile). Thrown typed
  * so the diagram component renders the matching fallback branch.
+ * Re-exported here (the class itself lives in the leaf `./diagram.js`
+ * so the mock can import it without an import cycle).
  */
-export class DiagramStatusError extends Error {
-  status: "unavailable" | "error";
-  detail?: string;
-  constructor(status: "unavailable" | "error", detail?: string) {
-    super(`diagram ${status}${detail ? `: ${detail}` : ""}`);
-    this.name = "DiagramStatusError";
-    this.status = status;
-    this.detail = detail;
-  }
-}
+export { DiagramStatusError };
 
 /**
  * Same auth as `request`, but returns raw text: diagram SVGs are

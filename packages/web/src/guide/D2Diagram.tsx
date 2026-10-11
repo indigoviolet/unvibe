@@ -5,14 +5,16 @@
  * the web app only inlines the cached SVG for the current theme:
  * - fetch `/api/reviews/:id/diagrams/:hash?theme=` as text through the API
  *   client (an `<img src>` could neither carry the token header nor keep
- *   the citation anchors interactive);
+ *   the citation anchors interactive) whenever the block carries a hash —
+ *   including `unavailable`/`error` blocks, for which the endpoint serves
+ *   fixture seeds or renders on demand;
  * - in-memory cache by hash+theme; refetch on theme change;
  * - loading state reserves height so the page does not jump;
  * - the SVG is adopted via `d2sanitize.ts` (DOMParser + defensive pass +
  *   per-instance id/CSS namespacing), never `dangerouslySetInnerHTML`;
- * - `render.status: "unavailable"` shows the D2 source with a short note
- *   + link to Settings → Environment; `"error"` shows the source with the
- *   error text. Neither breaks the card.
+ * - `render.status: "unavailable"` with no usable SVG behind it shows the
+ *   D2 source with a short note + link to Settings → Environment;
+ *   `"error"` shows the source with the error text. Neither breaks the card.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -90,23 +92,23 @@ export function d2SourceOf(block: DiagramBlock): string {
 export function D2Diagram({ reviewId, block, fetchSvg }: Props): React.JSX.Element {
   const theme = usePageTheme();
   const hostRef = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<LoadState>(() => {
-    const render = block.render;
-    if (!render || render.status === "unavailable") {
-      return { kind: "fallback", note: "unavailable", message: render?.error ?? "" };
-    }
-    if (render.status === "error" || !render.hash) {
-      return { kind: "fallback", note: "error", message: render?.error ?? "This diagram could not be rendered." };
-    }
-    return { kind: "loading" };
-  });
-
   const render = block.render;
   const status = render?.status;
   const hash = render?.hash ?? "";
+  // Fetch whenever there is a hash to address: the endpoint serves
+  // fixture-seeded SVGs — and renders on demand when the binary is
+  // present — even for `unavailable`/`error` blocks, healing them to ok.
+  // Only a missing hash (nothing to fetch by) falls back immediately.
+  const [state, setState] = useState<LoadState>(() => {
+    if (hash !== "") return { kind: "loading" };
+    if (!render || status === "unavailable") {
+      return { kind: "fallback", note: "unavailable", message: render?.error ?? "" };
+    }
+    return { kind: "fallback", note: "error", message: render?.error ?? "This diagram could not be rendered." };
+  });
 
   useEffect(() => {
-    if (status !== "ok" || !hash) return;
+    if (!hash) return;
     let cancelled = false;
     setState({ kind: "loading" });
     const key = `${hash}:${theme}`;

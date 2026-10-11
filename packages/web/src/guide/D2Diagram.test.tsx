@@ -158,12 +158,27 @@ describe("D2Diagram status branches", () => {
     expect(document.querySelector(".dg-svg a[href='#']")).not.toBeNull();
   });
 
-  it("shows the source with a Settings note when unavailable", () => {
+  it("fetches an unavailable block by hash: a served SVG still renders", async () => {
+    // The endpoint serves fixture seeds (and renders on demand) even for
+    // `unavailable` blocks: only a missing hash skips the fetch.
     const fetchSvg = vi.fn(async () => CITED);
     renderD2(
       <D2Diagram
         reviewId="demo"
         block={d2Block({ source: "a -> b", render: { hash: "h2", status: "unavailable", error: "no binary" } })}
+        fetchSvg={fetchSvg}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
+    expect(fetchSvg).toHaveBeenCalledWith("demo", "h2", "light");
+  });
+
+  it("shows the source with a Settings note when unavailable and hash-less", () => {
+    const fetchSvg = vi.fn(async () => CITED);
+    renderD2(
+      <D2Diagram
+        reviewId="demo"
+        block={d2Block({ source: "a -> b", render: { hash: "", status: "unavailable", error: "no binary" } })}
         fetchSvg={fetchSvg}
       />,
     );
@@ -173,17 +188,26 @@ describe("D2Diagram status branches", () => {
     expect(screen.getByRole("link", { name: /Settings → Environment/ })).toHaveAttribute("href", "/settings#environment");
   });
 
-  it("shows the source with the error text on error", () => {
+  it("shows the source with the error text on error without a hash", () => {
     renderD2(
       <D2Diagram
         reviewId="demo"
-        block={d2Block({ source: "a - broken", render: { hash: "h3", status: "error", error: "boom" } })}
+        block={d2Block({ source: "a - broken", render: { hash: "", status: "error", error: "boom" } })}
         fetchSvg={vi.fn(async () => CITED)}
       />,
     );
     expect(screen.getByText("a - broken")).toBeInTheDocument();
     expect(screen.getByText(/could not be rendered/)).toBeInTheDocument();
     expect(screen.getByText(/boom/)).toBeInTheDocument();
+  });
+
+  it("maps a 409 error to the source fallback with its detail", async () => {
+    const fetchSvg = vi.fn(async (): Promise<string> => {
+      throw new DiagramStatusError("error", "bad link");
+    });
+    renderD2(<D2Diagram reviewId="demo" block={d2Block({ source: "a -> b" })} fetchSvg={fetchSvg} />);
+    await waitFor(() => expect(screen.getByText(/could not be rendered/)).toBeInTheDocument());
+    expect(screen.getByText(/bad link/)).toBeInTheDocument();
   });
 
   it("maps a 409 unavailable to the source fallback without fetching again", async () => {
