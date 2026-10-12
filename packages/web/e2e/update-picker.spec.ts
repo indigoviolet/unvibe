@@ -1,8 +1,9 @@
 /**
- * Version picker in mock mode (issue #36, step 2, PRD §4.14): the toggle,
- * grouped channels with the current one marked, a simulated switch (the
- * page reloads onto the preview + badge), and a simulated rollback (the
- * reason shows in place, still on release).
+ * Version picker in mock mode (issue #36, step 2, PRD §4.14): the toggle
+ * above the card, the current version line, one aligned row per version
+ * with the current one marked, a simulated switch (the page reloads onto
+ * the preview + badge), and a simulated rollback (the reason shows in
+ * place, still on release).
  */
 import { expect, test } from "./network-guard.js";
 
@@ -33,19 +34,24 @@ test.beforeEach(async ({ page }) => {
 test("picker is off by default: only the toggle shows", async ({ page }) => {
   await expect(page.getByTestId("version-picker-toggle")).not.toBeChecked();
   await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(0);
-  await expect(page.getByText("Off — list preview builds")).toBeVisible();
+  await expect(page.getByText("Turn it on to list available versions and switch the installed app from here.")).toBeVisible();
 });
 
-test("enable lists grouped channels with the current one marked", async ({ page }) => {
+test("enable lists one aligned row per version with the current one marked", async ({ page }) => {
   await enablePicker(page);
-  await expect(page.getByText("Release candidates")).toBeVisible();
-  await expect(page.getByText("Previews")).toBeVisible();
+  await expect(page.getByTestId("update-current-version")).toContainText("Current version: release");
+  await expect(page.getByText("Versions")).toBeVisible();
   const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
-  await expect(feat).toContainText("feat/x");
   await expect(feat).toContainText("abc1234");
+  await expect(feat.getByRole("button", { name: "Switch to preview/feat-x" })).toHaveText("Switch");
   const release = page.locator('[data-testid="update-channel"][data-ref="release"]');
   await expect(release.getByTestId("update-current")).toBeVisible();
-  await expect(page.getByTestId("update-refresh")).toBeVisible();
+  await expect(page.getByTestId("update-refresh")).toHaveText("Refresh");
+  // Newest build first (issue #73).
+  const refs = await page
+    .locator('[data-testid="update-channel"]')
+    .evaluateAll((els) => els.map((el) => el.getAttribute("data-ref")));
+  expect(refs).toEqual(["preview/feat-x", "preview/fix-y", "release-rc", "release"]);
 });
 
 test("switch moves to the preview: confirm, restart wait, reload, badge", async ({ page }) => {
@@ -79,7 +85,7 @@ test("running jobs refuse the switch; switch anyway forces it with a count", asy
   await expect(panel).toBeVisible();
   await expect(panel).toContainText("3 running jobs — switching stops them");
   await expect(panel).toContainText("show as interrupted");
-  await expect(panel).toContainText("stay with this channel");
+  await expect(panel).toContainText("stay with this version");
   await expect(page.getByTestId("update-blocked-jobs")).toContainText("explain · demo · running");
   await expect(page.getByTestId("update-blocked-jobs")).toContainText("backing-off");
   await panel.getByRole("button", { name: "Switch anyway" }).click();

@@ -87,7 +87,7 @@ describe("VersionSection switch anyway", () => {
     const panel = await screen.findByTestId("update-blocked");
     expect(panel).toHaveTextContent("2 running jobs — switching stops them");
     expect(panel).toHaveTextContent("show as interrupted");
-    expect(panel).toHaveTextContent("stay with this channel");
+    expect(panel).toHaveTextContent("stay with this version");
     expect(screen.getByTestId("update-blocked-jobs")).toHaveTextContent("explain · demo · running");
     expect(updateSwitch).toHaveBeenCalledWith("preview/feat-x", undefined);
 
@@ -112,8 +112,8 @@ describe("VersionSection switch anyway", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Confirm switch to preview/feat-x" }));
     await screen.findByTestId("update-blocked");
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel switch to preview/feat-x" }));
     await waitFor(() => expect(screen.queryByTestId("update-blocked")).not.toBeInTheDocument());
-    expect(feat.querySelector("button")).toHaveTextContent("Switch to preview/feat-x");
+    expect(feat.querySelector("button")).toHaveTextContent("Switch");
   });
 });

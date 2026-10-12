@@ -1,11 +1,12 @@
 /**
- * Version section (Settings → Version, issue #36 step 2): the version
- * picker. Off by default behind `versionPickerEnabled` — when off, only
- * the toggle renders. When on: the running build, channels grouped
- * release / release-candidate / previews (source branch, short commit,
- * relative build time), refresh, and per-row Switch with an inline
- * confirm (the service restarts; switching keeps your database and
- * backs it up first).
+ * Version section (Settings → Version, issue #36 step 2, layout #73):
+ * the version picker. Off by default behind `versionPickerEnabled` —
+ * the enable checkbox sits above the card, top right of the section
+ * header. When on, the card shows the current version on top, one
+ * aligned row per version (name · short commit · built · action) under
+ * a Versions/Refresh header, and the last switch outcome at the bottom.
+ * Switch asks for confirmation inside the row itself (the service
+ * restarts; switching keeps your database and backs it up first).
  *
  * Switching survives the service going away: after the 202 the page polls
  * health + status until the new build reports (then reloads) or the
@@ -21,7 +22,7 @@ import type {
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { putErrors } from "./LimitsSection.js";
-import { blockedJobLine, buildLine, groupChannels, isNewerAvailable, outcomeLine, shortCommit, timeAgoIso } from "./versionFormat.js";
+import { blockedJobLine, isNewerAvailable, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
 const SWITCH_POLL_MS = 1000;
@@ -219,68 +220,72 @@ export function VersionSection({
     [channels, healthVersion, loadStatus, status, waitForSwitch],
   );
 
-  const groups = channels ? groupChannels(channels) : null;
+  // One flat list, newest build first — no per-group blocks, so every
+  // row shares the same columns.
+  const rows = channels ? sortVersionsByRecency(channels) : null;
+  const currentRow = rows?.find((c) => c.current) ?? null;
 
   return (
     <section aria-label="Version" id="version" style={{ scrollMarginTop: 12 }}>
+      {/* No title here: the Settings tab names the section (#61). */}
+      <div className="ver-head">
+        <label
+          className="ver-toggle"
+          htmlFor="version-picker-toggle"
+          title="Listing versions shells out through gh under your own login; switching restarts the service."
+        >
+          <input
+            id="version-picker-toggle"
+            data-testid="version-picker-toggle"
+            type="checkbox"
+            checked={enabled}
+            disabled={toggling}
+            onChange={() => void toggle()}
+          />
+          Enable
+        </label>
+      </div>
       <div className="card" style={{ padding: "8px 14px" }}>
-        <div className="setgrid">
-          <label htmlFor="version-picker-toggle">Version picker</label>
-          <div className="fld">
-            <div className="frow" style={{ gap: 8, alignItems: "center" }}>
-              <input
-                id="version-picker-toggle"
-                data-testid="version-picker-toggle"
-                type="checkbox"
-                checked={enabled}
-                disabled={toggling}
-                onChange={() => void toggle()}
-              />
-              <span className="hint">
-                {enabled
-                  ? `On — this build is ${status ? buildLine(status.build, healthVersion ?? "?") : "…"}`
-                  : "Off — list preview builds and switch the installed app from here."}
-              </span>
-            </div>
-            <span className="hint">Listing channels shells out through gh under your own login; switching restarts the service.</span>
-          </div>
-        </div>
         {error ? (
           <p className="err" role="alert">
             Couldn&apos;t load version info: {error}
           </p>
         ) : null}
-        {!enabled ? null : loading && !channels ? (
-          <p className="hint">Loading channels…</p>
-        ) : channels && groups ? (
+        {!enabled ? (
+          <p className="hint">Turn it on to list available versions and switch the installed app from here.</p>
+        ) : (
           <>
+            <CurrentVersion row={currentRow} build={status?.build ?? null} fallback={healthVersion} />
             {status && !status.build ? (
               <p className="warnline" data-testid="update-not-installed">
                 Switching needs the installed app — this service runs from a checkout or an old build, so only
                 listing works here. From the dev checkout, use <code>unvibe update</code> instead.
               </p>
             ) : null}
-            <ChannelGroups
-              groups={groups}
-              build={status?.build ?? null}
-              confirmRef={confirmRef}
-              blocked={blocked}
-              switchingTo={switchingTo}
-              onSwitch={(ref) => {
-                setBlocked(null);
-                setConfirmRef(ref);
-              }}
-              onCancel={() => {
-                setConfirmRef(null);
-                setBlocked(null);
-              }}
-              onConfirm={(ref) => void commitSwitch(ref)}
-              onForceConfirm={(ref) => void commitSwitch(ref, true)}
-              onRefresh={() => void loadChannels(true)}
-              refreshing={refreshing}
-            />
+            {loading && !channels ? <p className="hint">Loading versions…</p> : null}
+            {rows ? (
+              <VersionList
+                rows={rows}
+                build={status?.build ?? null}
+                confirmRef={confirmRef}
+                blocked={blocked}
+                switchingTo={switchingTo}
+                onSwitch={(ref) => {
+                  setBlocked(null);
+                  setConfirmRef(ref);
+                }}
+                onCancel={() => {
+                  setConfirmRef(null);
+                  setBlocked(null);
+                }}
+                onConfirm={(ref) => void commitSwitch(ref)}
+                onForceConfirm={(ref) => void commitSwitch(ref, true)}
+                onRefresh={() => void loadChannels(true)}
+                refreshing={refreshing}
+              />
+            ) : null}
           </>
-        ) : null}
+        )}
         {status?.pending && !switchingTo ? (
           <p className="warnline" data-testid="update-pending">
             A switch to {status.pending.to} is in progress (started {timeAgoIso(status.pending.startedAt) ?? "recently"}
@@ -313,11 +318,11 @@ export function VersionSection({
           </p>
         ) : null}
         {status?.outcome && !switchingTo ? (
-          <p className="hint" data-testid="update-outcome">
+          <p className="hint ver-outcome" data-testid="update-outcome">
             Last switch: {outcomeLine(status.outcome)}
             {status.outcome.logPath ? (
               <>
-                {" "}· log: <code>{status.outcome.logPath}</code>
+                {" "}· log: <code className="ver-logpath">{status.outcome.logPath}</code>
               </>
             ) : null}
           </p>
@@ -327,8 +332,41 @@ export function VersionSection({
   );
 }
 
-function ChannelGroups({
-  groups,
+/**
+ * The running version in one line: the current row's ref when one is
+ * marked, else the build version from status/health. The long version
+ * string rides on the name's `title`, not as a second column.
+ */
+function CurrentVersion({
+  row,
+  build,
+  fallback,
+}: {
+  row: UpdateChannel | null;
+  build: UpdateBuildInfo | null;
+  fallback: string | null;
+}): React.JSX.Element | null {
+  const name = row?.ref ?? build?.version ?? fallback;
+  if (!name) return null;
+  const sha = shortCommit(row?.commit ?? build?.commit);
+  const builtAt = row?.builtAt ?? build?.builtAt;
+  const built = builtAt ? (timeAgoIso(builtAt) ?? builtAt) : null;
+  const branch = row?.sourceBranch ?? build?.sourceBranch;
+  return (
+    <p className="ver-current" data-testid="update-current-version">
+      Current version:{" "}
+      <code className="ver-name" title={row?.version ?? name}>
+        {name}
+      </code>
+      {sha ? <> · {sha}</> : null}
+      {built ? <> · built {built}</> : null}
+      {branch ? <> · from {branch}</> : null}
+    </p>
+  );
+}
+
+function VersionList({
+  rows,
   build,
   confirmRef,
   blocked,
@@ -340,7 +378,7 @@ function ChannelGroups({
   onRefresh,
   refreshing,
 }: {
-  groups: ReturnType<typeof groupChannels>;
+  rows: UpdateChannel[];
   build: UpdateBuildInfo | null;
   confirmRef: string | null;
   blocked: { ref: string; activeJobs: number; jobs: UpdateBlockedJob[] } | null;
@@ -352,90 +390,126 @@ function ChannelGroups({
   onRefresh: () => void;
   refreshing: boolean;
 }): React.JSX.Element {
-  const parts: { title: string; rows: UpdateChannel[] }[] = [
-    { title: "Release", rows: groups.release },
-    { title: "Release candidates", rows: groups.releaseRc },
-    { title: "Previews", rows: groups.previews },
-  ];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
-      {parts.map((part) =>
-        part.rows.length === 0 ? null : (
-          <div key={part.title}>
-            <div className="hint" style={{ marginBottom: 4 }}>{part.title}</div>
-            {part.rows.map((c) => {
-              // Publish → try → fix → publish loop: the installed commit
-              // behind the published one gets an Update action (same
-              // switch flow, from === to, no DB swap).
-              const newerAvailable = isNewerAvailable(c, build);
-              return (
-              <div className="frow" key={c.ref} data-testid="update-channel" data-ref={c.ref} style={{ gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                <code>{c.ref}</code>
-                {c.version ? <span className="hint">{c.version}</span> : null}
-                {c.sourceBranch ? <span className="hint">from {c.sourceBranch}</span> : null}
-                {c.commit ? (
-                  <span className="hint" title={c.commit}>{shortCommit(c.commit)}</span>
-                ) : null}
-                {c.builtAt ? <span className="hint">built {timeAgoIso(c.builtAt) ?? c.builtAt}</span> : null}
-                {c.current ? (
-                  <>
-                    <span className="st" data-testid="update-current">current</span>
-                    {newerAvailable && build && !switchingTo ? (
-                      blocked?.ref === c.ref ? (
-                        <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
-                      ) : confirmRef === c.ref ? (
-                        <span className="frow" style={{ gap: 6, alignItems: "center" }}>
-                          <span className="warnline">The service restarts. Switching keeps your database and backs it up first.</span>
-                          <button className="btn" type="button" onClick={() => onConfirm(c.ref)}>
-                            Confirm update to {c.ref}
-                          </button>
-                          <button className="btn ghost" type="button" onClick={onCancel}>
-                            Cancel
-                          </button>
-                        </span>
-                      ) : (
-                        <span className="frow" style={{ gap: 6, alignItems: "center" }}>
-                          <span className="warnline" data-testid="update-available">
-                            Newer build available (installed {shortCommit(build.commit)} vs {shortCommit(c.commit)}
-                            {c.builtAt ? `, built ${timeAgoIso(c.builtAt) ?? c.builtAt}` : ""})
-                          </span>
-                          <button className="btn ghost" type="button" onClick={() => onSwitch(c.ref)}>
-                            Update {c.ref}
-                          </button>
-                        </span>
-                      )
-                    ) : null}
-                  </>
-                ) : switchingTo ? (
-                  <span className="hint">…</span>
-                ) : blocked?.ref === c.ref ? (
-                  <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
-                ) : confirmRef === c.ref ? (
-                  <span className="frow" style={{ gap: 6, alignItems: "center" }}>
-                    <span className="warnline">The service restarts. Switching keeps your database and backs it up first.</span>
-                    <button className="btn" type="button" onClick={() => onConfirm(c.ref)}>
-                      Confirm switch to {c.ref}
-                    </button>
-                    <button className="btn ghost" type="button" onClick={onCancel}>
-                      Cancel
-                    </button>
-                  </span>
-                ) : (
-                  <button className="btn ghost" type="button" onClick={() => onSwitch(c.ref)}>
-                    Switch to {c.ref}
-                  </button>
-                )}
-              </div>
-              );
-            })}
-          </div>
-        ),
-      )}
-      <div className="frow" style={{ gap: 8 }}>
+    <div className="ver-list">
+      <div className="ver-listhead">
+        <span className="hint">Versions</span>
         <button className="btn ghost" type="button" disabled={refreshing} onClick={onRefresh} data-testid="update-refresh">
-          {refreshing ? "Refreshing…" : "Refresh channels"}
+          {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+      {rows.map((c) => (
+        <VersionRow
+          key={c.ref}
+          row={c}
+          build={build}
+          confirmRef={confirmRef}
+          blocked={blocked}
+          switchingTo={switchingTo}
+          onSwitch={onSwitch}
+          onCancel={onCancel}
+          onConfirm={onConfirm}
+          onForceConfirm={onForceConfirm}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One version as a grid row (name · sha · built · action). The note —
+ * the confirm warning, the jobs refusal, the newer-build note — spans
+ * the full row width inside this row, so it never touches the next row.
+ */
+function VersionRow({
+  row: c,
+  build,
+  confirmRef,
+  blocked,
+  switchingTo,
+  onSwitch,
+  onCancel,
+  onConfirm,
+  onForceConfirm,
+}: {
+  row: UpdateChannel;
+  build: UpdateBuildInfo | null;
+  confirmRef: string | null;
+  blocked: { ref: string; activeJobs: number; jobs: UpdateBlockedJob[] } | null;
+  switchingTo: string | null;
+  onSwitch: (ref: string) => void;
+  onCancel: () => void;
+  onConfirm: (ref: string) => void;
+  onForceConfirm: (ref: string) => void;
+}): React.JSX.Element {
+  // Publish → try → fix → publish loop: the installed commit behind the
+  // published one gets an Update action (same switch flow, from === to,
+  // no DB swap).
+  const newerAvailable = isNewerAvailable(c, build);
+  const confirming = confirmRef === c.ref;
+  const isBlocked = blocked?.ref === c.ref;
+  const verb = newerAvailable ? "update" : "switch";
+  const built = c.builtAt ? (timeAgoIso(c.builtAt) ?? c.builtAt) : null;
+  return (
+    <div className="ver-row" data-testid="update-channel" data-ref={c.ref}>
+      <code className="ver-name" title={c.version ?? c.ref}>
+        {c.ref}
+      </code>
+      <span className="ver-sha" title={c.commit ?? undefined}>
+        {shortCommit(c.commit) ?? "—"}
+      </span>
+      <span className="ver-built">{built ? `built ${built}` : "—"}</span>
+      <span className="ver-action">
+        {c.current ? (
+          <span className="st" data-testid="update-current">
+            current
+          </span>
+        ) : switchingTo ? (
+          <span className="hint">…</span>
+        ) : null}
+        {confirming ? (
+          <>
+            <button className="btn" type="button" aria-label={`Confirm ${verb} to ${c.ref}`} onClick={() => onConfirm(c.ref)}>
+              Confirm
+            </button>
+            <button
+              className="btn ghost"
+              type="button"
+              aria-label={`Cancel ${verb} to ${c.ref}`}
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+          </>
+        ) : newerAvailable && build && c.current && !switchingTo ? (
+          <button className="btn ghost" type="button" aria-label={`Update ${c.ref}`} onClick={() => onSwitch(c.ref)}>
+            Update
+          </button>
+        ) : !c.current && !switchingTo && !isBlocked ? (
+          <button
+            className="btn ghost"
+            type="button"
+            aria-label={`Switch to ${c.ref}`}
+            onClick={() => onSwitch(c.ref)}
+          >
+            Switch
+          </button>
+        ) : null}
+      </span>
+      {confirming ? (
+        <span className="ver-note warnline">
+          The service restarts. Switching keeps your database and backs it up first.
+        </span>
+      ) : isBlocked && blocked ? (
+        <span className="ver-note">
+          <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
+        </span>
+      ) : newerAvailable && build && c.current && !switchingTo ? (
+        <span className="ver-note warnline" data-testid="update-available">
+          Newer build available (installed {shortCommit(build.commit)} vs {shortCommit(c.commit)}
+          {c.builtAt ? `, built ${timeAgoIso(c.builtAt) ?? c.builtAt}` : ""})
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -457,16 +531,11 @@ function BlockedPanel({
 }): React.JSX.Element {
   const more = blocked.activeJobs - blocked.jobs.length;
   return (
-    <span
-      className="frow"
-      style={{ gap: 6, alignItems: "center", flexBasis: "100%" }}
-      data-testid="update-blocked"
-      data-ref={blocked.ref}
-    >
+    <span className="frow" style={{ gap: 6, alignItems: "center" }} data-testid="update-blocked" data-ref={blocked.ref}>
       <span className="warnline">
         {blocked.activeJobs} running job{blocked.activeJobs === 1 ? "" : "s"} — switching stops{" "}
         {blocked.activeJobs === 1 ? "it" : "them"}. Stopped jobs show as interrupted; resume or retry them
-        from the review afterwards. On a different channel they stay with this channel&apos;s data.
+        from the review afterwards. On a different version they stay with this version&apos;s data.
       </span>
       {blocked.jobs.length > 0 ? (
         <span className="hint" data-testid="update-blocked-jobs">
@@ -474,12 +543,20 @@ function BlockedPanel({
           {more > 0 ? ` · +${more} more` : ""}
         </span>
       ) : null}
-      <button className="btn" type="button" onClick={() => onForceConfirm(blocked.ref)}>
-        Switch anyway
-      </button>
-      <button className="btn ghost" type="button" onClick={onCancel}>
-        Cancel
-      </button>
+      {/* Buttons stay together on one line when the panel wraps. */}
+      <span style={{ display: "inline-flex", gap: 6 }}>
+        <button className="btn" type="button" onClick={() => onForceConfirm(blocked.ref)}>
+          Switch anyway
+        </button>
+        <button
+          className="btn ghost"
+          type="button"
+          aria-label={`Cancel switch to ${blocked.ref}`}
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </span>
     </span>
   );
 }

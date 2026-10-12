@@ -3,31 +3,39 @@ import { describe, expect, it } from "vitest";
 import {
   blockedJobLine,
   buildLine,
-  groupChannels,
   isNewerAvailable,
   outcomeLine,
   shortCommit,
+  sortVersionsByRecency,
   timeAgoIso,
 } from "./versionFormat.js";
 import type { UpdateChannel } from "@unvibe/shared";
 
 const NOW = Date.parse("2026-10-12T12:00:00.000Z");
 
-function channel(ref: string, kind: UpdateChannel["kind"]): UpdateChannel {
-  return { ref, kind, version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: false };
+function channel(ref: string, kind: UpdateChannel["kind"], builtAt: string | null = null): UpdateChannel {
+  return { ref, kind, version: "0.0.1", commit: null, sourceBranch: null, builtAt, current: false };
 }
 
 describe("versionFormat", () => {
-  it("groups channels release / rc / previews", () => {
-    const groups = groupChannels([
+  it("sorts versions newest build first, missing builtAt last in list order", () => {
+    const iso = (ms: number): string => new Date(NOW - ms).toISOString();
+    const rows = sortVersionsByRecency([
       channel("release", "release"),
-      channel("preview/a", "preview"),
-      channel("release-rc", "release-rc"),
-      channel("preview/b", "preview"),
+      channel("preview/old", "preview", iso(86400_000)),
+      channel("preview/new", "preview", iso(3600_000)),
+      channel("release-rc", "release-rc", iso(7200_000)),
+      channel("preview/no-time", "preview"),
+      channel("preview/bogus", "preview", "not-a-date"),
     ]);
-    expect(groups.release.map((c) => c.ref)).toEqual(["release"]);
-    expect(groups.releaseRc.map((c) => c.ref)).toEqual(["release-rc"]);
-    expect(groups.previews.map((c) => c.ref)).toEqual(["preview/a", "preview/b"]);
+    expect(rows.map((c) => c.ref)).toEqual([
+      "preview/new",
+      "release-rc",
+      "preview/old",
+      "release",
+      "preview/no-time",
+      "preview/bogus",
+    ]);
   });
 
   it("shortens shas and times relatively", () => {
