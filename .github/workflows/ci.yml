@@ -1,23 +1,32 @@
 # Unvibe CI: lint + typecheck + tests + build + behaviour suites.
 #
-# Runs on macOS and Linux (the two supported platforms, AGENTS.md). Live
-# agent tasks (`test:live:*`) never run here: they need user logins and
+# Linux runs on every branch push. macOS (the other supported platform,
+# AGENTS.md) bills at 10x on a private repo, so it runs only nightly against
+# `main` and on manual dispatch (both platforms); release.yml also runs it
+# on every `v*` tag. `spike/**` branches never go to `main` and are not
+# run at all.
+#
+# Live agent tasks (`test:live:*`) never run here: they need user logins and
 # spend tokens. The global-install check installs the self-contained release
 # tree (tarball + git ref, npm 10 and 11) with no flags and no tokens
 # (replay-mode demo).
 #
 # Triggers on branch pushes only (no `pull_request` trigger): for a branch
 # with an open PR both events would fire for the same commit and run the
-# workflow twice. `concurrency` cancels superseded runs on the same branch.
+# workflow twice. `concurrency` cancels superseded runs on the same branch
+# (per event, so a push to `main` does not cancel the nightly run).
 
 name: ci
 
 on:
   push:
-    branches: ["**"]
+    branches: ["**", "!spike/**"]
+  schedule:
+    - cron: "17 9 * * *" # nightly, 09:17 UTC
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'push' && '["ubuntu-latest"]' || github.event_name == 'schedule' && '["macos-latest"]' || '["ubuntu-latest", "macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
