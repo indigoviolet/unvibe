@@ -23,6 +23,7 @@ import {
   gitCheck,
   gitVersion,
   probeGh,
+  ROLE_LABEL,
   type AgentRole,
 } from "./checks.js";
 
@@ -110,7 +111,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
         }),
         {
           id: `agent:${role}`,
-          label: `Agent · ${role}`,
+          label: ROLE_LABEL[role],
           status: "warning" as const,
           summary: "The check timed out",
           fix: "Re-check, and make sure the provider's CLI is logged in.",

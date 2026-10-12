@@ -239,10 +239,10 @@ export function ghCheck(probe: GhProbe): ReadinessCheck {
 
 export type AgentRole = "main" | "small" | "secondOpinion";
 
-const ROLE_LABEL: Record<AgentRole, string> = {
-  main: "Agent · main",
-  small: "Agent · small",
-  secondOpinion: "Agent · second opinion",
+export const ROLE_LABEL: Record<AgentRole, string> = {
+  main: "Main model",
+  small: "Small model",
+  secondOpinion: "Second-opinion model",
 };
 
 const CLI_FOR_PROVIDER: Record<string, string> = {

@@ -787,9 +787,9 @@ function readMockReadiness(): ReadinessResponse {
     checks: [
       { id: "git", label: "git", status: "ok", summary: "git found", fix: "", settingsAnchor: "#environment" },
       { id: "gh", label: "gh (GitHub CLI)", status: "ok", summary: "gh logged in as you", fix: "", settingsAnchor: "#environment" },
-      { id: "agent:main", label: "Agent · main", status: "ok", summary: "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
-      { id: "agent:small", label: "Agent · small", status: "ok", summary: "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
-      { id: "agent:secondOpinion", label: "Agent · second opinion", status: "ok", summary: "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:main", label: "Main model", status: "ok", summary: "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:small", label: "Small model", status: "ok", summary: "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:secondOpinion", label: "Second-opinion model", status: "ok", summary: "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
       { id: "agents-distinct", label: "Second opinion independence", status: "ok", summary: "Second opinion differs from main", fix: "", settingsAnchor: "#models" },
     ],
     generatedAt: Date.now(),
