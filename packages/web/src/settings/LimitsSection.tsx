@@ -49,7 +49,7 @@ export function LimitsSection({
       if (raw === "") continue;
       const n = Number(raw);
       if (!Number.isFinite(n)) {
-        setErrors([`${f.key} must be a number`]);
+        setErrors([`${f.label}: enter a number`]);
         setSaving(false);
         return;
       }
@@ -83,7 +83,7 @@ export function LimitsSection({
               />
               <span className="hint">{f.hint}</span>
               {errors
-                .filter((m) => m.startsWith(String(f.key)))
+                .filter((m) => m.startsWith(String(f.key)) || m.startsWith(f.label))
                 .map((m) => (
                   <span className="err" role="alert" key={m}>
                     {m}
@@ -93,7 +93,7 @@ export function LimitsSection({
           </div>
         ))}
         {errors
-          .filter((m) => !FIELDS.some((f) => m.startsWith(String(f.key))))
+          .filter((m) => !FIELDS.some((f) => m.startsWith(String(f.key)) || m.startsWith(f.label)))
           .map((m) => (
             <p className="err" role="alert" key={m}>
               {m}

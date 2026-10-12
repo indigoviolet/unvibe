@@ -60,7 +60,7 @@ export function RepositoriesSection(): React.JSX.Element {
   const add = useCallback(async () => {
     const trimmed = path.trim();
     if (!trimmed) {
-      setHint("Enter a checkout path first.");
+      setHint("Enter a folder path first.");
       return;
     }
     setHint(null);
@@ -130,8 +130,7 @@ export function RepositoriesSection(): React.JSX.Element {
   return (
     <section aria-label="Repositories" id="repositories" style={{ scrollMarginTop: 12 }} data-testid="repositories-section">
       <p className="hint">
-        Checkouts you can open reviews from. The start page&apos;s repo selector lists these (plus
-        auto-detected checkouts).
+        Repos you can open reviews from. The start page lists these, plus any it finds on this machine.
       </p>
       {error ? (
         <p className="err" role="alert">
@@ -141,7 +140,7 @@ export function RepositoriesSection(): React.JSX.Element {
       {!repos && !error ? <p className="hint">Loading repos…</p> : null}
       {repos ? (
         remembered.length === 0 ? (
-          <p className="hint">No repos yet. Add a checkout by path below.</p>
+          <p className="hint">No repos yet. Add one below by folder path or GitHub URL.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {remembered.map((r) => (
@@ -161,7 +160,7 @@ export function RepositoriesSection(): React.JSX.Element {
                       <span className="hint">
                         {r.managed
                           ? `Delete the clone at ${r.localPath} from this machine?`
-                          : `Forget this repo? ${r.localPath} stays untouched on disk.`}
+                          : `Remove this repo from the list? ${r.localPath} is not touched.`}
                       </span>
                       {removeError && confirmRemove === r.id ? (
                         <span className="err" role="alert">
@@ -185,7 +184,7 @@ export function RepositoriesSection(): React.JSX.Element {
                           setRemoveError(null);
                         }}
                       >
-                        Keep
+                        Cancel
                       </button>
                     </>
                   ) : (
@@ -200,8 +199,8 @@ export function RepositoriesSection(): React.JSX.Element {
                       }}
                       title={
                         r.managed
-                          ? "Remove this repo and delete its clone directory"
-                          : "Forget this repo (never touches the checkout folder)"
+                          ? "Remove this repo and delete Unvibe's clone of it"
+                          : "Remove this repo from the list (your folder is not touched)"
                       }
                     >
                       Remove
@@ -217,7 +216,7 @@ export function RepositoriesSection(): React.JSX.Element {
         <input
           type="text"
           aria-label="Add a repo by path"
-          placeholder="/path/to/checkout"
+          placeholder="/path/to/repo"
           value={path}
           onChange={(e) => {
             setPath(e.target.value);
