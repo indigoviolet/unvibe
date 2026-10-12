@@ -14,7 +14,7 @@
  *   with a `fetchError` note, never a failed listing).
  */
 import { createHash } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   parseGitHubRepoInput,
   type AddRepoRequest,
@@ -26,13 +26,11 @@ import {
   type RepoChangesResponse,
 } from "@unvibe/shared";
 import {
-  cloneTargetState,
+  addManagedRepo,
   deriveIdentity,
   detectCheckouts,
-  ensureManagedClone,
   CloneError,
   isGitCheckout,
-  managedRepoDir,
   newRepoId,
   refreshManagedCheckout,
   removeRepo,
@@ -199,7 +197,7 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
 async function addRepoByUrl(
   ctx: ServiceContext,
   rawUrl: string,
-  reply: import("fastify").FastifyReply,
+  reply: FastifyReply,
 ) {
   let parsed: { owner: string; name: string; prNumber?: number };
   try {
@@ -208,38 +206,21 @@ async function addRepoByUrl(
     return reply.code(400).send({ error: (err as Error).message });
   }
   const { owner, name } = parsed;
-  const localPath = managedRepoDir(ctx.dataDir, owner, name);
-  const existing = ctx.repos.getByPath(localPath);
-  if (existing) {
-    // A row already points at the managed path (added twice, or added by
-    // path before the clone existed): adopt it as managed when the
-    // directory is the expected clone, then reuse without cloning.
-    let repo = existing;
-    if (existing.managed !== true) {
-      if ((await cloneTargetState(ctx.runner, localPath, owner, name)) === "expected") {
-        repo = { ...existing, owner, name, managed: true };
-        ctx.repos.upsert(repo);
-      }
-    }
+  try {
+    const { repo } = await addManagedRepo(
+      { runner: ctx.runner, dataDir: ctx.dataDir, repos: ctx.repos },
+      owner,
+      name,
+    );
     ctx.repos.touch(repo.id);
     const repos = await listAllRepos(ctx);
     const out: AddRepoResponse = { repos: [{ ...DEMO_REPO }, ...repos] };
     if (parsed.prNumber !== undefined) out.prNumber = parsed.prNumber;
     return out;
-  }
-  try {
-    await ensureManagedClone({ runner: ctx.runner, dataDir: ctx.dataDir }, owner, name);
   } catch (err) {
     if (err instanceof CloneError) {
       return reply.code(err.status).send({ error: err.message });
     }
     throw err;
   }
-  const repo: Repo = { id: newRepoId(), owner, name, localPath, lastOpened: 0, managed: true };
-  ctx.repos.upsert(repo);
-  ctx.repos.touch(repo.id);
-  const repos = await listAllRepos(ctx);
-  const out: AddRepoResponse = { repos: [{ ...DEMO_REPO }, ...repos] };
-  if (parsed.prNumber !== undefined) out.prNumber = parsed.prNumber;
-  return out;
 }

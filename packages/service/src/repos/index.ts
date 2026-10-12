@@ -11,6 +11,7 @@ export {
 } from "./detect.js";
 export { repoChanges, type ChangesDeps } from "./changes.js";
 export {
+  addManagedRepo,
   assertManagedPath,
   CloneError,
   cloneArgv,
@@ -24,6 +25,7 @@ export {
   refreshManagedCheckout,
   removeRepo,
   resetManagedCloneStateForTests,
+  type AddDeps,
   type CloneDeps,
   type RemovableRepos,
   type TargetState,

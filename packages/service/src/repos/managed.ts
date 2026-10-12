@@ -37,6 +37,7 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import type { Repo } from "@unvibe/shared";
 import { parseGitHubRemote } from "./detect.js";
+import { newRepoId, type RepoStore } from "./store.js";
 import type { CommandRunner, RunResult } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
 
@@ -194,9 +195,13 @@ function rmDir(dir: string): void {
 /** One in-flight clone per target dir: concurrent adds share the work. */
 const cloneInflight = new Map<string, Promise<{ dir: string; reused: boolean }>>();
 
-/** Test-only: drop in-flight clone state between suites. */
+/** One in-flight add per target dir: check → clone → remember is atomic. */
+const addInflight = new Map<string, Promise<{ repo: Repo; reused: boolean }>>();
+
+/** Test-only: drop in-flight clone/add state between suites. */
 export function resetManagedCloneStateForTests(): void {
   cloneInflight.clear();
+  addInflight.clear();
   fetchState.clear();
 }
 
@@ -273,6 +278,61 @@ export async function ensureManagedClone(
     return await task;
   } finally {
     cloneInflight.delete(key);
+  }
+}
+
+// --- add (check → clone → remember, atomic per path) --------------------
+
+export interface AddDeps extends CloneDeps {
+  repos: Pick<RepoStore, "getByPath" | "upsert">;
+}
+
+/**
+ * Remember a managed clone, creating it when needed. The whole
+ * check → clone → upsert runs under one per-path lock, so two concurrent
+ * adds of the same URL share a single clone AND a single row (the route
+ * must not check-then-insert around this: that re-opens the race this
+ * lock closes). Throws `CloneError` like the clone itself.
+ */
+export async function addManagedRepo(
+  deps: AddDeps,
+  owner: string,
+  name: string,
+): Promise<{ repo: Repo; reused: boolean }> {
+  const dir = managedRepoDir(deps.dataDir, owner, name);
+  const key = path.resolve(dir);
+  const prior = addInflight.get(key);
+  if (prior) return prior;
+  // Registered synchronously so a concurrent add always joins this task.
+  const task = (async (): Promise<{ repo: Repo; reused: boolean }> => {
+    const existing = deps.repos.getByPath(dir);
+    if (existing) {
+      // Adopt a row that already points at the managed path (added by path
+      // before, or a won race): mark managed when the directory is the
+      // expected clone, then reuse without cloning.
+      if (existing.managed !== true) {
+        if ((await cloneTargetState(deps.runner, dir, owner, name)) === "expected") {
+          const upgraded: Repo = { ...existing, owner, name, managed: true };
+          deps.repos.upsert(upgraded);
+          return { repo: upgraded, reused: true };
+        }
+      }
+      return { repo: existing, reused: true };
+    }
+    await ensureManagedClone(deps, owner, name);
+    // Re-check after the clone: the winner of a lost rename race (or an
+    // outside actor) may have remembered the row meanwhile.
+    const raced = deps.repos.getByPath(dir);
+    if (raced) return { repo: raced, reused: true };
+    const repo: Repo = { id: newRepoId(), owner, name, localPath: dir, lastOpened: 0, managed: true };
+    deps.repos.upsert(repo);
+    return { repo, reused: false };
+  })();
+  addInflight.set(key, task);
+  try {
+    return await task;
+  } finally {
+    addInflight.delete(key);
   }
 }
 
