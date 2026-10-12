@@ -896,6 +896,17 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
   Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
   spec for invalid input and path-checkout remove.
 
+### Switching reviews in one tab (#70)
+
+The web review store is global. Opening a second review in the same tab
+used to keep the first review's guide whenever the second had a lower
+`rev` (the stale-fetch guard compared revs across reviews). The guard
+now applies within one review only, and `ReviewRoute` clears the store
+when its review changes or it unmounts — met (`web/src/state/store.ts`,
+`store.test.ts` “switching reviews”). The route clear has no test of its
+own. A refetch of the previous review that resolves after the switch can
+still land in the store; not seen, not guarded.
+
 ### Immediate action feedback (#46, complete)
 
 Every agent-starting control reacts on click, before the request
