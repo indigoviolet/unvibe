@@ -154,6 +154,13 @@ suggestions. Each item is `Label` or `Label | ask: pre-baked question`:
 - Does unfolding change header order?
 ```
 
+Ask thread replies never show follow-up suggestions (issue #103): the
+ask prompt does not ask for them, and the thread renderer
+(`replyHtml` in `packages/service/src/pipeline/actions/ask.ts`) drops
+any `follow-up` block — plus a leftover `Follow-ups` heading or a card
+titled that way — even when a model still sends one. Cards and Explain
+expansions keep their chips.
+
 ## 7. Finding references
 
 A paragraph holding exactly `Finding: [[page:<finding-page>]]` renders as

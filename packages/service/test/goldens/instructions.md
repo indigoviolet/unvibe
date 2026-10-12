@@ -115,7 +115,8 @@ the body, and never repeat a diagram's caption in its walkthrough.
   `Caption: …` paragraph right after the fence becomes the caption, so
   never start an ordinary paragraph with `Caption:`.
 - Follow-up suggestions are a `### Follow-ups` heading plus a list. Items
-  are `Label` or `Label | ask: pre-baked question`.
+  are `Label` or `Label | ask: pre-baked question`. Thread answers (ask)
+  never include them.
 - `Finding: [[page:<finding-page>]]` alone on a line renders as the orange
   finding reference card.
 - Tables use GitHub Markdown syntax; lists may be ordered or unordered,
