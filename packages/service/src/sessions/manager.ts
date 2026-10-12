@@ -2,7 +2,7 @@
  * Session manager (PRD §9.2, §12) on top of the `AgentRunner` interface.
  *
  * - `getBase(key, build)`: builds the base session once per
- *   (review version, guide revision, model) by starting a session and
+ *   (review, review version, guide revision, model) by starting a session and
  *   sending the base pack, waiting for "ready". Concurrent callers share
  *   the same in-flight build. One base per model (caches are per model).
  * - `forkConversation(base, message)`: `runner.fork` when available,
@@ -16,6 +16,7 @@
  *   lazily through the same path.
  * - `invalidateBase` (+ `pruneBases`) drops superseded bases; the
  *   rebuild *decision* belongs to the caller (context agent).
+ * - `closeReview` closes and forgets every session of a removed review.
  */
 import type {
   AgentEvent,
@@ -29,8 +30,14 @@ import type { Clock } from "../jobs/clock.js";
 import { RealClock } from "../jobs/clock.js";
 import type { SessionStore } from "./store.js";
 
-/** Base identity: (review version, guide revision, model). Per-model caches. */
+/**
+ * Base identity: (review, review version, guide revision, model). Per-model
+ * caches. The review id is part of the key: every new review starts at `v1`
+ * with the same (empty) guide revision, so without it reviews would share
+ * one base session.
+ */
 export interface BaseKey {
+  reviewId: string;
   reviewVersion: string;
   guideRevision: string;
   provider: string;
@@ -38,7 +45,12 @@ export interface BaseKey {
 }
 
 export function baseKeyString(key: BaseKey): string {
-  return [key.reviewVersion, key.guideRevision, key.provider, key.model].join("|");
+  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model].join("|");
+}
+
+/** Review id of a base key string (its first component). */
+export function reviewIdOfBaseKey(keyString: string): string {
+  return keyString.split("|")[0] ?? "";
 }
 
 export interface BaseBuild {
@@ -114,6 +126,12 @@ export class SessionManager {
     this.restored = true;
     const { bases, conversations } = this.store.loadAll();
     for (const b of bases) {
+      // Bases persisted before the key carried a review id cannot be told
+      // apart per review: forget them, they rebuild from the pack.
+      if (!b.key.reviewId) {
+        this.store.remove(b.session.id);
+        continue;
+      }
       this.bases.set(baseKeyString(b.key), {
         key: b.key,
         keyString: baseKeyString(b.key),
@@ -237,10 +255,30 @@ export class SessionManager {
     }
   }
 
-  /** Drop every base not in `keep` (cleanup of superseded bases). */
-  async pruneBases(keep: Set<string>): Promise<void> {
+  /**
+   * Drop the review's bases that are not in `keep` (cleanup of superseded
+   * bases). Other reviews' bases are never touched.
+   */
+  async pruneBases(reviewId: string, keep: Set<string>): Promise<void> {
     for (const key of [...this.bases.keys()]) {
-      if (!keep.has(key)) await this.invalidateBase(key);
+      if (reviewIdOfBaseKey(key) === reviewId && !keep.has(key)) await this.invalidateBase(key);
+    }
+  }
+
+  /**
+   * Close and forget every session of a review (front screen "Remove"):
+   * its bases and the conversations forked from them. A review added again
+   * later starts from new sessions.
+   */
+  async closeReview(reviewId: string): Promise<void> {
+    for (const [sessionId, record] of [...this.conversations]) {
+      if (reviewIdOfBaseKey(record.baseKey) !== reviewId) continue;
+      await this.closeQuietly(record.session);
+      this.conversations.delete(sessionId);
+      this.store?.remove(record.session.id);
+    }
+    for (const key of [...this.bases.keys()]) {
+      if (reviewIdOfBaseKey(key) === reviewId) await this.invalidateBase(key);
     }
   }
 

@@ -1,15 +1,138 @@
 /**
  * Settings page + versions banner behaviour tests against mock mode
- * (PRD §4.14, §8): model pickers with adapter errors and the
- * same-model warning, prompt template/expanded views, limits persistence,
- * jobs with prompt links + cancel, shared-context delete, Tips popover,
- * and the stale-review banner with range-diff + version switching.
+ * (PRD §4.14, §8): repositories (list + add by path, add by URL with busy
+ * and error states, managed marks, remove with confirm copy and the 409
+ * refusal), model pickers with adapter errors and the same-model warning,
+ * prompt template view, limits persistence, Tips popover, and the
+ * stale-review banner with range-diff + version switching. (Jobs, prompt
+ * expansions and shared context live on the per-review debug page now:
+ * `debug.spec.ts`.)
  */
 import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/settings?review=demo");
-  await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+  await page.goto("/settings");
+  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+});
+
+test("repositories section lists remembered repos and adds by path", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await expect(section).toBeVisible();
+  await expect(section.getByText("urllib3/urllib3")).toBeVisible();
+  await expect(section.getByText("~/code/urllib3")).toBeVisible();
+
+  // Adding with an empty field shows a hint instead of doing nothing.
+  await section.getByRole("button", { name: "Add by path" }).click();
+  await expect(section.getByText("Enter a checkout path first.")).toBeVisible();
+
+  await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
+  await section.getByRole("button", { name: "Add by path" }).click();
+  const added = section.locator('[data-testid="repo-local-fake-checkout"]');
+  await expect(added).toContainText("local/fake-checkout");
+  await expect(added).toContainText("/tmp/fake-checkout");
+});
+
+test("repositories section is reachable at #repositories", async ({ page }) => {
+  await page.goto("/settings#repositories");
+  await expect(page.locator('[data-testid="repositories-section"]')).toBeVisible();
+});
+
+test("repositories add by URL clones with a busy state and marks the clone", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await section.getByLabel("Add a repo by URL").fill("https://github.com/acme/app");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  const added = section.locator('[data-testid="repo-managed-acme-app"]');
+  await expect(added).toContainText("acme/app");
+  await expect(added).toContainText("Cloned by Unvibe");
+  await expect(added).toContainText("/mock/data/repos/acme/app");
+});
+
+test("repositories add by URL shows the clone busy state and disables the control", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.addRepoHold", "1");
+  });
+  await page.goto("/settings");
+  const section = page.locator('[data-testid="repositories-section"]');
+  await expect(section).toBeVisible();
+  await section.getByLabel("Add a repo by URL").fill("acme/app");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  // While the synchronous clone runs: named busy state, control disabled,
+  // and no second add can fire.
+  const busy = section.getByRole("button", { name: /Cloning acme\/app/ });
+  await expect(busy).toBeVisible();
+  await expect(busy).toBeDisabled();
+  await expect(section.getByLabel("Add a repo by URL")).toBeDisabled();
+  await expect(section.locator('[data-testid="repo-managed-acme-app"]')).toHaveCount(0);
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.addRepoHold"));
+  await expect(section.locator('[data-testid="repo-managed-acme-app"]')).toContainText("Cloned by Unvibe");
+});
+
+test("repositories add by URL rejects invalid input inline without a request", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await section.getByLabel("Add a repo by URL").fill("not a repo!!!");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  await expect(section.getByText(/not a GitHub repo URL or owner\/name/)).toBeVisible();
+  // No request fired: no toast, no row, control still usable.
+  await expect(page.locator("#toast")).toBeHidden();
+  await expect(section.getByRole("button", { name: "Clone and add" })).toBeEnabled();
+});
+
+test("repositories add by URL surfaces the service error", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.addRepoFail", "repository not found: acme/app (check the spelling)");
+  });
+  await page.goto("/settings");
+  const section = page.locator('[data-testid="repositories-section"]');
+  await expect(section).toBeVisible();
+  await section.getByLabel("Add a repo by URL").fill("acme/app");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  // The service message stays inline under the row where it can be read
+  // and acted on — not just a transient toast.
+  await expect(section.getByRole("alert")).toContainText("repository not found: acme/app");
+  await expect(section.locator('[data-testid="repo-managed-acme-app"]')).toHaveCount(0);
+  // Typing clears it; the control stays usable.
+  await section.getByLabel("Add a repo by URL").fill("acme/other");
+  await expect(section.getByRole("alert")).toHaveCount(0);
+});
+
+test("repositories remove deletes a managed clone with clear confirm copy", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await section.getByLabel("Add a repo by URL").fill("acme/app");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  const row = section.locator('[data-testid="repo-managed-acme-app"]');
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Remove acme/app" }).click();
+  await expect(row).toContainText("Delete the clone at /mock/data/repos/acme/app from this machine?");
+  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(row).toHaveCount(0);
+});
+
+test("repositories remove only forgets a path checkout", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
+  await section.getByRole("button", { name: "Add by path" }).click();
+  const row = section.locator('[data-testid="repo-local-fake-checkout"]');
+  await expect(row).toBeVisible();
+  await expect(row).not.toContainText("Cloned by Unvibe");
+  await row.getByRole("button", { name: "Remove local/fake-checkout" }).click();
+  await expect(row).toContainText("Forget this repo? /tmp/fake-checkout stays untouched on disk.");
+  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(row).toHaveCount(0);
+});
+
+test("repositories remove is refused while reviews exist", async ({ page }) => {
+  // The seed urllib3 repo has mock sessions: removing it 409s as is.
+  const section = page.locator('[data-testid="repositories-section"]');
+  const row = section.locator('[data-testid="repo-urllib3"]');
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Remove urllib3/urllib3" }).click();
+  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  // The refusal stays inline on the row, with Keep working.
+  await expect(row.getByRole("alert")).toContainText("still has 2 reviews");
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Keep" }).click();
+  await expect(row.getByRole("alert")).toHaveCount(0);
+  await expect(row).toBeVisible();
 });
 
 test("model pickers list provider models and warn on same-model second opinion", async ({ page }) => {
@@ -24,7 +147,7 @@ test("model pickers list provider models and warn on same-model second opinion",
       JSON.stringify({ main: { provider: "custom", model: "custom-1" } }),
     );
   });
-  await page.goto("/settings?review=demo");
+  await page.goto("/settings");
   await expect(page.locator('[data-testid="model-main"]').getByText(/adapter not installed or not logged in/)).toBeVisible();
 
   // Second opinion on the same model as main warns (PRD §4.10).
@@ -35,20 +158,14 @@ test("model pickers list provider models and warn on same-model second opinion",
   await expect(page.getByText(/same model as main/)).toBeVisible();
 });
 
-test("prompts show template variables and layered expansions", async ({ page }) => {
+test("prompts show template variables (expanded text lives on the debug page)", async ({ page }) => {
   const card = page.locator('[data-testid="prompt-reader"]');
   await card.getByRole("button", { name: "Expand reader" }).click();
   // Template view: {{variables}} marked.
   await expect(card.getByText("role: user · tier: main", { exact: false })).toBeVisible();
   await expect(card.locator("mark.tm").first()).toContainText("{{source}}");
-  // Expanded view: layers collapsed by default, cached part set apart.
-  await card.getByRole("button", { name: "Expanded for this review" }).click();
-  await expect(card.getByText(/total · .* cached/)).toBeVisible();
-  const l1 = card.locator('details.lay[data-layer="L1"]');
-  await expect(l1).toBeVisible();
-  await expect(l1).toContainText("cached");
-  await l1.locator("summary").click();
-  await expect(l1).toContainText("PR #5020");
+  // No per-review expansion here any more.
+  await expect(card.getByRole("button", { name: "Expanded for this review" })).toHaveCount(0);
 });
 
 test("limits persist across reload", async ({ page }) => {
@@ -57,7 +174,7 @@ test("limits persist across reload", async ({ page }) => {
   await page.getByRole("button", { name: "Save limits" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
   await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("6");
 });
 
@@ -68,44 +185,6 @@ test("limits show service validation errors inline", async ({ page }) => {
   await expect(page.getByText("L1 budget, ~40k default.")).toBeVisible();
 });
 
-test("jobs show state, tokens, cache rate, prompt link and cancel", async ({ page }) => {
-  const running = page.locator('[data-testid="job-job-explain-1"]');
-  await expect(running).toContainText("explain");
-  await expect(running).toContainText("running");
-  await expect(running).toContainText("42.5k in");
-  await expect(running).toContainText("91.5% cached");
-
-  const backing = page.locator('[data-testid="job-job-critic-1"]');
-  await expect(backing).toContainText(/backing-off · retry in/);
-
-  await running.getByRole("button", { name: "Prompt" }).click();
-  await expect(running).toContainText("Explain the quoted text");
-
-  const queued = page.locator('[data-testid="job-job-hunk-1"]');
-  await queued.getByRole("button", { name: "Cancel" }).click();
-  await expect(queued).toContainText("cancelled");
-
-  await expect(page.locator('[data-testid="jobs-totals"]')).toContainText("Totals:");
-});
-
-test("shared context lists contributions and deletes them", async ({ page }) => {
-  const first = page.locator('[data-testid="contribution-ct-seed-1"]');
-  await expect(first).toContainText("fact");
-  await expect(first).toContainText("reader note");
-  await expect(first).toContainText("diff:src-urllib3-connection.py:640-660");
-
-  const second = page.locator('[data-testid="contribution-ct-seed-2"]');
-  await expect(second).toContainText("correction");
-  await expect(second).toContainText("open question");
-  await expect(second.getByRole("link", { name: "Open card" })).toHaveAttribute(
-    "href",
-    "/review/demo#C-central",
-  );
-  await second.getByRole("button", { name: "Delete ct-seed-2" }).click();
-  await expect(page.locator('[data-testid="contribution-ct-seed-2"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="contribution-ct-seed-1"]')).toBeVisible();
-});
-
 test("tips popover opens from the review top bar", async ({ page }) => {
   await page.goto("/review/demo");
   await page.getByRole("button", { name: "Usage tips" }).click();
@@ -113,11 +192,14 @@ test("tips popover opens from the review top bar", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Usage tips" })).toContainText("Settings");
 });
 
-test("settings links carry the review context", async ({ page }) => {
+test("settings link is plain; the review context lives on the debug page", async ({ page }) => {
   await page.goto("/review/demo");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\?review=demo/);
-  await expect(page.getByRole("link", { name: "Back to review" })).toHaveAttribute("href", "/review/demo");
+  await expect(page).toHaveURL("/settings");
+  await expect(page.getByRole("link", { name: "Back to start" })).toHaveAttribute("href", "/");
+  // Browser back returns to the review (Settings pushes a history entry).
+  await page.goBack();
+  await expect(page).toHaveURL("/review/demo");
 });
 
 test("stale review shows banner counts, range-diff and stale hunks", async ({ page }) => {

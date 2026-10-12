@@ -80,6 +80,7 @@ export async function ensureSecondOpinionBase(
   const { packText, version } = buildSecondOpinionBaseText(deps, reviewId);
   const instructions = renderInstructions(deps.promptsDir);
   const key = {
+    reviewId,
     reviewVersion: `v${snapshot.version.n}`,
     guideRevision: "so",
     provider: settings.secondOpinion.provider,

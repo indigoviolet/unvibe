@@ -30,6 +30,7 @@ import { computeBackoffDelay } from "./backoff.js";
 import { MathRandom, RealClock, type Clock, type RandomSource } from "./clock.js";
 import { isAbortError, RetryableError } from "./errors.js";
 import type { JobPersistence } from "./store.js";
+import { reportError } from "../telemetry/sentry.js";
 
 export const DEFAULT_CONCURRENCY_CAP = 4;
 export const DEFAULT_MAX_ATTEMPTS = 8;
@@ -386,6 +387,7 @@ export class JobQueue {
         return;
       }
       job.error = err instanceof Error ? err.message : String(err);
+      reportError(err, { jobId: job.id, kind: job.kind, provider: job.provider, attempts: job.attempts });
       this.settle(entry, controller, "error");
     }
   }

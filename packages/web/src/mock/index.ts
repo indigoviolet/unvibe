@@ -17,17 +17,20 @@
 import type {
   ActionResponse,
   AddRepoRequest,
+  AddRepoResponse,
   ChangesFilter,
   Contribution,
   CreateReviewRequest,
   HunkState,
   Job,
   ModelsResponse,
+  PickFolderResponse,
   PromptExpanded,
   PromptsResponse,
   PromptTemplate,
   ReadinessResponse,
   RefreshResponse,
+  RemoveRepoResponse,
   Repo,
   RepoChange,
   RepoChangesResponse,
@@ -38,12 +41,19 @@ import type {
   ReviewsListResponse,
   ReviewSummary,
   Settings,
+  SwitchOutcome,
+  UpdateBuildInfo,
+  UpdateChannel,
   UpdateHunkRequest,
+  UpdatePendingSwitch,
   UpdateReviewResponse,
+  UpdateStatusResponse,
+  UpdateSwitchResponse,
   Version,
   VersionStatus,
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
+import { parseGitHubRepoInput } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } from "./guide.js";
@@ -88,7 +98,15 @@ function readJson<T>(key: string, fallback: T): T {
 
 function getRepos(): Repo[] {
   const added = readJson<Repo[]>(ADDED_KEY, []);
-  return [...added, ...SEED_REPOS];
+  // Fresh-install state for specs (`unvibe.mock.noRepos`): seeds hidden,
+  // repos added during the test still listed.
+  let seeds = SEED_REPOS;
+  try {
+    if (localStorage.getItem("unvibe.mock.noRepos")) seeds = [];
+  } catch {
+    // Ignore.
+  }
+  return [...added, ...seeds];
 }
 
 // --- review snapshot -----------------------------------------------------
@@ -334,6 +352,74 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
   throw new Error(`unknown mock card control ${(a as { kind: string }).kind}`);
 }
 
+function readChangesFailures(): string[] {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.repoChangesFail");
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve once the `unvibe.mock.repoChangesHold` key is gone (or soon anyway). */
+async function awaitChangesRelease(): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    try {
+      if (!localStorage.getItem("unvibe.mock.repoChangesHold")) return;
+    } catch {
+      return;
+    }
+    await wait(50);
+  }
+}
+
+/** Resolve once the `unvibe.mock.addRepoHold` key is gone (or soon anyway). */
+async function awaitAddRelease(): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    try {
+      if (!localStorage.getItem("unvibe.mock.addRepoHold")) return;
+    } catch {
+      return;
+    }
+    await wait(50);
+  }
+}
+
+/** Extra clone latency in mock mode (`unvibe.mock.addRepoDelayMs`, default 150). */
+function addRepoDelayMs(): number {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.addRepoDelayMs");
+    if (raw !== null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+  } catch {
+    // Fall through to the default.
+  }
+  return 150;
+}
+
+/** Forced add failure in mock mode (`unvibe.mock.addRepoFail` = error text). */
+function addRepoFailure(): string | null {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.addRepoFail");
+    return raw ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Stale-clone note in mock mode (`unvibe.mock.repoChangesFetchError` = note). */
+function changesFetchError(): string | null {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.repoChangesFetchError");
+    return raw ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 let rev = 1;
 const hunkStates = seedHunkStates();
 let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
@@ -388,6 +474,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   rebuildAppendedTokens: 10000,
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
+  versionPickerEnabled: false,
 };
 
 function getMockSettings(): Settings {
@@ -488,6 +575,81 @@ function seedContributions(): Contribution[] {
 let mockContributions: Contribution[] = seedContributions();
 
 /**
+ * Mock shared-context debug document (issue #32): canned base + log plus
+ * the live seed contributions, so the debug page shows all three parts and
+ * delete visibly removes an item in mock mode.
+ */
+function mockSharedContext(reviewId: string): {
+  reviewId: string;
+  base: string;
+  log: string;
+  contributions: string;
+} {
+  const base = [
+    "## Base",
+    "",
+    "1 base built for this review. The pack below is the current pack — what would be sent now, not a historical rebuild.",
+    "",
+    "### Base `v1|guide-mock|mock|mock-main`",
+    "",
+    "- version: `v1` · guide revision: `guide-mock` · provider/model: `mock/mock-main`",
+    "- base tokens: 12000",
+    "- appended since build: 0",
+    "- superseded: 0.0%",
+    "- last rebuild: built fresh",
+    "",
+    "### Current pack for `v1|guide-mock|mock|mock-main` (12000 tokens)",
+    "",
+    "#### L0 system",
+    "",
+    "```text",
+    "You are helping a person read and review a code change.",
+    "```",
+    "",
+    "#### L1 + L1b + L2",
+    "",
+    "```text",
+    "PR #5020 on urllib3/urllib3",
+    "Diff: 8 hunks, +42 −18",
+    "### The central change [[card:central]]",
+    "",
+    "Unfold obsolete folded values.",
+    "```",
+    "",
+  ].join("\n");
+  const log = [
+    "## Log",
+    "",
+    "2 entries. Entries up to seq 1 are already in base `v1|guide-mock|mock|mock-main`. Batch threshold 2000 tokens.",
+    "",
+    "- [1 new-card global] central card written · in base",
+    "- [2 thread-summary global] ask about retry settled · waiting for batch",
+    "",
+  ].join("\n");
+  const parts = ["## Contributions", ""];
+  if (reviewId === "demo" && mockContributions.length > 0) {
+    parts.push(`${mockContributions.length} contributions.`, "");
+    for (const c of mockContributions) {
+      parts.push(`### ${c.id}`, "");
+      parts.push(c.sourceThread ? `- thread: \`${c.sourceThread}\`` : `- session: \`${c.sourceSession}\``);
+      if (c.replaces) parts.push(`- replaces: \`${c.replaces}\``);
+      if (c.status === "merged" || c.items.some((i) => i.kind === "correction")) parts.push(`- status: ${c.status}`);
+      for (const item of c.items) {
+        const target = item.target ? ` → \`${item.target}\`` : "";
+        parts.push(`- **${item.kind}**${target}: ${item.text}`);
+        if (item.citations.length > 0) {
+          parts.push(`  - cites: ${item.citations.map((cit) => `\`${cit.target}\``).join(", ")}`);
+        }
+      }
+      parts.push("");
+    }
+  } else {
+    parts.push("(no contributions yet)", "");
+  }
+  return { reviewId, base, log, contributions: parts.join("\n") };
+}
+
+/**
  * Test-only: reset hunk states and the snapshot revision to the seeded
  * fixture (component tests share this module's in-memory state).
  */
@@ -518,6 +680,13 @@ export function resetMockState(): void {
   ];
   mockJobs = seedJobs();
   mockContributions = seedContributions();
+  mockUpdatePending = null;
+  mockUpdateDown = false;
+  try {
+    localStorage.removeItem(UPDATE_KEY);
+  } catch {
+    // Ignore.
+  }
   rev = 1;
 }
 
@@ -562,7 +731,25 @@ function seedReviewList(): ReviewSummary[] {
       guideStatus: "running",
       guideDetail: "Running: critic",
     },
+    ...readExtraSessions(),
   ];
+}
+
+/**
+ * Test-only extra sessions for the start page (`unvibe.mock.extraSessions`,
+ * a JSON array of `ReviewSummary`): e.g. a review whose repo is no longer
+ * in the repo list, which the page renders in its orphan group. Read at
+ * seed time so `addInitScript` can set it before the page loads.
+ */
+function readExtraSessions(): ReviewSummary[] {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.extraSessions");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as ReviewSummary[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 let mockReviewList: ReviewSummary[] = seedReviewList();
@@ -894,18 +1081,148 @@ function buildMockDiagnostics(): import("@unvibe/shared").DiagnosticsResponse {
   };
 }
 
+/**
+ * Version picker (issue #36, step 2) in mock mode: the installed ref and
+ * the last outcome persist in localStorage (so a post-switch page reload
+ * keeps them, like the real helper's data-dir files); the pending switch
+ * and the mid-switch outage are transient module state. The failure mode
+ * comes from localStorage `unvibe.mock.update.fail` (`install` |
+ * `health` | `fatal`), read when the switch starts.
+ */
+const UPDATE_KEY = "unvibe.mock.update";
+const UPDATE_FAIL_KEY = "unvibe.mock.update.fail";
+
+const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
+  { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: false },
+  {
+    ref: "release-rc",
+    kind: "release-rc",
+    version: "0.0.1-rc.1",
+    commit: "abc1234def5678",
+    sourceBranch: null,
+    builtAt: new Date(NOW - 86400_000).toISOString(),
+    current: false,
+  },
+  {
+    ref: "preview/feat-x",
+    kind: "preview",
+    version: "0.0.1-preview.feat-x.abc1234",
+    commit: "abc1234def5678",
+    sourceBranch: "feat/x",
+    builtAt: new Date(NOW - 3600_000).toISOString(),
+    current: false,
+  },
+  {
+    ref: "preview/fix-y",
+    kind: "preview",
+    version: "0.0.1-preview.fix-y.9f8e7d6",
+    commit: "9f8e7d6c5b4a3",
+    sourceBranch: "fix/y",
+    builtAt: new Date(NOW - 7200_000).toISOString(),
+    current: false,
+  },
+];
+
+function readUpdatePersisted(): { current: string; outcome: SwitchOutcome | null } {
+  const fallback = { current: "release", outcome: null as SwitchOutcome | null };
+  try {
+    const raw = localStorage.getItem(UPDATE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<typeof fallback>;
+    if (typeof parsed.current !== "string" || !MOCK_UPDATE_CHANNELS.some((c) => c.ref === parsed.current)) {
+      return fallback;
+    }
+    return { current: parsed.current, outcome: parsed.outcome ?? null };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeUpdatePersisted(next: { current: string; outcome: SwitchOutcome | null }): void {
+  try {
+    localStorage.setItem(UPDATE_KEY, JSON.stringify(next));
+  } catch {
+    // Non-fatal.
+  }
+}
+
+let mockUpdatePending: UpdatePendingSwitch | null = null;
+/** True while the mock "service" is down mid-switch (health throws). */
+let mockUpdateDown = false;
+
+function mockUpdateChannels(): UpdateChannel[] {
+  const { current } = readUpdatePersisted();
+  return MOCK_UPDATE_CHANNELS.map((c) => ({ ...c, current: c.ref === current }));
+}
+
+function mockUpdateBuild(): UpdateBuildInfo | null {
+  const { current } = readUpdatePersisted();
+  const found = MOCK_UPDATE_CHANNELS.find((c) => c.ref === current);
+  if (!found?.version) return null;
+  return {
+    version: found.version,
+    sourceBranch: found.sourceBranch,
+    commit: found.commit,
+    builtAt: found.builtAt,
+  };
+}
+
 export const mockApi = {
-  health: async () => ({ ok: true, version: "mock" }),
+  health: async () => {
+    if (mockUpdateDown) throw new Error("mock service restarting");
+    return { ok: true as const, version: "mock", build: mockUpdateBuild() };
+  },
 
   repos: async (): Promise<ReposResponse> => ({ repos: getRepos() }),
 
-  addRepo: async (body: AddRepoRequest): Promise<ReposResponse> => {
-    const name = body.path.split("/").filter(Boolean).pop() ?? body.path;
+  addRepo: async (body: AddRepoRequest): Promise<AddRepoResponse> => {
+    // #27: mirror the service contract — path adds a local checkout, url
+    // clones a managed repo. Test hooks: `unvibe.mock.addRepoHold` holds
+    // the clone so specs can observe the busy state,
+    // `unvibe.mock.addRepoDelayMs` sets extra latency (default 150 ms),
+    // `unvibe.mock.addRepoFail` fails with that error text. Invalid URLs
+    // 400 like the service (the UI validates first with the same parser).
+    const raw = body.url ?? body.path ?? "";
+    if (body.url) {
+      let parsed: { owner: string; name: string; prNumber?: number };
+      try {
+        parsed = parseGitHubRepoInput(raw);
+      } catch (err) {
+        throw new Error(`POST /api/repos: 400 ${JSON.stringify({ error: (err as Error).message })}`);
+      }
+      await awaitAddRelease();
+      await wait(addRepoDelayMs());
+      const forced = addRepoFailure();
+      if (forced) {
+        throw new Error(`POST /api/repos: 404 ${JSON.stringify({ error: forced })}`);
+      }
+      const { owner, name, prNumber } = parsed;
+      const repo: Repo = {
+        id: `managed-${owner.toLowerCase()}-${name.toLowerCase()}`,
+        owner,
+        name,
+        localPath: `/mock/data/repos/${owner.toLowerCase()}/${name.toLowerCase()}`,
+        lastOpened: Date.now(),
+        managed: true,
+      };
+      try {
+        const added = readJson<Repo[]>(ADDED_KEY, []);
+        if (!added.some((r) => r.id === repo.id)) {
+          localStorage.setItem(ADDED_KEY, JSON.stringify([repo, ...added]));
+        }
+      } catch {
+        // Non-fatal.
+      }
+      const out: AddRepoResponse = { repos: getRepos() };
+      if (prNumber !== undefined) out.prNumber = prNumber;
+      return out;
+    }
+    const name = raw.split("/").filter(Boolean).pop() ?? raw;
     const repo: Repo = {
       id: `local-${name}`,
       owner: "local",
       name,
-      localPath: body.path,
+      localPath: raw,
       lastOpened: Date.now(),
     };
     try {
@@ -917,7 +1234,50 @@ export const mockApi = {
     return { repos: getRepos() };
   },
 
+  removeRepo: async (id: string): Promise<RemoveRepoResponse> => {
+    // #27: mirror the service — refuse while mock reviews reference the
+    // repo (the seed urllib3 repo has sessions, so removing it 409s).
+    const reviews = mockSummaries();
+    const n = reviews.filter((r) => r.repoId === id).length;
+    if (n > 0) {
+      const repo = getRepos().find((r) => r.id === id);
+      const label = repo ? `${repo.owner}/${repo.name}` : id;
+      throw new Error(
+        `DELETE /api/repos/${id}: 409 ${JSON.stringify({ error: `repo ${label} still has ${n} review${n === 1 ? "" : "s"} — delete ${n === 1 ? "it" : "them"} first, then remove the repo` })}`,
+      );
+    }
+    try {
+      const added = readJson<Repo[]>(ADDED_KEY, []);
+      const found = added.find((r) => r.id === id);
+      localStorage.setItem(ADDED_KEY, JSON.stringify(added.filter((r) => r.id !== id)));
+      return { ok: true as const, removedClone: found?.managed === true };
+    } catch {
+      return { ok: true as const, removedClone: false };
+    }
+  },
+
+  /** Mock folder dialog (#26): pretends the user picked a checkout. */
+  pickFolder: async (): Promise<PickFolderResponse> => {
+    await wait(50);
+    return { status: "picked", path: "/mock/picked/checkout" };
+  },
+
   repoChanges: async (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> => {
+    // Test-only hooks for the start page (all no-ops unless set):
+    // - `unvibe.mock.repoChangesHold`: when present, hold every repo-lists
+    //   response until the key is removed, so specs can observe the loading
+    //   state (the repo-less demo entry is never held);
+    // - `unvibe.mock.repoChangesFail`: JSON array of filters to reject
+    //   (e.g. ["authoring","review-requested","recent"]), each with a
+    //   service-shaped 500 carrying a mock gh error.
+    // - `unvibe.mock.repoChangesFetchError`: when present, every response
+    //   carries it as `fetchError` (stale managed clone, like the service).
+    if (id !== "demo") await awaitChangesRelease();
+    const failing = readChangesFailures();
+    const key = filter ?? "all";
+    if (failing.includes(key)) {
+      throw new Error(`GET /api/repos/${id}/changes?filter=${key}: 500 {"error":"mock gh is down"}`);
+    }
     const authoring: RepoChange[] = [
       {
         kind: "pr",
@@ -976,17 +1336,38 @@ export const mockApi = {
       },
     ];
     void id;
+    // Demo entry point: the start page fetches `repoChanges("demo")` and
+    // renders `kind: "demo"` changes as a row inside the Reviews list (no
+    // tokens, same pipeline path). Like the service, the demo answers no
+    // filtered section.
+    if (id === "demo") {
+      return {
+        changes: [
+          {
+            kind: "demo",
+            title: "Demo: urllib3#5020 — Unfold obsolete folded response headers",
+            demo: "urllib3-5020",
+          },
+        ],
+      };
+    }
     switch (filter) {
       case "authoring":
-        return { changes: authoring };
+        return withFetchNote({ changes: authoring });
       case "review-requested":
-        return { changes: requested };
+        return withFetchNote({ changes: requested });
       case "branches":
-        return { changes: branches };
+        return withFetchNote({ changes: branches });
       case "recent":
-        return { changes: [...branches, ...previous] };
+        return withFetchNote({ changes: [...branches, ...previous] });
       default:
-        return { changes: [...authoring, ...requested, ...branches, ...previous] };
+        return withFetchNote({ changes: [...authoring, ...requested, ...branches, ...previous] });
+    }
+
+    /** Attach the stale-clone note when the `repoChangesFetchError` hook is set. */
+    function withFetchNote(res: RepoChangesResponse): RepoChangesResponse {
+      const note = changesFetchError();
+      return note ? { ...res, fetchError: note } : res;
     }
   },
 
@@ -1808,6 +2189,8 @@ export const mockApi = {
     contributions: reviewId === "demo" ? [...mockContributions] : [],
   }),
 
+  sharedContext: async (reviewId: string) => mockSharedContext(reviewId),
+
   deleteContribution: async (reviewId: string, contributionId: string) => {
     void reviewId;
     if (!mockContributions.some((c) => c.id === contributionId)) {
@@ -1857,6 +2240,91 @@ export const mockApi = {
     );
     emitContributions();
     return { ok: true as const, dismissedId: contributionId };
+  },
+
+  updateStatus: async (): Promise<UpdateStatusResponse> => {
+    await wait(30);
+    return {
+      enabled: getMockSettings().versionPickerEnabled === true,
+      build: mockUpdateBuild(),
+      pending: mockUpdatePending,
+      outcome: readUpdatePersisted().outcome,
+    };
+  },
+
+  updateChannels: async (): Promise<{ channels: UpdateChannel[] }> => {
+    await wait(80);
+    if (getMockSettings().versionPickerEnabled !== true) {
+      throw new Error('GET /api/update/channels: 404 {"error":"version picker is disabled"}');
+    }
+    return { channels: mockUpdateChannels() };
+  },
+
+  updateSwitch: async (ref: string): Promise<UpdateSwitchResponse> => {
+    await wait(80);
+    if (getMockSettings().versionPickerEnabled !== true) {
+      throw new Error('POST /api/update/switch: 404 {"error":"version picker is disabled"}');
+    }
+    const target = MOCK_UPDATE_CHANNELS.find((c) => c.ref === ref);
+    if (!target) {
+      throw new Error(`POST /api/update/switch: 404 {"error":"unknown update channel \\"${ref}\\""}`);
+    }
+    if (mockUpdatePending) {
+      throw new Error(
+        `POST /api/update/switch: 409 {"error":"a switch to \\"${mockUpdatePending.to}\\" is already in progress"}`,
+      );
+    }
+    const { current: from } = readUpdatePersisted();
+    if (from === ref) {
+      // Same channel, same published commit in mock: nothing to do.
+      return { from, to: ref, unchanged: true };
+    }
+    mockUpdatePending = { from, to: ref, startedAt: new Date().toISOString() };
+    mockUpdateDown = true;
+    const fail = (() => {
+      try {
+        return localStorage.getItem(UPDATE_FAIL_KEY);
+      } catch {
+        return null;
+      }
+    })();
+    window.setTimeout(() => {
+      const at = new Date().toISOString();
+      if (!fail) {
+        writeUpdatePersisted({
+          current: ref,
+          outcome: { status: "ok", from, to: ref, finishedAt: at },
+        });
+      } else if (fail === "fatal") {
+        writeUpdatePersisted({
+          current: from,
+          outcome: {
+            status: "failed",
+            from,
+            to: ref,
+            reason: `Mock install of ${ref} failed and the rollback did not come up (simulated)`,
+            finishedAt: at,
+          },
+        });
+      } else {
+        writeUpdatePersisted({
+          current: from,
+          outcome: {
+            status: "rolled-back",
+            from,
+            to: ref,
+            reason:
+              fail === "install"
+                ? `Mock install of ${ref} failed (simulated); restored ${from}`
+                : `Mock build of ${ref} never reported ${target.version ?? "a version"} (simulated); restored ${from}`,
+            finishedAt: at,
+          },
+        });
+      }
+      mockUpdatePending = null;
+      mockUpdateDown = false;
+    }, 900);
+    return { from, to: ref };
   },
 
   diagnostics: async () => {

@@ -94,7 +94,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   })();
 
   // Small unobtrusive indicator when a conversation contributed facts/open
-  // questions to shared context (PRD §9.5), linking to Settings.
+  // questions to shared context (PRD §9.5), linking to the debug page.
   const sharedCount = contributions.filter((c) =>
     c.items.some((i) => i.kind === "fact" || i.kind === "open_question"),
   ).length;
@@ -164,9 +164,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       {sharedCount > 0 ? (
         <p className="hint" data-shared-indicator>
           {sharedCount} shared context {sharedCount === 1 ? "item" : "items"} from this review ·{" "}
-          <Link to={`/settings?review=${encodeURIComponent(reviewId)}#shared-context`}>
-            Settings → Shared context
-          </Link>
+          <Link to={`/review/${encodeURIComponent(reviewId)}/debug`}>Debug → Shared context</Link>
         </p>
       ) : null}
       <nav className="toc" aria-label="Contents">

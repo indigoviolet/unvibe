@@ -3,28 +3,46 @@
  * - `GET /api/repos` — remembered repos (most recent first) plus detected
  *   local checkouts under the configured roots (marked `detected: true`).
  * - `POST /api/repos` — remember a checkout path (validated as a git
- *   checkout; owner/name derived from the `origin` remote).
+ *   checkout; owner/name derived from the `origin` remote), or clone a
+ *   GitHub URL into Unvibe's own storage (#27, marked `managed: true`).
+ * - `POST /api/repos/pick-folder` — open a native folder dialog and return
+ *   the chosen path (#26; one dialog at a time, 409 while one is open).
+ * - `DELETE /api/repos/:id` — forget a repo; deletes the managed clone
+ *   directory only for clones Unvibe made (#27). Refused while reviews
+ *   reference the repo.
  * - `GET /api/repos/:id/changes?filter=` — authoring / review-requested
- *   PRs, recent branches, previous reviews with stale state.
+ *   PRs, recent branches, previous reviews with stale state. Managed clones
+ *   are `git fetch`ed first (best effort; failures degrade to stale data
+ *   with a `fetchError` note, never a failed listing).
  */
 import { createHash } from "node:crypto";
-import type { FastifyInstance } from "fastify";
-import type {
-  AddRepoRequest,
-  ChangesFilter,
-  Repo,
-  ReposResponse,
-  RepoChangesResponse,
+import type { FastifyInstance, FastifyReply } from "fastify";
+import {
+  parseGitHubRepoInput,
+  type AddRepoRequest,
+  type AddRepoResponse,
+  type ChangesFilter,
+  type PickFolderResponse,
+  type RemoveRepoResponse,
+  type Repo,
+  type ReposResponse,
+  type RepoChangesResponse,
 } from "@unvibe/shared";
 import {
+  addManagedRepo,
   deriveIdentity,
   detectCheckouts,
+  CloneError,
   isGitCheckout,
   newRepoId,
+  pickFolder,
+  refreshManagedCheckout,
+  removeRepo,
   repoChanges,
   resolveRepoRoots,
 } from "../repos/index.js";
 import type { ServiceContext } from "./context.js";
+import type { RouteDeps } from "./deps.js";
 
 /** Stable id for a detected (not yet remembered) checkout. */
 export function detectedRepoId(localPath: string): string {
@@ -67,8 +85,15 @@ export const DEMO_REPO = {
   detected: true,
 } as const;
 
-/** GET /api/repos · POST /api/repos · GET /api/repos/:id/changes */
-export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): Promise<void> {
+/** GET /api/repos · POST /api/repos · POST /api/repos/pick-folder · DELETE /api/repos/:id · GET /api/repos/:id/changes */
+export async function registerRepos(
+  app: FastifyInstance,
+  ctx: ServiceContext,
+  deps: RouteDeps = {},
+): Promise<void> {
+  // One dialog at a time per app: the pick awaits the user's action, so a
+  // second request while one is open gets 409 instead of stacking dialogs.
+  let pickInFlight = false;
   app.get("/api/repos", async () => {
     const repos = await listAllRepos(ctx);
     // Demo first so the start page shows it without tokens (M3).
@@ -76,13 +101,20 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
   });
 
   app.post("/api/repos", async (req, reply) => {
-    const body = req.body as AddRepoRequest | undefined;
-    const rawPath = body?.path;
-    if (typeof rawPath !== "string" || rawPath.trim() === "") {
-      return reply.code(400).send({ error: "path is required" });
+    const body = (req.body ?? {}) as AddRepoRequest;
+    const rawPath = typeof body.path === "string" ? body.path.trim() : "";
+    const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
+    if (rawPath !== "" && rawUrl !== "") {
+      return reply.code(400).send({ error: "either path or url is required (not both)" });
+    }
+    if (rawUrl !== "") {
+      return addRepoByUrl(ctx, rawUrl, reply);
+    }
+    if (rawPath === "") {
+      return reply.code(400).send({ error: "path or url is required" });
     }
     const { default: path } = await import("node:path");
-    const localPath = path.resolve(rawPath.trim());
+    const localPath = path.resolve(rawPath);
     let ok = false;
     try {
       ok = await isGitCheckout(ctx.runner, localPath);
@@ -106,7 +138,33 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
     ctx.repos.upsert(repo);
     ctx.repos.touch(repo.id);
     const repos = await listAllRepos(ctx);
-    return { repos: [{ ...DEMO_REPO }, ...repos] } satisfies ReposResponse;
+    return { repos: [{ ...DEMO_REPO }, ...repos] } satisfies AddRepoResponse;
+  });
+
+  app.delete("/api/repos/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (id === "demo") return reply.code(404).send({ error: "unknown repo" });
+    try {
+      const { removedClone } = removeRepo(ctx.dataDir, ctx.repos, id);
+      return { ok: true, removedClone } satisfies RemoveRepoResponse;
+    } catch (err) {
+      if (err instanceof CloneError) {
+        return reply.code(err.status).send({ error: err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.post("/api/repos/pick-folder", async (_req, reply) => {
+    if (pickInFlight) {
+      return reply.code(409).send({ error: "a folder dialog is already open" });
+    }
+    pickInFlight = true;
+    try {
+      return (await pickFolder(ctx.runner, deps.pickFolder)) satisfies PickFolderResponse;
+    } finally {
+      pickInFlight = false;
+    }
   });
 
   app.get("/api/repos/:id/changes", async (req, reply) => {
@@ -142,7 +200,51 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
       repo = (await listAllRepos(ctx)).find((r) => r.id === id) ?? null;
     }
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
+    // Managed clones stay fresh: fetch before listing so PR heads and base
+    // branches are current. Best effort — offline degrades to stale data
+    // with a visible note, never a failed listing. User checkouts are never
+    // fetched implicitly.
+    const fetchError = await refreshManagedCheckout(ctx.runner, repo);
     const changes = await repoChanges({ runner: ctx.runner, db: ctx.db }, repo, filter);
+    if (fetchError) return { changes, fetchError } satisfies RepoChangesResponse;
     return { changes } satisfies RepoChangesResponse;
   });
+}
+
+/**
+ * `POST /api/repos` with a URL (#27): clone into the data dir through the
+ * injectable command runner, then remember the repo like any other, marked
+ * `managed`. The request holds open while the (blobless) clone runs; the
+ * service has no repo-scoped progress channel (see `repos/managed.ts`).
+ * Adding the same URL twice reuses the existing clone.
+ */
+async function addRepoByUrl(
+  ctx: ServiceContext,
+  rawUrl: string,
+  reply: FastifyReply,
+) {
+  let parsed: { owner: string; name: string; prNumber?: number };
+  try {
+    parsed = parseGitHubRepoInput(rawUrl);
+  } catch (err) {
+    return reply.code(400).send({ error: (err as Error).message });
+  }
+  const { owner, name } = parsed;
+  try {
+    const { repo } = await addManagedRepo(
+      { runner: ctx.runner, dataDir: ctx.dataDir, repos: ctx.repos },
+      owner,
+      name,
+    );
+    ctx.repos.touch(repo.id);
+    const repos = await listAllRepos(ctx);
+    const out: AddRepoResponse = { repos: [{ ...DEMO_REPO }, ...repos] };
+    if (parsed.prNumber !== undefined) out.prNumber = parsed.prNumber;
+    return out;
+  } catch (err) {
+    if (err instanceof CloneError) {
+      return reply.code(err.status).send({ error: err.message });
+    }
+    throw err;
+  }
 }

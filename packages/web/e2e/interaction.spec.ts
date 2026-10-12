@@ -218,7 +218,7 @@ test("3. follow-up answers and disappears; concept links open their pages", asyn
   await expect(page.locator("#page h1.title")).toContainText("Obsolete", { timeout: 5000 });
 });
 
-test("4. corrections show with accept/dismiss; shared-context indicator links to settings", async ({
+test("4. corrections show with accept/dismiss; shared-context indicator links to debug", async ({
   page,
 }) => {
   await gotoReview(page);
@@ -228,10 +228,10 @@ test("4. corrections show with accept/dismiss; shared-context indicator links to
   await expect(suggestion).toContainText("overstates the scope");
   await suggestion.getByRole("button", { name: "Dismiss" }).click();
   await expect(suggestion).toHaveCount(0, { timeout: 5000 });
-  // Shared-context indicator links to Settings → Shared context.
+  // Shared-context indicator links to the per-review debug page.
   const indicator = page.locator("[data-shared-indicator]").first();
-  await expect(indicator).toContainText("Settings → Shared context");
-  await expect(indicator.locator("a")).toHaveAttribute("href", /\/settings\?review=demo/);
+  await expect(indicator).toContainText("Debug → Shared context");
+  await expect(indicator.locator("a")).toHaveAttribute("href", "/review/demo/debug");
 });
 
 test("5. second opinion works on expansions and survives depth", async ({ page }) => {

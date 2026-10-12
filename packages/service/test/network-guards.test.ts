@@ -143,6 +143,8 @@ describe("static network guards", () => {
       if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(text)) {
         offenders.push(`${path.relative(webRoot, f)}: google fonts reference`);
       }
+      // Sentry is dev-server only (issue #29): neither SDK nor DSN is built in.
+      if (/sentry/i.test(text)) offenders.push(`${path.relative(webRoot, f)}: sentry reference`);
     }
     expect(offenders, "remote loads in packages/web/dist").toEqual([]);
   });
@@ -158,6 +160,11 @@ describe("static network guards", () => {
         file: "cli/lock.ts",
         patterns: [/node:http/],
         reason: "loopback health probe (http.get to 127.0.0.1 /api/health only)",
+      },
+      {
+        file: "update/helper-entry.ts",
+        patterns: [/node:http/],
+        reason: "switch helper's loopback health probe (http.get to 127.0.0.1 /api/health only, same as cli/lock.ts)",
       },
       {
         file: "mcp/registry.ts",

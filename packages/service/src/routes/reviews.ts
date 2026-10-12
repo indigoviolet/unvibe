@@ -42,6 +42,7 @@ import {
   type UpdateReplyParser,
 } from "../versions/update.js";
 import { demoFixtureName, fixturesDirDefault, ingestDemo, isDemoRequest } from "../pipeline/demo.js";
+import { refreshManagedCheckout } from "../repos/index.js";
 import { dispatchAction } from "../pipeline/actions/dispatcher.js";
 import type { Pipeline } from "../pipeline/index.js";
 import { deleteReviewLocal, listReviewSummaries, touchReviewOpened } from "../reviews/index.js";
@@ -118,6 +119,13 @@ export async function registerReviews(
         : {}),
     }, id);
     if (!result.deleted) return reply.code(404).send({ error: "unknown review" });
+    // Close the review's agent sessions (base + conversations) so a review
+    // added again for the same change starts from new ones.
+    try {
+      await (deps as RouteDeps).sessions?.closeReview(id);
+    } catch {
+      // Best effort: the sessions also close on idle.
+    }
     // The review's agent sessions are gone: its MCP secrets die with it, so
     // a stale agent URL can never reach another review's data.
     try {
@@ -200,6 +208,11 @@ export async function registerReviews(
       }
     }
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
+
+    // #27: managed clones stay fresh — fetch before ingest so PR heads and
+    // base branches are current. Best effort (ingest proceeds on stale data
+    // when offline); user checkouts are never fetched implicitly.
+    await refreshManagedCheckout(ctx.runner, repo);
 
     const reviewId = newReviewId();
     let ingested;
@@ -298,6 +311,9 @@ export async function registerReviews(
     if (!row) return reply.code(404).send({ error: "unknown review" });
     const repo = ctx.repos.get(row.repoId);
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
+    // #27: fetch managed clones before refresh (best effort, stale on
+    // failure); never fetch a user's own checkout implicitly.
+    await refreshManagedCheckout(ctx.runner, repo);
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
 

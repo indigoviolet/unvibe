@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import { initTokenFromUrl } from "./api/client.js";
+import { initSentry } from "./sentry.js";
 // Self-hosted fonts (no external requests, PRD §16): latin subsets only.
 import "@fontsource/ibm-plex-sans/latin-400.css";
 import "@fontsource/ibm-plex-sans/latin-500.css";
@@ -13,6 +14,7 @@ import "@fontsource/source-serif-4/latin-400-italic.css";
 import "@fontsource/source-serif-4/latin-600.css";
 import "./styles/prototype.css";
 
+initSentry();
 initTokenFromUrl();
 
 // Installable web app (PRD §14): cache the app shell + offline page.

@@ -36,7 +36,11 @@ const TIPS: { title: string; body: string }[] = [
   },
   {
     title: "Settings",
-    body: "Models per role, prompt templates with their expanded text, limits and budgets, running jobs with tokens and cache-hit rate, and the shared context agents build up.",
+    body: "Models per role, prompt templates with their expanded text, limits and budgets, and running jobs with tokens and cache-hit rate.",
+  },
+  {
+    title: "Debug",
+    body: "The per-review debug page shows the shared context agents build up: the base session, the append-only log, and the contributions.",
   },
 ];
 

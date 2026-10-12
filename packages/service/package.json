@@ -6,7 +6,8 @@
     "unvibe": "./dist/index.js"
   },
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm run build --workspace @unvibe/shared && esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/index.js --metafile=dist/meta.json --sourcemap --log-level=warning --external:fastify --external:@fastify/static --external:@fastify/websocket --external:@modelcontextprotocol/sdk --external:immer --external:ws && npm run build:adapters",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm run build --workspace @unvibe/shared && esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/index.js --metafile=dist/meta.json --sourcemap --log-level=warning --external:fastify --external:@fastify/static --external:@fastify/websocket --external:@modelcontextprotocol/sdk --external:immer --external:ws --external:@sentry/node && npm run build:helper && npm run build:adapters",
+    "build:helper": "esbuild src/update/helper-entry.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/update-helper.js --metafile=dist/update-helper-meta.json --log-level=warning",
     "build:adapters": "esbuild ../../node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js --bundle --platform=node --format=esm --target=node24 --outfile=dist/adapters/claude.js --metafile=dist/adapters/claude-meta.json --log-level=warning && esbuild ../../node_modules/@agentclientprotocol/codex-acp/dist/index.js --bundle --platform=node --format=esm --target=node24 --outfile=dist/adapters/codex.js --metafile=dist/adapters/codex-meta.json --log-level=warning",
     "dev": "node --watch ./dist/index.js",
     "test": "vitest run --exclude test/acp-live.test.ts",
@@ -17,8 +18,8 @@
     "fixture:snapshot": "npm run build && npx esbuild src/replay/build-snapshot.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/replay/build-snapshot.js --log-level=warning && node ./dist/replay/build-snapshot.js"
   },
   "dependencies": {
-    "@agentclientprotocol/codex-acp": "2.2.2",
     "@agentclientprotocol/claude-agent-acp": "0.89.0",
+    "@agentclientprotocol/codex-acp": "2.2.2",
     "@agentclientprotocol/sdk": "1.8.0",
     "@fastify/static": "^8.0.0",
     "@fastify/websocket": "^11.0.0",
@@ -29,6 +30,7 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@sentry/node": "^11.6.0",
     "@types/ws": "^8.18.2",
     "typescript": "^5.6.3",
     "vitest": "^3.2.7",

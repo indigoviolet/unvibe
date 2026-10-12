@@ -1,9 +1,11 @@
 /**
- * Jobs section (PRD §4.14): running and queued jobs for the review, live
- * through the WebSocket `job` events. Each row shows kind, model/provider,
- * state (backing-off with the retry time), tokens, cache-hit rate, and a
- * toggle for the exact prompt it sent; cancel for active jobs. A totals row
- * sums tokens and the input-weighted cache-hit rate.
+ * Jobs section (issue #32, PRD §4.14): running and queued jobs for the
+ * review, live through the WebSocket `job` events. Each row shows kind,
+ * model/provider, state (backing-off with the retry time), tokens,
+ * cache-hit rate, and a toggle for the exact prompt it sent; cancel for
+ * active jobs. A totals row sums tokens and the input-weighted cache-hit
+ * rate. Relocated unchanged from Settings to the debug page; the
+ * Markdown-only rule covers the shared-context parts, not this table.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { Job } from "@unvibe/shared";
@@ -63,7 +65,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
     <section aria-label="Jobs">
       <div className="divider">Jobs</div>
       {!reviewId ? (
-        <p className="hint">Open settings from a review (`/settings?review=:id`) to see its jobs.</p>
+        <p className="hint">Open the debug page from a review (`/review/:id/debug`) to see its jobs.</p>
       ) : error ? (
         <p className="err">{error}</p>
       ) : jobs === null ? (

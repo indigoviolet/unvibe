@@ -358,7 +358,7 @@ describe("batch append vs change list: forks before/after a batch", () => {
       { match: "", events: [{ type: "done", stopReason: "end_turn" }] },
     ]);
     const mgr = new SessionManager({ runner: agents, clock: new ManualClock(1000) });
-    const key = { reviewVersion: "r1@v1", guideRevision: "g1", provider: "p", model: "m" };
+    const key = { reviewId: "r1", reviewVersion: "v1", guideRevision: "g1", provider: "p", model: "m" };
     const base = await mgr.getBase({ key, cwd: "/r", systemPrompt: "s", mcpServers: [], pack: "BASE PACK" });
 
     const forkBefore = await mgr.forkConversation(base.key, "hello");
@@ -479,16 +479,16 @@ describe("rebuild triggers (PRD §9.4)", () => {
       });
       const settings = setup.ctx.settings.get();
       const guideRev = guideRevisionForSnapshot(setup.ctx.reviews.getSnapshot(setup.reviewId)!);
-      const staleKey = `v0|${guideRev}|${settings.main.provider}|${settings.main.model}`;
+      const staleKey = `${setup.reviewId}|v0|${guideRev}|${settings.main.provider}|${settings.main.model}`;
       let rebuiltKey = "";
       const res = await svc.maybeRebuildBase(setup.reviewId, {
         baseKey: staleKey,
         onRebuild: async (reasons) => {
           expect(reasons).toContain("new-version");
-          rebuiltKey = `v1|${guideRev}|${settings.main.provider}|${settings.main.model}`;
+          rebuiltKey = `${setup.reviewId}|v1|${guideRev}|${settings.main.provider}|${settings.main.model}`;
           return { newBaseKey: rebuiltKey, newBaseTokens: 1234 };
         },
-        pruneBases: (keep) => setup.ctx.sessions.pruneBases(keep),
+        pruneBases: (reviewId, keep) => setup.ctx.sessions.pruneBases(reviewId, keep),
       });
       expect(res.rebuilt).toBe(true);
       expect(rebuiltKey).not.toBe("");
@@ -737,9 +737,10 @@ describe("base growth observability (PRD §4.14, §9.3)", () => {
     try {
       const settings = setup.ctx.settings.get();
       const guideRev = guideRevisionForSnapshot(setup.ctx.reviews.getSnapshot(setup.reviewId)!);
-      const baseKey = `v1|${guideRev}|${settings.main.provider}|${settings.main.model}`;
+      const baseKey = `${setup.reviewId}|v1|${guideRev}|${settings.main.provider}|${settings.main.model}`;
       await setup.ctx.sessions.getBase({
         key: {
+          reviewId: setup.reviewId,
           reviewVersion: "v1",
           guideRevision: guideRev,
           provider: settings.main.provider,

@@ -14,9 +14,11 @@ import { registerRepos } from "./repos.js";
 import { registerDiagrams } from "./diagrams.js";
 import { registerReviews, type ReviewsRouteDeps } from "./reviews.js";
 import { registerSettings } from "./settings.js";
+import { registerSharedContext } from "./shared-context.js";
 import { registerSubmit } from "./submit.js";
 import { registerViewer } from "./viewer.js";
 import { registerDiagnostics } from "./diagnostics.js";
+import { registerUpdate } from "./update.js";
 
 /**
  * One route module per area; each registers its PRD §14.1 endpoints.
@@ -35,18 +37,20 @@ export async function registerRoutes(
     dataDir?: string;
     fixturesDir?: string;
   };
-  await registerRepos(app, ctx);
+  await registerRepos(app, ctx, deps);
   await registerReadiness(app, ctx, deps);
   await registerReviews(app, ctx, deps);
   await registerDiagrams(app, ctx, deps);
   await registerHunks(app, full as unknown as ServiceContext, full as unknown as RouteDeps);
   await registerComments(app, ctx);
   await registerContributions(app, full as unknown as ServiceContext);
+  await registerSharedContext(app, full as unknown as ServiceContext);
   await registerDescription(app, ctx);
   await registerSubmit(app, ctx);
   await registerViewer(app, ctx);
   await registerSettings(app, deps);
   await registerDiagnostics(app, ctx, deps);
+  await registerUpdate(app, ctx, deps);
   await registerPrompts(app, {
     snapshots: {
       getSnapshot: async (reviewId: string) => {
@@ -60,5 +64,5 @@ export async function registerRoutes(
   if (deps.mcp) await registerMcp(app, deps.mcp);
 }
 
-export type { RouteDeps } from "./deps.js";
+export type { RouteDeps, UpdateHooks } from "./deps.js";
 export type { ReviewsRouteDeps, RegisterReviewsDeps } from "./reviews.js";

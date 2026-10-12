@@ -26,6 +26,12 @@ import type {
 export interface HealthResponse {
   ok: boolean;
   version: string;
+  /**
+   * Running build's identity for the version picker (issue #36, step 2).
+   * Null/absent when the build carries no preview metadata (plain release
+   * / dev / unwired installs).
+   */
+  build?: UpdateBuildInfo | null;
 }
 
 /**
@@ -44,10 +50,59 @@ export interface ReposResponse {
   repos: Repo[];
 }
 
+/**
+ * Add a repo (#27): exactly one of `path` / `url`.
+ * - `path`: absolute local path of an existing checkout (unchanged M1 shape).
+ * - `url`: GitHub repo URL, bare `owner/name`, or PR URL — Unvibe clones
+ *   into its own storage (`<dataDir>/repos/<owner>/<name>`) and remembers
+ *   it marked `managed`. See `repos.ts` for the accepted forms.
+ */
 export interface AddRepoRequest {
   /** Absolute local path of the checkout. */
-  path: string;
+  path?: string;
+  /** GitHub repo URL, `owner/name`, or PR URL (managed clone). */
+  url?: string;
 }
+
+/**
+ * `POST /api/repos` response: the full list (like `GET /api/repos`) plus
+ * the PR number when the request added via a PR URL, for the later web
+ * step (paste-PR-offers-to-add then opens the PR).
+ */
+export interface AddRepoResponse extends ReposResponse {
+  prNumber?: number;
+}
+
+/**
+ * `DELETE /api/repos/:id` response (#27): the repo is forgotten; the local
+ * clone is removed only for repos Unvibe cloned (`managed`). Refused (409)
+ * while the repo still has reviews — delete those first, never orphaned.
+ */
+export interface RemoveRepoResponse {
+  ok: true;
+  /** True when a managed clone directory was removed from the data dir. */
+  removedClone: boolean;
+}
+
+/**
+ * `POST /api/repos/pick-folder` (#26): ask the service to open a native
+ * "choose folder" dialog on the user's own machine and report what
+ * happened. No request body. A browser folder picker cannot supply an
+ * absolute path, so the dialog runs service-side (macOS `osascript`,
+ * Linux `zenity`/`kdialog`); the caller still adds the chosen path through
+ * `POST /api/repos`, which validates it as a git checkout.
+ */
+export type PickFolderResponse =
+  /** The user chose a folder: absolute path, trailing newline/slash trimmed. */
+  | { status: "picked"; path: string }
+  /** The user dismissed the dialog: the caller does nothing. */
+  | { status: "cancelled" }
+  /**
+   * No dialog could be opened (no tool, no display, other platform):
+   * `reason` is short human-readable copy the UI shows inline so the user
+   * falls back to typing the path.
+   */
+  | { status: "unavailable"; reason: string };
 
 export type ChangesFilter = "authoring" | "review-requested" | "branches" | "recent" | "all";
 
@@ -68,6 +123,12 @@ export interface RepoChange {
 
 export interface RepoChangesResponse {
   changes: RepoChange[];
+  /**
+   * #27: set when a managed clone's refresh fetch failed (offline,
+   * logged-out `gh`). The listing still succeeds on stale data; the UI
+   * shows this note instead of failing.
+   */
+  fetchError?: string;
 }
 
 // --- reviews -------------------------------------------------------------
@@ -527,6 +588,14 @@ export interface Settings {
   cacheLifetimeMs: number;
   /** Service exits after this many idle minutes (PRD §14; 0 = never). */
   idleExitMinutes: number;
+  /**
+   * Version picker (issue #36, step 2): list installable update channels
+   * and switch builds from Settings → Version. Off by default; listing
+   * shells out through `gh` under the user's own login, so it stays
+   * opt-in. Optional for backwards compatibility (older clients omit it);
+   * the service defaults to false.
+   */
+  versionPickerEnabled?: boolean;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
@@ -699,6 +768,25 @@ export interface DeleteContributionResponse {
 }
 
 /**
+ * Issue #32: per-review shared-context debug page (`/review/:id/debug`,
+ * PRD §9). `GET /api/reviews/:id/shared-context` returns the three parts
+ * of the review's shared context as Markdown text the page renders as-is:
+ * the base session(s) plus the current base pack, the append-only log, and
+ * the contributions. The web side does no formatting of its own beyond
+ * rendering Markdown (delete still uses the contributions endpoints below).
+ * 404 when the review is unknown.
+ */
+export interface SharedContextResponse {
+  reviewId: string;
+  /** Base section: per-base keys + `SharedContextBaseStats`, then the current pack in fenced blocks. */
+  base: string;
+  /** Log section: every entry in order with in-base/waiting markers. */
+  log: string;
+  /** Contributions section: one block per contribution. */
+  contributions: string;
+}
+
+/**
  * M5 shared context (PRD §9.5): corrections are suggestions on the target
  * card, never silent rewrites.
  *
@@ -741,6 +829,98 @@ export interface SharedContextBaseStats {
   cacheHitRate?: number;
   /** Epoch ms the base was last used (cache-expiry tracking, PRD §9.4). */
   lastUsedAt: number;
+}
+
+// --- update channels (issue #36, step 2: version picker) -----------------
+
+/**
+ * One installable build: `release`, `release-rc`, or a `preview/<slug>`
+ * published from an in-flight branch. Served by
+ * `GET /api/update/channels`; `current` marks the installed one.
+ */
+export interface UpdateChannel {
+  /** "release" | "release-rc" | "preview/<slug>". */
+  ref: string;
+  kind: "release" | "release-rc" | "preview";
+  /** e.g. "0.0.1-preview.feat-x.abc1234"; null when unknown. */
+  version: string | null;
+  /** Source commit sha; null when unknown. */
+  commit: string | null;
+  /** e.g. "feat/x"; null for release builds. */
+  sourceBranch: string | null;
+  /** ISO build time; null when unknown. */
+  builtAt: string | null;
+  current: boolean;
+}
+
+/**
+ * The running build's identity, exposed where the web app already gets
+ * the service version (`GET /api/health` → `build`, `GET
+ * /api/update/status` → `build`). Null when the build carries no preview
+ * metadata (plain release / dev / unwired installs).
+ */
+export interface UpdateBuildInfo {
+  version: string;
+  sourceBranch: string | null;
+  commit: string | null;
+  builtAt: string | null;
+}
+
+/** `GET /api/update/channels[?refresh=1]` — cached briefly server-side. */
+export interface UpdateChannelsResponse {
+  channels: UpdateChannel[];
+}
+
+/** `POST /api/update/switch` — restart onto another channel's build. */
+export interface UpdateSwitchRequest {
+  ref: string;
+}
+
+/**
+ * 202 when the helper is spawned (the service then shuts down), 200 with
+ * `unchanged` when the installed build already matches the published one.
+ */
+export interface UpdateSwitchResponse {
+  from: string;
+  to: string;
+  /** True when nothing was done (same channel, same commit). */
+  unchanged?: boolean;
+}
+
+/** A switch the service committed to and is shutting down for. */
+export interface UpdatePendingSwitch {
+  from: string;
+  to: string;
+  /** ISO time the switch was committed. */
+  startedAt: string;
+}
+
+/**
+ * The helper's verdict, written to the data dir and surfaced on next
+ * start: `ok`, `rolled-back` (back on the old build + reason), or
+ * `failed` (even the rollback did not come up).
+ */
+export interface SwitchOutcome {
+  status: "ok" | "rolled-back" | "failed";
+  from: string;
+  to: string;
+  /** Why a rollback/failure happened; absent on clean `ok`. */
+  reason?: string;
+  /** Helper log file (in the data dir) with the full step trace. */
+  logPath?: string;
+  /** ISO time the outcome was recorded. */
+  finishedAt: string;
+}
+
+/**
+ * `GET /api/update/status` — always available (even with the picker
+ * gated off): gate state, running build, pending switch, last outcome.
+ */
+export interface UpdateStatusResponse {
+  enabled: boolean;
+  build: UpdateBuildInfo | null;
+  pending: UpdatePendingSwitch | null;
+  outcome: SwitchOutcome | null;
 }
 
 // --- WebSocket events ----------------------------------------------------

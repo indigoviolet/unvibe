@@ -112,14 +112,97 @@ UI); nothing below was edited by this pass.
 
 ### §4.2 Start page — all met
 
-- Repo picker with recents + local checkout detection — met
-  (`routes/repos.ts`, `e2e/start.spec.ts` "prior sessions list").
+- Repo selector in the top bar with remembered + detected checkouts —
+  met (`StartPage.tsx` native `<select>` next to the brand: remembered
+  under "Repos", detected under "Detected checkouts" with the local path
+  as the title; selection persisted in `unvibe.start.repoId`, demo never
+  selectable; `e2e/start.spec.ts` "repo selector lists remembered and
+  detected repos, persisted").
+- Everything follows the chosen repo — met: the Reviews list shows only
+  the selected repo's reviews (filtered on `ReviewSummary.repoId`, which
+  the service populates from the review row — `reviews/list.ts:151` — so
+  no owner/name matching in web code, correct for remembered and
+  `detected-<sha1>` ids alike); PR / branch lists and "Open a PR by URL
+  or number" stay scoped as before; a pasted PR URL for a different known
+  repo opens it and switches the selector; while a new selection loads,
+  the old repo's lists stay hidden behind a loading hint (`listsFor`
+  gate in `StartPage.tsx`; `e2e/start.spec.ts` "reviews list follows the
+  selected repo").
+- No "New review" / "Try the demo" sections — met: no divider,
+  scroll-to button or `newReviewRef` plumbing; the PR / branch sections
+  follow the Reviews list; the demo is a row inside Reviews ("Demo · no
+  tokens", `{ repoId: "demo" }`, shown regardless of the selected repo;
+  an existing demo session row replaces the second entry —
+  `e2e/start.spec.ts` "demo row opens the fixture review").
+  `newreview-agent-hint` sits by Reviews, `newreview-gh-hint` by the PR
+  lists (same `data-testid`s).
+- No repos: short empty state linking to `/settings#repositories` (demo
+  row still shows) — met (`data-testid="no-repos"`; exercised by
+  `e2e/real-service.spec.ts`, whose fresh data dir starts repo-less).
+  A failed `GET /api/repos` keeps sessions visible instead (offline copy
+  in the same box).
+- List loads are per-selection loading / loaded / failed — met: the PR
+  input never waits on the lists; switching repos clears the old lists
+  synchronously (no stale frame) behind a loading hint, and a nonce
+  guarantees every selection pairs with a fresh load (re-selecting the
+  current repo still fires `change` and reloads — without this the
+  effect's id-equality bail-out stuck the page on "Loading…", found via
+  a 3-minute e2e hang whose trace showed completed responses); a 30 s
+  timeout bounds the loading state regardless; a total failure shows an
+  inline error with Retry; one failed filter shows its error in that
+  section while the others render (`Promise.allSettled` in
+  `StartPage.tsx`; the service already degrades gh/git failures to empty
+  per source in `repos/changes.ts`, so gh being down never rejects —
+  whole-request failures are unknown-repo 404s or an unreachable
+  service). Covered by `e2e/start.spec.ts` (fail-all + Retry recovery,
+  fail-two section errors with branches intact, deterministic held-load
+  with release, same-value reselect reloads).
+- Reviews whose repo is in neither list stay reachable — met: sessions
+  with an unknown non-demo `repoId` render in a labelled orphan group at
+  the end of Reviews with working open and Remove (`e2e/start.spec.ts`
+  "reviews for checkouts no longer listed").
+- Repos are added in Settings — met (`RepositoriesSection.tsx`:
+  remembered repos with owner/name + path, add-by-path input with an
+  empty-field hint; `#repositories` anchor; `e2e/settings.spec.ts`
+  "repositories section lists remembered repos and adds by path").
+  Remove is covered by the #27 bullet below (`DELETE /api/repos/:id` +
+  per-kind confirms in the same section).
+- Add by GitHub URL (#27, complete) — met end to end: `POST /api/repos`
+  accepts a URL / `owner/name` / PR URL / `owner/name#N` (shared `repos.ts`
+  parsing + table tests), clones blobless into
+  `<dataDir>/repos/<owner>/<name>` via `gh repo clone`
+  (`GITHUB_TOKEN` unset, prompt-free env), remembers the repo marked
+  `managed`, reuses it on repeat adds (lowercase-canonical, one row per
+  spelling), and refuses/degrades distinctly (400/404/403/gh-login/502);
+  `DELETE /api/repos/:id` forgets the repo and deletes the clone for
+  managed repos only (guarded, refused while reviews exist).
+  UI: Settings → Repositories has a separate add-by-URL row (client-side
+  validation with the same parser, "Cloning owner/name…" busy state,
+  service errors via toast), marks managed clones ("Cloned by Unvibe",
+  "(cloned)" in the start-page selector), and removes with per-kind
+  confirm copy (409 surfaces as is). The start page offers to clone on a
+  pasted PR URL for an unknown repo (confirm selects the repo and opens
+  the PR; cancel keeps the input) and shows the service's `fetchError`
+  note once above the lists.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
   refresh banner counts).
-- Selections remembered — met (`reviews/list.ts` last-opened ordering,
-  `start.spec.ts` “most recent first”).
+<- Selections remembered — met (selector in `localStorage`,
+  `start.spec.ts` persistence round-trip; last-opened ordering in
+  `reviews/list.ts`).
+- Native folder picker (#26) — met: `POST /api/repos/pick-folder`
+  (frontmost osascript dialog / zenity→kdialog with cancelled/unavailable
+  outcomes, `pick-folder.test.ts`) plus the `BrowseFolderButton`
+  (`BrowseFolderButton.test.tsx`), mounted in the Settings Repositories
+  section beside the path field: picking fills the input (the user still
+  clicks "Add by path"), the unavailable reason shows inline
+  (`RepositoriesSection.test.tsx`), and the text field stays as the
+  fallback.
+
+Conformance note: this matches PRD §4.2 ("For the selected repo: …")
+more closely than the previous all-repos Reviews list did — no PRD edit
+needed (that deviation is closed, not added).
 
 ### §4.3 Pages — all met
 
@@ -298,16 +381,21 @@ UI); nothing below was edited by this pass.
   with description as secondary text (Claude + Codex); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
-- Prompts (Template raw + Expanded with L0–L4 marks, tokens, cache part;
-  view-only) — met (`settings.spec.ts`, `prompts-route.test.ts`,
+- Prompts (Template raw in Settings; per-review Expanded with L0–L4
+  marks, tokens, cache part on the debug page; view-only) — met
+  (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`,
   `GET /api/prompts` ran 200 from the global install).
 - Limits/budgets (sessions per provider, inline budget, rebuild
   thresholds) — met (`settings.spec.ts` “limits persist across reload”).
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
-  (`settings.spec.ts`, `GET /api/jobs` ran; prompt snapshots now served
-  per-job to keep lists small).
-- Shared context (contributions + thread + delete) — met
-  (`sharedctx.test.ts`, `routes/contributions.ts`).
+  (issue #32; on the per-review debug page now, relocated unchanged from
+  Settings: `e2e/debug.spec.ts`, `GET /api/jobs` ran; prompt snapshots now
+  served per-job to keep lists small).
+- Shared context debug page (issue #32; per-review `/review/:id/debug`,
+  not in Settings): base keys + stats + current pack, log with
+  in-base/waiting markers, contributions with thread + delete — met
+  (`shared-context-debug.test.ts`, `routes/shared-context.ts`,
+  `e2e/debug.spec.ts`).
 
 ### §4.15 Conventions — all met
 
@@ -383,7 +471,10 @@ UI); nothing below was edited by this pass.
 
 - Layers L0–L4 ordering + budgets (40k guess, hunk-header fallback) —
   met (`context/layers.ts`, `context.test.ts` header/summary fallback).
-- Per-model base cache; base key (version, guide rev, model) — met
+- Per-model base cache; base key (review, version, guide rev, model) — met
+  (#43: the key had no review id, so reviews shared a base and a removed
+  review's session was reused when the change was added again; Remove now
+  closes the review's sessions)
   (`sessions/manager.ts`, `decideRebuild`).
 - Base = L0 + one L1+L1b+L2 message + “ready”; conversations fork(base)+L4;
   reader never forked; fan-out after warm — met (`pipeline/runner.ts:790
@@ -481,8 +572,9 @@ UI); nothing below was edited by this pass.
   met (`prompt-goldens.test.ts`, `prompts.test.ts`).
 - All 14 template rows present — met (18 files cover every row;
   `routes/prompts.ts` serves template + expanded).
-- Settings shows template + expanded with L0–L4 marks, tokens, cache part
-  — met (`settings.spec.ts`, `prompts-route.test.ts`).
+- Settings shows the template; the debug page shows the per-review
+  expanded text with L0–L4 marks, tokens, cache part — met
+  (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`).
 - Diagrams: D2 with `link:` citations on shapes/connections — met
   (`reply-format.md` §5, `prompts/includes/d2-convention.md` single source,
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
@@ -528,10 +620,43 @@ UI); nothing below was edited by this pass.
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
+- Preview builds, step 1 (issue #36) — implemented, not a PRD requirement:
+  `mise run preview:publish [-- <branch>] [--push]` builds a branch into a
+  local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
+  guard, `unvibe` provenance field in the generated package.json);
+  `unvibe update --list` / `unvibe update <channel> [--keep-data]`
+  lists channels via `gh` (GITHUB_TOKEN unset) — per-ref version, source
+  commit/branch and build time read without cloning
+  (`.../contents/package.json?ref=…`), typed as `UpdateChannel`
+  (mirrors the step-2 shared type; owned by that branch) — and installs
+  `github:indigoviolet/unvibe#<channel>` with per-channel database copies
+  under `channel-backups/` (never deleted; service must be stopped; no
+  restart logic — refusal points at `unvibe stop`). Same-channel updates
+  compare installed vs published commits (no-op with the commit, else
+  reinstall in place with no database swap); `--list` flags a newer build
+  on the installed row. A new preview never inherits another preview's
+  database (seeds from the release copy, `release-rc` fallback, else the
+  switch stops before installing unless `--keep-data`). Pre-field
+  installs map to their real channel from the version (source checkouts
+  stay unknown). The install is pinned to this binary's npm prefix and
+  verified at its package path — a landing elsewhere fails naming the
+  path and `npm prefix -g`, swapping nothing. Plain modules are exactly
+  `src/update/{channels,install,data-backup}.ts`, composed for the CLI in
+  `src/cli/update-flows.ts`. Only database files are per-channel; the
+  rest of the data dir is shared, and leftover review folders are inert
+  (DB-driven listing, random review ids, self-healing worktrees — see
+  DEVELOPMENT.md).
+  Evidence: `test/preview-publish.test.ts` (12), `test/update.test.ts`
+  (49), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
+  still green. Note: the live database file is `unvibe.db`
+  (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
+  and is corrected there — the backup covers both names when present.
 
 ### §14.1 Endpoints — all met (ran)
 
-`GET/POST /api/repos` ✓, `GET /api/repos/:id/changes` ✓,
+`GET/POST /api/repos` ✓, `DELETE /api/repos/:id` ✓ (new, #27: forgets the
+row; deletes the clone directory for managed repos only, guarded to
+`<dataDir>/repos`, refused while reviews exist), `GET /api/repos/:id/changes` ✓,
 `POST /api/reviews` ✓, `GET /api/reviews/:id` (+`?version=n`) ✓,
 `POST …/refresh` ✓, `POST …/update` ✓, `POST …/actions` ✓,
 `PATCH …/hunks/:hash` ✓, `POST …/hunks/:hash/summarize` ✓,
@@ -560,7 +685,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Description round-trip (unedited paragraphs byte-identical) — met
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
-  `gh-writes.test.ts`, doctor/readiness share the wrapper).
+  `gh-writes.test.ts`, doctor/readiness share the wrapper). Managed-clone
+  refresh (#27) is `git fetch origin` on managed checkouts only, before
+  changes listings and review ingest/refresh (best effort, 30 s freshness +
+  in-flight sharing; failures degrade to stale data with a `fetchError`
+  note). User checkouts are never fetched implicitly.
 - Live GitHub submit — met (audit-10, ran 2026-10-11):
   `mise run test:live:submit` green against sandbox draft PR
   `indigoviolet/lvu#2` (fresh temp clone, never `~/dev/lvu`, never merged,
@@ -588,6 +717,9 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Privacy: loopback-only enforced at three layers (browser CSP + suite
   network tripwires + static guards + subprocess allowlist —
   `network-*.test.ts`, `subprocess-allowlist.test.ts`, all in `check`).
+  Dev-only exception (issue #29): with a Sentry DSN in the env the service
+  and the Vite dev server report errors to Sentry. Releases carry neither
+  SDK nor DSN (`sentry.test.ts`, dist scan in `network-guards.test.ts`).
 - Snapshot size: 300-file ingest 0.15 s; `GET` 20 ms @ 433 KB;
   +361 B/annotation (200 annotations measured); jobs lists omit prompt
   snapshots (per-job fetch) — `GET` stays reasonable after hundreds of
@@ -605,13 +737,15 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   reasons; live: 0 unverified, no hide violations).
 - M3 interaction — met (explain/ask/note everywhere; depth/examples/
   diagrams/undo; expansions→links; open-as-page; read; contents; log +
-  change lists + contributions + shared-context view).
+  change lists + contributions + per-review shared-context debug page,
+  issue #32).
 - M4 comments/submit — met (threads ×3, Comments menu + For-PR drafts,
   suggested comments, author-gated description edit, one-review submit).
 - M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
   hunk state, update pass, rebase-no-change test (a)).
-- M6 second opinion + settings — met (blind/check, models/prompts/limits/
-  jobs+usage settings page; isolation e2e on the real prompt).
+- M6 second opinion + settings — met (blind/check, models/prompt-
+  templates/limits settings page; jobs + expanded prompts + usage on the
+  per-review debug page, issue #32; isolation e2e on the real prompt).
 
 ## §18 Tests — all met
 
@@ -664,8 +798,86 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
    demo ships pre-rendered SVGs so it needs nothing.
 10. Acronym: second-opinion `workspace-write` (not `read-only`) for Codex
     (`read-only` refuses MCP calls) — `docs/acp-runner.md` quirks 6–7.
+11. Managed clones (#27): the PRD assumes reviews open on existing local
+    checkouts (§4.2 "finds local checkouts", §14 storage). Unvibe now also
+    clones repos itself (`gh repo clone -- --filter=blob:none` into
+    `<dataDir>/repos/<owner>/<name>`, migration 005 `repos.managed`) and
+    keeps those checkouts fresh with `git fetch`; reviews of a managed
+    clone work exactly like reviews of a user checkout (a worktree per
+    review, no separate ingest path). The user never edits the managed
+    checkout, so fetching is safe; removing the repo deletes the clone
+    (managed only), and only while it has no reviews.
 
 ## Open list
+
+### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
+
+In-app switching between `release`, `release-rc` and `preview/*` builds,
+merged with step 1: one shared switch core (`update/switch.ts`) serves
+the `unvibe update` CLI and the in-app `RealUpdater` (step-1 flow logic
+moved, CLI keeps its output; step-1's 49 `update.test.ts` tests pass
+unchanged via wrappers). One `UpdateChannel` type (shared); build
+identity from the installed package.json (`readInstalledBuild`, no
+second stamp); `dist/update-helper.js` shipped in the release tree and
+asserted by `global-install-check` + a metafile containment test (node
+builtins only). Contract first in `packages/shared/src/api.ts`
+(`UpdateChannel`, `UpdateBuildInfo` on health + status,
+channels/switch/status shapes, `unchanged`). `GET /api/update/status`
+always works; channels + switch are gated off by default
+(`versionPickerEnabled`) with 404, refused with 409 while jobs run / a
+submit is in flight / a switch is pending / not running from an
+installed build, and sit behind the same token + loopback Host/Origin
+gates as every other route. `from` is the locally installed channel
+(never "unknown"); same channel + same commit is 200 `unchanged`, a
+moved commit reinstalls with an Update action on the current row (from
+=== to, no DB swap; rollback is one reinstall + health, then `failed`
+with the recovery command — never loops). Switch = commit + detached
+self-contained helper (copied to the data dir so the npm swap cannot
+pull it) + restart on the same port; the helper stops its own previous
+generation (verified exited, lock released) before the rollback install
+and waits for the install target / rollback source versions
+respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
+log path, `failed` carries the `npm install -g ...#release` recovery) is
+surfaced by status. Web: Settings → Version (toggle, grouped channels,
+refresh, inline-confirm switch, restart wait with reload, rollback
+reason, update-available, installed-only notice, unchanged note) plus a
+quiet preview pill in the review/Settings/Start headers; the mock API
+covers the whole flow incl. simulated switch + rollback.
+ Evidence: `test/update-helper.test.ts` (success, install/unhealthy
+ rollback, failed rollback, stuck service, generation stop order,
+ expected-version waits, stale-sample guard),
+ `test/update-updater.test.ts` (fake semantics + injection, real backend
+ selection/rejection, state files, build identity, lease check),
+ `test/update-routes.test.ts` (gate, busy/lease/pending/installed
+ refusals, same-channel unchanged/update, auth/host, commit path with
+ entry-path identification), `test/update-helper-bundle.test.ts`
+ (metafile containment), `versionFormat.test.ts` (+ newer-available),
+ `e2e/update-picker.spec.ts` (4/4 mock-mode green, full `test:e2e` 113
+ green). Real-install drill (no pushes): two local preview trees via
+ `release.mjs` into a bare repo (HEAD set — npm dereferences it), install
+ A into a temp prefix, run it, switch to B through the real helper +
+ real npm (health flipped, slots `preview-drill-a` + `release` written),
+ then a lying channels file forced a real-npm rollback to B
+ (rolled-back + reason, lock held by the final generation). Privacy
+ (§16) unchanged: the service itself still contacts nothing but loopback;
+ listing shells out through `gh` under the user's login (opt-in gate,
+ concurrent per-ref fetch); the new static-guard entries are the
+ helper's loopback health probe, the `npm` literal, and the bundle shape.
+ Open: helper restart on macOS still needs the human pass in
+ `docs/macos-testing.md` (see #6).
+
+### Fixed on this branch: managed clones (#27, complete)
+
+- Service + contract + stubbed tests are green (`shared/test/repos.test.ts`,
+  `service/test/repos-url.test.ts` + `repos-review-fixes.test.ts`): add-by-URL,
+  blobless clone, fetch-before-list/ingest/refresh (15 s bound, prompt-free),
+  guarded remove.
+- Web wiring is done: Settings → Repositories has the add-by-URL row (shared
+  client-side validation, named busy state, toasts), managed marks, and
+  per-kind remove confirms; the start page offers to clone on pasted PR URLs
+  for unknown repos and shows `fetchError` once. Covered by mock-mode
+  Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
+  spec for invalid input and path-checkout remove.
 
 ### Fixed in this branch (done, in `check`)
 

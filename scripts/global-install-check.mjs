@@ -106,12 +106,13 @@ function s(secMs) {
 }
 
 /**
- * The service spawns the ACP adapters as subprocesses from files shipped in
- * the release tree (`packages/service/dist/adapters/*.js`) — they must exist
- * in the installed copy. (No adapter packages exist in node_modules anymore.)
+ * The service spawns the ACP adapters and the update helper as subprocesses
+ * from files shipped in the release tree (`packages/service/dist/...`) —
+ * they must exist in the installed copy. (No adapter packages exist in
+ * node_modules anymore.)
  */
 function checkAdapterBundles(installedPkgDir, label) {
-  for (const f of ["packages/service/dist/index.js", "packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/codex.js"]) {
+  for (const f of ["packages/service/dist/index.js", "packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/codex.js", "packages/service/dist/update-helper.js"]) {
     const full = path.join(installedPkgDir, f);
     assert(fs.existsSync(full), `${label}: ships ${f}`);
   }

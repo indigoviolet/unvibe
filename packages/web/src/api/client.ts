@@ -7,6 +7,7 @@ import type {
   AcceptContributionResponse,
   ActionResponse,
   AddRepoRequest,
+  AddRepoResponse,
   ChangesFilter,
   ContributionsResponse,
   CreateCommentRequest,
@@ -24,10 +25,12 @@ import type {
   JobResponse,
   JobsResponse,
   ModelsResponse,
+  PickFolderResponse,
   PromptsResponse,
   ReadinessResponse,
   RefreshResponse,
   ReloadResponse,
+  RemoveRepoResponse,
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
@@ -35,14 +38,19 @@ import type {
   ReviewSnapshot,
   ReviewsListResponse,
   Settings,
+  SharedContextResponse,
   SubmitPreview,
   SubmitReviewRequest,
   SubmitReviewResponse,
   SummarizeHunkResponse,
+  UpdateChannelsResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
   UpdateHunkRequest,
   UpdateReviewResponse,
+  UpdateStatusResponse,
+  UpdateSwitchRequest,
+  UpdateSwitchResponse,
   ViewerResponse,
 } from "@unvibe/shared";
 // Static import keeps mock timing deterministic in dev; the mock modules are
@@ -201,8 +209,12 @@ const realApi = {
   health: (): Promise<HealthResponse> => fetch("/api/health").then((r) => r.json()),
 
   repos: (): Promise<ReposResponse> => get("/api/repos"),
-  addRepo: (body: AddRepoRequest): Promise<ReposResponse> =>
+  addRepo: (body: AddRepoRequest): Promise<AddRepoResponse> =>
     request("/api/repos", { method: "POST", body: JSON.stringify(body) }),
+  removeRepo: (id: string): Promise<RemoveRepoResponse> =>
+    request(`/api/repos/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  /** Ask the service to open a native folder dialog (#26). No request body. */
+  pickFolder: (): Promise<PickFolderResponse> => post("/api/repos/pick-folder"),
   repoChanges: (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> =>
     get(`/api/repos/${encodeURIComponent(id)}/changes${filter ? `?filter=${filter}` : ""}`),
 
@@ -268,6 +280,12 @@ const realApi = {
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
 
+  updateStatus: (): Promise<UpdateStatusResponse> => get("/api/update/status"),
+  updateChannels: (refresh?: boolean): Promise<UpdateChannelsResponse> =>
+    get(`/api/update/channels${refresh ? "?refresh=1" : ""}`),
+  updateSwitch: (ref: string): Promise<UpdateSwitchResponse> =>
+    post("/api/update/switch", { ref } satisfies UpdateSwitchRequest),
+
   prompts: (reviewId?: string): Promise<PromptsResponse> =>
     get(`/api/prompts${reviewId ? `?review=${encodeURIComponent(reviewId)}` : ""}`),
   jobs: (reviewId?: string): Promise<JobsResponse> =>
@@ -284,6 +302,9 @@ const realApi = {
 
   contributions: (reviewId: string): Promise<ContributionsResponse> =>
     get(`/api/reviews/${encodeURIComponent(reviewId)}/contributions`),
+
+  sharedContext: (reviewId: string): Promise<SharedContextResponse> =>
+    get(`/api/reviews/${encodeURIComponent(reviewId)}/shared-context`),
 
   diagramSvg: (reviewId: string, hash: string, theme: DiagramTheme): Promise<string> =>
     fetchDiagramSvg(reviewId, hash, theme),  deleteContribution: (reviewId: string, contributionId: string): Promise<DeleteContributionResponse> =>
