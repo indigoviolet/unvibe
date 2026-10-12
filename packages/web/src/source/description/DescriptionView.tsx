@@ -134,7 +134,7 @@ export function DescriptionView({ reviewId, editor }: Props) {
   if (!description) {
     return (
       <div className="desc">
-        <p className="hint">No description yet for review {reviewId}.</p>
+        <p className="hint">No description.</p>
       </div>
     );
   }
@@ -153,7 +153,7 @@ export function DescriptionView({ reviewId, editor }: Props) {
       .updateDescription(reviewId, { html: cleaned })
       .then(() => setEditing(false))
       .catch((err: unknown) => {
-        toast(`Saving the description failed: ${friendlyError(err)}`);
+        toast(`Couldn't save the description: ${friendlyError(err)}`);
       });
   };
 
@@ -189,7 +189,7 @@ export function DescriptionView({ reviewId, editor }: Props) {
         <div className="dbar">
           <span className="hint">
             {description.source === "commits"
-              ? "Commit messages for a branch without a PR. The tab is read-only."
+              ? "This branch has no PR, so this tab shows its commit messages. Read-only."
               : "You're reviewing someone else's PR, so the description is read-only."}
           </span>
           <span className="sp" />
@@ -224,7 +224,7 @@ export function DescriptionView({ reviewId, editor }: Props) {
                     .updateDescription(reviewId, { html: next })
                     .then(() => setEditing(false))
                     .catch((err: unknown) => {
-                      toast(`Saving the description failed: ${friendlyError(err)}`);
+                      toast(`Couldn't save the description: ${friendlyError(err)}`);
                     });
                 },
                 onDiscard: () => setEditing(false),
@@ -304,7 +304,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
       btn.type = "button";
       btn.setAttribute("data-back", blockIds[0]);
       btn.textContent = blockIds.length > 1 ? `Restated → (${blockIds.length})` : "Restated →";
-      btn.title = "Show the guide block that restates this paragraph";
+      btn.title = "Show where the guide restates this paragraph";
       el.appendChild(btn);
     }
   }, [segments, restated]);
