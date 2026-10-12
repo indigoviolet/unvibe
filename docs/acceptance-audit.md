@@ -381,21 +381,32 @@ needed (that deviation is closed, not added).
   with description as secondary text (Claude + Codex); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
-- Prompts (Template raw in Settings; per-review Expanded with L0–L4
-  marks, tokens, cache part on the debug page; view-only) — met
+- Prompts (Template raw in Settings — six sections in tabs, issue #61:
+  Repositories, Models, Environment, Prompts, Limits and budgets, Version,
+  with the tab in `?tab=`, older `#section` links still landing on the
+  right tab, and unsaved edits surviving tab switches; per-review Expanded
+  with L0–L4 marks, tokens, cache part on the debug page's Prompts tab,
+  issue #60: collapsible templates + layers with Expand/Collapse all;
+  view-only) — met
   (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`,
   `GET /api/prompts` ran 200 from the global install).
 - Limits/budgets (sessions per provider, inline budget, rebuild
   thresholds) — met (`settings.spec.ts` “limits persist across reload”).
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
-  (issue #32; on the per-review debug page now, relocated unchanged from
-  Settings: `e2e/debug.spec.ts`, `GET /api/jobs` ran; prompt snapshots now
-  served per-job to keep lists small).
+  (issue #32; on the per-review debug page's Jobs tab now, relocated
+  unchanged from Settings apart from the redundant divider: `e2e/debug.spec.ts`,
+  `GET /api/jobs` ran; prompt snapshots now
+  served per-job to keep lists small; the per-job prompt toggle lazy-loads
+  as before).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log with
   in-base/waiting markers, contributions with thread + delete — met
   (`shared-context-debug.test.ts`, `routes/shared-context.ts`,
-  `e2e/debug.spec.ts`).
+  `e2e/debug.spec.ts`). Issue #60 puts Jobs / Prompts / Shared context in
+  tabs (tab in `?tab=`, panels kept mounted) and every large block in a
+  collapsible with a sticky summary (Base open, the rest closed;
+  Expand/Collapse all on Prompts + Shared context; open state survives tab
+  switches, job updates and contribution deletes).
 
 ### §4.15 Conventions — all met
 
@@ -495,6 +506,11 @@ needed (that deviation is closed, not added).
 
 - Inline tokens (all six + `ann:`) + `|label` rules — met
   (`reply-format.md` §1, `shared/src/content`, `content-parse.test.ts`).
+- Inline Markdown inside a block (bold, italic, strikethrough, links,
+  escapes; raw HTML escaped, tokens resolved before emphasis) — met
+  (#66; `markdown-it` inline mode in `renderInline`,
+  `content-parse.test.ts`). Streaming returns finished cards only; the
+  unused in-card partial parser is gone (#67).
 - Trailing fenced JSON for structured fields, removed before display —
   met (M0 20/20 parse; `splitReply`, `reply-format.md` §10; malformed =
   job error).
@@ -514,6 +530,11 @@ needed (that deviation is closed, not added).
    ran).
 2. Reader (explore, problem/central/directions, hidden concepts,
    `pin_context`) — met (`pipeline/runner.ts:879`, demo 17 cards — ran).
+   Root cards stored once (#28): streamed cards and the final apply share
+   one id scheme (`readerCardId`), the final reply replaces whatever was
+   streamed, and text before the first `## ` card is dropped — met
+   (`pipeline/apply.ts`, `pipeline.test.ts` “stored once”). Reviews
+   created before the fix keep their duplicate cards; no migration.
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×2 with evidence/assessment/confidence +
    suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
@@ -577,6 +598,7 @@ needed (that deviation is closed, not added).
 - Settings shows the template; the debug page shows the per-review
   expanded text with L0–L4 marks, tokens, cache part — met
   (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`).
+  Both pages are tabbed now (issues #60/#61; see §4.14).
 - Diagrams: D2 with `link:` citations on shapes/connections — met
   (`reply-format.md` §5, `prompts/includes/d2-convention.md` single source,
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict

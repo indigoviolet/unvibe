@@ -4,8 +4,8 @@ import {
   parseBlocks,
   parseCards,
   parseCardsPartial,
-  parsePartial,
   parseReply,
+  renderInline,
   renderMarkdown,
 } from "../src/content/parse.js";
 
@@ -217,47 +217,95 @@ describe("parseBlocks golden", () => {
   });
 });
 
-describe("parsePartial (streaming)", () => {
-  const STREAM = `Complete para with [[diff:conn:80-82]].
-
-Growing tail with a token cut off mid-[[diff:conn:8`;
-
-  it("withholds a paragraph cut off mid-token", () => {
-    const partial = parsePartial(STREAM);
-    expect(partial).toHaveLength(1);
-    expect(partial[0].id).toBe("b1");
-    // Once the tail completes, IDs stay stable.
-    const full = parseBlocks(STREAM.replace("mid-[[diff:conn:8", "mid-token [[diff:conn:80]].\n"));
-    expect(full[0]).toEqual(partial[0]);
-    expect(full).toHaveLength(2);
+describe("renderInline (Markdown inside a block)", () => {
+  it("renders bold, italic, strikethrough and code spans", () => {
+    expect(renderInline("**Recording.** record_cmd picks").html).toBe(
+      "<strong>Recording.</strong> record_cmd picks",
+    );
+    expect(renderInline("*ital* and ~~gone~~ and `code`").html).toBe(
+      "<em>ital</em> and <s>gone</s> and <code>code</code>",
+    );
   });
 
-  it("withholds a table cut off mid-table", () => {
-    const buf = "Intro done.\n\n| A | B |\n|---|---|\n| x | y |";
-    expect(parsePartial(buf).map((b) => b.type)).toEqual(["paragraph"]);
-    expect(parseBlocks(`${buf}\n| z | w |\n\n`).map((b) => b.type)).toEqual(["paragraph", "table"]);
+  it("renders ordinary links with a new-tab target", () => {
+    const r = renderInline("[docs](https://example.com/x)");
+    expect(r.html).toBe(
+      '<a href="https://example.com/x" target="_blank" rel="noopener noreferrer">docs</a>',
+    );
+    expect(r.citations).toEqual([]);
+    expect(r.links).toEqual([]);
   });
 
-  it("withholds an unclosed fence but keeps closed ones", () => {
-    const closed = "```d2\na -> b\n```\n\nTail growing";
-    const partial = parsePartial(closed);
-    expect(partial.map((b) => b.type)).toEqual(["diagram"]);
-    const unclosed = "Done.\n\n```python\nx = 1";
-    expect(parsePartial(unclosed).map((b) => b.type)).toEqual(["paragraph"]);
+  it("honours backslash escapes", () => {
+    expect(renderInline("\\*not em\\*").html).toBe("*not em*");
   });
 
-  it("streams cards as they finish", () => {
+  it("keeps raw HTML escaped", () => {
+    expect(renderInline("<b>hi</b>").html).toBe("&lt;b&gt;hi&lt;/b&gt;");
+  });
+
+  it("rejects javascript: link targets", () => {
+    const r = renderInline("[x](javascript:alert(1))");
+    expect(r.html).not.toContain("<a");
+    expect(r.html).toContain("[x](javascript:alert(1))");
+  });
+
+  it("still recognises tokens with underscores before emphasis runs", () => {
+    const r = renderInline("a [[code:src/__init__.py:1-3]] b");
+    expect(r.html).toBe("a  b");
+    expect(r.citations).toEqual([{ target: "code:src/__init__.py:1-3" }]);
+  });
+
+  it("handles a token next to bold text", () => {
+    const r = renderInline("**Hi** [[concept:x|Ex]]");
+    expect(r.html).toBe('<strong>Hi</strong> <a class="cx" data-link="concept:x">Ex</a>');
+    expect(r.links).toEqual(["concept:x"]);
+  });
+
+  it("keeps tokens inside code spans literal", () => {
+    const r = renderInline("`[[code:x]]`");
+    expect(r.html).toBe("<code>[[code:x]]</code>");
+    expect(r.citations).toEqual([]);
+    expect(r.links).toEqual([]);
+  });
+
+  it("renders emphasis inside table cells and list items", () => {
+    const table = parseBlocks("| A |\n|---|\n| **bold** cell |\n");
+    expect(table[0].type).toBe("table");
+    if (table[0].type !== "table") return;
+    expect(table[0].html).toContain("<td><strong>bold</strong> cell</td>");
+    const list = parseBlocks("- **bold** item\n");
+    expect(list[0].type).toBe("list");
+    if (list[0].type !== "list") return;
+    expect(list[0].items[0].html).toBe("<strong>bold</strong> item");
+  });
+
+  it("round-trips emphasis and links to plain Markdown text", () => {
+    const blocks = parseBlocks("**Bold** and *ital* with [a link](https://example.com).\n");
+    const back = renderMarkdown(blocks);
+    expect(back).toContain("Bold and ital with a link.");
+    expect(back).not.toMatch(/<[^>]*>|&\w+;/);
+  });
+});
+
+describe("parseCardsPartial (streaming)", () => {
+  it("returns finished cards only; the growing last section is withheld", () => {
     const buf = "## One\n\nBody one.\n\n## Two\n\nBody two growing";
     const cards = parseCardsPartial(buf);
-    expect(cards.map((c) => [c.title, c.finished])).toEqual([
-      ["One", true],
-      ["Two", false],
-    ]);
+    expect(cards.map((c) => c.title)).toEqual(["One"]);
     expect(cards[0].blocks).toHaveLength(1);
-    expect(cards[1].blocks).toHaveLength(0);
     const done = parseCards(`${buf} end.\n`);
     expect(done[1].blocks).toHaveLength(1);
     expect(done[1].blocks[0].id).toBe("b1");
+  });
+
+  it("returns nothing while the first section is still growing", () => {
+    expect(parseCardsPartial("Body growing")).toEqual([]);
+  });
+
+  it("returns all sections once the trailing JSON block is present", () => {
+    const buf = "## One\n\nBody one.\n\n## Two\n\nBody two.\n\n```json\n{}\n```\n";
+    expect(parseCardsPartial(buf).map((c) => c.title)).toEqual(["One", "Two"]);
   });
 });
 

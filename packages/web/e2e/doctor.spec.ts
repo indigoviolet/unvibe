@@ -18,7 +18,8 @@ test("doctor page shows service, PATH and tool detail with copy", async ({ page 
 
 test("model pickers show display name beside the id with description", async ({ page }) => {
   await page.goto("/settings");
-  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+  await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+  await page.getByRole("tab", { name: "Models" }).click();
   const main = page.locator('[data-testid="model-main"]');
   // Mock models carry names (Mock Main) + descriptions.
   await expect(main.locator("select").nth(1)).toContainText("Mock Main");
@@ -27,6 +28,7 @@ test("model pickers show display name beside the id with description", async ({ 
 
 test("reload everything reports in mock mode", async ({ page }) => {
   await page.goto("/settings");
+  await page.getByRole("tab", { name: "Environment" }).click();
   await page.getByRole("button", { name: "Reload everything" }).click();
   await expect(page.getByTestId("reload-result")).toBeVisible({ timeout: 10000 });
 });

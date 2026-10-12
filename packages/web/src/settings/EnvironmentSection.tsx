@@ -3,7 +3,7 @@
  * (`GET /api/readiness`) with Re-check, a link to the Doctor page
  * (`/doctor`, issue #20) and "Reload everything" (re-probe PATH,
  * re-resolve tools, restart adapters, clear caches, without restarting).
- * Front-screen callouts link here (`/settings#environment`) and to Doctor.
+ * Front-screen callouts link here (`/settings?tab=environment`) and to Doctor.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -56,7 +56,6 @@ export function EnvironmentSection(): React.JSX.Element {
 
   return (
     <section aria-label="Environment" id="environment" style={{ scrollMarginTop: 12 }}>
-      <div className="divider">Environment</div>
       <p className="hint">
         git, gh, d2 and the configured agent CLIs — the same checks as the front-screen callouts.{" "}
         <Link to="/doctor">Doctor page</Link> shows every candidate, full error text, PATH and service identity.

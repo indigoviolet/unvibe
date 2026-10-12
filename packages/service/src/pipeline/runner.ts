@@ -4,7 +4,9 @@
  * Every agent call is a job on the queue (kind, model, priority, prompt
  * snapshot, usage with cached tokens, cardId/progress). Streaming reader
  * cards go through `parseCardsPartial` → `ReviewStore.mutate` so the UI
- * fills progressively. Every reply goes through `splitReply` → parser →
+ * fills progressively (finished cards only: sections closed by a later
+ * `## ` heading, or all sections once the trailing JSON block lands).
+ * Every reply goes through `splitReply` → parser →
  * citation validator (valid/repaired stored resolved, unverified flagged +
  * recorded in job debug data; one repair turn when `needsRepairTurn`).
  *
@@ -40,7 +42,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
-import { criticApply, readerApply } from "./apply.js";
+import { criticApply, isDefaultReaderCardId, readerApply, readerCardId } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { changeListVariable, ingestAgentTurn } from "./sharedctx-wire.js";
 import type { SharedContextService } from "../sharedctx/service.js";
@@ -70,13 +72,24 @@ async function collectStreaming(
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
+  onTool?: () => void,
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
+  let afterTool = false;
   const usage: TokenUsage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
   for await (const ev of runner.prompt(session, prompt, signal)) {
     if (ev.type === "text") {
-      text += ev.delta;
-      onDelta(ev.delta);
+      // Text on either side of a tool call arrives with nothing between it
+      // ("…my restatement.Only two files…"): make it a paragraph break.
+      const delta = afterTool && text && !text.endsWith("\n\n") ? `\n\n${ev.delta}` : ev.delta;
+      afterTool = false;
+      text += delta;
+      onDelta(delta);
+    } else if (ev.type === "tool") {
+      if (ev.status === "start") {
+        afterTool = true;
+        onTool?.();
+      }
     } else if (ev.type === "usage") {
       usage.inputTokens += ev.inputTokens;
       usage.cachedTokens += ev.cachedTokens;
@@ -331,8 +344,7 @@ export class Pipeline {
                 if (o.onPartial) {
                   try {
                     const partials = parseCardsPartial(buffer);
-                    const finished = partials.filter((p) => p.finished);
-                    if (finished.length > 0) void o.onPartial(finished);
+                    if (partials.length > 0) void o.onPartial(partials);
                   } catch {
                     // ignore mid-stream parse errors
                   }
@@ -1003,26 +1015,41 @@ export class Pipeline {
         ctx.setSessionId(session.id);
         try {
           let buffer = "";
-          const streamed = new Set<string>();
-          const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (delta) => {
-            ctx.reportText(delta);
-            buffer += delta;
-            try {
-              const partials = parseCardsPartial(buffer);
-              for (let i = 0; i < partials.length; i++) {
-                const p = partials[i];
-                if (!p.finished || streamed.has(`reader-${i}`)) continue;
-                streamed.add(`reader-${i}`);
-                void this.applyReaderCard(reviewId, i, p.title, p.blocks);
+          const streamed = new Set<number>();
+          const { text, usage } = await collectStreaming(
+            this.opts.runner,
+            session,
+            prompt,
+            ctx.signal,
+            (delta) => {
+              ctx.reportText(delta);
+              buffer += delta;
+              try {
+                const partials = parseCardsPartial(buffer);
+                // An untitled first section is held back: it is either
+                // preamble (dropped) or settled by the final apply.
+                const skip = partials[0]?.title === null ? 1 : 0;
+                for (let i = skip; i < partials.length; i++) {
+                  const p = partials[i];
+                  const index = i - skip;
+                  if (streamed.has(index)) continue;
+                  streamed.add(index);
+                  void this.applyReaderCard(reviewId, index, p.title, p.blocks);
+                }
+              } catch {
+                // ignore mid-stream
               }
-            } catch {
-              // ignore mid-stream
-            }
-          });
+            },
+            () => {
+              // Text written before a tool call and before any card heading
+              // is the agent narrating its exploration, not card content.
+              if (!/^## /m.test(buffer)) buffer = "";
+            },
+          );
           ctx.reportUsage(usage);
           throwIfMcpRefusal(text);
           await this.recordUsage(reviewId, usage);
-          const { cards, data, validation } = this.parseAndValidate(reviewId, text);
+          const { cards, data, validation } = this.parseAndValidate(reviewId, buffer);
           let finalCards = cards;
           let finalData = data;
           let finalValidation = validation;
@@ -1079,7 +1106,7 @@ export class Pipeline {
     const lookup = this.lookupWithAliases(snapshot);
     const validation = validateReply(blocks, lookup);
     const fixed = this.withValidation(reviewId, blocks, validation);
-    const provisionalId = index === 0 ? "problem" : index === 1 ? "central" : `reader-${index}`;
+    const provisionalId = readerCardId(index);
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
@@ -1145,6 +1172,9 @@ export class Pipeline {
         }
       }
       const order = applied.cards.map((c) => c.id);
+      // The final reply is authoritative: a streamed card it does not
+      // contain (preamble, or a card the repair turn dropped) goes.
+      root.cards = root.cards.filter((c) => order.includes(c.id) || !isDefaultReaderCardId(c.id));
       root.cards.sort((a, b) => {
         const ia = order.indexOf(a.id);
         const ib = order.indexOf(b.id);

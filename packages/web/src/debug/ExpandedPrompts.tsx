@@ -13,6 +13,9 @@ import { formatTokens, splitLayers } from "../versions/versionUtils.js";
 export function ExpandedPrompts({ reviewId }: { reviewId: string }): React.JSX.Element {
   const [data, setData] = useState<PromptsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Per-template open state lives here (not in the cards) so Expand all /
+  // Collapse all is one state update, and switching tabs never loses it.
+  const [openNames, setOpenNames] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -32,15 +35,38 @@ export function ExpandedPrompts({ reviewId }: { reviewId: string }): React.JSX.E
   }, [reviewId]);
 
   const expandedByName = new Map((data?.expanded ?? []).map((e) => [e.name, e]));
+  const templates = data?.templates ?? [];
+
+  const setAll = (value: boolean): void => {
+    const next: Record<string, boolean> = {};
+    if (value) for (const t of templates) next[t.name] = true;
+    setOpenNames(next);
+  };
 
   return (
     <section aria-label="Prompts">
-      <div className="divider">Prompts</div>
       {error ? <p className="err">{error}</p> : null}
       {!data && !error ? <p className="hint">Loading expanded prompts…</p> : null}
       {data?.templates.length === 0 ? <p className="hint">No templates.</p> : null}
-      {(data?.templates ?? []).map((t) => (
-        <PromptCard key={t.name} template={t} expanded={expandedByName.get(t.name)} />
+      {templates.length > 0 ? (
+        <div className="frow" style={{ gap: 8, margin: "6px 0" }}>
+          <span className="sp" />
+          <button className="x" type="button" onClick={() => setAll(true)}>
+            Expand all
+          </button>
+          <button className="x" type="button" onClick={() => setAll(false)}>
+            Collapse all
+          </button>
+        </div>
+      ) : null}
+      {templates.map((t) => (
+        <PromptCard
+          key={t.name}
+          template={t}
+          expanded={expandedByName.get(t.name)}
+          open={openNames[t.name] === true}
+          onToggle={() => setOpenNames((prev) => ({ ...prev, [t.name]: !prev[t.name] }))}
+        />
       ))}
     </section>
   );
@@ -49,11 +75,14 @@ export function ExpandedPrompts({ reviewId }: { reviewId: string }): React.JSX.E
 function PromptCard({
   template,
   expanded,
+  open,
+  onToggle,
 }: {
   template: PromptTemplate;
   expanded: PromptExpanded | undefined;
+  open: boolean;
+  onToggle: () => void;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false);
   return (
     <div className="card" style={{ padding: "8px 14px" }} data-testid={`prompt-${template.name}`}>
       <div className="frow" style={{ gap: 8 }}>
@@ -62,7 +91,7 @@ function PromptCard({
           type="button"
           aria-expanded={open}
           aria-label={open ? `Collapse ${template.name}` : `Expand ${template.name}`}
-          onClick={() => setOpen(!open)}
+          onClick={onToggle}
         >
           {open ? "▾" : "▸"}
         </button>
@@ -110,9 +139,13 @@ function ExpandedView({ expanded }: { expanded: PromptExpanded }): React.JSX.Ele
       </div>
       {sections.map((s, i) =>
         s.layer === "" ? (
-          <pre className="code" key={i}>
-            {s.text}
-          </pre>
+          <details className="lay" key={i}>
+            <summary>
+              <b>Text</b>
+              <span className="hint">unmarked</span>
+            </summary>
+            <pre className="code">{s.text}</pre>
+          </details>
         ) : (
           <details className={`lay${s.cached ? " cached" : ""}`} key={`${s.layer}-${i}`} data-layer={s.layer}>
             <summary>

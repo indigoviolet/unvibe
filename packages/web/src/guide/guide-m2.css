@@ -15,6 +15,17 @@
   display: contents;
 }
 
+/* Ordinary Markdown links inside card text (dotted a.cx links keep their
+   own style; strong/em/s render with browser defaults). */
+.prose a[href]:not(.cx),
+.lst a[href]:not(.cx),
+.md a[href]:not(.cx),
+.dg-cap a[href]:not(.cx) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Unverified citations (PRD §4.5): dimmed, with a native tooltip. */
 .lk.unverified {
   opacity: 0.38;

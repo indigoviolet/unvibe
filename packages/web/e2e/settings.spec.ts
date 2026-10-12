@@ -12,7 +12,42 @@ import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/settings");
-  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+  await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+});
+
+test("settings default to the Repositories tab; tabs switch panels", async ({ page }) => {
+  const tabs = page.getByRole("tablist", { name: "Settings sections" });
+  await expect(tabs.getByRole("tab", { name: "Repositories" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tabpanel", { name: "Repositories" })).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "Models" })).toBeHidden();
+  await tabs.getByRole("tab", { name: "Models" }).click();
+  await expect(page).toHaveURL("/settings?tab=models");
+  await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "Repositories" })).toBeHidden();
+});
+
+test("?tab= deep link survives reload", async ({ page }) => {
+  await page.goto("/settings?tab=limits");
+  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Limits and budgets" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Limits and budgets" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.locator("#limit-sessionsPerProvider")).toBeVisible();
+});
+
+test("unsaved edits survive a tab switch", async ({ page }) => {
+  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.locator("#limit-sessionsPerProvider").fill("9");
+  await page.getByRole("tab", { name: "Models" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
+  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("9");
 });
 
 test("repositories section lists remembered repos and adds by path", async ({ page }) => {
@@ -32,9 +67,23 @@ test("repositories section lists remembered repos and adds by path", async ({ pa
   await expect(added).toContainText("/tmp/fake-checkout");
 });
 
-test("repositories section is reachable at #repositories", async ({ page }) => {
-  await page.goto("/settings#repositories");
+test("repositories section is reachable at ?tab=repositories", async ({ page }) => {
+  await page.goto("/settings?tab=repositories");
   await expect(page.locator('[data-testid="repositories-section"]')).toBeVisible();
+});
+
+test("older #section links land on the matching tab", async ({ page }) => {
+  await page.goto("/settings#repositories");
+  await expect(page.getByRole("tab", { name: "Repositories" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.goto("/settings#environment");
+  await expect(page.getByRole("tab", { name: "Environment" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.locator('[data-testid="env-git"]')).toBeVisible();
 });
 
 test("repositories add by URL clones with a busy state and marks the clone", async ({ page }) => {
@@ -136,6 +185,7 @@ test("repositories remove is refused while reviews exist", async ({ page }) => {
 });
 
 test("model pickers list provider models and warn on same-model second opinion", async ({ page }) => {
+  await page.getByRole("tab", { name: "Models" }).click();
   const main = page.locator('[data-testid="model-main"]');
   await expect(main.locator("select").nth(1)).toHaveValue("mock-main");
 
@@ -148,6 +198,7 @@ test("model pickers list provider models and warn on same-model second opinion",
     );
   });
   await page.goto("/settings");
+  await page.getByRole("tab", { name: "Models" }).click();
   await expect(page.locator('[data-testid="model-main"]').getByText(/adapter not installed or not logged in/)).toBeVisible();
 
   // Second opinion on the same model as main warns (PRD §4.10).
@@ -159,6 +210,7 @@ test("model pickers list provider models and warn on same-model second opinion",
 });
 
 test("prompts show template variables (expanded text lives on the debug page)", async ({ page }) => {
+  await page.getByRole("tab", { name: "Prompts" }).click();
   const card = page.locator('[data-testid="prompt-reader"]');
   await card.getByRole("button", { name: "Expand reader" }).click();
   // Template view: {{variables}} marked.
@@ -169,16 +221,22 @@ test("prompts show template variables (expanded text lives on the debug page)", 
 });
 
 test("limits persist across reload", async ({ page }) => {
+  await page.getByRole("tab", { name: "Limits and budgets" }).click();
   const input = page.locator("#limit-sessionsPerProvider");
   await input.fill("6");
   await page.getByRole("button", { name: "Save limits" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+  await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Limits and budgets" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("6");
 });
 
 test("limits show service validation errors inline", async ({ page }) => {
+  await page.getByRole("tab", { name: "Limits and budgets" }).click();
   // Mock accepts anything, so drive the inline-error path through the
   // real-service spec; here just assert the field + hint render.
   await expect(page.locator("#limit-inlineBudgetTokens")).toBeVisible();

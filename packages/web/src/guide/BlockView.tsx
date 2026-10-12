@@ -81,7 +81,7 @@ function AsideInner({
         </pre>
       );
     case "diagram":
-      return <DiagramView reviewId={reviewId} block={inner} />;
+      return <DiagramView reviewId={reviewId} block={inner} onOpenPage={onOpenPage} />;
     case "list":
       return (
         <ul className="lst">
@@ -193,7 +193,7 @@ export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPag
     case "diagram":
       return (
         <div className="blk" id={id}>
-          <DiagramView reviewId={reviewId} block={block} />
+          <DiagramView reviewId={reviewId} block={block} onOpenPage={onOpenPage} />
           {(resolved.length > 0 || threads.length > 0) && (
             <div className="lo-row">
               <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />

@@ -68,8 +68,6 @@ export interface ParsedCard {
   /** Null for untitled cards (collapsed view shows the first line). */
   title: string | null;
   blocks: import("../entities.js").Block[];
-  /** False for the still-growing last card in a streaming parse. */
-  finished: boolean;
 }
 
 export interface ParseOptions {

@@ -171,9 +171,9 @@ test("unavailable binary shows the source with a Settings note", async ({ page }
   await expect(fallback).toContainText("needs-binary");
   await expect(fallback).toContainText("Diagrams need");
   const link = fallback.getByRole("link", { name: /Settings → Environment/ });
-  await expect(link).toHaveAttribute("href", "/settings#environment");
+  await expect(link).toHaveAttribute("href", "/settings?tab=environment");
   await link.click();
-  await expect(page).toHaveURL(/\/settings#environment/);
+  await expect(page).toHaveURL(/\/settings\?tab=environment/);
   await expect(page.locator("#environment")).toBeVisible();
 });
 
@@ -211,7 +211,7 @@ test("d2 warning readiness shows a callout linking to Settings → Environment",
   await expect(callout).toContainText("Diagrams need d2");
   await expect(callout.getByRole("link", { name: "Settings" })).toHaveAttribute(
     "href",
-    "/settings#environment",
+    "/settings?tab=environment",
   );
   // Settings → Environment lists the same d2 item.
   await callout.getByRole("link", { name: "Settings" }).click();

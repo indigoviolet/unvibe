@@ -31,7 +31,6 @@ export function PromptsSection(): React.JSX.Element {
 
   return (
     <section aria-label="Prompts">
-      <div className="divider">Prompts</div>
       {error ? <p className="err">{error}</p> : null}
       {!data && !error ? <p className="hint">Loading templates…</p> : null}
       {data?.templates.length === 0 ? <p className="hint">No templates.</p> : null}

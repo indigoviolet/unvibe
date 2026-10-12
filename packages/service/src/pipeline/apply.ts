@@ -32,14 +32,41 @@ export interface ReaderApply {
   concepts: { slug: string; title: string; summary: string }[];
 }
 
+/**
+ * Root card id for the reader's card at `index`. Streamed cards and the
+ * final apply must agree on this, or the final apply stores each streamed
+ * card a second time (#28).
+ */
+export function readerCardId(index: number, cardIds: string[] = []): string {
+  return cardIds[index] ?? (index === 0 ? "problem" : index === 1 ? "central" : `reader-${index}`);
+}
+
+/** True for ids `readerCardId` hands out when the reply names none. */
+export function isDefaultReaderCardId(id: string): boolean {
+  return id === "problem" || id === "central" || /^reader-\d+$/.test(id);
+}
+
+/**
+ * Drop text the agent wrote before its first `## ` card ("I'll start by
+ * reading…"). Only when both cards follow with titles: an untitled first
+ * section followed by a single titled card is more likely the problem card
+ * missing its heading, and is kept.
+ */
+export function dropReaderPreamble<T extends { title: string | null }>(cards: T[]): T[] {
+  if (cards.length >= 3 && cards[0].title === null && cards[1].title !== null && cards[2].title !== null) {
+    return cards.slice(1);
+  }
+  return cards;
+}
+
 /** Split a reader reply into root cards + placeholders + concepts. */
 export function readerApply(
   parsedCards: { title: string | null; blocks: Block[] }[],
   data: Record<string, unknown> | null,
 ): ReaderApply {
   const cardIds = (data?.["cardIds"] as string[] | undefined) ?? [];
-  const cards = parsedCards.map((c, i) => ({
-    id: cardIds[i] ?? `reader-${i}`,
+  const cards = dropReaderPreamble(parsedCards).map((c, i) => ({
+    id: readerCardId(i, cardIds),
     title: c.title,
     blocks: c.blocks,
   }));
