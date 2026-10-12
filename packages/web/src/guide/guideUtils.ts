@@ -261,3 +261,37 @@ export function blockCitations(block: Block): { target: string; unverified?: boo
   }
   return [];
 }
+
+/** What to say on the root route while the review has no guide pages yet. */
+export type EmptyGuideState =
+  | { kind: "building"; detail?: string }
+  | { kind: "error"; detail: string }
+  | { kind: "idle" };
+
+/**
+ * Why a review has no guide pages (issue #44): the pipeline is still
+ * running, a stage failed, or it never started. Mirrors the service's
+ * front-screen `guideStatusFor` (`reviews/list.ts`): live jobs first,
+ * then the recorded stage states.
+ */
+export function emptyGuideState(
+  pipeline: { stages: Record<string, string>; errors?: Record<string, string | undefined> } | undefined,
+  jobs: Job[],
+): EmptyGuideState {
+  const live = jobs.filter((j) => j.state === "queued" || j.state === "running" || j.state === "backing-off");
+  if (live.length > 0) {
+    return { kind: "building", detail: [...new Set(live.map((j) => j.kind))].slice(0, 3).join(", ") };
+  }
+  const stages = Object.entries(pipeline?.stages ?? {});
+  const running = stages.filter(([, v]) => v === "running").map(([k]) => k);
+  if (running.length > 0) return { kind: "building", detail: running.slice(0, 3).join(", ") };
+  const failed = stages.find(([, v]) => v === "error");
+  const failedJob = jobs.find((j) => j.state === "error");
+  if (failed || failedJob) {
+    const detail = (failed && pipeline?.errors?.[failed[0]]) ?? failedJob?.error;
+    return { kind: "error", detail: detail ?? `The ${failed ? failed[0] : failedJob?.kind} stage failed.` };
+  }
+  // Some stages done, the rest pending: the next job is about to be queued.
+  if (stages.some(([, v]) => v === "done")) return { kind: "building" };
+  return { kind: "idle" };
+}

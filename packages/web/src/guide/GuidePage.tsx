@@ -17,6 +17,7 @@ import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
+import { emptyGuideState } from "./guideUtils.js";
 import { PageView } from "./PageView.js";
 import "./guide-m2.css";
 
@@ -147,8 +148,38 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   }
 
   const current = pageId === null ? pages.find((p) => p.kind === "root") ?? pages[0] : lookupPage(pageId);
-  // The switcher lives above every branch: pipeline-less reviews have no
-  // pages yet ("Page not found"), but their versions still switch.
+  // The switcher lives above every branch: reviews whose guide is not
+  // built yet have no pages, but their versions still switch.
+  if (!current && pageId === null) {
+    const empty = emptyGuideState(snapshot.pipeline, snapshot.jobs ?? []);
+    return (
+      <>
+        <VersionSwitcher />
+        <div className="doc" data-testid="guide-empty" data-state={empty.kind}>
+          <div className="eyebrow">Guided review</div>
+          {empty.kind === "building" ? (
+            <>
+              <h1 className="title">Building the guide…</h1>
+              <p className="hint">
+                The guide appears here as it is written{empty.detail ? ` (running: ${empty.detail})` : ""}. The diff
+                is ready to read in the meantime.
+              </p>
+            </>
+          ) : empty.kind === "error" ? (
+            <>
+              <h1 className="title">The guide could not be built</h1>
+              <p className="hint">{empty.detail}</p>
+            </>
+          ) : (
+            <>
+              <h1 className="title">No guide yet</h1>
+              <p className="hint">Guide generation has not started for this review. The diff is ready to read.</p>
+            </>
+          )}
+        </div>
+      </>
+    );
+  }
   if (!current) {
     return (
       <>
