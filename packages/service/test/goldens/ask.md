@@ -43,6 +43,5 @@ Does Requests see the raw value?
 - If the question has no answer in the code (maintainer intent, unseen
   behaviour), say what you checked and file it as an `open_questions`
   contribution instead of guessing.
-- End with a `### Follow-ups` heading and at most two follow-up questions
-  when they genuinely continue the thread, then the trailing `json` block
-  (a `contribute` object only when the turn contributes something).
+- End with the trailing `json` block (a `contribute` object only when the
+  turn contributes something).
