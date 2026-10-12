@@ -325,7 +325,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
             <i />
             <i />
           </span>
-          <span>{busy?.label ?? "Reading the diff and PR body…"}</span>
+          <span>{busy?.label ?? "Reading the diff and PR description…"}</span>
         </div>
       ) : null}
       {waiting ? (
