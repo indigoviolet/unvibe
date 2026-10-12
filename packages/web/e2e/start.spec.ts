@@ -75,6 +75,118 @@ test("demo row opens the fixture review", async ({ page }) => {
   await expect(page).toHaveURL(/\/review\/demo/);
 });
 
+test("failing lists keep the PR input, show an error with Retry, and recover", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "unvibe.mock.repoChangesFail",
+      JSON.stringify(["authoring", "review-requested", "recent"]),
+    );
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // The PR input does not wait on the lists.
+  await expect(page.getByLabel("Open a PR by URL or number")).toBeVisible();
+  const err = page.locator('[data-testid="lists-error"]');
+  await expect(err).toContainText("Couldn't load urllib3/urllib3's lists: mock gh is down");
+  await expect(err.getByRole("button", { name: "Retry" })).toBeVisible();
+  // No sections underneath until the load succeeds.
+  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
+  // Retry recovers once the failure clears.
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesFail"));
+  await err.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.locator('[data-testid="lists-error"]')).toHaveCount(0);
+});
+
+test("a partial lists failure shows per-section errors while branches still render", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "unvibe.mock.repoChangesFail",
+      JSON.stringify(["authoring", "review-requested"]),
+    );
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(page.locator('[data-testid="changes-error-authoring"]')).toContainText("mock gh is down");
+  await expect(page.locator('[data-testid="changes-error-requested"]')).toContainText("mock gh is down");
+  // Branches are local: they still render, and no whole-load error shows.
+  await expect(page.getByText("Recent branches")).toBeVisible();
+  await expect(page.locator('[data-testid="lists-error"]')).toHaveCount(0);
+  await page.locator("main .ci button").filter({ hasText: "fix-obs-fold" }).first().click();
+  await expect(page).toHaveURL(/\/review\//);
+});
+
+test("held lists show loading without stale rows and keep the PR input", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.repoChangesHold", "1");
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // Reviews and the demo row do not wait on the lists.
+  await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
+  await expect(page.locator('[data-testid="demo-entry"]')).toBeVisible();
+  // The lists area shows loading, not sections, with the PR input usable.
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading urllib3/urllib3…");
+  await expect(page.getByLabel("Open a PR by URL or number")).toBeVisible();
+  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
+  // Switching repos while held: still loading, never the old repo's rows.
+  await page.getByLabel("Repository").selectOption("demo-lib");
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading you/demo-lib…");
+  await expect(page.getByText("#5020 · fix-obs-fold · you")).toHaveCount(0);
+  // Release: the new selection's lists render.
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
+});
+
+test("reviews for checkouts no longer listed stay openable and removable", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "unvibe.mock.extraSessions",
+      JSON.stringify([
+        {
+          id: "r-gone",
+          repoId: "gone-repo",
+          repoOwner: "gone",
+          repoName: "gone",
+          title: "Work on a removed checkout",
+          branch: "old-branch",
+          createdAt: Date.now() - 86400000 * 3,
+          lastOpened: Date.now() - 86400000 * 2,
+          versionCount: 1,
+          currentVersion: 1,
+          stale: false,
+          totalHunks: 8,
+          reviewedHunks: 0,
+          pendingComments: 0,
+          guideStatus: "idle",
+        },
+      ]),
+    );
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  const group = page.locator('[data-testid="orphan-sessions"]');
+  await expect(group.locator('[data-testid="orphan-sessions-label"]')).toContainText(
+    "no longer in the repo list",
+  );
+  const row = group.locator('[data-testid="session-r-gone"]');
+  await expect(row).toContainText("gone/gone");
+  await expect(row).toContainText("Work on a removed checkout");
+  // Open works.
+  await row.locator("button.cj").click();
+  await expect(page).toHaveURL(/\/review\/r-gone/);
+  // Remove works.
+  await page.goto("/");
+  await expect(group.locator('[data-testid="session-r-gone"]')).toBeVisible();
+  await group.getByRole("button", { name: /Remove/ }).click();
+  await expect(group).toContainText("Remove local data only?");
+  await group.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(group.locator('[data-testid="session-r-gone"]')).toHaveCount(0);
+  // The other rows are untouched.
+  await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
+});
+
 test("remove asks to confirm and deletes local data only", async ({ page }) => {
   const old = page.locator('[data-testid="session-r-old"]');
   await old.getByRole("button", { name: /Remove/ }).click();
