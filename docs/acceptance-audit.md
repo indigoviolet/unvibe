@@ -977,7 +977,8 @@ changed string. Evidence: `mise run check` green (service 651, shared
 105, web 234 unit tests), `mise run --force build` + `mise run test:e2e`
 green; `unvibe --help` output in the issue report.
 Open: the four flagged renames await owner confirmation (each reverts
-independently); non-copy findings from the list are not fixed.
+independently); non-copy findings from the list are fixed separately —
+see "Non-copy findings (#86)" below.
 
 ### Switching reviews in one tab (#70)
 
@@ -1056,6 +1057,34 @@ every agent action so the same handover runs. Service jobs now carry
  had (not carried through the jobs-store JSON column) — noticed, not
  fixed. Hunk summarize busy never clears on success (#63, adjacent,
  untracked here).
+
+### Non-copy findings (#86, branch `fix/86-non-copy-findings`)
+
+One commit per finding. Structural first: thrown route exceptions now
+answer the app's `{ error }` body with the right status (stack logged
+server-side, never sent; `route-errors.test.ts`); then a machine error
+`code` (`shared/src/api.ts`: not-found, invalid-request, no-agent,
+head-moved, not-implemented) set by the service (central
+`service/src/errors.ts` mapping, `NoAgentError`, submit 409
+`code: "head-moved"`, the route error handler) and read code-first by
+the web with text fallback (`parseApiError`/`apiErrorCode` in
+`web/src/api/client.ts`; `error-codes.test.ts`, `apiError.test.ts`).
+Statuses and messages are unchanged. Small fixes: 401s throw
+status-prefixed so `friendlyError`'s 401 branch runs; Limits errors
+show the field label, not the key; correction "cites:" shows resolved
+file:line labels; hunk citations are labelled by file/lines, not hash;
+the guide error state retries via `POST …/resume` (new `api.resume` +
+mock); help documents the no-command foreground start; the unset
+second-opinion copy names the enforced rule (a different model from
+main — PRD §4.10 agrees, so the copy was wrong, not the rule);
+own-avatar reads "You" like the name beside it. Verified already fixed
+(no change): raw transport strings, SubmitPanel location duplication,
+D2 double fallback, `concept`/`concepts` label, no-agent toast
+wording, "Source .py" chip (still stale inside the `ui/31…` branch's
+own CATS — needs a rebase), offline "10 minutes", pre-write fold toast,
+start-page Update-looking tag, Debug tip survival. Left for the owner:
+the Version-tab running-jobs sentence (18), the "PR description" tab on
+branch reviews (22).
 
 ### Fixed in this branch (done, in `check`)
 
