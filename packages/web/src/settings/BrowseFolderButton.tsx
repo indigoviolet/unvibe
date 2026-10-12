@@ -1,18 +1,18 @@
 /**
- * Native folder-picker button (#26, unmounted until #31 lands).
+ * Native folder-picker button (#26).
  *
  * A browser folder picker cannot supply an absolute path, so the dialog is
  * opened by the service on the user's own machine
- * (`POST /api/repos/pick-folder`). The button:
+ * (`POST /api/repos/pick-folder`). Mounted in the Settings Repositories
+ * section beside the path field: picking fills the input (the user still
+ * clicks "Add by path", so they see what will be added). The button:
  * - shows a busy state while the dialog is open,
  * - calls `onPick` with the chosen absolute path,
  * - does nothing when the user dismisses the dialog,
  * - shows the reason as an inline hint on "unavailable" so the user falls
- *   back to typing the path.
+ *   back to typing the path (the text field stays usable).
  *
- * Not mounted anywhere yet: after #31 merges this moves into the Settings
- * Repositories section beside the path field. Styling reuses the prototype
- * classes (`btn`, `mini`, `hint`).
+ * Styling reuses the prototype classes (`btn`, `mini`, `hint`).
  */
 import { useState } from "react";
 import { api, friendlyError } from "../api/client.js";

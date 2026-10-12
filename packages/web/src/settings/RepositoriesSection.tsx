@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Repo } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
+import { BrowseFolderButton } from "./BrowseFolderButton.js";
 
 export function RepositoriesSection(): React.JSX.Element {
   const [repos, setRepos] = useState<Repo[] | null>(null);
@@ -105,6 +106,12 @@ export function RepositoriesSection(): React.JSX.Element {
         <button className="btn" type="button" onClick={() => void add()} disabled={adding}>
           {adding ? "Adding…" : "Add by path"}
         </button>
+        <BrowseFolderButton
+          onPick={(picked) => {
+            setPath(picked);
+            setHint(null);
+          }}
+        />
       </div>
       {hint ? (
         <p className="hint" role="status">
