@@ -64,7 +64,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
   return (
     <section aria-label="Jobs">
       {!reviewId ? (
-        <p className="hint">Open the debug page from a review (`/review/:id/debug`) to see its jobs.</p>
+        <p className="hint">Open Debug from a review to see its jobs.</p>
       ) : error ? (
         <p className="err">{error}</p>
       ) : jobs === null ? (
@@ -150,7 +150,7 @@ function JobRow({ job, onCancel }: { job: Job; onCancel: () => void }): React.JS
             {formatCacheRate(job.cacheHitRate)} cached
           </span>
         ) : (
-          <span className="hint">no usage yet</span>
+          <span className="hint">no token counts yet</span>
         )}
       </div>
       <div className="frow" style={{ gap: 8 }}>
