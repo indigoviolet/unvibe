@@ -229,6 +229,28 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     reportError(err, { method: req.method, route: req.routeOptions.url });
   });
 
+  // Route error handler (issue #86, finding 2): an exception thrown
+  // inside a route answers the app's usual error body (`{ error:
+  // <message> }`, plus `code` once finding 10 lands) instead of
+  // Fastify's default (`{ statusCode, error: "Internal Server Error",
+  // message }`, whose `error` field is what `friendlyError` prints —
+  // dropping the real message). An explicit status on the error is
+  // kept; anything else is a 500. The stack is logged server-side and
+  // never sent: only the message's first line goes out, so a stack
+  // trace can never leak to the client.
+  app.setErrorHandler((err, req, reply) => {
+    const fault = err as Error & { statusCode?: unknown };
+    const status =
+      typeof fault.statusCode === "number" && fault.statusCode >= 400 && fault.statusCode < 600
+        ? fault.statusCode
+        : 500;
+    if (status >= 500) {
+      console.error(`route fault ${req.method} ${req.url}: ${fault.stack ?? fault.message}`);
+    }
+    const firstLine = (fault.message ?? "").split("\n", 1)[0].trim();
+    void reply.code(status).send({ error: firstLine !== "" ? firstLine : "something went wrong" });
+  });
+
   // HTTP activity counts toward "open window", except health probes: the
   // `start` waiter (and any external prober) must not keep the service
   // alive. Kept as a separate hook so the auth gate above stays untouched.
