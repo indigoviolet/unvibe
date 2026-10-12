@@ -10,6 +10,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Annotation, Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
+import { Toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
@@ -121,6 +122,131 @@ describe("CardView immediate feedback", () => {
     } finally {
       held.restore();
     }
+  });
+
+  describe("pending cards while generating (issue #84)", () => {
+    function renderPending(p: Card): void {
+      render(
+        <CardView
+          reviewId={REVIEW_ID}
+          card={p}
+          lookupPage={() => undefined}
+          onOpenPage={() => {}}
+          onFollowUp={() => {}}
+        />,
+      );
+    }
+
+    test("a generating placeholder keeps its title and description", () => {
+      const pending = card({
+        title: "Go deeper",
+        pending: { label: "Go deeper", why: "More to say" },
+      });
+      seedSnapshot([pending]);
+      const held = holdAction();
+      try {
+        renderPending(pending);
+        fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+        // Only the button gives way to the indicator; the label and the
+        // one-line description stay visible in the same place.
+        expect(screen.queryByRole("button", { name: "Generate" })).toBeNull();
+        expect(screen.getByRole("status")).toHaveTextContent("Writing…");
+        expect(document.querySelector("#C-c1 .pl")).toHaveTextContent("Go deeper");
+        expect(document.querySelector("#C-c1 .why")).toHaveTextContent("More to say");
+      } finally {
+        held.restore();
+      }
+    });
+
+    test("several generating placeholders each show their own title", () => {
+      const first = card({
+        id: "c1",
+        title: "First card",
+        pending: { label: "First card", why: "Why first" },
+      });
+      const second = card({
+        id: "c2",
+        title: "Second card",
+        pending: { label: "Second card", why: "Why second" },
+      });
+      seedSnapshot([first, second]);
+      render(
+        <>
+          <CardView
+            reviewId={REVIEW_ID}
+            card={first}
+            lookupPage={() => undefined}
+            onOpenPage={() => {}}
+            onFollowUp={() => {}}
+          />
+          <CardView
+            reviewId={REVIEW_ID}
+            card={second}
+            lookupPage={() => undefined}
+            onOpenPage={() => {}}
+            onFollowUp={() => {}}
+          />
+        </>,
+      );
+      act(() => {
+        useReview.getState().beginInflight("c1", "generate");
+        useReview.getState().beginInflight("c2", "generate");
+      });
+      expect(document.querySelector("#C-c1 .pl")).toHaveTextContent("First card");
+      expect(document.querySelector("#C-c2 .pl")).toHaveTextContent("Second card");
+      expect(screen.getAllByRole("status")).toHaveLength(2);
+    });
+
+    test("a placeholder with no stored title shows the pending label while busy", () => {
+      const untitled = card({
+        title: null,
+        pending: { label: "Go deeper", why: "More to say" },
+      });
+      seedSnapshot([untitled]);
+      renderPending(untitled);
+      act(() => {
+        useReview.getState().beginInflight("c1", "generate");
+      });
+      // The shared display title (issue #49): stored title, else the
+      // pending label — never a blank row.
+      expect(document.querySelector("#C-c1 .pl")).toHaveTextContent("Go deeper");
+      expect(document.querySelector("#C-c1 .why")).toHaveTextContent("More to say");
+    });
+
+    test("a failed generate brings back the button with title and description", async () => {
+      const pending = card({
+        title: "Go deeper",
+        pending: { label: "Go deeper", why: "More to say" },
+      });
+      seedSnapshot([pending]);
+      const actionSpy = vi.spyOn(api, "action").mockRejectedValue(new Error("boom"));
+      const reviewSpy = vi
+        .spyOn(api, "review")
+        .mockResolvedValue(useReview.getState().snapshot!);
+      try {
+        render(
+          <>
+            <Toast />
+            <CardView
+              reviewId={REVIEW_ID}
+              card={pending}
+              lookupPage={() => undefined}
+              onOpenPage={() => {}}
+              onFollowUp={() => {}}
+            />
+          </>,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+        // The error surfaces the way every other card action error does.
+        expect(await screen.findByText(/Couldn't do that/)).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
+        expect(document.querySelector("#C-c1 .pl")).toHaveTextContent("Go deeper");
+        expect(document.querySelector("#C-c1 .why")).toHaveTextContent("More to say");
+      } finally {
+        actionSpy.mockRestore();
+        reviewSpy.mockRestore();
+      }
+    });
   });
 
   test("a follow-up chip goes disabled/busy on click with an answer placeholder", () => {

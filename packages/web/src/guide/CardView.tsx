@@ -117,23 +117,28 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const busyKind = busy?.kind;
 
   if (card.pending) {
+    // Issue #84: the title and the one-line description stay visible while
+    // generating — only the Generate button gives way to the indicator,
+    // which sits where the prototype puts a pending card's working state
+    // (`.card.pend .working`, full width under the text). Issue #49: the
+    // same display title as Contents (stored title, else the pending
+    // label through the shared helper, never a new rule).
+    const title = displayCardTitle(card.title || card.pending.label, card.blocks);
     return (
       <section className="card pend" id={`C-${card.id}`} aria-busy={busy ? true : undefined}>
+        <div className="pl">{title}</div>
+        <div className="why">{card.pending.why}</div>
         {busy ? (
           <Working text={busy.label} />
         ) : (
-          <>
-            <div className="pl">{card.pending.label}</div>
-            <div className="why">{card.pending.why}</div>
-            <button
-              className="go"
-              type="button"
-              data-gen={card.id}
-              onClick={() => runCardAction(reviewId, { kind: "generate", cardId: card.id })}
-            >
-              Generate
-            </button>
-          </>
+          <button
+            className="go"
+            type="button"
+            data-gen={card.id}
+            onClick={() => runCardAction(reviewId, { kind: "generate", cardId: card.id })}
+          >
+            Generate
+          </button>
         )}
       </section>
     );
