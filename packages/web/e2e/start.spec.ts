@@ -139,6 +139,21 @@ test("held lists show loading without stale rows and keep the PR input", async (
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
 });
 
+test("re-selecting the current repo reloads its lists", async ({ page }) => {
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.repoChangesHold", "1");
+  });
+  // Re-selecting the already-selected value still fires change and must
+  // pair the cleared lists with a fresh load — never a stuck "Loading…".
+  await page.getByLabel("Repository").selectOption("urllib3");
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading urllib3/urllib3…");
+  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
+});
+
 test("reviews for checkouts no longer listed stay openable and removable", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(

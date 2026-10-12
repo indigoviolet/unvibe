@@ -17,7 +17,10 @@
  *   works: it opens the review and switches the selector to that repo.
  *   The PR input never waits on the lists. List loads are tracked per
  *   selection (loading / loaded / failed): switching repos clears the old
- *   lists synchronously so stale data can never render; a total failure
+ *   lists synchronously so stale data can never render, a nonce guarantees
+ *   the clear is always paired with a fresh load (even re-selecting the
+ *   current repo, which still fires `change`), and a 30 s timeout bounds
+ *   the loading state so it can never stick forever. A total failure
  *   shows an inline error with a Retry button; a single failed filter
  *   shows its error in that section while the others still render
  *   (the service already degrades gh/git failures to empty per source).
@@ -46,6 +49,9 @@ import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 
 const REPO_KEY = "unvibe.start.repoId";
+
+/** Upper bound for a lists load: the page must never stick on "Loading…". */
+const LISTS_TIMEOUT_MS = 30_000;
 
 /** Per-section list errors: a failed filter shows its error, not "Nothing found.". */
 interface ListErrors {
@@ -181,8 +187,15 @@ export function StartPage(): React.JSX.Element {
   // cleared). The render gates on this so a newly selected repo never shows
   // the previous repo's data.
   const [listsFor, setListsFor] = useState<string | null>(null);
-  // Whole-load failure (every filter rejected): inline message + Retry.
+  // Whole-load failure (every filter rejected, or the load timed out):
+  // inline message + Retry.
   const [listsError, setListsError] = useState<string | null>(null);
+  // Bumped on every explicit selection so the load effect re-runs even
+  // when the id is unchanged: `selectOption` fires `change` (and
+  // `selectRepo` clears) even for the already-selected repo, and without
+  // this the effect's id-equality bail-out would leave no load in flight
+  // — a permanent "Loading…" with no recovery.
+  const [listsNonce, setListsNonce] = useState(0);
   // True once GET /api/repos has resolved (even demo-only).
   const [reposLoaded, setReposLoaded] = useState(false);
   // True when GET /api/repos itself failed (offline service).
@@ -215,17 +228,33 @@ export function StartPage(): React.JSX.Element {
   }, []);
 
   // Monotonic load id: a superseded selection's late responses are ignored.
+  // (A late batch for the CURRENT id still applies: it is fresher than the
+  // cleared state and newer than nothing else in flight.)
   const loadSeq = useRef(0);
   const loadLists = useCallback(async (id: string) => {
     const seq = ++loadSeq.current;
     // Settled, not all-or-nothing: one failing filter must not sink the
     // others (branches are local even when the gh-backed PR lists fail).
-    const [a, r, rec] = await Promise.allSettled([
-      api.repoChanges(id, "authoring"),
-      api.repoChanges(id, "review-requested"),
-      api.repoChanges(id, "recent"),
+    // Raced against a timeout so the page can never stick on "Loading…"
+    // forever no matter how the requests stall.
+    const settled = await Promise.race([
+      Promise.allSettled([
+        api.repoChanges(id, "authoring"),
+        api.repoChanges(id, "review-requested"),
+        api.repoChanges(id, "recent"),
+      ]),
+      new Promise<null>((resolve) => {
+        window.setTimeout(() => resolve(null), LISTS_TIMEOUT_MS);
+      }),
     ]);
     if (loadSeq.current !== seq) return;
+    if (settled === null) {
+      setListErrors(EMPTY_ERRORS);
+      setListsError("the lists request timed out — the service may be busy");
+      setListsFor(id);
+      return;
+    }
+    const [a, r, rec] = settled;
     setAuthoring(a.status === "fulfilled" ? a.value.changes : []);
     setRequested(r.status === "fulfilled" ? r.value.changes : []);
     // `recent` mixes branches and previous reviews; branches only here
@@ -242,7 +271,9 @@ export function StartPage(): React.JSX.Element {
   }, []);
 
   /** Select a repo, clearing the old lists synchronously so stale data can
-      never render — not even for one frame before the load effect runs. */
+      never render — not even for one frame before the load effect runs.
+      The nonce bump guarantees the effect fires a fresh load even when
+      the id is unchanged (same-value selection still clears). */
   const selectRepo = useCallback(
     (id: string) => {
       setAuthoring([]);
@@ -252,6 +283,7 @@ export function StartPage(): React.JSX.Element {
       setListsError(null);
       setListsFor(null);
       setSelectedId(id);
+      setListsNonce((n) => n + 1);
     },
     [],
   );
@@ -317,7 +349,7 @@ export function StartPage(): React.JSX.Element {
     }
     if (!selectedId) return;
     void loadLists(selectedId);
-  }, [selectedId, loadLists]);
+  }, [selectedId, listsNonce, loadLists]);
 
   const openReview = useCallback(
     async (key: string, body: CreateReviewRequest) => {

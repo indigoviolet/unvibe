@@ -108,7 +108,9 @@ test.describe("real service", () => {
     // The start page follows the selected repo: select the added checkout,
     // then open a review of the scratch branch.
     await page.getByLabel("Repository").selectOption({ label: `local/${path.basename(repoDir)}` });
-    await page.locator("main .ci button").filter({ hasText: "feature" }).first().click();
+    const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
+    await expect(feature).toBeVisible({ timeout: 30_000 });
+    await feature.click();
     await page.waitForURL(/\/review\/rv_[0-9a-f]+/, { timeout: 60_000 });
     const reviewId = page.url().match(/\/review\/([^/?#]+)/)?.[1] ?? "";
     expect(reviewId).toMatch(/^rv_[0-9a-f]+$/);
