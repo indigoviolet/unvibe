@@ -210,8 +210,9 @@ Every card and every expansion card has the same controls:
   - **Template:** the raw text with its variables marked;
   - **Expanded for this review:** the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart. View-only to start.
 - **Limits and budgets:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
-- **Jobs:** running and queued jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider.
-- **Debug page** (per review, `/review/:id/debug`, linked from the review top bar): the review's shared context as a rendered Markdown document — the base session(s) with the current base pack, the append-only log (§9.3), and every contribution (§9.5) with the thread it came from — plus delete for any item. No formatting beyond Markdown rendering.
+- **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
+  - **Jobs:** running and queued jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider.
+  - **Shared context** as a rendered Markdown document — the base session(s) with the current base pack, the append-only log (§9.3), and every contribution (§9.5) with the thread it came from — plus delete for any item. No formatting beyond Markdown rendering.
 
 ### 4.15 UI conventions
 
@@ -569,7 +570,7 @@ WS   /api/events?review=:id              job progress, streamed text, state patc
 | M3 | Interaction | Explain, Ask and Note on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Expansions close into links; Open as page. Mark read. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
-| M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompts (template and expanded), limits, jobs and usage. |
+| M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompts (template and expanded) and limits; the per-review debug page with jobs and usage. |
 
 ## 18. Testing and evaluation
 

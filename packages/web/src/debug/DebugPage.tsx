@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { Contribution, SharedContextResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { JobsSection } from "./JobsSection.js";
 import { MarkdownView } from "./MarkdownView.js";
 
 export function DebugPageRoute(): React.JSX.Element {
@@ -74,10 +75,10 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
           <div className="eyebrow">Review debug</div>
-          <h1 className="title">Shared context</h1>
+          <h1 className="title">Jobs and shared context</h1>
           <p className="hint">
-            The per-review knowledge from PRD §9 that every agent conversation starts from: the base
-            session, the append-only log, and the contributions.
+            Per-review jobs, then the shared context from PRD §9 that every agent conversation starts
+            from: the base session, the append-only log, and the contributions.
           </p>
           {error ? (
             <p className="err" role="alert">
@@ -85,6 +86,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
             </p>
           ) : null}
           {!doc && !error ? <p className="hint">Loading shared context…</p> : null}
+          <JobsSection reviewId={reviewId} />
           {doc ? (
             <>
               <section aria-label="Base">

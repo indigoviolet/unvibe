@@ -2,15 +2,15 @@
  * Settings page + versions banner behaviour tests against mock mode
  * (PRD §4.14, §8): model pickers with adapter errors and the
  * same-model warning, prompt template/expanded views, limits persistence,
- * jobs with prompt links + cancel, Tips popover,
- * and the stale-review banner with range-diff + version switching.
- * (Shared context lives on the per-review debug page now: `debug.spec.ts`.)
+ * Tips popover, and the stale-review banner with range-diff + version
+ * switching. (Jobs and shared context live on the per-review debug page
+ * now: `debug.spec.ts`.)
  */
 import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/settings?review=demo");
-  await expect(page.getByText("Models, prompts, limits, jobs")).toBeVisible();
+  await expect(page.getByText("Models, prompts, limits")).toBeVisible();
 });
 
 test("model pickers list provider models and warn on same-model second opinion", async ({ page }) => {
@@ -58,7 +58,7 @@ test("limits persist across reload", async ({ page }) => {
   await page.getByRole("button", { name: "Save limits" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Models, prompts, limits, jobs")).toBeVisible();
+  await expect(page.getByText("Models, prompts, limits")).toBeVisible();
   await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("6");
 });
 
@@ -67,26 +67,6 @@ test("limits show service validation errors inline", async ({ page }) => {
   // real-service spec; here just assert the field + hint render.
   await expect(page.locator("#limit-inlineBudgetTokens")).toBeVisible();
   await expect(page.getByText("L1 budget, ~40k default.")).toBeVisible();
-});
-
-test("jobs show state, tokens, cache rate, prompt link and cancel", async ({ page }) => {
-  const running = page.locator('[data-testid="job-job-explain-1"]');
-  await expect(running).toContainText("explain");
-  await expect(running).toContainText("running");
-  await expect(running).toContainText("42.5k in");
-  await expect(running).toContainText("91.5% cached");
-
-  const backing = page.locator('[data-testid="job-job-critic-1"]');
-  await expect(backing).toContainText(/backing-off · retry in/);
-
-  await running.getByRole("button", { name: "Prompt" }).click();
-  await expect(running).toContainText("Explain the quoted text");
-
-  const queued = page.locator('[data-testid="job-job-hunk-1"]');
-  await queued.getByRole("button", { name: "Cancel" }).click();
-  await expect(queued).toContainText("cancelled");
-
-  await expect(page.locator('[data-testid="jobs-totals"]')).toContainText("Totals:");
 });
 
 test("tips popover opens from the review top bar", async ({ page }) => {

@@ -304,8 +304,9 @@ UI); nothing below was edited by this pass.
 - Limits/budgets (sessions per provider, inline budget, rebuild
   thresholds) — met (`settings.spec.ts` “limits persist across reload”).
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
-  (`settings.spec.ts`, `GET /api/jobs` ran; prompt snapshots now served
-  per-job to keep lists small).
+  (issue #32; on the per-review debug page now, relocated unchanged from
+  Settings: `e2e/debug.spec.ts`, `GET /api/jobs` ran; prompt snapshots now
+  served per-job to keep lists small).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log with
   in-base/waiting markers, contributions with thread + delete — met
@@ -617,8 +618,9 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   suggested comments, author-gated description edit, one-review submit).
 - M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
   hunk state, update pass, rebase-no-change test (a)).
-- M6 second opinion + settings — met (blind/check, models/prompts/limits/
-  jobs+usage settings page; isolation e2e on the real prompt).
+- M6 second opinion + settings — met (blind/check, models/prompts/limits
+  settings page; jobs+usage on the per-review debug page, issue #32;
+  isolation e2e on the real prompt).
 
 ## §18 Tests — all met
 
