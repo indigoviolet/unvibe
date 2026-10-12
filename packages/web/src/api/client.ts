@@ -31,6 +31,7 @@ import type {
   ReadinessResponse,
   RefreshResponse,
   ReloadResponse,
+  ResumeReviewResponse,
   RemoveRepoResponse,
   ResetDataResponse,
   ReplyCommentRequest,
@@ -285,6 +286,8 @@ const realApi = {
   review: (id: string, version?: number): Promise<ReviewSnapshot> =>
     get(`/api/reviews/${encodeURIComponent(id)}${version !== undefined ? `?version=${version}` : ""}`),
   refresh: (id: string): Promise<RefreshResponse> => post(`/api/reviews/${encodeURIComponent(id)}/refresh`),
+  /** Re-enqueue the pipeline stages that never finished (guide error-state Retry). */
+  resume: (id: string): Promise<ResumeReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/resume`),
   update: (id: string): Promise<UpdateReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/update`),
   action: (id: string, action: ReviewAction): Promise<ActionResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/actions`, action),
