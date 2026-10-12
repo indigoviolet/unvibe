@@ -605,33 +605,19 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
               value={fq}
               onChange={(e) => setFq(e.target.value)}
             />
-            <button
-              className="chip"
-              type="button"
-              aria-pressed={prefs.hideReviewed}
-              onClick={() => setPrefs((p) => ({ ...p, hideReviewed: !p.hideReviewed }))}
-            >
-              Hide reviewed
-            </button>
-          </div>
-          <div className="frow" role="group" aria-label="File types">
-            {CATS.map((c) => (
-              <button
-                key={c.k}
-                className="chip"
-                type="button"
-                aria-pressed={cats.has(c.k)}
-                onClick={() =>
-                  setPrefs((p) => ({
-                    ...p,
-                    cats: p.cats.includes(c.k) ? p.cats.filter((x) => x !== c.k) : [...p.cats, c.k],
-                  }))
-                }
-              >
-                {c.l}
-                <span>{catCount(c.k)}</span>
-              </button>
-            ))}
+            <FilterDropdown
+              cats={cats}
+              hideReviewed={prefs.hideReviewed}
+              catCount={catCount}
+              reviewedFiles={snapshot.files.filter((f) => reviewedCount(f) === f.hunks.length).length}
+              onToggleCat={(k) =>
+                setPrefs((p) => ({
+                  ...p,
+                  cats: p.cats.includes(k) ? p.cats.filter((x) => x !== k) : [...p.cats, k],
+                }))
+              }
+              onToggleReviewed={() => setPrefs((p) => ({ ...p, hideReviewed: !p.hideReviewed }))}
+            />
           </div>
           <div className="prog">
             <span>
@@ -722,6 +708,147 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
         </p>
       )}
     </div>
+  );
+}
+
+function FilterDropdown({
+  cats,
+  hideReviewed,
+  catCount,
+  reviewedFiles,
+  onToggleCat,
+  onToggleReviewed,
+}: {
+  cats: ReadonlySet<string>;
+  hideReviewed: boolean;
+  catCount: (k: string) => number;
+  reviewedFiles: number;
+  onToggleCat: (k: string) => void;
+  onToggleReviewed: () => void;
+}): ReactNode {
+  const [open, setOpen] = useState(false);
+  const ctlRef = useRef<HTMLSpanElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // Checked = shown. Default: every category + Reviewed shown.
+  const rows: { key: string; label: string; checked: boolean; count: number; toggle: () => void }[] = [
+    ...CATS.map((c) => ({
+      key: c.k,
+      label: c.l,
+      checked: cats.has(c.k),
+      count: catCount(c.k),
+      toggle: () => onToggleCat(c.k),
+    })),
+    {
+      key: "__reviewed",
+      label: "Reviewed",
+      checked: !hideReviewed,
+      count: reviewedFiles,
+      toggle: onToggleReviewed,
+    },
+  ];
+  const activeCount = CATS.length - cats.size + (hideReviewed ? 1 : 0);
+  const active = activeCount > 0;
+
+  // Close on outside press or Escape, like the other dropdowns
+  // (SecondOpinionControl, Tips, CommentsMenu).
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent): void => {
+      if (!ctlRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        btnRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open ]);
+
+  // Focus the first row on open so Arrow keys work immediately; Esc
+  // returns focus to the button above.
+  useEffect(() => {
+    if (open) itemRefs.current[0]?.focus();
+  }, [open ]);
+
+  const move = (dir: 1 | -1): void => {
+    const el = document.activeElement as HTMLElement | null;
+    const at = itemRefs.current.findIndex((b) => b === el);
+    const next = at < 0 ? (dir === 1 ? 0 : rows.length - 1) : (at + dir + rows.length) % rows.length;
+    itemRefs.current[next]?.focus();
+  };
+
+  return (
+    <span className="fctl" ref={ctlRef}>
+      <button
+        ref={btnRef}
+        className="tbtn"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-pressed={active}
+        aria-label="File filters"
+        title="Filter files by type"
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" && !open) {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        Filter
+        {active ? <span className="count">{activeCount}</span> : null}
+      </button>
+      {open ? (
+        <div
+          className="fmenu"
+          role="menu"
+          aria-label="File filters"
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              move(1);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              move(-1);
+            } else if (e.key === "Home") {
+              e.preventDefault();
+              itemRefs.current[0]?.focus();
+            } else if (e.key === "End") {
+              e.preventDefault();
+              itemRefs.current[rows.length - 1]?.focus();
+            }
+          }}
+        >
+          {rows.map((r, i) => (
+            <button
+              key={r.key}
+              ref={(el) => {
+                itemRefs.current[i] = el;
+              }}
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={r.checked}
+              onClick={r.toggle}
+            >
+              <span className="tick" aria-hidden="true">
+                {r.checked ? "✓" : ""}
+              </span>
+              <span className="lbl">{r.label}</span>
+              <span className="cnt">{r.count}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </span>
   );
 }
 
