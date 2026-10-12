@@ -1,17 +1,19 @@
 /**
- * Expansion anchor highlights (M4 interaction; PRD §4.7).
+ * Expansion anchor highlights (M4 interaction; PRD §4.7, issue #72).
  *
  * Mirrors `GuideThreads` anchor-highlighting for expansions:
  * - open expansions highlight their quote (`mark.anc.ex[data-jump]`);
  * - closed expansions become dotted links (`mark.anc.exl[data-jump]`);
  * - promoted links become page links (`a.cx.pg[data-node]`);
- * - anchor-stale expansions skip highlighting (the card shows the
- *   collapsed fallback instead);
+ * - anchor-stale expansions skip highlighting (their footnote chip shows);
  * - clicking a mark scrolls to the card (closed ones expand first);
  * - hovering outlines anchors <-> cards.
  *
- * Closed expansions whose quote is gone fall back to the hidden
- * `[data-fallback]` stub the card list renders under the block.
+ * Closed expansions / links whose quote is gone fall back to a footnote
+ * chip (`[data-fallback]`, hidden) on the paragraph's citations line;
+ * the pass reveals it when the highlight lands nowhere and hides it again
+ * when the phrase returns. Thread chips (`[data-tfallback]`) belong to
+ * `GuideThreads` and are never touched here.
  */
 import { useEffect } from "react";
 import { api, friendlyError } from "../../api/client.js";
@@ -50,7 +52,13 @@ export function ExpansionHighlights() {
       // one selection-preserving window. Thread marks (`mark[data-thr]`)
       // belong to GuideThreads and are never touched (narrow selectors).
       withPreservedSelection(root, () => {
-        clearMarks(root, "mark.anc.ex[data-jump], mark.anc.exl[data-jump], a.cx.pg[data-node]");
+        // Footnote chips (issue #72) share the same marks/links shapes but
+        // live in `.lo` and must survive: exclude `.fnote` here (highlights
+        // only; chips are toggled via [data-fallback] below).
+        clearMarks(
+          root,
+          "mark.anc.ex[data-jump]:not(.fnote), mark.anc.exl[data-jump]:not(.fnote), a.cx.pg[data-node]:not(.fnote)",
+        );
         const highlighted = new Set<string>();
         for (const a of annotations ?? []) {
           if (a.type !== "expansion" && a.type !== "link") continue;

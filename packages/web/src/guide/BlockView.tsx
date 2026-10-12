@@ -28,6 +28,8 @@ interface Props extends BlockCallbacks {
   block: Block;
   level: DepthLevel;
   threads: Annotation[];
+  /** Closed expansions + promoted links anchored on this block (footnote chips). */
+  footnotes?: Annotation[];
   lookupPage?: (pageId: string) => Page | undefined;
   /** Owning card (or expansion) id: follow-up chips read in-flight state. */
   cardId: string;
@@ -38,6 +40,7 @@ function Paragraph({
   html,
   citations,
   threads,
+  footnotes,
   blockId,
   onOpenPage,
 }: {
@@ -45,13 +48,20 @@ function Paragraph({
   html: string;
   citations: ReturnType<typeof resolveBlockCitations>;
   threads: Annotation[];
+  footnotes?: Annotation[];
   blockId: string;
   onOpenPage: (pageId: string) => void;
 }) {
   return (
     <p className="prose sel" data-top={id}>
       <RichText html={html} className="rt" top={id} onOpenPage={onOpenPage} />
-      <BlockMarkers citations={citations} threads={threads} blockId={blockId} />
+      <BlockMarkers
+        citations={citations}
+        threads={threads}
+        footnotes={footnotes}
+        blockId={blockId}
+        onOpenPage={onOpenPage}
+      />
     </p>
   );
 }
@@ -106,7 +116,7 @@ function onHtmlClick(
   handleHtmlLinkClick(e, pages, onOpenPage);
 }
 
-export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPage, onFollowUp }: Props) {
+export function BlockView({ block, level, threads, footnotes, lookupPage, cardId, onOpenPage, onFollowUp }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
   const pages = snapshot?.pages;
@@ -126,6 +136,7 @@ export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPag
             html={html}
             citations={resolved}
             threads={threads}
+            footnotes={footnotes}
             blockId={block.id}
             onOpenPage={onOpenPage}
           />
@@ -150,12 +161,19 @@ export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPag
         );
       });
       const list = block.ordered ? <ol className="lst">{items}</ol> : <ul className="lst">{items}</ul>;
+      const hasFootnotes = (footnotes?.length ?? 0) > 0;
       return (
         <div className="blk" id={id}>
           {list}
-          {(resolved.length > 0 || threads.length > 0) && (
+          {(resolved.length > 0 || threads.length > 0 || hasFootnotes) && (
             <div className="lo-row">
-              <BlockMarkers citations={resolved} threads={[]} blockId={block.id} />
+              <BlockMarkers
+                citations={resolved}
+                threads={[]}
+                footnotes={footnotes}
+                blockId={block.id}
+                onOpenPage={onOpenPage}
+              />
             </div>
           )}
         </div>
@@ -170,9 +188,15 @@ export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPag
             dangerouslySetInnerHTML={{ __html: block.html }}
             onClick={(e) => onHtmlClick(e, pages, onOpenPage)}
           />
-          {(resolved.length > 0 || threads.length > 0) && (
+          {(resolved.length > 0 || threads.length > 0 || (footnotes?.length ?? 0) > 0) && (
             <div className="lo-row">
-              <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />
+              <BlockMarkers
+                citations={resolved}
+                threads={threads}
+                footnotes={footnotes}
+                blockId={block.id}
+                onOpenPage={onOpenPage}
+              />
             </div>
           )}
         </div>
@@ -183,9 +207,15 @@ export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPag
           <pre className="code sel" data-top={block.id}>
             {block.code}
           </pre>
-          {(resolved.length > 0 || threads.length > 0) && (
+          {(resolved.length > 0 || threads.length > 0 || (footnotes?.length ?? 0) > 0) && (
             <div className="lo-row">
-              <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />
+              <BlockMarkers
+                citations={resolved}
+                threads={threads}
+                footnotes={footnotes}
+                blockId={block.id}
+                onOpenPage={onOpenPage}
+              />
             </div>
           )}
         </div>
@@ -194,9 +224,15 @@ export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPag
       return (
         <div className="blk" id={id}>
           <DiagramView reviewId={reviewId} block={block} />
-          {(resolved.length > 0 || threads.length > 0) && (
+          {(resolved.length > 0 || threads.length > 0 || (footnotes?.length ?? 0) > 0) && (
             <div className="lo-row">
-              <BlockMarkers citations={resolved} threads={threads} blockId={block.id} />
+              <BlockMarkers
+                citations={resolved}
+                threads={threads}
+                footnotes={footnotes}
+                blockId={block.id}
+                onOpenPage={onOpenPage}
+              />
             </div>
           )}
         </div>

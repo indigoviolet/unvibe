@@ -250,8 +250,25 @@ a.cx.pg { text-decoration-style: solid; color: var(--accent); }
 .src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 4px; padding: 0 4px; }
 .src:hover { text-decoration: underline; }
 /* Linkouts: small markers at the end of a block; hover previews, click opens. */
-.lo { display: inline-flex; gap: 2px; margin-left: 4px; vertical-align: 1px; }
-.lo-row { display: flex; justify-content: flex-end; margin-top: -4px; }
+.lo { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: 4px; vertical-align: 1px; }
+.lo-row { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: -4px; }
+/* Anchor footnotes (issue #72): quiet chips sharing the citations line. 12px
+   muted siblings of the <> chip; truncated to one short line with an
+   ellipsis, full quote on hover (title). No underline until hover, except
+   the dotted style kept for closed explanations. */
+.lo .fnote { font: 12px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 4px; padding: 0 6px; height: 18px; display: inline-flex; align-items: center; gap: 4px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: none; }
+.lo .fnote .ic { width: 12px; height: 12px; flex: none; }
+.lo .fnote .q { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.lo .fnote:hover { color: var(--ink); background: var(--sunk); text-decoration: underline; text-underline-offset: 3px; }
+.lo mark.fnote { background: none; }
+.lo mark.fnote.exl { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; }
+.lo mark.fnote.exl:hover { color: var(--accent); }
+.lo mark.fnote.th { color: var(--muted); }
+.lo mark.fnote.th:hover { color: var(--note); background: var(--note-soft); text-decoration: none; }
+.lo a.fnote { color: var(--muted); }
+.lo a.fnote:hover { color: var(--accent); }
+.lo a.fnote .ic { color: var(--muted); }
+.lo a.fnote:hover .ic { color: var(--accent); }
 .lk { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--muted); opacity: .55; padding: 0 3px; border-radius: 4px; font: 10.5px var(--mono); height: 18px; }
 .lk .ic { width: 12px; height: 12px; }
 .lk:hover, .lk.on { opacity: 1; color: var(--accent); background: var(--accent-soft); }
