@@ -21,7 +21,7 @@
  */
 import type { CommandRunner } from "../exec/index.js";
 import { isPidAlive, readLock } from "../cli/lock.js";
-import { DB_RULE, backupChannel, restoreChannel } from "./data-backup.js";
+import { DB_RULE, backupChannel, channelSlotDir, restoreChannel } from "./data-backup.js";
 import {
   fetchRefPackage,
   isChannelName,
@@ -177,7 +177,12 @@ async function runSameChannelReinstall(
       ? `reinstalling ${req.channel}: installed ${shortCommit(before.commit)} vs published ${shortCommit(remoteCommit)}`
       : `reinstalling ${req.channel}: could not read the published commit, reinstalling to be sure`,
   );
-  const backup = backupChannel(req.dataDir, before.channel);
+  // Rolling back a same-channel update: this slot already holds the
+  // pre-switch copy about to be restored, so it must not be overwritten.
+  const backup =
+    req.restoreBackupOf === before.channel
+      ? { dir: channelSlotDir(req.dataDir, before.channel), files: [] }
+      : backupChannel(req.dataDir, before.channel);
   if (backup.files.length > 0) {
     log(`backed up ${backup.files.join(", ")} to ${backup.dir}`);
   }
