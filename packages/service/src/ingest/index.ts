@@ -29,7 +29,7 @@ export { classifyFile, fileKeyForPath } from "./classify.js";
 export { uninterestingReason } from "./uninteresting.js";
 export { buildReviewFiles } from "@unvibe/shared";
 export { renderCommitMessages, renderMarkdownBlocks, renderInline } from "./description.js";
-export { resolveHead, resolveSource } from "./source.js";
+export { baseRefCandidates, resolveHead, resolvePrMergeBase, resolveSource } from "./source.js";
 
 export interface IngestDeps {
   runner: CommandRunner;

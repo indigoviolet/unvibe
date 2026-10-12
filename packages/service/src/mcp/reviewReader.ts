@@ -11,7 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { renderMarkdown } from "@unvibe/shared";
+import { isReadySnapshot, renderMarkdown } from "@unvibe/shared";
 import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
 import type { McpReviewData, ReviewReader } from "./read.js";
@@ -37,7 +37,7 @@ export class StoreReviewReader implements ReviewReader {
 
   async getReview(reviewId: string): Promise<McpReviewData | null> {
     const snap = this.opts.reviews.getSnapshot(reviewId);
-    if (!snap) return null;
+    if (!snap || !isReadySnapshot(snap)) return null;
     const hunks = snap.files.flatMap((f) =>
       f.hunks.map((h) => ({
         fileKey: f.fileKey,

@@ -16,7 +16,26 @@ The service never writes into your checkout; agents read the code in a worktree 
 
 ## Life of a review
 
-1. **Ingest** (`src/ingest/`): work out whether the source is a PR or a branch, fetch, compute the merge-base diff, parse it into hunks with content hashes, classify files, create or reuse the worktree. No agent involved.
+1. **Ingest** (`src/ingest/`, async open #92): `POST /api/reviews` creates
+   the review row + a loading snapshot (`ingest: {status: "loading",
+   step: "fetching"}`) and answers 202 at once — before any fetch. The
+   fetch (`git fetch origin`, then PR heads via `refs/pull/<n>/head` with a
+   branch-name fallback) + `gh pr view` + merge-base (against
+   `origin/<base>` first, bare second — stacked PRs, #93) + local diff +
+   worktree run after the response, stepping the snapshot to "reading
+   diff" then filling it to ready in one mutate (one WS patch; the page
+   fills through the usual events). The PR title/number/author from the
+   list row ride the create request so the loading page shows them at
+   once. Failures mark the snapshot failed with the error + a retry
+   (`POST …/retry`); the review never looks like a normal empty review
+   and can be removed. A restart resumes loading ingests or marks them
+   failed (the loading snapshot is the durable marker, like the submit
+   lease in `src/submit/lease.ts` — no new table; the ingest does not go
+   through the agent job queue because it is git/gh + DB writes with a
+   step name, not provider/model/prompt work). Opening the same PR/branch
+   while loading reuses the review (repo + PR/branch dedupe in the
+   service, so two tabs share one). The pipeline starts only after the
+   ingest; the demo fixture stays synchronous. No agent involved in ingest itself.
 2. **Reader** (`src/pipeline/`): the main model explores the worktree and streams the guide cards (problem, central change, go-deeper directions), hidden concept candidates, and pinned code excerpts.
 3. **Base session** (`src/sessions/`): the shared context (source, pinned code, guide) is built once per model and kept warm, so later conversations start mostly from cache.
 4. **Parallel forks**: a critic writes findings as separate pages with drafted suggested comments on diff lines; concept stubs become full pages; the small model summarizes each hunk and marks uninteresting ones (never a cited or one-line hunk).

@@ -39,9 +39,23 @@ async function openReview(app: Awaited<ReturnType<typeof createApp>>["app"], dir
   const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
   const repoId = (added.json() as { repos: { id: string; localPath?: string }[] }).repos.find((r) => r.id !== "demo")!.id;
   const created = await app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: { repoId, branch } });
-  expect(created.statusCode).toBe(201);
-  const snap = created.json() as ReviewSnapshot;
-  return { id: snap.review.id, snap };
+  expect([201, 202]).toContain(created.statusCode);
+  const loading = created.json() as ReviewSnapshot;
+  const id = loading.review.id;
+  // #92: async open — poll until the background ingest lands.
+  const start = Date.now();
+  while (Date.now() - start < 15000) {
+    const got = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+    if (got.statusCode === 200) {
+      const snap = got.json() as ReviewSnapshot;
+      if ((snap.ingest?.status ?? "ready") === "ready" && (snap.version?.n ?? 0) >= 1) {
+        return { id, snap };
+      }
+      if ((snap.ingest?.status ?? "") === "failed") throw new Error(`ingest failed: ${snap.ingest?.error ?? ""}`);
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("timed out waiting for ingest");
 }
 
 function hunkHashFor(snap: ReviewSnapshot, filePath: string, index = 0): { fileKey: string; hash: string; newStart: number } {

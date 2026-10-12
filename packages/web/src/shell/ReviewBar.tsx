@@ -5,7 +5,7 @@
  *
  * - Left: the review identity (`owner/name#N` + title, truncated with the
  *   full title on hover), a GitHub link-out for PR reviews, and Debug as
- *   an icon button.
+ *   an icon button (hidden until the review finishes opening, issue #92).
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
  *   its pane (issue #83); `#toggleRight` stays on the Source segment.
  * - Right: Comments and Submit side by side, Submit as the primary button.
@@ -13,6 +13,7 @@
 import { Link } from "react-router-dom";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { Icon } from "../components/Icon.js";
+import { useReview } from "../state/store.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
 
@@ -30,6 +31,11 @@ export function ReviewBar({
   onToggleSource: () => void;
 }): React.JSX.Element {
   const { short, title, prUrl } = useReviewIdentity(reviewId);
+  // #92: the Debug page needs a finished open (its reads refuse earlier
+  // states), so the icon waits until the review is ready.
+  const ingestReady =
+    (useReview((s) => s.snapshot?.ingest?.status) ?? "ready") === "ready" &&
+    (useReview((s) => s.snapshot?.version?.n) ?? 0) >= 1;
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">
@@ -40,14 +46,16 @@ export function ReviewBar({
             <Icon name="open" />
           </a>
         ) : null}
-        <Link
-          className="ib bd"
-          to={`/review/${encodeURIComponent(reviewId)}/debug`}
-          aria-label="Debug"
-          title="Debug"
-        >
-          <Icon name="bug" />
-        </Link>
+        {ingestReady ? (
+          <Link
+            className="ib bd"
+            to={`/review/${encodeURIComponent(reviewId)}/debug`}
+            aria-label="Debug"
+            title="Debug"
+          >
+            <Icon name="bug" />
+          </Link>
+        ) : null}
       </div>
       <span className="seg" role="group" aria-label="Panes">
         <button type="button" aria-pressed={guideOpen} onClick={onToggleGuide}>

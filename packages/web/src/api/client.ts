@@ -226,6 +226,9 @@ const realApi = {
 
   createReview: (body: CreateReviewRequest): Promise<ReviewSnapshot> =>
     post("/api/reviews", body),
+  /** #92: re-run a failed ingest (409 when ready/loading, 202 with loading when retried). */
+  retryReview: (id: string): Promise<ReviewSnapshot> =>
+    post(`/api/reviews/${encodeURIComponent(id)}/retry`),
   reviews: (): Promise<ReviewsListResponse> => get("/api/reviews"),
   deleteReview: (id: string): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }),

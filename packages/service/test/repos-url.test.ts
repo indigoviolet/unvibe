@@ -518,7 +518,15 @@ describe("GET /api/repos/:id/changes fetch behaviour", () => {
         headers: authed(),
         payload: { repoId: repo.id, branch: "main" },
       });
-      expect(created.statusCode).toBe(201);
+      expect([201, 202]).toContain(created.statusCode);
+      // #92: fetch runs after the 202 response (before the ingest) — poll.
+      const start = Date.now();
+      while (
+        Date.now() - start < 10000 &&
+        !gitCalls.some((a) => a[0] === "fetch" && a[1] === "origin")
+      ) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
       expect(gitCalls.some((a) => a[0] === "fetch" && a[1] === "origin")).toBe(true);
     } finally {
       await app.close();
@@ -596,7 +604,7 @@ describe("DELETE /api/repos/:id", () => {
         headers: authed(),
         payload: { repoId: repo.id, branch: "main" },
       });
-      expect(created.statusCode).toBe(201);
+      expect([201, 202]).toContain(created.statusCode);
 
       const del = await app.inject({ method: "DELETE", url: `/api/repos/${repo.id}`, headers: authed() });
       expect(del.statusCode).toBe(409);

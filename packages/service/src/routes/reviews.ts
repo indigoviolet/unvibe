@@ -1,9 +1,10 @@
 /**
- * Reviews (M1 service + M5 versions + M3 pipeline):
- * - `POST /api/reviews` — ingest a PR or branch (or the `demo` fixture),
- *   persist review + version 1 rows, the v1 per-version files (M5), and the
- *   v1 snapshot. Triggers the M3 pipeline (`reader → base → critic/concepts
- *   → hunk pass`) in the background when wired.
+ * Reviews (M1 service + M5 versions + M3 pipeline + #92 async open):
+ * - `POST /api/reviews` — creates the review row + a loading snapshot and
+ *   answers at once (202) with the placeholder; fetch + ingest run after
+ *   the response, then fill the snapshot through patch events (or mark it
+ *   failed with a retry). The `demo` fixture stays synchronous (201).
+ * - `POST /api/reviews/:id/retry` — re-run a failed ingest (#92).
  * - `GET /api/reviews/:id[?version=n]` — current snapshot (with live jobs
  *   merged in), or an older version's `version` + `files` swapped in.
  * - `POST /api/reviews/:id/refresh` — fetch and compare (no agent time).
@@ -12,6 +13,10 @@
  * - `POST /api/reviews/:id/resume` — re-enqueue interrupted pipeline stages
  *   (M3 resilience; idempotent).
  * - `POST …/actions` — M3 dispatcher (`generate` implemented, rest 501).
+ *
+ * Loading reviews have no `version`/`files`/`description` yet; every route
+ * below refuses loading/failed snapshots cleanly (409) except the reads
+ * (`GET`, list) and `retry`/`DELETE`.
  */
 import type { FastifyInstance } from "fastify";
 import type {
@@ -23,7 +28,8 @@ import type {
   UpdateReviewResponse,
   Version,
 } from "@unvibe/shared";
-import { summarizeComparison } from "@unvibe/shared";
+import { ingestStatusOf, isReadySnapshot, summarizeComparison } from "@unvibe/shared";
+import { ingestRefusal } from "../reviews/index.js";
 import {
   ingestReview,
   newReviewId,
@@ -73,6 +79,228 @@ export interface ReviewsRouteDeps {
 
 export type RegisterReviewsDeps = RouteDeps & ReviewsRouteDeps;
 
+/** #92: dedupe key — repo + PR number, or repo + branch. Decided in the service so two tabs share one loading review. */
+function dedupeKeyFor(repoId: string, pr: number | undefined, branch: string | undefined): string {
+  return pr !== undefined ? `${repoId}|pr:${pr}` : `${repoId}|branch:${branch ?? ""}`;
+}
+
+/**
+ * #92: find a loading or failed review for the same repo + PR/branch to
+ * reuse (same PR opened twice while loading goes to the same review).
+ * Ready reviews are left alone (opening again creates a new review, as today).
+ */
+function findReusableReview(
+  ctx: ServiceContext,
+  repoId: string,
+  pr: number | undefined,
+  branch: string | undefined,
+): { id: string; snapshot: ReviewSnapshot } | null {
+  let rows: { id: string }[];
+  try {
+    if (pr !== undefined) {
+      rows = ctx.db
+        .prepare("SELECT id FROM reviews WHERE repo_id = ? AND pr_number = ? ORDER BY created_at DESC")
+        .all(repoId, pr) as { id: string }[];
+    } else {
+      rows = ctx.db
+        .prepare("SELECT id FROM reviews WHERE repo_id = ? AND pr_number IS NULL AND branch = ? ORDER BY created_at DESC")
+        .all(repoId, branch ?? "") as { id: string }[];
+    }
+  } catch {
+    return null;
+  }
+  for (const row of rows) {
+    const snap = ctx.reviews.getSnapshot(row.id);
+    if (!snap) continue;
+    const st = ingestStatusOf(snap);
+    if (st === "loading" || st === "failed") return { id: row.id, snapshot: snap };
+  }
+  return null;
+}
+
+/**
+ * #92: resume loading reviews left behind by a restart. Re-runs the ingest
+ * (same path as retry); when the repo or source is gone, marks the review
+ * failed instead of leaving it loading forever. Lease-style: the loading
+ * snapshot is the durable marker (like `submit_leases`), reconciled here on
+ * startup rather than via a new table.
+ */
+export async function resumeInterruptedIngests(
+  ctx: ServiceContext,
+  opts: { pipeline?: Pipeline; autoPipeline?: boolean } = {},
+): Promise<{ resumed: number; failed: number }> {
+  let rows: { review_id: string }[];
+  try {
+    rows = ctx.db.prepare("SELECT review_id FROM review_snapshots").all() as { review_id: string }[];
+  } catch {
+    return { resumed: 0, failed: 0 };
+  }
+  let resumed = 0;
+  let failed = 0;
+  for (const row of rows) {
+    let snap: ReviewSnapshot | null = null;
+    try {
+      snap = ctx.reviews.getSnapshot(row.review_id);
+    } catch {
+      continue;
+    }
+    if (!snap || ingestStatusOf(snap) !== "loading") continue;
+    const started = startIngestBackground(ctx, opts, snap.review.id);
+    if (started) resumed += 1;
+    else failed += 1;
+  }
+  return { resumed, failed };
+}
+
+/**
+ * #92: (re)start the background ingest for a loading review. Reads the
+ * source from the durable reviews row (repo + PR/branch). Returns false
+ * when the review cannot be resumed (unknown review/repo) — the caller
+ * marks it failed. Fire-and-forget: never throws.
+ */
+function startIngestBackground(
+  ctx: ServiceContext,
+  opts: { pipeline?: Pipeline; autoPipeline?: boolean },
+  reviewId: string,
+): boolean {
+  let row: { repoId: string; branch: string; prNumber: number | null } | null = null;
+  try {
+    row = readReviewRow(ctx.db, reviewId);
+  } catch {
+    return false;
+  }
+  if (!row) return false;
+  const repo = ctx.repos.get(row.repoId);
+  if (!repo) {
+    void ctx.reviews
+      .mutate(reviewId, (draft) => {
+        draft.ingest = { status: "failed", error: "this review's repo is gone — add the repo again, then open the review again" };
+      })
+      .catch(() => {});
+    return false;
+  }
+  void runIngestBackground(ctx, opts, {
+    repoId: repo.id,
+    repoPath: repo.localPath,
+    reviewId,
+    ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
+  }).catch(() => {});
+  return true;
+}
+
+/**
+ * #92: background ingest after the 202 response (or retry/resume). Updates
+ * the loading snapshot's step through patches ("fetching" → "reading
+ * diff"), then fills it to ready in one mutate (so the page fills through
+ * the usual patch events) and starts the pipeline — or marks it failed
+ * with the error and a retry. Never throws; a deleted review is skipped.
+ */
+async function runIngestBackground(
+  ctx: ServiceContext,
+  opts: { pipeline?: Pipeline; autoPipeline?: boolean },
+  args: { repoId: string; repoPath: string; reviewId: string; pr?: number; branch?: string },
+): Promise<void> {
+  const { reviewId, repoPath, repoId } = args;
+  const pipeline = opts.pipeline;
+  const autoPipeline = opts.autoPipeline ?? true;
+  try {
+    const repo = ctx.repos.get(repoId);
+    if (repo?.managed === true) {
+      await refreshManagedCheckout(ctx.runner, repo);
+    }
+    await ctx.reviews
+      .mutate(reviewId, (draft) => {
+        if (draft.ingest?.status === "loading") draft.ingest.step = "reading diff";
+      })
+      .catch(() => {});
+    const ingested = await ingestReview(
+      { runner: ctx.runner, dataDir: ctx.dataDir },
+      { repoPath, ...(args.pr !== undefined ? { pr: args.pr } : { branch: args.branch }) },
+      reviewId,
+    );
+    // Deleted while loading: skip the write (best-effort worktree cleanup).
+    if (!ctx.reviews.getSnapshot(reviewId)) {
+      try {
+        const { default: fs } = await import("node:fs");
+        const { default: path } = await import("node:path");
+        fs.rmSync(path.join(ctx.dataDir, "worktrees", reviewId), { recursive: true, force: true });
+      } catch {
+        // Ignore.
+      }
+      return;
+    }
+    const snapshot: ReviewSnapshot = {
+      review: { ...ingested.review, repoId },
+      version: ingested.version,
+      files: ingested.files,
+      description: ingested.description,
+      pages: [],
+      annotations: [],
+      hunkStates: [],
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+      ingest: { status: "ready" },
+    };
+    transaction(ctx.db, () => {
+      ctx.db.prepare("UPDATE reviews SET branch = ?, pr_number = ?, current_version = ?, data = ? WHERE id = ?").run(
+        snapshot.review.branch,
+        snapshot.review.prNumber ?? null,
+        snapshot.review.currentVersion,
+        JSON.stringify({ title: ingested.title }),
+        reviewId,
+      );
+      ctx.db
+        .prepare(
+          "INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(review_id, n) DO NOTHING",
+        )
+        .run(
+          reviewId,
+          snapshot.version!.n,
+          snapshot.version!.headSha,
+          snapshot.version!.mergeBaseSha,
+          snapshot.version!.baseRef,
+          snapshot.version!.fetchedAt,
+          JSON.stringify(snapshot.version!.idMapping),
+        );
+      saveVersionFiles(ctx.db, reviewId, snapshot.version!.n, snapshot.files!);
+    });
+    // One mutate so the UI gets one patch (ready through the usual events).
+    await ctx.reviews.mutate(reviewId, (draft) => {
+      draft.review = { ...snapshot.review };
+      draft.version = { ...snapshot.version! };
+      draft.files = snapshot.files as ReviewSnapshot["files"];
+      draft.description = snapshot.description ? { ...snapshot.description } : undefined;
+      draft.pages = [];
+      draft.annotations = [];
+      draft.hunkStates = [];
+      draft.jobs = [];
+      draft.contributions = [];
+      draft.logTail = [];
+      draft.ingest = { status: "ready" };
+    });
+    try {
+      ctx.repos.touch(repoId);
+    } catch {
+      // Ignore.
+    }
+    if (pipeline && autoPipeline) {
+      // Never fail the ingest; fire-and-forget (startReview resolves live
+      // model defaults first).
+      void pipeline.startReview(reviewId).catch(() => {});
+    }
+  } catch (err) {
+    try {
+      await ctx.reviews.mutate(reviewId, (draft) => {
+        draft.ingest = { status: "failed", error: (err as Error).message.slice(0, 500) };
+      });
+    } catch {
+      // Deleted or unreadable: nothing to mark.
+    }
+  }
+}
+
 export async function registerReviews(
   app: FastifyInstance,
   ctx: ServiceContext,
@@ -80,6 +308,10 @@ export async function registerReviews(
 ): Promise<void> {
   const pipeline = (deps as { pipeline?: Pipeline }).pipeline;
   const autoPipeline = (deps as { autoPipeline?: boolean }).autoPipeline ?? true;
+  // #92: in-flight ingests by dedupe key (two tabs opening the same PR at
+  // once share one review). Entries are best-effort; the DB check above is
+  // the authority across restarts.
+  const pendingIngests = new Map<string, string>();
 
   // Front screen: every review opened before, across ALL repos, most
   // recent first (PRD §4.2). No gh/git calls; summaries come from durable
@@ -235,28 +467,44 @@ export async function registerReviews(
     }
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
 
-    // #27: managed clones stay fresh — fetch before ingest so PR heads and
-    // base branches are current. Best effort (ingest proceeds on stale data
-    // when offline); user checkouts are never fetched implicitly.
-    await refreshManagedCheckout(ctx.runner, repo);
-
-    const reviewId = newReviewId();
-    let ingested;
-    try {
-      ingested = await ingestReview(
-        { runner: ctx.runner, dataDir: ctx.dataDir },
-        { repoPath: repo.localPath, ...(body.pr !== undefined ? { pr: body.pr } : { branch: body.branch }) },
-        reviewId,
-      );
-    } catch (err) {
-      return reply.code(502).send({ error: `couldn't load the PR or branch: ${(err as Error).message}` });
+    // #92: same PR/branch opened twice while loading reuses the review —
+    // decided here in the service so two tabs share one row.
+    const key = dedupeKeyFor(repo.id, body.pr, body.branch);
+    const pendingId = pendingIngests.get(key);
+    if (pendingId) {
+      const pendingSnap = ctx.reviews.getSnapshot(pendingId);
+      if (pendingSnap && ingestStatusOf(pendingSnap) !== "ready") {
+        return reply.code(200).send(pendingSnap);
+      }
+      pendingIngests.delete(key);
+    }
+    const reusable = findReusableReview(ctx, repo.id, body.pr, body.branch);
+    if (reusable) {
+      pendingIngests.set(key, reusable.id);
+      return reply.code(200).send(reusable.snapshot);
     }
 
-    const snapshot: ReviewSnapshot = {
-      review: { ...ingested.review, repoId: repo.id },
-      version: ingested.version,
-      files: ingested.files,
-      description: ingested.description,
+    // #92: create the row + loading snapshot and answer at once (202),
+    // before the fetch and ingest. The web navigates immediately; the
+    // ingest fills the snapshot through patch events.
+    const reviewId = newReviewId();
+    const branchPlaceholder = body.branch ?? (body.pr !== undefined ? `pr-${body.pr}` : "");
+    const titleHint =
+      body.title?.trim() || (body.pr !== undefined ? `PR #${body.pr}` : (body.branch ?? "review"));
+    const now = Date.now();
+    const placeholder: ReviewSnapshot = {
+      review: {
+        id: reviewId,
+        repoId: repo.id,
+        branch: branchPlaceholder,
+        ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+        versions: [],
+        currentVersion: 0,
+        createdAt: now,
+      },
+      // #92: placeholder (n: 0) — no real version/files/description yet.
+      version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+      files: [],
       pages: [],
       annotations: [],
       hunkStates: [],
@@ -264,19 +512,68 @@ export async function registerReviews(
       contributions: [],
       logTail: [],
       rev: 1,
+      ingest: { status: "loading", step: "fetching" },
     };
     transaction(ctx.db, () => {
-      writeReviewRows(ctx.db, repo.id, { ...ingested, review: snapshot.review });
-      saveVersionFiles(ctx.db, reviewId, ingested.version.n, ingested.files);
-      ctx.reviews.putSnapshot(reviewId, snapshot);
+      ctx.db
+        .prepare(
+          "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          reviewId,
+          repo.id,
+          branchPlaceholder,
+          body.pr ?? null,
+          0,
+          now,
+          JSON.stringify({ title: titleHint, ...(body.author ? { author: body.author } : {}) }),
+        );
+      ctx.reviews.putSnapshot(reviewId, placeholder);
     });
-    ctx.repos.touch(repo.id);
-    if (pipeline && autoPipeline) {
-      // Never fail creation; fire-and-forget (startReview resolves live
-      // model defaults first).
-      void pipeline.startReview(reviewId).catch(() => {});
+    try {
+      ctx.repos.touch(repo.id);
+    } catch {
+      // Ignore.
     }
-    return reply.code(201).send(snapshot);
+    pendingIngests.set(key, reviewId);
+    void runIngestBackground(
+      ctx,
+      { ...(pipeline ? { pipeline } : {}), autoPipeline },
+      {
+        repoId: repo.id,
+        repoPath: repo.localPath,
+        reviewId,
+        ...(body.pr !== undefined ? { pr: body.pr } : { branch: body.branch }),
+      },
+    )
+      .catch(() => {})
+      .finally(() => {
+        if (pendingIngests.get(key) === reviewId) pendingIngests.delete(key);
+      });
+    return reply.code(202).send(placeholder);
+  });
+
+  // #92: retry a failed ingest. Loading reviews return the current snapshot
+  // (already running); ready reviews refuse; demo reviews never retry.
+  app.post("/api/reviews/:id/retry", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const snap = ctx.reviews.getSnapshot(id);
+    if (!snap) return reply.code(404).send({ error: "unknown review" });
+    const st = ingestStatusOf(snap);
+    if (st === "ready") return reply.code(409).send({ error: "the review already opened" });
+    if (st === "loading") return reply.code(200).send(snap);
+    if (snap.review.repoId === "demo") {
+      return reply.code(409).send({ error: "the demo can't be retried" });
+    }
+    await ctx.reviews.mutate(id, (draft) => {
+      draft.ingest = { status: "loading", step: "fetching" };
+    }).catch(() => {});
+    const after = ctx.reviews.getSnapshot(id);
+    const started = startIngestBackground(ctx, { ...(pipeline ? { pipeline } : {}), autoPipeline }, id);
+    if (!started) {
+      return reply.code(502).send({ error: "this review's repo is gone — add the repo again, then open the review again" });
+    }
+    return reply.code(202).send(after ?? snap);
   });
 
   app.get("/api/reviews/:id", async (req, reply) => {
@@ -292,6 +589,9 @@ export async function registerReviews(
     const jobs = (deps as RouteDeps).jobs;
     const withJobs: ReviewSnapshot = jobs ? { ...snapshot, jobs: jobs.listByReview(id) } : snapshot;
     if (query.version === undefined) return withJobs;
+
+    // #92: loading/failed reviews have no versions yet — serve the status.
+    if (!isReadySnapshot(snapshot)) return withJobs;
 
     const n = Number(query.version);
     if (!Number.isSafeInteger(n) || n < 1) {
@@ -327,6 +627,8 @@ export async function registerReviews(
     // and a spurious 502 on every review open).
     const first = ctx.reviews.getSnapshot(id);
     if (!first) return reply.code(404).send({ error: "unknown review" });
+    const refused = ingestRefusal(first);
+    if (refused) return reply.code(409).send({ error: refused });
     if (first.review.repoId === "demo") {
       const response: RefreshResponse = { review: first.review, newVersion: false };
       return response;
@@ -374,6 +676,8 @@ export async function registerReviews(
     }
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const refusedUpdate = ingestRefusal(snapshot);
+    if (refusedUpdate) return reply.code(409).send({ error: refusedUpdate });
     const parser = deps.parser ?? new JsonBlockReplyParser();
     let provider = "main";
     let model = "main-model";
@@ -415,6 +719,8 @@ export async function registerReviews(
     if (!pipeline) return reply.code(501).send({ error: "not available in this build" });
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const refusedResume = ingestRefusal(snapshot);
+    if (refusedResume) return reply.code(409).send({ error: refusedResume });
     void req;
     try {
       const { jobIds, pendingStages } = await pipeline.resumeReview(id);
@@ -434,6 +740,10 @@ export async function registerReviews(
       // Generate validates the review itself; everything else 404s early.
       return reply.code(404).send({ error: "unknown review" });
     }
+    if (snapshot) {
+      const refusedAction = ingestRefusal(snapshot);
+      if (refusedAction) return reply.code(409).send({ error: refusedAction });
+    }
     const routeDeps = deps as RouteDeps & { fixturesDir?: string; promptsDir?: string };
     return dispatchAction(
       body as Parameters<typeof dispatchAction>[0],
@@ -451,4 +761,8 @@ export async function registerReviews(
       reply,
     );
   });
+
+  // #92: restart recovery — resume loading ingests left behind (or mark
+  // failed). Fire-and-forget so startup never blocks on gh/git.
+  void resumeInterruptedIngests(ctx, { ...(pipeline ? { pipeline } : {}), autoPipeline }).catch(() => {});
 }

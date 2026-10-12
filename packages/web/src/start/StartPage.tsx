@@ -60,7 +60,7 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
-import { stageLabel } from "../guide/stageLabels.js";
+import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import {
@@ -931,7 +931,13 @@ export function StartPage(): React.JSX.Element {
                     opening={opening}
                     empty="No open PRs."
                     onOpen={(c, i) =>
-                      openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                      openReview(changeKey(c, i), {
+                        repoId: selectedId,
+                        pr: c.prNumber,
+                        branch: c.branch,
+                        title: c.title,
+                        ...(c.author ? { author: c.author } : {}),
+                      })
                     }
                   />
                   <ChangeSection
@@ -942,7 +948,13 @@ export function StartPage(): React.JSX.Element {
                     opening={opening}
                     empty="No PRs waiting."
                     onOpen={(c, i) =>
-                      openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                      openReview(changeKey(c, i), {
+                        repoId: selectedId,
+                        pr: c.prNumber,
+                        branch: c.branch,
+                        title: c.title,
+                        ...(c.author ? { author: c.author } : {}),
+                      })
                     }
                   />
                   <ChangeSection
@@ -969,7 +981,7 @@ export function StartPage(): React.JSX.Element {
   );
 }
 
-function SessionRow({
+export function SessionRow({
   s,
   opening,
   deleting,
@@ -1003,14 +1015,26 @@ function SessionRow({
         </span>
         <span className="cx2">{s.title}</span>
         <span className="hint">
-          {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-          {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
-          {" · "}
-          {guideLabel(s)}
+          {s.ingestStatus === "loading" ? (
+            <>{ingestStepLabel(s.ingestStep)}</>
+          ) : s.ingestStatus === "failed" ? (
+            <>{s.ingestError ? `Couldn't open this review: ${s.ingestError}` : "Couldn't open this review"}</>
+          ) : (
+            <>
+              {s.reviewedHunks}/{s.totalHunks} hunks reviewed
+              {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
+              {" · "}
+              {guideLabel(s)}
+            </>
+          )}
         </span>
       </button>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-        {s.stale ? <span className="prtag">new commits</span> : null}
+        {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
+        {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
+        {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" ? (
+          <span className="prtag">new commits</span>
+        ) : null}
         {confirmDelete === s.id ? (
           <>
             <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>
@@ -1048,6 +1072,20 @@ function SessionRow({
   );
 }
 
+/**
+ * Head line for a start-page change row (#91): PR rows show `#N · branch`
+ * when the branch is known and just `#N` when it is not (`gh search prs`
+ * has no head-branch field, so `branch` is unset for these rows) — never
+ * `#N · undefined` and never a dangling separator.
+ */
+export function changeHead(c: RepoChange): string {
+  if (c.kind === "pr") {
+    const num = c.prNumber !== undefined ? `#${c.prNumber}` : "PR";
+    return c.branch ? `${num} · ${c.branch}` : num;
+  }
+  return c.branch ?? c.title;
+}
+
 function ChangeSection({
   title,
   changes,
@@ -1082,7 +1120,7 @@ function ChangeSection({
           <div key={changeKey(c, i)} className="ci">
             <button className="cj" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
               <span className="cw">
-                {c.kind === "pr" ? `#${c.prNumber} · ${c.branch}` : c.branch}
+                {changeHead(c)}
                 {c.author ? ` · ${c.author}` : ""}
               </span>
               <span className="cx2">{c.title}</span>
