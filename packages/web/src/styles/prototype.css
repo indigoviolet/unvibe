@@ -346,13 +346,21 @@ mark.anc.on { outline: 2px solid var(--note); }
 /* Placeholder where agent-started content will land: dashed like a pending card. */
 .card.child.placeholder { border-style: dashed; background: none; }
 @media (prefers-reduced-motion: reduce) { .fresh, .dots i, .card.rewriting { animation: none; } }
-.dg { overflow-x: auto; margin: 12px 0 4px; }
-.dg > .dg-svg > svg { display: block; min-width: 540px; width: 100%; height: auto; }
-/* D2 diagrams (service-rendered SVG, inlined): scale to the container width
-   preserving aspect ratio; below the minimum legible width the container
-   scrolls instead of shrinking further. The dark theme is a separate
-   render from the service, never a CSS inversion. */
-.dg-d2 > .dg-svg > svg { min-width: 480px; }
+.dg { margin: 12px 0 4px; }
+/* D2 diagrams (service-rendered SVG, inlined): the svg fills the block
+   width up to its natural size (max-width, set per diagram), preserving
+   aspect ratio, so by default the whole diagram is visible with no
+   scrollbars and never above natural size. Zoom runs on a CSS transform
+   in .dg-doc; the dark theme is a separate render from the service,
+   never a CSS inversion. */
+.dg > .dg-svg > svg, .dg-view .dg-svg > svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+/* Inline zoom viewport (round two, item 2): clips the zoomed diagram so
+   the block never scrolls; at fit the content is exactly the box, so
+   there are no scrollbars until zoomed. Plain touch scroll keeps working
+   at fit (pan-y); once zoomed the viewport takes all gestures. */
+.dg-view { overflow: hidden; touch-action: pan-y; }
+.dg-view.zoomed { touch-action: none; }
+.dg-doc { transform-origin: 0 0; }
 .dg-loading { min-height: 220px; display: flex; align-items: center; }
 .dg-loading .working { flex: 1; }
 /* D2 palette restyle (issue #16): D2's default uniform blue (light
@@ -383,10 +391,10 @@ mark.anc.on { outline: 2px solid var(--note); }
    marker's). Focus stays visible for keyboard users. */
 .dg-svg a[href] { cursor: pointer; }
 .dg-svg a[data-unverified="true"] { opacity: .55; }
-#pop .xprev .dg-d2 svg { min-width: 0; }
-/* Expand row under each diagram (issue #47): the control opens the
-   full-window overlay below, the escape hatch for wide diagrams. */
-.dg-bar { display: flex; justify-content: flex-end; margin: 2px 0 4px; }
+/* Controls under each diagram (issue #47; zoom round two): the shared
+   zoom set plus the control opening the full-window overlay. */
+.dg-bar { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin: 2px 0 4px; }
+.dg-zoom { font: 12px var(--mono); color: var(--muted); min-width: 48px; text-align: center; }
 /* Expanded diagram overlay (issue #47): a full-window dialog above the
    page (z-index 30 sits over the source overlay at 25 but under the
    hover popover at 35, so citation previews stay visible). Pan/zoom run
@@ -397,7 +405,6 @@ mark.anc.on { outline: 2px solid var(--note); }
 .dg-ov-head { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .dg-ov-title { font-weight: 600; font-size: 13px; }
 .dg-ov-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-.dg-ov-zoom { font: 12px var(--mono); color: var(--muted); min-width: 48px; text-align: center; }
 .dg-ov-view { flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; padding: 24px; }
 .dg-ov-view.panning { cursor: grabbing; }
 .dg-ov-doc { transform-origin: 0 0; width: max-content; }

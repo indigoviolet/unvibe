@@ -29,13 +29,6 @@ export type FetchDiagramSvg = (
   theme: DiagramTheme,
 ) => Promise<string>;
 
-/** D2 shape-label size in the service renders (measured on d2 v0.9.0). */
-export const D2_LABEL_PX = 16;
-/** Guide small-text size the inline floor keeps labels at or above. */
-export const GUIDE_SMALL_TEXT_PX = 12.5;
-/** Stylesheet floor for narrow diagrams (matches `.dg-d2 svg`). */
-export const D2_INLINE_MIN_WIDTH_PX = 480;
-
 /** Current page theme: explicit `data-theme` wins, else the OS setting. */
 export function pageTheme(): DiagramTheme {
   const attr = document.documentElement.getAttribute("data-theme");
@@ -84,12 +77,11 @@ interface Props {
   /** Override the fetch (unit tests); defaults to the API client. */
   fetchSvg?: FetchDiagramSvg;
   /**
-   * Keep label text legible inline (issue #16): floor the SVG width so
-   * D2's 16px labels render at no less than the guide's 12.5px small
-   * text, letting the card scroll horizontally instead of shrinking
-   * further. The overlay leaves this off (it sizes from the viewBox).
+   * Cap the SVG at its natural width inline (round two, item 2): with
+   * `width: 100%` a narrow diagram would stretch past its designed size.
+   * The overlay leaves this off (it sizes from the viewBox itself).
    */
-  legibleText?: boolean;
+  capNaturalWidth?: boolean;
 }
 
 /**
@@ -103,7 +95,7 @@ export function d2SourceOf(block: DiagramBlock): string {
   return typeof legacy === "string" ? legacy : "";
 }
 
-export function D2Diagram({ reviewId, block, fetchSvg, legibleText }: Props): React.JSX.Element {
+export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth }: Props): React.JSX.Element {
   const theme = usePageTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const render = block.render;
@@ -179,14 +171,9 @@ export function D2Diagram({ reviewId, block, fetchSvg, legibleText }: Props): Re
     host.textContent = "";
     const node = adoptD2Svg(state.svgText);
     if (node) {
-      if (legibleText) {
+      if (capNaturalWidth) {
         const natural = naturalSize(node);
-        if (natural) {
-          // D2 sets shape labels at 16px; the floor keeps them at or
-          // above the guide's 12.5px small text (never below the CSS
-          // floor for narrow diagrams).
-          node.style.minWidth = `${Math.max(D2_INLINE_MIN_WIDTH_PX, Math.ceil((natural.w * GUIDE_SMALL_TEXT_PX) / D2_LABEL_PX))}px`;
-        }
+        if (natural) node.style.maxWidth = `${natural.w}px`;
       }
       host.appendChild(node);
       return () => {
@@ -199,7 +186,7 @@ export function D2Diagram({ reviewId, block, fetchSvg, legibleText }: Props): Re
       message: "the service returned a file the app couldn't read",
     });
     return undefined;
-  }, [state]);
+  }, [state, capNaturalWidth]);
 
   // Each branch carries a key so React never reuses the adopted-SVG host
   // div for the loading/fallback trees (or vice versa): the adopt effect
