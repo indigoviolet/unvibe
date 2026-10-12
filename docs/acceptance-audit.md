@@ -263,6 +263,43 @@ needed (that deviation is closed, not added).
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
   `reuse.test.ts`).
+- Diagrams expand (#47) — met: every diagram block carries an Expand
+  control opening a full-window overlay (dialog, focus in/out, Esc/close,
+  page scroll locked) with wheel/pinch zoom, drag pan, +/− buttons and
+  reset-to-fit on a CSS transform (no new dependency, no CSP change);
+  citation hover/click work inside it and a drag never counts as a click
+  (`guide/DiagramOverlay.tsx`, `e2e/d2-diagram-overlay.spec.ts`,
+  `guide/DiagramOverlay.test.tsx`). The overlay opens on the measured
+  fit (whole content incl. badges, equal margins, never above 100%).
+- Diagrams zoom inline (#47, round two) — met: blocks fit by default
+  (no scrollbars, never above natural size) with +/−/Reset beside
+  Expand on the same shared hook (`panZoom.ts`, `usePanZoom.ts`,
+  `ZoomControls.tsx`); trackpad pinch and Ctrl/Cmd+wheel zoom, a plain
+  wheel scrolls the page, drag pans once zoomed. With spare pane room
+  the block breaks out past the text column, centered, up to the usable
+  width (ResizeObserver; caption and citations stay column-aligned;
+  cards and Explain expansions alike). Citations work at any zoom
+  (`e2e/d2-diagram-inline.spec.ts`,
+  `guide/DiagramInlineZoom.test.tsx`).
+- Diagrams stay legible inline (#16) — met: multi-line labels no longer
+  collapse (the service allowlist dropped tspan `x`/`dy`, collapsing
+  every line onto one baseline; `dx` and edge-mask `maskUnits` were
+  dropped too — all kept now, plus `url()` rewrites in every adopted
+  attribute client-side so masks/markers/clips survive namespacing).
+  Data-dir cache filenames carry `DIAGRAM_POSTPROCESS_VERSION` with a
+  legacy sweep, and the demo seeds were re-recorded (`d2-seed-check
+  --strict` green; snapshot hashes unchanged). The uniform D2
+  blue is remapped to the guide palette by stylesheet rules over D2's
+  shape classes, with `.class: [ok]` / `[bad]` for ok/warn states
+  (`e2e/d2-diagrams.spec.ts` "diagram wears
+  the guide palette", `docs/d2-diagrams.md` "Look"). Uneven letter
+  spacing (#16) reproduces identically in headed Chromium, so it is not
+  a session artifact: D2's embedded subset font carries no kerning
+  tables (WOFF has OS/2, cmap, glyf, head, hhea, hmtx, loca, maxp, name,
+  post — no GPOS/GSUB/kern), and neither side's sanitiser touches font
+  bytes. Not fixed in app code (overriding the family would break D2's
+  tight box layout); shorter labels + inline/overlay zoom are the
+  mitigations.
 - Undo (depth/examples/diagram, no redo, comments/expansions survive) —
   met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Mark read (grey + collapse), roll-up to page, muted links — met
@@ -685,6 +722,10 @@ needed (that deviation is closed, not added).
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
   SVG sanitisation, `GET /api/reviews/:id/diagrams/:hash?theme=` endpoint;
   Mermaid removed entirely per user direction, PRD §19.4 resolved as D2).
+  Prompt guidance (#16): short labels (at most two lines), `direction:`
+  to suit the flow, cites on each code-mapped shape/connection, `.class:
+  [ok|bad]` for states — mirrored into `diagram.md`, `explain.md`,
+  `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
 
 ## §14 Shell, install, security, storage — all met
 

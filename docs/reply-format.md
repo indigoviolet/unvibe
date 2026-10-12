@@ -134,9 +134,12 @@ Caption: Where response headers go after parsing.
 
 Limits: at most 12 shapes and 16 connections; no `icon:`, no
 `shape: image`, no imports, no Markdown/LaTeX/code-block labels, no
-`vars`/`d2-config`/`classes:`, no layers/scenarios/steps/boards, no
-`tooltip:`. Flows open with `direction: right`; sequences use
-`shape: sequence_diagram`. The full convention lives in
+`vars`/`d2-config`, no `classes:` stanzas (mark good/bad states with the
+built-in `*.class: [ok]` / `[bad]`), no layers/scenarios/steps/boards, no
+`tooltip:`. Choose `direction:` to suit the flow (`right` for pipelines,
+`down` for chains); sequences use `shape: sequence_diagram`. Keep every
+label short (a few words, at most two lines); cite each code-mapped
+shape/connection. The full convention lives in
 `prompts/includes/d2-convention.md` (single source; templates copy it).
 
 ## 6. Follow-up suggestions

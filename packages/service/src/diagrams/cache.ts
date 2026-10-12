@@ -1,9 +1,14 @@
 /**
  * D2 render cache (content-addressed by diagram hash).
  *
- * Storage: files under `<dataDir>/diagrams/<hash>.<theme>.svg` (survives
- * restart) plus an in-memory copy for the running process. Bounded: pruned
- * to `MAX_CACHED_DIAGRAMS` entries (oldest mtime first).
+ * Storage: files under `<dataDir>/diagrams/<hash>.v<POSTPROCESS_VERSION>.<theme>.svg`
+ * (survives restart) plus an in-memory copy for the running process.
+ * Bounded: pruned to `MAX_CACHED_DIAGRAMS` entries (oldest mtime first).
+ * The postprocess version in the filename is the cache key's sanitiser
+ * half: renders cached by an older `postProcessSvg` are never served
+ * stale — files in the legacy unversioned `<hash>.<theme>.svg` layout are
+ * swept on construction. Fixture seeds keep the unversioned layout (they
+ * ship with the code, so they are always current by construction).
  *
  * Seed: `fixtures/urllib3-5020/diagrams/<hash>.<theme>.svg` ships
  * pre-rendered SVGs for the demo; the cache falls back to the fixtures dir
@@ -11,13 +16,14 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { DIAGRAM_POSTPROCESS_VERSION } from "@unvibe/shared";
 
 export type DiagramTheme = "light" | "dark";
 
 export const MAX_CACHED_DIAGRAMS = 100;
 
 function fileFor(dir: string, hash: string, theme: DiagramTheme): string {
-  return path.join(dir, `${hash}.${theme}.svg`);
+  return path.join(dir, `${hash}.v${DIAGRAM_POSTPROCESS_VERSION}.${theme}.svg`);
 }
 
 export class DiagramCache {
@@ -32,6 +38,30 @@ export class DiagramCache {
       fs.mkdirSync(this.dir, { recursive: true });
     } catch {
       // best effort; gets surface as write failures
+    }
+    this.sweepLegacy();
+  }
+
+  /**
+   * Delete legacy unversioned cache files (`<hash>.<theme>.svg`): they
+   * were post-processed by an older sanitiser and must never be served.
+   * Best-effort; never throws.
+   */
+  private sweepLegacy(): void {
+    let files: string[];
+    try {
+      files = fs.readdirSync(this.dir);
+    } catch {
+      return;
+    }
+    for (const f of files) {
+      if (/^[0-9a-f]+\.(light|dark)\.svg$/.test(f)) {
+        try {
+          fs.rmSync(path.join(this.dir, f));
+        } catch {
+          // best effort
+        }
+      }
     }
   }
 

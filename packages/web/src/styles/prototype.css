@@ -328,7 +328,7 @@ mark.anc.exl:hover { color: var(--accent); }
 mark.anc.exl.on { outline: none; }
 #pop .xprev { max-width: 400px; max-height: 50vh; overflow: auto; font-size: 13px; }
 #pop .xprev .prose { font-size: 14px; margin: 4px 0; }
-#pop .xprev .dg svg { min-width: 0; }
+#pop .xprev .dg > .dg-svg > svg { min-width: 0; }
 #pop .xprev pre.code { font-size: 11.5px; }
 mark.anc.on { outline: 2px solid var(--note); }
 .ithread { background: var(--note-soft); border: 1px solid transparent; border-left: 3px solid var(--note); border-radius: 10px; padding: 8px 14px; margin: 8px 0 14px 10px; font-size: 13.5px; }
@@ -389,21 +389,72 @@ mark.anc.on { outline: 2px solid var(--note); }
 /* Placeholder where agent-started content will land: dashed like a pending card. */
 .card.child.placeholder { border-style: dashed; background: none; }
 @media (prefers-reduced-motion: reduce) { .fresh, .dots i, .card.rewriting { animation: none; } }
-.dg { overflow-x: auto; margin: 12px 0 4px; }
-.dg svg { display: block; min-width: 540px; width: 100%; height: auto; }
-/* D2 diagrams (service-rendered SVG, inlined): scale to the container width
-   preserving aspect ratio; below the minimum legible width the container
-   scrolls instead of shrinking further. The dark theme is a separate
-   render from the service, never a CSS inversion. */
-.dg-d2 > .dg-svg > svg { min-width: 480px; }
+.dg { margin: 12px 0 4px; }
+/* D2 diagrams (service-rendered SVG, inlined): the svg fills the block
+   width up to its natural size (max-width, set per diagram), preserving
+   aspect ratio, so by default the whole diagram is visible with no
+   scrollbars and never above natural size. Zoom runs on a CSS transform
+   in .dg-doc; the dark theme is a separate render from the service,
+   never a CSS inversion. */
+.dg > .dg-svg > svg, .dg-view .dg-svg > svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+/* Inline zoom viewport (round two, item 2): clips the zoomed diagram so
+   the block never scrolls; at fit the content is exactly the box, so
+   there are no scrollbars until zoomed. Plain touch scroll keeps working
+   at fit (pan-y); once zoomed the viewport takes all gestures. */
+.dg-view { overflow: hidden; touch-action: pan-y; }
+.dg-view.zoomed { touch-action: none; }
+.dg-doc { transform-origin: 0 0; }
 .dg-loading { min-height: 220px; display: flex; align-items: center; }
 .dg-loading .working { flex: 1; }
+/* D2 palette restyle (issue #16): D2's default uniform blue (light
+   #0D32B2, dark #CBA6f7) is remapped to the guide palette through the
+   classes D2 emits on every shape/connection. These selectors beat D2's
+   own per-render rules (scoped to three classes by `d2sanitize.ts`) and
+   also override the matching presentation attributes, in both themes
+   (each render only carries its own theme's hexes; `var()` resolves to
+   the current one). Served bytes are untouched, so cached renders and
+   fixture seeds stay valid. */
+.dg-d2 .dg-svg svg .fill-B1 { fill: var(--accent); }
+.dg-d2 .dg-svg svg .stroke-B1, .dg-d2 .dg-svg svg .stroke-B2 { stroke: var(--accent); }
+.dg-d2 .dg-svg svg .fill-B6 { fill: var(--surface); }
+.dg-d2 .dg-svg svg .fill-N7 { fill: var(--surface); }
+.dg-d2 .dg-svg svg .fill-N1 { fill: var(--ink); }
+.dg-d2 .dg-svg svg .fill-N2 { fill: var(--muted); }
+/* ok/bad states (issue #16): agents mark shapes with `.class: [ok]` or
+   `[bad]` (D2 passes unknown classes through; `classes:` stanzas stay
+   rejected). These outrank the default restyle above. */
+.dg-d2 .dg-svg svg .ok .fill-B6 { fill: var(--add); }
+.dg-d2 .dg-svg svg .ok .fill-B1 { fill: var(--ok); }
+.dg-d2 .dg-svg svg .ok .stroke-B1, .dg-d2 .dg-svg svg .ok .stroke-B2 { stroke: var(--ok); }
+.dg-d2 .dg-svg svg .bad .fill-B6 { fill: var(--warn-soft); }
+.dg-d2 .dg-svg svg .bad .fill-B1 { fill: var(--warn); }
+.dg-d2 .dg-svg svg .bad .stroke-B1, .dg-d2 .dg-svg svg .bad .stroke-B2 { stroke: var(--warn); }
 /* Cited shapes: the whole shape is the target, with a pointer cursor.
    Unverified citations are dimmed (the tooltip text matches the `<>`
    marker's). Focus stays visible for keyboard users. */
 .dg-svg a[href] { cursor: pointer; }
 .dg-svg a[data-unverified="true"] { opacity: .55; }
-#pop .xprev .dg-d2 svg { min-width: 0; }
+/* Controls under each diagram (issue #47; zoom round two): the shared
+   zoom set plus the control opening the full-window overlay. */
+.dg-bar { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin: 2px 0 4px; }
+.dg-zoom { font: 12px var(--mono); color: var(--muted); min-width: 48px; text-align: center; }
+/* Expanded diagram overlay (issue #47): a full-window dialog above the
+   page (z-index 30 sits over the source overlay at 25 but under the
+   hover popover at 35, so citation previews stay visible). Pan/zoom run
+   on a CSS transform — no new dependency, no CSP change. */
+.dg-overlay { position: fixed; inset: 0; z-index: 30; background: var(--bg); display: flex; flex-direction: column; }
+.dg-overlay:focus { outline: none; }
+.dg-overlay:focus-visible { outline: none; }
+.dg-ov-head { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.dg-ov-title { font-weight: 600; font-size: 13px; }
+.dg-ov-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.dg-ov-view { flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; padding: 24px; }
+.dg-ov-view.panning { cursor: grabbing; }
+.dg-ov-doc { transform-origin: 0 0; width: max-content; }
+/* The SVG viewport clips by default; D2 draws link badges and the padded
+   canvas outside its own viewBox, and the fit is measured from that full
+   rendered content — so the overlay lets it all paint. */
+.dg-ov-doc .dg-svg > svg { min-width: 0; overflow: visible; }
 .dg-cap { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
 .dg-box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
 .dg-box.ok { stroke: var(--accent); } .dg-box.bad { stroke: var(--warn); }

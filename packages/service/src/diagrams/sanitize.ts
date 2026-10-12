@@ -108,13 +108,13 @@ const DROP_ENTIRELY = new Set([
 
 /** Attributes allowed on any element (plus data-* and aria-*). */
 const ALLOWED_ATTRS = new Set([
-  "id", "class", "x", "y", "width", "height", "rx", "ry", "cx", "cy", "r",
+  "id", "class", "x", "y", "dx", "dy", "width", "height", "rx", "ry", "cx", "cy", "r",
   "x1", "y1", "x2", "y2", "points", "d", "fill", "stroke", "stroke-width",
   "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-opacity",
   "fill-opacity", "opacity", "transform", "viewbox", "viewBox",
   "preserveAspectRatio", "xmlns", "xmlns:xlink", "role", "aria-label",
   "font-family", "font-size", "font-weight", "font-style", "text-anchor",
-  "dominant-baseline", "alignment-baseline", "clip-path", "mask",
+  "dominant-baseline", "alignment-baseline", "clip-path", "mask", "maskUnits",
   "marker-start", "marker-mid", "marker-end", "orient", "refX", "refY",
   "markerWidth", "markerHeight", "markerUnits", "offset", "stop-color",
   "stop-opacity", "style", "href", "xlink:href", "data-refs", "data-src",

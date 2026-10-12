@@ -45,6 +45,7 @@ export {
   D2_RENDER_OPTIONS,
   D2_VERSION_UNKNOWN,
   DIAGRAM_HASH_LEN,
+  DIAGRAM_POSTPROCESS_VERSION,
   canonicalizeD2Source,
   diagramHash,
   extractD2Links,

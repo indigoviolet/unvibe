@@ -40,6 +40,15 @@ export const D2_RENDER_OPTIONS = {
 /** Placeholder version when the binary is unavailable (hash still stable). */
 export const D2_VERSION_UNKNOWN = "unknown";
 
+/**
+ * Post-processing (sanitise) version, baked into data-dir cache filenames
+ * (`<hash>.v<POSTPROCESS_VERSION>.<theme>.svg`) but NOT into the content
+ * hash: old snapshots keep addressing the same hash, while renders cached
+ * by an older post-processor can never be served stale. Bump whenever
+ * `postProcessSvg` keeps more (or less) of the raw render.
+ */
+export const DIAGRAM_POSTPROCESS_VERSION = 1;
+
 /** Length of the diagram content hash (hex chars, like hunk hashes). */
 export const DIAGRAM_HASH_LEN = 16;
 
