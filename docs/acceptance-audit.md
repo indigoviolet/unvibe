@@ -854,11 +854,13 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
  closed the DB first and `app.close()` hung on deaf sockets/MCP streams
  while agents were disposed last, failing real switches with `did not
  exit within 30000ms`; the stuck-service outcome now names `unvibe stop`
- + retry as the recovery). Web: Settings → Version (toggle, grouped channels,
- refresh, inline-confirm switch, restart wait with reload, rollback
- reason, update-available, installed-only notice, unchanged note) plus a
- quiet preview pill in the review/Settings/Start headers; the mock API
- covers the whole flow incl. simulated switch + rollback.
+ + retry as the recovery). Web: Settings → Version (enable checkbox above the card, current
+ version on top, one aligned row per version under a Versions/Refresh
+ header sorted newest build first, with in-row confirm switch, restart wait with reload, rollback
+ reason, update-available, installed-only notice, unchanged note, last
+ switch outcome under a separator) plus a quiet preview pill in the
+ review/Settings/Start headers; the mock API covers the whole flow
+ incl. simulated switch + rollback.
  Evidence: `test/update-helper.test.ts` (success, install/unhealthy
  rollback, failed rollback, stuck service, generation stop order,
  expected-version waits, stale-sample guard),
