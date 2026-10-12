@@ -104,16 +104,14 @@ export function DoctorPage(): React.JSX.Element {
           Unvibe
         </Link>
         <div className="pr">
-          <b>Doctor</b>
+          <h1>Doctor</h1>
         </div>
-        <Link className="tbtn" to="/settings#environment">
+        <Link className="tbtn" to="/settings?tab=environment">
           Settings
         </Link>
       </header>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 860 }}>
-          <div className="eyebrow">Diagnostics</div>
-          <h1 className="title">Doctor</h1>
           <p className="hint">
             Every candidate for each tool, which was chosen and why, shims and targets, full error text, shell and
             PATH, and how the service was started. Same module as <code>unvibe doctor</code> — they cannot disagree
@@ -126,7 +124,7 @@ export function DoctorPage(): React.JSX.Element {
             <button className="btn ghost" type="button" onClick={() => void copy()} disabled={!report}>
               {copied ? "Copied" : "Copy diagnostics"}
             </button>
-            <Link className="tbtn" to="/settings#environment">
+            <Link className="tbtn" to="/settings?tab=environment">
               Settings → Environment
             </Link>
           </div>

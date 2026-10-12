@@ -69,11 +69,14 @@ snapshot ends up complete without clicks.
 
 1. **Reader** (main model, one session, `cwd` = worktree, `system` =
    `instructions`, MCP role `reader` with `pin_context`). Prompt from
-   `reader` template with L1 (`source` + `diff_inline`). Streams cards via
-   `parseCardsPartial` → `ReviewStore.mutate` (problem, central, Go deeper
-   placeholders from `pendingCards`, hidden concept candidates from
-   `concepts`). `text` events stream while a card is in flight; pins arrive
-   via MCP `onPin` and land in `snapshot.pinnedCode`.
+   `reader` template with L1 (`source` + `diff_inline`). Finished cards
+   stream via `parseCardsPartial` → `ReviewStore.mutate` (problem, central,
+   Go deeper placeholders from `pendingCards`, hidden concept candidates
+   from `concepts`): a card appears once the next `## ` heading closes it
+   (or all cards once the trailing JSON block lands) — nothing renders
+   card content while it is being written. `text` events stream while a
+   card is in flight; pins arrive via MCP `onPin` and land in
+   `snapshot.pinnedCode`.
 2. **Base** (`SessionManager.getBase`) from `buildBasePack` once the reader
    is done. Key `(version, guideRevision, model)`; per-model caches.
 3. **Parallel forks** (`fanOut`): **critic** ×2 (findings as separate pages

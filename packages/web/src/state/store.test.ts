@@ -156,6 +156,21 @@ describe("review store patch ordering", () => {
   });
 });
 
+describe("switching reviews", () => {
+  test("another review's snapshot replaces the stored one even at a lower rev", () => {
+    const api = useReview.getState();
+    api.setSnapshot(snap(40));
+    const other = { ...snap(3), review: { ...snap(3).review, id: "rv_other" } } as ReviewSnapshot;
+    api.setSnapshot(other);
+    expect(useReview.getState().snapshot?.review.id).toBe("rv_other");
+    expect(useReview.getState().snapshot?.rev).toBe(3);
+
+    // Same through the WS snapshot event.
+    api.applyEvent({ type: "snapshot", snapshot: snap(1) });
+    expect(useReview.getState().snapshot?.review.id).toBe("rv_race");
+  });
+});
+
 describe("applyOp", () => {
   test("array ops throw out of bounds instead of corrupting state", () => {
     const root = { annotations: [thread("ann_a", "x")] };

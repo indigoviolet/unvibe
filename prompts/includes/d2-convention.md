@@ -1,6 +1,6 @@
 <!-- D2 diagram convention — SINGLE SOURCE OF TRUTH.
   Templates (diagram.md, instructions.md reply-format section, go_deeper.md,
-  explain.md) copy this text. To apply the reliability verdict, edit HERE
+  explain.md, concept_page.md) copy this text. To apply the reliability verdict, edit HERE
   and copy the block into each template, then refresh goldens
   (UPDATE_GOLDENS=1) and read the diff.
   Basis: docs/d2-diagrams.md; one-line cite instruction (16/16 after ≤1 repair). -->

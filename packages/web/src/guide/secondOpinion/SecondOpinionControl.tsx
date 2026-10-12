@@ -90,7 +90,7 @@ export function SecondOpinionControl({ reviewId, card, page, disabled, busy }: P
           <Icon name="spark" />
         </button>
         <span className="so-warn" role="status">
-          Needs a different model — <Link to="/settings">Settings</Link>
+          Needs a different model — <Link to="/settings?tab=models">Settings</Link>
         </span>
       </span>
     );

@@ -7,19 +7,26 @@
  */
 import type { DiagramBlock } from "@unvibe/shared";
 import { D2Diagram } from "./D2Diagram.js";
+import { RichText } from "./RichText.js";
 
 interface Props {
   reviewId: string;
   block: DiagramBlock;
+  /** Open a guide page in-app. */
+  onOpenPage: (pageId: string) => void;
 }
 
-export function DiagramView({ reviewId, block }: Props) {
+export function DiagramView({ reviewId, block, onOpenPage }: Props) {
   return (
     <>
       <div className="dg dg-d2">
         <D2Diagram reviewId={reviewId} block={block} />
       </div>
-      {block.caption ? <p className="dg-cap">{block.caption}</p> : null}
+      {block.caption ? (
+        <p className="dg-cap">
+          <RichText html={block.caption} className="rt" onOpenPage={onOpenPage} />
+        </p>
+      ) : null}
     </>
   );
 }

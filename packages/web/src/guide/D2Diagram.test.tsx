@@ -185,7 +185,7 @@ describe("D2Diagram status branches", () => {
     expect(fetchSvg).not.toHaveBeenCalled();
     expect(screen.getByText("a -> b")).toBeInTheDocument();
     expect(screen.getByText(/Diagrams need/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Settings → Environment/ })).toHaveAttribute("href", "/settings#environment");
+    expect(screen.getByRole("link", { name: /Settings → Environment/ })).toHaveAttribute("href", "/settings?tab=environment");
   });
 
   it("shows the source with the error text on error without a hash", () => {

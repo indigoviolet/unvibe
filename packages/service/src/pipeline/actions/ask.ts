@@ -285,10 +285,10 @@ function replyHtml(cards: ParsedCard[]): {
         for (const c of b.citations ?? []) citations.push({ ...c });
       } else if (b.type === "diagram") {
         parts.push(`<pre class="d2">${escapeHtml(b.source)}</pre>`);
-        if (b.caption) parts.push(`<p>${escapeHtml(b.caption)}</p>`);
+        if (b.caption) parts.push(`<p>${b.caption}</p>`);
         for (const c of b.citations ?? []) citations.push({ ...c });
       } else if (b.type === "aside") {
-        const { html: inner, citations: innerCites } = replyHtml([{ title: null, blocks: b.inner, finished: true }]);
+        const { html: inner, citations: innerCites } = replyHtml([{ title: null, blocks: b.inner }]);
         parts.push(`<aside><strong>${escapeHtml(b.kind)}</strong>${inner}</aside>`);
         for (const c of innerCites) citations.push(c);
         for (const c of b.citations ?? []) citations.push({ ...c });

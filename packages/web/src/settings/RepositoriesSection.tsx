@@ -2,7 +2,7 @@
  * Repositories section (Settings → Repositories): the remembered repos
  * (`owner/name` and local path) plus the add-by-path input and the
  * add-by-URL input. The start page links here
- * (`/settings#repositories`) when there are no repos, and repos are added
+ * (`/settings?tab=repositories`) when there are no repos, and repos are added
  * only here — never on the start page.
  *
  * - Add by URL (#27) is a separate row from add by path (a parallel change
@@ -129,7 +129,6 @@ export function RepositoriesSection(): React.JSX.Element {
 
   return (
     <section aria-label="Repositories" id="repositories" style={{ scrollMarginTop: 12 }} data-testid="repositories-section">
-      <div className="divider">Repositories</div>
       <p className="hint">
         Checkouts you can open reviews from. The start page&apos;s repo selector lists these (plus
         auto-detected checkouts).

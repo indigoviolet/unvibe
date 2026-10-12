@@ -66,7 +66,12 @@ export interface BaseBuild {
 export interface BaseHandle {
   key: string;
   session: Session;
-  /** True when this call created the base (vs reusing a live one). */
+  /**
+   * True when this call started the base session from `build` (first
+   * build, or a rebuild of a closed base that could not be reloaded), so
+   * the session now holds this call's `mcpServers`. False when a live or
+   * reloaded base was reused and `build` was ignored.
+   */
   fresh: boolean;
 }
 
@@ -88,6 +93,11 @@ interface BaseRecord {
   logSeq: number;
   live: boolean;
   lastUsedAt: number;
+  /**
+   * Loaded from the store and not reopened since: `build.mcpServers` was
+   * issued by a previous process, so its MCP secret is gone (#68).
+   */
+  restored?: boolean;
 }
 
 interface ConversationRecord {
@@ -141,6 +151,7 @@ export class SessionManager {
         logSeq: b.logSeq,
         live: false,
         lastUsedAt: b.updatedAt,
+        restored: true,
       });
     }
     for (const c of conversations) {
@@ -171,7 +182,7 @@ export class SessionManager {
     }
     let inflight = this.building.get(key);
     if (!inflight) {
-      inflight = this.ensureBase(build, existing).then((record) => ({ record, fresh: !existing }));
+      inflight = this.ensureBase(build, existing);
       this.building.set(key, inflight);
       try {
         const done = await inflight;
@@ -184,7 +195,10 @@ export class SessionManager {
     return { key, session: done.record.session, fresh: false };
   }
 
-  private async ensureBase(build: BaseBuild, closed?: BaseRecord): Promise<BaseRecord> {
+  private async ensureBase(
+    build: BaseBuild,
+    closed?: BaseRecord,
+  ): Promise<{ record: BaseRecord; fresh: boolean }> {
     if (closed) {
       try {
         const session = await this.runner.load(closed.session.id);
@@ -192,7 +206,7 @@ export class SessionManager {
         closed.live = true;
         closed.lastUsedAt = this.clock.now();
         this.persistBase(closed);
-        return closed;
+        return { record: closed, fresh: false };
       } catch {
         await this.closeQuietly(closed.session);
       }
@@ -215,7 +229,9 @@ export class SessionManager {
     };
     this.bases.set(record.keyString, record);
     this.persistBase(record);
-    return record;
+    // Rebuilt from `build`, also when a closed record existed: the session
+    // holds this call's MCP URL, so the caller must keep its secret.
+    return { record, fresh: true };
   }
 
   /** Start a session and send the base pack, waiting for "ready". */
@@ -522,6 +538,11 @@ export class SessionManager {
       return;
     } catch {
       await this.closeQuietly(base.session);
+    }
+    if (base.restored) {
+      // The persisted MCP URL died with the previous process; only
+      // `getBase` gets a fresh one from its caller.
+      throw new Error(`SessionManager: base ${base.keyString} must be rebuilt with getBase after a restart`);
     }
     base.session = await this.openBaseSession(base.build, base.pack, undefined, base.key);
     base.live = true;

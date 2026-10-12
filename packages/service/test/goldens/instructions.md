@@ -76,6 +76,8 @@ already in front of you.
   contains; they render as one `<>` marker and need no label. Inline
   `concept:`/`page:`/`card:` tokens render as dotted links and need a
   `|label`. Inline code uses backticks and is never scanned for tokens.
+  Standard inline Markdown (bold, italic, links, code) renders inside a
+  block; raw HTML stays escaped.
 - Per-depth text: the paragraph itself is the standard version. A
   `::: simple` / `::: deep` container immediately after it carries that
   level's rewrite.
