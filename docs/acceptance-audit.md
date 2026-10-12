@@ -100,8 +100,9 @@ UI); nothing below was edited by this pass.
 
 ### §4.1 Layout — all met
 
-- Top bar (title, Tips, Submit + count, Source toggle) — met
-  (`e2e/guide.spec.ts`, ui-walk screenshot shows all five).
+- Top bar (Unvibe + app-wide Settings on the left; title, Tips, Submit + count, Source toggle on the right) — met
+  (`e2e/guide.spec.ts`, ui-walk screenshot shows all five; `settings.spec.ts`
+  "settings sits next to Unvibe in the review and start top bars", issue #55).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -358,9 +359,13 @@ needed (that deviation is closed, not added).
 
 - Toolbar (Files collapsed, Unified/Split, Hide uninteresting default on,
   Fold/Unfold all) — met (`e2e/diff.spec.ts`, walk shows all controls).
-- Files panel (filter, Source/Tests/Docs/Config/Generated chips, Hide
-  reviewed + hunk progress, compacting tree + counts, click-scroll) — met
-  (`diff.spec.ts`, `source/diff/diffLogic.test.ts` 19 tests).
+- Files panel (name filter + Filter dropdown with per-type counts and a
+  Reviewed row, active count on the button, hunk progress, compacting tree
+  + counts, click-scroll) — met (`diff.spec.ts` "file filter dropdown …",
+  `source/diff/DiffView.test.tsx` stored-prefs + active-state + keyboard
+  cases, `source/diff/diffLogic.test.ts` 19 tests; issues #56/#57: the
+  comments panel keeps a 360–420px min-width anchored to its button so
+  tabs/paths no longer wrap).
 - File header (chevron, path, +/−, reviewed count, toggle) — met.
 - Git's own hunks (≤3 context, merged runs); header format + raw `@@` on
   hover; fold/Summarize/note/reviewed actions; hunk card (summary+note,

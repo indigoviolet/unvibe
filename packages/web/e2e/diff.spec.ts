@@ -80,6 +80,53 @@ test("files filter narrows the visible files", async ({ page }) => {
   await expect(page.locator(tsockFile)).toBeVisible();
 });
 
+test("file filter dropdown filters by type with counts and an active state", async ({ page }) => {
+  await page.getByRole("button", { name: "Show files panel" }).click();
+  const filter = page.getByRole("button", { name: "File filters" });
+  await expect(filter).toBeVisible();
+  // Default: no active badge.
+  await expect(filter.locator(".count")).toHaveCount(0);
+  await filter.click();
+  const menu = page.getByRole("menu", { name: "File filters" });
+  await expect(menu).toBeVisible();
+  // Five categories plus Reviewed, each a checkable row with a count.
+  await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(6);
+  for (const name of ["Source", "Tests", "Docs", "Config", "Generated", "Reviewed"]) {
+    await expect(menu.getByRole("menuitemcheckbox", { name: new RegExp(name) })).toBeVisible();
+  }
+  // Deselect Tests: its files hide and the button shows the active count.
+  await menu.getByRole("menuitemcheckbox", { name: /Tests/ }).click();
+  await expect(page.locator(connFile)).toBeVisible();
+  await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+  await expect(filter).toHaveAttribute("aria-pressed", "true");
+  await expect(filter.locator(".count")).toHaveText("1");
+  // Stored prefs survive a reload.
+  await page.reload();
+  await expect(page.locator(connFile)).toBeVisible();
+  await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "File filters" }).locator(".count")).toHaveText("1");
+});
+
+test("file filter dropdown is keyboard-usable and closes on Escape", async ({ page }) => {
+  await page.getByRole("button", { name: "Show files panel" }).click();
+  const filter = page.getByRole("button", { name: "File filters" });
+  await filter.focus();
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: "File filters" });
+  await expect(menu).toBeVisible();
+  // ArrowDown moves focus down the rows.
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitemcheckbox", { name: /Tests/ })).toBeFocused();
+  // Space toggles the focused row; the menu stays open for multi-toggle.
+  await page.keyboard.press("Space");
+  await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+  await expect(menu).toBeVisible();
+  // Escape closes and returns focus to the button.
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(filter).toBeFocused();
+});
+
 test("revealSource unhides a hidden hunk and highlights the line", async ({ page }) => {
   await scrollDiffToBottom(page);
   await expect(page.locator("button.hid")).toHaveCount(2);

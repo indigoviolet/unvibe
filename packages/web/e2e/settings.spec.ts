@@ -273,6 +273,24 @@ test("settings link is plain; the review context lives on the debug page", async
   await expect(page).toHaveURL("/review/demo");
 });
 
+test("settings sits next to Unvibe in the review and start top bars", async ({ page }) => {
+  // Review top bar: brand, Settings, then the review identity — Tips and
+  // Submit stay on the right (review-scoped).
+  await page.goto("/review/demo");
+  const links = await page.evaluate(() =>
+    [...document.querySelectorAll("header.top a")].map((a) => a.textContent?.trim() ?? ""),
+  );
+  expect(links[0]).toBe("Unvibe");
+  expect(links[1]).toBe("Settings");
+  // Start page top bar: same place, before the repo selector.
+  await page.goto("/");
+  const startLinks = await page.evaluate(() =>
+    [...document.querySelectorAll("header.top a")].map((a) => a.textContent?.trim() ?? ""),
+  );
+  expect(startLinks[0]).toBe("Unvibe");
+  expect(startLinks[1]).toBe("Settings");
+});
+
 test("stale review shows banner counts, range-diff and stale hunks", async ({ page }) => {
   await page.goto("/review/r-old");
   const banner = page.locator('[data-testid="stale-banner"]');

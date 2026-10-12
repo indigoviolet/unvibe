@@ -67,7 +67,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ## 4. Product behaviour
 
 ### 4.1 Layout
-- **Top bar:** PR or branch title, Tips, **Submit review** with a count of pending changes, and **Source**, which shows or hides the right-hand pane.
+- **Top bar:** the **Unvibe** home link with app-wide **Settings** beside it on the left; then the PR or branch title, Tips, **Submit review** with a count of pending changes, and **Source**, which shows or hides the right-hand pane. Settings sits on the left because it is app-wide — everything to its right is review-scoped. The start page's top bar matches: Unvibe + Settings, then the repo selector.
 - **Guide** (left, main column): the current page.
 - **Source pane** (right): tabs for **PR description** and **Diff**, plus the **Comments** menu. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
@@ -177,9 +177,8 @@ Every card and every expansion card has the same controls:
 **Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**.
 
 **Files panel** (it scrolls with the diff):
-- a filter-as-you-type name box;
-- file-type chips: Source, Tests, Docs, Config, Generated;
-- **Hide reviewed**, and a progress bar of hunks reviewed;
+- a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count) plus a **Reviewed** row; the button shows an active count whenever a non-default filter applies;
+- a progress bar of hunks reviewed;
 - a folder tree that compacts single-child folders, with +/− counts and reviewed/total per file. Clicking a file scrolls to it.
 
 **File header:** collapse chevron, the path (with the file name always visible), +/− counts, the reviewed count, and a mark-file-reviewed toggle.
