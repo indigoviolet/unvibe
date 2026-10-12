@@ -641,6 +641,13 @@ export interface DiagnosticCandidate {
   symlinkTarget?: string;
   /** Shim manager when detectable: mise/asdf/nvm/homebrew/npm-global. */
   shimManager?: string;
+  /**
+   * Real executable a shim resolves to (issue #105): the version manager's
+   * answer for this tool from a neutral directory, verified to run from a
+   * review copy. Sessions run this path, not the shim. Absent when the
+   * candidate is not a shim, the manager is unknown, or resolution failed.
+   */
+  resolvedPath?: string;
   /** Whether `--version` ran successfully (exit 0 within the timeout). */
   runs: boolean;
   exitCode?: number;
