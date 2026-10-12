@@ -28,6 +28,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRunRoot, onExit, removeDir } from "./tmp-guard.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -60,8 +61,16 @@ function assert(cond, msg) {
   }
 }
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-global-"));
+// Per-run temp root (issue #24): prefixes, caches, homes and data dirs
+// all live under one fresh dir, removed by exact path on success,
+// failure and interruption. Never globs the system temp dir.
+const TMP = createRunRoot();
 console.log(`work dir: ${TMP}`);
+// Interruption net: remove only our own root. Installed daemons started
+// by verifyInstall are stopped on their normal path (`stop` after each
+// phase); on SIGINT/SIGTERM the root removal still prevents temp leaks,
+// and any surviving daemon keeps running only until stopped by hand.
+onExit(() => removeDir(TMP));
 
 /** `npm` (11) or `npx --yes npm@10` argv prefix for the literal install. */
 function npmArgv(npmMajor) {
@@ -485,10 +494,11 @@ const main = async () => {
     }
   }
   if (failures > 0) {
-    console.error(`${failures} assertion(s) failed (work dir kept: ${TMP})`);
+    console.error(`${failures} assertion(s) failed (work dir removed: ${TMP})`);
+    removeDir(TMP);
     process.exit(1);
   }
-  fs.rmSync(TMP, { recursive: true, force: true });
+  removeDir(TMP);
   console.log("global-install-check: all green");
 };
 
