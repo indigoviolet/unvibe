@@ -154,7 +154,9 @@ mark.tm {
 }
 .ver-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 5em 10em auto;
+  /* Fixed action column (fits Confirm + Cancel): each row is its own
+     grid, so an auto column would shift sha/built between rows. */
+  grid-template-columns: minmax(0, 1fr) 5em 10em 150px;
   gap: 2px 12px;
   align-items: center;
   padding: 5px 0;
@@ -167,6 +169,8 @@ mark.tm {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  max-width: 100%;
+  justify-self: start;
 }
 .ver-sha {
   font-family: var(--mono);
