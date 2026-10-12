@@ -20,6 +20,7 @@ import {
   requestSecondOpinion,
   resolveTarget,
 } from "../src/secondopinion/index.js";
+import { removeSecondOpinionAction } from "../src/pipeline/actions/second_opinion.js";
 import { createApp } from "../src/server.js";
 import type { ModelCatalog } from "../src/settings/index.js";
 import { setupReview, sourceFile } from "./m6-helpers.js";
@@ -618,6 +619,74 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
       expect(resolveTarget(snap, "central").kind).toBe("card");
     } finally {
       await app.close();
+    }
+  });
+
+  it("a re-run resolving after Remove stays removed (issue #76)", async () => {
+    const s = await setup();
+    try {
+      const agents = fakeWithVerdict("agrees");
+      // Hold the re-run's turn on an explicit gate: no timing involved,
+      // the test releases it after Remove.
+      let holdRerun = false;
+      let rerunTurnStarted = false;
+      let releaseRerun: (() => void) | null = null;
+      const basePrompt = agents.prompt.bind(agents);
+      agents.prompt = (async function* (session, text, signal) {
+        if (holdRerun && text.includes("Second opinion")) {
+          rerunTurnStarted = true;
+          await new Promise<void>((r) => {
+            releaseRerun = r;
+          });
+        }
+        yield* basePrompt(session, text, signal);
+      }) as FakeAgentRunner["prompt"];
+      const deps = depsFor(s, agents);
+      const pipeline = { opts: deps } as unknown as Parameters<typeof removeSecondOpinionAction>[0];
+
+      // First run completes and stores its result.
+      const j1 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      if (!("id" in j1)) throw new Error("first run should enqueue a job");
+      await s.ctx.jobs.drain(10000);
+      expect(s.ctx.jobs.get(j1.id)?.state).toBe("done");
+      const stored = (): unknown[] =>
+        s.ctx.reviews.getSnapshot(s.reviewId)!.pages.flatMap((p) => p.cards).find((c) => c.id === "central")!
+          .secondOpinions ?? [];
+      expect(stored()).toHaveLength(1);
+
+      // A model change makes the re-run a new request (same card+mode, so
+      // the stored result is what Remove deletes); hold its turn mid-flight.
+      const cur = s.ctx.settings.get();
+      s.ctx.settings.update({
+        secondOpinion: { provider: cur.secondOpinion.provider, model: `${cur.secondOpinion.model}-rerun` },
+      });
+      holdRerun = true;
+      const j2 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      if (!("id" in j2)) throw new Error("re-run should enqueue a job, not reuse");
+      const start = Date.now();
+      while (!rerunTurnStarted) {
+        if (Date.now() - start > 10000) throw new Error("re-run turn never started");
+        await new Promise((r) => setTimeout(r, 25));
+      }
+
+      // Remove while the re-run is in flight, then let it resolve.
+      await removeSecondOpinionAction(pipeline, s.ctx.jobs, s.ctx.reviews, s.reviewId, "central", "check");
+      expect(stored()).toHaveLength(0);
+      releaseRerun!();
+      const end = Date.now();
+      for (;;) {
+        const state = s.ctx.jobs.get(j2.id)?.state;
+        if (state === "done" || state === "error" || state === "cancelled") break;
+        if (Date.now() - end > 10000) throw new Error("re-run job never settled");
+        await new Promise((r) => setTimeout(r, 25));
+      }
+
+      // Remove means gone: the in-flight run is cancelled and its late
+      // result is dropped, never re-stored.
+      expect(s.ctx.jobs.get(j2.id)?.state).toBe("cancelled");
+      expect(stored()).toHaveLength(0);
+    } finally {
+      await s.app.close();
     }
   });
 });
