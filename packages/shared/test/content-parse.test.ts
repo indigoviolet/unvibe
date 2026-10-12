@@ -6,6 +6,7 @@ import {
   parseCardsPartial,
   parsePartial,
   parseReply,
+  renderInline,
   renderMarkdown,
 } from "../src/content/parse.js";
 
@@ -214,6 +215,77 @@ describe("parseBlocks golden", () => {
       });
     const blocks = parseCards(GOLDEN)[0].blocks;
     expect(norm(parseBlocks(renderMarkdown(blocks)))).toEqual(norm(blocks));
+  });
+});
+
+describe("renderInline (Markdown inside a block)", () => {
+  it("renders bold, italic, strikethrough and code spans", () => {
+    expect(renderInline("**Recording.** record_cmd picks").html).toBe(
+      "<strong>Recording.</strong> record_cmd picks",
+    );
+    expect(renderInline("*ital* and ~~gone~~ and `code`").html).toBe(
+      "<em>ital</em> and <s>gone</s> and <code>code</code>",
+    );
+  });
+
+  it("renders ordinary links with a new-tab target", () => {
+    const r = renderInline("[docs](https://example.com/x)");
+    expect(r.html).toBe(
+      '<a href="https://example.com/x" target="_blank" rel="noopener noreferrer">docs</a>',
+    );
+    expect(r.citations).toEqual([]);
+    expect(r.links).toEqual([]);
+  });
+
+  it("honours backslash escapes", () => {
+    expect(renderInline("\\*not em\\*").html).toBe("*not em*");
+  });
+
+  it("keeps raw HTML escaped", () => {
+    expect(renderInline("<b>hi</b>").html).toBe("&lt;b&gt;hi&lt;/b&gt;");
+  });
+
+  it("rejects javascript: link targets", () => {
+    const r = renderInline("[x](javascript:alert(1))");
+    expect(r.html).not.toContain("<a");
+    expect(r.html).toContain("[x](javascript:alert(1))");
+  });
+
+  it("still recognises tokens with underscores before emphasis runs", () => {
+    const r = renderInline("a [[code:src/__init__.py:1-3]] b");
+    expect(r.html).toBe("a  b");
+    expect(r.citations).toEqual([{ target: "code:src/__init__.py:1-3" }]);
+  });
+
+  it("handles a token next to bold text", () => {
+    const r = renderInline("**Hi** [[concept:x|Ex]]");
+    expect(r.html).toBe('<strong>Hi</strong> <a class="cx" data-link="concept:x">Ex</a>');
+    expect(r.links).toEqual(["concept:x"]);
+  });
+
+  it("keeps tokens inside code spans literal", () => {
+    const r = renderInline("`[[code:x]]`");
+    expect(r.html).toBe("<code>[[code:x]]</code>");
+    expect(r.citations).toEqual([]);
+    expect(r.links).toEqual([]);
+  });
+
+  it("renders emphasis inside table cells and list items", () => {
+    const table = parseBlocks("| A |\n|---|\n| **bold** cell |\n");
+    expect(table[0].type).toBe("table");
+    if (table[0].type !== "table") return;
+    expect(table[0].html).toContain("<td><strong>bold</strong> cell</td>");
+    const list = parseBlocks("- **bold** item\n");
+    expect(list[0].type).toBe("list");
+    if (list[0].type !== "list") return;
+    expect(list[0].items[0].html).toBe("<strong>bold</strong> item");
+  });
+
+  it("round-trips emphasis and links to plain Markdown text", () => {
+    const blocks = parseBlocks("**Bold** and *ital* with [a link](https://example.com).\n");
+    const back = renderMarkdown(blocks);
+    expect(back).toContain("Bold and ital with a link.");
+    expect(back).not.toMatch(/<[^>]*>|&\w+;/);
   });
 });
 

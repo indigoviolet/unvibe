@@ -49,10 +49,11 @@ import type {
   ListItem,
 } from "../entities.js";
 import { parseId, type ParsedId } from "../ids.js";
-import { tokenizeLinks } from "../links.js";
+import { tokenizeLinks, type LinkToken } from "../links.js";
 import type { ParsedCard, ParseOptions, ReplyData, SplitError } from "./types.js";
 import { splitReply } from "./split.js";
 import { extractD2Links, canonicalizeD2Source, diagramHash, D2_MIN_VERSION } from "./d2.js";
+import MarkdownIt from "markdown-it";
 
 const CITATION_KINDS = new Set(["diff", "code", "desc", "h"]);
 
@@ -90,27 +91,49 @@ function pushCitation(acc: InlineAcc, target: string): void {
   }
 }
 
-/** Render one token-free stretch: citations stripped, links linked. */
-function renderPlain(seg: string, acc: InlineAcc): string {
-  const toks = tokenizeLinks(seg);
-  if (toks.length === 0) return escapeHtml(seg);
-  let out = "";
-  let pos = 0;
-  for (const t of toks) {
-    out += escapeHtml(seg.slice(pos, t.start));
-    pos = t.end;
-    const parsed = parseId(t.idText);
-    if (parsed === null || CITATION_KINDS.has(parsed.kind)) {
-      pushCitation(acc, t.idText);
-      if (t.label !== undefined) out += escapeHtml(t.label);
-    } else {
-      acc.links.push(t.idText);
-      const label = t.label ?? defaultLinkLabel(parsed);
-      out += `<a class="cx" data-link="${escapeHtml(t.idText)}">${escapeHtml(label)}</a>`;
-    }
+/** Render one `[[…]]` token: citations stripped, links linked. */
+function tokenHtml(t: LinkToken, acc: InlineAcc): string {
+  const parsed = parseId(t.idText);
+  if (parsed === null || CITATION_KINDS.has(parsed.kind)) {
+    pushCitation(acc, t.idText);
+    if (t.label !== undefined) return escapeHtml(t.label);
+    return "";
   }
-  return out + escapeHtml(seg.slice(pos));
+  acc.links.push(t.idText);
+  const label = t.label ?? defaultLinkLabel(parsed);
+  return `<a class="cx" data-link="${escapeHtml(t.idText)}">${escapeHtml(label)}</a>`;
 }
+
+// Inline Markdown inside a block (bold, italic, strikethrough, links,
+// backslash escapes, code spans). Raw HTML stays escaped (`html: false` —
+// the output lands in `dangerouslySetInnerHTML`), `javascript:` links are
+// rejected by the default validation, and `linkify`/`typographer` stay off
+// so file paths and identifiers are never rewritten.
+const inlineMd = new MarkdownIt({ html: false, linkify: false, typographer: false });
+// Images are not part of the reply format: render them as literal text
+// rather than emitting `<img>` tags into `dangerouslySetInnerHTML`.
+inlineMd.disable("image");
+// `[[…]]` tokens are recognised before emphasis runs: targets contain `_`
+// and `*` (e.g. `[[code:src/__init__.py:1-3]]`) that must not become
+// bold/italic. Code spans stay literal: `backticks` runs before this rule.
+inlineMd.inline.ruler.before("emphasis", "cx_token", (state, silent) => {
+  if (state.src.charCodeAt(state.pos) !== 0x5b) return false; // `[`
+  const toks = tokenizeLinks(state.src.slice(state.pos));
+  if (toks.length === 0 || toks[0].start !== 0) return false;
+  if (silent) return true;
+  const token = state.push("cx_token", "", 0);
+  token.content = tokenHtml(toks[0], state.env.acc as InlineAcc);
+  state.pos += toks[0].end;
+  return true;
+});
+inlineMd.renderer.rules.cx_token = (tokens, idx) => tokens[idx].content;
+// Ordinary Markdown links open a new tab; dotted `a.cx` links stay in-app
+// (the web click delegation only handles `a.cx` and `[data-src]`).
+inlineMd.renderer.rules.link_open = (tokens, idx, options, _env, self) => {
+  tokens[idx].attrSet("target", "_blank");
+  tokens[idx].attrSet("rel", "noopener noreferrer");
+  return self.renderToken(tokens, idx, options);
+};
 
 export interface RenderedInline {
   html: string;
@@ -118,18 +141,10 @@ export interface RenderedInline {
   links: string[];
 }
 
-/** Render inline Markdown: code spans preserved, tokens resolved. */
+/** Render inline Markdown inside a block: emphasis, links, code spans, tokens. */
 export function renderInline(text: string): RenderedInline {
   const acc: InlineAcc = { citations: [], links: [] };
-  const parts = text.split(/(`[^`\n]+`)/g);
-  let html = "";
-  for (const part of parts) {
-    if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
-      html += `<code>${escapeHtml(part.slice(1, -1))}</code>`;
-    } else if (part) {
-      html += renderPlain(part, acc);
-    }
-  }
+  const html = inlineMd.renderInline(text, { acc });
   return { html, citations: acc.citations, links: acc.links };
 }
 

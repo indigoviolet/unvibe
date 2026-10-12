@@ -471,7 +471,7 @@ function webMitTexts(webRows) {
 /** Full text of `node_modules/<name>/LICENSE*` (first match wins). */
 function readWebLicenseText(name) {
   const dir = path.join(ROOT, "node_modules", name);
-  const candidates = ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md"];
+  const candidates = ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENSE-MIT.txt", "LICENCE", "LICENCE.md"];
   for (const c of candidates) {
     const p = path.join(dir, c);
     if (existsSync(p)) return readFileSync(p, "utf8");
