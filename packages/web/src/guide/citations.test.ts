@@ -90,6 +90,21 @@ describe("resolveCitation", () => {
     const r = resolveCitation(snapshot(), { target: "diff:nope:1", unverified: true });
     expect(r.unverified).toBe(true);
   });
+
+  it("labels a hunk citation by file and lines, never by hash (finding 13)", () => {
+    const r = resolveCitation(snapshot(), { target: `h:${CONN}:abc` });
+    expect(r.label).toBe("connection.py:80–89");
+  });
+
+  it("labels a hunk citation by file when the hunk is gone", () => {
+    const r = resolveCitation(snapshot(), { target: `h:${CONN}:missing` });
+    expect(r.label).toBe("connection.py");
+  });
+
+  it("leaves a hunk citation raw when the file is unknown", () => {
+    const r = resolveCitation(snapshot(), { target: "h:nope:abc" });
+    expect(r.label).toBe("h:nope:abc");
+  });
 });
 
 describe("canonicalRevealTarget", () => {

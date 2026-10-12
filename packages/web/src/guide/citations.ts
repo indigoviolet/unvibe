@@ -118,7 +118,21 @@ export function resolveCitation(
     };
   }
   if (parsed.kind === "h") {
-    return { target, label: `hunk ${parsed.contentHash.slice(0, 8)}`, snippet: "", unverified: citation.unverified };
+    // The id carries the file key (finding 13): label the hunk by file
+    // (+ its line range when the hunk is still in the snapshot), never
+    // by content hash.
+    const file = resolveFile(snapshot, parsed.fileKey, aliases);
+    if (!file) return { target, label: target, snippet: "", unverified: citation.unverified };
+    const hunk = (snapshot.files.find((f) => f.fileKey === file.fileKey)?.hunks ?? []).find(
+      (h) => h.contentHash === parsed.contentHash,
+    );
+    const name = file.path.split("/").pop() ?? file.path;
+    return {
+      target,
+      label: hunk ? shortLabel(file.path, hunk.newStart, hunk.newEnd) : name,
+      snippet: "",
+      unverified: citation.unverified,
+    };
   }
   return { target, label: target, snippet: "", unverified: citation.unverified };
 }
