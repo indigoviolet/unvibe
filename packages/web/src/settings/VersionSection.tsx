@@ -22,7 +22,7 @@ import type {
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { putErrors } from "./LimitsSection.js";
-import { blockedJobLine, isNewerAvailable, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
+import { blockedJobLine, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
 const SWITCH_POLL_MS = 1000;
@@ -349,6 +349,9 @@ function CurrentVersion({
   const builtAt = row?.builtAt ?? build?.builtAt;
   const built = builtAt ? (timeAgoIso(builtAt) ?? builtAt) : null;
   const branch = row?.sourceBranch ?? build?.sourceBranch;
+  // Merged previews (issue #41) name both sides; older builds keep the
+  // single-side line.
+  const merged = mergedProvenance(row) ?? mergedProvenance(build);
   return (
     <p className="ver-current" data-testid="update-current-version">
       Installed:{" "}
@@ -357,7 +360,7 @@ function CurrentVersion({
       </code>
       {sha ? <> · {sha}</> : null}
       {built ? <> · built {built}</> : null}
-      {branch ? <> · from {branch}</> : null}
+      {merged ? <> · from {merged}</> : branch ? <> · from {branch}</> : null}
     </p>
   );
 }
