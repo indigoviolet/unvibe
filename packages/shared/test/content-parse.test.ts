@@ -4,7 +4,6 @@ import {
   parseBlocks,
   parseCards,
   parseCardsPartial,
-  parsePartial,
   parseReply,
   renderInline,
   renderMarkdown,
@@ -289,47 +288,24 @@ describe("renderInline (Markdown inside a block)", () => {
   });
 });
 
-describe("parsePartial (streaming)", () => {
-  const STREAM = `Complete para with [[diff:conn:80-82]].
-
-Growing tail with a token cut off mid-[[diff:conn:8`;
-
-  it("withholds a paragraph cut off mid-token", () => {
-    const partial = parsePartial(STREAM);
-    expect(partial).toHaveLength(1);
-    expect(partial[0].id).toBe("b1");
-    // Once the tail completes, IDs stay stable.
-    const full = parseBlocks(STREAM.replace("mid-[[diff:conn:8", "mid-token [[diff:conn:80]].\n"));
-    expect(full[0]).toEqual(partial[0]);
-    expect(full).toHaveLength(2);
-  });
-
-  it("withholds a table cut off mid-table", () => {
-    const buf = "Intro done.\n\n| A | B |\n|---|---|\n| x | y |";
-    expect(parsePartial(buf).map((b) => b.type)).toEqual(["paragraph"]);
-    expect(parseBlocks(`${buf}\n| z | w |\n\n`).map((b) => b.type)).toEqual(["paragraph", "table"]);
-  });
-
-  it("withholds an unclosed fence but keeps closed ones", () => {
-    const closed = "```d2\na -> b\n```\n\nTail growing";
-    const partial = parsePartial(closed);
-    expect(partial.map((b) => b.type)).toEqual(["diagram"]);
-    const unclosed = "Done.\n\n```python\nx = 1";
-    expect(parsePartial(unclosed).map((b) => b.type)).toEqual(["paragraph"]);
-  });
-
-  it("streams cards as they finish", () => {
+describe("parseCardsPartial (streaming)", () => {
+  it("returns finished cards only; the growing last section is withheld", () => {
     const buf = "## One\n\nBody one.\n\n## Two\n\nBody two growing";
     const cards = parseCardsPartial(buf);
-    expect(cards.map((c) => [c.title, c.finished])).toEqual([
-      ["One", true],
-      ["Two", false],
-    ]);
+    expect(cards.map((c) => c.title)).toEqual(["One"]);
     expect(cards[0].blocks).toHaveLength(1);
-    expect(cards[1].blocks).toHaveLength(0);
     const done = parseCards(`${buf} end.\n`);
     expect(done[1].blocks).toHaveLength(1);
     expect(done[1].blocks[0].id).toBe("b1");
+  });
+
+  it("returns nothing while the first section is still growing", () => {
+    expect(parseCardsPartial("Body growing")).toEqual([]);
+  });
+
+  it("returns all sections once the trailing JSON block is present", () => {
+    const buf = "## One\n\nBody one.\n\n## Two\n\nBody two.\n\n```json\n{}\n```\n";
+    expect(parseCardsPartial(buf).map((c) => c.title)).toEqual(["One", "Two"]);
   });
 });
 

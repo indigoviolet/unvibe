@@ -552,7 +552,6 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
 
   if (fence !== null) {
     // Lenient full parse: an unclosed fence still yields its block.
-    // (Streaming uses parsePartial, which drops it instead.)
     const f = fence;
     fence = null;
     closeFence(f);
@@ -691,7 +690,6 @@ export function parseCards(body: string, opts?: ParseOptions): ParsedCard[] {
   return splitCardSections(body).map((s) => ({
     title: s.title,
     blocks: parseBlocks(s.markdown, opts),
-    finished: true,
   }));
 }
 
@@ -722,51 +720,13 @@ export function parseReply(text: string, opts?: ParseOptions): ParsedReply {
   };
 }
 
-function lastBlankLineCut(text: string): string {
-  // End the prefix at the last blank line: everything before it is a
-  // sequence of complete blocks. A buffer ending mid-paragraph, mid-list,
-  // mid-table or mid-token has no trailing blank line, so its tail block
-  // is excluded until more text arrives.
-  const idx = text.search(/\n[ \t]*\n[ \t]*$/);
-  if (idx >= 0) return text.slice(0, idx + 1);
-  const m = text.match(/\n[ \t]*\n/g);
-  if (!m) return "";
-  const last = text.lastIndexOf(m[m.length - 1]);
-  return text.slice(0, last + 1);
-}
-
 /**
- * Streaming entry point: given a growing text buffer, return the blocks
- * completed so far. A block counts as complete once a blank line (or the
- * closing fence, or the trailing JSON fence) ends it; the tail — a
- * paragraph/table/list still growing, an unclosed fence, a token cut off
- * mid-`[[…` — is held back. Cards are streamed as they finish: use
- * {@link parseCardsPartial} for card boundaries.
- */
-export function parsePartial(buffer: string, opts?: ParseOptions): Block[] {
-  const split = splitReply(buffer);
-  if (split.ok) return parseBlocks(split.body, opts);
-  let candidate = buffer;
-  // Hold back an unclosed fenced block (odd number of ``` lines at end).
-  const fenceLines = candidate.split("\n").filter((l) => /^```/.test(l)).length;
-  if (fenceLines % 2 === 1) {
-    const cut = candidate.lastIndexOf("```");
-    candidate = candidate.slice(0, cut);
-  }
-  // Hold back an unclosed ::: directive container.
-  const opens = (candidate.match(/^:::[ \t]*[A-Za-z][\w-]*[ \t]*$/gm) ?? []).length;
-  const closes = (candidate.match(/^:::[ \t]*$/gm) ?? []).length;
-  if (opens > closes) {
-    const idx = candidate.search(/^:::[ \t]*[A-Za-z][\w-]*[ \t]*$/gm);
-    if (idx >= 0) candidate = candidate.slice(0, idx);
-  }
-  return parseBlocks(lastBlankLineCut(candidate), opts);
-}
-
-/**
- * Streaming cards: all sections terminated by a later `##` are finished;
- * the still-growing last section contributes only its completed blocks
- * (`finished: false`). Call {@link parseCards} once the stream ends.
+ * Streaming entry point: given a growing text buffer, return the finished
+ * cards so far — sections closed by a later `## ` heading, or all sections
+ * once the trailing JSON block is present. The still-growing last section
+ * is simply not returned; nothing renders card content while it is being
+ * written (PRD §11 only asks that cards appear as each one finishes).
+ * Call {@link parseCards} once the stream ends.
  */
 export function parseCardsPartial(buffer: string, opts?: ParseOptions): ParsedCard[] {
   const split = splitReply(buffer);
@@ -776,15 +736,12 @@ export function parseCardsPartial(buffer: string, opts?: ParseOptions): ParsedCa
     return sections.map((s) => ({
       title: s.title,
       blocks: parseBlocks(s.markdown, opts),
-      finished: true,
     }));
   }
-  return sections.map((s, i) => {
-    if (i < sections.length - 1) {
-      return { title: s.title, blocks: parseBlocks(s.markdown, opts), finished: true };
-    }
-    return { title: s.title, blocks: parsePartial(s.markdown, opts), finished: false };
-  });
+  return sections.slice(0, -1).map((s) => ({
+    title: s.title,
+    blocks: parseBlocks(s.markdown, opts),
+  }));
 }
 
 /** Decode the entities `escapeHtml`/`renderInline` produce. */

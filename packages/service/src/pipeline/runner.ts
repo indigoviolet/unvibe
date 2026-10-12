@@ -4,7 +4,9 @@
  * Every agent call is a job on the queue (kind, model, priority, prompt
  * snapshot, usage with cached tokens, cardId/progress). Streaming reader
  * cards go through `parseCardsPartial` → `ReviewStore.mutate` so the UI
- * fills progressively. Every reply goes through `splitReply` → parser →
+ * fills progressively (finished cards only: sections closed by a later
+ * `## ` heading, or all sections once the trailing JSON block lands).
+ * Every reply goes through `splitReply` → parser →
  * citation validator (valid/repaired stored resolved, unverified flagged +
  * recorded in job debug data; one repair turn when `needsRepairTurn`).
  *
@@ -342,8 +344,7 @@ export class Pipeline {
                 if (o.onPartial) {
                   try {
                     const partials = parseCardsPartial(buffer);
-                    const finished = partials.filter((p) => p.finished);
-                    if (finished.length > 0) void o.onPartial(finished);
+                    if (partials.length > 0) void o.onPartial(partials);
                   } catch {
                     // ignore mid-stream parse errors
                   }
@@ -1031,7 +1032,7 @@ export class Pipeline {
                 for (let i = skip; i < partials.length; i++) {
                   const p = partials[i];
                   const index = i - skip;
-                  if (!p.finished || streamed.has(index)) continue;
+                  if (streamed.has(index)) continue;
                   streamed.add(index);
                   void this.applyReaderCard(reviewId, index, p.title, p.blocks);
                 }
