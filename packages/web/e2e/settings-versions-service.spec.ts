@@ -116,7 +116,7 @@ test.describe("settings + versions on the real service", () => {
     test.setTimeout(120_000);
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+    await expect(page.getByText("Models, prompts, limits, jobs")).toBeVisible();
 
     const input = page.locator("#limit-sessionsPerProvider");
     await input.fill("99");
@@ -127,7 +127,7 @@ test.describe("settings + versions on the real service", () => {
     await page.getByRole("button", { name: "Save limits" }).click();
     await expect(page.getByText("Saved")).toBeVisible();
     await page.reload();
-    await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+    await expect(page.getByText("Models, prompts, limits, jobs")).toBeVisible();
     await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("5");
   });
 
@@ -136,7 +136,7 @@ test.describe("settings + versions on the real service", () => {
     if (!svc) throw new Error("service not running");
     reviewId = await openFeatureReview(page);
     await page.goto(`${svc.origin}/settings?review=${reviewId}&token=${svc.token}`);
-    await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+    await expect(page.getByText("Models, prompts, limits, jobs")).toBeVisible();
     // All 18 PRD §13 templates, from the real prompts dir.
     await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(18);
     const reader = page.locator('[data-testid="prompt-reader"]');

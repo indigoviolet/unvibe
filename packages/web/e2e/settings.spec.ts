@@ -2,14 +2,15 @@
  * Settings page + versions banner behaviour tests against mock mode
  * (PRD §4.14, §8): model pickers with adapter errors and the
  * same-model warning, prompt template/expanded views, limits persistence,
- * jobs with prompt links + cancel, shared-context delete, Tips popover,
+ * jobs with prompt links + cancel, Tips popover,
  * and the stale-review banner with range-diff + version switching.
+ * (Shared context lives on the per-review debug page now: `debug.spec.ts`.)
  */
 import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/settings?review=demo");
-  await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+  await expect(page.getByText("Models, prompts, limits, jobs")).toBeVisible();
 });
 
 test("model pickers list provider models and warn on same-model second opinion", async ({ page }) => {
@@ -57,7 +58,7 @@ test("limits persist across reload", async ({ page }) => {
   await page.getByRole("button", { name: "Save limits" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+  await expect(page.getByText("Models, prompts, limits, jobs")).toBeVisible();
   await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("6");
 });
 
@@ -86,24 +87,6 @@ test("jobs show state, tokens, cache rate, prompt link and cancel", async ({ pag
   await expect(queued).toContainText("cancelled");
 
   await expect(page.locator('[data-testid="jobs-totals"]')).toContainText("Totals:");
-});
-
-test("shared context lists contributions and deletes them", async ({ page }) => {
-  const first = page.locator('[data-testid="contribution-ct-seed-1"]');
-  await expect(first).toContainText("fact");
-  await expect(first).toContainText("reader note");
-  await expect(first).toContainText("diff:src-urllib3-connection.py:640-660");
-
-  const second = page.locator('[data-testid="contribution-ct-seed-2"]');
-  await expect(second).toContainText("correction");
-  await expect(second).toContainText("open question");
-  await expect(second.getByRole("link", { name: "Open card" })).toHaveAttribute(
-    "href",
-    "/review/demo#C-central",
-  );
-  await second.getByRole("button", { name: "Delete ct-seed-2" }).click();
-  await expect(page.locator('[data-testid="contribution-ct-seed-2"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="contribution-ct-seed-1"]')).toBeVisible();
 });
 
 test("tips popover opens from the review top bar", async ({ page }) => {

@@ -1,16 +1,16 @@
 /**
  * Settings page (`/settings`, PRD §4.14): models, prompts (template +
- * expanded), limits and budgets, jobs, shared context.
+ * expanded), limits and budgets, jobs.
  *
  * Reachable from the top bar and the start page; also openable in the
  * context of a review (`/settings?review=:id`), which gives "Expanded for
- * this review" and the Jobs / Shared context sections a subject.
+ * this review" and the Jobs section a subject. Shared context lives on the
+ * per-review debug page (`/review/:id/debug`, issue #32), not here.
  */
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
-import { ContributionsSection } from "./ContributionsSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { JobsSection } from "./JobsSection.js";
 import { LimitsSection } from "./LimitsSection.js";
@@ -73,7 +73,7 @@ export function SettingsPage(): React.JSX.Element {
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
           <div className="eyebrow">Settings</div>
-          <h1 className="title">Models, prompts, limits, jobs, shared context</h1>
+          <h1 className="title">Models, prompts, limits, jobs</h1>
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load settings: {error}
@@ -87,7 +87,6 @@ export function SettingsPage(): React.JSX.Element {
               <PromptsSection reviewId={reviewId} />
               <LimitsSection settings={settings} onSaved={setSettings} />
               <JobsSection reviewId={reviewId} />
-              <ContributionsSection reviewId={reviewId} />
             </>
           ) : null}
         </div>

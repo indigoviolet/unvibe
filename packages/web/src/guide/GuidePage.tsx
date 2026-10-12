@@ -111,9 +111,9 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     return () => window.removeEventListener(GUIDE_BLOCK_EVENT, onRequest);
   }, [onOpenPage, pageId]);
 
-  // Card deep links (`/review/:id#C-<cardId>`, e.g. from Settings → Shared
-  // context → Open card): the snapshot loads async, so poll briefly for the
-  // card element instead of relying on the browser's initial-hash scroll.
+  // Card deep links (`/review/:id#C-<cardId>`): the snapshot loads async,
+  // so poll briefly for the card element instead of relying on the
+  // browser's initial-hash scroll.
   useEffect(() => {
     const hash = location.hash.replace(/^#/, "");
     if (!snapshot || !/^C-/.test(hash)) return;

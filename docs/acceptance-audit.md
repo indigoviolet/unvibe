@@ -306,8 +306,11 @@ UI); nothing below was edited by this pass.
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
   (`settings.spec.ts`, `GET /api/jobs` ran; prompt snapshots now served
   per-job to keep lists small).
-- Shared context (contributions + thread + delete) — met
-  (`sharedctx.test.ts`, `routes/contributions.ts`).
+- Shared context debug page (issue #32; per-review `/review/:id/debug`,
+  not in Settings): base keys + stats + current pack, log with
+  in-base/waiting markers, contributions with thread + delete — met
+  (`shared-context-debug.test.ts`, `routes/shared-context.ts`,
+  `e2e/debug.spec.ts`).
 
 ### §4.15 Conventions — all met
 
@@ -608,7 +611,8 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   reasons; live: 0 unverified, no hide violations).
 - M3 interaction — met (explain/ask/note everywhere; depth/examples/
   diagrams/undo; expansions→links; open-as-page; read; contents; log +
-  change lists + contributions + shared-context view).
+  change lists + contributions + per-review shared-context debug page,
+  issue #32).
 - M4 comments/submit — met (threads ×3, Comments menu + For-PR drafts,
   suggested comments, author-gated description edit, one-review submit).
 - M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
