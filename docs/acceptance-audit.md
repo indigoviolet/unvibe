@@ -139,6 +139,23 @@ UI); nothing below was edited by this pass.
 - No repos: short empty state linking to `/settings#repositories` (demo
   row still shows) — met (`data-testid="no-repos"`; exercised by
   `e2e/real-service.spec.ts`, whose fresh data dir starts repo-less).
+  A failed `GET /api/repos` keeps sessions visible instead (offline copy
+  in the same box).
+- List loads are per-selection loading / loaded / failed — met: the PR
+  input never waits on the lists; switching repos clears the old lists
+  synchronously (no stale frame) behind a loading hint; a total failure
+  shows an inline error with Retry; one failed filter shows its error in
+  that section while the others render (`Promise.allSettled` in
+  `StartPage.tsx`; the service already degrades gh/git failures to empty
+  per source in `repos/changes.ts`, so gh being down never rejects —
+  whole-request failures are unknown-repo 404s or an unreachable
+  service). Covered by `e2e/start.spec.ts` (fail-all + Retry recovery,
+  fail-two section errors with branches intact, deterministic held-load
+  with release).
+- Reviews whose repo is in neither list stay reachable — met: sessions
+  with an unknown non-demo `repoId` render in a labelled orphan group at
+  the end of Reviews with working open and Remove (`e2e/start.spec.ts`
+  "reviews for checkouts no longer listed").
 - Repos are added in Settings — met (`RepositoriesSection.tsx`:
   remembered repos with owner/name + path, add-by-path input with an
   empty-field hint; `#repositories` anchor; `e2e/settings.spec.ts`
