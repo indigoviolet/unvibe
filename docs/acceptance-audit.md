@@ -678,6 +678,43 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 
 ## Open list
 
+### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
+
+In-app switching between `release`, `release-rc` and `preview/*` builds,
+ coded against the `Updater` seam step 1 implements (`listChannels` /
+ `switchTo` in `packages/service/src/update/updater.ts`); the real backend
+ is a placeholder that fails with "not wired" (routes answer 501).
+ Contract first in `packages/shared/src/api.ts` (`UpdateChannel`,
+ `UpdateBuildInfo` on health + status, channels/switch/status shapes).
+ `GET /api/update/status` always works; channels + switch are gated off by
+ default (`versionPickerEnabled`) with 404, refused with 409 while jobs
+ run / a submit is in flight / a switch is pending, and sit behind the
+ same token + loopback Host/Origin gates as every other route. Switch =
+ commit + detached self-contained helper (`dist/update-helper.js`, copied
+ to the data dir so the npm swap cannot pull it) + restart on the same
+ port; install failure or an unhealthy build rolls back; the outcome
+ (`ok` / `rolled-back` / `failed` + reason + log path) is surfaced by
+ status. Web: Settings → Version (toggle, grouped channels, refresh,
+ inline-confirm switch, restart wait with reload, rollback reason) plus a
+ quiet preview pill in the review/Settings/Start headers; the mock API
+ covers the whole flow incl. simulated switch + rollback.
+ Evidence: `test/update-helper.test.ts` (state machine: success, install
+ failure → rollback, unhealthy → rollback, rollback failing, stuck
+ service), `test/update-updater.test.ts` (fake semantics + injection +
+ state files + build identity + lease check), `test/update-routes.test.ts`
+ (gate, busy/lease/pending refusals, auth/host, commit path),
+ `versionFormat.test.ts`, `e2e/update-picker.spec.ts` (4/4 mock-mode
+ green). Privacy (§16) unchanged: the service itself still contacts
+ nothing but loopback; listing shells out through `gh` under the user's
+ login (opt-in gate); the only new static-guard entries are the helper's
+ loopback health probe and bundle shape.
+ Open: the real Updater wiring (step 1, merged separately); merge must
+ teach `scripts/release.mjs` to ship `dist/update-helper.js` and stamp
+ `dist/build-info.json` (see DEVELOPMENT.md); helper restart on macOS
+ still needs the human pass in `docs/macos-testing.md` (see #6); live
+ switch/rollback drill against the built service recorded in the step-2
+ report.
+
 ### Fixed in this branch (done, in `check`)
 
 Stale-dist guard; Host/Origin gate; MCP secret lifecycle; submit crash

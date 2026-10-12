@@ -152,6 +152,9 @@ Rules:
 | `UNVIBE_REPO_ROOTS` | `~/src`, `~/dev`, … | `path.delimiter`-separated roots for checkout detection. |
 | `UNVIBE_PROMPTS_DIR` | repo `prompts/` | Override prompt templates (tests, debugging). |
 | `UNVIBE_LIVE` / `UNVIBE_LIVE_PROVIDERS` | — | `=1` enables live suites; providers `claude\|codex` (default both). |
+| `UNVIBE_UPDATER_BACKEND` | live (not wired) | `fake` selects the test-only update backend: channels from `<dataDir>/update/fake-channels.json` (else a built-in seed), installed ref in `<dataDir>/update/current-ref`. Never touches npm, git or the network. |
+| `UNVIBE_UPDATE_FAKE_FAIL` | — | Fake failure injection for switch drills: `install:<ref>` (install throws) or `health:<ref>` (install "succeeds" without advancing, so the new build never reports the target version). Test-only. |
+| `UNVIBE_UPDATE_EXIT_WAIT_MS` / `UNVIBE_UPDATE_HEALTH_TIMEOUT_MS` / `UNVIBE_UPDATE_POLL_MS` / `UNVIBE_UPDATE_STOP_WAIT_MS` | `30000` / `120000` / `500` / `10000` | Detached-helper timeout overrides. Test-only. |
 
 Minimum agent versions are enforced in code (`src/exec/agent-bins.ts`): Codex ≥ 0.160.1, Claude Code ≥ 2.1.293. Readiness and doctor report the exact path, version, and login state each agent will run with.
 
@@ -242,6 +245,40 @@ select what the install check verifies.
 The release tree is self-contained: built service bundle (`packages/service/dist/index.js` plus bundled adapter entries `dist/adapters/`), the web build, `prompts/`, the demo fixture, `README.md`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, and a generated dependency-lean `package.json` (runtime deps only, no workspaces, no lifecycle scripts).
 
 Installing from the default branch is unsupported: it is the source tree, not an installable package.
+
+### Preview builds + version picker (#36)
+
+Two branches, merged together:
+
+- **Step 1** (`feat/preview-builds`): `mise run preview:publish <branch>` (release tree per branch on orphan ref `preview/<slug>`, version `0.0.1-preview.<slug>.<shortsha>`), the `unvibe update` CLI, and the real backend in `packages/service/src/update/` (`channels.ts`, `install.ts`, `data-backup.ts`).
+- **Step 2** (`feat/version-picker`, this branch): the seam step 1 implements (`src/update/updater.ts`: `listChannels` / `switchTo`), the in-app picker, and the switch machinery. The real backend is a placeholder that fails with "not wired" until the merge.
+
+How it works:
+
+- Gate: `versionPickerEnabled` in settings (off by default). When off, `GET /api/update/channels` and `POST /api/update/switch` answer 404 and Settings shows only the toggle; `GET /api/update/status` always works (gate state, running build, pending switch, last outcome).
+- Listing is cached 30 s server-side with one shared in-flight call (`?refresh=1` bypasses); a switch is refused with 409 while jobs run, a submit is in flight, or another switch is pending.
+- Switch = commit + detached helper + restart: the service validates, writes `<dataDir>/update/pending.json`, copies the self-contained `dist/update-helper.js` bundle (`build:helper` in `packages/service/package.json`; node builtins only) into `<dataDir>/update/`, spawns the copy detached, replies 202, then shuts down through the normal shutdown path (idle exit is suppressed while a switch is pending). The helper waits for the service PID to exit (never kills it — aborts with outcome `failed` instead), calls `switchTo` via the seam, restarts the installed entry (`start --foreground` on the same port + data dir), and polls `/api/health` for the target version. Install failure or an unhealthy build rolls back to the previous ref; the outcome (`ok` / `rolled-back` / `failed` + reason + log path) lands in `<dataDir>/update/outcome.json` and is surfaced by `GET /api/update/status`. Before a second start the helper stops the generation it started itself (SIGTERM + bounded wait — the only PIDs it ever signals are its own children), and it trusts only health samples from the generation holding the data-dir lock, so a live-but-wrong build can never satisfy the check while a rollback generation crashes on the held port.
+- The running build's identity rides on `GET /api/health` (`build`: version, source branch, commit, build time; null when the build carries no preview metadata). Real builds read an optional `dist/build-info.json` stamped at publish time; the fake backend reads the current fake channel.
+- Privacy (§16): the service still contacts nothing but `127.0.0.1` itself — channel listing shells out through `gh` under the user's own login (like every other `gh` use), which is why the picker stays opt-in. The only new entries in the static guards are the helper's loopback health probe (`update/helper-entry.ts`, same shape as `cli/lock.ts`) and the helper-bundle build; step 1's `gh`/`npm` calls ride the existing subprocess shapes.
+
+Drill a real switch through the real helper (fake backend, temp port + data dir, never 4517 or the real data dir):
+
+```sh
+mise run build
+export UNVIBE_PORT=4521 UNVIBE_DATA_DIR=$(mktemp -d)/data UNVIBE_AGENT=none UNVIBE_UPDATER_BACKEND=fake
+mkdir -p $UNVIBE_DATA_DIR/update
+cat > $UNVIBE_DATA_DIR/update/fake-channels.json <<'EOF'
+[
+  {"ref": "release", "version": "0.0.1"},
+  {"ref": "preview/drill", "version": "0.0.1-preview.drill.abc1234", "sourceBranch": "drill", "commit": "abc1234def"}
+]
+EOF
+node packages/service/dist/index.js &  # record the PID; enable the gate + POST /api/update/switch
+```
+
+For a rollback drill, add `UNVIBE_UPDATE_FAKE_FAIL=health:preview/drill` (or `install:preview/drill`) to the same setup. Kill only the PIDs you started, never by pattern or port sweep.
+
+Merge wiring (step 1 + step 2): `scripts/release.mjs` must also ship `packages/service/dist/update-helper.js` (one `copy(...)` line next to the other `dist/` copies) and stamp `packages/service/dist/build-info.json` (`{version, sourceBranch, commit, builtAt}`) into the release tree, or the installed build can list channels but can never switch to them.
 
 ## Conventions
 
