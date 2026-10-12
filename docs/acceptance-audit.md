@@ -112,14 +112,49 @@ UI); nothing below was edited by this pass.
 
 ### §4.2 Start page — all met
 
-- Repo picker with recents + local checkout detection — met
-  (`routes/repos.ts`, `e2e/start.spec.ts` "prior sessions list").
+- Repo selector in the top bar with remembered + detected checkouts —
+  met (`StartPage.tsx` native `<select>` next to the brand: remembered
+  under "Repos", detected under "Detected checkouts" with the local path
+  as the title; selection persisted in `unvibe.start.repoId`, demo never
+  selectable; `e2e/start.spec.ts` "repo selector lists remembered and
+  detected repos, persisted").
+- Everything follows the chosen repo — met: the Reviews list shows only
+  the selected repo's reviews (filtered on `ReviewSummary.repoId`, which
+  the service populates from the review row — `reviews/list.ts:151` — so
+  no owner/name matching in web code, correct for remembered and
+  `detected-<sha1>` ids alike); PR / branch lists and "Open a PR by URL
+  or number" stay scoped as before; a pasted PR URL for a different known
+  repo opens it and switches the selector; while a new selection loads,
+  the old repo's lists stay hidden behind a loading hint (`listsFor`
+  gate in `StartPage.tsx`; `e2e/start.spec.ts` "reviews list follows the
+  selected repo").
+- No "New review" / "Try the demo" sections — met: no divider,
+  scroll-to button or `newReviewRef` plumbing; the PR / branch sections
+  follow the Reviews list; the demo is a row inside Reviews ("Demo · no
+  tokens", `{ repoId: "demo" }`, shown regardless of the selected repo;
+  an existing demo session row replaces the second entry —
+  `e2e/start.spec.ts` "demo row opens the fixture review").
+  `newreview-agent-hint` sits by Reviews, `newreview-gh-hint` by the PR
+  lists (same `data-testid`s).
+- No repos: short empty state linking to `/settings#repositories` (demo
+  row still shows) — met (`data-testid="no-repos"`; exercised by
+  `e2e/real-service.spec.ts`, whose fresh data dir starts repo-less).
+- Repos are added in Settings — met (`RepositoriesSection.tsx`:
+  remembered repos with owner/name + path, add-by-path input with an
+  empty-field hint; `#repositories` anchor; `e2e/settings.spec.ts`
+  "repositories section lists remembered repos and adds by path"). No
+  remove-repo endpoint exists on the service, so no Remove action.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
   refresh banner counts).
-- Selections remembered — met (`reviews/list.ts` last-opened ordering,
-  `start.spec.ts` “most recent first”).
+- Selections remembered — met (selector in `localStorage`,
+  `start.spec.ts` persistence round-trip; last-opened ordering in
+  `reviews/list.ts`).
+
+Conformance note: this matches PRD §4.2 ("For the selected repo: …")
+more closely than the previous all-repos Reviews list did — no PRD edit
+needed (that deviation is closed, not added).
 
 ### §4.3 Pages — all met
 
