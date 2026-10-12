@@ -104,8 +104,9 @@ test("revealSource unfolds a folded hunk and highlights the range", async ({ pag
 test("start page opens a review", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-  await expect(page.getByText("urllib3/urllib3").first()).toBeVisible();
-  await page.getByText("Unfold obsolete folded response header values").first().click();
+  // The page follows the selected repo; the remembered repo is selected.
+  await expect(page.getByLabel("Repository")).toHaveValue("urllib3");
+  await page.locator('[data-testid="session-demo"] button.cj').click();
   await expect(page).toHaveURL(/\/review\/demo/);
   await expect(page.locator(connFile)).toBeVisible();
 });

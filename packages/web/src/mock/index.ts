@@ -335,6 +335,28 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
   throw new Error(`unknown mock card control ${(a as { kind: string }).kind}`);
 }
 
+function readChangesFailures(): string[] {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.repoChangesFail");
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve once the `unvibe.mock.repoChangesHold` key is gone (or soon anyway). */
+async function awaitChangesRelease(): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    try {
+      if (!localStorage.getItem("unvibe.mock.repoChangesHold")) return;
+    } catch {
+      return;
+    }
+    await wait(50);
+  }
+}
+
 let rev = 1;
 const hunkStates = seedHunkStates();
 let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
@@ -489,6 +511,81 @@ function seedContributions(): Contribution[] {
 let mockContributions: Contribution[] = seedContributions();
 
 /**
+ * Mock shared-context debug document (issue #32): canned base + log plus
+ * the live seed contributions, so the debug page shows all three parts and
+ * delete visibly removes an item in mock mode.
+ */
+function mockSharedContext(reviewId: string): {
+  reviewId: string;
+  base: string;
+  log: string;
+  contributions: string;
+} {
+  const base = [
+    "## Base",
+    "",
+    "1 base built for this review. The pack below is the current pack — what would be sent now, not a historical rebuild.",
+    "",
+    "### Base `v1|guide-mock|mock|mock-main`",
+    "",
+    "- version: `v1` · guide revision: `guide-mock` · provider/model: `mock/mock-main`",
+    "- base tokens: 12000",
+    "- appended since build: 0",
+    "- superseded: 0.0%",
+    "- last rebuild: built fresh",
+    "",
+    "### Current pack for `v1|guide-mock|mock|mock-main` (12000 tokens)",
+    "",
+    "#### L0 system",
+    "",
+    "```text",
+    "You are helping a person read and review a code change.",
+    "```",
+    "",
+    "#### L1 + L1b + L2",
+    "",
+    "```text",
+    "PR #5020 on urllib3/urllib3",
+    "Diff: 8 hunks, +42 −18",
+    "### The central change [[card:central]]",
+    "",
+    "Unfold obsolete folded values.",
+    "```",
+    "",
+  ].join("\n");
+  const log = [
+    "## Log",
+    "",
+    "2 entries. Entries up to seq 1 are already in base `v1|guide-mock|mock|mock-main`. Batch threshold 2000 tokens.",
+    "",
+    "- [1 new-card global] central card written · in base",
+    "- [2 thread-summary global] ask about retry settled · waiting for batch",
+    "",
+  ].join("\n");
+  const parts = ["## Contributions", ""];
+  if (reviewId === "demo" && mockContributions.length > 0) {
+    parts.push(`${mockContributions.length} contributions.`, "");
+    for (const c of mockContributions) {
+      parts.push(`### ${c.id}`, "");
+      parts.push(c.sourceThread ? `- thread: \`${c.sourceThread}\`` : `- session: \`${c.sourceSession}\``);
+      if (c.replaces) parts.push(`- replaces: \`${c.replaces}\``);
+      if (c.status === "merged" || c.items.some((i) => i.kind === "correction")) parts.push(`- status: ${c.status}`);
+      for (const item of c.items) {
+        const target = item.target ? ` → \`${item.target}\`` : "";
+        parts.push(`- **${item.kind}**${target}: ${item.text}`);
+        if (item.citations.length > 0) {
+          parts.push(`  - cites: ${item.citations.map((cit) => `\`${cit.target}\``).join(", ")}`);
+        }
+      }
+      parts.push("");
+    }
+  } else {
+    parts.push("(no contributions yet)", "");
+  }
+  return { reviewId, base, log, contributions: parts.join("\n") };
+}
+
+/**
  * Test-only: reset hunk states and the snapshot revision to the seeded
  * fixture (component tests share this module's in-memory state).
  */
@@ -563,7 +660,25 @@ function seedReviewList(): ReviewSummary[] {
       guideStatus: "running",
       guideDetail: "Running: critic",
     },
+    ...readExtraSessions(),
   ];
+}
+
+/**
+ * Test-only extra sessions for the start page (`unvibe.mock.extraSessions`,
+ * a JSON array of `ReviewSummary`): e.g. a review whose repo is no longer
+ * in the repo list, which the page renders in its orphan group. Read at
+ * seed time so `addInitScript` can set it before the page loads.
+ */
+function readExtraSessions(): ReviewSummary[] {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.extraSessions");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as ReviewSummary[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 let mockReviewList: ReviewSummary[] = seedReviewList();
@@ -925,6 +1040,19 @@ export const mockApi = {
   },
 
   repoChanges: async (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> => {
+    // Test-only hooks for the start page (all no-ops unless set):
+    // - `unvibe.mock.repoChangesHold`: when present, hold every repo-lists
+    //   response until the key is removed, so specs can observe the loading
+    //   state (the repo-less demo entry is never held);
+    // - `unvibe.mock.repoChangesFail`: JSON array of filters to reject
+    //   (e.g. ["authoring","review-requested","recent"]), each with a
+    //   service-shaped 500 carrying a mock gh error.
+    if (id !== "demo") await awaitChangesRelease();
+    const failing = readChangesFailures();
+    const key = filter ?? "all";
+    if (failing.includes(key)) {
+      throw new Error(`GET /api/repos/${id}/changes?filter=${key}: 500 {"error":"mock gh is down"}`);
+    }
     const authoring: RepoChange[] = [
       {
         kind: "pr",
@@ -983,6 +1111,21 @@ export const mockApi = {
       },
     ];
     void id;
+    // Demo entry point: the start page fetches `repoChanges("demo")` and
+    // renders `kind: "demo"` changes as a row inside the Reviews list (no
+    // tokens, same pipeline path). Like the service, the demo answers no
+    // filtered section.
+    if (id === "demo") {
+      return {
+        changes: [
+          {
+            kind: "demo",
+            title: "Demo: urllib3#5020 — Unfold obsolete folded response headers",
+            demo: "urllib3-5020",
+          },
+        ],
+      };
+    }
     switch (filter) {
       case "authoring":
         return { changes: authoring };
@@ -1814,6 +1957,8 @@ export const mockApi = {
   contributions: async (reviewId: string) => ({
     contributions: reviewId === "demo" ? [...mockContributions] : [],
   }),
+
+  sharedContext: async (reviewId: string) => mockSharedContext(reviewId),
 
   deleteContribution: async (reviewId: string, contributionId: string) => {
     void reviewId;

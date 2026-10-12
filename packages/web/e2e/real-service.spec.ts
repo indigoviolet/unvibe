@@ -90,12 +90,27 @@ test.describe("real service", () => {
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-    // Add this repo through the start page (PRD §4.2).
-    await page.getByLabel("Add a repo by path").fill(repoDir);
-    await page.getByRole("button", { name: "Add by path" }).click();
-    await expect(page.getByText(`local/${path.basename(repoDir)}`).first()).toBeVisible();
-    // Open a review of the scratch branch.
-    await page.locator("#new-review .ci button").filter({ hasText: "feature" }).first().click();
+    // Repos are added in Settings; the start page follows the selector.
+    // Wait for the repo state to settle: the selector or the empty state.
+    await expect(
+      page.locator('select[aria-label="Repository"], [data-testid="no-repos"]').first(),
+    ).toBeVisible();
+    if (await page.locator('[data-testid="no-repos"]').isVisible()) {
+      await expect(page.locator('[data-testid="no-repos"]')).toBeVisible();
+      await page.getByRole("link", { name: "Add one in Settings" }).click();
+      await expect(page).toHaveURL(/\/settings#repositories/);
+      await page.getByLabel("Add a repo by path").fill(repoDir);
+      await page.getByRole("button", { name: "Add by path" }).click();
+      await expect(page.locator('[data-testid^="repo-"]')).toContainText(path.basename(repoDir));
+      await page.getByRole("link", { name: "Back to start" }).click();
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+    }
+    // The start page follows the selected repo: select the added checkout,
+    // then open a review of the scratch branch.
+    await page.getByLabel("Repository").selectOption({ label: `local/${path.basename(repoDir)}` });
+    const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
+    await expect(feature).toBeVisible({ timeout: 30_000 });
+    await feature.click();
     await page.waitForURL(/\/review\/rv_[0-9a-f]+/, { timeout: 60_000 });
     const reviewId = page.url().match(/\/review\/([^/?#]+)/)?.[1] ?? "";
     expect(reviewId).toMatch(/^rv_[0-9a-f]+$/);

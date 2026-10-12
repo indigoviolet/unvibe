@@ -112,20 +112,78 @@ UI); nothing below was edited by this pass.
 
 ### §4.2 Start page — all met
 
-- Repo picker with recents + local checkout detection — met
-  (`routes/repos.ts`, `e2e/start.spec.ts` "prior sessions list").
+- Repo selector in the top bar with remembered + detected checkouts —
+  met (`StartPage.tsx` native `<select>` next to the brand: remembered
+  under "Repos", detected under "Detected checkouts" with the local path
+  as the title; selection persisted in `unvibe.start.repoId`, demo never
+  selectable; `e2e/start.spec.ts` "repo selector lists remembered and
+  detected repos, persisted").
+- Everything follows the chosen repo — met: the Reviews list shows only
+  the selected repo's reviews (filtered on `ReviewSummary.repoId`, which
+  the service populates from the review row — `reviews/list.ts:151` — so
+  no owner/name matching in web code, correct for remembered and
+  `detected-<sha1>` ids alike); PR / branch lists and "Open a PR by URL
+  or number" stay scoped as before; a pasted PR URL for a different known
+  repo opens it and switches the selector; while a new selection loads,
+  the old repo's lists stay hidden behind a loading hint (`listsFor`
+  gate in `StartPage.tsx`; `e2e/start.spec.ts` "reviews list follows the
+  selected repo").
+- No "New review" / "Try the demo" sections — met: no divider,
+  scroll-to button or `newReviewRef` plumbing; the PR / branch sections
+  follow the Reviews list; the demo is a row inside Reviews ("Demo · no
+  tokens", `{ repoId: "demo" }`, shown regardless of the selected repo;
+  an existing demo session row replaces the second entry —
+  `e2e/start.spec.ts` "demo row opens the fixture review").
+  `newreview-agent-hint` sits by Reviews, `newreview-gh-hint` by the PR
+  lists (same `data-testid`s).
+- No repos: short empty state linking to `/settings#repositories` (demo
+  row still shows) — met (`data-testid="no-repos"`; exercised by
+  `e2e/real-service.spec.ts`, whose fresh data dir starts repo-less).
+  A failed `GET /api/repos` keeps sessions visible instead (offline copy
+  in the same box).
+- List loads are per-selection loading / loaded / failed — met: the PR
+  input never waits on the lists; switching repos clears the old lists
+  synchronously (no stale frame) behind a loading hint, and a nonce
+  guarantees every selection pairs with a fresh load (re-selecting the
+  current repo still fires `change` and reloads — without this the
+  effect's id-equality bail-out stuck the page on "Loading…", found via
+  a 3-minute e2e hang whose trace showed completed responses); a 30 s
+  timeout bounds the loading state regardless; a total failure shows an
+  inline error with Retry; one failed filter shows its error in that
+  section while the others render (`Promise.allSettled` in
+  `StartPage.tsx`; the service already degrades gh/git failures to empty
+  per source in `repos/changes.ts`, so gh being down never rejects —
+  whole-request failures are unknown-repo 404s or an unreachable
+  service). Covered by `e2e/start.spec.ts` (fail-all + Retry recovery,
+  fail-two section errors with branches intact, deterministic held-load
+  with release, same-value reselect reloads).
+- Reviews whose repo is in neither list stay reachable — met: sessions
+  with an unknown non-demo `repoId` render in a labelled orphan group at
+  the end of Reviews with working open and Remove (`e2e/start.spec.ts`
+  "reviews for checkouts no longer listed").
+- Repos are added in Settings — met (`RepositoriesSection.tsx`:
+  remembered repos with owner/name + path, add-by-path input with an
+  empty-field hint; `#repositories` anchor; `e2e/settings.spec.ts`
+  "repositories section lists remembered repos and adds by path"). No
+  remove-repo endpoint exists on the service, so no Remove action.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
   refresh banner counts).
-- Selections remembered — met (`reviews/list.ts` last-opened ordering,
-  `start.spec.ts` “most recent first”).
-- Native folder picker (#26, in progress — built, not yet mounted):
-  `POST /api/repos/pick-folder` (osascript / zenity→kdialog with
-  cancelled/unavailable outcomes, `pick-folder.test.ts`) plus the
-  `BrowseFolderButton` component (`BrowseFolderButton.test.tsx`) exist but
-  are wired into no page yet; mounting in the Settings Repositories
-  section waits for #31.
+<- Selections remembered — met (selector in `localStorage`,
+  `start.spec.ts` persistence round-trip; last-opened ordering in
+  `reviews/list.ts`).
+- Native folder picker (#26, in progress): `POST /api/repos/pick-folder`
+  (osascript / zenity→kdialog with cancelled/unavailable outcomes,
+  `pick-folder.test.ts`) plus the `BrowseFolderButton`
+  (`BrowseFolderButton.test.tsx`) exist but are wired into no page yet;
+  mounting in the Settings Repositories section follows on this branch
+  now that #31 is merged.
+
+Conformance note: this matches PRD §4.2 ("For the selected repo: …")
+more closely than the previous all-repos Reviews list did — no PRD edit
+needed (that deviation is closed, not added).
+>>>>>>> main
 
 ### §4.3 Pages — all met
 
@@ -304,16 +362,21 @@ UI); nothing below was edited by this pass.
   with description as secondary text (Claude + Codex); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
-- Prompts (Template raw + Expanded with L0–L4 marks, tokens, cache part;
-  view-only) — met (`settings.spec.ts`, `prompts-route.test.ts`,
+- Prompts (Template raw in Settings; per-review Expanded with L0–L4
+  marks, tokens, cache part on the debug page; view-only) — met
+  (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`,
   `GET /api/prompts` ran 200 from the global install).
 - Limits/budgets (sessions per provider, inline budget, rebuild
   thresholds) — met (`settings.spec.ts` “limits persist across reload”).
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
-  (`settings.spec.ts`, `GET /api/jobs` ran; prompt snapshots now served
-  per-job to keep lists small).
-- Shared context (contributions + thread + delete) — met
-  (`sharedctx.test.ts`, `routes/contributions.ts`).
+  (issue #32; on the per-review debug page now, relocated unchanged from
+  Settings: `e2e/debug.spec.ts`, `GET /api/jobs` ran; prompt snapshots now
+  served per-job to keep lists small).
+- Shared context debug page (issue #32; per-review `/review/:id/debug`,
+  not in Settings): base keys + stats + current pack, log with
+  in-base/waiting markers, contributions with thread + delete — met
+  (`shared-context-debug.test.ts`, `routes/shared-context.ts`,
+  `e2e/debug.spec.ts`).
 
 ### §4.15 Conventions — all met
 
@@ -487,8 +550,9 @@ UI); nothing below was edited by this pass.
   met (`prompt-goldens.test.ts`, `prompts.test.ts`).
 - All 14 template rows present — met (18 files cover every row;
   `routes/prompts.ts` serves template + expanded).
-- Settings shows template + expanded with L0–L4 marks, tokens, cache part
-  — met (`settings.spec.ts`, `prompts-route.test.ts`).
+- Settings shows the template; the debug page shows the per-review
+  expanded text with L0–L4 marks, tokens, cache part — met
+  (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`).
 - Diagrams: D2 with `link:` citations on shapes/connections — met
   (`reply-format.md` §5, `prompts/includes/d2-convention.md` single source,
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
@@ -614,13 +678,15 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   reasons; live: 0 unverified, no hide violations).
 - M3 interaction — met (explain/ask/note everywhere; depth/examples/
   diagrams/undo; expansions→links; open-as-page; read; contents; log +
-  change lists + contributions + shared-context view).
+  change lists + contributions + per-review shared-context debug page,
+  issue #32).
 - M4 comments/submit — met (threads ×3, Comments menu + For-PR drafts,
   suggested comments, author-gated description edit, one-review submit).
 - M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
   hunk state, update pass, rebase-no-change test (a)).
-- M6 second opinion + settings — met (blind/check, models/prompts/limits/
-  jobs+usage settings page; isolation e2e on the real prompt).
+- M6 second opinion + settings — met (blind/check, models/prompt-
+  templates/limits settings page; jobs + expanded prompts + usage on the
+  per-review debug page, issue #32; isolation e2e on the real prompt).
 
 ## §18 Tests — all met
 
