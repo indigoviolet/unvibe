@@ -17,6 +17,7 @@
 import type {
   ActionResponse,
   AddRepoRequest,
+  AddRepoResponse,
   ChangesFilter,
   Contribution,
   CreateReviewRequest,
@@ -29,6 +30,7 @@ import type {
   PromptTemplate,
   ReadinessResponse,
   RefreshResponse,
+  RemoveRepoResponse,
   Repo,
   RepoChange,
   RepoChangesResponse,
@@ -45,6 +47,7 @@ import type {
   VersionStatus,
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
+import { parseGitHubRepoInput } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } from "./guide.js";
@@ -89,7 +92,15 @@ function readJson<T>(key: string, fallback: T): T {
 
 function getRepos(): Repo[] {
   const added = readJson<Repo[]>(ADDED_KEY, []);
-  return [...added, ...SEED_REPOS];
+  // Fresh-install state for specs (`unvibe.mock.noRepos`): seeds hidden,
+  // repos added during the test still listed.
+  let seeds = SEED_REPOS;
+  try {
+    if (localStorage.getItem("unvibe.mock.noRepos")) seeds = [];
+  } catch {
+    // Ignore.
+  }
+  return [...added, ...seeds];
 }
 
 // --- review snapshot -----------------------------------------------------
@@ -354,6 +365,52 @@ async function awaitChangesRelease(): Promise<void> {
       return;
     }
     await wait(50);
+  }
+}
+
+/** Resolve once the `unvibe.mock.addRepoHold` key is gone (or soon anyway). */
+async function awaitAddRelease(): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    try {
+      if (!localStorage.getItem("unvibe.mock.addRepoHold")) return;
+    } catch {
+      return;
+    }
+    await wait(50);
+  }
+}
+
+/** Extra clone latency in mock mode (`unvibe.mock.addRepoDelayMs`, default 150). */
+function addRepoDelayMs(): number {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.addRepoDelayMs");
+    if (raw !== null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+  } catch {
+    // Fall through to the default.
+  }
+  return 150;
+}
+
+/** Forced add failure in mock mode (`unvibe.mock.addRepoFail` = error text). */
+function addRepoFailure(): string | null {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.addRepoFail");
+    return raw ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Stale-clone note in mock mode (`unvibe.mock.repoChangesFetchError` = note). */
+function changesFetchError(): string | null {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.repoChangesFetchError");
+    return raw ? raw : null;
+  } catch {
+    return null;
   }
 }
 
@@ -1015,13 +1072,54 @@ export const mockApi = {
 
   repos: async (): Promise<ReposResponse> => ({ repos: getRepos() }),
 
-  addRepo: async (body: AddRepoRequest): Promise<ReposResponse> => {
-    const name = body.path.split("/").filter(Boolean).pop() ?? body.path;
+  addRepo: async (body: AddRepoRequest): Promise<AddRepoResponse> => {
+    // #27: mirror the service contract — path adds a local checkout, url
+    // clones a managed repo. Test hooks: `unvibe.mock.addRepoHold` holds
+    // the clone so specs can observe the busy state,
+    // `unvibe.mock.addRepoDelayMs` sets extra latency (default 150 ms),
+    // `unvibe.mock.addRepoFail` fails with that error text. Invalid URLs
+    // 400 like the service (the UI validates first with the same parser).
+    const raw = body.url ?? body.path ?? "";
+    if (body.url) {
+      let parsed: { owner: string; name: string; prNumber?: number };
+      try {
+        parsed = parseGitHubRepoInput(raw);
+      } catch (err) {
+        throw new Error(`POST /api/repos: 400 ${JSON.stringify({ error: (err as Error).message })}`);
+      }
+      await awaitAddRelease();
+      await wait(addRepoDelayMs());
+      const forced = addRepoFailure();
+      if (forced) {
+        throw new Error(`POST /api/repos: 404 ${JSON.stringify({ error: forced })}`);
+      }
+      const { owner, name, prNumber } = parsed;
+      const repo: Repo = {
+        id: `managed-${owner.toLowerCase()}-${name.toLowerCase()}`,
+        owner,
+        name,
+        localPath: `/mock/data/repos/${owner.toLowerCase()}/${name.toLowerCase()}`,
+        lastOpened: Date.now(),
+        managed: true,
+      };
+      try {
+        const added = readJson<Repo[]>(ADDED_KEY, []);
+        if (!added.some((r) => r.id === repo.id)) {
+          localStorage.setItem(ADDED_KEY, JSON.stringify([repo, ...added]));
+        }
+      } catch {
+        // Non-fatal.
+      }
+      const out: AddRepoResponse = { repos: getRepos() };
+      if (prNumber !== undefined) out.prNumber = prNumber;
+      return out;
+    }
+    const name = raw.split("/").filter(Boolean).pop() ?? raw;
     const repo: Repo = {
       id: `local-${name}`,
       owner: "local",
       name,
-      localPath: body.path,
+      localPath: raw,
       lastOpened: Date.now(),
     };
     try {
@@ -1031,6 +1129,28 @@ export const mockApi = {
       // Non-fatal.
     }
     return { repos: getRepos() };
+  },
+
+  removeRepo: async (id: string): Promise<RemoveRepoResponse> => {
+    // #27: mirror the service — refuse while mock reviews reference the
+    // repo (the seed urllib3 repo has sessions, so removing it 409s).
+    const reviews = mockSummaries();
+    const n = reviews.filter((r) => r.repoId === id).length;
+    if (n > 0) {
+      const repo = getRepos().find((r) => r.id === id);
+      const label = repo ? `${repo.owner}/${repo.name}` : id;
+      throw new Error(
+        `DELETE /api/repos/${id}: 409 ${JSON.stringify({ error: `repo ${label} still has ${n} review${n === 1 ? "" : "s"} — delete ${n === 1 ? "it" : "them"} first, then remove the repo` })}`,
+      );
+    }
+    try {
+      const added = readJson<Repo[]>(ADDED_KEY, []);
+      const found = added.find((r) => r.id === id);
+      localStorage.setItem(ADDED_KEY, JSON.stringify(added.filter((r) => r.id !== id)));
+      return { ok: true as const, removedClone: found?.managed === true };
+    } catch {
+      return { ok: true as const, removedClone: false };
+    }
   },
 
   /** Mock folder dialog (#26): pretends the user picked a checkout. */
@@ -1047,6 +1167,8 @@ export const mockApi = {
     // - `unvibe.mock.repoChangesFail`: JSON array of filters to reject
     //   (e.g. ["authoring","review-requested","recent"]), each with a
     //   service-shaped 500 carrying a mock gh error.
+    // - `unvibe.mock.repoChangesFetchError`: when present, every response
+    //   carries it as `fetchError` (stale managed clone, like the service).
     if (id !== "demo") await awaitChangesRelease();
     const failing = readChangesFailures();
     const key = filter ?? "all";
@@ -1128,15 +1250,21 @@ export const mockApi = {
     }
     switch (filter) {
       case "authoring":
-        return { changes: authoring };
+        return withFetchNote({ changes: authoring });
       case "review-requested":
-        return { changes: requested };
+        return withFetchNote({ changes: requested });
       case "branches":
-        return { changes: branches };
+        return withFetchNote({ changes: branches });
       case "recent":
-        return { changes: [...branches, ...previous] };
+        return withFetchNote({ changes: [...branches, ...previous] });
       default:
-        return { changes: [...authoring, ...requested, ...branches, ...previous] };
+        return withFetchNote({ changes: [...authoring, ...requested, ...branches, ...previous] });
+    }
+
+    /** Attach the stale-clone note when the `repoChangesFetchError` hook is set. */
+    function withFetchNote(res: RepoChangesResponse): RepoChangesResponse {
+      const note = changesFetchError();
+      return note ? { ...res, fetchError: note } : res;
     }
   },
 

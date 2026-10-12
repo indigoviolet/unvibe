@@ -274,3 +274,91 @@ test("failing readiness shows compact callouts linking to Settings", async ({ pa
   // Starting a local-branch review stays possible: the hint says what needs gh.
   await expect(page.locator('[data-testid="newreview-gh-hint"]')).toContainText("PR lists need gh");
 });
+
+test("pasting a PR URL for an unknown repo offers to clone it, then selects the repo and opens the PR", async ({
+  page,
+}) => {
+  await page.getByLabel("Open a PR by URL or number").fill("https://github.com/acme/app/pull/123");
+  await page.getByRole("button", { name: "Open PR" }).click();
+  const offer = page.locator('[data-testid="pr-clone-offer"]');
+  await expect(offer).toContainText("acme/app isn't in your list. Clone it and open #123?");
+  await offer.getByRole("button", { name: "Clone and open #123" }).click();
+  // Clone, select, open: the mock review opens and the selector follows.
+  await expect(page).toHaveURL(/\/review\//, { timeout: 15000 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(page.getByLabel("Repository")).toHaveValue("managed-acme-app");
+  await expect(page.getByLabel("Repository").locator('option[value="managed-acme-app"]')).toContainText(
+    "acme/app (cloned)",
+  );
+});
+
+test("pasting owner/name#N for an unknown repo offers the same clone flow", async ({ page }) => {
+  await page.getByLabel("Open a PR by URL or number").fill("acme/app#7");
+  await page.getByRole("button", { name: "Open PR" }).click();
+  const offer = page.locator('[data-testid="pr-clone-offer"]');
+  await expect(offer).toContainText("acme/app isn't in your list. Clone it and open #7?");
+  await offer.getByRole("button", { name: "Clone and open #7" }).click();
+  await expect(page).toHaveURL(/\/review\//, { timeout: 15000 });
+});
+
+test("cancelling the clone offer leaves the input as typed", async ({ page }) => {
+  const input = page.getByLabel("Open a PR by URL or number");
+  await input.fill("https://github.com/acme/app/pull/123");
+  await page.getByRole("button", { name: "Open PR" }).click();
+  const offer = page.locator('[data-testid="pr-clone-offer"]');
+  await expect(offer).toBeVisible();
+  await offer.getByRole("button", { name: "Cancel" }).click();
+  await expect(offer).toHaveCount(0);
+  await expect(input).toHaveValue("https://github.com/acme/app/pull/123");
+  // Nothing was added: the selector still offers only the seeds.
+  await expect(page.getByLabel("Repository")).toHaveValue("urllib3");
+  await expect(page).toHaveURL("/");
+});
+
+test("a stale managed clone shows the refresh note once", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.repoChangesFetchError", "couldn't refresh the local clone (offline?)");
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // Three lists calls carry the same note; the page shows it exactly once.
+  const note = page.locator('[data-testid="fetch-note"]');
+  await expect(note).toHaveCount(1);
+  await expect(note).toContainText("couldn't refresh the local clone");
+  // The lists still render underneath.
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+});
+
+test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.noRepos", "1");
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // Both routes in: paste a PR URL here, or add a repo in Settings.
+  const empty = page.locator('[data-testid="no-repos"]');
+  await expect(empty).toContainText("Paste a PR URL below");
+  await expect(empty.getByRole("link", { name: "add one in Settings" })).toHaveAttribute(
+    "href",
+    "/settings#repositories",
+  );
+  // No repos, no selector yet.
+  await expect(page.getByLabel("Repository")).toHaveCount(0);
+  // A bare number still needs a repo first.
+  await empty.getByLabel("Open a PR by URL or number").fill("5020");
+  await empty.getByRole("button", { name: "Open PR" }).click();
+  await expect(empty).toContainText("Add a repo in Settings first");
+  // A PR URL offers the clone.
+  await empty.getByLabel("Open a PR by URL or number").fill("https://github.com/acme/app/pull/123");
+  await empty.getByRole("button", { name: "Open PR" }).click();
+  const offer = page.locator('[data-testid="pr-clone-offer"]');
+  await expect(offer).toContainText("acme/app isn't in your list. Clone it and open #123?");
+  await offer.getByRole("button", { name: "Clone and open #123" }).click();
+  await expect(page).toHaveURL(/\/review\//, { timeout: 15000 });
+  // Back on the start page the selector exists with the clone selected.
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(page.getByLabel("Repository")).toHaveValue("managed-acme-app");
+  await expect(page.locator('[data-testid="no-repos"]')).toHaveCount(0);
+});

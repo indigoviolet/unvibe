@@ -11,3 +11,25 @@ export {
 } from "./detect.js";
 export { repoChanges, type ChangesDeps } from "./changes.js";
 export { pickFolder, type PickFolderOptions } from "./pick-folder.js";
+export {
+  addManagedRepo,
+  assertManagedPath,
+  CloneError,
+  cloneArgv,
+  cloneTargetState,
+  ensureManagedClone,
+  isPathInside,
+  managedRepoDir,
+  managedReposRoot,
+  MANAGED_FETCH_FAIL_BACKOFF_MS,
+  MANAGED_FETCH_FRESH_MS,
+  MANAGED_FETCH_TIMEOUT_MS,
+  mapCloneError,
+  refreshManagedCheckout,
+  removeRepo,
+  resetManagedCloneStateForTests,
+  type AddDeps,
+  type CloneDeps,
+  type RemovableRepos,
+  type TargetState,
+} from "./managed.js";

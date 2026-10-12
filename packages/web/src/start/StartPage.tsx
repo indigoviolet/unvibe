@@ -15,6 +15,11 @@
  * - The PR / branch lists and "Open a PR by URL or number" are scoped to
  *   the selected repo. A pasted PR URL for a different known repo still
  *   works: it opens the review and switches the selector to that repo.
+ *   A pasted PR URL (or `owner/name#N`) for a repo that is NOT in the
+ *   list offers to clone it instead of erroring (#27): confirm clones via
+ *   `POST /api/repos`, selects the new repo and opens the PR; cancel
+ *   leaves the input as typed. Both sides parse with the shared
+ *   `parseGitHubRepoInput`, so the page and the service always agree.
  *   The PR input never waits on the lists. List loads are tracked per
  *   selection (loading / loaded / failed): switching repos clears the old
  *   lists synchronously so stale data can never render, a nonce guarantees
@@ -24,13 +29,18 @@
  *   shows an inline error with a Retry button; a single failed filter
  *   shows its error in that section while the others still render
  *   (the service already degrades gh/git failures to empty per source).
+ *   A managed clone that could not be refreshed reports the service's
+ *   `fetchError` note once above the lists. Managed clones read
+ *   "owner/name (cloned)" in the selector.
  * - Sessions whose repo is in neither the remembered nor the detected
  *   list (a checkout that went away, or repos failing to load) are not
  *   dropped: they render in a labelled group at the end of Reviews with
  *   working open and Remove.
- * - With no repos at all, a short empty state links to Settings
- *   (`/settings#repositories`), where repos are added; the demo row still
- *   shows. Repos are never added here.
+ * - With no repos at all, a short empty state offers both routes in:
+ *   paste a PR URL below and Unvibe clones the repo and opens it, or add
+ *   a repo in `/settings#repositories` (the demo row still shows). The PR
+ *   opener also renders whenever no repo is selected. Repos are never
+ *   added via a path here.
  * - Readiness callouts fill in after render (never block page load); each
  *   links to the relevant Settings section. The agent/gh hints sit next to
  *   the lists they concern (`newreview-agent-hint` by Reviews,
@@ -45,8 +55,9 @@ import type {
   RepoChange,
   ReviewSummary,
 } from "@unvibe/shared";
+import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
-import { toast } from "../floating/Toast.js";
+import { Toast, toast } from "../floating/Toast.js";
 
 const REPO_KEY = "unvibe.start.repoId";
 
@@ -133,12 +144,12 @@ function runningLabel(detail: string | undefined): string {
   }
 }
 
-/** Parse "123" / "#123" / PR URL / "owner/repo#123" into { repoId, pr }. */
+/** Parse "123" / "#123" / PR URL / "owner/repo#123" into a target or an error. */
 function parsePrInput(
   raw: string,
   repos: Repo[],
   selectedId: string | null,
-): { repoId: string; pr: number } | { error: string } {
+): { repoId: string; pr: number } | { offer: { owner: string; name: string; pr: number } } | { error: string } {
   const input = raw.trim();
   if (!input) return { error: "Enter a PR number or URL." };
   const num = input.match(/^#?(\d+)$/);
@@ -146,23 +157,22 @@ function parsePrInput(
     if (!selectedId) return { error: "Add a repo in Settings first, then enter its PR number." };
     return { repoId: selectedId, pr: Number(num[1]) };
   }
-  const url = input.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/pull\/(\d+)/i);
-  if (url) {
-    const [, owner, name, n] = url;
-    const found = repos.find(
-      (r) => r.owner.toLowerCase() === owner.toLowerCase() && r.name.toLowerCase() === name.toLowerCase(),
-    );
-    if (!found) return { error: `Repo ${owner}/${name} isn't in your list — add it in Settings.` };
-    return { repoId: found.id, pr: Number(n) };
+  // Repo-scoped forms (a PR URL or `owner/name#N`): the shared parser is
+  // the single definition both sides validate against, so the page and
+  // the service always agree on what a paste means. A repo that is not in
+  // the list becomes a clone offer instead of an error.
+  let ref: { owner: string; name: string; prNumber?: number } | null = null;
+  try {
+    ref = parseGitHubRepoInput(input);
+  } catch {
+    ref = null;
   }
-  const short = input.match(/^([^/\s]+)\/([^/\s#]+)#(\d+)$/);
-  if (short) {
-    const [, owner, name, n] = short;
+  if (ref && ref.prNumber !== undefined) {
     const found = repos.find(
-      (r) => r.owner.toLowerCase() === owner.toLowerCase() && r.name.toLowerCase() === name.toLowerCase(),
+      (r) => r.owner.toLowerCase() === ref.owner.toLowerCase() && r.name.toLowerCase() === ref.name.toLowerCase(),
     );
-    if (!found) return { error: `Repo ${owner}/${name} isn't in your list — add it in Settings.` };
-    return { repoId: found.id, pr: Number(n) };
+    if (found) return { repoId: found.id, pr: ref.prNumber };
+    return { offer: { owner: ref.owner, name: ref.name, pr: ref.prNumber } };
   }
   return { error: "Enter a PR number (e.g. 5020) or a GitHub PR URL." };
 }
@@ -212,6 +222,14 @@ export function StartPage(): React.JSX.Element {
   // PR by URL / number.
   const [prInput, setPrInput] = useState("");
   const [prError, setPrError] = useState<string | null>(null);
+  // Clone offer for a pasted PR whose repo is not in the list (#27):
+  // confirm clones, selects the repo and opens the PR; cancel keeps the
+  // input as typed.
+  const [prOffer, setPrOffer] = useState<{ owner: string; name: string; pr: number; input: string } | null>(null);
+  const [cloningPr, setCloningPr] = useState<string | null>(null);
+  // Stale-clone note from the lists (`fetchError` on RepoChangesResponse):
+  // the three calls all carry it, so the first one wins and shows once.
+  const [fetchNote, setFetchNote] = useState<string | null>(null);
 
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
@@ -260,6 +278,13 @@ export function StartPage(): React.JSX.Element {
     // `recent` mixes branches and previous reviews; branches only here
     // (prior sessions come from GET /api/reviews, filtered per repo).
     setBranches(rec.status === "fulfilled" ? rec.value.changes.filter((c) => c.kind === "branch") : []);
+    // A managed clone that could not be refreshed reports the same
+    // `fetchError` on every call: show it once, near the lists.
+    setFetchNote(
+      [a, r, rec].flatMap((x) =>
+        x.status === "fulfilled" && x.value.fetchError ? [x.value.fetchError] : [],
+      )[0] ?? null,
+    );
     setListErrors({
       authoring: a.status === "rejected" ? friendlyError(a.reason) : null,
       requested: r.status === "rejected" ? friendlyError(r.reason) : null,
@@ -281,6 +306,7 @@ export function StartPage(): React.JSX.Element {
       setBranches([]);
       setListErrors(EMPTY_ERRORS);
       setListsError(null);
+      setFetchNote(null);
       setListsFor(null);
       setSelectedId(id);
       setListsNonce((n) => n + 1);
@@ -291,6 +317,7 @@ export function StartPage(): React.JSX.Element {
   const retryLists = useCallback(() => {
     if (!selectedId) return;
     setListsError(null);
+    setFetchNote(null);
     setListsFor(null);
     void loadLists(selectedId);
   }, [selectedId, loadLists]);
@@ -399,14 +426,115 @@ export function StartPage(): React.JSX.Element {
     const parsed = parsePrInput(prInput, repos, selectedId);
     if ("error" in parsed) {
       setPrError(parsed.error);
+      setPrOffer(null);
+      return;
+    }
+    if ("offer" in parsed) {
+      setPrError(null);
+      setPrOffer({ ...parsed.offer, input: prInput });
       return;
     }
     setPrError(null);
+    setPrOffer(null);
     // A pasted URL for a different known repo opens that repo's PR and
     // switches the selector to it.
     if (parsed.repoId !== selectedId) selectRepo(parsed.repoId);
     void openReview(`pr-${parsed.pr}`, { repoId: parsed.repoId, pr: parsed.pr });
   }, [prInput, repos, selectedId, openReview, selectRepo]);
+
+  const cloneAndOpenPr = useCallback(async () => {
+    if (!prOffer || cloningPr) return;
+    const label = `${prOffer.owner}/${prOffer.name}`;
+    setCloningPr(label);
+    setPrError(null);
+    try {
+      const added = await api.addRepo({ url: prOffer.input });
+      // Find the clone in the returned list (the service answers the full
+      // list, not the row): prefer the managed match, fall back to any
+      // owner/name match.
+      const lower = (s: string) => s.toLowerCase();
+      const match = (r: Repo) => lower(r.owner) === lower(prOffer.owner) && lower(r.name) === lower(prOffer.name);
+      const repo =
+        added.repos.find((r) => r.id !== "demo" && r.managed === true && match(r)) ??
+        added.repos.find((r) => r.id !== "demo" && match(r));
+      if (!repo) throw new Error("the service added the repo but did not list it");
+      setRepos(added.repos);
+      selectRepo(repo.id);
+      try {
+        localStorage.setItem(REPO_KEY, repo.id);
+      } catch {
+        // Ignore: selection still applies for this page load.
+      }
+      setPrOffer(null);
+      void openReview(`pr-${added.prNumber ?? prOffer.pr}`, {
+        repoId: repo.id,
+        pr: added.prNumber ?? prOffer.pr,
+      });
+    } catch (err) {
+      setPrError(`Couldn't clone ${label}: ${friendlyError(err)}`);
+    } finally {
+      setCloningPr(null);
+    }
+  }, [prOffer, cloningPr, openReview, selectRepo]);
+
+  // "Open a PR by URL or number", shared by every branch below that can
+  // open one: the selected repo's lists, the no-selection hint, and the
+  // no-repos state (a fresh install pastes a PR URL here and Unvibe clones
+  // it — the main case for the clone offer). Bare numbers still need a
+  // selected repo; PR URLs and `owner/name#N` offer to clone when unknown.
+  const renderPrOpener = (): React.JSX.Element => (
+    <>
+      <div className="divider">Open a PR by URL or number</div>
+      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        <input
+          type="text"
+          aria-label="Open a PR by URL or number"
+          placeholder="PR number (5020) or owner/repo pull URL"
+          value={prInput}
+          onChange={(e) => {
+            setPrInput(e.target.value);
+            setPrError(null);
+            setPrOffer(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") openPrInput();
+          }}
+          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+        />
+        <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
+          Open PR
+        </button>
+      </div>
+      {prError ? (
+        <p className="hint" role="alert">
+          {prError}
+        </p>
+      ) : null}
+      {prOffer && !cloningPr ? (
+        <div className="ci" data-testid="pr-clone-offer">
+          <div style={{ minWidth: 0 }}>
+            <span className="hint">
+              {prOffer.owner}/{prOffer.name} isn&apos;t in your list. Clone it and open #
+              {prOffer.pr}?
+            </span>
+          </div>
+          <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+            <button className="btn" type="button" onClick={() => void cloneAndOpenPr()}>
+              Clone and open #{prOffer.pr}
+            </button>
+            <button className="btn ghost" type="button" onClick={() => setPrOffer(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {cloningPr ? (
+        <p className="hint" data-testid="pr-cloning">
+          Cloning {cloningPr}…
+        </p>
+      ) : null}
+    </>
+  );
 
   // The demo pseudo-repo is never selectable; detected checkouts group
   // separately so they read as auto-found rather than remembered.
@@ -436,6 +564,7 @@ export function StartPage(): React.JSX.Element {
 
   return (
     <div className="app">
+      <Toast />
       <header className="top">
         <div className="pr">
           <Link className="brand" to="/">
@@ -454,6 +583,7 @@ export function StartPage(): React.JSX.Element {
                   {remembered.map((r) => (
                     <option key={r.id} value={r.id} title={r.localPath}>
                       {r.owner}/{r.name}
+                      {r.managed ? " (cloned)" : ""}
                     </option>
                   ))}
                 </optgroup>
@@ -625,42 +755,25 @@ export function StartPage(): React.JSX.Element {
                     page — or <Link to="/settings#repositories">manage repos in Settings</Link>.
                   </p>
                 ) : (
-                  <p className="hint">
-                    No repos yet. <Link to="/settings#repositories">Add one in Settings</Link> to
-                    browse its PRs and branches.
-                  </p>
+                  <>
+                    <p className="hint">
+                      No repos yet. Paste a PR URL below and Unvibe will clone the repo and open
+                      it — or <Link to="/settings#repositories">add one in Settings</Link> to
+                      browse its PRs and branches.
+                    </p>
+                    {renderPrOpener()}
+                  </>
                 )}
               </div>
             ) : null
           ) : !selectedId ? (
-            <p className="hint">Pick a repo above to browse its PRs and branches.</p>
+            <>
+              <p className="hint">Pick a repo above to browse its PRs and branches, or open a PR below.</p>
+              {renderPrOpener()}
+            </>
           ) : (
             <>
-              <div className="divider">Open a PR by URL or number</div>
-              <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                <input
-                  type="text"
-                  aria-label="Open a PR by URL or number"
-                  placeholder="PR number (5020) or owner/repo pull URL"
-                  value={prInput}
-                  onChange={(e) => {
-                    setPrInput(e.target.value);
-                    setPrError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") openPrInput();
-                  }}
-                  style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
-                />
-                <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null}>
-                  Open PR
-                </button>
-              </div>
-              {prError ? (
-                <p className="hint" role="alert">
-                  {prError}
-                </p>
-              ) : null}
+              {renderPrOpener()}
               {ghProblem ? (
                 <p className="hint" data-testid="newreview-gh-hint">
                   PR lists need gh ({ghProblem.summary}). You can still open a local branch below or a
@@ -682,6 +795,11 @@ export function StartPage(): React.JSX.Element {
                 </p>
               ) : (
                 <>
+                  {fetchNote ? (
+                    <p className="hint" data-testid="fetch-note">
+                      {fetchNote}
+                    </p>
+                  ) : null}
                   <ChangeSection
                     title="PRs you're authoring"
                     changes={authoring}

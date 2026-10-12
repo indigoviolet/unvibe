@@ -7,6 +7,7 @@ import type {
   AcceptContributionResponse,
   ActionResponse,
   AddRepoRequest,
+  AddRepoResponse,
   ChangesFilter,
   ContributionsResponse,
   CreateCommentRequest,
@@ -29,6 +30,7 @@ import type {
   ReadinessResponse,
   RefreshResponse,
   ReloadResponse,
+  RemoveRepoResponse,
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
@@ -203,8 +205,10 @@ const realApi = {
   health: (): Promise<HealthResponse> => fetch("/api/health").then((r) => r.json()),
 
   repos: (): Promise<ReposResponse> => get("/api/repos"),
-  addRepo: (body: AddRepoRequest): Promise<ReposResponse> =>
+  addRepo: (body: AddRepoRequest): Promise<AddRepoResponse> =>
     request("/api/repos", { method: "POST", body: JSON.stringify(body) }),
+  removeRepo: (id: string): Promise<RemoveRepoResponse> =>
+    request(`/api/repos/${encodeURIComponent(id)}`, { method: "DELETE" }),
   /** Ask the service to open a native folder dialog (#26). No request body. */
   pickFolder: (): Promise<PickFolderResponse> => post("/api/repos/pick-folder"),
   repoChanges: (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> =>

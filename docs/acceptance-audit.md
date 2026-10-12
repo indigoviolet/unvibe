@@ -164,8 +164,26 @@ UI); nothing below was edited by this pass.
 - Repos are added in Settings — met (`RepositoriesSection.tsx`:
   remembered repos with owner/name + path, add-by-path input with an
   empty-field hint; `#repositories` anchor; `e2e/settings.spec.ts`
-  "repositories section lists remembered repos and adds by path"). No
-  remove-repo endpoint exists on the service, so no Remove action.
+  "repositories section lists remembered repos and adds by path").
+  Remove is covered by the #27 bullet below (`DELETE /api/repos/:id` +
+  per-kind confirms in the same section).
+- Add by GitHub URL (#27, complete) — met end to end: `POST /api/repos`
+  accepts a URL / `owner/name` / PR URL / `owner/name#N` (shared `repos.ts`
+  parsing + table tests), clones blobless into
+  `<dataDir>/repos/<owner>/<name>` via `gh repo clone`
+  (`GITHUB_TOKEN` unset, prompt-free env), remembers the repo marked
+  `managed`, reuses it on repeat adds (lowercase-canonical, one row per
+  spelling), and refuses/degrades distinctly (400/404/403/gh-login/502);
+  `DELETE /api/repos/:id` forgets the repo and deletes the clone for
+  managed repos only (guarded, refused while reviews exist).
+  UI: Settings → Repositories has a separate add-by-URL row (client-side
+  validation with the same parser, "Cloning owner/name…" busy state,
+  service errors via toast), marks managed clones ("Cloned by Unvibe",
+  "(cloned)" in the start-page selector), and removes with per-kind
+  confirm copy (409 surfaces as is). The start page offers to clone on a
+  pasted PR URL for an unknown repo (confirm selects the repo and opens
+  the PR; cancel keeps the input) and shows the service's `fetchError`
+  note once above the lists.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
@@ -603,7 +621,9 @@ needed (that deviation is closed, not added).
 
 ### §14.1 Endpoints — all met (ran)
 
-`GET/POST /api/repos` ✓, `GET /api/repos/:id/changes` ✓,
+`GET/POST /api/repos` ✓, `DELETE /api/repos/:id` ✓ (new, #27: forgets the
+row; deletes the clone directory for managed repos only, guarded to
+`<dataDir>/repos`, refused while reviews exist), `GET /api/repos/:id/changes` ✓,
 `POST /api/reviews` ✓, `GET /api/reviews/:id` (+`?version=n`) ✓,
 `POST …/refresh` ✓, `POST …/update` ✓, `POST …/actions` ✓,
 `PATCH …/hunks/:hash` ✓, `POST …/hunks/:hash/summarize` ✓,
@@ -632,7 +652,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Description round-trip (unedited paragraphs byte-identical) — met
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
-  `gh-writes.test.ts`, doctor/readiness share the wrapper).
+  `gh-writes.test.ts`, doctor/readiness share the wrapper). Managed-clone
+  refresh (#27) is `git fetch origin` on managed checkouts only, before
+  changes listings and review ingest/refresh (best effort, 30 s freshness +
+  in-flight sharing; failures degrade to stale data with a `fetchError`
+  note). User checkouts are never fetched implicitly.
 - Live GitHub submit — met (audit-10, ran 2026-10-11):
   `mise run test:live:submit` green against sandbox draft PR
   `indigoviolet/lvu#2` (fresh temp clone, never `~/dev/lvu`, never merged,
@@ -741,8 +765,30 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
    demo ships pre-rendered SVGs so it needs nothing.
 10. Acronym: second-opinion `workspace-write` (not `read-only`) for Codex
     (`read-only` refuses MCP calls) — `docs/acp-runner.md` quirks 6–7.
+11. Managed clones (#27): the PRD assumes reviews open on existing local
+    checkouts (§4.2 "finds local checkouts", §14 storage). Unvibe now also
+    clones repos itself (`gh repo clone -- --filter=blob:none` into
+    `<dataDir>/repos/<owner>/<name>`, migration 005 `repos.managed`) and
+    keeps those checkouts fresh with `git fetch`; reviews of a managed
+    clone work exactly like reviews of a user checkout (a worktree per
+    review, no separate ingest path). The user never edits the managed
+    checkout, so fetching is safe; removing the repo deletes the clone
+    (managed only), and only while it has no reviews.
 
 ## Open list
+
+### Fixed on this branch: managed clones (#27, complete)
+
+- Service + contract + stubbed tests are green (`shared/test/repos.test.ts`,
+  `service/test/repos-url.test.ts` + `repos-review-fixes.test.ts`): add-by-URL,
+  blobless clone, fetch-before-list/ingest/refresh (15 s bound, prompt-free),
+  guarded remove.
+- Web wiring is done: Settings → Repositories has the add-by-URL row (shared
+  client-side validation, named busy state, toasts), managed marks, and
+  per-kind remove confirms; the start page offers to clone on pasted PR URLs
+  for unknown repos and shows `fetchError` once. Covered by mock-mode
+  Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
+  spec for invalid input and path-checkout remove.
 
 ### Fixed in this branch (done, in `check`)
 
