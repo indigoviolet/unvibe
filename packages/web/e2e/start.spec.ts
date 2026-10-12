@@ -237,7 +237,7 @@ test("healthy readiness shows a ready indicator and no callouts", async ({ page 
   await expect(page.locator('[data-testid="readiness-ready"]')).toBeVisible();
   await expect(page.locator('[data-testid^="readiness-callout-"]')).toHaveCount(0);
   // Model pickers show inline ok status.
-  await page.goto("/settings?review=demo");
+  await page.goto("/settings");
   await expect(page.locator('[data-testid="model-main-status"]')).toContainText("ready");
 });
 
