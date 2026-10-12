@@ -175,6 +175,30 @@ export class McpRegistry {
     return n;
   }
 
+  /**
+   * Close every live transport (service shutdown, issue #30): agent
+   * subprocesses are already dead by then, so their SSE streams would
+   * otherwise hold hijacked responses open and block `app.close()`
+   * forever. Best-effort, never throws. Returns the number closed.
+   */
+  async closeAll(): Promise<number> {
+    const states = [...this.sessions.values()];
+    this.sessions.clear();
+    this.byReview.clear();
+    let n = 0;
+    await Promise.all(
+      states.map(async (state) => {
+        try {
+          await state.transport.close();
+        } catch {
+          // Already gone: fine.
+        }
+        n += 1;
+      }),
+    );
+    return n;
+  }
+
   /** Live (unrevoked) secret count — observability for tests. */
   liveSecretCount(reviewId?: string): number {
     if (reviewId) return this.byReview.get(reviewId)?.size ?? 0;

@@ -232,13 +232,21 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
 
   const exited = await deps.waitForExit(plan.servicePid, plan.exitWaitMs);
   if (!exited) {
+    // The service bounds its own shutdown well inside the exit wait
+    // (`SHUTDOWN_DEADLINE_MS` in `lifecycle/service-shutdown.ts`), so a
+    // timeout here means the process is stuck beyond its shutdown path —
+    // typically wedged connections. The install is untouched and the live
+    // service keeps serving (pending was cleared); SIGKILL it into line.
+    // The helper never kills the told-about PID itself.
     return finish({
       status: "failed",
       from: plan.from,
       to: plan.to,
       reason:
-        `service (pid ${plan.servicePid}) did not exit within ${plan.exitWaitMs}ms; ` +
-        `the install was left untouched — stop the service and retry`,
+        `service (pid ${plan.servicePid}) did not exit within ${plan.exitWaitMs}ms — ` +
+        `it is likely stuck shutting down with open connections; the install was left untouched ` +
+        `and the live service keeps serving. Recover with \`unvibe stop\`, then retry the switch ` +
+        `(or \`unvibe update ${plan.to}\` with the service stopped)`,
       logPath: plan.logPath,
     });
   }

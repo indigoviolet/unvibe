@@ -343,8 +343,10 @@ export async function registerUpdate(
     void reply.code(202).send(res);
     // Shut down through the normal path only after the reply is on the
     // wire. Best-effort afterwards: the pending file + the spawned helper
-    // are the record — if shutdown stalls, the helper aborts safely
-    // (outcome `failed`, install untouched) instead of switching under us.
+    // are the record — shutdown itself is bounded (hard deadline, then
+    // the process exits), and if the old process still hasn't exited the
+    // helper aborts safely (outcome `failed`, install untouched, live
+    // service keeps serving) instead of switching under us.
     setTimeout(() => {
       try {
         hooks.requestShutdown();

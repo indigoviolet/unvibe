@@ -239,6 +239,11 @@ describe("runSwitchFlow", () => {
     expect(out.status).toBe("failed");
     expect(out.reason).toContain("did not exit within 1000ms");
     expect(out.reason).toContain("install was left untouched");
+    // The failure names the likely cause and the exact recovery: the live
+    // service keeps serving (pending was cleared, nothing half-applied).
+    expect(out.reason).toContain("stuck shutting down");
+    expect(out.reason).toContain("unvibe stop");
+    expect(out.reason).toContain(`unvibe update ${PLAN.to}`);
     expect(deps.switches).toEqual([]);
     expect(deps.starts).toBe(0);
     // The live service surfaces the failure via status.
