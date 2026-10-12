@@ -104,7 +104,7 @@ export function DoctorPage(): React.JSX.Element {
           Unvibe
         </Link>
         <div className="pr">
-          <b>Doctor</b>
+          <h1>Doctor</h1>
         </div>
         <Link className="tbtn" to="/settings?tab=environment">
           Settings
@@ -112,8 +112,6 @@ export function DoctorPage(): React.JSX.Element {
       </header>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 860 }}>
-          <div className="eyebrow">Diagnostics</div>
-          <h1 className="title">Doctor</h1>
           <p className="hint">
             Every candidate for each tool, which was chosen and why, shims and targets, full error text, shell and
             PATH, and how the service was started. Same module as <code>unvibe doctor</code> — they cannot disagree

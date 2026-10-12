@@ -79,7 +79,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
           Unvibe
         </Link>
         <div className="pr">
-          <b>Debug</b>
+          <h1>Debug</h1>
         </div>
         <Link className="tbtn" to={`/review/${reviewId}`}>
           Back to review
@@ -87,13 +87,6 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
       </header>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
-          <div className="eyebrow">Review debug</div>
-          <h1 className="title">Jobs, prompts and shared context</h1>
-          <p className="hint">
-            Jobs for this review with their exact prompts, the expanded prompt text, and the shared
-            context every agent conversation starts from: the base session, the append-only log, and
-            the contributions.
-          </p>
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load shared context: {error}

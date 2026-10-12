@@ -650,8 +650,7 @@ export function StartPage(): React.JSX.Element {
           ) : null}
 
           {/* Reviews for the selected repo, then the demo row. */}
-          <div className="eyebrow">Unvibe</div>
-          <h1 className="title">Reviews</h1>
+          <h1 className="divider">Reviews</h1>
           {mainProblem ? (
             <p className="hint" data-testid="newreview-agent-hint">
               Main agent not ready ({mainProblem.summary}) — the guide may not generate. You can
