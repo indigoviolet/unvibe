@@ -1,16 +1,38 @@
 /**
  * Settings page + versions banner behaviour tests against mock mode
- * (PRD §4.14, §8): model pickers with adapter errors and the
- * same-model warning, prompt template/expanded views, limits persistence,
- * Tips popover, and the stale-review banner with range-diff + version
- * switching. (Jobs and shared context live on the per-review debug page
- * now: `debug.spec.ts`.)
+ * (PRD §4.14, §8): repositories (list + add by path), model pickers with
+ * adapter errors and the same-model warning, prompt template view, limits
+ * persistence, Tips popover, and the stale-review banner with range-diff
+ * + version switching. (Jobs, prompt expansions and shared context live
+ * on the per-review debug page now: `debug.spec.ts`.)
  */
 import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/settings");
-  await expect(page.getByText("Models, prompts, limits")).toBeVisible();
+  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+});
+
+test("repositories section lists remembered repos and adds by path", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await expect(section).toBeVisible();
+  await expect(section.getByText("urllib3/urllib3")).toBeVisible();
+  await expect(section.getByText("~/code/urllib3")).toBeVisible();
+
+  // Adding with an empty field shows a hint instead of doing nothing.
+  await section.getByRole("button", { name: "Add by path" }).click();
+  await expect(section.getByText("Enter a checkout path first.")).toBeVisible();
+
+  await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
+  await section.getByRole("button", { name: "Add by path" }).click();
+  const added = section.locator('[data-testid="repo-local-fake-checkout"]');
+  await expect(added).toContainText("local/fake-checkout");
+  await expect(added).toContainText("/tmp/fake-checkout");
+});
+
+test("repositories section is reachable at #repositories", async ({ page }) => {
+  await page.goto("/settings#repositories");
+  await expect(page.locator('[data-testid="repositories-section"]')).toBeVisible();
 });
 
 test("model pickers list provider models and warn on same-model second opinion", async ({ page }) => {
@@ -52,7 +74,7 @@ test("limits persist across reload", async ({ page }) => {
   await page.getByRole("button", { name: "Save limits" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Models, prompts, limits")).toBeVisible();
+  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
   await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("6");
 });
 

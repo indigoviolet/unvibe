@@ -334,6 +334,28 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
   throw new Error(`unknown mock card control ${(a as { kind: string }).kind}`);
 }
 
+function readChangesFailures(): string[] {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.repoChangesFail");
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve once the `unvibe.mock.repoChangesHold` key is gone (or soon anyway). */
+async function awaitChangesRelease(): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    try {
+      if (!localStorage.getItem("unvibe.mock.repoChangesHold")) return;
+    } catch {
+      return;
+    }
+    await wait(50);
+  }
+}
+
 let rev = 1;
 const hunkStates = seedHunkStates();
 let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
@@ -637,7 +659,25 @@ function seedReviewList(): ReviewSummary[] {
       guideStatus: "running",
       guideDetail: "Running: critic",
     },
+    ...readExtraSessions(),
   ];
+}
+
+/**
+ * Test-only extra sessions for the start page (`unvibe.mock.extraSessions`,
+ * a JSON array of `ReviewSummary`): e.g. a review whose repo is no longer
+ * in the repo list, which the page renders in its orphan group. Read at
+ * seed time so `addInitScript` can set it before the page loads.
+ */
+function readExtraSessions(): ReviewSummary[] {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.extraSessions");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as ReviewSummary[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 let mockReviewList: ReviewSummary[] = seedReviewList();
@@ -993,6 +1033,19 @@ export const mockApi = {
   },
 
   repoChanges: async (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> => {
+    // Test-only hooks for the start page (all no-ops unless set):
+    // - `unvibe.mock.repoChangesHold`: when present, hold every repo-lists
+    //   response until the key is removed, so specs can observe the loading
+    //   state (the repo-less demo entry is never held);
+    // - `unvibe.mock.repoChangesFail`: JSON array of filters to reject
+    //   (e.g. ["authoring","review-requested","recent"]), each with a
+    //   service-shaped 500 carrying a mock gh error.
+    if (id !== "demo") await awaitChangesRelease();
+    const failing = readChangesFailures();
+    const key = filter ?? "all";
+    if (failing.includes(key)) {
+      throw new Error(`GET /api/repos/${id}/changes?filter=${key}: 500 {"error":"mock gh is down"}`);
+    }
     const authoring: RepoChange[] = [
       {
         kind: "pr",
@@ -1051,6 +1104,21 @@ export const mockApi = {
       },
     ];
     void id;
+    // Demo entry point: the start page fetches `repoChanges("demo")` and
+    // renders `kind: "demo"` changes as a row inside the Reviews list (no
+    // tokens, same pipeline path). Like the service, the demo answers no
+    // filtered section.
+    if (id === "demo") {
+      return {
+        changes: [
+          {
+            kind: "demo",
+            title: "Demo: urllib3#5020 — Unfold obsolete folded response headers",
+            demo: "urllib3-5020",
+          },
+        ],
+      };
+    }
     switch (filter) {
       case "authoring":
         return { changes: authoring };

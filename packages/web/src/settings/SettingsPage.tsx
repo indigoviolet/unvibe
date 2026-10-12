@@ -1,8 +1,11 @@
 /**
- * Settings page (`/settings`, PRD §4.14): models, prompt templates, limits
- * and budgets. App-level only: nothing here is review-scoped. Jobs, the
- * per-review prompt expansions and shared context live on the per-review
- * debug page (`/review/:id/debug`, issue #32), not here.
+ * Settings page (`/settings`, PRD §4.14): repositories, models, prompt
+ * templates, limits and budgets. App-level only: nothing here is
+ * review-scoped. Jobs, the per-review prompt expansions and shared
+ * context live on the per-review debug page (`/review/:id/debug`,
+ * issue #32), not here. The Repositories section carries
+ * `#repositories` so the start page's empty state can link straight to
+ * it.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -12,6 +15,7 @@ import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
 import { PromptsSection } from "./PromptsSection.js";
+import { RepositoriesSection } from "./RepositoriesSection.js";
 import "./settings.css";
 
 export function SettingsPage(): React.JSX.Element {
@@ -65,7 +69,7 @@ export function SettingsPage(): React.JSX.Element {
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
           <div className="eyebrow">Settings</div>
-          <h1 className="title">Models, prompts, limits</h1>
+          <h1 className="title">Repositories, models, prompts, limits</h1>
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load settings: {error}
@@ -74,6 +78,7 @@ export function SettingsPage(): React.JSX.Element {
           {!settings && !error ? <p className="hint">Loading settings…</p> : null}
           {settings ? (
             <>
+              <RepositoriesSection />
               <ModelsSection settings={settings} onSaved={setSettings} />
               <EnvironmentSection />
               <PromptsSection />
