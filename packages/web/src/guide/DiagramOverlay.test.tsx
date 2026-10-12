@@ -12,7 +12,8 @@ import { MemoryRouter } from "react-router-dom";
 import type { DiagramBlock } from "@unvibe/shared";
 import { clearD2SvgCache } from "./D2Diagram.js";
 import { DiagramView } from "./DiagramView.js";
-import { zoomAround, fitView, naturalSize, IDENTITY_VIEW } from "./DiagramOverlay.js";
+import { zoomAround, fitView, IDENTITY_VIEW } from "./DiagramOverlay.js";
+import { naturalSize } from "./d2sanitize.js";
 
 // jsdom has no matchMedia: pretend the OS prefers light.
 function stubMatchMedia(): void {
