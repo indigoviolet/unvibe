@@ -27,7 +27,8 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, JOB_PRIORITY, parseCards, parseCardsPartial, parseId, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, looksLikeJson, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
+import type { HunkReplyResult } from "@unvibe/shared";
 import { RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
@@ -726,9 +727,11 @@ export class Pipeline {
     // the same content hash returns it with no agent call. Hunk state is
     // keyed by content hash so it survives rebases (PRD §8); a deleted
     // summary (PATCH null) or changed content (new hash) is legitimately a
-    // new request.
+    // new request. A stored summary that looks like the agent's raw JSON
+    // (#99) is treated as missing: the request below regenerates it (or
+    // clears it when the reply is unusable) instead of returning garbage.
     const stored = snapshot.hunkStates.find((s) => s.contentHash === contentHash)?.summary;
-    if (stored) return { reused: true, summary: stored };
+    if (stored && !looksLikeJson(stored)) return { reused: true, summary: stored };
     const settings = await this.effectiveSettings();
     const hunkText = this.formatHunkForPrompt(snapshot, found.file.fileKey, found.hunk.contentHash);
     const prompt = withReplayMark(
@@ -761,26 +764,7 @@ export class Pipeline {
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
           const { data } = this.parseAndValidate(reviewId, text);
-          const hunkData = (data?.["hunk"] as { summary?: string; hiddenReason?: string | null } | undefined) ?? {};
-          const summary = hunkData.summary ?? text.split("\n")[0].slice(0, 140);
-          let hiddenReason = hunkData.hiddenReason ?? null;
-          const live = this.opts.reviews.getSnapshot(reviewId);
-          if (live && (this.isCitedByGuide(reviewId, contentHash) || this.isOneLineChange(live, contentHash))) {
-            hiddenReason = null;
-          }
-          await this.opts.reviews.mutate(reviewId, (draft) => {
-            let state = draft.hunkStates.find((s) => s.contentHash === contentHash);
-            if (!state) {
-              state = { contentHash, folded: false, reviewed: false };
-              draft.hunkStates.push(state);
-            }
-            state.summary = summary;
-            const fileHunk = draft.files.flatMap((f) => f.hunks).find((h) => h.contentHash === contentHash);
-            if (fileHunk) {
-              if (hiddenReason) fileHunk.hiddenReason = hiddenReason;
-              else delete fileHunk.hiddenReason;
-            }
-          });
+          await this.applyHunkSummary(reviewId, contentHash, parseHunkReply(text, data));
         } finally {
           try {
             await this.opts.runner.close(session);
@@ -789,6 +773,38 @@ export class Pipeline {
           }
         }
       },
+    });
+  }
+
+  /**
+   * Store one hunk-pass result (#99), shared by `summarizeHunk` and the
+   * hunk-pass stage (the two copied parse blocks). A missing summary stores
+   * nothing: it clears a stored bad summary but leaves a good one alone, so
+   * the hunk shows the Summarize action again instead of garbage.
+   * Guide-cited and one-line hunks are never hidden.
+   */
+  private async applyHunkSummary(reviewId: string, contentHash: string, result: HunkReplyResult): Promise<void> {
+    let hiddenReason = result.hiddenReason;
+    const live = this.opts.reviews.getSnapshot(reviewId);
+    if (live && (this.isCitedByGuide(reviewId, contentHash) || this.isOneLineChange(live, contentHash))) {
+      hiddenReason = null;
+    }
+    await this.opts.reviews.mutate(reviewId, (draft) => {
+      let state = draft.hunkStates.find((s) => s.contentHash === contentHash);
+      if (!state) {
+        state = { contentHash, folded: false, reviewed: false };
+        draft.hunkStates.push(state);
+      }
+      if (result.summary !== undefined) {
+        state.summary = result.summary;
+      } else if (state.summary !== undefined && looksLikeJson(state.summary)) {
+        delete state.summary;
+      }
+      const fileHunk = draft.files.flatMap((f) => f.hunks).find((h) => h.contentHash === contentHash);
+      if (fileHunk) {
+        if (hiddenReason) fileHunk.hiddenReason = hiddenReason;
+        else delete fileHunk.hiddenReason;
+      }
     });
   }
 
@@ -1134,7 +1150,7 @@ export class Pipeline {
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
-        root = { id: "root", kind: "root", title: "Guided review", saved: false, cards: [] };
+        root = { id: "root", kind: "root", title: DEFAULT_GUIDE_TITLE, saved: false, cards: [] };
         draft.pages.unshift(root);
       }
       const existing = root.cards.find((c) => c.id === provisionalId);
@@ -1171,7 +1187,7 @@ export class Pipeline {
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
-        root = { id: "root", kind: "root", title: "Guided review", saved: false, cards: [] };
+        root = { id: "root", kind: "root", title: DEFAULT_GUIDE_TITLE, saved: false, cards: [] };
         draft.pages.unshift(root);
       }
       for (const c of applied.cards) {
@@ -1524,26 +1540,7 @@ export class Pipeline {
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
             const { data } = this.parseAndValidate(reviewId, text);
-            const hunkData = (data?.["hunk"] as { summary?: string; hiddenReason?: string | null } | undefined) ?? {};
-            const summary = hunkData.summary ?? text.split("\n")[0].slice(0, 140);
-            let hiddenReason = hunkData.hiddenReason ?? null;
-            const live = this.opts.reviews.getSnapshot(reviewId);
-            if (live && (this.isCitedByGuide(reviewId, hunk.contentHash) || this.isOneLineChange(live, hunk.contentHash))) {
-              hiddenReason = null;
-            }
-            await this.opts.reviews.mutate(reviewId, (draft) => {
-              let state = draft.hunkStates.find((s) => s.contentHash === hunk.contentHash);
-              if (!state) {
-                state = { contentHash: hunk.contentHash, folded: false, reviewed: false };
-                draft.hunkStates.push(state);
-              }
-              state.summary = summary;
-              const fh = draft.files.flatMap((f) => f.hunks).find((h) => h.contentHash === hunk.contentHash);
-              if (fh) {
-                if (hiddenReason) fh.hiddenReason = hiddenReason;
-                else delete fh.hiddenReason;
-              }
-            });
+            await this.applyHunkSummary(reviewId, hunk.contentHash, parseHunkReply(text, data));
             this.maybeMarkStageDone(reviewId, "hunk-pass", hunks.length);
           } catch (err) {
             this.setStage(reviewId, "hunk-pass", "error", (err as Error).message);
