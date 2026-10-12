@@ -837,12 +837,19 @@ pull it) + restart on the same port; the helper stops its own previous
 generation (verified exited, lock released) before the rollback install
 and waits for the install target / rollback source versions
 respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
-log path, `failed` carries the `npm install -g ...#release` recovery) is
-surfaced by status. Web: Settings → Version (toggle, grouped channels,
-refresh, inline-confirm switch, restart wait with reload, rollback
-reason, update-available, installed-only notice, unchanged note) plus a
-quiet preview pill in the review/Settings/Start headers; the mock API
-covers the whole flow incl. simulated switch + rollback.
+ log path, `failed` carries the `npm install -g ...#release` recovery) is
+ surfaced by status. Shutdown is bounded and ordered (issue #30, fixed
+ on this branch: abort jobs → dispose agents → close MCP sessions +
+ WebSocket clients → force-close leftover sockets + close HTTP → DB last;
+ 4 s per step, 10 s deadline, then the process exits — the old hook order
+ closed the DB first and `app.close()` hung on deaf sockets/MCP streams
+ while agents were disposed last, failing real switches with `did not
+ exit within 30000ms`; the stuck-service outcome now names `unvibe stop`
+ + retry as the recovery). Web: Settings → Version (toggle, grouped channels,
+ refresh, inline-confirm switch, restart wait with reload, rollback
+ reason, update-available, installed-only notice, unchanged note) plus a
+ quiet preview pill in the review/Settings/Start headers; the mock API
+ covers the whole flow incl. simulated switch + rollback.
  Evidence: `test/update-helper.test.ts` (success, install/unhealthy
  rollback, failed rollback, stuck service, generation stop order,
  expected-version waits, stale-sample guard),
