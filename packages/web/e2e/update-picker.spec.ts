@@ -40,7 +40,7 @@ test("picker is off by default: only the toggle shows", async ({ page }) => {
 test("enable lists one aligned row per version with the current one marked", async ({ page }) => {
   await enablePicker(page);
   await expect(page.getByTestId("update-current-version")).toContainText("Installed: release");
-  await expect(page.getByText("Channels")).toBeVisible();
+  await expect(page.getByText("Channels", { exact: true })).toBeVisible();
   const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
   await expect(feat).toContainText("abc1234");
   await expect(feat.getByRole("button", { name: "Switch to preview/feat-x" })).toHaveText("Switch");
@@ -59,7 +59,7 @@ test("switch moves to the preview: confirm, restart wait, reload, badge", async 
   await enablePicker(page);
   const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
   await feat.getByRole("button", { name: "Switch to preview/feat-x" }).click();
-  await expect(page.getByText("The service restarts. Switching keeps your database and backs it up first.")).toBeVisible();
+  await expect(page.getByText("The service restarts. Your data is kept and backed up first.")).toBeVisible();
   await page.getByRole("button", { name: "Confirm switch to preview/feat-x" }).click();
   await expect(page.getByTestId("update-switching")).toBeVisible();
   // The page reloads once the new build reports; the badge names the branch.

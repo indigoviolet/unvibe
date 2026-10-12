@@ -87,7 +87,7 @@ test("failing lists keep the PR input, show an error with Retry, and recover", a
   // The PR input does not wait on the lists.
   await expect(page.getByLabel("Open a PR by URL or number")).toBeVisible();
   const err = page.locator('[data-testid="lists-error"]');
-  await expect(err).toContainText("Couldn't load urllib3/urllib3's lists: mock gh is down");
+  await expect(err).toContainText("Couldn't load PRs and branches for urllib3/urllib3: mock gh is down");
   await expect(err.getByRole("button", { name: "Retry" })).toBeVisible();
   // No sections underneath until the load succeeds.
   await expect(page.getByText("Your PRs")).toHaveCount(0);

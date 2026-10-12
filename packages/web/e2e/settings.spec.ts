@@ -71,7 +71,7 @@ test("repositories section lists remembered repos and adds by path", async ({ pa
 
   // Adding with an empty field shows a hint instead of doing nothing.
   await section.getByRole("button", { name: "Add by path" }).click();
-  await expect(section.getByText("Enter a checkout path first.")).toBeVisible();
+  await expect(section.getByText("Enter a folder path first.")).toBeVisible();
 
   await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
   await section.getByRole("button", { name: "Add by path" }).click();
@@ -253,7 +253,7 @@ test("limits show service validation errors inline", async ({ page }) => {
   // Mock accepts anything, so drive the inline-error path through the
   // real-service spec; here just assert the field + hint render.
   await expect(page.locator("#limit-inlineBudgetTokens")).toBeVisible();
-  await expect(page.getByText("L1 budget, ~40k default.")).toBeVisible();
+  await expect(page.getByText("Default 40,000.")).toBeVisible();
 });
 
 test("tips popover opens from the review top bar", async ({ page }) => {
