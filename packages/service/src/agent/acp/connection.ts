@@ -302,7 +302,7 @@ export async function spawnAdapterTransport(
   });
   if (!proc.stdin || !proc.stdout) {
     proc.kill();
-    throw new Error(`${provider} adapter failed to open stdio pipes`);
+    throw new Error(`the ${provider} CLI failed to start`);
   }
   proc.stderr?.on("data", (d) => opts?.onStderr?.(d.toString()));
 
@@ -398,7 +398,7 @@ export class ProviderConnection {
     }
     await this.starting;
     const ready = this.transport as { caller: AgentCaller } | null;
-    if (!ready) throw new Error(`${this.provider} adapter failed to start`);
+    if (!ready) throw new Error(`the ${this.provider} CLI failed to start`);
     return ready.caller;
   }
 
