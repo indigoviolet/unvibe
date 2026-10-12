@@ -200,6 +200,9 @@ describe("build identity", () => {
     ).toEqual({
       version: "0.0.1-preview.x.y",
       sourceBranch: "x",
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
       commit: "y",
       builtAt: "2026-10-12T00:00:00.000Z",
     });

@@ -16,12 +16,12 @@ interface Field {
 }
 
 const FIELDS: Field[] = [
-  { key: "sessionsPerProvider", label: "Concurrent sessions per provider", hint: "Integer 1–32 (default 4)." },
-  { key: "inlineBudgetTokens", label: "Inline size budget (tokens)", hint: "L1 budget, ~40k default." },
-  { key: "rebuildSupersededRatio", label: "Base-rebuild superseded ratio", hint: "Number in (0, 1] (default 0.2).", step: "0.01" },
-  { key: "rebuildAppendedTokens", label: "Base-rebuild appended tokens", hint: "Tokens appended before rebuild (default 10k)." },
-  { key: "cacheLifetimeMs", label: "Cache lifetime (ms)", hint: "Idle sessions close after this (default 5 min)." },
-  { key: "idleExitMinutes", label: "Idle-exit (minutes)", hint: "Service exits after this long idle; 0 = never (default 10)." },
+  { key: "sessionsPerProvider", label: "Agent sessions at once, per provider", hint: "1 to 32. Default 4." },
+  { key: "inlineBudgetTokens", label: "Largest diff sent to the agent in full (tokens)", hint: "Larger diffs are sent as summaries and the agent fetches the rest when it needs it. Default 40,000." },
+  { key: "rebuildSupersededRatio", label: "Rebuild the agent's context when this share of it is out of date", hint: "Above 0, up to 1. Default 0.2.", step: "0.01" },
+  { key: "rebuildAppendedTokens", label: "Rebuild the agent's context after this many added tokens", hint: "Default 10,000." },
+  { key: "cacheLifetimeMs", label: "Close idle agent sessions after (ms)", hint: "Default 300,000 (5 minutes)." },
+  { key: "idleExitMinutes", label: "Stop the service when idle for (minutes)", hint: "0 means never. Default 10." },
 ];
 
 export function LimitsSection({
@@ -49,7 +49,7 @@ export function LimitsSection({
       if (raw === "") continue;
       const n = Number(raw);
       if (!Number.isFinite(n)) {
-        setErrors([`${f.key} must be a number`]);
+        setErrors([`${f.label}: enter a number`]);
         setSaving(false);
         return;
       }
@@ -68,7 +68,7 @@ export function LimitsSection({
   };
 
   return (
-    <section aria-label="Limits and budgets">
+    <section aria-label="Limits">
       <div className="card" style={{ padding: "8px 14px" }}>
         {FIELDS.map((f) => (
           <div className="setgrid" key={f.key}>
@@ -83,7 +83,7 @@ export function LimitsSection({
               />
               <span className="hint">{f.hint}</span>
               {errors
-                .filter((m) => m.startsWith(String(f.key)))
+                .filter((m) => m.startsWith(String(f.key)) || m.startsWith(f.label))
                 .map((m) => (
                   <span className="err" role="alert" key={m}>
                     {m}
@@ -93,7 +93,7 @@ export function LimitsSection({
           </div>
         ))}
         {errors
-          .filter((m) => !FIELDS.some((f) => m.startsWith(String(f.key))))
+          .filter((m) => !FIELDS.some((f) => m.startsWith(String(f.key)) || m.startsWith(f.label)))
           .map((m) => (
             <p className="err" role="alert" key={m}>
               {m}

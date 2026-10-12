@@ -16,7 +16,7 @@ import {
   targetLevel,
   findCardTarget,
 } from "../../interaction/index.js";
-import { cardTitle } from "./events.js";
+import { cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   baseVersionOf,
@@ -54,6 +54,8 @@ export async function examplesAction(
   const variables = { card: cardPromptText(snapshot, cardId), level };
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "examples", key: cardId } : undefined;
+  // Issue #50: reply prose must not open by repeating the card title.
+  const echoTitle = storedCardTitle(snapshot, cardId);
 
   const done = pipeline.runInFork({
     reviewId,
@@ -63,6 +65,7 @@ export async function examplesAction(
     priority: JOB_PRIORITY.userRequested,
     dedupeKey: key,
     cardId,
+    ...(echoTitle ? { echoCandidates: [echoTitle] } : {}),
     replay,
     onJob: (job: Job) => capture.onJob(job),
   });

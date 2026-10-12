@@ -202,7 +202,7 @@ export function versionTooOldMessage(provider: AgentProvider, found: string): st
   const spec = SPECS[provider];
   return (
     `${spec.cli} ${found} found; Unvibe needs ≥ ${spec.minVersion} ` +
-    `(the version the adapter was written against). ${spec.updateHint}`
+    `(the oldest version Unvibe works with). ${spec.updateHint}`
   );
 }
 

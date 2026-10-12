@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { UpdateChannel, UpdateStatusResponse } from "@unvibe/shared";
 import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
-import { createApp } from "../src/server.js";
+import { createApp, SERVICE_VERSION } from "../src/server.js";
 import { SettingsStore } from "../src/settings/index.js";
 import { JobQueue } from "../src/jobs/queue.js";
 import { FakeUpdater, type Updater } from "../src/update/updater.js";
@@ -167,7 +167,7 @@ describe("update status", () => {
       expect(body.pending).toBeNull();
       expect(body.outcome).toBeNull();
       // Installed build identity comes from the installed package.
-      expect(body.build).toEqual({ version: "0.0.1", sourceBranch: null, commit: null, builtAt: null });
+      expect(body.build).toEqual({ version: "0.0.1", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null });
     } finally {
       await h.close();
     }
@@ -195,7 +195,7 @@ describe("update channels", () => {
       expect((await h.app.inject(auth("/api/update/channels"))).statusCode).toBe(404);
       expect((await h.app.inject({ method: "GET", url: "/api/update/channels" })).statusCode).toBe(401);
       const body = (await h.app.inject(auth("/api/update/channels"))).json() as { error: string };
-      expect(body.error).toContain("disabled");
+      expect(body.error).toContain("turned off");
     } finally {
       await h.close();
     }
@@ -275,7 +275,7 @@ describe("update switch", () => {
         fromVersion: "0.0.1",
         dataDir: h.dataDir,
         servicePid: process.pid,
-        serviceVersion: "0.0.1",
+        serviceVersion: SERVICE_VERSION,
       });
       // The installed build is identified from the service entry path.
       expect(args["scriptPath"]).toBe(process.argv[1]);
@@ -410,7 +410,7 @@ describe("update switch", () => {
     try {
       const res = await checkout.app.inject(auth("/api/update/switch", { ref: "release", force: true }, "POST"));
       expect(res.statusCode).toBe(409);
-      expect((res.json() as { error: string }).error).toContain("installed build");
+      expect((res.json() as { error: string }).error).toContain("installed with npm");
       expect(checkout.spawned).toHaveLength(0);
     } finally {
       await checkout.close();
@@ -447,7 +447,7 @@ describe("update switch", () => {
     try {
       const res = await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"));
       expect(res.statusCode).toBe(409);
-      expect((res.json() as { error: string }).error).toContain("installed build");
+      expect((res.json() as { error: string }).error).toContain("installed with npm");
       expect(h.spawned).toHaveLength(0);
     } finally {
       await h.close();

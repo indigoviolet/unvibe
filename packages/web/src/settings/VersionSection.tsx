@@ -22,7 +22,7 @@ import type {
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { putErrors } from "./LimitsSection.js";
-import { blockedJobLine, isNewerAvailable, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
+import { blockedJobLine, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
 const SWITCH_POLL_MS = 1000;
@@ -199,7 +199,7 @@ export function VersionSection({
         if (res.unchanged) {
           if (!cancelled.current) {
             setSwitchingTo(null);
-            setDoneNote(`Already on the latest published build of ${ref} — nothing to do.`);
+            setDoneNote(`Already on the latest build of ${ref}`);
             void loadStatus();
           }
           return;
@@ -232,7 +232,7 @@ export function VersionSection({
         <label
           className="ver-toggle"
           htmlFor="version-picker-toggle"
-          title="Listing versions shells out through gh under your own login; switching restarts the service."
+          title="Listing channels uses gh with your GitHub login. Switching restarts the service."
         >
           <input
             id="version-picker-toggle"
@@ -242,7 +242,7 @@ export function VersionSection({
             disabled={toggling}
             onChange={() => void toggle()}
           />
-          Enable
+          Show channels and allow switching
         </label>
       </div>
       <div className="card" style={{ padding: "8px 14px" }}>
@@ -251,18 +251,15 @@ export function VersionSection({
             Couldn&apos;t load version info: {error}
           </p>
         ) : null}
-        {!enabled ? (
-          <p className="hint">Turn it on to list available versions and switch the installed app from here.</p>
-        ) : (
+        {!enabled ? null : (
           <>
             <CurrentVersion row={currentRow} build={status?.build ?? null} fallback={healthVersion} />
             {status && !status.build ? (
               <p className="warnline" data-testid="update-not-installed">
-                Switching needs the installed app — this service runs from a checkout or an old build, so only
-                listing works here. From the dev checkout, use <code>unvibe update</code> instead.
+                Switching only works when Unvibe was installed with npm. This service runs from a source checkout or an older build, so you can only list channels here. To switch, run <code>unvibe update</code> in a terminal.
               </p>
             ) : null}
-            {loading && !channels ? <p className="hint">Loading versions…</p> : null}
+            {loading && !channels ? <p className="hint">Loading channels…</p> : null}
             {rows ? (
               <VersionList
                 rows={rows}
@@ -304,7 +301,7 @@ export function VersionSection({
         ) : null}
         {switchingTo ? (
           <p className="warnline" role="status" data-testid="update-switching">
-            Switching to {switchingTo}… the service is restarting; this page reloads when the new build reports.
+            Switching to {switchingTo}… The service is restarting. This page reloads when it is back.
           </p>
         ) : null}
         {switchError ? (
@@ -352,15 +349,18 @@ function CurrentVersion({
   const builtAt = row?.builtAt ?? build?.builtAt;
   const built = builtAt ? (timeAgoIso(builtAt) ?? builtAt) : null;
   const branch = row?.sourceBranch ?? build?.sourceBranch;
+  // Merged previews (issue #41) name both sides; older builds keep the
+  // single-side line.
+  const merged = mergedProvenance(row) ?? mergedProvenance(build);
   return (
     <p className="ver-current" data-testid="update-current-version">
-      Current version:{" "}
+      Installed:{" "}
       <code className="ver-name" title={row?.version ?? name}>
         {name}
       </code>
       {sha ? <> · {sha}</> : null}
       {built ? <> · built {built}</> : null}
-      {branch ? <> · from {branch}</> : null}
+      {merged ? <> · from {merged}</> : branch ? <> · from {branch}</> : null}
     </p>
   );
 }
@@ -393,7 +393,7 @@ function VersionList({
   return (
     <div className="ver-list">
       <div className="ver-listhead">
-        <span className="hint">Versions</span>
+        <span className="hint">Channels</span>
         <button className="btn ghost" type="button" disabled={refreshing} onClick={onRefresh} data-testid="update-refresh">
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
@@ -462,7 +462,7 @@ function VersionRow({
       <span className="ver-action">
         {c.current ? (
           <span className="st" data-testid="update-current">
-            current
+            installed
           </span>
         ) : switchingTo ? (
           <span className="hint">…</span>
@@ -498,7 +498,7 @@ function VersionRow({
       </span>
       {confirming ? (
         <span className="ver-note warnline">
-          The service restarts. Switching keeps your database and backs it up first.
+          The service restarts. Your data is kept and backed up first.
         </span>
       ) : isBlocked && blocked ? (
         <span className="ver-note">

@@ -31,6 +31,8 @@ import { guideRevisionForSnapshot } from "../routes/prompts.js";
 import { baseKeyString } from "../sessions/manager.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
+import { resolveEffectiveSettings } from "../settings/index.js";
+import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { Clock } from "../jobs/clock.js";
 import { RealClock } from "../jobs/clock.js";
@@ -38,7 +40,7 @@ import { logEntryForEvent } from "./taxonomy.js";
 import type { InteractionEvent } from "./hooks.js";
 import { planGrowth, forceBatches, renderBatchTurn } from "./growth.js";
 import { planRebuild } from "./rebuild.js";
-import { applyConsolidation } from "./contributions.js";
+import { applyConsolidation, formatContributionLines } from "./contributions.js";
 import { isThreadSettled, summarizeSettledThread, toThreadSnapshot, type ThreadSnapshot } from "./threads.js";
 import { SharedContextStore } from "./store.js";
 
@@ -46,6 +48,8 @@ export interface SharedContextDeps {
   reviews: ReviewStore;
   sessions: SessionManager;
   settings: SettingsStore;
+  /** Model catalog for live role defaults (issue #88): base keys use the same effective settings as GET /api/settings. Absent → stored settings stand. */
+  models?: ModelCatalog | null;
   store: SharedContextStore;
   clock?: Clock;
   /** Small-model consolidation for base rebuilds (`consolidate` template). */
@@ -166,10 +170,14 @@ export class SharedContextService {
 
   // -- base growth ---------------------------------------------------------
 
-  private baseKeyFor(reviewId: string): string | null {
+  private async effectiveSettings() {
+    return resolveEffectiveSettings({ settings: this.deps.settings, models: this.deps.models ?? null });
+  }
+
+  private async baseKeyFor(reviewId: string): Promise<string | null> {
     const snap = this.snapshot(reviewId);
     if (!snap) return null;
-    const settings = this.deps.settings.get();
+    const settings = await this.effectiveSettings();
     return baseKeyString({
       reviewId,
       reviewVersion: `v${snap.version.n}`,
@@ -190,11 +198,11 @@ export class SharedContextService {
     opts: { force?: boolean } = {},
   ): Promise<{ appended: number; pendingTokens: number }> {
     const snap = this.snapshot(reviewId);
-    const baseKey = this.baseKeyFor(reviewId);
+    const baseKey = await this.baseKeyFor(reviewId);
     if (!snap || !baseKey) return { appended: 0, pendingTokens: 0 };
     const info = this.deps.sessions.baseInfo(baseKey);
     const through = info?.logSeq ?? 0;
-    const batchTokens = this.deps.settings.get().logBatchTokens ?? 2000;
+    const batchTokens = (await this.effectiveSettings()).logBatchTokens ?? 2000;
     const plan = opts.force
       ? { batches: forceBatches(snap.logTail, through, { batchTokens }), pending: [], pendingTokens: 0 }
       : planGrowth(snap.logTail, through, { batchTokens });
@@ -233,9 +241,9 @@ export class SharedContextService {
     },
   ): Promise<{ rebuilt: boolean; reasons: string[] }> {
     const snap = this.snapshot(reviewId);
-    const baseKey = opts.baseKey ?? this.baseKeyFor(reviewId);
+    const baseKey = opts.baseKey ?? (await this.baseKeyFor(reviewId));
     if (!snap || !baseKey) return { rebuilt: false, reasons: [] };
-    const settings = this.deps.settings.get();
+    const settings = await this.effectiveSettings();
     const info = this.deps.sessions.baseInfo(baseKey);
     const obs = this.deps.store.statsForReview(reviewId).find((s) => s.baseKey === baseKey);
     const baseTokens = obs?.baseTokens ?? 0;
@@ -265,14 +273,7 @@ export class SharedContextService {
     if (!plan.rebuild) return { rebuilt: false, reasons: [] };
 
     if (this.deps.runConsolidate && snap.contributions.length > 0) {
-      const text = snap.contributions
-        .map(
-          (c) =>
-            `- ${c.id} [${c.status}] replaces=${c.replaces ?? "-"}: ${c.items
-              .map((i) => `[${i.kind}] ${i.text}`)
-              .join(" / ")}`,
-        )
-        .join("\n");
+      const text = formatContributionLines(snap.contributions);
       try {
         const verdict = await this.deps.runConsolidate(reviewId, text);
         const { merged, droppedIds } = applyConsolidation(snap.contributions, verdict);

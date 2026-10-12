@@ -52,6 +52,8 @@ import { validateReply } from "../validate/index.js";
 import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
+import { resolveEffectiveSettings } from "../settings/index.js";
+import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { buildExcerptMap, readCodeExcerpts } from "./excerpts.js";
@@ -67,6 +69,8 @@ export interface SecondOpinionDeps {
   runner: AgentRunner;
   mcp: McpRegistry;
   settings: SettingsStore;
+  /** Model catalog for live role defaults (issue #88): same effective settings as GET /api/settings. Absent → stored settings stand. */
+  models?: ModelCatalog | null;
   commands: CommandRunner;
   dataDir: string;
   promptsDir: string;
@@ -308,7 +312,7 @@ export async function buildSecondOpinionPrompt(
   const snapshot = deps.reviews.getSnapshot(reviewId);
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
   const target = resolveTarget(snapshot, cardId);
-  const settings = deps.settings.get();
+  const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   // L1 source for the isolated base (instructions + sourceText travel via
   // the base session; only cited excerpts travel in the turn's cited_code).
   const promptSnap = toPromptSnapshot(snapshot, { model: settings.secondOpinion.model });
@@ -455,7 +459,7 @@ export async function requestSecondOpinion(
 ): Promise<Job | { reused: true }> {
   const snapshot = deps.reviews.getSnapshot(req.reviewId);
   if (!snapshot) throw new Error(`unknown review ${req.reviewId}`);
-  const settings = deps.settings.get();
+  const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   checkDistinctModel(settings.main, settings.secondOpinion);
   const target = resolveTarget(snapshot, req.cardId);
   const version = snapshot.version.n;
@@ -520,7 +524,7 @@ export async function requestSecondOpinion(
         );
         const split = splitReply(text);
         if (!split.ok && (split.error.kind === "malformed" || split.error.kind === "not-object")) {
-          throw new Error(`trailing JSON ${split.error.kind}: ${split.error.message}`);
+          throw new Error(`the agent's reply was not in the expected format (${split.error.kind}: ${split.error.message})`);
         }
         const body = split.body;
         const cards = parseCards(body);
@@ -556,7 +560,7 @@ export async function requestSecondOpinion(
           usage.outputTokens += repair.usage.outputTokens;
           const secondSplit = splitReply(repair.text);
           if (!secondSplit.ok && (secondSplit.error.kind === "malformed" || secondSplit.error.kind === "not-object")) {
-            throw new Error(`trailing JSON ${secondSplit.error.kind}: ${secondSplit.error.message}`);
+            throw new Error(`the agent's reply was not in the expected format (${secondSplit.error.kind}: ${secondSplit.error.message})`);
           }
           finalText = repair.text;
           finalBlocks = parseCards(secondSplit.body).flatMap((c) => c.blocks);
@@ -569,7 +573,7 @@ export async function requestSecondOpinion(
         }
         const so = (finalData as unknown as { secondOpinion?: { verdict?: unknown; reasoning?: unknown; missed?: unknown } } | null)?.secondOpinion;
         if (!so || typeof so !== "object") {
-          throw new Error("second-opinion reply is missing its trailing secondOpinion JSON block");
+          throw new Error("the second opinion's reply was not in the expected format");
         }
         const verdict = parseVerdict((so as { verdict?: unknown }).verdict);
         const reasoningRaw = (so as { reasoning?: unknown }).reasoning;

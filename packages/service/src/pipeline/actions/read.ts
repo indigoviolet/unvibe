@@ -4,7 +4,7 @@
  * - `read` greys and collapses; unmarking expands. Marking an expansion
  *   read closes it (PRD §4.7).
  * - `collapse` toggles the collapsed flag (collapsed cards show only the
- *   title row, or the first line when untitled).
+ *   title row — the real title, else the shared fallback, issue #49).
  * - `bookmark` flips the page saved flag.
  *
  * UI state only: never enters the log (PRD §9.3). `cardId` may be a page

@@ -39,18 +39,48 @@ async function selectText(page: Page, rootSelector: string, text: string): Promi
     ({ rootSelector, text }: { rootSelector: string; text: string }) => {
       const root = document.querySelector(rootSelector);
       if (!root) return false;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const data = (node as Text).data;
-        const at = data.indexOf(text);
+      // Highlight token spans split code text across many nodes: locate in
+      // the joined text first, then map back (issue #23).
+      // Scoped per code cell: joining the whole table would match across
+      // line-number/code boundaries and anchor the selection in the gutter.
+      const cells = [...root.querySelectorAll("td.c")];
+      const scopes = cells.length > 0 ? cells : [root];
+      for (const scope of scopes) {
+        const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+        const nodes: Text[] = [];
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
+        const joined = nodes.map((n) => n.data).join("");
+        const at = joined.indexOf(text);
         if (at < 0) continue;
+        const nodeAt = (offset: number): { node: Text; at: number } | null => {
+          let acc = 0;
+          for (let i = 0; i < nodes.length; i++) {
+            const n = nodes[i];
+            const next = acc + n.data.length;
+            // Boundary offsets prefer the next node (a range starting at
+            // the end of one node behaves as starting in the gutter).
+            if (offset < next) return { node: n, at: offset - acc };
+            if (offset === next) {
+              return i + 1 < nodes.length ? { node: nodes[i + 1], at: 0 } : { node: n, at: n.data.length };
+            }
+            acc = next;
+          }
+          return null;
+        };
+        const s = nodeAt(at);
+        const e = nodeAt(at + text.length);
+        if (!s || !e) continue;
         const range = document.createRange();
-        range.setStart(node, at);
-        range.setEnd(node, at + text.length);
+        try {
+          range.setStart(s.node, s.at);
+          range.setEnd(e.node, e.at);
+        } catch {
+          continue;
+        }
         const sel = getSelection();
         sel?.removeAllRanges();
         sel?.addRange(range);
-        (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        (range.endContainer as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         return true;
       }
       return false;
@@ -104,7 +134,7 @@ test.describe("no-agent state (UNVIBE_AGENT=none)", () => {
       await page.locator('#selbar [data-act="explain"]').click();
       const exp = page.locator('#C-central [data-expansion]').first();
       await expect(exp).toBeVisible({ timeout: 15_000 });
-      await expect(exp).toContainText(/No agent configured/i, { timeout: 30_000 });
+      await expect(exp).toContainText(/agent is turned off/i, { timeout: 30_000 });
     } else {
       // Diff-anchored explain via keyboard selection on the first code cell.
       // Fail-fast with no agent: the expansion shows the no-agent error
@@ -116,7 +146,7 @@ test.describe("no-agent state (UNVIBE_AGENT=none)", () => {
       await page.locator('#selbar [data-act="explain"]').click();
       const exp = page.locator("#right [data-expansion]").first();
       await expect(exp).toBeVisible({ timeout: 15_000 });
-      await expect(exp).toContainText(/No agent configured/i, { timeout: 30_000 });
+      await expect(exp).toContainText(/agent is turned off/i, { timeout: 30_000 });
     }
 
     // Read/collapse-adjacent non-agent controls still work: toggle the

@@ -31,6 +31,12 @@ export interface InstalledBuild {
   /** Null when the install carries no channel record (source checkout, old build). */
   channel: string | null;
   sourceBranch: string | null;
+  /** Branch-side commit (issue #41); null for old builds. */
+  sourceCommit: string | null;
+  /** Base the branch was merged onto (issue #41); null for old builds. */
+  baseBranch: string | null;
+  /** Base-side commit; null for old builds. */
+  baseCommit: string | null;
   commit: string | null;
   builtAt: string | null;
   packagePath: string | null;
@@ -107,6 +113,9 @@ interface ReleasePackageJson {
   unvibe?: {
     channel?: unknown;
     sourceBranch?: unknown;
+    sourceCommit?: unknown;
+    baseBranch?: unknown;
+    baseCommit?: unknown;
     commit?: unknown;
     builtAt?: unknown;
   };
@@ -151,6 +160,9 @@ export function readInstalledBuild(
     version: fallbackVersion,
     channel: null,
     sourceBranch: null,
+    sourceCommit: null,
+    baseBranch: null,
+    baseCommit: null,
     commit: null,
     builtAt: null,
     packagePath: null,
@@ -175,6 +187,9 @@ export function readInstalledBuild(
       version,
       channel,
       sourceBranch: asStringOrNull(pkg.unvibe?.sourceBranch),
+      sourceCommit: asStringOrNull(pkg.unvibe?.sourceCommit),
+      baseBranch: asStringOrNull(pkg.unvibe?.baseBranch),
+      baseCommit: asStringOrNull(pkg.unvibe?.baseCommit),
       commit: asStringOrNull(pkg.unvibe?.commit),
       builtAt: asStringOrNull(pkg.unvibe?.builtAt),
       packagePath,
@@ -194,9 +209,20 @@ export function decodeRefPackage(stdout: string): {
   version: string | null;
   commit: string | null;
   sourceBranch: string | null;
+  sourceCommit: string | null;
+  baseBranch: string | null;
+  baseCommit: string | null;
   builtAt: string | null;
 } {
-  const blank = { version: null, commit: null, sourceBranch: null, builtAt: null };
+  const blank = {
+    version: null,
+    commit: null,
+    sourceBranch: null,
+    sourceCommit: null,
+    baseBranch: null,
+    baseCommit: null,
+    builtAt: null,
+  };
   try {
     const body = JSON.parse(stdout) as { content?: unknown; encoding?: unknown };
     if (typeof body.content !== "string") return { ...blank };
@@ -206,6 +232,9 @@ export function decodeRefPackage(stdout: string): {
       version: typeof pkg.version === "string" ? pkg.version : null,
       commit: asStringOrNull(pkg.unvibe?.commit),
       sourceBranch: asStringOrNull(pkg.unvibe?.sourceBranch),
+      sourceCommit: asStringOrNull(pkg.unvibe?.sourceCommit),
+      baseBranch: asStringOrNull(pkg.unvibe?.baseBranch),
+      baseCommit: asStringOrNull(pkg.unvibe?.baseCommit),
       builtAt: asStringOrNull(pkg.unvibe?.builtAt),
     };
   } catch {
@@ -217,14 +246,31 @@ export function decodeRefPackage(stdout: string): {
 export async function fetchRefPackage(
   runner: CommandRunner,
   ref: string,
-): Promise<{ version: string | null; commit: string | null; sourceBranch: string | null; builtAt: string | null }> {
+): Promise<{
+  version: string | null;
+  commit: string | null;
+  sourceBranch: string | null;
+  sourceCommit: string | null;
+  baseBranch: string | null;
+  baseCommit: string | null;
+  builtAt: string | null;
+}> {
   const args = ["api", `repos/${UNVIBE_REPO}/contents/package.json?ref=${ref}`];
+  const blank = {
+    version: null,
+    commit: null,
+    sourceBranch: null,
+    sourceCommit: null,
+    baseBranch: null,
+    baseCommit: null,
+    builtAt: null,
+  };
   try {
     const res = await runGh(runner, args, { args });
-    if (res.code !== 0) return { version: null, commit: null, sourceBranch: null, builtAt: null };
+    if (res.code !== 0) return { ...blank };
     return decodeRefPackage(res.stdout);
   } catch {
-    return { version: null, commit: null, sourceBranch: null, builtAt: null };
+    return { ...blank };
   }
 }
 
@@ -251,6 +297,9 @@ export function channelsFileOverride(
         version: typeof c.version === "string" ? c.version : null,
         commit: typeof c.commit === "string" ? c.commit : null,
         sourceBranch: typeof c.sourceBranch === "string" ? c.sourceBranch : null,
+        sourceCommit: typeof c.sourceCommit === "string" ? c.sourceCommit : null,
+        baseBranch: typeof c.baseBranch === "string" ? c.baseBranch : null,
+        baseCommit: typeof c.baseCommit === "string" ? c.baseCommit : null,
         builtAt: typeof c.builtAt === "string" ? c.builtAt : null,
         current: c.ref === installed.channel,
       }));
@@ -305,6 +354,9 @@ export async function listChannels(
       version: meta.version,
       commit: meta.commit,
       sourceBranch: meta.sourceBranch,
+      sourceCommit: meta.sourceCommit,
+      baseBranch: meta.baseBranch,
+      baseCommit: meta.baseCommit,
       builtAt: meta.builtAt,
       current: ref === installed.channel,
     };
@@ -315,22 +367,30 @@ export async function listChannels(
 export function formatChannelList(channels: UpdateChannel[], installed: InstalledBuild): string[] {
   const lines = ["Available channels:"];
   for (const c of channels) {
-    let head = `${c.current ? "* " : "  "}${c.ref}${c.current ? ` (installed, ${installed.version})` : c.version ? ` (${c.version})` : " (metadata unavailable)"}`;
+    let head = `${c.current ? "* " : "  "}${c.ref}${c.current ? ` (installed, ${installed.version})` : c.version ? ` (${c.version})` : " (no build details)"}`;
     if (c.current && c.commit && c.commit !== installed.commit) {
       const built = c.builtAt ? `, built ${c.builtAt.slice(0, 10)}` : "";
       head += ` — newer build available (installed ${shortCommit(installed.commit)} vs ${c.commit.slice(0, 7)}${built})`;
     }
     lines.push(head);
     if (!c.current && (c.sourceBranch || c.commit || c.builtAt)) {
-      const at = c.commit ? ` @ ${c.commit.slice(0, 7)}` : "";
       const built = c.builtAt ? `, built ${c.builtAt.slice(0, 10)}` : "";
-      lines.push(`    from ${c.sourceBranch ?? "(unknown branch)"}${at}${built}`);
+      // Merged previews (issue #41) name both sides; older builds keep the
+      // single-side line.
+      if (c.baseBranch && c.baseCommit && c.sourceBranch && c.sourceCommit) {
+        lines.push(
+          `    from ${c.baseBranch}@${c.baseCommit.slice(0, 7)} + ${c.sourceBranch}@${c.sourceCommit.slice(0, 7)}${built}`,
+        );
+      } else {
+        const at = c.commit ? ` @ ${c.commit.slice(0, 7)}` : "";
+        lines.push(`    from ${c.sourceBranch ?? "(unknown branch)"}${at}${built}`);
+      }
     }
   }
   if (channels.length === 0) lines.push("(none published yet)");
   if (installed.channel && !channels.some((c) => c.ref === installed.channel)) {
     lines.push(`(installed channel ${installed.channel} is not published on the remote)`);
   }
-  lines.push("switch with: unvibe update <channel>");
+  lines.push("to switch: unvibe update <channel>");
   return lines;
 }

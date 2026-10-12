@@ -12,9 +12,10 @@ import {
   readInstalledBuild,
 } from "../update/channels.js";
 import { runSwitchCore } from "../update/switch.js";
+import { DB_RULE } from "../update/data-backup.js";
 
 export const UPDATE_USAGE = [
-  "unvibe update — switch the installed build between channels (issue #36)",
+  "unvibe update: install a different channel",
   "",
   "Usage: unvibe update --list",
   "       unvibe update <channel>",
@@ -22,10 +23,8 @@ export const UPDATE_USAGE = [
   "  --list       list release, release-rc and preview/* channels, marking the installed one",
   "  <channel>    install github:indigoviolet/unvibe#<channel> globally with npm",
   "",
-  "Switching keeps your database and backs it up first to " +
-    "<dataDir>/channel-backups/<channel>/. A newer build may upgrade the database; " +
-    "if an older build then cannot open it, copy the backup back.",
-  "Stop the service first (`unvibe stop`), then `unvibe start` afterwards.",
+  DB_RULE,
+  "Stop the service first (`unvibe stop`) and start it again afterwards (`unvibe start`).",
 ].join("\n");
 
 export interface UpdateDeps {
@@ -70,7 +69,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       code: 2,
       lines: [
         `unknown channel: ${JSON.stringify(channel)}`,
-        "want release, release-rc, or preview/<name> (see `unvibe update --list`)",
+        "use release, release-rc or preview/<name> (see `unvibe update --list`)",
       ],
     };
   }
@@ -87,7 +86,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       code: 2,
       lines: [
         `unknown channel: ${JSON.stringify(channel)}`,
-        "want release, release-rc, or preview/<name> (see `unvibe update --list`)",
+        "use release, release-rc or preview/<name> (see `unvibe update --list`)",
       ],
     };
   }

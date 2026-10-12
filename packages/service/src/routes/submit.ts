@@ -19,7 +19,7 @@ import type { ServiceContext } from "./context.js";
 export async function registerSubmit(app: FastifyInstance, ctx?: ServiceContext): Promise<void> {
   if (!ctx) {
     app.post("/api/reviews/:id/submit", async (_req, reply) =>
-      reply.code(501).send({ error: "not implemented" }),
+      reply.code(501).send({ error: "not available in this build" }),
     );
     return;
   }
@@ -49,7 +49,7 @@ export async function registerSubmit(app: FastifyInstance, ctx?: ServiceContext)
     const prNumber = row?.prNumber ?? snapshot.review.prNumber;
     if (prNumber === null || prNumber === undefined) {
       const preview = buildPreview(snapshot);
-      const reason = "branch has no PR: submit is disabled";
+      const reason = "This branch has no PR, so there is nothing to submit to.";
       return { preview: { ...preview, disabledReason: reason }, reason };
     }
     return { preview: buildPreview(snapshot) };

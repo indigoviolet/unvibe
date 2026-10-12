@@ -6,7 +6,7 @@
  * the second opinion uses the same model as main (PRD §4.10 wants a
  * different one).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ModelInfo, ModelPick, ReadinessCheck, Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 
@@ -18,8 +18,8 @@ export function modelLabel(m: ModelInfo): string {
 type Role = "main" | "small" | "secondOpinion";
 
 const ROLES: { role: Role; label: string; blurb: string }[] = [
-  { role: "main", label: "Main", blurb: "Everything that needs the review's context." },
-  { role: "small", label: "Small", blurb: "Hunk summaries, titles, contribution cleanup." },
+  { role: "main", label: "Main", blurb: "Writes the guide, explanations and answers." },
+  { role: "small", label: "Small", blurb: "Hunk summaries, titles and other small jobs." },
   { role: "secondOpinion", label: "Second opinion", blurb: "A different model from main, for an independent take." },
 ];
 
@@ -72,7 +72,7 @@ export function ModelsSection({
       settings.secondOpinion.model === settings.main.model ? (
         <p className="warnline" role="status">
           Second opinion uses the same model as main ({settings.main.provider}/{settings.main.model})
-          — pick a different one so the second opinion is actually independent.
+          — pick a different one so the second opinion is independent.
         </p>
       ) : null}
     </section>
@@ -101,10 +101,20 @@ function ModelPicker({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Keep the provider select in sync when settings arrive late / change.
+  // Keep the provider select in sync when settings arrive late / change,
+  // but never snap it back while the user is browsing another provider's
+  // list (a settings refetch or WebSocket update arriving mid-browse, #87).
+  // Only a save (via onSaved) or an external change made while not browsing
+  // moves the select: the saved provider is compared against what it was,
+  // not against the current browse choice.
+  const savedProvider = pick.provider;
+  const prevSavedProvider = useRef(savedProvider);
   useEffect(() => {
-    setProvider(settings[role].provider);
-  }, [settings, role]);
+    const prev = prevSavedProvider.current;
+    prevSavedProvider.current = savedProvider;
+    if (savedProvider === prev) return;
+    setProvider((current) => (current === prev ? savedProvider : current));
+  }, [savedProvider]);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,8 +137,12 @@ function ModelPicker({
 
   // The saved pick may have disappeared from the adapter's list (model
   // retired or renamed): flag it plainly instead of silently keeping it.
+  // While another provider's list is being browsed nothing is saved yet:
+  // the pick only changes when a model is chosen from that list (#87).
+  const browsing = provider !== pick.provider;
   const modelIds = models?.map((m) => m.id) ?? null;
-  const offeredMissing = modelIds !== null && error === null && pick.model !== "" && !modelIds.includes(pick.model);
+  const offeredMissing =
+    !browsing && modelIds !== null && error === null && pick.model !== "" && !modelIds.includes(pick.model);
   const unset = role === "secondOpinion" && pick.model === "";
 
   const save = async (next: ModelPick): Promise<void> => {
@@ -138,6 +152,10 @@ function ModelPicker({
       onSaved(await api.saveSettings({ [role]: next }));
     } catch (err) {
       setSaveError(friendlyError(err));
+      // The saved pick is unchanged: return both selects to it (#87).
+      // Only revert when the user hasn't already moved on to another
+      // provider while the save was in flight.
+      setProvider((current) => (current === next.provider ? pick.provider : current));
     } finally {
       setSaving(false);
     }
@@ -167,11 +185,8 @@ function ModelPicker({
           id={`prov-${role}`}
           value={provider}
           onChange={(e) => {
-            const nextProvider = e.target.value;
-            setProvider(nextProvider);
-            // Keep the current model until the new list loads; the model
-            // select below offers it when missing.
-            void save({ provider: nextProvider, model: pick.model });
+            setSaveError(null);
+            setProvider(e.target.value);
           }}
         >
           {providers.map((p) => (
@@ -192,12 +207,19 @@ function ModelPicker({
             <>
               <select
                 id={`model-${role}`}
-                value={pick.model}
-                onChange={(e) => void save({ provider: pick.provider, model: e.target.value })}
+                value={browsing ? "" : pick.model}
+                onChange={(e) => void save({ provider, model: e.target.value })}
                 disabled={saving}
               >
-                {pick.model === "" ? <option value="">Not set</option> : null}
-                {modelIds?.includes(pick.model) ? null : pick.model !== "" ? <option value={pick.model}>{pick.model} (current)</option> : null}
+                {browsing ? (
+                  <option value="" disabled>
+                    Pick a {provider} model…
+                  </option>
+                ) : pick.model === "" ? (
+                  <option value="">Not set</option>
+                ) : modelIds?.includes(pick.model) ? null : (
+                  <option value={pick.model}>{pick.model} (current)</option>
+                )}
                 {models.map((m) => (
                   <option key={m.id} value={m.id} title={m.description ?? undefined}>
                     {modelLabel(m)}
@@ -206,7 +228,7 @@ function ModelPicker({
               </select>
               {/* Description as secondary text for the current pick + all options (#21). */}
               {(() => {
-                const current = models.find((m) => m.id === pick.model);
+                const current = browsing ? undefined : models.find((m) => m.id === pick.model);
                 if (current?.description) {
                   return (
                     <span className="hint" data-testid={`model-${role}-desc`}>

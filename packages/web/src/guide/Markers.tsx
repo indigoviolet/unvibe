@@ -67,7 +67,7 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
           data-refs={c.target}
           data-src={c.target}
           aria-label="Unverified source"
-          data-tip="This citation could not be checked, so it is shown as unverified."
+          data-tip="Unvibe couldn't confirm this points at the right code."
           onClick={() => revealSource(c.target)}
         >
           <Icon name="code" />
@@ -79,7 +79,7 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
           type="button"
           data-threads={unquoted.map((t) => t.id).join("|")}
           aria-label={`${unquoted.length} comments`}
-          data-tip="Preview the comment thread"
+          data-tip="Show comments"
           onClick={() => openBlockThread(unquoted[0].id, blockId)}
         >
           <Icon name="comment" />
