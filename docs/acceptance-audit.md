@@ -382,7 +382,10 @@ needed (that deviation is closed, not added).
 
 - Model pickers per role with provider models — met
   (`settings.spec.ts` “model pickers list provider models”, `routes/settings.ts`,
-  `GET /api/models` ran 200).
+  `GET /api/models` ran 200). Switching a role's provider only browses that
+  provider's list and saves nothing; choosing a model saves provider + model
+  together, with no false “no longer offered” alert mid-browse (issue #87;
+  `ModelsSection.test.tsx`).
 - Model display names (#21) — met: `GET /api/models` carries `name` +
   `description` from the adapters; pickers show display name beside the id
   with description as secondary text (Claude + Codex); readiness, Doctor,
