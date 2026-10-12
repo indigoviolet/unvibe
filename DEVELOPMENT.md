@@ -397,7 +397,7 @@ For a rollback drill, lie about the target version in the channels file (with a 
 
 - ACP lives only in `packages/service/src/agent/acp/` (enforced by `eslint.config.mjs` `no-restricted-imports` plus `test/acp-isolation.test.ts`). Everything else uses the `AgentRunner` interface from `@unvibe/shared`.
 - API types live in `packages/shared`. Service and web both import them; change the contract there first. `GET /api/jobs` and snapshot job lists omit `promptSnapshot` (fetch per job at `/api/jobs/:id/prompt`) to keep snapshots small.
-- Work is tracked in GitHub issues at `indigoviolet/unvibe`. Each piece of work has an issue; name it in your report and in the merge commit (`Closes #N`); tick its checklist as items land; open a new issue for anything found but not fixed. Commit in small logical commits on your branch; do not push or merge.
+- Work is tracked in GitHub issues at `indigoviolet/unvibe`. Each piece of work has an issue; name it in your report and in the merge commit (`Closes #N`); tick its checklist as items land; open a new issue for anything found but not fixed. Keep the issue's state current (branch comment and `waiting-for-user-testing` once implemented, sub-issues for what remains, closed only when merged to `main`): the steps are in `CLAUDE.md`. Commit in small logical commits on your branch; do not push or merge.
 - `docs/acceptance-audit.md` is the requirement-by-requirement verdict plus the open list; update it when behaviour changes.
 
 ## Debugging
