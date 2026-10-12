@@ -23,6 +23,7 @@ import type {
   HunkState,
   Job,
   ModelsResponse,
+  PickFolderResponse,
   PromptExpanded,
   PromptsResponse,
   PromptTemplate,
@@ -915,6 +916,12 @@ export const mockApi = {
       // Non-fatal.
     }
     return { repos: getRepos() };
+  },
+
+  /** Mock folder dialog (#26): pretends the user picked a checkout. */
+  pickFolder: async (): Promise<PickFolderResponse> => {
+    await wait(50);
+    return { status: "picked", path: "/mock/picked/checkout" };
   },
 
   repoChanges: async (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> => {
