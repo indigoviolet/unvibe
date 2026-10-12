@@ -19,15 +19,24 @@ function rowToRepo(row: {
   name: string;
   local_path: string;
   last_opened: number;
+  managed?: number | null;
 }): Repo {
-  return {
+  const repo: Repo = {
     id: row.id,
     owner: row.owner,
     name: row.name,
     localPath: row.local_path,
     lastOpened: row.last_opened,
   };
+  // #27: managed clones only; every app database runs migration 005, so
+  // the column exists. The field stays optional on the type (absent/false
+  // both mean "the user's own checkout").
+  if (row.managed === 1) repo.managed = true;
+  return repo;
 }
+
+/** Columns read everywhere (managed added in migration 005). */
+const REPO_COLS = "id, owner, name, local_path, last_opened, managed";
 
 export class RepoStore {
   constructor(private readonly db: DatabaseSync) {}
@@ -35,34 +44,62 @@ export class RepoStore {
   /** Remembered repos, most recently opened first. */
   list(): Repo[] {
     const rows = this.db
-      .prepare("SELECT id, owner, name, local_path, last_opened FROM repos ORDER BY last_opened DESC")
+      .prepare(`SELECT ${REPO_COLS} FROM repos ORDER BY last_opened DESC`)
       .all() as Parameters<typeof rowToRepo>[0][];
     return rows.map(rowToRepo);
   }
 
   get(id: string): Repo | null {
     const row = this.db
-      .prepare("SELECT id, owner, name, local_path, last_opened FROM repos WHERE id = ?")
+      .prepare(`SELECT ${REPO_COLS} FROM repos WHERE id = ?`)
       .get(id) as Parameters<typeof rowToRepo>[0] | undefined;
     return row ? rowToRepo(row) : null;
   }
 
   getByPath(localPath: string): Repo | null {
     const row = this.db
-      .prepare("SELECT id, owner, name, local_path, last_opened FROM repos WHERE local_path = ?")
+      .prepare(`SELECT ${REPO_COLS} FROM repos WHERE local_path = ?`)
       .get(localPath) as Parameters<typeof rowToRepo>[0] | undefined;
     return row ? rowToRepo(row) : null;
+  }
+
+  /** Remembered managed clone for owner/name, if any (#27 reuse). */
+  getManaged(owner: string, name: string): Repo | null {
+    const row = this.db
+      .prepare(`SELECT ${REPO_COLS} FROM repos WHERE owner = ? AND name = ? AND managed = 1`)
+      .get(owner, name) as Parameters<typeof rowToRepo>[0] | undefined;
+    return row ? rowToRepo(row) : null;
+  }
+
+  /** How many reviews belong to a repo (remove refuses while > 0). */
+  countReviews(repoId: string): number {
+    try {
+      const row = this.db
+        .prepare("SELECT COUNT(*) AS n FROM reviews WHERE repo_id = ?")
+        .get(repoId) as { n: number } | undefined;
+      return row?.n ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Forget a repo (the row only; clone deletion is the caller's job). */
+  remove(id: string): boolean {
+    const res = this.db.prepare("DELETE FROM repos WHERE id = ?").run(id) as unknown as {
+      changes: number | bigint;
+    };
+    return Number(res.changes) > 0;
   }
 
   /** Insert or update by absolute path (path identity is stable). */
   upsert(repo: Repo): Repo {
     this.db
       .prepare(
-        "INSERT INTO repos (id, owner, name, local_path, last_opened) VALUES (?, ?, ?, ?, ?) " +
+        "INSERT INTO repos (id, owner, name, local_path, last_opened, managed) VALUES (?, ?, ?, ?, ?, ?) " +
           "ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, name = excluded.name, " +
-          "local_path = excluded.local_path, last_opened = excluded.last_opened",
+          "local_path = excluded.local_path, last_opened = excluded.last_opened, managed = excluded.managed",
       )
-      .run(repo.id, repo.owner, repo.name, repo.localPath, repo.lastOpened);
+      .run(repo.id, repo.owner, repo.name, repo.localPath, repo.lastOpened, repo.managed === true ? 1 : 0);
     return repo;
   }
 

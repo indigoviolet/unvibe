@@ -10,3 +10,21 @@ export {
   type DetectedCheckout,
 } from "./detect.js";
 export { repoChanges, type ChangesDeps } from "./changes.js";
+export {
+  assertManagedPath,
+  CloneError,
+  cloneArgv,
+  cloneTargetState,
+  ensureManagedClone,
+  isPathInside,
+  managedRepoDir,
+  managedReposRoot,
+  MANAGED_FETCH_FRESH_MS,
+  mapCloneError,
+  refreshManagedCheckout,
+  removeRepo,
+  resetManagedCloneStateForTests,
+  type CloneDeps,
+  type RemovableRepos,
+  type TargetState,
+} from "./managed.js";

@@ -3,24 +3,39 @@
  * - `GET /api/repos` — remembered repos (most recent first) plus detected
  *   local checkouts under the configured roots (marked `detected: true`).
  * - `POST /api/repos` — remember a checkout path (validated as a git
- *   checkout; owner/name derived from the `origin` remote).
+ *   checkout; owner/name derived from the `origin` remote), or clone a
+ *   GitHub URL into Unvibe's own storage (#27, marked `managed: true`).
+ * - `DELETE /api/repos/:id` — forget a repo; deletes the managed clone
+ *   directory only for clones Unvibe made (#27). Refused while reviews
+ *   reference the repo.
  * - `GET /api/repos/:id/changes?filter=` — authoring / review-requested
- *   PRs, recent branches, previous reviews with stale state.
+ *   PRs, recent branches, previous reviews with stale state. Managed clones
+ *   are `git fetch`ed first (best effort; failures degrade to stale data
+ *   with a `fetchError` note, never a failed listing).
  */
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import type {
-  AddRepoRequest,
-  ChangesFilter,
-  Repo,
-  ReposResponse,
-  RepoChangesResponse,
+import {
+  parseGitHubRepoInput,
+  type AddRepoRequest,
+  type AddRepoResponse,
+  type ChangesFilter,
+  type RemoveRepoResponse,
+  type Repo,
+  type ReposResponse,
+  type RepoChangesResponse,
 } from "@unvibe/shared";
 import {
+  cloneTargetState,
   deriveIdentity,
   detectCheckouts,
+  ensureManagedClone,
+  CloneError,
   isGitCheckout,
+  managedRepoDir,
   newRepoId,
+  refreshManagedCheckout,
+  removeRepo,
   repoChanges,
   resolveRepoRoots,
 } from "../repos/index.js";
@@ -67,7 +82,7 @@ export const DEMO_REPO = {
   detected: true,
 } as const;
 
-/** GET /api/repos · POST /api/repos · GET /api/repos/:id/changes */
+/** GET /api/repos · POST /api/repos · DELETE /api/repos/:id · GET /api/repos/:id/changes */
 export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): Promise<void> {
   app.get("/api/repos", async () => {
     const repos = await listAllRepos(ctx);
@@ -76,13 +91,20 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
   });
 
   app.post("/api/repos", async (req, reply) => {
-    const body = req.body as AddRepoRequest | undefined;
-    const rawPath = body?.path;
-    if (typeof rawPath !== "string" || rawPath.trim() === "") {
-      return reply.code(400).send({ error: "path is required" });
+    const body = (req.body ?? {}) as AddRepoRequest;
+    const rawPath = typeof body.path === "string" ? body.path.trim() : "";
+    const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
+    if (rawPath !== "" && rawUrl !== "") {
+      return reply.code(400).send({ error: "either path or url is required (not both)" });
+    }
+    if (rawUrl !== "") {
+      return addRepoByUrl(ctx, rawUrl, reply);
+    }
+    if (rawPath === "") {
+      return reply.code(400).send({ error: "path or url is required" });
     }
     const { default: path } = await import("node:path");
-    const localPath = path.resolve(rawPath.trim());
+    const localPath = path.resolve(rawPath);
     let ok = false;
     try {
       ok = await isGitCheckout(ctx.runner, localPath);
@@ -106,7 +128,21 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
     ctx.repos.upsert(repo);
     ctx.repos.touch(repo.id);
     const repos = await listAllRepos(ctx);
-    return { repos: [{ ...DEMO_REPO }, ...repos] } satisfies ReposResponse;
+    return { repos: [{ ...DEMO_REPO }, ...repos] } satisfies AddRepoResponse;
+  });
+
+  app.delete("/api/repos/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (id === "demo") return reply.code(404).send({ error: "unknown repo" });
+    try {
+      const { removedClone } = removeRepo(ctx.dataDir, ctx.repos, id);
+      return { ok: true, removedClone } satisfies RemoveRepoResponse;
+    } catch (err) {
+      if (err instanceof CloneError) {
+        return reply.code(err.status).send({ error: err.message });
+      }
+      throw err;
+    }
   });
 
   app.get("/api/repos/:id/changes", async (req, reply) => {
@@ -142,7 +178,68 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
       repo = (await listAllRepos(ctx)).find((r) => r.id === id) ?? null;
     }
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
+    // Managed clones stay fresh: fetch before listing so PR heads and base
+    // branches are current. Best effort — offline degrades to stale data
+    // with a visible note, never a failed listing. User checkouts are never
+    // fetched implicitly.
+    const fetchError = await refreshManagedCheckout(ctx.runner, repo);
     const changes = await repoChanges({ runner: ctx.runner, db: ctx.db }, repo, filter);
+    if (fetchError) return { changes, fetchError } satisfies RepoChangesResponse;
     return { changes } satisfies RepoChangesResponse;
   });
+}
+
+/**
+ * `POST /api/repos` with a URL (#27): clone into the data dir through the
+ * injectable command runner, then remember the repo like any other, marked
+ * `managed`. The request holds open while the (blobless) clone runs; the
+ * service has no repo-scoped progress channel (see `repos/managed.ts`).
+ * Adding the same URL twice reuses the existing clone.
+ */
+async function addRepoByUrl(
+  ctx: ServiceContext,
+  rawUrl: string,
+  reply: import("fastify").FastifyReply,
+) {
+  let parsed: { owner: string; name: string; prNumber?: number };
+  try {
+    parsed = parseGitHubRepoInput(rawUrl);
+  } catch (err) {
+    return reply.code(400).send({ error: (err as Error).message });
+  }
+  const { owner, name } = parsed;
+  const localPath = managedRepoDir(ctx.dataDir, owner, name);
+  const existing = ctx.repos.getByPath(localPath);
+  if (existing) {
+    // A row already points at the managed path (added twice, or added by
+    // path before the clone existed): adopt it as managed when the
+    // directory is the expected clone, then reuse without cloning.
+    let repo = existing;
+    if (existing.managed !== true) {
+      if ((await cloneTargetState(ctx.runner, localPath, owner, name)) === "expected") {
+        repo = { ...existing, owner, name, managed: true };
+        ctx.repos.upsert(repo);
+      }
+    }
+    ctx.repos.touch(repo.id);
+    const repos = await listAllRepos(ctx);
+    const out: AddRepoResponse = { repos: [{ ...DEMO_REPO }, ...repos] };
+    if (parsed.prNumber !== undefined) out.prNumber = parsed.prNumber;
+    return out;
+  }
+  try {
+    await ensureManagedClone({ runner: ctx.runner, dataDir: ctx.dataDir }, owner, name);
+  } catch (err) {
+    if (err instanceof CloneError) {
+      return reply.code(err.status).send({ error: err.message });
+    }
+    throw err;
+  }
+  const repo: Repo = { id: newRepoId(), owner, name, localPath, lastOpened: 0, managed: true };
+  ctx.repos.upsert(repo);
+  ctx.repos.touch(repo.id);
+  const repos = await listAllRepos(ctx);
+  const out: AddRepoResponse = { repos: [{ ...DEMO_REPO }, ...repos] };
+  if (parsed.prNumber !== undefined) out.prNumber = parsed.prNumber;
+  return out;
 }

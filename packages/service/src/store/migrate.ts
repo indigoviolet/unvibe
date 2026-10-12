@@ -195,6 +195,19 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 5,
+    name: "005-repos-managed",
+    up: `
+      -- Managed clones (#27): repos Unvibe cloned itself into
+      -- <dataDir>/repos/<owner>/<name>. 0 = the user's own checkout (never
+      -- fetched implicitly, never deleted); 1 = Unvibe's clone (refreshed
+      -- automatically, removed with the repo). ADD COLUMN with a default is
+      -- safe on existing databases: every remembered repo keeps behaving as
+      -- a user checkout.
+      ALTER TABLE repos ADD COLUMN managed INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 export function currentVersion(db: DatabaseSync): number {
