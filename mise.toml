@@ -29,7 +29,8 @@ wrap=()
 if [[ -z "${UNVIBE_OP_RUN:-}" && -n "${OP_ENVIRONMENT_ID:-}" ]]; then
   wrap=(op run --environment "$OP_ENVIRONMENT_ID" --)
 fi
-UNVIBE_OP_RUN=1 exec "${wrap[@]}" "$@"
+# ${wrap[@]+...}: bash 3.2 (macOS) treats an empty array as unbound under `set -u`.
+UNVIBE_OP_RUN=1 exec ${wrap[@]+"${wrap[@]}"} "$@"
 '''
 
 [tasks.install]
@@ -72,45 +73,87 @@ run = "npm run test:e2e --workspace @unvibe/web --if-present"
 description = "Install Playwright browsers for e2e tests"
 run = "npx --workspace @unvibe/web playwright install chromium"
 
-[tasks.build]
-description = "Build shared, service and web"
-run = "mise run op -- sh -c 'npm run build --workspaces --if-present && npm run build --workspace @unvibe/web --if-present'"
-# Freshness (issue #39): with `sources` but no `outputs`, mise falls back to
-# `outputs = { auto = true }` — a marker file in its state dir — so deleting
-# `dist/` never invalidated the task and the build was skipped. The explicit
-# `outputs` below are the directories plus the load-bearing files
-# (`scripts/release.mjs` and the service entry require them), so a missing or
-# partial `dist/` makes the task stale again.
-# Sources cover everything the builds read: tsc reads the base + package
-# tsconfigs (web's `tsc --noEmit` also typechecks `e2e/`, `vite.config.ts` and
-# `playwright.config.ts`, failing the build on type errors there); vite reads
-# `index.html`, `public/` and `vite.config.ts`; the root manifests pin the
-# installed dependency tree that esbuild/vite bundle.
+[tasks."build:shared"]
+description = "Build @unvibe/shared"
+run = "mise run op -- npm run build --workspace @unvibe/shared"
+# Freshness (issue #64): one task per package, each with only its own
+# sources and outputs. The old single `build` task mixed all three
+# packages' outputs, so a freshly rebuilt `packages/shared/dist/index.js`
+# could make the whole task count as fresh while web/service dists were
+# stale. Splitting keeps `mise run build` skipping when nothing changed
+# while a change under any package's `src` rebuilds that package.
 sources = [
   "package.json",
   "package-lock.json",
   "tsconfig.base.json",
-  "packages/*/src/**/*",
-  "packages/*/package.json",
-  "packages/*/tsconfig.json",
+  "packages/shared/src/**/*",
+  "packages/shared/package.json",
+  "packages/shared/tsconfig.json",
+]
+outputs = ["packages/shared/dist", "packages/shared/dist/index.js"]
+
+[tasks."build:service"]
+description = "Build @unvibe/service"
+depends = ["build:shared"]
+run = "mise run op -- npm run build --workspace @unvibe/service"
+# `packages/shared/dist/index.js` is a source here, not just a build
+# ordering edge: esbuild bundles it, so a rebuilt shared dist must
+# rebuild the service bundle even when no service source changed.
+sources = [
+  "package.json",
+  "package-lock.json",
+  "tsconfig.base.json",
+  "packages/service/src/**/*",
+  "packages/service/package.json",
+  "packages/service/tsconfig.json",
+  "packages/shared/dist/index.js",
+]
+outputs = [
+  "packages/service/dist",
+  "packages/service/dist/index.js",
+  "packages/service/dist/update-helper.js",
+  "packages/service/dist/adapters/claude.js",
+  "packages/service/dist/adapters/codex.js",
+]
+
+[tasks."build:web"]
+description = "Build @unvibe/web"
+depends = ["build:shared"]
+run = "mise run op -- npm run build --workspace @unvibe/web --if-present"
+# Same shared-dist note as `build:service`: vite resolves
+# `@unvibe/shared` to its dist, so a rebuilt shared dist rebuilds web.
+# Web's `tsc --noEmit` also typechecks `e2e/`, `vite.config.ts` and
+# `playwright.config.ts`, failing the build on type errors there.
+sources = [
+  "package.json",
+  "package-lock.json",
+  "tsconfig.base.json",
+  "packages/web/src/**/*",
+  "packages/web/package.json",
+  "packages/web/tsconfig.json",
   "packages/web/e2e/**/*",
   "packages/web/index.html",
   "packages/web/public/**/*",
   "packages/web/vite.config.ts",
   "packages/web/playwright.config.ts",
+  "packages/shared/dist/index.js",
 ]
 outputs = [
-  "packages/shared/dist",
-  "packages/service/dist",
   "packages/web/dist",
-  "packages/shared/dist/index.js",
-  "packages/service/dist/index.js",
-  "packages/service/dist/update-helper.js",
-  "packages/service/dist/adapters/claude.js",
-  "packages/service/dist/adapters/codex.js",
   "packages/web/dist/index.html",
   "packages/web/dist/web-meta.json",
 ]
+
+[tasks.build]
+description = "Build shared, service and web"
+# Aggregate (issue #64): no `sources`/`outputs`/`run` of its own, so all
+# freshness lives in the per-package tasks above. `mise run build` stays
+# the one command people run; with nothing changed every subtask skips.
+depends = ["build:shared", "build:service", "build:web"]
+
+[tasks."build-freshness"]
+description = "Check per-package build freshness (issue #64): a web change + shared rebuild must not skip; no change must skip"
+run = "node scripts/build-freshness-check.mjs"
 
 [tasks.test]
 description = "Run vitest across workspaces"

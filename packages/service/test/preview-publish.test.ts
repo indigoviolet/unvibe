@@ -5,8 +5,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  assertPreviewDeleteRef,
   assertPreviewPushRefspec,
   branchSlug,
+  buildUnvibeField,
   isPreviewRef,
   isPrereleaseIdentifier,
   isValidPreviewVersion,
@@ -15,6 +17,8 @@ import {
   previewRef,
   previewVersion,
   resolveWorktree,
+  selectAllBranches,
+  selectPruneRefs,
 } from "../../../scripts/preview-lib.mjs";
 
 describe("branchSlug", () => {
@@ -139,5 +143,115 @@ describe("worktree resolution", () => {
     );
     expect(resolveWorktree(PORCELAIN, "main")).toBe("/home/u/dev/unvibe");
     expect(resolveWorktree(PORCELAIN, "no/such-branch")).toBeNull();
+  });
+});
+
+describe("selectAllBranches (--all)", () => {
+  it("publishes unmerged branches plus main itself, main first", () => {
+    expect(selectAllBranches(["main", "feat/a", "fix/b"], ["feat/a", "fix/b"])).toEqual([
+      "main",
+      "feat/a",
+      "fix/b",
+    ]);
+  });
+
+  it("drops branches fully on main and publish artifacts", () => {
+    expect(
+      selectAllBranches(
+        ["main", "feat/a", "merged-c", "preview/feat-a", "release", "release-rc"],
+        ["feat/a"],
+      ),
+    ).toEqual(["main", "feat/a"]);
+  });
+
+  it("dedupes and omits main when it has no local branch", () => {
+    expect(selectAllBranches(["feat/a", "feat/a"], ["feat/a"], "main")).toEqual(["feat/a"]);
+  });
+});
+
+describe("buildUnvibeField (dual-side metadata)", () => {
+  it("records both sides of a merged preview", () => {
+    expect(
+      buildUnvibeField({
+        channel: "preview/feat-x",
+        commit: "merge123",
+        builtAt: "2026-10-12T00:00:00.000Z",
+        sourceBranch: "feat/x",
+        sourceVersion: "0.0.1",
+        sourceCommit: "aaa111",
+        baseBranch: "main",
+        baseCommit: "bbb222",
+      }),
+    ).toEqual({
+      channel: "preview/feat-x",
+      commit: "merge123",
+      builtAt: "2026-10-12T00:00:00.000Z",
+      sourceBranch: "feat/x",
+      sourceVersion: "0.0.1",
+      sourceCommit: "aaa111",
+      baseBranch: "main",
+      baseCommit: "bbb222",
+    });
+  });
+
+  it("leaves unknown sides null for old builds", () => {
+    const f = buildUnvibeField({
+      channel: "release",
+      commit: "ccc333",
+      builtAt: "2026-10-12T00:00:00.000Z",
+      sourceBranch: null,
+      sourceVersion: "0.0.1",
+    });
+    expect(f.sourceCommit).toBeNull();
+    expect(f.baseBranch).toBeNull();
+    expect(f.baseCommit).toBeNull();
+  });
+});
+
+describe("selectPruneRefs (--prune)", () => {
+  const entries = [
+    { ref: "preview/feat-a", sourceBranch: "feat/a" },
+    { ref: "preview/feat-b", sourceBranch: "feat/b" },
+    { ref: "preview/main", sourceBranch: "main" },
+    { ref: "preview/unknown", sourceBranch: null },
+  ];
+
+  it("selects merged and deleted source branches with reasons", () => {
+    expect(selectPruneRefs(entries, ["feat/a"], ["main", "feat/a", "feat/b"])).toEqual([
+      { ref: "preview/feat-a", reason: "merged" },
+    ]);
+    expect(selectPruneRefs(entries, [], ["main"])).toEqual([
+      { ref: "preview/feat-a", reason: "source-branch deleted" },
+      { ref: "preview/feat-b", reason: "source-branch deleted" },
+    ]);
+  });
+
+  it("keeps the base's own preview and refs with unknown sources", () => {
+    expect(selectPruneRefs(entries, ["main", "feat/a", "feat/b"], ["main", "feat/a", "feat/b"])).toEqual([
+      { ref: "preview/feat-a", reason: "merged" },
+      { ref: "preview/feat-b", reason: "merged" },
+    ]);
+  });
+
+  it("never selects refs outside preview/", () => {
+    const mixed = [
+      ...entries,
+      { ref: "release", sourceBranch: "feat/a" },
+      { ref: "main", sourceBranch: "feat/a" },
+      { ref: "../escape", sourceBranch: "feat/a" },
+    ];
+    expect(selectPruneRefs(mixed, ["feat/a"], ["main", "feat/a"])).toEqual([
+      { ref: "preview/feat-a", reason: "merged" },
+      { ref: "preview/feat-b", reason: "source-branch deleted" },
+    ]);
+  });
+});
+
+describe("assertPreviewDeleteRef", () => {
+  it("accepts only preview/* refs", () => {
+    expect(assertPreviewDeleteRef("preview/feat-x")).toBe("preview/feat-x");
+    for (const bad of ["release", "release-rc", "main", "preview/", "preview/a/b", "", "../x"]) {
+      expect(() => assertPreviewDeleteRef(bad), bad).toThrow();
+    }
   });
 });

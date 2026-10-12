@@ -202,6 +202,22 @@ test("model pickers list provider models and warn on same-model second opinion",
   const main = page.locator('[data-testid="model-main"]');
   await expect(main.locator("select").nth(1)).toHaveValue("mock-main");
 
+  // Second opinion on the same model as main warns (PRD §4.10). This runs
+  // before the unknown-provider override below replaces main, so the
+  // default main (claude/mock-main) is still there to match against.
+  const second = page.locator('[data-testid="model-secondOpinion"]');
+  await second.locator("select").first().selectOption("claude");
+  // Switching provider only browses that provider's list (#87): nothing is
+  // saved yet, so the model select waits on the disabled placeholder pick
+  // (a closed select's options are never "visible" to Playwright, so assert
+  // the selected value + the attached placeholder option instead).
+  const secondModel = second.locator("select").nth(1);
+  await expect(secondModel).toHaveValue("");
+  await expect(second.locator('option[disabled][value=""]')).toBeAttached();
+  await expect(secondModel).toBeVisible();
+  await second.locator("select").nth(1).selectOption("mock-main");
+  await expect(page.getByText(/same model as main/)).toBeVisible();
+
   // Unknown provider (stored before the adapter went away): a clear
   // message, not an empty list.
   await page.addInitScript(() => {
@@ -213,13 +229,6 @@ test("model pickers list provider models and warn on same-model second opinion",
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Models" }).click();
   await expect(page.locator('[data-testid="model-main"]').getByText(/adapter not installed or not logged in/)).toBeVisible();
-
-  // Second opinion on the same model as main warns (PRD §4.10).
-  const second = page.locator('[data-testid="model-secondOpinion"]');
-  await second.locator("select").first().selectOption("claude");
-  await expect(second.locator("select").nth(1)).toBeVisible();
-  await second.locator("select").nth(1).selectOption("mock-main");
-  await expect(page.getByText(/same model as main/)).toBeVisible();
 });
 
 test("prompts show template variables (expanded text lives on the debug page)", async ({ page }) => {
