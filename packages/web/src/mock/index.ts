@@ -1142,8 +1142,18 @@ const UPDATE_FAIL_KEY = "unvibe.mock.update.fail";
 /** Opt-in running-jobs refusal for the switch-anyway flow (`"1"` refuses). */
 const UPDATE_BLOCK_JOBS_KEY = "unvibe.mock.update.blockJobs";
 
+// Distinct build times (issue #73): the picker sorts newest first, so the
+// list order is preview/feat-x, preview/fix-y, release-rc, release.
 const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
-  { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: false },
+  {
+    ref: "release",
+    kind: "release",
+    version: "0.0.1",
+    commit: null,
+    sourceBranch: null,
+    builtAt: new Date(NOW - 3 * 86400_000).toISOString(),
+    current: false,
+  },
   {
     ref: "release-rc",
     kind: "release-rc",
