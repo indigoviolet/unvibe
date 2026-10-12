@@ -205,7 +205,6 @@ export function VersionSection({
 
   return (
     <section aria-label="Version" id="version" style={{ scrollMarginTop: 12 }}>
-      <div className="divider">Version</div>
       <div className="card" style={{ padding: "8px 14px" }}>
         <div className="setgrid">
           <label htmlFor="version-picker-toggle">Version picker</label>

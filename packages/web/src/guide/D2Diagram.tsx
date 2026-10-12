@@ -206,7 +206,7 @@ export function D2Diagram({ reviewId, block, fetchSvg }: Props): React.JSX.Eleme
           <p className="hint">
             Diagrams need <code>d2</code>
             {state.message !== "" ? ` (${state.message})` : ""} — the diagram source is shown
-            above. <Link to="/settings#environment">Settings → Environment</Link> has the install
+            above. <Link to="/settings?tab=environment">Settings → Environment</Link> has the install
             hint.
           </p>
         ) : (
