@@ -8,7 +8,7 @@ import { expect, test } from "./network-guard.js";
 
 async function freshSettings(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/settings");
-  await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
   await page.evaluate(() => {
     localStorage.removeItem("unvibe.mock.update");
     localStorage.removeItem("unvibe.mock.update.fail");
@@ -16,7 +16,7 @@ async function freshSettings(page: import("@playwright/test").Page): Promise<voi
     localStorage.removeItem("unvibe.mock.settings");
   });
   await page.reload();
-  await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
   await page.getByRole("tab", { name: "Version" }).click();
   await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible();
 }
@@ -58,7 +58,7 @@ test("switch moves to the preview: confirm, restart wait, reload, badge", async 
   await expect(page.getByTestId("update-switching")).toBeVisible();
   // The page reloads once the new build reports; the badge names the branch.
   await expect(page.getByTestId("preview-badge")).toContainText("feat/x", { timeout: 30_000 });
-  await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
   await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]').getByTestId("update-current")).toBeVisible();
   await expect(page.getByTestId("update-outcome")).toContainText("Switched to preview/feat-x");
   // The badge links to the Version section.

@@ -90,7 +90,7 @@ export function SettingsPage(): React.JSX.Element {
           Unvibe
         </Link>
         <div className="pr">
-          <b>Settings</b>
+          <h1>Settings</h1>
           <PreviewBuildBadge />
         </div>
         <Link className="tbtn" to="/">
@@ -99,8 +99,6 @@ export function SettingsPage(): React.JSX.Element {
       </header>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
-          <div className="eyebrow">Settings</div>
-          <h1 className="title">Repositories, models, environment, prompts, limits and version</h1>
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load settings: {error}

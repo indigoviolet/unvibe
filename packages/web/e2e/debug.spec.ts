@@ -18,7 +18,7 @@ test("top bar links to the debug page, which defaults to the Jobs tab", async ({
   await page.goto("/review/demo");
   await page.getByRole("link", { name: "Debug", exact: true }).click();
   await expect(page).toHaveURL("/review/demo/debug");
-  await expect(page.getByRole("heading", { name: "Jobs, prompts and shared context" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Debug" })).toBeVisible();
 
   const tabs = page.getByRole("tablist", { name: "Debug sections" });
   await expect(tabs.getByRole("tab", { name: "Jobs" })).toHaveAttribute("aria-selected", "true");
