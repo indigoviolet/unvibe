@@ -514,6 +514,11 @@ needed (that deviation is closed, not added).
    ran).
 2. Reader (explore, problem/central/directions, hidden concepts,
    `pin_context`) — met (`pipeline/runner.ts:879`, demo 17 cards — ran).
+   Root cards stored once (#28): streamed cards and the final apply share
+   one id scheme (`readerCardId`), the final reply replaces whatever was
+   streamed, and text before the first `## ` card is dropped — met
+   (`pipeline/apply.ts`, `pipeline.test.ts` “stored once”). Reviews
+   created before the fix keep their duplicate cards; no migration.
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×2 with evidence/assessment/confidence +
    suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
