@@ -15,6 +15,8 @@ import type { ReadinessResponse, Settings } from "@unvibe/shared";
 import type { AgentRunner } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { resolveLoginShellPath } from "../exec/shell-path.js";
+import { resolveEffectiveSettings } from "../settings/index.js";
+import type { ModelCatalog, SettingsSource } from "../settings/index.js";
 import {
   agentCheck,
   d2Check,
@@ -32,7 +34,9 @@ export const READINESS_TIMEOUT_MS = 10_000;
 export interface ReadinessDeps {
   runner: CommandRunner;
   agents: AgentRunner;
-  settings: { get(): Settings };
+  settings: SettingsSource;
+  /** Model catalog for live role defaults (issue #88): readiness reports the same effective settings as GET /api/settings. Absent → stored settings stand. */
+  models?: ModelCatalog | null;
   /** Test override for the login-shell PATH (else resolved live). */
   loginPathValue?: string;
   /** Test override for the agent probe timeout. */
@@ -62,7 +66,9 @@ async function loginPath(): Promise<string> {
 }
 
 export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean } = {}): Promise<ReadinessResponse> {
-  const settings = deps.settings.get();
+  // Same effective settings as GET /api/settings: saved picks win, unsaved
+  // roles take live defaults. Never throws (falls back to stored).
+  const settings: Settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const key = JSON.stringify([settings.main, settings.small, settings.secondOpinion]);
   const now = Date.now();
   if (!opts.force && cache && now - cache.at < READINESS_CACHE_MS && cache.key === key) {

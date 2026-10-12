@@ -17,7 +17,8 @@ import type { SharedContextResponse } from "@unvibe/shared";
 import { buildBasePack } from "../context/base.js";
 import { baseKeyString } from "../sessions/manager.js";
 import type { SessionManager } from "../sessions/manager.js";
-import type { SettingsStore } from "../settings/index.js";
+import type { ModelCatalog, SettingsStore } from "../settings/index.js";
+import { resolveEffectiveSettings } from "../settings/index.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import { buildBaseMarkdown, buildContributionsMarkdown, buildLogMarkdown } from "../sharedctx/debug.js";
 import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
@@ -28,6 +29,7 @@ type Ctx = ServiceContext & {
   sharedctx?: SharedContextService;
   sessions?: SessionManager;
   settings?: SettingsStore;
+  models?: ModelCatalog;
   promptsDir?: string;
 };
 
@@ -37,7 +39,11 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
 
-    const settings = ctx.settings?.get();
+    // Same effective settings the pipeline runs (issue #88), so the debug
+    // page shows the base key and pack the agents actually get.
+    const settings = ctx.settings
+      ? await resolveEffectiveSettings({ settings: ctx.settings, models: ctx.models ?? null })
+      : undefined;
     const provider = settings?.main.provider ?? "unknown";
     const model = settings?.main.model ?? "unknown";
     const currentKey = baseKeyString({

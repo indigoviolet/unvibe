@@ -81,7 +81,7 @@ export async function registerHunks(
     const pipeline = (deps as { pipeline?: Pipeline }).pipeline;
     if (!pipeline) return reply.code(501).send({ error: "not implemented: pipeline not wired" });
     try {
-      const res = pipeline.summarizeHunk(id, hash);
+      const res = await pipeline.summarizeHunk(id, hash);
       // PRD §12 reuse (#10): stored summary returns with no job, no tokens.
       if ("reused" in res) return reply.code(200).send({ reused: true, summary: res.summary });
       return reply.code(202).send({ jobId: res.id });

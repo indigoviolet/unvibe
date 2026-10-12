@@ -37,6 +37,8 @@ import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
+import { resolveEffectiveSettings } from "../settings/index.js";
+import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
@@ -55,6 +57,8 @@ export interface PipelineOptions {
   runner: AgentRunner;
   mcp: McpRegistry;
   settings: SettingsStore;
+  /** Model catalog for live role defaults (issue #88): the pipeline runs the same effective settings as GET /api/settings. Absent → stored settings stand. */
+  models?: ModelCatalog | null;
   commands: CommandRunner;
   dataDir: string;
   promptsDir?: string;
@@ -234,6 +238,15 @@ export class Pipeline {
     this.opts.sharedctx = sharedctx;
   }
 
+  /**
+   * Effective settings (issue #88): saved picks win, unsaved roles take
+   * live defaults from the model catalog. Never throws (falls back to
+   * stored); never writes.
+   */
+  private effectiveSettings() {
+    return resolveEffectiveSettings({ settings: this.opts.settings, models: this.opts.models ?? null });
+  }
+
   /** Deps for the shared-context wire module (PRD §9.3–§9.5). */
   private wireDeps(): {
     reviews: ReviewStore;
@@ -293,7 +306,7 @@ export class Pipeline {
   async runInFork(o: RunInForkOptions): Promise<RunInForkResult> {
     const snapshot = this.opts.reviews.getSnapshot(o.reviewId);
     if (!snapshot) throw new Error(`unknown review ${o.reviewId}`);
-    const settings = this.opts.settings.get();
+    const settings = await this.effectiveSettings();
     const base = await this.ensureBase(o.reviewId);
     const baseLogSeq = this.opts.sessions.baseInfo(base.key)?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
@@ -431,7 +444,7 @@ export class Pipeline {
   }
 
   async runSmall(o: RunSmallOptions): Promise<RunInForkResult> {
-    const settings = this.opts.settings.get();
+    const settings = await this.effectiveSettings();
     const template = this.render(o.template, o.variables);
     const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     const provider = settings.small.provider;
@@ -571,7 +584,7 @@ export class Pipeline {
     return { kept, dropped };
   }
 
-  startReview(reviewId: string): void {
+  async startReview(reviewId: string): Promise<void> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     // `UNVIBE_AGENT=none`: the pipeline is disabled. Enqueue nothing, so
@@ -584,7 +597,7 @@ export class Pipeline {
     this.setStage(reviewId, "critic", "pending");
     this.setStage(reviewId, "concepts", "pending");
     this.setStage(reviewId, "hunk-pass", "pending");
-    this.enqueueReader(reviewId);
+    await this.enqueueReader(reviewId);
   }
 
   async resumeReview(reviewId: string): Promise<{ jobIds: string[]; pendingStages: string[] }> {
@@ -602,17 +615,17 @@ export class Pipeline {
     const stages = this.stageStates(reviewId);
     const jobIds: string[] = [];
     if (stages.reader !== "done") {
-      jobIds.push(this.enqueueReader(reviewId).id);
+      jobIds.push((await this.enqueueReader(reviewId)).id);
     } else {
-      if (stages.base !== "done") jobIds.push(...this.enqueueAfterReader(reviewId).map((j) => j.id));
+      if (stages.base !== "done") jobIds.push(...(await this.enqueueAfterReader(reviewId)).map((j) => j.id));
       else {
-        if (stages.critic !== "done") jobIds.push(...this.enqueueCritic(reviewId).map((j) => j.id));
-        if (stages.concepts !== "done") jobIds.push(...this.enqueueConcepts(reviewId).map((j) => j.id));
-        if (stages["hunk-pass"] !== "done") jobIds.push(...this.enqueueHunkPass(reviewId).map((j) => j.id));
+        if (stages.critic !== "done") jobIds.push(...(await this.enqueueCritic(reviewId)).map((j) => j.id));
+        if (stages.concepts !== "done") jobIds.push(...(await this.enqueueConcepts(reviewId)).map((j) => j.id));
+        if (stages["hunk-pass"] !== "done") jobIds.push(...(await this.enqueueHunkPass(reviewId)).map((j) => j.id));
         // Demo auto-fill is part of enqueueAfterReader, not a stage: a
         // restart after the base finished would otherwise leave pending
         // placeholders unfilled. No-op when nothing is pending.
-        jobIds.push(...this.enqueueDemoFill(reviewId).map((j) => j.id));
+        jobIds.push(...(await this.enqueueDemoFill(reviewId)).map((j) => j.id));
       }
     }
     const after = this.stageStates(reviewId);
@@ -626,17 +639,18 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const existing = snapshot.pages.find((p) => p.id === `c-${slug}`);
+    const effective = await this.effectiveSettings();
     if (existing && existing.cards.length > 0 && existing.cards[0].blocks.length > 1) {
       return this.opts.jobs.enqueue({
         reviewId,
         kind: "concept",
-        provider: this.opts.settings.get().main.provider,
-        model: this.opts.settings.get().main.model,
+        provider: effective.main.provider,
+        model: effective.main.model,
         priority: JOB_PRIORITY.userRequested,
         run: async () => {},
       });
     }
-    const settings = this.opts.settings.get();
+    const settings = effective;
     const prompt = withReplayMark(
       this.render("concept_page", {
         concept: `${slug} — ${existing?.title ?? slug}`,
@@ -697,7 +711,7 @@ export class Pipeline {
     return job;
   }
 
-  summarizeHunk(reviewId: string, contentHash: string): Job | { reused: true; summary: string } {
+  async summarizeHunk(reviewId: string, contentHash: string): Promise<Job | { reused: true; summary: string }> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const found = snapshot.files.flatMap((f) => f.hunks.map((h) => ({ file: f, hunk: h }))).find(
@@ -711,7 +725,7 @@ export class Pipeline {
     // new request.
     const stored = snapshot.hunkStates.find((s) => s.contentHash === contentHash)?.summary;
     if (stored) return { reused: true, summary: stored };
-    const settings = this.opts.settings.get();
+    const settings = await this.effectiveSettings();
     const hunkText = this.formatHunkForPrompt(snapshot, found.file.fileKey, found.hunk.contentHash);
     const prompt = withReplayMark(
       this.render("hunk_pass", { hunk: hunkText, path: found.file.path }),
@@ -885,7 +899,7 @@ export class Pipeline {
   private async ensureBase(reviewId: string): Promise<{ sessionId: string; key: string }> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const settings = this.opts.settings.get();
+    const settings = await this.effectiveSettings();
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructionsTpl = lib.get("instructions");
@@ -932,7 +946,7 @@ export class Pipeline {
   private async forkFor(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const settings = this.opts.settings.get();
+    const settings = await this.effectiveSettings();
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructionsTpl = lib.get("instructions");
@@ -979,8 +993,8 @@ export class Pipeline {
 
   // -- reader ---------------------------------------------------------
 
-  private enqueueReader(reviewId: string): Job {
-    const settings = this.opts.settings.get();
+  private async enqueueReader(reviewId: string): Promise<Job> {
+    const settings = await this.effectiveSettings();
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
@@ -1236,23 +1250,23 @@ export class Pipeline {
 
   // -- after reader ---------------------------------------------------
 
-  private enqueueAfterReader(reviewId: string): Job[] {
+  private async enqueueAfterReader(reviewId: string): Promise<Job[]> {
     const out: Job[] = [];
     this.setStage(reviewId, "base", "running");
-    out.push(...this.enqueueCritic(reviewId));
-    out.push(...this.enqueueConcepts(reviewId));
-    out.push(...this.enqueueHunkPass(reviewId));
+    out.push(...(await this.enqueueCritic(reviewId)));
+    out.push(...(await this.enqueueConcepts(reviewId)));
+    out.push(...(await this.enqueueHunkPass(reviewId)));
     if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
-      out.push(...this.enqueueDemoFill(reviewId));
+      out.push(...(await this.enqueueDemoFill(reviewId)));
     }
     return out;
   }
 
-  private enqueueCritic(reviewId: string): Job[] {
+  private async enqueueCritic(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
     this.setStage(reviewId, "critic", "running");
-    const settings = this.opts.settings.get();
+    const settings = await this.effectiveSettings();
     const lib = loadTemplatesDirSync(this.promptsDir);
     const basePrompt = renderTemplate(lib.get("critic")!, {});
     // Replay keys select the f-lf/f-perf recordings; live runs get neutral
@@ -1382,11 +1396,11 @@ export class Pipeline {
     });
   }
 
-  private enqueueConcepts(reviewId: string): Job[] {
+  private async enqueueConcepts(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
     this.setStage(reviewId, "concepts", "running");
-    const settings = this.opts.settings.get();
+    const settings = await this.effectiveSettings();
     const promptBase = `Write concept stubs for this review. For each hidden concept candidate the reader named, emit one line with its concept: slug, title, one line of meaning, and where mentioned. End with a trailing JSON block carrying the concepts array (slug, title, summary).`;
     const prompt = isReplayRunner(this.opts.runner) ? withReplayMark(promptBase, { kind: "concept-stubs" }) : promptBase;
     const job = this.opts.jobs.enqueue({
@@ -1460,11 +1474,11 @@ export class Pipeline {
     return [job];
   }
 
-  private enqueueHunkPass(reviewId: string): Job[] {
+  private async enqueueHunkPass(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
     this.setStage(reviewId, "hunk-pass", "running");
-    const settings = this.opts.settings.get();
+    const settings = await this.effectiveSettings();
     const hunks = snapshot.files.flatMap((f) => f.hunks.map((h) => ({ file: f, hunk: h })));
     return hunks.map(({ file, hunk }) => {
       const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
@@ -1535,10 +1549,11 @@ export class Pipeline {
     });
   }
 
-  private enqueueDemoFill(reviewId: string): Job[] {
+  private async enqueueDemoFill(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
     const out: Job[] = [];
+    const effective = await this.effectiveSettings();
     const root = snapshot.pages.find((p) => p.id === "root");
     // Pending cards may not exist yet (reader still running when this is
     // called from enqueueAfterReader). Demo fill runs AFTER reader, so root
@@ -1549,8 +1564,8 @@ export class Pipeline {
         this.opts.jobs.enqueue({
           reviewId,
           kind: "go-deeper",
-          provider: this.opts.settings.get().main.provider,
-          model: this.opts.settings.get().main.model,
+          provider: effective.main.provider,
+          model: effective.main.model,
           priority: JOB_PRIORITY.background,
           dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
           run: async (ctx) => {
@@ -1956,7 +1971,7 @@ export class Pipeline {
       // The versions module renders `update_pass.md` already; run the
       // rendered prompt in a fork of the new base as an `update-pass` job.
       runUpdatePrompt: async (prompt, opts) => {
-        const settings = this.opts.settings.get();
+        const settings = await this.effectiveSettings();
         let resolveText!: (s: string) => void;
         let rejectText!: (e: Error) => void;
         const done = new Promise<string>((res, rej) => {

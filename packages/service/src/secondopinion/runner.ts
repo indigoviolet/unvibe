@@ -52,6 +52,8 @@ import { validateReply } from "../validate/index.js";
 import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
+import { resolveEffectiveSettings } from "../settings/index.js";
+import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { buildExcerptMap, readCodeExcerpts } from "./excerpts.js";
@@ -67,6 +69,8 @@ export interface SecondOpinionDeps {
   runner: AgentRunner;
   mcp: McpRegistry;
   settings: SettingsStore;
+  /** Model catalog for live role defaults (issue #88): same effective settings as GET /api/settings. Absent → stored settings stand. */
+  models?: ModelCatalog | null;
   commands: CommandRunner;
   dataDir: string;
   promptsDir: string;
@@ -308,7 +312,7 @@ export async function buildSecondOpinionPrompt(
   const snapshot = deps.reviews.getSnapshot(reviewId);
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
   const target = resolveTarget(snapshot, cardId);
-  const settings = deps.settings.get();
+  const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   // L1 source for the isolated base (instructions + sourceText travel via
   // the base session; only cited excerpts travel in the turn's cited_code).
   const promptSnap = toPromptSnapshot(snapshot, { model: settings.secondOpinion.model });
@@ -455,7 +459,7 @@ export async function requestSecondOpinion(
 ): Promise<Job | { reused: true }> {
   const snapshot = deps.reviews.getSnapshot(req.reviewId);
   if (!snapshot) throw new Error(`unknown review ${req.reviewId}`);
-  const settings = deps.settings.get();
+  const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   checkDistinctModel(settings.main, settings.secondOpinion);
   const target = resolveTarget(snapshot, req.cardId);
   const version = snapshot.version.n;
