@@ -80,7 +80,9 @@ These stay hidden until first opened.
 ## Output shape
 
 Stream one `## Title` card at a time, in the order above: the problem
-card, then the central-change card, then stop. The Go deeper directions
+card, then the central-change card, then stop. Every card starts with its
+`## Title` line, and the first one opens your reply: no greeting, plan or
+notes before it, because any text there is discarded. The Go deeper directions
 and the hidden concept pass travel in the trailing `json` block, not as
 cards:
 
