@@ -127,4 +127,31 @@ describe("ThreadView reply box", () => {
       replySpy.mockRestore();
     }
   });
+
+  test("reply shows a plain working state immediately on send, with no streamed text", async () => {
+    const asking = thread({ note: false, messages: [{ who: "you", text: "Why?" }] });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [asking] });
+    // Hold the request open: the immediate state must show before it returns.
+    let resolveAction!: (res: { accepted: boolean; threadId: string; jobId: string }) => void;
+    const actionSpy = vi.spyOn(api, "action").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAction = resolve as never;
+        }),
+    );
+    render(<ThreadView reviewId={REVIEW_ID} thread={asking} />);
+    try {
+      fireEvent.change(screen.getByLabelText("Reply"), { target: { value: "And then?" } });
+      fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+      // Synchronous at click time, before the request returns.
+      expect(screen.getByRole("status")).toHaveTextContent("Writing reply…");
+      expect(document.querySelector(".working .stream")).toBeNull();
+      // Still showing while the request is in flight (no flicker gap).
+      resolveAction({ accepted: true, threadId: asking.id, jobId: "job-unseen" });
+      await Promise.resolve();
+      expect(screen.getByRole("status")).toHaveTextContent("Writing reply…");
+    } finally {
+      actionSpy.mockRestore();
+    }
+  });
 });
