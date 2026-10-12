@@ -7,7 +7,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ReviewSnapshot } from "@unvibe/shared";
+import type { ReviewSnapshot, ReviewsListResponse } from "@unvibe/shared";
+import { isDefaultGuideTitle } from "@unvibe/shared";
 import { FakeCommandRunner, RealCommandRunner, type CommandRunner } from "../src/exec/index.js";
 import { createApp } from "../src/server.js";
 import { openDatabase, migrate } from "../src/store/index.js";
@@ -137,6 +138,68 @@ describe("POST /api/reviews async (#92)", () => {
       expect(ready.version.headSha).toBe(head);
       expect(ready.files.length).toBeGreaterThan(0);
       expect(ready.rev).toBeGreaterThan(loading.rev);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("loading reviews show the hint title or branch, never the default guide title", async () => {
+    const dir = await makeRepo();
+    const head = await git(dir, "rev-parse", "feature");
+    const held = heldGhRunner();
+    const { app } = await createApp("tok", { runner: held.runner, autoPipeline: false });
+    try {
+      process.env.UNVIBE_REPO_ROOTS = "";
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+
+      async function listTitle(id: string): Promise<string> {
+        const list = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
+        expect(list.statusCode).toBe(200);
+        const title = (list.json() as ReviewsListResponse).reviews.find((r) => r.id === id)?.title;
+        expect(title).toBeDefined();
+        return title as string;
+      }
+
+      // Hinted PR: the hint shows while loading (gh still blocked).
+      const hinted = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, pr: 42, title: "Held PR", author: "octocat" },
+      });
+      expect(hinted.statusCode).toBe(202);
+      const hintedId = (hinted.json() as ReviewSnapshot).review.id;
+      expect(await listTitle(hintedId)).toBe("Held PR");
+      held.release(ghPrView(head));
+      await awaitStatus(app, hintedId, "ready");
+
+      // Unhinted PR: the "PR #N" fallback shows while loading, never the default.
+      const bare = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, pr: 43 },
+      });
+      expect(bare.statusCode).toBe(202);
+      const bareId = (bare.json() as ReviewSnapshot).review.id;
+      const bareTitle = await listTitle(bareId);
+      expect(bareTitle).toBe("PR #43");
+      expect(isDefaultGuideTitle(bareTitle)).toBe(false);
+      held.release(ghPrView(head));
+      await awaitStatus(app, bareId, "ready");
+
+      // Unhinted branch: the branch name shows (loading or ready — same value either way).
+      const branched = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, branch: "feature" },
+      });
+      expect([201, 202]).toContain(branched.statusCode);
+      const branchId = (branched.json() as ReviewSnapshot).review.id;
+      expect(await listTitle(branchId)).toBe("feature");
+      await awaitStatus(app, branchId, "ready");
     } finally {
       await app.close();
     }

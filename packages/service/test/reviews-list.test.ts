@@ -335,8 +335,10 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
           headers: authed,
           payload: { repoId, branch },
         });
-        expect(created.statusCode).toBe(201);
+        // #92: creation answers before the ingest; wait until ready.
+        expect([201, 202]).toContain(created.statusCode);
         const id = (created.json() as ReviewSnapshot).review.id;
+        await awaitReady(app, id);
         // Simulate stored state: no PR title on the row, chosen root title in the snapshot.
         ctx.db.prepare("UPDATE reviews SET data = ? WHERE id = ?").run(JSON.stringify({ title: "" }), id);
         const snap = ctx.reviews.getSnapshot(id);
