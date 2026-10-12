@@ -18,6 +18,7 @@ import { registerSharedContext } from "./shared-context.js";
 import { registerSubmit } from "./submit.js";
 import { registerViewer } from "./viewer.js";
 import { registerDiagnostics } from "./diagnostics.js";
+import { registerUpdate } from "./update.js";
 
 /**
  * One route module per area; each registers its PRD §14.1 endpoints.
@@ -49,6 +50,7 @@ export async function registerRoutes(
   await registerViewer(app, ctx);
   await registerSettings(app, deps);
   await registerDiagnostics(app, ctx, deps);
+  await registerUpdate(app, ctx, deps);
   await registerPrompts(app, {
     snapshots: {
       getSnapshot: async (reviewId: string) => {
@@ -62,5 +64,5 @@ export async function registerRoutes(
   if (deps.mcp) await registerMcp(app, deps.mcp);
 }
 
-export type { RouteDeps } from "./deps.js";
+export type { RouteDeps, UpdateHooks } from "./deps.js";
 export type { ReviewsRouteDeps, RegisterReviewsDeps } from "./reviews.js";

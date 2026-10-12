@@ -22,6 +22,7 @@ import type { AgentRunner } from "@unvibe/shared";
 import { hasValidToken } from "./auth.js";
 import { CONTENT_SECURITY_POLICY } from "./security/csp.js";
 import { hostCheckAllows } from "./security/host.js";
+import { resolveBuildInfo } from "./update/index.js";
 import type { CommandRunner } from "./exec/index.js";
 import { DEFAULT_IDLE_MS, IdleMonitor } from "./lifecycle/index.js";
 import { MCP_ROUTE_PREFIX } from "./mcp/index.js";
@@ -29,6 +30,8 @@ import type { McpRegistry } from "./mcp/index.js";
 import type { JobQueue } from "./jobs/index.js";
 import type { ModelCatalog } from "./settings/index.js";
 import type { SettingsStore } from "./settings/index.js";
+import type { Updater } from "./update/index.js";
+import type { UpdateHooks } from "./routes/deps.js";
 import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/index.js";
 import { buildApp, type AppContext as UnifiedContext } from "./app.js";
 import type { ServiceConfig } from "./config.js";
@@ -63,6 +66,10 @@ export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
   mcp?: McpRegistry;
   jobs?: JobQueue;
   settings?: SettingsStore;
+  /** Version-picker backend override (issue #36 step 2 seam; tests inject the fake). */
+  updater?: Updater;
+  /** Switch spawn + shutdown wiring (provided by `serve()`; switch answers 501 without it). */
+  updateHooks?: UpdateHooks;
   /**
    * Idle-exit wiring (PRD §14, owned by the shell milestone). `idleMs`
    * defaults to 10 minutes; non-positive disables. `hasJobs` should report
@@ -143,6 +150,7 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     ...(opts.jobs ? { jobs: opts.jobs } : {}),
     ...(opts.settings ? { settings: opts.settings } : {}),
     ...(opts.mcp ? { mcp: opts.mcp } : {}),
+    ...(opts.updater ? { updater: opts.updater } : {}),
   });
   const bus = ctx.bus;
 
@@ -236,7 +244,14 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     return payload;
   });
 
-  app.get("/api/health", async () => ({ ok: true, version: SERVICE_VERSION }));
+  // `build` is the running build's identity for the version picker
+  // (issue #36, step 2): null when the build carries no preview metadata.
+  // Unauthenticated like the rest of health (no token, no data).
+  app.get("/api/health", async () => ({
+    ok: true,
+    version: SERVICE_VERSION,
+    build: resolveBuildInfo({ dataDir }),
+  }));
 
   // Routes take (ctx, deps) where both are the unified context; explicit
   // test overrides (jobs, baseRunner, ...) win. The update pass defaults to

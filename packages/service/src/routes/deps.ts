@@ -19,6 +19,19 @@ import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore, ModelCatalog } from "../settings/index.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import type { DatabaseSync } from "../store/db.js";
+import type { Updater } from "../update/updater.js";
+
+/**
+ * Switch wiring for the version picker (issue #36, step 2). Absent in
+ * tests that do not touch the switch path — `POST /api/update/switch`
+ * answers 501 without it. `serve()` provides both.
+ */
+export interface UpdateHooks {
+  /** Spawn the detached helper for a prepared args file. Resolves the helper pid. */
+  spawnHelper(argsFile: string): Promise<number>;
+  /** Shut the service down cleanly through the normal shutdown path. */
+  requestShutdown(): void;
+}
 
 export interface RouteDeps {
   db?: DatabaseSync;
@@ -36,4 +49,8 @@ export interface RouteDeps {
   sharedctx?: SharedContextService;
   promptsDir?: string;
   fixturesDir?: string;
+  /** Version-picker backend (issue #36 step 2 seam; step 1 wires the real one). */
+  updater?: Updater;
+  /** Switch spawn + shutdown wiring (provided by `serve()`). */
+  updateHooks?: UpdateHooks;
 }

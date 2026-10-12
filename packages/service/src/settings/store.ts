@@ -19,6 +19,13 @@ export const DEFAULT_SETTINGS: Settings = {
   logBatchTokens: 2_000,
   cacheLifetimeMs: 5 * 60 * 1000,
   idleExitMinutes: 10,
+  /**
+   * Version picker (issue #36, step 2): list installable update channels
+   * and switch builds from Settings → Version. Off by default; listing
+   * shells out through `gh` (the user's own login, like every other `gh`
+   * use — PRD §16), so it stays opt-in.
+   */
+  versionPickerEnabled: false,
 };
 
 function isModelPick(v: unknown): v is ModelPick {
@@ -60,6 +67,10 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   const ratio = patch["rebuildSupersededRatio"];
   if (ratio !== undefined && (typeof ratio !== "number" || ratio <= 0 || ratio > 1)) {
     errors.push("rebuildSupersededRatio must be a number in (0, 1]");
+  }
+  const picker = patch["versionPickerEnabled"];
+  if (picker !== undefined && typeof picker !== "boolean") {
+    errors.push("versionPickerEnabled must be a boolean");
   }
   for (const key of Object.keys(patch)) {
     if (!(key in DEFAULT_SETTINGS)) errors.push(`unknown setting: ${key}`);

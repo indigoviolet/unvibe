@@ -45,6 +45,7 @@ import { SessionManager } from "./sessions/manager.js";
 import { SessionStore } from "./sessions/store.js";
 import { SharedContextService, setInteractionHandler } from "./sharedctx/index.js";
 import { SharedContextStore } from "./sharedctx/store.js";
+import { createUpdaterFromEnv, type Updater } from "./update/index.js";
 import { createAgentRunner, resolveFixturesDir } from "./agent/factory.js";
 import { Pipeline } from "./pipeline/index.js";
 import { resolvePromptsDir } from "./prompts/index.js";
@@ -65,6 +66,8 @@ export interface AppContext {
   pipeline: Pipeline;
   /** M5 shared context (PRD §9.3–§9.5): log, change lists, contributions. */
   sharedctx: SharedContextService;
+  /** Version-picker backend (issue #36 step 2 seam; fake under `UNVIBE_UPDATER_BACKEND=fake`). */
+  updater: Updater;
   promptsDir: string;
   fixturesDir: string;
   mcpBaseUrl: string;
@@ -84,6 +87,7 @@ export interface BuildAppOptions {
   jobs?: JobQueue;
   settings?: SettingsStore;
   mcp?: McpRegistry;
+  updater?: Updater;
 }
 
 /**
@@ -226,6 +230,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
 
   const promptsDir = opts.promptsDir ?? resolvePromptsDirForBundle();
   const fixturesDir = opts.fixturesDir ?? resolveFixturesDir();
+  const updater = opts.updater ?? createUpdaterFromEnv(dataDir);
 
   // Default runner: ACP (real claude/codex subprocesses). Replay only when
   // UNVIBE_AGENT=replay (demo/tests) or when tests inject `agents` directly;
@@ -294,6 +299,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     agents,
     pipeline,
     sharedctx,
+    updater,
     promptsDir,
     fixturesDir,
     mcpBaseUrl,
