@@ -1057,6 +1057,44 @@ every agent action so the same handover runs. Service jobs now carry
  fixed. Hunk summarize busy never clears on success (#63, adjacent,
  untracked here).
 
+### Reload blank page, part 1: error boundaries (#101, complete)
+
+ Any render/commit exception used to unmount the whole tree (no boundary
+ anywhere in `web/src`), leaving a white page. One reusable `ErrorBoundary`
+ (`web/src/components/ErrorBoundary.tsx`, renders no wrapper element so
+ prototype.css child selectors keep matching) now sits at five levels:
+ shell (around the route tree in `App.tsx`, catches non-review routes too,
+ resets on navigation), guide page (around `PageView`, resets on
+ review/page change), each card (around `CardView` in `PageView`,
+ resets on review/card/revision change), source pane (around the tab body
+ in `SourcePane`, resets on review/tab change), and each diff file
+ section (around `FileSection` in `DiffView`, resets on review/file
+ change). A boundary around each diff file section fits the card pattern
+ cheaply, so it is in. `AppShell`, `CardView`, `D2Diagram` and
+ `DiagramView` are untouched (zero lines): every boundary wraps from the
+ outside. Fallbacks say something went wrong in plain style with no raw
+ stack (shell: full-page notice plus Reload; the rest: inline card-,
+ pane-, file- or guide-sized notices with Retry that re-renders the part
+ without reloading). Caught errors go through the existing dev-only web
+ reporting path (`reportWebError` in `web/src/sentry.ts`, same
+ DSN-guarded dynamic import as `initSentry`, so the SDK still never
+ enters the built bundle) with the catching boundary named, plus
+ `console.error` locally. New strings (`Something went wrong`,
+ `Couldn't show this page/card/guide/source pane/file: something went
+ wrong`, `Reload`, `Retry`) pass the copy guard and follow the #45
+ failure pattern and button rule.
+ Evidence: `ErrorBoundary.test.tsx` (10: isolation, report-once with
+ boundary name, local log, reset on identity change, Retry, shell
+ fallback + Reload, route reset, reporter no-op), `PageView.test.tsx` (a
+ real `CardView` throw leaves sibling cards rendered),
+ `GuidePage.test.tsx` (page throw + reset on review change),
+ `SourcePane.test.tsx` (diff throw leaves the tab bar),
+ `DiffBoundary.test.tsx` (file throw leaves the other file); `mise run
+ check` + `build` + `test:e2e` (158) green with a fresh `dist/`
+ carrying no `sentry` reference (network guard re-run green).
+ Open: part 2, the `removeChild` crash itself — the boundaries above
+ stand on their own until it reproduces.
+
 ### Fixed in this branch (done, in `check`)
 
 Stale-dist guard; Host/Origin gate; MCP secret lifecycle; submit crash
