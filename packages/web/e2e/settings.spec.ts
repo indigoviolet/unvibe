@@ -15,18 +15,18 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
 });
 
-test("settings default to the Repositories tab; tabs switch panels", async ({ page }) => {
+test("settings default to the Repos tab; tabs switch panels", async ({ page }) => {
   const tabs = page.getByRole("tablist", { name: "Settings sections" });
-  await expect(tabs.getByRole("tab", { name: "Repositories" })).toHaveAttribute(
+  await expect(tabs.getByRole("tab", { name: "Repos" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await expect(page.getByRole("tabpanel", { name: "Repositories" })).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "Repos" })).toBeVisible();
   await expect(page.getByRole("tabpanel", { name: "Models" })).toBeHidden();
   await tabs.getByRole("tab", { name: "Models" }).click();
   await expect(page).toHaveURL("/settings?tab=models");
   await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
-  await expect(page.getByRole("tabpanel", { name: "Repositories" })).toBeHidden();
+  await expect(page.getByRole("tabpanel", { name: "Repos" })).toBeHidden();
 });
 
 test("data tab resets after a confirm step", async ({ page }) => {
@@ -38,16 +38,16 @@ test("data tab resets after a confirm step", async ({ page }) => {
   await panel.getByRole("button", { name: "Reset data…" }).click();
   await panel.getByRole("button", { name: "Reset", exact: true }).click();
   await expect(panel.getByRole("status")).toHaveText(/Removed \d+ reviews?\./);
-  await page.getByRole("link", { name: "Back to start" }).click();
+  await page.getByRole("link", { name: "Back to start page" }).click();
   await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
 });
 
 test("?tab= deep link survives reload", async ({ page }) => {
   await page.goto("/settings?tab=limits");
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
-  await expect(page.getByRole("tabpanel", { name: "Limits and budgets" })).toBeVisible();
+  await page.getByRole("tab", { name: "Limits" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Limits" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("tab", { name: "Limits and budgets" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Limits" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -55,11 +55,11 @@ test("?tab= deep link survives reload", async ({ page }) => {
 });
 
 test("unsaved edits survive a tab switch", async ({ page }) => {
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.getByRole("tab", { name: "Limits" }).click();
   await page.locator("#limit-sessionsPerProvider").fill("9");
   await page.getByRole("tab", { name: "Models" }).click();
   await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.getByRole("tab", { name: "Limits" }).click();
   await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("9");
 });
 
@@ -71,7 +71,7 @@ test("repositories section lists remembered repos and adds by path", async ({ pa
 
   // Adding with an empty field shows a hint instead of doing nothing.
   await section.getByRole("button", { name: "Add by path" }).click();
-  await expect(section.getByText("Enter a checkout path first.")).toBeVisible();
+  await expect(section.getByText("Enter a folder path first.")).toBeVisible();
 
   await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
   await section.getByRole("button", { name: "Add by path" }).click();
@@ -87,7 +87,7 @@ test("repositories section is reachable at ?tab=repositories", async ({ page }) 
 
 test("older #section links land on the matching tab", async ({ page }) => {
   await page.goto("/settings#repositories");
-  await expect(page.getByRole("tab", { name: "Repositories" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Repos" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -177,7 +177,7 @@ test("repositories remove only forgets a path checkout", async ({ page }) => {
   await expect(row).toBeVisible();
   await expect(row).not.toContainText("Cloned by Unvibe");
   await row.getByRole("button", { name: "Remove local/fake-checkout" }).click();
-  await expect(row).toContainText("Forget this repo? /tmp/fake-checkout stays untouched on disk.");
+  await expect(row).toContainText("Remove this repo from the list? /tmp/fake-checkout is not touched.");
   await row.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(row).toHaveCount(0);
 });
@@ -189,10 +189,10 @@ test("repositories remove is refused while reviews exist", async ({ page }) => {
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Remove urllib3/urllib3" }).click();
   await row.getByRole("button", { name: "Remove", exact: true }).click();
-  // The refusal stays inline on the row, with Keep working.
+  // The refusal stays inline on the row, with Cancel working.
   await expect(row.getByRole("alert")).toContainText("still has 2 reviews");
   await expect(row).toBeVisible();
-  await row.getByRole("button", { name: "Keep" }).click();
+  await row.getByRole("button", { name: "Cancel" }).click();
   await expect(row.getByRole("alert")).toHaveCount(0);
   await expect(row).toBeVisible();
 });
@@ -228,7 +228,7 @@ test("model pickers list provider models and warn on same-model second opinion",
   });
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Models" }).click();
-  await expect(page.locator('[data-testid="model-main"]').getByText(/adapter not installed or not logged in/)).toBeVisible();
+  await expect(page.locator('[data-testid="model-main"]').getByText(/couldn't list custom models/)).toBeVisible();
 });
 
 test("prompts show template variables (expanded text lives on the debug page)", async ({ page }) => {
@@ -243,14 +243,14 @@ test("prompts show template variables (expanded text lives on the debug page)", 
 });
 
 test("limits persist across reload", async ({ page }) => {
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.getByRole("tab", { name: "Limits" }).click();
   const input = page.locator("#limit-sessionsPerProvider");
   await input.fill("6");
   await page.getByRole("button", { name: "Save limits" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Limits and budgets" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Limits" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -258,11 +258,11 @@ test("limits persist across reload", async ({ page }) => {
 });
 
 test("limits show service validation errors inline", async ({ page }) => {
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.getByRole("tab", { name: "Limits" }).click();
   // Mock accepts anything, so drive the inline-error path through the
   // real-service spec; here just assert the field + hint render.
   await expect(page.locator("#limit-inlineBudgetTokens")).toBeVisible();
-  await expect(page.getByText("L1 budget, ~40k default.")).toBeVisible();
+  await expect(page.getByText("Default 40,000.")).toBeVisible();
 });
 
 test("tips popover opens from the review top bar", async ({ page }) => {
@@ -276,7 +276,7 @@ test("settings link is plain; the review context lives on the debug page", async
   await page.goto("/review/demo");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL("/settings");
-  await expect(page.getByRole("link", { name: "Back to start" })).toHaveAttribute("href", "/");
+  await expect(page.getByRole("link", { name: "Back to start page" })).toHaveAttribute("href", "/");
   // Browser back returns to the review (Settings pushes a history entry).
   await page.goBack();
   await expect(page).toHaveURL("/review/demo");

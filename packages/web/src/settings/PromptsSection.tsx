@@ -32,8 +32,8 @@ export function PromptsSection(): React.JSX.Element {
   return (
     <section aria-label="Prompts">
       {error ? <p className="err">{error}</p> : null}
-      {!data && !error ? <p className="hint">Loading templates…</p> : null}
-      {data?.templates.length === 0 ? <p className="hint">No templates.</p> : null}
+      {!data && !error ? <p className="hint">Loading prompts…</p> : null}
+      {data?.templates.length === 0 ? <p className="hint">No prompts.</p> : null}
       {(data?.templates ?? []).map((t) => (
         <PromptCard key={t.name} template={t} />
       ))}

@@ -57,7 +57,7 @@ describe("BlockMarkers", () => {
     expect(verified).toHaveAttribute("data-refs", "diff:conn:82");
     const unverified = container.querySelector("button.lk.unverified");
     expect(unverified).toHaveAttribute("data-refs", "diff:conn:99");
-    expect(unverified?.getAttribute("data-tip")).toMatch(/could not be checked/i);
+    expect(unverified?.getAttribute("data-tip")).toMatch(/couldn't confirm/i);
   });
 
   it("renders the comment marker with a count", () => {

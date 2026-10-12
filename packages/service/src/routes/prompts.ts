@@ -66,6 +66,7 @@ import {
   type RenderValues,
   type TemplateLibrary,
 } from "../prompts/index.js";
+import { formatContributionLines } from "../sharedctx/contributions.js";
 
 /** Narrow interface the supervisor wires to review state. */
 export interface SnapshotProvider {
@@ -271,6 +272,7 @@ export function toPromptSnapshot(
     findings,
     concepts,
     log: snap.logTail,
+    contributions: snap.contributions,
   };
 }
 
@@ -427,11 +429,8 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot):
   const conceptText = firstConcept
     ? `${firstConcept.slug} — ${firstConcept.title}: ${firstConcept.oneLine}`
     : PH.topic;
-  const contributionLines = snapshot.log
-    .filter((e) => e.kind === "contribution")
-    .map((e) => `- [${e.seq}] ${JSON.stringify(e.payload)}`);
-  const contributionsText =
-    contributionLines.length > 0 ? contributionLines.join("\n") : PH.contributions;
+  const contributionLines = formatContributionLines(snapshot.contributions ?? []);
+  const contributionsText = contributionLines !== "" ? contributionLines : PH.contributions;
 
   const { topic, claim } = firstFindingTopic(snapshot);
   const findingCited = firstFindingCitedCode(snapshot);
@@ -590,7 +589,7 @@ export async function registerPrompts(
     const body: PromptsResponse = { templates };
     if (query.review !== undefined) {
       if (!deps.snapshots) {
-        return reply.code(501).send({ error: "review expansion not wired: no snapshot provider" });
+        return reply.code(501).send({ error: "not available in this build" });
       }
       let snapshot: PromptReviewSnapshot | null;
       try {

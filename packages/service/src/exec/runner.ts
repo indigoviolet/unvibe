@@ -37,7 +37,7 @@ export class RealCommandRunner implements CommandRunner {
       } catch (err) {
         if ((err as NodeJS.ErrnoException)?.code === "ENOENT" || /not a directory/.test((err as Error).message)) {
           throw new Error(
-            `cannot run ${cmd}: directory not found: ${opts.cwd} (repository moved or deleted? remove and re-add it)`,
+            `cannot run ${cmd}: directory not found: ${opts.cwd} (was the repo moved or deleted? Remove it in Settings → Repos and add it again)`,
           );
         }
         throw err;

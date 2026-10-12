@@ -6,7 +6,9 @@
  *   close, mark-for-PR. These change nothing the next turn needs.
  * - card-local only: examples, diagrams, depth rewrites. They are logged
  *   with a card scope and only shown to sessions anchored on that card.
- *   (Note: the *rewritten text* is logged; the depth *state* never is.)
+ *   (Note: the *rewrite* is logged as a one-line label — the rewritten
+ *   text itself travels in the base pack, and the depth *state* never
+ *   enters the log.)
  * - one line, once a thread settles: a summary of the thread.
  * - in full: new cards and findings, answers that cited something
  *   outside the base, and contributions.
