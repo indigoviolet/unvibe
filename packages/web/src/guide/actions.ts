@@ -218,11 +218,16 @@ export async function performAction(
       ? currentRevision(target.targetId)
       : undefined;
   if (target) useReview.getState().beginInflight(target.targetId, target.kind);
+  // Generation guard: a newer click may re-begin the same key while this
+  // request is in flight; only this generation's response may settle it.
+  const mySeq = target ? useReview.getState().inflight[target.targetId]?.seq : undefined;
+  const mine = (): boolean =>
+    !target || useReview.getState().inflight[target.targetId]?.seq === mySeq;
   let res: ActionResponse;
   try {
     res = await api.action(reviewId, action);
   } catch (err) {
-    if (target) useReview.getState().clearInflight(target.targetId);
+    if (target && mine()) useReview.getState().clearInflight(target.targetId);
     if (opts?.toast !== false) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/no agent configured/i.test(msg)) {
@@ -234,7 +239,7 @@ export async function performAction(
     await resync(reviewId);
     throw err;
   }
-  if (target) {
+  if (target && mine()) {
     const st = useReview.getState();
     if (!res.accepted || res.reused || !res.jobId) {
       // No job to follow (mock instant state, stored result, undo): the
@@ -344,11 +349,13 @@ export function performFollowUp(
 /** Stale-card Update button (PRD §8): runs the service update pass. */
 export function performUpdate(reviewId: string): void {
   const key = updateKey(reviewId);
-  const st = useReview.getState();
-  st.beginInflight(key, "update");
+  useReview.getState().beginInflight(key, "update");
+  const mySeq = useReview.getState().inflight[key]?.seq;
+  const mine = (): boolean => useReview.getState().inflight[key]?.seq === mySeq;
   api
     .update(reviewId)
     .then((res) => {
+      if (!mine()) return;
       if (res.jobId) useReview.getState().attachInflightJob(key, res.jobId);
       else useReview.getState().clearInflight(key);
       // The update pass clears staleness when it lands; the entry follows
@@ -356,7 +363,7 @@ export function performUpdate(reviewId: string): void {
       void waitForInflightGone(key, INFLIGHT_TTL_MS);
     })
     .catch((err: unknown) => {
-      useReview.getState().clearInflight(key);
+      if (mine()) useReview.getState().clearInflight(key);
       toast(`Update failed: ${friendlyError(err)}`);
     });
 }

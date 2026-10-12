@@ -23,7 +23,7 @@ import {
 import type { InFlightAction } from "../state/store.js";
 
 function entry(kind: InFlightAction["kind"], targetId = "c1"): InFlightAction {
-  return { kind, targetId, startedAt: 0 };
+  return { kind, targetId, startedAt: 0, seq: 1 };
 }
 
 function job(over: Partial<Job> = {}): Job {

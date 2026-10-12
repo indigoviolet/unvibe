@@ -132,6 +132,17 @@ describe("in-flight action lifecycle", () => {
     expect(useReview.getState().inflight["c1"]).toBeUndefined();
   });
 
+  test("begins assign distinct generations for stale-response guards", () => {
+    const api = useReview.getState();
+    api.beginInflight("c1", "depth");
+    const first = useReview.getState().inflight["c1"]?.seq;
+    api.beginInflight("c1", "depth");
+    const second = useReview.getState().inflight["c1"]?.seq;
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(second).not.toBe(first);
+  });
+
   test("retarget moves an anchor entry to its server id", () => {
     const api = useReview.getState();
     api.beginInflight("explain:block:b1", "explain");

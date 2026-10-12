@@ -76,18 +76,22 @@ export function VersionBanner({
     setPhase({ name: "updating", jobId: "", job: null });
     const key = updateKey(reviewId);
     useReview.getState().beginInflight(key, "update");
+    const mySeq = useReview.getState().inflight[key]?.seq;
+    const mine = (): boolean => useReview.getState().inflight[key]?.seq === mySeq;
     let jobId: string;
     try {
       const res = await api.update(reviewId);
       jobId = res.jobId;
-      useReview.getState().attachInflightJob(key, jobId);
+      if (mine()) useReview.getState().attachInflightJob(key, jobId);
     } catch (err) {
-      useReview.getState().clearInflight(key);
+      if (mine()) useReview.getState().clearInflight(key);
       setPhase({ name: "failed", message: updateError(err) });
       return;
     }
     setPhase({ name: "updating", jobId, job: null });
-    const finish = (): void => useReview.getState().clearInflight(key);
+    const finish = (): void => {
+      if (mine()) useReview.getState().clearInflight(key);
+    };
     const poll = async (): Promise<void> => {
       let job: Job;
       try {

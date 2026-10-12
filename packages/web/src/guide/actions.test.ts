@@ -93,6 +93,31 @@ describe("performAction in-flight funnel", () => {
     expect(useReview.getState().inflight["central"]).toBeUndefined();
   });
 
+  test("a stale response never settles a newer entry on the same key", async () => {
+    const resolvers: ((res: { accepted: boolean }) => void)[] = [];
+    const spy = vi.spyOn(api, "action").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvers.push(resolve as never);
+        }),
+    );
+    try {
+      const first = performAction(REVIEW_ID, { kind: "depth", cardId: "central", direction: "deeper" });
+      const second = performAction(REVIEW_ID, { kind: "depth", cardId: "central", direction: "deeper" });
+      expect(resolvers).toHaveLength(2);
+      // The first answer arrives after the second click: it must not wipe
+      // the second click's entry.
+      resolvers[0]({ accepted: true });
+      await first;
+      expect(useReview.getState().inflight["central"]).toMatchObject({ kind: "depth" });
+      resolvers[1]({ accepted: true });
+      await second;
+      expect(useReview.getState().inflight["central"]).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("a thrown request clears the entry", async () => {
     const p = performAction(REVIEW_ID, { kind: "depth", cardId: "no-such-card", direction: "deeper" });
     expect(useReview.getState().inflight["no-such-card"]).toMatchObject({ kind: "depth" });

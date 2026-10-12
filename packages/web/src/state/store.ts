@@ -54,7 +54,15 @@ export interface InFlightAction {
   /** Card/expansion revision at click time (insert kinds). */
   revision?: number;
   startedAt: number;
+  /**
+   * Monotonic generation: a stale response (an earlier click whose answer
+   * arrives after a newer click re-began the same key) must never clear
+   * or reattach the newer entry.
+   */
+  seq: number;
 }
+
+let inflightSeq = 0;
 
 /**
  * Safety cap so an in-flight entry can never spin forever (a lost job
@@ -323,20 +331,22 @@ export const useReview = create<ReviewState>()((set, get) => ({
     }),
   beginInflight: (targetId, kind, opts) => {
     const startedAt = Date.now();
+    const seq = ++inflightSeq;
     const entry: InFlightAction = {
       kind,
       targetId,
       ...(opts?.revision !== undefined ? { revision: opts.revision } : {}),
       startedAt,
+      seq,
     };
     set((s) => ({ inflight: { ...s.inflight, [targetId]: entry } }));
     // Never stuck: even with no further store events, a lingering entry
     // clears itself once the TTL lapses.
     window.setTimeout(() => {
       const cur = get().inflight[targetId];
-      if (cur && cur.startedAt === startedAt) {
+      if (cur && cur.seq === seq) {
         set((s) => {
-          if (s.inflight[targetId]?.startedAt !== startedAt) return s;
+          if (s.inflight[targetId]?.seq !== seq) return s;
           const next = { ...s.inflight };
           delete next[targetId];
           return { inflight: next };
