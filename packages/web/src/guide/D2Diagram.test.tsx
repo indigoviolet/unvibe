@@ -301,27 +301,19 @@ describe("D2Diagram citation clicks", () => {
   });
 });
 
-describe("D2Diagram legibleText (#16)", () => {
-  // Wide diagram: the floor keeps 16px D2 labels at or above the 12.5px
-  // guide small text (ceil(1379 * 12.5 / 16) = 1078).
+describe("D2Diagram capNaturalWidth (round two, item 2)", () => {
   const WIDE = CITED.replace('viewBox="0 0 200 100"', 'viewBox="0 0 1379 251"');
 
-  it("floors a wide diagram's width instead of shrinking its labels", async () => {
-    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => WIDE} legibleText />);
+  it("caps a diagram at its natural width instead of stretching it", async () => {
+    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => CITED} capNaturalWidth />);
     await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
-    expect((document.querySelector(".dg-svg svg") as SVGSVGElement).style.minWidth).toBe("1078px");
+    expect((document.querySelector(".dg-svg svg") as SVGSVGElement).style.maxWidth).toBe("200px");
   });
 
-  it("leaves narrow diagrams at the stylesheet floor", async () => {
-    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => CITED} legibleText />);
-    await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
-    expect((document.querySelector(".dg-svg svg") as SVGSVGElement).style.minWidth).toBe("480px");
-  });
-
-  it("sets no floor without the flag (overlay sizes from the viewBox)", async () => {
+  it("sets no cap without the flag (overlay sizes from the viewBox)", async () => {
     renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => WIDE} />);
     await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
-    expect((document.querySelector(".dg-svg svg") as SVGSVGElement).style.minWidth).toBe("");
+    expect((document.querySelector(".dg-svg svg") as SVGSVGElement).style.maxWidth).toBe("");
   });
 });
 

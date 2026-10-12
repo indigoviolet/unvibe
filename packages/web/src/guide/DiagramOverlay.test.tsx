@@ -7,12 +7,12 @@
  * - zoomAround math clamps to the overlay limits.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { DiagramBlock } from "@unvibe/shared";
 import { clearD2SvgCache } from "./D2Diagram.js";
 import { DiagramView } from "./DiagramView.js";
-import { zoomAround, fitContentBox, IDENTITY_VIEW } from "./DiagramOverlay.js";
+import { zoomAround, fitContentBox, IDENTITY_VIEW } from "./panZoom.js";
 import { naturalSize } from "./d2sanitize.js";
 
 // jsdom has no matchMedia: pretend the OS prefers light.
@@ -177,15 +177,16 @@ describe("DiagramOverlay open/close", () => {
 
 describe("DiagramOverlay zoom/pan", () => {
   it("zoom buttons change the transform and Reset restores it", async () => {
-    await openOverlay();
+    const dialog = await openOverlay();
+    const withinDialog = within(dialog);
     const doc = document.querySelector(".dg-ov-doc") as HTMLElement;
     expect(doc.style.transform).toBe("translate(0px, 0px) scale(1)");
-    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    fireEvent.click(withinDialog.getByRole("button", { name: "Zoom in" }));
     expect(doc.style.transform).toBe("translate(0px, 0px) scale(1.25)");
-    expect(screen.getByText("125%")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Reset view" }));
+    expect(withinDialog.getByText("125%")).toBeInTheDocument();
+    fireEvent.click(withinDialog.getByRole("button", { name: "Reset view" }));
     expect(doc.style.transform).toBe("translate(0px, 0px) scale(1)");
-    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(withinDialog.getByText("100%")).toBeInTheDocument();
   });
 
   it("wheel zooms around the pointer", async () => {

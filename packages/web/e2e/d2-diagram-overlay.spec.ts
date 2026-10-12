@@ -97,7 +97,7 @@ test("expand opens the overlay and locks the page behind it", async ({ page }) =
 test("zoom buttons, wheel zoom, drag pan, reset, Esc close", async ({ page }) => {
   await gotoReview(page);
   await openOverlay(page);
-  const zoom = page.locator(`${DIALOG} .dg-ov-zoom`);
+  const zoom = page.locator(`${DIALOG} .dg-zoom`);
   // The overlay opens fitted: the whole 1379-wide diagram is visible.
   const fitLabel = (await zoom.textContent()) ?? "";
   expect(fitLabel).toMatch(/^\d+%$/);
@@ -216,7 +216,7 @@ async function overlayFit(page: Page): Promise<{ content: FitBox; box: FitBox; z
       rr = Math.max(rr, gr.right);
       b = Math.max(b, gr.bottom);
     }
-    const zoomText = document.querySelector(".dg-ov-zoom")?.textContent ?? "0%";
+    const zoomText = document.querySelector(".dg-zoom")?.textContent ?? "0%";
     return { content, box: { left: l, top: t, right: rr, bottom: b }, zoomPct: Number.parseInt(zoomText, 10) };
   });
 }
