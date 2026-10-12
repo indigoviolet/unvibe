@@ -112,6 +112,12 @@ code { font-family: var(--mono); font-size: .86em; }
 .st .a { color: var(--add-ink); } .st .d { color: var(--del-ink); }
 .gtag { font-size: 9.5px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; flex: none; }
 .cmenu { position: absolute; right: 12px; top: calc(100% - 4px); width: min(380px, calc(100% - 24px)); max-height: 60vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 8px; z-index: 6; display: flex; flex-direction: column; gap: 6px; }
+/* Comments menu (issue #56): the panel lives in a narrow relative wrapper
+   around the "Comments N" button, so the generic width above (100% of the
+   button) collapses it to the button's width and the tabs/paths wrap.
+   Anchor to the button's right edge with a fixed sensible width capped by
+   the viewport, so the tabs fit on one line and paths/previews show. */
+.tabs .cmenu { right: 0; top: calc(100% + 4px); min-width: min(360px, calc(100vw - 24px)); width: min(420px, calc(100vw - 24px)); }
 .ci { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; padding: 6px; border-radius: 6px; }
 .ci:hover { background: var(--sunk); }
 .cj { border: 0; background: none; text-align: left; padding: 0; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
