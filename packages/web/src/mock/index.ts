@@ -976,6 +976,21 @@ export const mockApi = {
       },
     ];
     void id;
+    // Demo entry point: the start page fetches `repoChanges("demo")` and
+    // renders `kind: "demo"` changes as a row inside the Reviews list (no
+    // tokens, same pipeline path). Like the service, the demo answers no
+    // filtered section.
+    if (id === "demo") {
+      return {
+        changes: [
+          {
+            kind: "demo",
+            title: "Demo: urllib3#5020 — Unfold obsolete folded response headers",
+            demo: "urllib3-5020",
+          },
+        ],
+      };
+    }
     switch (filter) {
       case "authoring":
         return { changes: authoring };

@@ -18,7 +18,7 @@ test("doctor page shows service, PATH and tool detail with copy", async ({ page 
 
 test("model pickers show display name beside the id with description", async ({ page }) => {
   await page.goto("/settings?review=demo");
-  await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+  await expect(page.getByText("Repositories, models, prompts, limits, jobs, shared context")).toBeVisible();
   const main = page.locator('[data-testid="model-main"]');
   // Mock models carry names (Mock Main) + descriptions.
   await expect(main.locator("select").nth(1)).toContainText("Mock Main");
