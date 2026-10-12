@@ -93,15 +93,12 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
           {doc ? (
             <>
               <section aria-label="Base">
-                <div className="divider">Base</div>
                 <MarkdownView markdown={doc.base} />
               </section>
               <section aria-label="Log">
-                <div className="divider">Log</div>
                 <MarkdownView markdown={doc.log} />
               </section>
               <section aria-label="Contributions">
-                <div className="divider">Contributions</div>
                 <MarkdownView markdown={doc.contributions} />
                 {items !== null && items.length > 0 ? (
                   <div>

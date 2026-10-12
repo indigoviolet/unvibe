@@ -546,6 +546,7 @@ function mockSharedContext(reviewId: string): {
       parts.push(`### ${c.id}`, "");
       parts.push(c.sourceThread ? `- thread: \`${c.sourceThread}\`` : `- session: \`${c.sourceSession}\``);
       if (c.replaces) parts.push(`- replaces: \`${c.replaces}\``);
+      if (c.status === "merged" || c.items.some((i) => i.kind === "correction")) parts.push(`- status: ${c.status}`);
       for (const item of c.items) {
         const target = item.target ? ` → \`${item.target}\`` : "";
         parts.push(`- **${item.kind}**${target}: ${item.text}`);
