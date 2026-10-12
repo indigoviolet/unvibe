@@ -48,7 +48,7 @@ describe("StaticModelCatalog", () => {
   it("lists static defaults per provider", () => {
     const catalog = new StaticModelCatalog();
     expect(catalog.listModels("claude").length).toBeGreaterThan(0);
-    expect(catalog.listModels("codex").map((m) => m.id)).toContain("gpt-5.4");
+    expect(catalog.listModels("codex").map((m) => m.id)).toContain("gpt-6.1-sol");
     expect(catalog.listModels("unknown")).toEqual([]);
   });
 });
@@ -90,7 +90,7 @@ describe("settings + jobs routes", () => {
       const models = await app.inject({ method: "GET", url: "/api/models?provider=codex", headers: auth });
       expect(models.statusCode).toBe(200);
       expect(models.json().provider).toBe("codex");
-      expect(models.json().models.map((m: { id: string }) => m.id)).toEqual(expect.arrayContaining(["gpt-5.4"]));
+      expect(models.json().models.map((m: { id: string }) => m.id)).toEqual(expect.arrayContaining(["gpt-6.1-sol"]));
 
       const missing = await app.inject({ method: "GET", url: "/api/models", headers: auth });
       expect(missing.statusCode).toBe(400);

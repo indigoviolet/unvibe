@@ -80,6 +80,13 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   - **recent branches**, local and remote;
   - **reviews you've opened before**, with their unread and stale state ("new commits · Update").
 - Selections are remembered.
+- The PR and branch lists keep the last successful fetch per repo in the
+  web app (`localStorage`, last 10 repos): opening the page, switching
+  repos, or coming back shows the kept rows at once while a fresh fetch
+  runs underneath and replaces them when it lands. A quiet line says how
+  old the shown rows are and when a refresh is in flight; a failed
+  refresh keeps the old rows with the error note; the first load for a
+  repo behaves as before.
 
 ### 4.3 Pages
 - **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
@@ -202,12 +209,13 @@ Every card and every expansion card has the same controls:
 **Views**
 - **Unified:** long lines scroll sideways.
 - **Split:** always two equal halves with fixed line-number columns; long lines wrap inside their half. Choosing Split widens the pane if it's narrow.
+- **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
 - **Pinned rows:** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view.
 
 **New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
 
 ### 4.14 Settings page
-- **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers.
+- **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers. A role never explicitly saved takes a live default picked from what the adapters offer, ranked by tier (opus | sol > sonnet | terra > haiku | luna, newest version offered within a tier, never Fable or Astra); second opinion comes from the provider main is not using, and stays unset with one provider. Saved picks always win; defaults are never written into settings.
 - **Prompts:** each template (Template view): the raw text with its variables marked. View-only to start. The per-review "Expanded for this review" view — the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart — lives on the debug page below.
 - **Limits:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
 - **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
@@ -461,6 +469,7 @@ A new base is built when any of these happens:
 - **Main model:** everything that needs the review's context. Using one model means one base.
 - **Small model:** hunk summaries, the uninteresting classification, consolidating contributions, titles. These jobs get only what they need and don't fork the base.
 - **Second-opinion model:** a different provider or model. It runs in a fresh session with its own base, containing L0 + L1 + the cited code. It never sees guide text, other findings, contributions, or the main model's pinned code beyond what's cited.
+- **Role defaults:** tiers opus | sol > sonnet | terra > haiku | luna; the newest version offered within a tier wins; Fable and Astra are never picked. Second opinion is picked from the provider main is not using, and stays unset with a single provider. One source of effective settings serves Settings, readiness, the pipeline, second opinions and shared context: a saved pick wins, an unset role takes the live default, and unfillable roles keep the stored fallback (readiness reports it plainly).
 - **Concurrency:**
   - a per-provider session cap, starting at 4;
   - a priority queue: what the user asked for, then what's visible on screen, then background work;
