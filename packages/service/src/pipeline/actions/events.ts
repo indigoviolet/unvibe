@@ -18,16 +18,14 @@ import { parseId, renderMarkdown, type Annotation, type Block, type ReviewSnapsh
 import type { InteractionEvent } from "../../interaction/index.js";
 import { findBlock } from "../../interaction/index.js";
 
-/** First line, whitespace-folded, capped (log one-liners). */
-export function oneLine(text: string, maxChars = 160): string {
-  const line = text.replace(/\s+/g, " ").trim().split("\n")[0];
-  return line.length > maxChars ? `${line.slice(0, maxChars - 1)}…` : line;
+/** Whitespace-folded onto one line (log one-liners). Never cut short. */
+export function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
-/** Rendered expansion content, first line (for `new-card` summaries). */
-export function expansionSummary(blocks: Block[], quote: string): string {
-  const first = renderMarkdown(blocks).split("\n").map((l) => l.trim()).filter(Boolean)[0] ?? "";
-  return `Explain "${quote}": ${oneLine(first, 120)}`;
+/** Rendered expansion content in full (for `new-card` entries, PRD §9.3). */
+export function expansionText(blocks: Block[], quote: string): string {
+  return `Explain "${oneLine(quote)}":\n\n${renderMarkdown(blocks).trim()}`;
 }
 
 /** Page-card id hosting a block anchor, when there is one. */
@@ -73,7 +71,7 @@ export function newCardForExpansion(
   const event: InteractionEvent = {
     kind: "new-card",
     reviewId,
-    text: expansionSummary(annotation.expansion.blocks, annotation.anchor.quotedText),
+    text: expansionText(annotation.expansion.blocks, annotation.anchor.quotedText),
     threadId: annotation.id,
   };
   const cardId = hostCardId(snapshot, annotation.anchor);
@@ -95,7 +93,7 @@ export function deletionFor(reviewId: string, annotation: Annotation): Interacti
   return {
     kind: "item-deleted",
     reviewId,
-    text: `Deleted ${what} "${oneLine(annotation.anchor.quotedText, 80)}"`,
+    text: `Deleted ${what} "${oneLine(annotation.anchor.quotedText)}"`,
     threadId: annotation.id,
   };
 }
