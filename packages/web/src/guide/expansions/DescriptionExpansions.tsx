@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { clearMarks, highlightAnchorInRoot, withPreservedSelection } from "../../comments/anchor.js";
+import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionCard } from "./ExpansionCard.js";
@@ -63,17 +63,31 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
       withPreservedSelection(root, () => {
         clearMarks(root, "mark.anc.ex[data-jump], mark.anc.exl[data-jump], a.cx.pg[data-node]");
         let changed = false;
+        // Marks land only in the paragraph body (issue #101): it renders
+        // through `dangerouslySetInnerHTML`, so its text nodes are
+        // anonymous. The segment div around it also holds React-rendered
+        // threads, markers and cards, which marks must never touch.
+        let body: Element | null = null;
+        try {
+          body = root.querySelector(`[data-top="${CSS.escape(paragraphId)}"] .dseg-body`);
+        } catch {
+          body = null;
+        }
+        if (!body) return;
+        const bodyEl: Element = body;
+        const markInBody = (quote: string, make: () => Element): boolean =>
+          markTextInElement(bodyEl, quote, make) > 0;
         for (const a of exps) {
           if (isAnchorStale(a) || !a.anchor.quotedText) continue;
           if (a.type === "link" || a.promotedToPage) {
             const target = a.promotedToPage ?? "";
-            if (target && highlightAnchorInRoot(root, paragraphId, a.anchor.quotedText, () => makePageLink(target))) {
+            if (target && markInBody(a.anchor.quotedText, () => makePageLink(target))) {
               changed = true;
             }
             continue;
           }
           const closed = !a.open;
-          if (highlightAnchorInRoot(root, paragraphId, a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
+          if (markInBody(a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
             changed = true;
           }
         }
