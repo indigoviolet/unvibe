@@ -99,6 +99,26 @@ describe("sanitizeD2Svg hostile payloads", () => {
     expect(sanitizeD2Svg("<<<not xml", "t3")).toBeNull();
     expect(sanitizeD2Svg("", "t4")).toBeNull();
   });
+
+  it("rewrites url() references in presentation attributes", () => {
+    // mask / marker / clip-path (and paint servers) arrive as url(#…)
+    // presentation attributes; ids are namespaced per instance, so the
+    // references must follow or they dangle and stop applying.
+    const root = sanitizeD2Svg(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">` +
+        `<defs><mask id="m" maskUnits="userSpaceOnUse"><rect width="10" height="10" fill="white"/></mask>` +
+        `<marker id="mk"><path d="M0 0h4"/></marker>` +
+        `<clipPath id="c"><rect width="5" height="5"/></clipPath></defs>` +
+        `<path d="M0 0H10" mask="url(#m)" marker-end="url(#mk)" clip-path="url(#c)" fill="url(#m)"/></svg>`,
+      "u9",
+    );
+    expect(root).not.toBeNull();
+    const path = root!.querySelector("path[mask]") as SVGPathElement;
+    expect(path.getAttribute("mask")).toBe("url(#u9-m)");
+    expect(path.getAttribute("marker-end")).toBe("url(#u9-mk)");
+    expect(path.getAttribute("clip-path")).toBe("url(#u9-c)");
+    expect(path.getAttribute("fill")).toBe("url(#u9-m)");
+  });
 });
 
 describe("scopeDiagramCss", () => {

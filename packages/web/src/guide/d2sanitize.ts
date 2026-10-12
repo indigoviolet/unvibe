@@ -150,6 +150,14 @@ export function sanitizeD2Svg(svgText: string, uid?: string): SVGSVGElement | nu
       }
       if (name === "style") {
         el.setAttribute(attr.name, rewriteRefs(attr.value));
+        continue;
+      }
+      // Internal url() references in presentation attributes (mask,
+      // marker-start/mid/end, clip-path, fill, stroke …) must follow the
+      // id renames above: without this the reference dangles and the
+      // mask/marker/clip silently stops applying.
+      if (attr.value.includes("url(#")) {
+        el.setAttribute(attr.name, rewriteRefs(attr.value));
       }
     }
     if (tag === "a") {

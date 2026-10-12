@@ -44,7 +44,38 @@ const BY_HASH: Record<string, { light: string; dark: string }> = {
   d604f9a8e9fb637c: { light: foldLight, dark: foldDark },
   "mock-d2-added": { light: standIn("light"), dark: standIn("dark") },
   "mock-d2-unverified": { light: standIn("light"), dark: standIn("dark") },
+  "mock-d2-multiline": { light: multiline("light"), dark: multiline("dark") },
 };
+
+/**
+ * Stand-in shaped like real d2 output for multi-line labels (#16): two-
+ * and three-line shapes position lines via tspan x/dy, and the edge
+ * clears the line behind its label via a userSpaceOnUse mask. Exercises
+ * the full adopt path (id namespacing rewrites the mask url consistently).
+ */
+function multiline(theme: DiagramTheme): string {
+  const dark = theme === "dark";
+  const bg = dark ? "#191d23" : "#ffffff";
+  const box = dark ? "#20252d" : "#f7f8fe";
+  const edge = dark ? "#56c2cb" : "#0d32b2";
+  const ink = dark ? "#e5e8ed" : "#0a0f25";
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 220" data-mock-theme="${theme}">` +
+    `<defs><mask id="d2mock-ml-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="460" height="220">` +
+    `<rect x="0" y="0" width="460" height="220" fill="white"/>` +
+    `<rect x="180" y="100" width="120" height="20" fill="black"/></mask></defs>` +
+    `<rect x="0" y="0" width="460" height="220" fill="${bg}"/>` +
+    `<a href="#" data-refs="diff:src-urllib3-connection.py:80-82" data-src="diff:src-urllib3-connection.py:80-82">` +
+    `<rect x="20" y="30" width="180" height="80" rx="6" fill="${box}" stroke="${edge}" stroke-width="2"/>` +
+    `<text x="110" y="58" fill="${ink}" style="text-anchor:middle;font-size:16px">` +
+    `<tspan x="110" dy="0">first line</tspan><tspan x="110" dy="18.5">second line</tspan></text></a>` +
+    `<rect x="260" y="20" width="180" height="90" rx="6" fill="${box}" stroke="${edge}" stroke-width="2"/>` +
+    `<text x="350" y="44" fill="${ink}" style="text-anchor:middle;font-size:16px">` +
+    `<tspan x="350" dy="0">one</tspan><tspan x="350" dy="17.6">two</tspan><tspan x="350" dy="17.6">three</tspan></text>` +
+    `<path d="M 200 150 H 440" stroke="${edge}" stroke-width="2" fill="none" mask="url(#d2mock-ml-mask)"/>` +
+    `<text x="240" y="113" fill="${ink}" style="text-anchor:middle;font-size:14px;font-style:italic">edge label</text></svg>`
+  );
+}
 
 /**
  * Serve SVGs like the endpoint would: 200 text for known hashes, a typed
@@ -103,5 +134,17 @@ export function mockAddedD2Block(): DiagramBlock {
     caption: "Mock diagram: unfolding before interpretation.",
     citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
     render: { hash: "mock-d2-added", status: "ok" },
+  };
+}
+
+/** D2 block with multi-line shape labels (line-layout regression test). */
+export function mockMultilineD2Block(): DiagramBlock {
+  return {
+    type: "diagram",
+    id: "b-mock-d2-multiline",
+    source: "two: \"first line\\nsecond line\"\nthree: \"one\\ntwo\\nthree\"\ntwo -> three: \"edge label\"\n",
+    caption: "Mock D2 multi-line labels.",
+    citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
+    render: { hash: "mock-d2-multiline", status: "ok" },
   };
 }
