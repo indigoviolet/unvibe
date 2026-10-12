@@ -23,7 +23,8 @@ describe("POST /api/repos/pick-folder", () => {
     const fake = new FakeCommandRunner();
     fake.enqueue({
       cmd: "osascript",
-      args: ["-e", "POSIX path of (choose folder)"],
+      // Leading `activate` pulls the dialog in front of other windows.
+      args: ["-e", "activate", "-e", "POSIX path of (choose folder)"],
       stdout: "/Users/me/code/app/\n",
       stderr: "",
       code: 0,
@@ -49,6 +50,7 @@ describe("POST /api/repos/pick-folder", () => {
     const fake = new FakeCommandRunner();
     fake.enqueue({
       cmd: "osascript",
+      args: ["-e", "activate", "-e", "POSIX path of (choose folder)"],
       stdout: "",
       stderr: "execution error: User canceled. (-128)",
       code: 1,
@@ -132,6 +134,26 @@ describe("POST /api/repos/pick-folder", () => {
     const { app } = await createApp("tok", {
       runner: fake,
       pickFolder: { platform: "linux", env: { WAYLAND_DISPLAY: "wayland-0" } },
+    });
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/repos/pick-folder",
+        headers: { authorization: "Bearer tok" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ status: "cancelled" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("Linux exit 1 with output is still cancelled (only exit 0 picks)", async () => {
+    const fake = new FakeCommandRunner();
+    fake.enqueue({ cmd: "zenity", stdout: "/home/me/code/app\n", stderr: "", code: 1 });
+    const { app } = await createApp("tok", {
+      runner: fake,
+      pickFolder: { platform: "linux", env: { DISPLAY: ":0" } },
     });
     try {
       const res = await app.inject({

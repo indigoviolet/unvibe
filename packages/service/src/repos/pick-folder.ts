@@ -6,7 +6,12 @@
  * runs service-side through the injectable command runner (tests stub
  * `git`/`gh` through the same seam; nothing here touches `child_process`
  * directly and this module never launches a dialog in tests):
- * - macOS: `osascript -e 'POSIX path of (choose folder)'`. User cancel is
+ * - macOS: `osascript -e 'activate' -e 'POSIX path of (choose folder)'`.
+ *   The leading `activate` targets only the script's own process, pulling
+ *   the dialog in front of other windows when the service runs in the
+ *   background; it addresses no other app, so it needs neither Automation
+ *   nor Accessibility consent (unlike `tell application "Finder"` /
+ *   `"System Events"` forms, which prompt on first use). User cancel is
  *   a non-zero exit whose stderr mentions -128: reported as "cancelled".
  * - Linux: `zenity --file-selection --directory`, falling back to
  *   `kdialog --getexistingdirectory`. Cancel is exit 1 with empty output.
@@ -35,9 +40,9 @@ export interface PickFolderOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-const OSASCRIPT_ARGS = ["-e", "POSIX path of (choose folder)"];
+const OSASCRIPT_ARGS = ["-e", "activate", "-e", "POSIX path of (choose folder)"];
 const ZENITY_ARGS = ["--file-selection", "--directory"];
-const KDL_DIALOG_ARGS = ["--getexistingdirectory"];
+const KDIALOG_ARGS = ["--getexistingdirectory"];
 
 /** osascript `choose folder` output keeps a trailing slash (`/a/b/`); root stays `/`. */
 function trimPickedPath(raw: string): string {
@@ -95,11 +100,11 @@ async function tryTool(
   }
 }
 
-/** Shared result mapping for zenity/kdialog: exit 1 + empty output is cancel. */
+/** Shared result mapping for zenity/kdialog: only exit 0 with a path is a pick; exit 1 is cancel. */
 function fromToolResult(res: RunResult, tool: string): PickFolderResponse {
   const picked = res.stdout.trim();
-  if (picked !== "" && (res.code === 0 || res.code === 1)) return { status: "picked", path: picked };
-  if (res.code === 0 || (res.code === 1 && picked === "")) return { status: "cancelled" };
+  if (res.code === 0 && picked !== "") return { status: "picked", path: picked };
+  if (res.code === 0 || res.code === 1) return { status: "cancelled" };
   const detail = res.stderr.trim().slice(0, 120);
   return {
     status: "unavailable",
@@ -123,7 +128,7 @@ async function pickLinux(
   }
   const zenity = await tryTool(runner, "zenity", ZENITY_ARGS);
   if (zenity !== "missing") return fromToolResult(zenity, "zenity");
-  const kdialog = await tryTool(runner, "kdialog", KDL_DIALOG_ARGS);
+  const kdialog = await tryTool(runner, "kdialog", KDIALOG_ARGS);
   if (kdialog !== "missing") return fromToolResult(kdialog, "kdialog");
   return {
     status: "unavailable",
