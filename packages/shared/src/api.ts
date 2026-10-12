@@ -869,6 +869,42 @@ export interface UpdateChannelsResponse {
 /** `POST /api/update/switch` — restart onto another channel's build. */
 export interface UpdateSwitchRequest {
   ref: string;
+  /**
+   * Switch even while jobs are running (#36 follow-up). Only the
+   * running-jobs refusal is skipped: the jobs are stopped by the normal
+   * shutdown path and their count is recorded on the pending switch and
+   * the outcome as `interruptedJobs`. A submit in flight, a pending
+   * switch, the gate, and the installed-build check still refuse.
+   */
+  force?: boolean;
+}
+
+/**
+ * One job blocking a switch: enough for the picker to name it
+ * (kind + label, review, state). The list is capped server-side
+ * (`UPDATE_BLOCKED_JOBS_CAP` in the service); `activeJobs` on the body
+ * carries the full count so the UI can add "+N more".
+ */
+export interface UpdateBlockedJob {
+  id: string;
+  kind: string;
+  reviewId?: string;
+  state: string;
+  /** Human line when the job has one (progress, else card/thread id). */
+  label?: string;
+}
+
+/**
+ * 409 body when a switch is refused for running jobs (#36 follow-up).
+ * `error` keeps the human sentence (backwards compatible); `code` plus
+ * the count and the short job list let the UI render without parsing
+ * it. Used only here — the smallest coded-error shape that fits.
+ */
+export interface UpdateJobsBlockedBody {
+  error: string;
+  code: "jobs-running";
+  activeJobs: number;
+  jobs: UpdateBlockedJob[];
 }
 
 /**
@@ -888,6 +924,13 @@ export interface UpdatePendingSwitch {
   to: string;
   /** ISO time the switch was committed. */
   startedAt: string;
+  /**
+   * Jobs running at commit time on a forced switch (#36 follow-up):
+   * stopped by the normal shutdown path, visible as interrupted
+   * afterwards (resume or retry them from the review; on a different
+   * channel they stay with this channel's data). Absent otherwise.
+   */
+  interruptedJobs?: number;
 }
 
 /**
@@ -905,6 +948,11 @@ export interface SwitchOutcome {
   logPath?: string;
   /** ISO time the outcome was recorded. */
   finishedAt: string;
+  /**
+   * Jobs stopped by a forced switch (copied from the pending record,
+   * #36 follow-up). The UI names the count after the reload.
+   */
+  interruptedJobs?: number;
 }
 
 /**

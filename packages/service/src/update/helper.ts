@@ -39,6 +39,13 @@ export interface SwitchPlan {
   /** Bound for stopping the helper's own previous generation before a later start. */
   stopWaitMs: number;
   logPath: string;
+  /**
+   * Jobs the service stopped via its normal shutdown path on a forced
+   * switch (#36 follow-up: `force: true` on `POST /api/update/switch`).
+   * Copied onto every outcome so the UI can name the count after the
+   * reload. Absent on unforced switches.
+   */
+  interruptedJobs?: number;
 }
 
 /** Recovery path when the app cannot come back on its own (docs + failure outcomes). */
@@ -116,8 +123,12 @@ export function describeHealth(health: ObservedHealth): string {
 }
 
 export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise<SwitchOutcome> {
-  const finish = (outcome: Omit<SwitchOutcome, "finishedAt">): SwitchOutcome => {
-    const full: SwitchOutcome = { ...outcome, finishedAt: deps.nowIso() };
+  const finish = (outcome: Omit<SwitchOutcome, "finishedAt" | "interruptedJobs">): SwitchOutcome => {
+    const full: SwitchOutcome = {
+      ...outcome,
+      ...(plan.interruptedJobs !== undefined ? { interruptedJobs: plan.interruptedJobs } : {}),
+      finishedAt: deps.nowIso(),
+    };
     deps.log(`outcome: ${full.status} ${full.from} -> ${full.to}${full.reason ? ` (${full.reason})` : ""}`);
     deps.clearPending();
     deps.recordOutcome(full);
@@ -221,13 +232,21 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
 
   const exited = await deps.waitForExit(plan.servicePid, plan.exitWaitMs);
   if (!exited) {
+    // The service bounds its own shutdown well inside the exit wait
+    // (`SHUTDOWN_DEADLINE_MS` in `lifecycle/service-shutdown.ts`), so a
+    // timeout here means the process is stuck beyond its shutdown path —
+    // typically wedged connections. The install is untouched and the live
+    // service keeps serving (pending was cleared); SIGKILL it into line.
+    // The helper never kills the told-about PID itself.
     return finish({
       status: "failed",
       from: plan.from,
       to: plan.to,
       reason:
-        `service (pid ${plan.servicePid}) did not exit within ${plan.exitWaitMs}ms; ` +
-        `the install was left untouched — stop the service and retry`,
+        `service (pid ${plan.servicePid}) did not exit within ${plan.exitWaitMs}ms — ` +
+        `it is likely stuck shutting down with open connections; the install was left untouched ` +
+        `and the live service keeps serving. Recover with \`unvibe stop\`, then retry the switch ` +
+        `(or \`unvibe update ${plan.to}\` with the service stopped)`,
       logPath: plan.logPath,
     });
   }

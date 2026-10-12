@@ -823,11 +823,14 @@ asserted by `global-install-check` + a metafile containment test (node
 builtins only). Contract first in `packages/shared/src/api.ts`
 (`UpdateChannel`, `UpdateBuildInfo` on health + status,
 channels/switch/status shapes, `unchanged`). `GET /api/update/status`
-always works; channels + switch are gated off by default
-(`versionPickerEnabled`) with 404, refused with 409 while jobs run / a
-submit is in flight / a switch is pending / not running from an
-installed build, and sit behind the same token + loopback Host/Origin
-gates as every other route. `from` is the locally installed channel
+ always works; channels + switch are gated off by default
+ (`versionPickerEnabled`) with 404, refused with 409 while a submit is in
+ flight / a switch is pending / not running from an installed build —
+ and with a structured 409 (`code: "jobs-running"` + count + blocking
+ jobs) while jobs run unless forced (`force: true` skips only that
+ refusal; the shutdown path stops the jobs and the outcome names the
+ interrupted count) — and sit behind the same token + loopback
+ Host/Origin gates as every other route. `from` is the locally installed channel
 (never "unknown"); same channel + same commit is 200 `unchanged`, a
 moved commit reinstalls with an Update action on the current row (from
 === to, no DB swap; rollback is one reinstall + health, then `failed`
@@ -837,20 +840,28 @@ pull it) + restart on the same port; the helper stops its own previous
 generation (verified exited, lock released) before the rollback install
 and waits for the install target / rollback source versions
 respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
-log path, `failed` carries the `npm install -g ...#release` recovery) is
-surfaced by status. Web: Settings → Version (toggle, grouped channels,
-refresh, inline-confirm switch, restart wait with reload, rollback
-reason, update-available, installed-only notice, unchanged note) plus a
-quiet preview pill in the review/Settings/Start headers; the mock API
-covers the whole flow incl. simulated switch + rollback.
+ log path, `failed` carries the `npm install -g ...#release` recovery) is
+ surfaced by status. Shutdown is bounded and ordered (issue #30, fixed
+ on this branch: abort jobs → dispose agents → close MCP sessions +
+ WebSocket clients → force-close leftover sockets + close HTTP → DB last;
+ 4 s per step, 10 s deadline, then the process exits — the old hook order
+ closed the DB first and `app.close()` hung on deaf sockets/MCP streams
+ while agents were disposed last, failing real switches with `did not
+ exit within 30000ms`; the stuck-service outcome now names `unvibe stop`
+ + retry as the recovery). Web: Settings → Version (toggle, grouped channels,
+ refresh, inline-confirm switch, restart wait with reload, rollback
+ reason, update-available, installed-only notice, unchanged note) plus a
+ quiet preview pill in the review/Settings/Start headers; the mock API
+ covers the whole flow incl. simulated switch + rollback.
  Evidence: `test/update-helper.test.ts` (success, install/unhealthy
  rollback, failed rollback, stuck service, generation stop order,
  expected-version waits, stale-sample guard),
  `test/update-updater.test.ts` (fake semantics + injection, real backend
  selection/rejection, state files, build identity, lease check),
- `test/update-routes.test.ts` (gate, busy/lease/pending/installed
- refusals, same-channel unchanged/update, auth/host, commit path with
- entry-path identification), `test/update-helper-bundle.test.ts`
+  `test/update-routes.test.ts` (gate, structured jobs/lease/pending/
+  installed refusals, force path + non-bypass, same-channel
+  unchanged/update, auth/host, commit path with entry-path
+  identification), `test/update-helper-bundle.test.ts`
  (metafile containment), `versionFormat.test.ts` (+ newer-available),
  `e2e/update-picker.spec.ts` (4/4 mock-mode green, full `test:e2e` 113
  green). Real-install drill (no pushes): two local preview trees via
