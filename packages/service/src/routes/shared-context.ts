@@ -41,6 +41,7 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
     const provider = settings?.main.provider ?? "unknown";
     const model = settings?.main.model ?? "unknown";
     const currentKey = baseKeyString({
+      reviewId: id,
       reviewVersion: `v${snapshot.version.n}`,
       guideRevision: guideRevisionForSnapshot(snapshot),
       provider,

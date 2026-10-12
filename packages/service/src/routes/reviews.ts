@@ -118,6 +118,13 @@ export async function registerReviews(
         : {}),
     }, id);
     if (!result.deleted) return reply.code(404).send({ error: "unknown review" });
+    // Close the review's agent sessions (base + conversations) so a review
+    // added again for the same change starts from new ones.
+    try {
+      await (deps as RouteDeps).sessions?.closeReview(id);
+    } catch {
+      // Best effort: the sessions also close on idle.
+    }
     // The review's agent sessions are gone: its MCP secrets die with it, so
     // a stale agent URL can never reach another review's data.
     try {
