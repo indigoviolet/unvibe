@@ -34,13 +34,13 @@ test.beforeEach(async ({ page }) => {
 test("picker is off by default: only the toggle shows", async ({ page }) => {
   await expect(page.getByTestId("version-picker-toggle")).not.toBeChecked();
   await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(0);
-  await expect(page.getByText("Turn it on to list available versions and switch the installed app from here.")).toBeVisible();
+  await expect(page.getByText("Show channels and allow switching")).toBeVisible();
 });
 
 test("enable lists one aligned row per version with the current one marked", async ({ page }) => {
   await enablePicker(page);
-  await expect(page.getByTestId("update-current-version")).toContainText("Current version: release");
-  await expect(page.getByText("Versions")).toBeVisible();
+  await expect(page.getByTestId("update-current-version")).toContainText("Installed: release");
+  await expect(page.getByText("Channels")).toBeVisible();
   const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
   await expect(feat).toContainText("abc1234");
   await expect(feat.getByRole("button", { name: "Switch to preview/feat-x" })).toHaveText("Switch");
