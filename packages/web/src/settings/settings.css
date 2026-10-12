@@ -111,3 +111,93 @@ mark.tm {
   font-family: var(--mono);
   font-size: 12px;
 }
+/* Version section (issue #73): the enable checkbox sits above the card,
+   top right of the section header; versions are one grid row each. */
+.ver-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ver-head .divider {
+  flex: 1 1 auto;
+}
+.ver-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ver-current {
+  font-size: 13px;
+  margin: 6px 0;
+}
+.ver-current .ver-name {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+.ver-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+.ver-listhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0 2px;
+}
+.ver-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5em 10em auto;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+}
+.ver-name {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ver-sha {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ver-built {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ver-action {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-self: end;
+  white-space: nowrap;
+}
+.ver-note {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.ver-note.warnline {
+  margin: 2px 0;
+}
+.ver-outcome {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 6px;
+}
+.ver-logpath {
+  overflow-wrap: anywhere;
+}
