@@ -1095,6 +1095,49 @@ every agent action so the same handover runs. Service jobs now carry
  Open: part 2, the `removeChild` crash itself — the boundaries above
  stand on their own until it reproduces.
 
+### Reload blank page, part 2: the crash (#101, complete)
+
+ Reproduced before fixing, twice, with the exact reported string
+ (`NotFoundError: Failed to execute 'removeChild' on 'Node': The node to
+ be removed is not a child of this node`):
+ - `web/src/source/diff/DiffAnchorCrash.test.tsx` (jsdom, real
+   `FileSection` + real `useDiffExpansionBindings` pass): mark an
+   expansion quote in a diff cell, then land the plain → token-span
+   highlight upgrade — throws, with or without a second marking pass in
+   between (the pass's own leading `normalize()` already merges the
+   cell's React-tracked text nodes away).
+ - `web/e2e/reload-anchored-review.spec.ts` (mock mode, real browser):
+   hold the Shiki chunk requests (service worker blocked so routing can
+   hold them), Explain a diff selection so its quote is marked, release
+   the upgrade onto the marked cells — the page errors with the reported
+   string. Pre-part-1 this blanked the page; the run visibly shows part
+   1 containing it (page stays up, the marked file shows its fallback).
+ Cause: anchor marks wrapped text nodes React rendered (diff `td.c`
+ cells were React children). Rule adopted, per the issue's options, and
+ applied to every site of the pattern (short form in `anchor.ts`):
+ mutate only inside a container React treats as opaque
+ (`dangerouslySetInnerHTML`, never mixed with React children).
+ Changes: diff cells render their content as an HTML string
+ (`highlight/codeHtml.ts`: escaped text, same `shk-*` classes, plain
+ runs spanless — `FileSection.tsx`); guide code blocks render their
+ text as an HTML string too (`BlockView.tsx`, both code paths);
+ description expansions mark only the opaque paragraph body, never the
+ mixed segment div (`DescriptionExpansions.tsx`); the dead
+ `pruneMarkers` (`GuideThreads.tsx`) is deleted — since #72 the bubble
+ lists only unquoted threads so it can never match, and removing
+ React-rendered marker nodes is exactly the crash pattern.
+ Provably safe, unchanged: `D2Diagram` (keyed host states, owns its
+ div), description "Restated →" appends (inside opaque bodies), thread
+ marks in guide prose/list/table/description bodies (all opaque),
+ description markers (filtered at render through React state).
+ The diff-file fallback keeps `id="F-<fileKey>"` so deep links still
+ land (found by the e2e probe).
+ Evidence: both repro suites fail without the `FileSection` change
+ (unit pair re-run against the reverted file; e2e run pre-fix) and pass
+ with it; `mise run check` + `build` + `test:e2e` (159) green, network
+ guard re-run green on the fresh `dist/`. Nothing in this part touches
+ `AppShell`, `CardView`, `D2Diagram` or `DiagramView` either.
+
 ### Fixed in this branch (done, in `check`)
 
 Stale-dist guard; Host/Origin gate; MCP secret lifecycle; submit crash
