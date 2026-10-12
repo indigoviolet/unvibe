@@ -170,6 +170,15 @@ describe("DiffView", () => {
     expect(table!.querySelector("colgroup")).not.toBeNull();
   });
 
+  it("a stored summary holding raw JSON reads as absent (#99)", async () => {
+    useReview.getState().setSnapshot(makeJsonSummarySnapshot());
+    render(<DiffView reviewId="json" />);
+    await screen.findByText("Hunk 1 of 1", {}, { timeout: 3000 });
+    // The JSON text is never shown; the hunk offers Summarize instead.
+    expect(screen.queryByText(/"hunk"/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Summarize with agent" })).toBeInTheDocument();
+  });
+
   it("stays usable on a 300-file, 5k-hunk diff (headers mount, bodies lazy)", async () => {
     // Fake an IntersectionObserver that never fires: only eager files may
     // render their hunk tables.
@@ -192,6 +201,58 @@ describe("DiffView", () => {
     }
   });
 });
+
+function makeJsonSummarySnapshot(): import("@unvibe/shared").ReviewSnapshot {
+  return {
+    review: {
+      id: "json",
+      repoId: "urllib3",
+      branch: "json",
+      versions: [],
+      currentVersion: 1,
+      createdAt: Date.now(),
+    },
+    version: { n: 1, headSha: "abc1234", mergeBaseSha: "def5678", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    files: [
+      {
+        fileKey: "a-py",
+        path: "src/a.py",
+        category: "source" as const,
+        hunks: [
+          {
+            contentHash: "hjson",
+            header: "@@ -1,2 +1,3 @@",
+            newStart: 1,
+            newEnd: 3,
+            oldStart: 1,
+            oldEnd: 2,
+            added: 1,
+            removed: 0,
+            lines: [
+              { kind: "ctx" as const, oldLine: 1, newLine: 1, text: "x = 1" },
+              { kind: "add" as const, newLine: 2, text: "y = 2" },
+              { kind: "ctx" as const, oldLine: 2, newLine: 3, text: "z = 3" },
+            ],
+          },
+        ],
+      },
+    ],
+    pages: [],
+    annotations: [],
+    hunkStates: [
+      {
+        contentHash: "hjson",
+        folded: false,
+        reviewed: false,
+        summary: `{"hunk": {"summary": "Maps the Nav 2 Conversations item`,
+      },
+    ],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+  };
+}
 
 function makeBigSnapshot(): import("@unvibe/shared").ReviewSnapshot {
   const files = Array.from({ length: 300 }, (_, fi) => ({
