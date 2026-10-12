@@ -39,6 +39,7 @@ interface ScriptState {
   outcomes: SwitchOutcome[];
   pendingCleared: number;
   switches: string[];
+  switchOpts: ({ restoreBackupOf?: string } | undefined)[];
   starts: number;
   startedPids: number[];
   stopped: number[];
@@ -50,6 +51,7 @@ interface ScriptState {
 function makeDeps(script: Script): HelperDeps & ScriptState {
   const outcomes: SwitchOutcome[] = [];
   const switches: string[] = [];
+  const switchOpts: ({ restoreBackupOf?: string } | undefined)[] = [];
   const startedPids: number[] = [];
   const stopped: number[] = [];
   const expects: (string | null)[] = [];
@@ -73,6 +75,9 @@ function makeDeps(script: Script): HelperDeps & ScriptState {
     get switches() {
       return switches;
     },
+    get switchOpts() {
+      return switchOpts;
+    },
     get starts() {
       return startedPids.length;
     },
@@ -92,8 +97,9 @@ function makeDeps(script: Script): HelperDeps & ScriptState {
       return logs;
     },
     waitForExit: async () => script.exit ?? true,
-    switchTo: async (ref: string) => {
+    switchTo: async (ref: string, opts?: { restoreBackupOf?: string }) => {
       switches.push(ref);
+      switchOpts.push(opts);
       events.push(`switch:${ref}`);
       if (script.switchThrows?.includes(ref)) throw new Error(`boom installing ${ref}`);
       return { from: PLAN.from, to: ref };
@@ -180,15 +186,19 @@ describe("runSwitchFlow", () => {
     expect(out.status).toBe("rolled-back");
     expect(out.reason).toContain("install of preview/feat-x failed");
     expect(deps.switches).toEqual(["preview/feat-x", "release"]);
+    // The forward switch keeps the live DB; the rollback reinstalls the
+    // old build AND restores its pre-switch backup.
+    expect(deps.switchOpts).toEqual([undefined, { restoreBackupOf: "release" }]);
     expect(deps.starts).toBe(1);
   });
 
-  it("unhealthy new build rolls back", async () => {
+  it("unhealthy new build rolls back with the pre-switch backup restored", async () => {
     const deps = makeDeps({ health: [null, OLD_HEALTHY] });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("rolled-back");
     expect(out.reason).toContain("not healthy within 2000ms");
     expect(deps.switches).toEqual(["preview/feat-x", "release"]);
+    expect(deps.switchOpts).toEqual([undefined, { restoreBackupOf: "release" }]);
     expect(deps.starts).toBe(2);
   });
 
@@ -216,12 +226,13 @@ describe("runSwitchFlow", () => {
     expect(out.status).toBe("ok");
   });
 
-  it("failed rollback records failed", async () => {
+  it("failed rollback records failed and names the backup folder", async () => {
     const deps = makeDeps({ switchThrows: ["preview/feat-x", "release"] });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("failed");
     expect(out.reason).toContain("install of preview/feat-x failed");
     expect(out.reason).toContain("rollback to release also failed");
+    expect(out.reason).toContain("channel-backups");
     expect(deps.starts).toBe(0);
   });
 
