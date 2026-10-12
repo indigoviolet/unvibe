@@ -730,12 +730,6 @@ export interface PromptsResponse {
 
 export interface JobsResponse {
   jobs: Job[];
-  /**
-   * M5 shared context (PRD §4.14 "Shared context", §9.4): per-base
-   * observability for the review, so the Settings page can show it
-   * alongside job usage. Absent when the review has no bases yet.
-   */
-  sharedContext?: SharedContextBaseStats[];
 }
 
 /** GET /api/jobs/:id — one job. */
@@ -812,7 +806,8 @@ export interface DismissContributionResponse {
 
 /**
  * M5 shared context (PRD §4.14 "Shared context", §9.4): per-base
- * observability served through the jobs API (`JobsResponse.sharedContext`).
+ * observability rendered into the shared-context debug document
+ * (`GET /api/reviews/:id/shared-context`).
  */
 export interface SharedContextBaseStats {
   /** Session-manager base key (`version|guideRevision|provider|model`). */
