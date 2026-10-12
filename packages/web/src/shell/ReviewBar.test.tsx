@@ -89,6 +89,30 @@ describe("ReviewBar", () => {
     expect(screen.queryByRole("link", { name: "Open PR on GitHub" })).toBeNull();
   });
 
+  it("hides the Debug icon while the review is still opening (#92)", async () => {
+    // A loading review has no finished open (version 0); the Debug page
+    // refuses earlier states, so the icon waits. The rest of the bar stays
+    // usable: identity from the hints, harmless pane selector, no Submit.
+    const snap = await api.review("demo");
+    useReview.getState().setSnapshot({
+      ...snap,
+      review: { ...snap.review, id: "opening-1", branch: "feature" },
+      version: { ...snap.version, n: 0 },
+      files: [],
+      pages: [],
+      ingest: { status: "loading", step: "fetching" },
+    } as typeof snap);
+    render(
+      <MemoryRouter initialEntries={["/review/opening-1"]}>
+        <ReviewBar reviewId="opening-1" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("link", { name: "Debug" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Guide" })).toBeInTheDocument();
+    expect(document.getElementById("toggleRight")).toHaveTextContent("Source");
+    expect(document.querySelector("#submitSlot")).toBeNull();
+  });
+
   it("toggles call their handlers", async () => {
     const onToggleGuide = vi.fn();
     const onToggleSource = vi.fn();
