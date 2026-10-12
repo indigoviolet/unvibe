@@ -4,8 +4,8 @@
  * Per-base stats — size, appended tokens, superseded ratio, last rebuild
  * reason, last use, cache-hit rate — persisted per review in SQLite
  * (lazily-created table, so this never conflicts with review-state
- * migrations) and served through the jobs API (`JobsResponse.sharedContext`)
- * so the Settings page can show them.
+ * migrations) and rendered into the shared-context debug document
+ * (`GET /api/reviews/:id/shared-context`) so the debug page can show them.
  */
 import type { SharedContextBaseStats } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/db.js";

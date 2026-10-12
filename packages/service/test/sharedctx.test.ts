@@ -775,15 +775,14 @@ describe("base growth observability (PRD §4.14, §9.3)", () => {
       expect(row.supersededRatio).toBe(0);
       expect(row.lastRebuildReason).toBeNull();
 
-      const jobs = await setup.app.inject({
+      const doc = await setup.app.inject({
         method: "GET",
-        url: `/api/jobs?review=${setup.reviewId}`,
+        url: `/api/reviews/${setup.reviewId}/shared-context`,
         headers: authed,
       });
-      expect(jobs.statusCode).toBe(200);
-      expect(jobs.json().sharedContext).toMatchObject([
-        { baseKey, baseTokens: 500 },
-      ]);
+      expect(doc.statusCode).toBe(200);
+      expect(doc.json().base).toContain(baseKey);
+      expect(doc.json().base).toContain("base tokens: 500");
     } finally {
       await setup.app.close();
     }
