@@ -17,6 +17,7 @@
 import type {
   ActionResponse,
   AddRepoRequest,
+  AddRepoResponse,
   ChangesFilter,
   Contribution,
   CreateReviewRequest,
@@ -28,6 +29,7 @@ import type {
   PromptTemplate,
   ReadinessResponse,
   RefreshResponse,
+  RemoveRepoResponse,
   Repo,
   RepoChange,
   RepoChangesResponse,
@@ -44,6 +46,7 @@ import type {
   VersionStatus,
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
+import { parseGitHubRepoInput } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } from "./guide.js";
@@ -899,13 +902,47 @@ export const mockApi = {
 
   repos: async (): Promise<ReposResponse> => ({ repos: getRepos() }),
 
-  addRepo: async (body: AddRepoRequest): Promise<ReposResponse> => {
-    const name = body.path.split("/").filter(Boolean).pop() ?? body.path;
-    const repo: Repo = {
+  addRepo: async (body: AddRepoRequest): Promise<AddRepoResponse> => {
+    // #27: mirror the service contract — path adds a local checkout, url
+    // adds a managed clone (no UI changes on this branch).
+    const raw = body.url ?? body.path ?? "";
+    let repo: Repo;
+    if (body.url) {
+      let owner = "mock";
+      let name = raw.split("/").filter(Boolean).pop() ?? raw;
+      let prNumber: number | undefined;
+      try {
+        const parsed = parseGitHubRepoInput(raw);
+        owner = parsed.owner;
+        name = parsed.name;
+        prNumber = parsed.prNumber;
+      } catch {
+        // Keep the last-segment fallback so mock mode never 400s.
+      }
+      repo = {
+        id: `managed-${owner}-${name}`,
+        owner,
+        name,
+        localPath: `/mock/data/repos/${owner}/${name}`,
+        lastOpened: Date.now(),
+        managed: true,
+      };
+      try {
+        const added = readJson<Repo[]>(ADDED_KEY, []);
+        localStorage.setItem(ADDED_KEY, JSON.stringify([repo, ...added]));
+      } catch {
+        // Non-fatal.
+      }
+      const out: AddRepoResponse = { repos: getRepos() };
+      if (prNumber !== undefined) out.prNumber = prNumber;
+      return out;
+    }
+    const name = raw.split("/").filter(Boolean).pop() ?? raw;
+    repo = {
       id: `local-${name}`,
       owner: "local",
       name,
-      localPath: body.path,
+      localPath: raw,
       lastOpened: Date.now(),
     };
     try {
@@ -915,6 +952,17 @@ export const mockApi = {
       // Non-fatal.
     }
     return { repos: getRepos() };
+  },
+
+  removeRepo: async (id: string): Promise<RemoveRepoResponse> => {
+    try {
+      const added = readJson<Repo[]>(ADDED_KEY, []);
+      const found = added.find((r) => r.id === id);
+      localStorage.setItem(ADDED_KEY, JSON.stringify(added.filter((r) => r.id !== id)));
+      return { ok: true as const, removedClone: found?.managed === true };
+    } catch {
+      return { ok: true as const, removedClone: false };
+    }
   },
 
   repoChanges: async (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> => {

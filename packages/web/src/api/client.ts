@@ -7,6 +7,7 @@ import type {
   AcceptContributionResponse,
   ActionResponse,
   AddRepoRequest,
+  AddRepoResponse,
   ChangesFilter,
   ContributionsResponse,
   CreateCommentRequest,
@@ -28,6 +29,7 @@ import type {
   ReadinessResponse,
   RefreshResponse,
   ReloadResponse,
+  RemoveRepoResponse,
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
@@ -201,8 +203,10 @@ const realApi = {
   health: (): Promise<HealthResponse> => fetch("/api/health").then((r) => r.json()),
 
   repos: (): Promise<ReposResponse> => get("/api/repos"),
-  addRepo: (body: AddRepoRequest): Promise<ReposResponse> =>
+  addRepo: (body: AddRepoRequest): Promise<AddRepoResponse> =>
     request("/api/repos", { method: "POST", body: JSON.stringify(body) }),
+  removeRepo: (id: string): Promise<RemoveRepoResponse> =>
+    request(`/api/repos/${encodeURIComponent(id)}`, { method: "DELETE" }),
   repoChanges: (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> =>
     get(`/api/repos/${encodeURIComponent(id)}/changes${filter ? `?filter=${filter}` : ""}`),
 
