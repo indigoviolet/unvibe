@@ -196,6 +196,64 @@ function waitForInflightGone(targetId: string, timeoutMs: number): Promise<void>
   });
 }
 
+/**
+ * Quiet window before concluding an insert added nothing: the job-done
+ * event can be processed before the patch that bumps the revision. Job
+ * events apply immediately, while patches gate on `baseRev` and can queue
+ * behind a gap — and the service emits them in no guaranteed relative
+ * order (`runInFork` settles the job while the fill continuation
+ * mutates; see `pipeline/actions/examples.ts`). A repeat that truly adds
+ * nothing (`insertExamples` with `added === 0`) emits no content patch at
+ * all, so the watch ends on quiet, not on content.
+ */
+const INSERT_QUIET_MS = 1500;
+const INSERT_MAX_MS = 10_000;
+
+/**
+ * True once the insert's content could have landed: the revision moved,
+ * or the job settled with nothing queued and a quiet window passed, or
+ * the cap elapsed. Never hangs; callers compare revisions afterwards.
+ */
+function waitForInsertOutcome(cardId: string, beforeRevision: number, jobId: string): Promise<boolean> {
+  const t0 = Date.now();
+  let lastSnap = useReview.getState().snapshot;
+  let lastChange = t0;
+  return new Promise((resolve) => {
+    let done = false;
+    let timer: number | undefined;
+    const finish = (moved: boolean): void => {
+      if (done) return;
+      done = true;
+      unsub();
+      window.clearTimeout(timer);
+      resolve(moved);
+    };
+    const check = (): void => {
+      if (done) return;
+      const st = useReview.getState();
+      if (st.snapshot !== lastSnap) {
+        lastSnap = st.snapshot;
+        lastChange = Date.now();
+      }
+      if (currentRevision(cardId) !== beforeRevision) {
+        finish(true);
+        return;
+      }
+      const job = st.snapshot?.jobs.find((j) => j.id === jobId);
+      const settled =
+        !job || job.state === "done" || job.state === "error" || job.state === "cancelled";
+      const quiet = Date.now() - lastChange >= INSERT_QUIET_MS;
+      if ((settled && st.pending.length === 0 && quiet) || Date.now() - t0 >= INSERT_MAX_MS) {
+        finish(false);
+        return;
+      }
+      timer = window.setTimeout(check, 250);
+    };
+    const unsub = useReview.subscribe(() => check());
+    check();
+  });
+}
+
 export interface PerformOptions {
   /** False skips the failure toast (the caller toasts); still resyncs. */
   toast?: boolean;
@@ -290,11 +348,14 @@ export async function performAction(
     }
   }
   if (beforeRevision !== undefined && res.jobId && target) {
-    // The fill is async: watch the entry until its job settles, then say
-    // so when the revision never moved (replaces the old polling loop).
+    // The fill is async: watch the entry until its job settles, then wait
+    // out trailing patches before concluding nothing was added (the done
+    // event can precede the revision-bumping patch).
     const jobId = res.jobId;
     const cardId = target.targetId;
-    void waitForInflightGone(cardId, INFLIGHT_TTL_MS).then(() => {
+    void waitForInflightGone(cardId, INFLIGHT_TTL_MS).then(async () => {
+      const moved = await waitForInsertOutcome(cardId, beforeRevision, jobId);
+      if (moved) return;
       const job = useReview.getState().snapshot?.jobs.find((j) => j.id === jobId);
       if (job?.state === "done" && currentRevision(cardId) === beforeRevision) {
         toast("Nothing more to add to this card.");

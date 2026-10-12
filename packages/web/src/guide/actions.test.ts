@@ -5,8 +5,9 @@
  * answer needs no job, or the request throws. Nothing sticks.
  */
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import type { Card } from "@unvibe/shared";
+import type { Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
+import * as ToastModule from "../floating/Toast.js";
 import { resetMockState } from "../mock/index.js";
 import { useReview } from "../state/store.js";
 import { performAction, performFollowUp, performUpdate } from "./actions.js";
@@ -116,6 +117,110 @@ describe("performAction in-flight funnel", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  describe("insert settle toast ordering", () => {
+    function seedCard(revision: number): void {
+      useReview.getState().clear();
+      const card = {
+        id: "c1",
+        pageId: "root",
+        title: "Card",
+        level: "standard",
+        read: false,
+        collapsed: false,
+        revision,
+        blocks: [],
+        undoStack: [],
+      } as unknown as Card;
+      useReview.getState().setSnapshot({
+        review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+        version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+        files: [],
+        pages: [{ id: "root", kind: "root", title: "Root", saved: false, cards: [card] }],
+        annotations: [],
+        hunkStates: [],
+        jobs: [],
+        contributions: [],
+        logTail: [],
+        rev: 1,
+      } as unknown as ReviewSnapshot);
+    }
+
+    function doneJob(): Job {
+      return {
+        id: "job-x",
+        kind: "examples",
+        provider: "claude",
+        model: "m",
+        reviewId: REVIEW_ID,
+        priority: 100,
+        state: "done",
+      } as Job;
+    }
+
+    test("done with no revision change still toasts after quiet", async () => {
+      vi.useFakeTimers();
+      try {
+        seedCard(1);
+        let resolveAction!: (res: { accepted: boolean; jobId: string }) => void;
+        const actionSpy = vi.spyOn(api, "action").mockImplementation(
+          () => new Promise((resolve) => { resolveAction = resolve as never; }),
+        );
+        const toastSpy = vi.spyOn(ToastModule, "toast").mockImplementation(() => {});
+        try {
+          const p = performAction(REVIEW_ID, { kind: "examples", cardId: "c1" });
+          resolveAction({ accepted: true, jobId: "job-x" });
+          await p;
+          // Done event lands with no content patch (repeat adds nothing).
+          useReview.getState().applyEvent({ type: "job", job: doneJob() });
+          await vi.advanceTimersByTimeAsync(3000);
+          expect(toastSpy).toHaveBeenCalledWith("Nothing more to add to this card.");
+        } finally {
+          actionSpy.mockRestore();
+          toastSpy.mockRestore();
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("done arriving before the content patch does not toast", async () => {
+      vi.useFakeTimers();
+      try {
+        seedCard(1);
+        let resolveAction!: (res: { accepted: boolean; jobId: string }) => void;
+        const actionSpy = vi.spyOn(api, "action").mockImplementation(
+          () => new Promise((resolve) => { resolveAction = resolve as never; }),
+        );
+        const toastSpy = vi.spyOn(ToastModule, "toast").mockImplementation(() => {});
+        try {
+          const p = performAction(REVIEW_ID, { kind: "examples", cardId: "c1" });
+          resolveAction({ accepted: true, jobId: "job-x" });
+          await p;
+          // Done event first (content patch still queued behind a gap)…
+          useReview.getState().applyEvent({ type: "job", job: doneJob() });
+          await vi.advanceTimersByTimeAsync(500);
+          // …then the revision-bumping patch lands before quiet elapses.
+          const snap = useReview.getState().snapshot!;
+          const nextPages = JSON.parse(JSON.stringify(snap.pages)) as typeof snap.pages;
+          nextPages[0].cards[0].revision = 2;
+          useReview.getState().applyEvent({
+            type: "patch",
+            baseRev: snap.rev,
+            headRev: snap.rev + 1,
+            ops: [{ op: "replace", path: "/pages", value: nextPages }],
+          });
+          await vi.advanceTimersByTimeAsync(5000);
+          expect(toastSpy).not.toHaveBeenCalledWith("Nothing more to add to this card.");
+        } finally {
+          actionSpy.mockRestore();
+          toastSpy.mockRestore();
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   test("a thrown request clears the entry", async () => {
