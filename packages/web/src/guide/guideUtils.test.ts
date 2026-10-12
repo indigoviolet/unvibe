@@ -4,13 +4,14 @@
  * spellings), concept resolution, anchor matching.
  */
 import { describe, expect, it } from "vitest";
-import type { Card, Page } from "@unvibe/shared";
+import type { Card, Job, Page } from "@unvibe/shared";
 import {
   anchorMatchesBlock,
   blockCitations,
   cardPreview,
   contentsModel,
   depthText,
+  emptyGuideState,
   isPageRead,
   jobForCard,
   linkedPages,
@@ -191,6 +192,39 @@ describe("jobForCard", () => {
     expect(jobForCard([...jobs], "c1")).toBeUndefined();
     expect(jobForCard([...jobs], "c2")?.id).toBe("b");
     expect(jobForCard([...jobs], "c9")).toBeUndefined();
+  });
+});
+
+describe("emptyGuideState (issue #44)", () => {
+  const job = (state: string, extra: object = {}) =>
+    ({ id: "j", kind: "reader", model: "m", priority: 1, state, ...extra }) as Job;
+
+  it("is building while a job is live or a stage is running", () => {
+    expect(emptyGuideState(undefined, [job("queued")])).toEqual({ kind: "building", detail: "reader" });
+    expect(emptyGuideState({ stages: { reader: "done", base: "running" } }, [job("done")])).toEqual({
+      kind: "building",
+      detail: "base",
+    });
+    expect(emptyGuideState({ stages: { reader: "done", base: "pending" } }, [])).toEqual({ kind: "building" });
+  });
+
+  it("reports the stage error, falling back to the failed job", () => {
+    expect(
+      emptyGuideState({ stages: { reader: "error", base: "pending" }, errors: { reader: "agent exited" } }, []),
+    ).toEqual({ kind: "error", detail: "agent exited" });
+    expect(emptyGuideState(undefined, [job("error", { error: "no login" })])).toEqual({
+      kind: "error",
+      detail: "no login",
+    });
+    expect(emptyGuideState({ stages: { reader: "error" } }, [])).toEqual({
+      kind: "error",
+      detail: "The reader stage failed.",
+    });
+  });
+
+  it("is idle when nothing has started", () => {
+    expect(emptyGuideState(undefined, [])).toEqual({ kind: "idle" });
+    expect(emptyGuideState({ stages: { reader: "pending", base: "pending" } }, [])).toEqual({ kind: "idle" });
   });
 });
 
