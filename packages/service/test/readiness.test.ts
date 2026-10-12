@@ -9,7 +9,10 @@ import type { ReadinessResponse, Settings } from "@unvibe/shared";
 import { FakeCommandRunner, RealCommandRunner } from "../src/exec/index.js";
 import { getReadiness, clearReadinessCache } from "../src/readiness/index.js";
 import { d2Check } from "../src/readiness/checks.js";
-import { DEFAULT_SETTINGS } from "../src/settings/store.js";
+import { DEFAULT_SETTINGS, SettingsStore } from "../src/settings/store.js";
+import type { ModelCatalog } from "../src/settings/index.js";
+import { openDatabase } from "../src/store/db.js";
+import { migrate } from "../src/store/migrate.js";
 import { createApp } from "../src/server.js";
 
 const real = new RealCommandRunner();
@@ -193,6 +196,60 @@ describe("readiness checks", () => {
     const absent = await d2Check({ env: {}, pathValue: "/nonexistent-path-xyz" });
     expect(absent.status).toBe("warning");
     expect(absent.summary).toMatch(/not found/i);
+  });
+
+  it("reports the live default models, not the stored static ids (issue #88)", async () => {
+    // Scratch PATH with fake claude/codex CLIs so the agent probes get as
+    // far as listModels; versions come from the fake runner (never
+    // executed). The catalog offers no new-enough Claude opus, so the live
+    // main is gpt-6-sol on Codex — the stored static pick (claude-opus-5-5)
+    // must not appear.
+    const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "unvibe-bins-"));
+    try {
+      const claudeBin = join(dir, "claude");
+      const codexBin = join(dir, "codex");
+      writeFileSync(claudeBin, "#!/bin/sh\necho claude 2.1.300\n");
+      writeFileSync(codexBin, "#!/bin/sh\necho codex 0.165.0\n");
+      chmodSync(claudeBin, 0o755);
+      chmodSync(codexBin, 0o755);
+      const fake = new FakeCommandRunner();
+      fake.enqueue({ cmd: claudeBin, args: ["--version"], stdout: "2.1.300", stderr: "", code: 0 });
+      // main + small both resolve to Codex: two codex probes run.
+      fake.enqueue({ cmd: codexBin, args: ["--version"], stdout: "0.165.0", stderr: "", code: 0 });
+      fake.enqueue({ cmd: codexBin, args: ["--version"], stdout: "0.165.0", stderr: "", code: 0 });
+      const ids = { claude: ["claude-sonnet-5-5"], codex: ["gpt-6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] };
+      const norm = (id: string): { id: string } => ({ id });
+      const catalog: ModelCatalog = {
+        listModels: (p: string) => Promise.resolve((ids[p as keyof typeof ids] ?? []).map(norm)),
+        offered: (p: string) =>
+          Promise.resolve({ models: (ids[p as keyof typeof ids] ?? []).map(norm), defaultId: null }),
+      };
+      const db = openDatabase(":memory:");
+      migrate(db);
+      const r = await getReadiness(
+        {
+          runner: fake as never,
+          agents: fakeAgents(ids) as never,
+          settings: new SettingsStore(db),
+          models: catalog,
+          loginPathValue: dir,
+          timeoutMs: 5000,
+        },
+        { force: true },
+      );
+      const summary = (id: string): string => r.checks.find((c) => c.id === id)!.summary;
+      expect(r.checks.find((c) => c.id === "agent:main")!.status).toBe("ok");
+      expect(summary("agent:main")).toContain("gpt-6-sol");
+      expect(summary("agent:main")).not.toContain("opus-5-5");
+      expect(summary("agent:small")).toContain("gpt-5.6-luna");
+      expect(summary("agent:secondOpinion")).toContain("claude-sonnet-5-5");
+      expect(r.checks.find((c) => c.id === "agents-distinct")!.status).toBe("ok");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("caches briefly and force bypasses", async () => {

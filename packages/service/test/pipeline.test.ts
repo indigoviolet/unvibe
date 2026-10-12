@@ -14,6 +14,7 @@ import type { AgentEvent, Job, Review, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { FakeCommandRunner } from "../src/exec/index.js";
+import type { ModelCatalog } from "../src/settings/index.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { buildBasePack } from "../src/context/index.js";
 import { writeReviewRows } from "../src/ingest/index.js";
@@ -210,8 +211,12 @@ describe("pipeline failure paths (scripted fakes)", () => {
     process.env.UNVIBE_REPO_ROOTS = "";
   });
 
-  async function demoApp(agents: FakeAgentRunner): Promise<ReturnType<typeof createApp>> {
-    const created = await createApp("tok", { agents: agents as unknown as never, autoPipeline: false });
+  async function demoApp(agents: FakeAgentRunner, models?: ModelCatalog): Promise<ReturnType<typeof createApp>> {
+    const created = await createApp("tok", {
+      agents: agents as unknown as never,
+      autoPipeline: false,
+      ...(models ? { models } : {}),
+    });
     return created;
   }
 
@@ -278,7 +283,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
     const { app, ctx } = await demoApp(agents);
     try {
       const id = await makeDemoReview(ctx);
-      ctx.pipeline.startReview(id);
+      await ctx.pipeline.startReview(id);
       await ctx.jobs.drain(5000).catch(() => {});
       const readerJobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
       expect(readerJobs.length).toBeGreaterThan(0);
@@ -311,7 +316,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
     const { app, ctx } = await demoApp(agents);
     try {
       const id = await makeDemoReview(ctx);
-      ctx.pipeline.startReview(id);
+      await ctx.pipeline.startReview(id);
       await waitFor(() => ctx.jobs.listByReview(id).some((j) => j.kind === "reader" && j.state === "done"));
       const root = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!;
       expect(root.cards.map((c) => [c.id, c.title])).toEqual([
@@ -338,7 +343,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
     const { app, ctx } = await demoApp(agents);
     try {
       const id = await makeDemoReview(ctx);
-      ctx.pipeline.startReview(id);
+      await ctx.pipeline.startReview(id);
       await waitFor(() => ctx.jobs.listByReview(id).some((j) => j.kind === "reader" && j.state === "done"));
       const root = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!;
       expect(root.cards.map((c) => [c.id, c.title])).toEqual([
@@ -439,7 +444,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
     const { app, ctx } = await demoApp(agents);
     try {
       const id = await makeDemoReview(ctx);
-      ctx.pipeline.startReview(id);
+      await ctx.pipeline.startReview(id);
       await new Promise((r) => setTimeout(r, 30));
       const reader = ctx.jobs.listByReview(id).find((j) => j.kind === "reader")!;
       expect(reader).toBeDefined();
@@ -458,7 +463,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
       expect(created.statusCode).toBe(201);
       const id = (created.json() as ReviewSnapshot).review.id;
       // Simulate a restart: pipeline started, then stages reset to pending.
-      ctx.pipeline.startReview(id);
+      await ctx.pipeline.startReview(id);
       await waitFor(() => ctx.jobs.listByReview(id).some((j) => j.kind === "reader" && j.state === "done"), 30000);
       const resumed = await app.inject({ method: "POST", url: `/api/reviews/${id}/resume`, headers: authed });
       expect(resumed.statusCode).toBe(200);
@@ -500,13 +505,35 @@ describe("pipeline failure paths (scripted fakes)", () => {
           undoStack: [],
         });
       });
-      const job = ctx.pipeline.summarizeHunk(id, "h111");
+      const job = await ctx.pipeline.summarizeHunk(id, "h111");
       await ctx.jobs.drain(5000);
       expect(ctx.jobs.get(job.id)?.state).toBe("done");
       const snap = ctx.reviews.getSnapshot(id)!;
       const hunk = snap.files[0].hunks[0];
       expect(hunk.hiddenReason).toBeUndefined();
       expect(snap.hunkStates.find((s) => s.contentHash === "h111")?.summary).toBe("S");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("jobs use the live default models, not the stored static ids (issue #88)", async () => {
+    // No haiku-5-5 offered: the live small default is gpt-6-luna on Codex.
+    // The stored static pick (claude-haiku-5-5) must not be used.
+    const norm = (id: string): { id: string } => ({ id });
+    const live = { claude: ["claude-haiku-4-5"], codex: ["gpt-6-luna", "gpt-5.6-luna"] };
+    const models: ModelCatalog = {
+      listModels: (p: string) => Promise.resolve((live[p as keyof typeof live] ?? []).map(norm)),
+      offered: (p: string) =>
+        Promise.resolve({ models: (live[p as keyof typeof live] ?? []).map(norm), defaultId: null }),
+    };
+    const { app, ctx } = await demoApp(new FakeAgentRunner([]), models);
+    try {
+      const id = await makeDemoReview(ctx);
+      const job = await ctx.pipeline.summarizeHunk(id, "h111");
+      if (!("id" in job)) throw new Error("expected a job");
+      expect(job.provider).toBe("codex");
+      expect(job.model).toBe("gpt-6-luna");
     } finally {
       await app.close();
     }
@@ -678,7 +705,7 @@ describe("reader pinned code (#37)", () => {
         base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
         issued = ctx.mcp.issueSession(reviewId, "sess-reader", "reader");
 
-        ctx.pipeline.startReview(reviewId);
+        await ctx.pipeline.startReview(reviewId);
         await ctx.jobs.drain(15000).catch(() => {});
 
         const readerJobs = ctx.jobs.listByReview(reviewId).filter((j) => j.kind === "reader");
@@ -835,7 +862,7 @@ describe("reader pinned code (#37)", () => {
         base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
         issued = ctx.mcp.issueSession(reviewId, "sess-reader", "reader");
 
-        ctx.pipeline.startReview(reviewId);
+        await ctx.pipeline.startReview(reviewId);
         await ctx.jobs.drain(15000).catch(() => {});
 
         const snap = ctx.reviews.getSnapshot(reviewId)!;
