@@ -21,7 +21,7 @@ async function gotoReview(page: Page): Promise<void> {
   );
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await expect(page.locator('mark.anc.ex[data-jump="x-seed"]')).toBeVisible({ timeout: 8000 });
-  await expect(page.locator('mark.anc[data-thr="t-seed"]')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('mark.anc[data-thr="t-seed"]:not(.fnote)')).toBeVisible({ timeout: 8000 });
 }
 
 /** Deepest nesting of `mark.anc` under #page (1 = flat). */
@@ -99,7 +99,7 @@ test("many snapshot patches leave mark depth 1; selection and reply focus surviv
   // Marks: flat, one per quote, open-expansion style kept.
   expect(await markDepth(page)).toBe(1);
   expect(await page.locator('#page mark.anc.ex[data-jump="x-seed"]').count()).toBe(1);
-  expect(await page.locator('#page mark.anc[data-thr="t-seed"]').count()).toBe(1);
+  expect(await page.locator('#page mark.anc[data-thr="t-seed"]:not(.fnote)').count()).toBe(1);
   await expect(page.locator('mark.anc.ex[data-jump="x-seed"]').first()).toBeVisible();
 
   // Focused reply box, draft and cursor survive.
