@@ -20,7 +20,9 @@ unvibe setup
 unvibe open
 ```
 
-The same command updates. From a checkout instead (`mise` supplies the Node toolchain; see `DEVELOPMENT.md`):
+The same command updates (or `unvibe update <channel>` to switch between
+`release`, `release-rc` and `preview/*` builds — see `DEVELOPMENT.md`
+"Preview builds"). From a checkout instead (`mise` supplies the Node toolchain; see `DEVELOPMENT.md`):
 
 ```sh
 git clone https://github.com/indigoviolet/unvibe && cd unvibe
@@ -37,6 +39,8 @@ Other commands:
 - `stop` / `status` — stop it; report whether it runs.
 - `token` — print the app URL with the per-install token.
 - `doctor` — environment checks, each with a fix.
+- `update --list` — list install channels (`release`, `release-rc`, `preview/*`), marking the installed one.
+- `update <channel>` — install that channel globally (`--keep-data` keeps the live database).
 
 ## Using it
 

@@ -3,7 +3,8 @@
  *
  * The service may spawn only `git`, `gh` (via the GITHUB_TOKEN-unset
  * wrapper), the login shell for PATH resolution, the agent adapters/CLIs,
- * and the platform helpers used by `unvibe setup` (`osacompile`,
+ * `npm` for `unvibe update` channel installs, and the platform helpers
+ * used by `unvibe setup` (`osacompile`,
  * `lsregister`, `xdg-mime`, `update-desktop-database`, `open`/`xdg-open`)
  * plus the service lifecycle itself (spawning its own CLI entry).
  * Every `CommandRunner`/`spawn`/`execFile` call site must resolve to that
@@ -35,6 +36,7 @@ const ALLOWED_LITERAL: { cmd: string; reason: string }[] = [
   { cmd: "claude", reason: "user's installed agent CLI (login-shell PATH; adapter runs it via CLAUDE_CODE_EXECUTABLE, version-checked by readiness/doctor; Unvibe ships no bundled binary)" },
   { cmd: "codex", reason: "user's installed agent CLI (login-shell PATH; adapter runs it via CODEX_PATH app-server, version-checked by readiness/doctor; Unvibe ships no bundled binary)" },
   { cmd: "d2", reason: "user's installed diagram binary (login-shell PATH or UNVIBE_D2_BIN, version-gated ≥ 0.9.0 by readiness/doctor; stdin-only, --bundle=false, empty temp dir, scrubbed env; Unvibe ships no bundled binary)" },
+  { cmd: "npm", reason: "unvibe update installs a channel globally (npm install -g github:<repo>#<channel>); never runs during request handling" },
   { cmd: "osacompile", reason: "unvibe setup on macOS (builds the local helper app)" },
   { cmd: "xdg-mime", reason: "unvibe setup on Linux (registers unvibe://)" },
   { cmd: "update-desktop-database", reason: "unvibe setup on Linux (refreshes desktop entries)" },

@@ -115,6 +115,10 @@ run = "mise run release && node scripts/global-install-check.mjs"
 description = "Assemble the self-contained release tree, tarball, and local release branch"
 run = "mise run build && node scripts/release.mjs"
 
+[tasks."preview:publish"]
+description = "Publish a branch as an installable preview/<slug> ref (builds; pushes only with --push)"
+run = "node scripts/preview-publish.mjs"
+
 [tasks."release:tag"]
 description = "Cut a release tag: clean/main/CI-green checks, version bump for finals, tag (rc tags: no bump)"
 run = "node scripts/release-tag.mjs"

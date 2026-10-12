@@ -534,6 +534,37 @@ UI); nothing below was edited by this pass.
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
+- Preview builds, step 1 (issue #36) — implemented, not a PRD requirement:
+  `mise run preview:publish [-- <branch>] [--push]` builds a branch into a
+  local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
+  guard, `unvibe` provenance field in the generated package.json);
+  `unvibe update --list` / `unvibe update <channel> [--keep-data]`
+  lists channels via `gh` (GITHUB_TOKEN unset) — per-ref version, source
+  commit/branch and build time read without cloning
+  (`.../contents/package.json?ref=…`), typed as `UpdateChannel`
+  (mirrors the step-2 shared type; owned by that branch) — and installs
+  `github:indigoviolet/unvibe#<channel>` with per-channel database copies
+  under `channel-backups/` (never deleted; service must be stopped; no
+  restart logic — refusal points at `unvibe stop`). Same-channel updates
+  compare installed vs published commits (no-op with the commit, else
+  reinstall in place with no database swap); `--list` flags a newer build
+  on the installed row. A new preview never inherits another preview's
+  database (seeds from the release copy, `release-rc` fallback, else the
+  switch stops before installing unless `--keep-data`). Pre-field
+  installs map to their real channel from the version (source checkouts
+  stay unknown). The install is pinned to this binary's npm prefix and
+  verified at its package path — a landing elsewhere fails naming the
+  path and `npm prefix -g`, swapping nothing. Plain modules are exactly
+  `src/update/{channels,install,data-backup}.ts`, composed for the CLI in
+  `src/cli/update-flows.ts`. Only database files are per-channel; the
+  rest of the data dir is shared, and leftover review folders are inert
+  (DB-driven listing, random review ids, self-healing worktrees — see
+  DEVELOPMENT.md).
+  Evidence: `test/preview-publish.test.ts` (12), `test/update.test.ts`
+  (49), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
+  still green. Note: the live database file is `unvibe.db`
+  (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
+  and is corrected there — the backup covers both names when present.
 
 ### §14.1 Endpoints — all met (ran)
 

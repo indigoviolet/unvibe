@@ -4,7 +4,7 @@
  *
  * - No command → run the service in the foreground (backwards compatible
  *   with `mise run start` / `node packages/service/dist/index.js`).
- * - `start|stop|status|setup|open|token|doctor` → the matching CLI command
+ * - `start|stop|status|setup|open|token|doctor|update` → the matching CLI command
  *   (`src/cli/`). `start` daemonises unless `--foreground` is given.
  */
 import { runCli, CLI_USAGE } from "./cli/commands.js";

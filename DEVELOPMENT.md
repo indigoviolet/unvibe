@@ -44,6 +44,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
 | `check-global-install` | `release`, then install the tarball and the `#release` git ref into temp prefixes (npm 10 and 11, no flags) | npm 10 + 11 |
 | `release` | Self-contained release tree + tarball + local `release` branch; no push | `build` first |
+| `preview:publish [-- <branch>] [--push]` | Publish a branch as an installable `preview/<slug>` ref (builds; pushes only with `--push`) | — |
 | `test:live` | Live adapter tests over real CLIs | `claude`/`codex` logins; small token spend |
 | `test:live:pipeline` | Full pipeline on real agents | Logins; token spend |
 | `test:live:second-opinion` | Second-opinion check with real agents | Logins; small spend |
@@ -144,7 +145,7 @@ Rules:
 | Variable | Default | Meaning |
 |---|---|---|
 | `UNVIBE_PORT` | `4517` | Service port. The installed web app is bound to its origin, so reinstall it after changing ports. |
-| `UNVIBE_DATA_DIR` | `~/.local/share/unvibe` | SQLite DB (`unvibe.sqlite`), `token`, lock, `worktrees/<review-id>/`. |
+| `UNVIBE_DATA_DIR` | `~/.local/share/unvibe` | SQLite DB (`unvibe.db`), `token`, lock, `worktrees/<review-id>/`. |
 | `UNVIBE_IDLE_MS` | `600000` | Idle exit after this long with no window/jobs; `<=0` disables. |
 | `UNVIBE_AGENT` | live agents | `replay` / `none` (see above). |
 | `UNVIBE_ACP_DEBUG` | — | `1` logs permission decisions, `2` full payloads (stderr). |
@@ -233,6 +234,110 @@ git push origin :refs/tags/v0.0.1 && git tag -d v0.0.1
 
 Deleting a candidate keeps the same shape (`release-rc`, `v0.0.1-rc.N`).
 
+### Preview builds (issue #36)
+
+Every in-flight branch is publishable as an installable build, so a
+second machine (one that only has the global install) can test it without
+a tagged release.
+
+On the dev box, from the branch's worktree:
+
+```sh
+mise run preview:publish                  # this checkout's branch, no push
+mise run preview:publish -- feat/other    # another branch's worktree (must exist)
+mise run preview:publish -- --push        # also push preview/<slug> (opt-in)
+```
+
+What it does (`scripts/preview-publish.mjs`, pure helpers in
+`scripts/preview-lib.mjs`): resolves the target worktree (`git worktree
+list --porcelain`, fails clearly when the branch has none), refuses a
+dirty tree (so the build always corresponds to a commit), builds there,
+then runs that worktree's own `scripts/release.mjs` with
+`--version <base>-preview.<slug>.<shortsha>` (base = package.json, slug =
+branch made safe for semver + ref segments, e.g.
+`feat/repo-add-by-url` → `feat-repo-add-by-url`) and
+`--branch preview/<slug>`. The generated package.json records an `unvibe`
+field (channel, source branch, full commit sha, build time, source
+version) so the installed side can show what a channel is — no second
+mechanism.
+
+Pushing is opt-in and confined: only `--push` pushes, and only the exact
+refspec `refs/heads/preview/<slug>:refs/heads/preview/<slug>` (guarded in
+code — no other ref can pass). Without `--push` it prints the push
+command and the install command. Like the release refs, `preview/*` refs
+are orphans with one commit, so every publish is non-fast-forward by
+design: **the only refs ever force-pushed are `release`, `release-rc`
+and `preview/*`** (agents otherwise never push; CI never pushes
+`preview/*` — only a human `--push` does).
+
+On the test machine (needs the updater once — the first build with it is
+installed by hand):
+
+```sh
+unvibe update --list              # release, release-rc, preview/* via gh; marks the installed one
+unvibe stop
+unvibe update preview/feat-other  # npm install -g github:indigoviolet/unvibe#preview/feat-other
+unvibe start
+```
+
+`update` refuses while the service runs (the backup needs a quiet store,
+and npm must not replace code under a live process) and reports the
+version before and after. Updating to the already-installed channel is a
+no-op only when the installed and published commits match — otherwise it
+reinstalls in place (same database, still backed up first), which is the
+normal publish → try → fix → publish → update loop; `--list` flags a
+newer build on the installed row with both short shas and the build
+time. Installs that predate the `unvibe` package field map to their real
+channel from the version (`X.Y.Z` → `release`, `-rc.N` → `release-rc`,
+`-preview.<slug>.<sha>` → `preview/<slug>`); source checkouts stay
+unknown. The install is pinned with `npm --prefix` to the prefix this
+binary came from (derived from its own package path; npm defaults apply
+when the layout is unrecognised) and verified afterwards — a landing
+elsewhere fails loudly with the path checked and `npm prefix -g`, swapping
+no database. Channel logic lives in plain
+`packages/service/src/update/` — exactly `channels.ts` (listing, incl.
+the `UpdateChannel` shape: ref, kind, version, commit, source branch,
+build time, current), `install.ts` (global npm install of a ref) and
+`data-backup.ts` (the database rule) — composed for the CLI in
+`src/cli/update-flows.ts`. The step-2 in-app picker reuses the same
+three modules through a service route (`Updater`, owned by that branch);
+`UpdateChannel` mirrors the shared type landing in
+`packages/shared/src/api.ts`, which this branch does not touch. Per-ref
+metadata is read without cloning (`gh api .../contents/package.json?ref=…`
+over the injectable runner); the installed build reports its own
+channel/ref, source branch, commit and build time from its package.json
+(`readInstalledBuild`). `gh` runs with `GITHUB_TOKEN` unset through the
+injectable command runner, like everything else.
+
+Database rule (migrations are forward-only and numbered, so one
+channel's migrated DB is wrong for another): each channel keeps its own
+copy under `<dataDir>/channel-backups/<slot>/` (`unvibe.db` plus
+`-wal`/`-shm` when present; legacy `unvibe.sqlite*` too). Switching
+backs up the old channel first, then restores the new channel's copy
+when one exists. A new preview never inherits another preview's
+database: with no copy of its own it starts from the release copy
+(`release-rc` fallback), and the switch stops before installing when
+neither exists unless `--keep-data` is given; leaving
+`release`/`release-rc` (or a source checkout) with no copy keeps the
+live database. Backups are never deleted. `--keep-data` keeps the live
+database instead of restoring (e.g. to carry data across channels
+deliberately).
+
+Only the database files are per-channel. The rest of the data dir —
+`token`, per-review folders (`reviews/<owner>/<repo>/<id>/`),
+`worktrees/<review-id>/`, diagram cache — is shared across channels, so
+after a restore there can be leftover review folders and worktrees with
+no row in the restored database. That state is inert: the front screen
+lists reviews from the database (never from the filesystem), review ids
+are random per open (`rv_<12hex>`, so a restored database never
+addresses another channel's folders), and opening a review reuses a
+leftover worktree only when it already points at the wanted head commit,
+otherwise removing and re-adding it. Nothing there breaks `unvibe
+start`; it just costs disk until the owning channel's copy (which still
+references those reviews) is restored or the folders are removed by hand.
+
+No new environment variables.
+
 ### Local checks
 
 `mise run release` (build + tree + tarball + local branch, no push) and
@@ -289,7 +394,7 @@ Merge wiring (step 1 + step 2): `scripts/release.mjs` must also ship `packages/s
 
 ## Debugging
 
-- Data: look in the data dir (`unvibe.sqlite`, per-review folders, `worktrees/`). Point a scratch run at a temp dir with `UNVIBE_DATA_DIR` and a temp port with `UNVIBE_PORT`.
+- Data: look in the data dir (`unvibe.db`, per-review folders, `worktrees/`). Point a scratch run at a temp dir with `UNVIBE_DATA_DIR` and a temp port with `UNVIBE_PORT`.
 - Logs: the service logs to stderr (`Unvibe listening on …`, job errors, permission decisions with `UNVIBE_ACP_DEBUG=1`).
 - A job's exact prompt: `GET /api/jobs/:id/prompt` (the Jobs view in Settings links it too), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
 - Environment: `unvibe doctor` locally, `GET /api/readiness` in the app; both share `src/readiness/checks.ts`.
