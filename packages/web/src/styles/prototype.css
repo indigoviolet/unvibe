@@ -250,7 +250,7 @@ a.cx.pg { text-decoration-style: solid; color: var(--accent); }
 .src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 4px; padding: 0 4px; }
 .src:hover { text-decoration: underline; }
 /* Linkouts: small markers at the end of a block; hover previews, click opens. */
-.lo { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: 4px; vertical-align: 1px; }
+.lo { display: inline-flex; flex-wrap: wrap; gap: 2px 6px; margin-left: 4px; vertical-align: 1px; }
 .lo-row { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: -4px; }
 /* Anchor footnotes (issue #72): quiet chips sharing the citations line. 12px
    muted siblings of the <> chip; truncated to one short line with an
@@ -261,7 +261,8 @@ a.cx.pg { text-decoration-style: solid; color: var(--accent); }
 .lo .fnote .q { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .lo .fnote:hover { color: var(--ink); background: var(--sunk); text-decoration: underline; text-underline-offset: 3px; }
 .lo mark.fnote { background: none; }
-.lo mark.fnote.exl { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; }
+.lo mark.fnote.exl { text-decoration: none; }
+.lo mark.fnote.exl .q { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; }
 .lo mark.fnote.exl:hover { color: var(--accent); }
 .lo mark.fnote.th { color: var(--muted); }
 .lo mark.fnote.th:hover { color: var(--note); background: var(--note-soft); text-decoration: none; }

@@ -123,7 +123,7 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
             hidden
             title={quote}
           >
-            {quote}
+            <span className="q">{quote}</span>
           </mark>
         );
       })}
