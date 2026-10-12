@@ -238,6 +238,17 @@ export function toPromptSnapshot(
     });
 
   const description = snap.description ? descToMarkdown(snap.description.html) : undefined;
+  // Reader-pinned excerpts (PRD §9.1 L1b). The stored shape carries
+  // refresh bookkeeping (`needsRepining`, remapped location) the prompt
+  // builder does not take, so map to the narrow excerpt shape explicitly.
+  const pinnedCode = (snap.pinnedCode ?? []).map((p) => ({
+    path: p.path,
+    start: p.start,
+    end: p.end,
+    sha: p.sha,
+    text: p.text,
+    ...(p.language !== undefined ? { language: p.language } : {}),
+  }));
   return {
     reviewId: review.id,
     title:
@@ -255,7 +266,7 @@ export function toPromptSnapshot(
     sourceKind: review.prNumber !== undefined ? "pr" : "branch",
     ...(description ? { description } : {}),
     files,
-    pinnedCode: [],
+    pinnedCode,
     cards,
     findings,
     concepts,

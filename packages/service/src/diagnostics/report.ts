@@ -18,7 +18,7 @@ import type {
   DiagnosticTool,
   ModelInfo,
 } from "@unvibe/shared";
-import { probeEffectivePath } from "./path-probe.js";
+import { probeEffectivePath, type ProbedPaths } from "./path-probe.js";
 import { diagnoseAllTools, type DiagnoseOptions } from "./tools.js";
 import type { CommandRunner } from "../exec/runner.js";
 import { RealCommandRunner } from "../exec/runner.js";
@@ -32,6 +32,12 @@ export interface CollectOptions {
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
   runner?: CommandRunner;
+  /**
+   * Pre-resolved PATH picture (tests); when present (even null, meaning
+   * "no shell answered") the login-shell probe is skipped, so the report
+   * never spawns a shell. Omitted in production (real probe).
+   */
+  pathProbe?: ProbedPaths | null;
   /** Service identity (the running service fills these; doctor fills its own). */
   service?: Partial<DiagnosticService>;
   /** Extra model listings (id → display info) when the caller probed them. */
@@ -71,11 +77,14 @@ export async function collectDiagnostics(opts: CollectOptions = {}): Promise<Dia
   const timeoutMs = opts.timeoutMs ?? 8000;
   const inheritedPath = opts.inheritedPath ?? env.PATH ?? "";
 
-  const probed = await probeEffectivePath({
-    shell: opts.shell,
-    timeoutMs: Math.min(timeoutMs, 5000),
-    inheritedPath,
-  });
+  const probed =
+    opts.pathProbe !== undefined
+      ? opts.pathProbe
+      : await probeEffectivePath({
+          shell: opts.shell,
+          timeoutMs: Math.min(timeoutMs, 5000),
+          inheritedPath,
+        });
 
   const path: DiagnosticPath = probed
     ? {

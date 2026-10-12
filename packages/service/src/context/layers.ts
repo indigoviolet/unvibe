@@ -256,7 +256,11 @@ export function buildL1bPinned(pins: PinnedExcerpt[]): string {
   if (pins.length === 0) return "## Pinned code\n\n(none)\n";
   const parts = ["## Pinned code", ""];
   for (const pin of pins) {
-    parts.push(`### [[${pinnedId(pin)}]]`, "", `\`\`\`${pin.language ?? ""}`, pin.text, "```", "");
+    parts.push(`### [[${pinnedId(pin)}]]`, "");
+    // Pins stored before their text was persisted (or whose file could
+    // not be resolved) carry empty text: say so instead of an empty fence.
+    if (pin.text) parts.push(`\`\`\`${pin.language ?? ""}`, pin.text, "```", "");
+    else parts.push("(pinned excerpt unavailable — needs re-pinning)", "");
   }
   return parts.join("\n");
 }

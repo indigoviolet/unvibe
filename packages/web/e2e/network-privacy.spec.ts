@@ -27,7 +27,7 @@ test("main screens make no non-local requests and raise no CSP violations", asyn
   await expect(page.locator('[id^="F-"]').first()).toBeVisible();
 
   // Settings: models + environment (readiness fetch over loopback).
-  await page.goto("/settings?review=demo");
+  await page.goto("/settings");
   await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
   await expect(page.locator("#environment")).toBeVisible();
 

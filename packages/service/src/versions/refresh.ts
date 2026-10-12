@@ -384,8 +384,16 @@ export async function refreshReview(
     }
 
     // Pinned code: found again by content, else flagged for re-pinning.
+    // Empty-text pins (persisted before text was stored, or never
+    // resolvable) have nothing to match: flag them instead of running
+    // the content search on a blank block, which would remap to a
+    // spurious blank line.
     if (draft.pinnedCode) {
       for (const pin of draft.pinnedCode) {
+        if (!pin.text) {
+          pin.needsRepining = true;
+          continue;
+        }
         let newPath = pin.path;
         for (const r of comparison.renames) {
           if (r.oldPath === pin.path) {
