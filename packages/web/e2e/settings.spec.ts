@@ -25,7 +25,9 @@ test("repositories section lists remembered repos and adds by path", async ({ pa
 
   await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
   await section.getByRole("button", { name: "Add by path" }).click();
-  await expect(section.locator('[data-testid^="repo-"]')).toContainText("fake-checkout");
+  const added = section.locator('[data-testid="repo-local-fake-checkout"]');
+  await expect(added).toContainText("local/fake-checkout");
+  await expect(added).toContainText("/tmp/fake-checkout");
 });
 
 test("repositories section is reachable at #repositories", async ({ page }) => {

@@ -339,7 +339,6 @@ export function StartPage(): React.JSX.Element {
   const visibleSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
   const demoSessions = (sessions ?? []).filter((s) => s.repoId === "demo");
   const showDemoEntry = demoSessions.length === 0 && demo.length > 0;
-  const reviewRows = visibleSessions.length + demoSessions.length + (showDemoEntry ? demo.length : 0);
 
   return (
     <div className="app">
@@ -439,20 +438,6 @@ export function StartPage(): React.JSX.Element {
             <p className="hint" role="alert">
               {sessionsError}
             </p>
-          ) : reviewRows === 0 ? (
-            <div data-testid="sessions-empty">
-              {realRepos.length === 0 ? (
-                <p className="hint">
-                  No reviews yet. <Link to="/settings#repositories">Add a repo in Settings</Link> to
-                  open your first review — or try the demo below.
-                </p>
-              ) : (
-                <p className="hint">
-                  No reviews for {selected ? `${selected.owner}/${selected.name}` : "this repo"} yet.
-                  Open a PR or branch below to start one.
-                </p>
-              )}
-            </div>
           ) : (
             <div aria-label="Prior reviews" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {visibleSessions.map((s) => (
@@ -479,6 +464,21 @@ export function StartPage(): React.JSX.Element {
                   onOpen={() => navigate(`/review/${s.id}`)}
                 />
               ))}
+              {visibleSessions.length === 0 && demoSessions.length === 0 ? (
+                <p className="hint" data-testid="sessions-empty">
+                  {realRepos.length === 0 ? (
+                    <>
+                      No reviews yet. <Link to="/settings#repositories">Add a repo in Settings</Link>{" "}
+                      to open your first review — or try the demo below.
+                    </>
+                  ) : (
+                    <>
+                      No reviews for {selected ? `${selected.owner}/${selected.name}` : "this repo"}{" "}
+                      yet. Open a PR or branch below to start one.
+                    </>
+                  )}
+                </p>
+              ) : null}
               {showDemoEntry
                 ? demo.map((c, i) => (
                     <div key={changeKey(c, i)} className="ci" data-testid="demo-entry">
