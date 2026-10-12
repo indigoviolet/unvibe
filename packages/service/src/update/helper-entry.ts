@@ -23,8 +23,9 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { RealCommandRunner } from "../exec/runner.js";
 import { readLock } from "../cli/lock.js";
-import { createUpdaterFromEnv } from "./updater.js";
+import { FakeUpdater, RealUpdater, type Updater } from "./updater.js";
 import { clearPendingSwitch, updateDir, writeSwitchOutcome } from "./state.js";
 import { runSwitchFlow, type HelperArgs, type ObservedHealth } from "./helper.js";
 import type { SwitchOutcome } from "@unvibe/shared";
@@ -98,12 +99,16 @@ function parseArgs(raw: unknown): HelperArgs {
     }
     return o[k] as number;
   };
-  const targetVersion = o["targetVersion"];
-  if (targetVersion !== null && typeof targetVersion !== "string") throw new Error("helper args: bad targetVersion");
+  const versionOrNull = (k: string): string | null => {
+    const v = o[k];
+    if (v !== null && typeof v !== "string") throw new Error(`helper args: bad ${k}`);
+    return v;
+  };
   return {
     from: str("from"),
     to: str("to"),
-    targetVersion,
+    targetVersion: versionOrNull("targetVersion"),
+    fromVersion: versionOrNull("fromVersion"),
     port: num("port"),
     dataDir: str("dataDir"),
     servicePid: num("servicePid"),
@@ -113,22 +118,31 @@ function parseArgs(raw: unknown): HelperArgs {
     stopWaitMs: num("stopWaitMs"),
     logPath: str("logPath"),
     scriptPath: str("scriptPath"),
+    serviceVersion: str("serviceVersion"),
   };
 }
 
-/** Keep the newest few switch logs; best-effort. */
+/** Keep the newest few per-switch files (logs, helper copies, args); best-effort. */
 function pruneLogs(dataDir: string, keep = 5): void {
   let files: string[];
   try {
-    files = fs.readdirSync(updateDir(dataDir)).filter((f) => f.startsWith("switch-") && f.endsWith(".log")).sort();
+    files = fs.readdirSync(updateDir(dataDir)).sort();
   } catch {
     return;
   }
-  for (const f of files.slice(0, Math.max(0, files.length - keep))) {
-    try {
-      fs.unlinkSync(path.join(updateDir(dataDir), f));
-    } catch {
-      // ignore
+  const groups: Record<string, string[]> = { "switch-": [], "helper-": [], "helper-args-": [] };
+  for (const f of files) {
+    for (const prefix of Object.keys(groups)) {
+      if (f.startsWith(prefix)) groups[prefix].push(f);
+    }
+  }
+  for (const list of Object.values(groups)) {
+    for (const f of list.slice(0, Math.max(0, list.length - keep))) {
+      try {
+        fs.unlinkSync(path.join(updateDir(dataDir), f));
+      } catch {
+        // ignore
+      }
     }
   }
 }
@@ -171,7 +185,19 @@ async function main(): Promise<number> {
   }
   log(`helper starting (args ${argsFile}, pid ${process.pid})`);
 
-  const updater = createUpdaterFromEnv(args.dataDir);
+  // The installed build is identified from the service entry path in
+  // the args — never from this copy's own location (it lives in the data
+  // dir precisely so the npm swap cannot move it).
+  const updater: Updater =
+    process.env.UNVIBE_UPDATER_BACKEND === "fake"
+      ? new FakeUpdater(args.dataDir)
+      : new RealUpdater({
+          runner: new RealCommandRunner(),
+          dataDir: args.dataDir,
+          serviceScriptPath: args.scriptPath,
+          serviceVersion: args.serviceVersion,
+          log,
+        });
 
   const waitForExit = async (pid: number, timeoutMs: number): Promise<boolean> => {
     const deadline = Date.now() + timeoutMs;
@@ -226,7 +252,16 @@ async function main(): Promise<number> {
     }
   };
 
-  const pollHealth = async (timeoutMs: number, intervalMs: number): Promise<ObservedHealth | null> => {
+  // Wait for a sample reporting `expectVersion` (null = any healthy
+  // build): the install waits for the target, the rollback waits for the
+  // previous build's version — without this the rollback always burns the
+  // full timeout before reporting. Resolves the last-seen state on
+  // timeout (mismatch diagnostics), null when nothing answered at all.
+  const pollHealth = async (
+    timeoutMs: number,
+    intervalMs: number,
+    expectVersion: string | null,
+  ): Promise<ObservedHealth | null> => {
     const deadline = Date.now() + timeoutMs;
     let last: ObservedHealth | null = null;
     for (;;) {
@@ -237,12 +272,8 @@ async function main(): Promise<number> {
         last = { version: body.version, buildVersion };
         const seen = buildVersion ?? body.version;
         log(`health: ${seen}`);
-        const target = args.targetVersion;
-        if (target === null || seen === target) return last;
+        if (expectVersion === null || seen === expectVersion) return last;
       }
-      // On timeout return the last seen state (possibly null): the flow
-      // then reports a version mismatch when the service answered with the
-      // wrong build, and "not healthy" only when nothing answered at all.
       if (Date.now() >= deadline) return last;
       await sleep(intervalMs);
     }

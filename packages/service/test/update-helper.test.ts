@@ -16,6 +16,7 @@ const PLAN: SwitchPlan = {
   from: "release",
   to: "preview/feat-x",
   targetVersion: "0.0.1-preview.feat-x.abc1234",
+  fromVersion: "0.0.1",
   port: 4521,
   dataDir: "/tmp/unvibe-test",
   servicePid: 4242,
@@ -41,6 +42,8 @@ interface ScriptState {
   starts: number;
   startedPids: number[];
   stopped: number[];
+  expects: (string | null)[];
+  events: string[];
   logs: string[];
 }
 
@@ -49,11 +52,17 @@ function makeDeps(script: Script): HelperDeps & ScriptState {
   const switches: string[] = [];
   const startedPids: number[] = [];
   const stopped: number[] = [];
+  const expects: (string | null)[] = [];
+  const events: string[] = [];
   const logs: string[] = [];
   let pendingCleared = 0;
   let healthCalls = 0;
   let currentCalls = 0;
+  let lastCurrent = true;
   let nextPid = 5000;
+  // Steady state: an exhausted script repeats its last non-null sample
+  // (a live build keeps reporting), while null stays null (nothing there).
+  let lastSeen: ObservedHealth | null = null;
   return {
     get outcomes() {
       return outcomes;
@@ -73,27 +82,46 @@ function makeDeps(script: Script): HelperDeps & ScriptState {
     get stopped() {
       return stopped;
     },
+    get expects() {
+      return expects;
+    },
+    get events() {
+      return events;
+    },
     get logs() {
       return logs;
     },
     waitForExit: async () => script.exit ?? true,
     switchTo: async (ref: string) => {
       switches.push(ref);
+      events.push(`switch:${ref}`);
       if (script.switchThrows?.includes(ref)) throw new Error(`boom installing ${ref}`);
       return { from: PLAN.from, to: ref };
     },
     startService: async () => {
       nextPid += 1;
       startedPids.push(nextPid);
+      events.push(`start:${nextPid}`);
       return nextPid;
     },
     stopService: async (pid: number) => {
       stopped.push(pid);
+      events.push(`stop:${pid}`);
     },
-    isCurrentService: async () => script.current?.[currentCalls++] ?? true,
-    pollHealth: async () => {
-      const next = script.health?.[healthCalls++] ?? null;
-      return next;
+    isCurrentService: async () => {
+      const scripted = script.current ?? [];
+      if (currentCalls < scripted.length) lastCurrent = scripted[currentCalls++];
+      return lastCurrent;
+    },
+    pollHealth: async (_t: number, _i: number, expect: string | null) => {
+      expects.push(expect);
+      const scripted = script.health ?? [];
+      if (healthCalls < scripted.length) {
+        const next = scripted[healthCalls++];
+        if (next) lastSeen = next;
+        return next;
+      }
+      return lastSeen;
     },
     recordOutcome: (o: SwitchOutcome) => {
       outcomes.push(o);
@@ -109,6 +137,8 @@ function makeDeps(script: Script): HelperDeps & ScriptState {
 }
 
 const HEALTHY: ObservedHealth = { version: "0.0.1-preview.feat-x.abc1234", buildVersion: null };
+/** The rolled-back build reporting the previous version. */
+const OLD_HEALTHY: ObservedHealth = { version: "0.0.1", buildVersion: null };
 
 describe("runSwitchFlow", () => {
   it("success records ok and clears pending", async () => {
@@ -127,7 +157,7 @@ describe("runSwitchFlow", () => {
   });
 
   it("install failure rolls back to the previous ref", async () => {
-    const deps = makeDeps({ switchThrows: ["preview/feat-x"], health: [HEALTHY] });
+    const deps = makeDeps({ switchThrows: ["preview/feat-x"], health: [OLD_HEALTHY] });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("rolled-back");
     expect(out.reason).toContain("install of preview/feat-x failed");
@@ -136,7 +166,7 @@ describe("runSwitchFlow", () => {
   });
 
   it("unhealthy new build rolls back", async () => {
-    const deps = makeDeps({ health: [null, HEALTHY] });
+    const deps = makeDeps({ health: [null, OLD_HEALTHY] });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("rolled-back");
     expect(out.reason).toContain("not healthy within 2000ms");
@@ -146,9 +176,10 @@ describe("runSwitchFlow", () => {
 
   it("wrong version on the new build rolls back with a mismatch reason", async () => {
     const deps = makeDeps({
-      health: [{ version: "0.0.1", buildVersion: null }, HEALTHY],
+      health: [{ version: "0.0.1", buildVersion: null }, OLD_HEALTHY],
     });
-    const out = await runSwitchFlow(PLAN, deps);
+    // A steady wrong version burns the poll each time; keep it short.
+    const out = await runSwitchFlow({ ...PLAN, healthTimeoutMs: 120, pollIntervalMs: 5 }, deps);
     expect(out.status).toBe("rolled-back");
     expect(out.reason).toContain("instead of 0.0.1-preview.feat-x.abc1234");
   });
@@ -176,11 +207,12 @@ describe("runSwitchFlow", () => {
     expect(deps.starts).toBe(0);
   });
 
-  it("rolled-back build staying down records failed", async () => {
+  it("rolled-back build staying down records failed with the recovery path", async () => {
     const deps = makeDeps({ health: [null, null] });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("failed");
     expect(out.reason).toContain("rolled-back build did not become healthy");
+    expect(out.reason).toContain("npm install -g github:indigoviolet/unvibe#release");
   });
 
   it("service that never exits aborts without touching the install", async () => {
@@ -197,12 +229,22 @@ describe("runSwitchFlow", () => {
   });
 
   it("rollback stops the helper's own previous generation first", async () => {
-    const deps = makeDeps({ health: [null, HEALTHY] });
+    const deps = makeDeps({ health: [null, OLD_HEALTHY] });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("rolled-back");
     expect(deps.startedPids).toHaveLength(2);
     // The first generation is stopped before the rollback generation starts.
     expect(deps.stopped).toEqual([deps.startedPids[0]]);
+    const [first, second] = deps.startedPids;
+    expect(deps.events).toEqual([
+      `switch:${PLAN.to}`,
+      `start:${first}`,
+      `stop:${first}`,
+      `switch:${PLAN.from}`,
+      `start:${second}`,
+    ]);
+    // The install waits for the target, the rollback for the old version.
+    expect(deps.expects).toEqual([PLAN.targetVersion, PLAN.fromVersion]);
   });
 
   it("ignores health samples from a stale generation", async () => {

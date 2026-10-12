@@ -821,10 +821,15 @@ export interface UpdateSwitchRequest {
   ref: string;
 }
 
-/** 202 when the helper is spawned (the service then shuts down). */
+/**
+ * 202 when the helper is spawned (the service then shuts down), 200 with
+ * `unchanged` when the installed build already matches the published one.
+ */
 export interface UpdateSwitchResponse {
   from: string;
   to: string;
+  /** True when nothing was done (same channel, same commit). */
+  unchanged?: boolean;
 }
 
 /** A switch the service committed to and is shutting down for. */

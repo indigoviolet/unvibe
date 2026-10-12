@@ -49,8 +49,10 @@ export interface RouteDeps {
   sharedctx?: SharedContextService;
   promptsDir?: string;
   fixturesDir?: string;
-  /** Version-picker backend (issue #36 step 2 seam; step 1 wires the real one). */
+  /** Version-picker backend (issue #36; fake under `UNVIBE_UPDATER_BACKEND=fake`). */
   updater?: Updater;
   /** Switch spawn + shutdown wiring (provided by `serve()`). */
   updateHooks?: UpdateHooks;
+  /** SERVICE_VERSION, set by `server.ts` for build identity in update routes. */
+  serviceVersion?: string;
 }

@@ -1,14 +1,14 @@
 export type { Updater } from "./updater.js";
 export {
   FakeUpdater,
-  RealUpdaterPlaceholder,
+  RealUpdater,
   createUpdaterFromEnv,
   defaultFakeChannels,
   fakeFailMode,
-  isNotWiredError,
   loadFakeSpecs,
-  notWiredError,
   type FakeChannelSpec,
+  type RealUpdaterOptions,
+  type UpdaterFromEnvOptions,
 } from "./updater.js";
 export {
   clearPendingSwitch,
@@ -26,7 +26,7 @@ export {
   writePendingSwitch,
   writeSwitchOutcome,
 } from "./state.js";
-export { bundleDir, fakeBuildInfo, resolveBuildInfo, type BuildInfoInputs } from "./build-info.js";
+export { fakeBuildInfo, resolveBuildInfo, type BuildInfoInputs } from "./build-info.js";
 export {
   describeHealth,
   healthMatchesTarget,

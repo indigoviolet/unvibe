@@ -31,6 +31,37 @@ interface Harness {
   close: () => Promise<void>;
 }
 
+export interface FakeInstallSpec {
+  channel: string;
+  version?: string;
+  commit?: string | null;
+}
+
+/**
+ * Fake global install for `readInstalledBuild`: the route identifies the
+ * installed channel from `process.argv[1]`, so the harness points argv at
+ * a temp install tree (restored on close). Pass `install: null` to leave
+ * argv alone (source-checkout shape → switch refused).
+ */
+function makeFakeInstall(spec: FakeInstallSpec): { scriptPath: string } {
+  const dir = tempDir();
+  fs.mkdirSync(path.join(dir, "packages", "service", "dist"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({
+      name: "unvibe",
+      version: spec.version ?? "0.0.1",
+      unvibe: {
+        channel: spec.channel,
+        ...(spec.commit ? { commit: spec.commit } : {}),
+      },
+    }),
+  );
+  const scriptPath = path.join(dir, "packages", "service", "dist", "index.js");
+  fs.writeFileSync(scriptPath, "");
+  return { scriptPath };
+}
+
 async function makeHarness(opts: {
   gate?: boolean;
   updater?: Updater | null;
@@ -38,12 +69,20 @@ async function makeHarness(opts: {
   jobs?: JobQueue;
   withLease?: boolean;
   withPending?: boolean;
+  install?: FakeInstallSpec | null;
+  /** Use a FakeUpdater over this harness's data dir (else the real backend). */
+  fakeUpdater?: boolean;
 } = {}): Promise<Harness> {
   const db = openDatabase(":memory:");
   migrate(db);
   const dataDir = tempDir();
   const settings = new SettingsStore(db);
   if (opts.gate) settings.update({ versionPickerEnabled: true });
+  const savedArgv1 = process.argv[1];
+  if (opts.install !== null) {
+    const spec = opts.install ?? { channel: "release", version: "0.0.1" };
+    process.argv[1] = makeFakeInstall(spec).scriptPath;
+  }
   if (opts.withLease) {
     db.prepare("INSERT INTO submit_leases (review_id, started_at, commit_id, payload) VALUES (?, ?, ?, ?)").run(
       "r1",
@@ -57,11 +96,11 @@ async function makeHarness(opts: {
   }
   const spawned: string[] = [];
   let shutdowns = 0;
-  let updater: Updater | undefined;
-  if (opts.updater !== null) {
-    const base = opts.updater ?? new FakeUpdater(dataDir);
-    updater = opts.wrapUpdater ? opts.wrapUpdater(base) : base;
-  }
+  // No updater opt: buildApp wires the real backend by default.
+  const fallback =
+    opts.fakeUpdater || (opts.wrapUpdater && !opts.updater) ? new FakeUpdater(dataDir) : undefined;
+  const base = opts.updater ?? fallback;
+  const updater = base && opts.wrapUpdater ? opts.wrapUpdater(base) : base;
   const created = await createApp(TOKEN, {
     db,
     dataDir,
@@ -83,7 +122,10 @@ async function makeHarness(opts: {
     dataDir,
     spawned,
     shutdownCalls: () => shutdowns,
-    close: () => created.app.close(),
+    close: async () => {
+      process.argv[1] = savedArgv1;
+      await created.app.close();
+    },
   };
 }
 
@@ -124,6 +166,8 @@ describe("update status", () => {
       expect(body.enabled).toBe(false);
       expect(body.pending).toBeNull();
       expect(body.outcome).toBeNull();
+      // Installed build identity comes from the installed package.
+      expect(body.build).toEqual({ version: "0.0.1", sourceBranch: null, commit: null, builtAt: null });
     } finally {
       await h.close();
     }
@@ -157,13 +201,23 @@ describe("update channels", () => {
     }
   });
 
-  it("501s when the backend is not wired", async () => {
-    const h = await makeHarness({ gate: true, updater: null });
+  it("defaults to the real backend (channels file override, no gh)", async () => {
+    const dir = tempDir();
+    fs.mkdirSync(path.join(dir, "update"), { recursive: true });
+    const file = path.join(dir, "update", "channels.json");
+    fs.writeFileSync(file, JSON.stringify([{ ref: "release", version: "0.0.1" }]));
+    const prev = process.env.UNVIBE_UPDATE_CHANNELS_FILE;
+    process.env.UNVIBE_UPDATE_CHANNELS_FILE = file;
+    // No updater opt: buildApp wires the real backend by default.
+    const h = await makeHarness({ gate: true, updater: undefined });
     try {
       const res = await h.app.inject(auth("/api/update/channels"));
-      expect(res.statusCode).toBe(501);
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { channels: UpdateChannel[] }).channels.map((c) => c.ref)).toEqual(["release"]);
     } finally {
       await h.close();
+      if (prev === undefined) delete process.env.UNVIBE_UPDATE_CHANNELS_FILE;
+      else process.env.UNVIBE_UPDATE_CHANNELS_FILE = prev;
     }
   });
 
@@ -199,7 +253,7 @@ describe("update channels", () => {
 
 describe("update switch", () => {
   it("validates, refuses busy/lease/pending, commits with hooks", async () => {
-    const h = await makeHarness({ gate: true });
+    const h = await makeHarness({ gate: true, fakeUpdater: true });
     try {
       // 400 on a missing ref.
       expect((await h.app.inject(auth("/api/update/switch", {}, "POST"))).statusCode).toBe(400);
@@ -218,10 +272,13 @@ describe("update switch", () => {
         from: "release",
         to: "preview/feat-x",
         targetVersion: "0.0.1-preview.feat-x.abc1234",
+        fromVersion: "0.0.1",
         dataDir: h.dataDir,
         servicePid: process.pid,
+        serviceVersion: "0.0.1",
       });
-      expect(typeof args["scriptPath"]).toBe("string");
+      // The installed build is identified from the service entry path.
+      expect(args["scriptPath"]).toBe(process.argv[1]);
       expect(await waitFor(() => h.shutdownCalls() === 1, UPDATE_SHUTDOWN_DELAY_MS + 2500)).toBe(true);
 
       // A second switch while pending is refused.
@@ -243,7 +300,7 @@ describe("update switch", () => {
       priority: 1,
       run: () => new Promise<never>(() => {}),
     });
-    const h = await makeHarness({ gate: true, jobs });
+    const h = await makeHarness({ gate: true, fakeUpdater: true, jobs });
     try {
       const res = await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"));
       expect(res.statusCode).toBe(409);
@@ -256,7 +313,7 @@ describe("update switch", () => {
   });
 
   it("refuses while a submit is in flight", async () => {
-    const h = await makeHarness({ gate: true, withLease: true });
+    const h = await makeHarness({ gate: true, fakeUpdater: true, withLease: true });
     try {
       const res = await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"));
       expect(res.statusCode).toBe(409);
@@ -277,6 +334,49 @@ describe("update switch", () => {
       ).toBe(401);
     } finally {
       await h.close();
+    }
+  });
+
+  it("refuses when not running from an installed build", async () => {
+    const h = await makeHarness({ gate: true, install: null });
+    try {
+      const res = await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"));
+      expect(res.statusCode).toBe(409);
+      expect((res.json() as { error: string }).error).toContain("installed build");
+      expect(h.spawned).toHaveLength(0);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("same channel + same commit is a no-op; moved commit goes through the flow", async () => {
+    // Installed commit matches the published one (fake seed): unchanged.
+    const same = await makeHarness({
+      gate: true,
+      fakeUpdater: true,
+      install: { channel: "preview/feat-x", version: "0.0.1-preview.feat-x.abc1234", commit: "abc1234def5678" },
+    });
+    try {
+      const res = await same.app.inject(auth("/api/update/switch", { ref: "preview/feat-x" }, "POST"));
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ from: "preview/feat-x", to: "preview/feat-x", unchanged: true });
+      expect(same.spawned).toHaveLength(0);
+    } finally {
+      await same.close();
+    }
+    // Installed commit behind the published one: full flow with from === to.
+    const behind = await makeHarness({
+      gate: true,
+      fakeUpdater: true,
+      install: { channel: "preview/feat-x", version: "0.0.1-preview.feat-x.older", commit: "older12" },
+    });
+    try {
+      const res = await behind.app.inject(auth("/api/update/switch", { ref: "preview/feat-x" }, "POST"));
+      expect(res.statusCode).toBe(202);
+      expect(res.json()).toEqual({ from: "preview/feat-x", to: "preview/feat-x" });
+      expect(readPendingSwitch(behind.dataDir)).toMatchObject({ from: "preview/feat-x", to: "preview/feat-x" });
+    } finally {
+      await behind.close();
     }
   });
 });

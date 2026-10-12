@@ -151,6 +151,7 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     ...(opts.settings ? { settings: opts.settings } : {}),
     ...(opts.mcp ? { mcp: opts.mcp } : {}),
     ...(opts.updater ? { updater: opts.updater } : {}),
+    serviceVersion: SERVICE_VERSION,
   });
   const bus = ctx.bus;
 
@@ -245,12 +246,13 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   });
 
   // `build` is the running build's identity for the version picker
-  // (issue #36, step 2): null when the build carries no preview metadata.
-  // Unauthenticated like the rest of health (no token, no data).
+  // (issue #36): the installed package's channel record, or null for a
+  // source checkout / old build. Unauthenticated like the rest of health
+  // (no token, no data).
   app.get("/api/health", async () => ({
     ok: true,
     version: SERVICE_VERSION,
-    build: resolveBuildInfo({ dataDir }),
+    build: resolveBuildInfo({ dataDir, serviceScriptPath: process.argv[1], serviceVersion: SERVICE_VERSION }),
   }));
 
   // Routes take (ctx, deps) where both are the unified context; explicit
@@ -259,6 +261,7 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   const routeDeps = {
     ...ctx,
     ...opts,
+    serviceVersion: SERVICE_VERSION,
     ...(opts.baseRunner ? {} : { baseRunner: ctx.updateRunner }),
   };
   await registerRoutes(app, ctx, routeDeps);

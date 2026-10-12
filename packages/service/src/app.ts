@@ -88,6 +88,8 @@ export interface BuildAppOptions {
   settings?: SettingsStore;
   mcp?: McpRegistry;
   updater?: Updater;
+  /** SERVICE_VERSION (server.ts); feeds the real Updater + build identity. */
+  serviceVersion?: string;
 }
 
 /**
@@ -230,7 +232,13 @@ export function buildApp(opts: BuildAppOptions): AppContext {
 
   const promptsDir = opts.promptsDir ?? resolvePromptsDirForBundle();
   const fixturesDir = opts.fixturesDir ?? resolveFixturesDir();
-  const updater = opts.updater ?? createUpdaterFromEnv(dataDir);
+  const updater =
+    opts.updater ??
+    createUpdaterFromEnv(dataDir, {
+      runner,
+      serviceScriptPath: process.argv[1],
+      ...(opts.serviceVersion ? { serviceVersion: opts.serviceVersion } : {}),
+    });
 
   // Default runner: ACP (real claude/codex subprocesses). Replay only when
   // UNVIBE_AGENT=replay (demo/tests) or when tests inject `agents` directly;

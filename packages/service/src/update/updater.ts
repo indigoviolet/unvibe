@@ -1,31 +1,23 @@
 /**
- * Update seam (issue #36, step 2 owns this file).
+ * Update seam (issue #36).
  *
- * Step 1 (branch `feat/preview-builds`, wired at merge) provides the real
- * implementation in `src/update/channels.ts` (`list release`/`release-rc`/
- * `preview/*` refs via `gh`), `src/update/install.ts` (global npm install
- * of `github:indigoviolet/unvibe#<ref>`) and `src/update/data-backup.ts`
- * (per-channel `unvibe.sqlite` backup/restore). This branch codes against
- * the seam only:
- *
- * ```ts
- * export interface Updater {
- *   listChannels(): Promise<UpdateChannel[]>;
- *   switchTo(ref: string): Promise<{ from: string; to: string }>;
- * }
- * ```
- *
- * - `FakeUpdater`: test-only backend (unit tests, the `UNVIBE_UPDATER_BACKEND=fake`
- *   service, the detached helper's live verification). Channel list comes
- *   from `<dataDir>/update/fake-channels.json` when present, else the
- *   constructor seed; the installed ref is tracked in
+ * - `RealUpdater`: the production backend — `listChannels` is step 1's
+ *   `gh`-based listing, `switchTo` is the shared switch core
+ *   (`update/switch.ts`: DB plan decided before install, backup,
+ *   prefix-pinned install, landing verification, restore/seed). Call only
+ *   with the service stopped (the detached helper owns that).
+ * - `FakeUpdater`: test-only backend (unit tests, the
+ *   `UNVIBE_UPDATER_BACKEND=fake` service, the detached helper's drills).
+ *   Channel list comes from `<dataDir>/update/fake-channels.json` when
+ *   present, else the constructor seed; the installed ref is tracked in
  *   `<dataDir>/update/current-ref`. Never touches the network, npm or git.
- * - `RealUpdaterPlaceholder`: what runs when no backend is wired (the
- *   default). Every method fails with a clear "not wired" error so the
- *   routes can answer 501 instead of hanging or half-switching.
  */
 import fs from "node:fs";
 import type { UpdateChannel } from "@unvibe/shared";
+import type { CommandRunner } from "../exec/index.js";
+import { RealCommandRunner } from "../exec/runner.js";
+import { listChannels as listRealChannels, readInstalledBuild } from "./channels.js";
+import { runSwitchCore } from "./switch.js";
 import { fakeChannelsPath, readCurrentRef, writeCurrentRef } from "./state.js";
 
 export interface Updater {
@@ -35,31 +27,60 @@ export interface Updater {
   switchTo(ref: string): Promise<{ from: string; to: string }>;
 }
 
+export interface RealUpdaterOptions {
+  runner?: CommandRunner;
+  dataDir: string;
+  /**
+   * Service entry path the install is verified against
+   * (`process.argv[1]` of the switching service — never the helper copy's
+   * own location).
+   */
+  serviceScriptPath: string | undefined;
+  serviceVersion: string;
+  /** Streams core lines; the helper passes its switch log. */
+  log?: (line: string) => void;
+}
+
 /**
- * What runs when step 1 is not wired yet (the default outside
- * `UNVIBE_UPDATER_BACKEND=fake`). Fails loudly so a switch can never
- * half-run: the routes translate this into 501.
+ * Production updater. `switchTo` throws with the core's lines joined on
+ * failure (the helper records them in the outcome); the CLI keeps the
+ * line-by-line form through `cli/update-flows.ts`.
  */
-/** True for the placeholder's "step 1 not wired yet" failures (routes answer 501). */
-export function isNotWiredError(err: unknown): boolean {
-  return err instanceof Error && err.message.includes("update backend not wired");
-}
+export class RealUpdater implements Updater {
+  private readonly runner: CommandRunner;
+  private readonly dataDir: string;
+  private readonly serviceScriptPath: string | undefined;
+  private readonly serviceVersion: string;
+  private readonly log: (line: string) => void;
 
-export function notWiredError(method: string): Error {
-  return new Error(
-    `update backend not wired: ${method} needs step 1 of issue #36 ` +
-      `(preview publish + install + DB backup in src/update/); ` +
-      `run with UNVIBE_UPDATER_BACKEND=fake for the test backend`,
-  );
-}
-
-export class RealUpdaterPlaceholder implements Updater {
-  listChannels(): Promise<UpdateChannel[]> {
-    return Promise.reject(notWiredError("listChannels"));
+  constructor(opts: RealUpdaterOptions) {
+    this.runner = opts.runner ?? new RealCommandRunner();
+    this.dataDir = opts.dataDir;
+    this.serviceScriptPath = opts.serviceScriptPath;
+    this.serviceVersion = opts.serviceVersion;
+    this.log = opts.log ?? (() => {});
   }
 
-  switchTo(): Promise<{ from: string; to: string }> {
-    return Promise.reject(notWiredError("switchTo"));
+  async listChannels(): Promise<UpdateChannel[]> {
+    const installed = readInstalledBuild(this.serviceScriptPath, this.serviceVersion);
+    return listRealChannels(this.runner, installed);
+  }
+
+  async switchTo(ref: string): Promise<{ from: string; to: string }> {
+    const result = await runSwitchCore({
+      runner: this.runner,
+      dataDir: this.dataDir,
+      serviceScriptPath: this.serviceScriptPath,
+      serviceVersion: this.serviceVersion,
+      channel: ref,
+      keepData: false,
+      log: this.log,
+    });
+    if (result.code === 2) throw new Error(`unknown update channel "${ref}"`);
+    if (result.code !== 0) {
+      throw new Error(`switch to "${ref}" failed:\n${result.lines.join("\n")}`);
+    }
+    return { from: result.from.channel ?? "unknown", to: ref };
   }
 }
 
@@ -196,8 +217,28 @@ export class FakeUpdater implements Updater {
   }
 }
 
-/** Backend selection. Only `fake` is selectable; anything else (or unset) is the not-wired placeholder. */
-export function createUpdaterFromEnv(dataDir: string, env: NodeJS.ProcessEnv = process.env): Updater {
+export interface UpdaterFromEnvOptions {
+  runner?: CommandRunner;
+  /** Service entry path (`process.argv[1]` of the service process). */
+  serviceScriptPath?: string;
+  serviceVersion?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * Backend selection. `UNVIBE_UPDATER_BACKEND=fake` selects the test-only
+ * fake; anything else (or unset) is the real backend.
+ */
+export function createUpdaterFromEnv(dataDir: string, opts: UpdaterFromEnvOptions = {}): Updater {
+  const env = opts.env ?? process.env;
   if (env.UNVIBE_UPDATER_BACKEND === "fake") return new FakeUpdater(dataDir);
-  return new RealUpdaterPlaceholder();
+  return new RealUpdater({
+    ...(opts.runner ? { runner: opts.runner } : {}),
+    dataDir,
+    serviceScriptPath: opts.serviceScriptPath ?? process.argv[1],
+    // Last-resort fallback for readInstalledBuild (unreadable package);
+    // then the channel is null and switching is refused, so the value
+    // never surfaces. Callers pass the real SERVICE_VERSION.
+    serviceVersion: opts.serviceVersion ?? "0.0.1",
+  });
 }

@@ -27,6 +27,8 @@ export interface SwitchPlan {
   to: string;
   /** Channel version the new build must report; null skips the version check (healthy is enough). */
   targetVersion: string | null;
+  /** Installed version before the switch; the rollback waits for this (null = any healthy). */
+  fromVersion: string | null;
   port: number;
   dataDir: string;
   /** Service PID the helper was told about (waited on, never killed). */
@@ -38,6 +40,10 @@ export interface SwitchPlan {
   stopWaitMs: number;
   logPath: string;
 }
+
+/** Recovery path when the app cannot come back on its own (docs + failure outcomes). */
+export const RECOVER_BY_HAND =
+  "Recover by hand: npm install -g github:indigoviolet/unvibe#release, then unvibe start.";
 
 /**
  * Last observed health state. `pollHealth` resolves null only when nothing
@@ -60,9 +66,13 @@ export interface HelperArgs extends SwitchPlan {
    * Service entry for the restart (`process.argv[1]` of the switching
    * service — the installed `dist/index.js`, renewed in place by
    * `npm install -g`). Restarted with the helper's own `process.execPath`
-   * (the node that spawned the helper), never a stale path.
+   * (the node that spawned the helper), never a stale path. The real
+   * Updater also identifies the installed build from this path — never
+   * from the helper copy's own location.
    */
   scriptPath: string;
+  /** SERVICE_VERSION of the switching service (installed-build fallback). */
+  serviceVersion: string;
 }
 
 export interface HelperDeps {
@@ -82,7 +92,12 @@ export interface HelperDeps {
    * stale generation after a stacked restart.
    */
   isCurrentService(pid: number): Promise<boolean>;
-  pollHealth(timeoutMs: number, pollIntervalMs: number): Promise<ObservedHealth | null>;
+  /**
+   * Wait for a healthy sample reporting `expectVersion` (null = any
+   * healthy build). Resolves the last-seen state on timeout (possibly a
+   * mismatched version), null only when nothing healthy answered.
+   */
+  pollHealth(timeoutMs: number, pollIntervalMs: number, expectVersion: string | null): Promise<ObservedHealth | null>;
   recordOutcome(outcome: SwitchOutcome): void;
   clearPending(): void;
   log(message: string): void;
@@ -125,25 +140,53 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
     }
     activePid = await deps.startService();
   };
-  // Trust only samples from the generation we just started; a stale
-  // generation still holding the port must not satisfy the health check.
-  const poll = async (timeoutMs: number, pollIntervalMs: number): Promise<ObservedHealth | null> => {
+  // Wait for the expected version, trusting only samples from the
+  // generation just started; a stale generation still holding the port
+  // must not satisfy the check. Resolves the last-seen state on timeout
+  // (for mismatch diagnostics), null only when nothing answered.
+  const pollFor = async (
+    timeoutMs: number,
+    pollIntervalMs: number,
+    expectVersion: string | null,
+  ): Promise<ObservedHealth | null> => {
     const deadline = Date.now() + timeoutMs;
+    // Last trusted sample (stale-holder samples never land here, so a
+    // deadline with only stale answers reports "not healthy", never a
+    // version from the wrong generation).
+    let last: ObservedHealth | null = null;
     for (;;) {
       const remaining = deadline - Date.now();
-      if (remaining <= 0) return null;
-      const sample = await deps.pollHealth(Math.min(remaining, timeoutMs), pollIntervalMs);
-      if (!sample) return null;
+      if (remaining <= 0) return last;
+      const sample = await deps.pollHealth(Math.min(remaining, timeoutMs), pollIntervalMs, expectVersion);
+      if (!sample) return last;
       if (activePid !== null && !(await deps.isCurrentService(activePid))) {
         deps.log(`ignoring health sample from a stale generation (want pid ${activePid})`);
         continue;
       }
-      return sample;
+      last = sample;
+      if (healthMatchesTarget(sample, expectVersion)) return sample;
     }
   };
 
   const rollback = async (reason: string): Promise<SwitchOutcome> => {
     deps.log(`rolling back to ${plan.from}: ${reason}`);
+    // Stop the unhealthy generation BEFORE the rollback install: npm must
+    // not replace files under a live service, the DB files must not be
+    // swapped under an open handle, and the switch core refuses while a
+    // service holds the lock. Only generations the helper itself started
+    // are ever stopped — never the told-about service PID.
+    if (activePid !== null) {
+      deps.log(`stopping unhealthy generation (pid ${activePid}) before rolling back`);
+      await deps.stopService(activePid);
+      const exited = await deps.waitForExit(activePid, plan.stopWaitMs);
+      const lockFree = !(await deps.isCurrentService(activePid));
+      if (!exited || !lockFree) {
+        deps.log(
+          `warning: previous generation (pid ${activePid}) may still hold the port; attempting rollback anyway`,
+        );
+      }
+      activePid = null;
+    }
     try {
       await deps.switchTo(plan.from);
     } catch (err) {
@@ -151,20 +194,27 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
         status: "failed",
         from: plan.from,
         to: plan.to,
-        reason: `${reason}; rollback to ${plan.from} also failed: ${(err as Error).message}`,
+        reason: `${reason}; rollback to ${plan.from} also failed: ${(err as Error).message}. ${RECOVER_BY_HAND}`,
         logPath: plan.logPath,
       });
     }
+    // Same-channel (from === to): the reinstall above IS the rollback —
+    // the previous build of this ref is no longer published, so there is
+    // nothing older to return to. The pre-install slot backup is retained
+    // for manual recovery. Exactly one attempt here; never loops.
     await start();
-    const back = await poll(plan.healthTimeoutMs, plan.pollIntervalMs);
-    if (back) {
+    const back = await pollFor(plan.healthTimeoutMs, plan.pollIntervalMs, plan.fromVersion);
+    if (back && healthMatchesTarget(back, plan.fromVersion)) {
       return finish({ status: "rolled-back", from: plan.from, to: plan.to, reason, logPath: plan.logPath });
     }
+    const why = back
+      ? `the rolled-back build reported ${describeHealth(back)}`
+      : `the rolled-back build did not become healthy within ${plan.healthTimeoutMs}ms`;
     return finish({
       status: "failed",
       from: plan.from,
       to: plan.to,
-      reason: `${reason}; the rolled-back build did not become healthy within ${plan.healthTimeoutMs}ms`,
+      reason: `${reason}; ${why}. ${RECOVER_BY_HAND}`,
       logPath: plan.logPath,
     });
   };
@@ -190,7 +240,7 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
   }
 
   await start();
-  const healthy = await poll(plan.healthTimeoutMs, plan.pollIntervalMs);
+  const healthy = await pollFor(plan.healthTimeoutMs, plan.pollIntervalMs, plan.targetVersion);
   if (healthy && healthMatchesTarget(healthy, plan.targetVersion)) {
     deps.log(`new build healthy: ${describeHealth(healthy)}`);
     return finish({ status: "ok", from: plan.from, to: plan.to, logPath: plan.logPath });

@@ -13,28 +13,18 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import type { UpdateChannel } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
-import { runGh } from "../exec/index.js";
+import { runGh } from "../exec/gh.js";
+
+/** One channel type: the contract lives in `@unvibe/shared` (re-exported here for existing imports). */
+export type { UpdateChannel } from "@unvibe/shared";
 
 /**
  * The single place the upstream repo slug lives for update logic. The rest
  * of the tree still carries scattered literals; new code must use this.
  */
 export const UNVIBE_REPO = "indigoviolet/unvibe";
-
-export interface UpdateChannel {
-  /** "release" | "release-rc" | "preview/<slug>" (the git ref to install). */
-  ref: string;
-  kind: "release" | "release-rc" | "preview";
-  /** Installed package version on that ref; null when unreadable. */
-  version: string | null;
-  /** Source commit sha recorded in the release tree; null when absent. */
-  commit: string | null;
-  sourceBranch: string | null;
-  /** ISO build time recorded in the release tree; null when absent. */
-  builtAt: string | null;
-  current: boolean;
-}
 
 export interface InstalledBuild {
   version: string;
@@ -239,6 +229,55 @@ export async function fetchRefPackage(
 }
 
 /**
+ * Test-only channel-list override (`UNVIBE_UPDATE_CHANNELS_FILE` = path to
+ * a JSON array of channels): bypasses `gh` for drills that must not touch
+ * the network. Env-only, so the UI can never trigger it. `current` is
+ * recomputed from the installed build, never trusted from the file.
+ */
+export function channelsFileOverride(
+  installed: InstalledBuild,
+  env: NodeJS.ProcessEnv = process.env,
+): UpdateChannel[] | null {
+  const file = env.UNVIBE_UPDATE_CHANNELS_FILE;
+  if (!file) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<UpdateChannel>[];
+    if (!Array.isArray(parsed)) return null;
+    return parsed
+      .filter((c): c is Partial<UpdateChannel> & { ref: string } => !!c && typeof c.ref === "string")
+      .map((c) => ({
+        ref: c.ref,
+        kind: channelKind(c.ref),
+        version: typeof c.version === "string" ? c.version : null,
+        commit: typeof c.commit === "string" ? c.commit : null,
+        sourceBranch: typeof c.sourceBranch === "string" ? c.sourceBranch : null,
+        builtAt: typeof c.builtAt === "string" ? c.builtAt : null,
+        current: c.ref === installed.channel,
+      }));
+  } catch {
+    return null;
+  }
+}
+
+/** Order-preserving concurrent map with a small cap. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/** How many per-ref `gh` metadata fetches run at once. */
+export const CHANNEL_META_CONCURRENCY = 4;
+
+/**
  * List every channel with its per-ref metadata. Throws when the branch
  * list itself cannot be read (the CLI turns this into the `gh auth login`
  * hint); a single unreadable ref only blanks that row.
@@ -247,6 +286,8 @@ export async function listChannels(
   runner: CommandRunner,
   installed: InstalledBuild,
 ): Promise<UpdateChannel[]> {
+  const override = channelsFileOverride(installed);
+  if (override) return override;
   const branchArgs = ["api", `repos/${UNVIBE_REPO}/branches`, "--paginate", "-q", ".[].name"];
   const branches = await runGh(runner, branchArgs, { args: branchArgs });
   if (branches.code !== 0) {
@@ -255,10 +296,10 @@ export async function listChannels(
       `could not list channels: gh exited ${branches.code}${detail ? `: ${detail}` : ""}`,
     );
   }
-  const out: UpdateChannel[] = [];
-  for (const ref of parseChannelList(branches.stdout)) {
+  const refs = parseChannelList(branches.stdout);
+  return mapLimit(refs, CHANNEL_META_CONCURRENCY, async (ref) => {
     const meta = await fetchRefPackage(runner, ref);
-    out.push({
+    return {
       ref,
       kind: channelKind(ref),
       version: meta.version,
@@ -266,9 +307,8 @@ export async function listChannels(
       sourceBranch: meta.sourceBranch,
       builtAt: meta.builtAt,
       current: ref === installed.channel,
-    });
-  }
-  return out;
+    };
+  });
 }
 
 /** Render `update --list` output, marking the installed channel. */

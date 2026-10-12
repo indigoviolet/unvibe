@@ -171,6 +171,10 @@ if (existsSync(path.join(ROOT, "packages/service/dist/index.js.map"))) {
 }
 copy("packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/claude.js");
 copy("packages/service/dist/adapters/codex.js", "packages/service/dist/adapters/codex.js");
+// Self-contained switch-helper bundle for the in-app version picker
+// (issue #36): the service copies it to the data dir and spawns the copy,
+// so the global npm swap cannot pull it out from under the helper.
+copy("packages/service/dist/update-helper.js", "packages/service/dist/update-helper.js");
 copy("packages/web/dist", "packages/web/dist");
 copy("prompts", "prompts");
 copy("fixtures/urllib3-5020", "fixtures/urllib3-5020");

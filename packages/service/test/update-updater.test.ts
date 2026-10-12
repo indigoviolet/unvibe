@@ -8,11 +8,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
+import { FakeCommandRunner } from "../src/exec/runner.js";
 import {
   FakeUpdater,
-  RealUpdaterPlaceholder,
+  RealUpdater,
   createUpdaterFromEnv,
-  isNotWiredError,
 } from "../src/update/updater.js";
 import {
   clearPendingSwitch,
@@ -95,19 +95,42 @@ describe("FakeUpdater", () => {
   });
 });
 
-describe("real placeholder + backend selection", () => {
-  it("fails with a clear not-wired error", async () => {
-    const real = new RealUpdaterPlaceholder();
-    await expect(real.listChannels()).rejects.toThrow("update backend not wired");
-    await expect(real.switchTo("release")).rejects.toThrow("update backend not wired");
-    expect(isNotWiredError(new Error("update backend not wired: x"))).toBe(true);
-    expect(isNotWiredError(new Error("boom"))).toBe(false);
+describe("backend selection + real updater", () => {
+  it("fake is opt-in via UNVIBE_UPDATER_BACKEND; default is real", () => {
+    const dir = tempDir();
+    expect(createUpdaterFromEnv(dir, { env: {} })).toBeInstanceOf(RealUpdater);
+    expect(createUpdaterFromEnv(dir, { env: { UNVIBE_UPDATER_BACKEND: "fake" } })).toBeInstanceOf(FakeUpdater);
   });
 
-  it("fake is opt-in via UNVIBE_UPDATER_BACKEND", () => {
+  it("real updater rejects unknown channels without touching npm", async () => {
     const dir = tempDir();
-    expect(createUpdaterFromEnv(dir, {})).toBeInstanceOf(RealUpdaterPlaceholder);
-    expect(createUpdaterFromEnv(dir, { UNVIBE_UPDATER_BACKEND: "fake" })).toBeInstanceOf(FakeUpdater);
+    const runner = new FakeCommandRunner();
+    const real = new RealUpdater({ runner, dataDir: dir, serviceScriptPath: undefined, serviceVersion: "0.0.1" });
+    await expect(real.switchTo("bogus")).rejects.toThrow('unknown update channel "bogus"');
+    expect(runner.calls).toHaveLength(0);
+  });
+
+  it("real updater lists through the channels file override (no gh)", async () => {
+    const dir = tempDir();
+    fs.mkdirSync(path.join(dir, "update"), { recursive: true });
+    const channels = [
+      { ref: "release", version: "0.0.1" },
+      { ref: "preview/a", version: "0.0.1-preview.a.1", sourceBranch: "a", commit: "c1" },
+    ];
+    const file = path.join(dir, "update", "channels.json");
+    fs.writeFileSync(file, JSON.stringify(channels));
+    const prev = process.env.UNVIBE_UPDATE_CHANNELS_FILE;
+    process.env.UNVIBE_UPDATE_CHANNELS_FILE = file;
+    try {
+      const runner = new FakeCommandRunner();
+      const real = new RealUpdater({ runner, dataDir: dir, serviceScriptPath: undefined, serviceVersion: "0.0.1" });
+      const list = await real.listChannels();
+      expect(list.map((c) => c.ref)).toEqual(["release", "preview/a"]);
+      expect(runner.calls).toHaveLength(0);
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_UPDATE_CHANNELS_FILE;
+      else process.env.UNVIBE_UPDATE_CHANNELS_FILE = prev;
+    }
   });
 });
 
@@ -154,22 +177,32 @@ describe("build identity", () => {
     expect(info?.sourceBranch).toBe("feat/x");
   });
 
-  it("resolveBuildInfo reads the stamped file, else null", () => {
+  it("resolveBuildInfo reads the installed package, else null", () => {
     const dir = tempDir();
-    const stamp = tempDir();
-    expect(resolveBuildInfo({ dataDir: dir, distDir: stamp, env: {} })).toBeNull();
+    // No install at the script path: null (source checkout shape).
+    expect(
+      resolveBuildInfo({ dataDir: dir, serviceScriptPath: path.join(dir, "nope.js"), serviceVersion: "0.0.1", env: {} }),
+    ).toBeNull();
+    const inst = tempDir();
+    fs.mkdirSync(path.join(inst, "packages", "service", "dist"), { recursive: true });
     fs.writeFileSync(
-      path.join(stamp, "build-info.json"),
-      JSON.stringify({ version: "0.0.1-preview.x.y", sourceBranch: "x", commit: "y", builtAt: "2026-10-12T00:00:00.000Z" }),
+      path.join(inst, "package.json"),
+      JSON.stringify({
+        name: "unvibe",
+        version: "0.0.1-preview.x.y",
+        unvibe: { channel: "preview/x", sourceBranch: "x", commit: "y", builtAt: "2026-10-12T00:00:00.000Z" },
+      }),
     );
-    expect(resolveBuildInfo({ dataDir: dir, distDir: stamp, env: {} })).toEqual({
+    const scriptPath = path.join(inst, "packages", "service", "dist", "index.js");
+    fs.writeFileSync(scriptPath, "");
+    expect(
+      resolveBuildInfo({ dataDir: dir, serviceScriptPath: scriptPath, serviceVersion: "0.0.1", env: {} }),
+    ).toEqual({
       version: "0.0.1-preview.x.y",
       sourceBranch: "x",
       commit: "y",
       builtAt: "2026-10-12T00:00:00.000Z",
     });
-    fs.writeFileSync(path.join(stamp, "build-info.json"), "corrupt");
-    expect(resolveBuildInfo({ dataDir: dir, distDir: stamp, env: {} })).toBeNull();
   });
 });
 

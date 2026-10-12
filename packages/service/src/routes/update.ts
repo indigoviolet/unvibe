@@ -32,9 +32,10 @@ import type {
   UpdateSwitchResponse,
 } from "@unvibe/shared";
 import { loadConfig } from "../config.js";
-import { isNotWiredError, type Updater } from "../update/updater.js";
+import { readInstalledBuild } from "../update/channels.js";
 import { resolveBuildInfo } from "../update/build-info.js";
 import type { HelperArgs } from "../update/helper.js";
+import type { Updater } from "../update/updater.js";
 import {
   hasAnySubmitLease,
   readPendingSwitch,
@@ -58,16 +59,26 @@ export const UPDATE_SHUTDOWN_DELAY_MS = 500;
 export const UPDATE_DISABLED_MESSAGE =
   "version picker is disabled (turn it on in Settings → Version)";
 
+/** Switching needs a global install with a channel record — not a source checkout. */
+export const UPDATE_NOT_INSTALLED_MESSAGE =
+  "cannot switch: this service is not running from an installed build (no channel record) — " +
+  "switching is only available in the installed app; from a checkout use `unvibe update`";
+
+/**
+ * SERVICE_VERSION for build identity. Set by `server.ts`; the literal is a
+ * last resort that never surfaces (an unreadable package means a null
+ * channel, which refuses the switch before any version is reported).
+ */
+function routeServiceVersion(deps: RouteDeps): string {
+  return deps.serviceVersion ?? "0.0.1";
+}
+
 function gateEnabled(deps: RouteDeps): boolean {
   try {
     return deps.settings?.get().versionPickerEnabled === true;
   } catch {
     return false;
   }
-}
-
-function updaterErrorStatus(err: unknown): 501 | 502 {
-  return isNotWiredError(err) ? 501 : 502;
 }
 
 /** dist dir of the loaded service bundle (`dist/` in prod, `src/routes/` under vitest). */
@@ -157,7 +168,11 @@ export async function registerUpdate(
     const dataDir = ctx.dataDir;
     return {
       enabled: gateEnabled(deps),
-      build: resolveBuildInfo({ dataDir }),
+      build: resolveBuildInfo({
+        dataDir,
+        serviceScriptPath: process.argv[1],
+        serviceVersion: routeServiceVersion(deps),
+      }),
       pending: readPendingSwitch(dataDir),
       outcome: readSwitchOutcome(dataDir),
     };
@@ -179,7 +194,7 @@ export async function registerUpdate(
       const res: UpdateChannelsResponse = { channels: list };
       return res;
     } catch (err) {
-      return reply.code(updaterErrorStatus(err)).send({ error: (err as Error).message });
+      return reply.code(502).send({ error: (err as Error).message });
     }
   });
 
@@ -194,13 +209,23 @@ export async function registerUpdate(
     const hooks = deps.updateHooks;
     if (!hooks) return reply.code(501).send({ error: "update switch not wired (no shutdown path)" });
     const updater = deps.updater;
-    if (!updater) return reply.code(501).send({ error: "update backend not wired (issue #36 step 1)" });
+    if (!updater) return reply.code(501).send({ error: "update backend not wired" });
+
+    // `from` is the installed channel read locally: a preview ref can be
+    // deleted from the remote while installed, and a rollback to
+    // "unknown" cannot work. Source checkouts (and pre-field installs
+    // without an inferable channel) cannot switch in-app at all — the
+    // helper would restart an entry npm never renews.
+    const installed = readInstalledBuild(process.argv[1], routeServiceVersion(deps));
+    if (!installed.channel) {
+      return reply.code(409).send({ error: UPDATE_NOT_INSTALLED_MESSAGE });
+    }
 
     let list: UpdateChannel[];
     try {
       list = await channels(false, updater);
     } catch (err) {
-      return reply.code(updaterErrorStatus(err)).send({ error: (err as Error).message });
+      return reply.code(502).send({ error: (err as Error).message });
     }
     const target = list.find((c) => c.ref === ref);
     if (!target) return reply.code(404).send({ error: `unknown update channel "${ref}"` });
@@ -230,7 +255,13 @@ export async function registerUpdate(
       return reply.code(409).send({ error: "cannot switch while a submit is in flight; wait for it to finish, then retry" });
     }
 
-    const from = list.find((c) => c.current)?.ref ?? "unknown";
+    const from = installed.channel;
+    // Same channel, same published commit: nothing to do (the publish →
+    // try → fix → publish loop reinstalls only when the commit moved).
+    if (from === ref && installed.commit && target.commit && installed.commit === target.commit) {
+      const unchanged: UpdateSwitchResponse = { from, to: ref, unchanged: true };
+      return reply.code(200).send(unchanged);
+    }
     const now = new Date().toISOString();
     writePendingSwitch(ctx.dataDir, { from, to: ref, startedAt: now });
 
@@ -243,6 +274,7 @@ export async function registerUpdate(
       from,
       to: ref,
       targetVersion: target.version,
+      fromVersion: installed.version,
       port: boundPort(app),
       dataDir: ctx.dataDir,
       servicePid: process.pid,
@@ -252,6 +284,7 @@ export async function registerUpdate(
       stopWaitMs: UPDATE_STOP_WAIT_MS,
       logPath: path.join(updateDir(ctx.dataDir), `switch-${Date.now()}.log`),
       scriptPath,
+      serviceVersion: routeServiceVersion(deps),
     };
     const argsFile = path.join(updateDir(ctx.dataDir), `helper-args-${Date.now()}.json`);
     try {

@@ -11,10 +11,22 @@ import type { CommandRunner, RunResult } from "../exec/index.js";
 import { UNVIBE_REPO, channelRef, isChannelName } from "./channels.js";
 import path from "node:path";
 
+/**
+ * Test-only install-source override (`UNVIBE_UPDATE_INSTALL_SOURCE` = an
+ * npm git remote, e.g. `git+file:///tmp/unvibe.git`): drills install from
+ * a local repo instead of GitHub. Env-only, so the UI can never trigger
+ * it; the `#<channel>` ref suffix is unchanged.
+ */
+export function installSource(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.UNVIBE_UPDATE_INSTALL_SOURCE;
+  if (override && override.trim() !== "") return override.trim();
+  return `github:${UNVIBE_REPO}`;
+}
+
 /** `npm install -g` spec for a channel. Throws on invalid names. */
-export function installSpec(channel: string): string {
+export function installSpec(channel: string, env: NodeJS.ProcessEnv = process.env): string {
   if (!isChannelName(channel)) throw new Error(`unknown channel: ${JSON.stringify(channel)}`);
-  return `github:${UNVIBE_REPO}#${channelRef(channel)}`;
+  return `${installSource(env)}#${channelRef(channel)}`;
 }
 
 export interface InstallOptions {
