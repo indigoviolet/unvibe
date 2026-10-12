@@ -13,7 +13,7 @@
  * plus the update pass (`POST …/update`). Local-only kinds — read,
  * collapse, bookmark, note, promote, close, delete, undo — need nothing.
  */
-import type { ActionAnchor, Job, JobKind } from "@unvibe/shared";
+import type { ActionAnchor, Annotation, Job, JobKind, ReviewSnapshot } from "@unvibe/shared";
 import { isLiveJobState, type InFlightAction, type InFlightKind } from "../state/store.js";
 
 /** Fixed plain label per action (no streamed text, no progress strings). */
@@ -116,6 +116,32 @@ export function busyForCard(
   return null;
 }
 
+/**
+ * Busy state for an expansion card: the direct entry first, then a
+ * follow-up chip entry addressing its anchor block (the answer renders
+ * before the response retargets), then the live job.
+ */
+export function busyForExpansion(
+  inflight: Record<string, InFlightAction>,
+  jobs: Job[],
+  snapshot: ReviewSnapshot | null | undefined,
+  expansion: Annotation,
+): BusyState | null {
+  const direct = busyForCard(inflight, jobs, expansion.id);
+  if (direct) {
+    // A job-derived ask fill on a follow-up answer is its answer, not a
+    // question; an entry already carries the exact label.
+    if (!inflight[expansion.id] && direct.kind === "ask" && isFollowupAnswer(snapshot, expansion)) {
+      return { kind: "followup", label: inflightLabel("followup"), rewriting: false };
+    }
+    return direct;
+  }
+  if (expansion.type !== "expansion" || expansion.anchor.host.kind !== "block") return null;
+  const entry = followupEntryForAnchorBlock(inflight, expansion.anchor.host.blockId);
+  if (!entry) return null;
+  return { kind: entry.kind, label: inflightLabel(entry.kind), rewriting: false };
+}
+
 /** In-flight entry for a thread (reply/retry ask turns). */
 export function busyForThread(
   inflight: Record<string, InFlightAction>,
@@ -159,6 +185,63 @@ export function askKey(anchor: ActionAnchor): string {
 /** Follow-up chip: card + block + item index (prevents double clicks). */
 export function followupKey(cardId: string, blockId: string, index: number): string {
   return `followup:${cardId}:${blockId}:${index}`;
+}
+
+/**
+ * In-flight follow-up entry addressing an anchor block. The answer
+ * expansion renders from the annotation patch before the action response
+ * moves the entry off the chip key, so the expansion matches its busy
+ * state through the anchor — never the generic server text.
+ * Block ids contain no colons, so the key splits exactly.
+ */
+export function followupEntryForAnchorBlock(
+  inflight: Record<string, InFlightAction>,
+  anchorBlockId: string,
+): InFlightAction | undefined {
+  const bare = anchorBlockId.includes("#") ? anchorBlockId.split("#").pop()! : anchorBlockId;
+  for (const [key, entry] of Object.entries(inflight)) {
+    if (entry.kind !== "followup") continue;
+    const parts = key.split(":");
+    if (parts.length !== 4 || parts[0] !== "followup") continue;
+    const [, cardId, blockId] = parts;
+    if (blockId === anchorBlockId || blockId === bare || anchorBlockId === `${cardId}#${blockId}`) {
+      return entry;
+    }
+  }
+  return undefined;
+}
+
+/** Block type of an anchor target, following `card#block` qualification. */
+export function anchorBlockType(
+  snapshot: ReviewSnapshot | null | undefined,
+  anchorBlockId: string,
+): string | undefined {
+  const bare = anchorBlockId.includes("#") ? anchorBlockId.split("#").pop()! : anchorBlockId;
+  const match = (id: string): boolean => id === anchorBlockId || id === bare;
+  for (const p of snapshot?.pages ?? []) {
+    for (const c of p.cards) {
+      for (const b of c.blocks) {
+        if (match(b.id)) return b.type;
+      }
+    }
+  }
+  for (const a of snapshot?.annotations ?? []) {
+    const blocks = a.type === "expansion" ? (a.expansion?.blocks ?? []) : [];
+    for (const b of blocks as { id: string; type: string }[]) {
+      if (match(b.id)) return b.type;
+    }
+  }
+  return undefined;
+}
+
+/** True when an expansion is a follow-up answer (anchored on a follow-up block). */
+export function isFollowupAnswer(
+  snapshot: ReviewSnapshot | null | undefined,
+  expansion: Annotation,
+): boolean {
+  const host = expansion.anchor.host;
+  if (expansion.type !== "expansion" || host.kind !== "block") return false;
+  return anchorBlockType(snapshot, host.blockId) === "follow-up";
 }
 
 /** Concept page written on first open. */

@@ -9,11 +9,12 @@
  */
 import type { Annotation, Block, DepthLevel, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
+import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations, resolveCitation } from "./citations.js";
 import { DiagramView } from "./DiagramView.js";
-import { depthText, isPageRead } from "./guideUtils.js";
+import { anchorMatchesBlock, depthText, isPageRead } from "./guideUtils.js";
 import { followupKey, inflightLabel } from "./inflight.js";
 import { BlockMarkers } from "./Markers.js";
 import { handleHtmlLinkClick, RichText } from "./RichText.js";
@@ -260,6 +261,17 @@ export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPag
     case "follow-up": {
       if (!block.items.length) return null;
       const busyIndex = block.items.findIndex((_, i) => inflight[followupKey(cardId, block.id, i)]);
+      // Once the answer expansion renders under this block it carries the
+      // working state itself; until then a single placeholder shaped like
+      // the answer card holds its place, so the two never stack.
+      const answerArrived = (snapshot?.annotations ?? []).some(
+        (a) =>
+          a.type === "expansion" &&
+          a.open &&
+          a.anchor.host.kind === "block" &&
+          anchorMatchesBlock(a.anchor.host.blockId, cardId, block.id),
+      );
+      const waiting = busyIndex >= 0 && !answerArrived;
       return (
         <>
           <div className="follow">
@@ -290,16 +302,7 @@ export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPag
               );
             })}
           </div>
-          {busyIndex >= 0 ? (
-            <div className="working" role="status">
-              <span className="dots" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-              <span>{inflightLabel("followup")}</span>
-            </div>
-          ) : null}
+          {waiting ? <WorkingPlaceholder label={inflightLabel("followup")} /> : null}
         </>
       );
     }

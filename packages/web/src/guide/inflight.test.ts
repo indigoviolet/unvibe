@@ -4,17 +4,22 @@
  */
 import { describe, expect, test } from "vitest";
 import type { Job } from "@unvibe/shared";
+import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import {
+  anchorBlockType,
   askKey,
   busyForCard,
+  busyForExpansion,
   busyForThread,
   conceptKey,
   diffAnchorForExplainKey,
   explainKey,
+  followupEntryForAnchorBlock,
   followupKey,
   inflightForAnchor,
   inflightForBlock,
   inflightLabel,
+  isFollowupAnswer,
   isRewriteKind,
   jobLabel,
   liveJobForTarget,
@@ -141,6 +146,66 @@ describe("entry keys", () => {
     expect(followupKey("c1", "b1", 0)).not.toBe(followupKey("c1", "b1", 1));
     expect(conceptKey("obs-fold")).toBe("concept:obs-fold");
     expect(updateKey("demo")).toBe("update:demo");
+  });
+
+  test("follow-up entries match by anchor block, bare or qualified", () => {
+    const inflight = { "followup:c1:b-f:0": entry("followup", "followup:c1:b-f:0") };
+    expect(followupEntryForAnchorBlock(inflight, "b-f")?.kind).toBe("followup");
+    expect(followupEntryForAnchorBlock(inflight, "c1#b-f")?.kind).toBe("followup");
+    expect(followupEntryForAnchorBlock(inflight, "b-other")).toBeUndefined();
+    expect(followupEntryForAnchorBlock({}, "b-f")).toBeUndefined();
+    // Other kinds never match, even on the same block.
+    const wrong = { "explain:block:b-f": entry("explain", "explain:block:b-f") };
+    expect(followupEntryForAnchorBlock(wrong, "b-f")).toBeUndefined();
+  });
+
+  test("answer expansions are detected by their anchor block", () => {
+    const answer = {
+      id: "ann_ans",
+      type: "expansion",
+      anchor: { host: { kind: "block", blockId: "b-f" }, quotedText: "Why?" },
+    } as unknown as Annotation;
+    const snap = {
+      pages: [
+        {
+          cards: [
+            { id: "c1", blocks: [{ id: "b-f", type: "follow-up" }] },
+          ],
+        },
+      ],
+      annotations: [],
+    } as unknown as ReviewSnapshot;
+    expect(isFollowupAnswer(snap, answer)).toBe(true);
+    expect(anchorBlockType(snap, "c1#b-f")).toBe("follow-up");
+    const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Annotation;
+    expect(isFollowupAnswer(snap, plain)).toBe(false);
+    const thread = { ...answer, type: "thread" } as unknown as Annotation;
+    expect(isFollowupAnswer(snap, thread)).toBe(false);
+  });
+
+  test("busyForExpansion prefers the anchor entry and labels answers", () => {
+    const answer = {
+      id: "ann_ans",
+      type: "expansion",
+      anchor: { host: { kind: "block", blockId: "b-f" }, quotedText: "Why?" },
+    } as unknown as Annotation;
+    const snap = {
+      pages: [{ cards: [{ id: "c1", blocks: [{ id: "b-f", type: "follow-up" }] }] }],
+      annotations: [],
+    } as unknown as ReviewSnapshot;
+    // Chip key still set (answer rendered before the response retargets).
+    const chip = { "followup:c1:b-f:0": entry("followup", "followup:c1:b-f:0") };
+    expect(busyForExpansion(chip, [], snap, answer)).toMatchObject({ label: "Writing answer…" });
+    // Direct entry wins with its own label.
+    const direct = { ann_ans: entry("retry", "ann_ans") };
+    expect(busyForExpansion(direct, [], snap, answer)).toMatchObject({ label: "Retrying…" });
+    // Job-derived ask fill on an answer reads as its answer…
+    const jobs = [job({ kind: "ask", threadId: "ann_ans" })];
+    expect(busyForExpansion({}, jobs, snap, answer)).toMatchObject({ label: "Writing answer…" });
+    // …but not on ordinary expansions.
+    const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Annotation;
+    expect(busyForExpansion({}, jobs, snap, plain)).toMatchObject({ label: "Asking…" });
+    expect(busyForExpansion({}, [], snap, plain)).toBeNull();
   });
 
   test("diff anchors parse back out of explain keys", () => {

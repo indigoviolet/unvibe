@@ -23,7 +23,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
 import { performAction, performInsertAction } from "../actions.js";
 import { BlockView } from "../BlockView.js";
-import { busyForCard } from "../inflight.js";
+import { busyForExpansion } from "../inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
 import { isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
 
@@ -112,7 +112,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   if (expansion.type !== "expansion" || !body) return null;
 
   const stale = isAnchorStale(expansion);
-  const busy = busyForCard(inflight, jobs, expansion.id);
+  const busy = busyForExpansion(inflight, jobs, snapshot, expansion);
   // The service marks the annotation working while its fill runs; that
   // flag (and retry's, before its response lands) is a busy signal too,
   // but the label stays fixed — never the server's text.

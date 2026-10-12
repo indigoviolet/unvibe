@@ -6,8 +6,8 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Card, Job, ReviewSnapshot } from "@unvibe/shared";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { Annotation, Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { performFollowUp } from "./actions.js";
@@ -30,20 +30,49 @@ function card(over: Partial<Card> = {}): Card {
   } as unknown as Card;
 }
 
-function seedSnapshot(cards: Card[], jobs: Job[] = []): void {
+function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Annotation[] = []): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [{ id: "root", kind: "root", title: "Root", saved: false, cards }],
-    annotations: [],
+    annotations,
     hunkStates: [],
     jobs,
     contributions: [],
     logTail: [],
     rev: 1,
   } as unknown as ReviewSnapshot);
+}
+
+function answerExpansion(): Annotation {
+  return {
+    id: "ann_ans",
+    type: "expansion",
+    anchor: {
+      host: { kind: "block", blockId: "b-f" },
+      quotedText: "Why?",
+      prefix: "",
+      suffix: "",
+      position: 0,
+      version: 1,
+    },
+    open: true,
+    messages: [],
+    post: false,
+    note: false,
+    working: "Thinking…",
+    expansion: {
+      blocks: [],
+      level: "standard",
+      read: false,
+      collapsed: false,
+      revision: 1,
+      undoStack: [],
+      working: "Thinking…",
+    },
+  } as unknown as Annotation;
 }
 
 function holdAction(): {
@@ -148,6 +177,35 @@ describe("CardView immediate feedback", () => {
     expect(document.getElementById("C-c1")?.className).toMatch(/rewriting/);
     expect(screen.getByRole("status")).toHaveTextContent("Rewriting…");
     expect(screen.getByRole("button", { name: "Use examples" })).toBeDisabled();
+  });
+
+  test("once the answer renders, the chip placeholder is replaced by its working state", () => {
+    const withFollow = card({
+      blocks: [
+        { type: "paragraph", id: "b-p", text: { standard: "Some text." }, citations: [] },
+        { type: "follow-up", id: "b-f", items: [{ label: "Why?" }], citations: [] },
+      ],
+    });
+    seedSnapshot([withFollow], [], [answerExpansion()]);
+    render(
+      <CardView
+        reviewId={REVIEW_ID}
+        card={withFollow}
+        lookupPage={() => undefined}
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    // Chip entry set (answer rendered before the response retargets): no
+    // second indicator under the chips…
+    act(() => {
+      useReview.getState().beginInflight("followup:c1:b-f:0", "followup");
+    });
+    expect(document.querySelector(".card.child.placeholder")).toBeNull();
+    // …the answer expansion itself shows Writing answer…, not the generic
+    // server text.
+    const exp = document.querySelector('[data-expansion="ann_ans"]');
+    expect(exp?.querySelector(".working")).toHaveTextContent("Writing answer…");
   });
 
   test("depth marks the card as rewriting on click", () => {
