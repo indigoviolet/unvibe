@@ -24,15 +24,18 @@ afterEach(() => {
 
 const noop = (): void => {};
 
-async function renderBar(reviewId: string): Promise<void> {
+async function renderBar(reviewId: string, identity: string): Promise<void> {
+  // ReviewBar reads the snapshot from the store (loaded by the panes in
+  // the app); seed it here the same way.
+  useReview.getState().setSnapshot(await api.review(reviewId));
   render(
     <MemoryRouter initialEntries={[`/review/${reviewId}`]}>
       <ReviewBar reviewId={reviewId} guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
     </MemoryRouter>,
   );
-  // The identity falls back to the review id until the summary/snapshot
-  // arrive; wait for the PR identity instead.
-  await screen.findByText("urllib3/urllib3#5020", {}, { timeout: 5000 });
+  // The identity falls back to the review id until the summary arrives;
+  // wait for the PR identity instead.
+  await screen.findByText(identity, {}, { timeout: 5000 });
 }
 
 /** Store a modified copy of the demo snapshot under another review id. */
@@ -46,16 +49,18 @@ async function seedReview(review: Record<string, unknown>): Promise<void> {
 
 describe("ReviewBar", () => {
   it("shows identity, GitHub link, Debug icon, Guide|Source and Comments + Submit", async () => {
-    await renderBar("demo");
+    // r-old is a PR review (urllib3/urllib3#5011); the demo hides its
+    // GitHub link (see below), so the present-case uses r-old.
+    await renderBar("r-old", "urllib3/urllib3#5011");
     const bar = document.getElementById("reviewbar");
     expect(bar).not.toBeNull();
-    expect(bar).toHaveTextContent("Unfold obsolete folded response header values");
+    expect(bar).toHaveTextContent("Fix retry backoff on 429s");
     const github = screen.getByRole("link", { name: "Open PR on GitHub" });
-    expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5020");
+    expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
     expect(github).toHaveAttribute("target", "_blank");
     expect(github).toHaveAttribute("rel", "noreferrer");
     const debug = screen.getByRole("link", { name: "Debug" });
-    expect(debug).toHaveAttribute("href", "/review/demo/debug");
+    expect(debug).toHaveAttribute("href", "/review/r-old/debug");
     expect(debug).toHaveAttribute("title", "Debug");
     expect(screen.getByRole("button", { name: "Guide" })).toHaveAttribute("aria-pressed", "true");
     expect(document.getElementById("toggleRight")).toHaveTextContent("Source");
@@ -78,13 +83,9 @@ describe("ReviewBar", () => {
   });
 
   it("shows no GitHub link for the demo", async () => {
-    await seedReview({ id: "demo-x", repoId: "demo", prNumber: 5020, branch: "demo" });
-    render(
-      <MemoryRouter initialEntries={["/review/demo-x"]}>
-        <ReviewBar reviewId="demo-x" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
-      </MemoryRouter>,
-    );
-    await screen.findByText("demo/urllib3-5020#5020");
+    // The mock demo snapshot carries repoId "demo" like the real demo, so
+    // the PR link-out stays hidden even though the summary names the PR.
+    await renderBar("demo", "urllib3/urllib3#5020");
     expect(screen.queryByRole("link", { name: "Open PR on GitHub" })).toBeNull();
   });
 

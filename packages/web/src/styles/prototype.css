@@ -54,6 +54,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .tcrumbs a { color: var(--muted); text-decoration: none; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tcrumbs a:hover { color: var(--accent); text-decoration: underline; }
 .tcrumbs [aria-current="page"] { color: var(--ink); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* The breadcrumb's current item is the page's h1; keep it visually identical
+   to the surrounding trail text. */
+.tcrumbs h1 { margin: 0; font-size: inherit; font-weight: inherit; }
 /* Review bar (issue #31 round 2): the review-specific second row under the
    top bar — identity left (truncates first), Guide|Source selector, then
    Comments + Submit. Never wraps; the dropdowns anchor inside it. */

@@ -33,8 +33,8 @@ test("repo selector lists remembered and detected repos, persisted", async ({ pa
 });
 
 test("repo selector sits centered above Reviews, outside the top bar", async ({ page }) => {
-  await expect(page.locator("header.top").getByLabel("Repository")).toHaveCount(0);
-  const sel = page.getByLabel("Repository");
+  await expect(page.locator("header.top").getByLabel("Repo")).toHaveCount(0);
+  const sel = page.getByLabel("Repo");
   await expect(sel).toBeVisible();
   const headerBox = await page.locator("header.top").boundingBox();
   const selBox = await sel.boundingBox();
@@ -54,7 +54,7 @@ test("ready indicator shows as a quiet content line, not in the top bar", async 
   await expect(page.locator("header.top").locator('[data-testid="readiness-ready"]')).toHaveCount(0);
   const ready = page.locator('[data-testid="readiness-ready"]');
   await expect(ready).toBeVisible();
-  await expect(ready).toContainText("Ready · gh + agents ok");
+  await expect(ready).toHaveText("Ready");
   const readyBox = await ready.boundingBox();
   const reviewsBox = await page.getByRole("heading", { name: "Reviews" }).boundingBox();
   expect(readyBox?.y).toBeGreaterThan(reviewsBox ? reviewsBox.y + reviewsBox.height : 0);

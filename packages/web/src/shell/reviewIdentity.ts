@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ReviewSummary } from "@unvibe/shared";
+import { isDefaultGuideTitle } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 
@@ -55,9 +56,9 @@ export function useReviewIdentity(reviewId: string): ReviewIdentity {
       : branch || reviewId;
   const rootTitle = snapshot?.pages.find((p) => p.kind === "root")?.title;
   const title =
-    summary?.title && summary.title !== "Guided review"
+    summary?.title && !isDefaultGuideTitle(summary.title)
       ? summary.title
-      : rootTitle && rootTitle !== "Guided review"
+      : rootTitle && !isDefaultGuideTitle(rootTitle)
         ? rootTitle
         : branch || reviewId;
   const prUrl =

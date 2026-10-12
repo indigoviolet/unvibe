@@ -115,7 +115,7 @@ describe("DiffView", () => {
       }),
     );
     await renderDiff();
-    await fireEvent.click(screen.getByRole("button", { name: "Show files panel" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
     // Only the source file shows; the tests/docs files are filtered out.
     expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();
@@ -136,7 +136,7 @@ describe("DiffView", () => {
 
   it("filter button shows its active state and toggles categories", async () => {
     await renderDiff();
-    await fireEvent.click(screen.getByRole("button", { name: "Show files panel" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
     const filter = screen.getByRole("button", { name: "File filters" });
     // Default: everything shown, no active badge.
     expect(filter).toHaveAttribute("aria-pressed", "false");
@@ -158,7 +158,7 @@ describe("DiffView", () => {
 
   it("filter dropdown toggles Reviewed and is keyboard-usable", async () => {
     await renderDiff();
-    await fireEvent.click(screen.getByRole("button", { name: "Show files panel" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
     const filter = screen.getByRole("button", { name: "File filters" });
     await fireEvent.click(filter);
     const menu = screen.getByRole("menu", { name: "File filters" });

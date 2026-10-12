@@ -31,7 +31,7 @@ export function ScreenTopBar({
 }): React.JSX.Element {
   return (
     <header className="top">
-      <Link className="brand" to="/" title="Back to the start screen">
+      <Link className="brand" to="/" title="Back to the start page">
         Unvibe
       </Link>
       {crumbs && crumbs.length > 0 ? (
@@ -41,7 +41,11 @@ export function ScreenTopBar({
               <span aria-hidden="true" className="tsep">
                 /
               </span>
-              {c.to ? <Link to={c.to}>{c.label}</Link> : <span aria-current="page">{c.label}</span>}
+              {c.to ? (
+                <Link to={c.to}>{c.label}</Link>
+              ) : (
+                <h1 aria-current="page">{c.label}</h1>
+              )}
             </span>
           ))}
         </nav>

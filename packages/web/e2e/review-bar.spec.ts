@@ -18,22 +18,31 @@ test.beforeEach(async ({ page }) => {
 test("review bar shows identity, GitHub link, Debug, Guide|Source, Comments and Submit", async ({
   page,
 }) => {
+  // r-old is a PR review; the demo hides its GitHub link (mock snapshot
+  // carries repoId "demo" like the real demo), so the link case uses r-old.
+  await page.goto("/review/r-old");
+  await expect(page.locator(connFile)).toBeVisible();
   const bar = page.locator("#reviewbar");
   await expect(bar).toBeVisible();
-  await expect(bar.getByText("urllib3/urllib3#5020")).toBeVisible();
-  await expect(bar.getByText("Unfold obsolete folded response header values")).toBeVisible();
+  await expect(bar.getByText("urllib3/urllib3#5011")).toBeVisible();
   const github = bar.getByRole("link", { name: "Open PR on GitHub" });
-  await expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5020");
+  await expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
   await expect(github).toHaveAttribute("target", "_blank");
   await expect(bar.getByRole("link", { name: "Debug" })).toHaveAttribute(
     "href",
-    "/review/demo/debug",
+    "/review/r-old/debug",
   );
   await expect(bar.getByRole("button", { name: "Guide" })).toHaveAttribute("aria-pressed", "true");
   await expect(bar.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true");
   await expect(bar.locator('[data-cm=""]')).toBeVisible();
   // Submit is the primary action in the bar.
   await expect(bar.locator('#submitSlot [data-submit]')).toHaveClass(/btn/);
+});
+
+test("demo review shows no GitHub link", async ({ page }) => {
+  const bar = page.locator("#reviewbar");
+  await expect(bar.getByText("urllib3/urllib3#5020")).toBeVisible();
+  await expect(bar.getByRole("link", { name: "Open PR on GitHub" })).toHaveCount(0);
 });
 
 test("review breadcrumb names the review as the current page", async ({ page }) => {

@@ -859,6 +859,11 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     review: {
       ...MOCK_REVIEW,
       id: reviewId,
+      // The real demo review uses repoId "demo" (service `pipeline/demo.ts`);
+      // the mock snapshot matches so demo-only rules apply (no GitHub
+      // link-out, no refresh). The summary list keeps its urllib3 row, so
+      // the start-page fixtures are unaffected.
+      repoId: reviewId === "demo" ? "demo" : MOCK_REVIEW.repoId,
       versions: stale ? [MOCK_VERSION, MOCK_VERSION_2] : [MOCK_VERSION],
       currentVersion: stale ? 2 : 1,
     },

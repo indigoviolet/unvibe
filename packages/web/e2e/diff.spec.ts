@@ -81,7 +81,7 @@ test("files filter narrows the visible files", async ({ page }) => {
 });
 
 test("file filter dropdown filters by type with counts and an active state", async ({ page }) => {
-  await page.getByRole("button", { name: "Show files panel" }).click();
+  await page.getByRole("button", { name: "Show file list" }).click();
   const filter = page.getByRole("button", { name: "File filters" });
   await expect(filter).toBeVisible();
   // Default: no active badge.
@@ -91,7 +91,7 @@ test("file filter dropdown filters by type with counts and an active state", asy
   await expect(menu).toBeVisible();
   // Five categories plus Reviewed, each a checkable row with a count.
   await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(6);
-  for (const name of ["Source", "Tests", "Docs", "Config", "Generated", "Reviewed"]) {
+  for (const name of ["Code", "Tests", "Docs", "Config", "Generated", "Reviewed"]) {
     await expect(menu.getByRole("menuitemcheckbox", { name: new RegExp(name) })).toBeVisible();
   }
   // Deselect Tests: its files hide and the button shows the active count.
@@ -108,7 +108,7 @@ test("file filter dropdown filters by type with counts and an active state", asy
 });
 
 test("file filter dropdown is keyboard-usable and closes on Escape", async ({ page }) => {
-  await page.getByRole("button", { name: "Show files panel" }).click();
+  await page.getByRole("button", { name: "Show file list" }).click();
   const filter = page.getByRole("button", { name: "File filters" });
   await filter.focus();
   await page.keyboard.press("Enter");
