@@ -28,21 +28,24 @@ export function timeAgoIso(iso: string | null | undefined, now: number = Date.no
   }
 }
 
-export interface ChannelGroups {
-  release: UpdateChannel[];
-  releaseRc: UpdateChannel[];
-  previews: UpdateChannel[];
-}
-
-/** Channels grouped release / release-candidate / previews (each in list order). */
-export function groupChannels(channels: UpdateChannel[]): ChannelGroups {
-  const groups: ChannelGroups = { release: [], releaseRc: [], previews: [] };
-  for (const c of channels) {
-    if (c.kind === "release") groups.release.push(c);
-    else if (c.kind === "release-rc") groups.releaseRc.push(c);
-    else groups.previews.push(c);
-  }
-  return groups;
+/**
+ * Versions newest build first (issue #73): one flat list ordered by
+ * `builtAt` descending. Rows with no (or unparsable) `builtAt` go last,
+ * in their existing order. Stable: equal timestamps keep list order.
+ */
+export function sortVersionsByRecency(channels: UpdateChannel[]): UpdateChannel[] {
+  return [...channels]
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => {
+      const ta = a.c.builtAt ? Date.parse(a.c.builtAt) : NaN;
+      const tb = b.c.builtAt ? Date.parse(b.c.builtAt) : NaN;
+      const fa = Number.isFinite(ta);
+      const fb = Number.isFinite(tb);
+      if (fa && fb && ta !== tb) return (tb as number) - (ta as number);
+      if (fa !== fb) return fa ? -1 : 1;
+      return a.i - b.i;
+    })
+    .map(({ c }) => c);
 }
 
 /**
