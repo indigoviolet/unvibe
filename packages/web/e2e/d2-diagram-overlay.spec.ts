@@ -171,3 +171,114 @@ test("theme switch while expanded swaps the render", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.locator(DIALOG)).toBeHidden();
 });
+
+/**
+ * Fit-to-view (#47 follow-up): after open and after Reset, the whole
+ * diagram — including citation badges that draw outside the SVG viewBox —
+ * lies inside the overlay's usable area with (near-)equal margins, and
+ * the scale never exceeds 100%. Wide (1379) and small (340) diagrams at
+ * desktop and small viewports.
+ */
+interface FitBox {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+async function overlayFit(page: Page): Promise<{ content: FitBox; box: FitBox; zoomPct: number }> {
+  return page.evaluate(() => {
+    const view = document.querySelector(".dg-ov-view") as HTMLElement;
+    const svg = document.querySelector(".dg-ov-doc .dg-svg > svg") as SVGSVGElement;
+    const cs = getComputedStyle(view);
+    const padL = Number.parseFloat(cs.paddingLeft);
+    const padR = Number.parseFloat(cs.paddingRight);
+    const padT = Number.parseFloat(cs.paddingTop);
+    const padB = Number.parseFloat(cs.paddingBottom);
+    const v = view.getBoundingClientRect();
+    const content: FitBox = {
+      left: v.left + view.clientLeft + padL,
+      top: v.top + view.clientTop + padT,
+      right: v.left + view.clientLeft + view.clientWidth - padR,
+      bottom: v.top + view.clientTop + view.clientHeight - padB,
+    };
+    // Union the svg box with the badge overflow (appendix icons paint
+    // outside the svg element box even with overflow: visible).
+    const r = svg.getBoundingClientRect();
+    let l = r.left;
+    let t = r.top;
+    let rr = r.right;
+    let b = r.bottom;
+    for (const g of svg.querySelectorAll("g.appendix-icon")) {
+      const gr = (g as SVGGraphicsElement).getBoundingClientRect();
+      l = Math.min(l, gr.left);
+      t = Math.min(t, gr.top);
+      rr = Math.max(rr, gr.right);
+      b = Math.max(b, gr.bottom);
+    }
+    const zoomText = document.querySelector(".dg-ov-zoom")?.textContent ?? "0%";
+    return { content, box: { left: l, top: t, right: rr, bottom: b }, zoomPct: Number.parseInt(zoomText, 10) };
+  });
+}
+
+function expectFitted(fit: { content: FitBox; box: FitBox; zoomPct: number }): void {
+  const { content, box, zoomPct } = fit;
+  expect(zoomPct).toBeLessThanOrEqual(100);
+  expect(box.left).toBeGreaterThanOrEqual(content.left - 0.5);
+  expect(box.right).toBeLessThanOrEqual(content.right + 0.5);
+  expect(box.top).toBeGreaterThanOrEqual(content.top - 0.5);
+  expect(box.bottom).toBeLessThanOrEqual(content.bottom + 0.5);
+  const marginL = box.left - content.left;
+  const marginR = content.right - box.right;
+  const marginT = box.top - content.top;
+  const marginB = content.bottom - box.bottom;
+  expect(Math.abs(marginL - marginR)).toBeLessThanOrEqual(2);
+  expect(Math.abs(marginT - marginB)).toBeLessThanOrEqual(2);
+}
+
+/** Poll-friendly fitted check (assertion failures become retries). */
+async function isFitted(page: Page): Promise<boolean> {
+  try {
+    expectFitted(await overlayFit(page));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+for (const viewport of [
+  { width: 1440, height: 1000 },
+  { width: 800, height: 700 },
+]) {
+  for (const target of [
+    { block: "#B-b1", name: "wide diagram" },
+    { block: "#B-b-mock-d2-edge", name: "small diagram" },
+  ]) {
+    test(`fit centers the whole ${target.name} at ${viewport.width}x${viewport.height}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await gotoReview(page);
+      await page.locator(`#C-g-flow ${target.block} .dg-expand`).click();
+      await expect(page.locator(DIALOG)).toBeVisible();
+      await expect(page.locator(`${DIALOG} .dg-ov-doc .dg-svg > svg`)).toBeVisible({
+        timeout: 15000,
+      });
+      // Fit settles asynchronously once the SVG adopts: poll the end state.
+      await expect.poll(() => isFitted(page), { timeout: 10000 }).toBe(true);
+      // Zoom + pan away, then Reset returns to the same fitted state.
+      await page.locator(`${DIALOG} button[aria-label="Zoom in"]`).click();
+      const view = page.locator(`${DIALOG} .dg-ov-view`);
+      const viewBox = await view.boundingBox();
+      if (!viewBox) throw new Error("overlay viewport has no box");
+      await page.mouse.move(viewBox.x + 200, viewBox.y + 200);
+      await page.mouse.down();
+      await page.mouse.move(viewBox.x + 320, viewBox.y + 260, { steps: 8 });
+      await page.mouse.up();
+      await page.locator(`${DIALOG} button[aria-label="Reset view"]`).click();
+      await expect.poll(() => isFitted(page), { timeout: 10000 }).toBe(true);
+      await page.keyboard.press("Escape");
+      await expect(page.locator(DIALOG)).toBeHidden();
+    });
+  }
+}
