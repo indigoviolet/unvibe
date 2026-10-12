@@ -76,6 +76,12 @@ export async function registerDiagnostics(
   ctx: ServiceContext,
   deps: RouteDeps = {},
 ): Promise<void> {
+  // Test seam (issue #40): the tool `--version` probes run through the
+  // app's injectable command runner, and tests may also stub the
+  // login-shell PATH probe via `deps.diagnostics`. Production passes
+  // neither (real runner, real shells), so runtime behaviour is unchanged.
+  const probeOverride =
+    deps.diagnostics?.pathProbe !== undefined ? { pathProbe: deps.diagnostics.pathProbe } : {};
   app.get("/api/diagnostics", async () => {
     const ident = serviceIdentity();
     // Prefer the real dataDir/port from ctx when present (tests inject temp dirs).
@@ -83,6 +89,8 @@ export async function registerDiagnostics(
     const dataDir = typeof ctxAny.dataDir === "string" && ctxAny.dataDir ? ctxAny.dataDir : ident.dataDir;
     const models = await modelsForDiagnostics({ ...ctx, ...deps } as RouteDeps);
     const report: DiagnosticsResponse = await collectDiagnostics({
+      runner: ctx.runner,
+      ...probeOverride,
       service: {
         pid: ident.pid,
         startedAt: ident.startedAt,
@@ -104,6 +112,8 @@ export async function registerDiagnostics(
 
   app.post("/api/reload", async () => {
     const before = await collectDiagnostics({
+      runner: ctx.runner,
+      ...probeOverride,
       service: { ...serviceIdentity(), dataDir: (ctx as unknown as { dataDir?: string }).dataDir ?? serviceIdentity().dataDir },
     });
     const changes: string[] = [];
@@ -178,6 +188,8 @@ export async function registerDiagnostics(
     }
 
     const after = await collectDiagnostics({
+      runner: ctx.runner,
+      ...probeOverride,
       service: { ...serviceIdentity(), dataDir: (ctx as unknown as { dataDir?: string }).dataDir ?? serviceIdentity().dataDir },
       ...(await modelsForDiagnostics({ ...ctx, ...deps } as RouteDeps).then((m) => (m ? { models: m } : {}))),
     });
