@@ -316,6 +316,11 @@ needed (that deviation is closed, not added).
 
 - Ask… (agent + citations) / Note (no reply) — met (`actions/ask.ts`,
   `note.ts`, `comments-service.spec.ts` “create a note … survives reload”).
+- Ask thread replies never show follow-up suggestions (issue #103) — met:
+  the ask prompt no longer asks for them and `replyHtml` drops any
+  `follow-up` block (plus a leftover heading or card title) on both the
+  initial fill and reply turns, while cards and Explain expansions keep
+  their chips (`actions-ask-followups.test.ts`).
 - Thread header (quote/`file:line`, Mark for PR filled when on, Delete,
   Close) — met (`comments/threads.test.ts`, walk screenshot shows
   “Agent · suggested comment” threads with Reply/Discard).
