@@ -71,10 +71,24 @@ export function blockedJobLine(job: import("@unvibe/shared").UpdateBlockedJob): 
 /** One-line identity for the running build ("on 0.0.1" / "on 0.0.1-preview… (feat/x · abc1234)"). */
 export function buildLine(build: UpdateBuildInfo | null | undefined, fallbackVersion: string): string {
   if (!build) return `on ${fallbackVersion}`;
+  const merged = mergedProvenance(build);
+  if (merged) return `on ${build.version} (${merged})`;
   const branch = build.sourceBranch ? ` (${build.sourceBranch}` : "";
   const sha = build.sourceBranch && build.commit ? ` · ${shortCommit(build.commit)}` : "";
   const tail = branch ? `${branch}${sha})` : "";
   return `on ${build.version}${tail}`;
+}
+
+/**
+ * Both sides of a merged preview (issue #41) as "main@abc1234 +
+ * feat/x@def5678"; null for releases, branch-as-is previews, and older
+ * builds without the fields.
+ */
+export function mergedProvenance(
+  b: Pick<UpdateBuildInfo, "sourceBranch" | "sourceCommit" | "baseBranch" | "baseCommit"> | null | undefined,
+): string | null {
+  if (!b?.baseBranch || !b?.baseCommit || !b?.sourceBranch || !b?.sourceCommit) return null;
+  return `${b.baseBranch}@${b.baseCommit.slice(0, 7)} + ${b.sourceBranch}@${b.sourceCommit.slice(0, 7)}`;
 }
 
 /** One-line summary of the last helper outcome. */
