@@ -86,7 +86,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       installed: false,
       authenticated: false,
       apiReachable: false,
-      detail: "gh probe timed out",
+      detail: "the gh check timed out",
     }),
   ]);
 
@@ -112,8 +112,8 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
           id: `agent:${role}`,
           label: `Agent · ${role}`,
           status: "warning" as const,
-          summary: "Agent probe timed out",
-          fix: "Re-check; ensure the provider CLI is logged in.",
+          summary: "The check timed out",
+          fix: "Re-check, and make sure the provider's CLI is logged in.",
           settingsAnchor: "#models",
         },
       ),
@@ -126,7 +126,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       id: "d2",
       label: "Diagrams · d2",
       status: "warning" as const,
-      summary: "Diagrams need d2 (probe timed out)",
+      summary: "Diagrams need d2 (the check timed out)",
       fix: "Re-check; ensure d2 is on your login-shell PATH. Reviews still work without it.",
       settingsAnchor: "#environment",
     },
