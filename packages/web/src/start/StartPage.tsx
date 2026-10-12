@@ -36,9 +36,11 @@
  *   list (a checkout that went away, or repos failing to load) are not
  *   dropped: they render in a labelled group at the end of Reviews with
  *   working open and Remove.
- * - With no repos at all, a short empty state links to Settings
- *   (`/settings#repositories`), where repos are added; the demo row still
- *   shows. Repos are never added here.
+ * - With no repos at all, a short empty state offers both routes in:
+ *   paste a PR URL below and Unvibe clones the repo and opens it, or add
+ *   a repo in `/settings#repositories` (the demo row still shows). The PR
+ *   opener also renders whenever no repo is selected. Repos are never
+ *   added via a path here.
  * - Readiness callouts fill in after render (never block page load); each
  *   links to the relevant Settings section. The agent/gh hints sit next to
  *   the lists they concern (`newreview-agent-hint` by Reviews,
@@ -475,6 +477,65 @@ export function StartPage(): React.JSX.Element {
     }
   }, [prOffer, cloningPr, openReview, selectRepo]);
 
+  // "Open a PR by URL or number", shared by every branch below that can
+  // open one: the selected repo's lists, the no-selection hint, and the
+  // no-repos state (a fresh install pastes a PR URL here and Unvibe clones
+  // it — the main case for the clone offer). Bare numbers still need a
+  // selected repo; PR URLs and `owner/name#N` offer to clone when unknown.
+  const renderPrOpener = (): React.JSX.Element => (
+    <>
+      <div className="divider">Open a PR by URL or number</div>
+      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        <input
+          type="text"
+          aria-label="Open a PR by URL or number"
+          placeholder="PR number (5020) or owner/repo pull URL"
+          value={prInput}
+          onChange={(e) => {
+            setPrInput(e.target.value);
+            setPrError(null);
+            setPrOffer(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") openPrInput();
+          }}
+          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+        />
+        <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
+          Open PR
+        </button>
+      </div>
+      {prError ? (
+        <p className="hint" role="alert">
+          {prError}
+        </p>
+      ) : null}
+      {prOffer && !cloningPr ? (
+        <div className="ci" data-testid="pr-clone-offer">
+          <div style={{ minWidth: 0 }}>
+            <span className="hint">
+              {prOffer.owner}/{prOffer.name} isn&apos;t in your list. Clone it and open #
+              {prOffer.pr}?
+            </span>
+          </div>
+          <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+            <button className="btn" type="button" onClick={() => void cloneAndOpenPr()}>
+              Clone and open #{prOffer.pr}
+            </button>
+            <button className="btn ghost" type="button" onClick={() => setPrOffer(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {cloningPr ? (
+        <p className="hint" data-testid="pr-cloning">
+          Cloning {cloningPr}…
+        </p>
+      ) : null}
+    </>
+  );
+
   // The demo pseudo-repo is never selectable; detected checkouts group
   // separately so they read as auto-found rather than remembered.
   const remembered = repos.filter((r) => !r.detected && r.id !== "demo");
@@ -694,66 +755,25 @@ export function StartPage(): React.JSX.Element {
                     page — or <Link to="/settings#repositories">manage repos in Settings</Link>.
                   </p>
                 ) : (
-                  <p className="hint">
-                    No repos yet. <Link to="/settings#repositories">Add one in Settings</Link> to
-                    browse its PRs and branches.
-                  </p>
+                  <>
+                    <p className="hint">
+                      No repos yet. Paste a PR URL below and Unvibe will clone the repo and open
+                      it — or <Link to="/settings#repositories">add one in Settings</Link> to
+                      browse its PRs and branches.
+                    </p>
+                    {renderPrOpener()}
+                  </>
                 )}
               </div>
             ) : null
           ) : !selectedId ? (
-            <p className="hint">Pick a repo above to browse its PRs and branches.</p>
+            <>
+              <p className="hint">Pick a repo above to browse its PRs and branches, or open a PR below.</p>
+              {renderPrOpener()}
+            </>
           ) : (
             <>
-              <div className="divider">Open a PR by URL or number</div>
-              <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                <input
-                  type="text"
-                  aria-label="Open a PR by URL or number"
-                  placeholder="PR number (5020) or owner/repo pull URL"
-                  value={prInput}
-                  onChange={(e) => {
-                    setPrInput(e.target.value);
-                    setPrError(null);
-                    setPrOffer(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") openPrInput();
-                  }}
-                  style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
-                />
-                <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
-                  Open PR
-                </button>
-              </div>
-              {prError ? (
-                <p className="hint" role="alert">
-                  {prError}
-                </p>
-              ) : null}
-              {prOffer && !cloningPr ? (
-                <div className="ci" data-testid="pr-clone-offer">
-                  <div style={{ minWidth: 0 }}>
-                    <span className="hint">
-                      {prOffer.owner}/{prOffer.name} isn&apos;t in your list. Clone it and open #
-                      {prOffer.pr}?
-                    </span>
-                  </div>
-                  <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-                    <button className="btn" type="button" onClick={() => void cloneAndOpenPr()}>
-                      Clone and open #{prOffer.pr}
-                    </button>
-                    <button className="btn ghost" type="button" onClick={() => setPrOffer(null)}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {cloningPr ? (
-                <p className="hint" data-testid="pr-cloning">
-                  Cloning {cloningPr}…
-                </p>
-              ) : null}
+              {renderPrOpener()}
               {ghProblem ? (
                 <p className="hint" data-testid="newreview-gh-hint">
                   PR lists need gh ({ghProblem.summary}). You can still open a local branch below or a

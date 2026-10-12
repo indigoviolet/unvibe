@@ -92,7 +92,15 @@ function readJson<T>(key: string, fallback: T): T {
 
 function getRepos(): Repo[] {
   const added = readJson<Repo[]>(ADDED_KEY, []);
-  return [...added, ...SEED_REPOS];
+  // Fresh-install state for specs (`unvibe.mock.noRepos`): seeds hidden,
+  // repos added during the test still listed.
+  let seeds = SEED_REPOS;
+  try {
+    if (localStorage.getItem("unvibe.mock.noRepos")) seeds = [];
+  } catch {
+    // Ignore.
+  }
+  return [...added, ...seeds];
 }
 
 // --- review snapshot -----------------------------------------------------

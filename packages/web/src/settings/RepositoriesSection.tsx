@@ -13,7 +13,11 @@
  * - Managed clones ("Cloned by Unvibe") are Unvibe's own checkouts:
  *   Remove deletes the clone directory. Path checkouts are only
  *   forgotten — the folder is untouched. Remove is refused (409) while
- *   the repo has reviews, and the service's message surfaces as is.
+ *   the repo has reviews, and refused/failed removes stay visible as an
+ *   inline error on that repo's row (not just a transient toast), until
+ *   the user keeps the repo or retries. A failed clone likewise shows
+ *   the service's message inline under the URL row, since it names the
+ *   fix (e.g. `gh auth login`).
  */
 import { useCallback, useEffect, useState } from "react";
 import type { Repo } from "@unvibe/shared";
@@ -34,6 +38,10 @@ export function RepositoriesSection(): React.JSX.Element {
   const [cloningName, setCloningName] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  // Inline errors that must outlive a toast: a refused/failed remove stays
+  // on its repo's row; a failed clone stays under the URL row.
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -86,6 +94,7 @@ export function RepositoriesSection(): React.JSX.Element {
     // with the control disabled until it settles.
     if (addingUrl) return;
     setUrlHint(null);
+    setUrlError(null);
     setAddingUrl(true);
     setCloningName(`${ref.owner}/${ref.name}`);
     try {
@@ -93,7 +102,7 @@ export function RepositoriesSection(): React.JSX.Element {
       setRepos(r.repos.filter((x) => x.id !== "demo"));
       setUrl("");
     } catch (err) {
-      toast(`Couldn't clone that repo: ${friendlyError(err)}`);
+      setUrlError(`Couldn't clone that repo: ${friendlyError(err)}`);
     } finally {
       setAddingUrl(false);
       setCloningName(null);
@@ -102,12 +111,15 @@ export function RepositoriesSection(): React.JSX.Element {
 
   const remove = useCallback(async (repo: Repo) => {
     setRemoving(repo.id);
+    setRemoveError(null);
     try {
       await api.removeRepo(repo.id);
       setRepos((prev) => (prev ? prev.filter((r) => r.id !== repo.id) : prev));
       setConfirmRemove(null);
     } catch (err) {
-      toast(`Couldn't remove ${repo.owner}/${repo.name}: ${friendlyError(err)}`);
+      // Stay on the confirm row with the reason inline: the user either
+      // retries or keeps the repo.
+      setRemoveError(`Couldn't remove ${repo.owner}/${repo.name}: ${friendlyError(err)}`);
     } finally {
       setRemoving(null);
     }
@@ -152,6 +164,11 @@ export function RepositoriesSection(): React.JSX.Element {
                           ? `Delete the clone at ${r.localPath} from this machine?`
                           : `Forget this repo? ${r.localPath} stays untouched on disk.`}
                       </span>
+                      {removeError && confirmRemove === r.id ? (
+                        <span className="err" role="alert">
+                          {removeError}
+                        </span>
+                      ) : null}
                       <button
                         className="btn"
                         type="button"
@@ -164,7 +181,10 @@ export function RepositoriesSection(): React.JSX.Element {
                         className="btn ghost"
                         type="button"
                         disabled={removing === r.id}
-                        onClick={() => setConfirmRemove(null)}
+                        onClick={() => {
+                          setConfirmRemove(null);
+                          setRemoveError(null);
+                        }}
                       >
                         Keep
                       </button>
@@ -175,7 +195,10 @@ export function RepositoriesSection(): React.JSX.Element {
                       type="button"
                       aria-label={`Remove ${r.owner}/${r.name}`}
                       disabled={removing !== null}
-                      onClick={() => setConfirmRemove(r.id)}
+                      onClick={() => {
+                        setConfirmRemove(r.id);
+                        setRemoveError(null);
+                      }}
                       title={
                         r.managed
                           ? "Remove this repo and delete its clone directory"
@@ -231,6 +254,7 @@ export function RepositoriesSection(): React.JSX.Element {
           onChange={(e) => {
             setUrl(e.target.value);
             setUrlHint(null);
+            setUrlError(null);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") void addByUrl();
@@ -244,6 +268,11 @@ export function RepositoriesSection(): React.JSX.Element {
       {urlHint ? (
         <p className="hint" role="status">
           {urlHint}
+        </p>
+      ) : null}
+      {urlError ? (
+        <p className="err" role="alert">
+          {urlError}
         </p>
       ) : null}
     </section>
