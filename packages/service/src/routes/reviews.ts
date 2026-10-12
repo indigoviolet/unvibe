@@ -17,6 +17,7 @@ import type { FastifyInstance } from "fastify";
 import type {
   CreateReviewRequest,
   RefreshResponse,
+  ResetDataResponse,
   ResumeReviewResponse,
   ReviewSnapshot,
   UpdateReviewResponse,
@@ -45,7 +46,14 @@ import { demoFixtureName, fixturesDirDefault, ingestDemo, isDemoRequest } from "
 import { refreshManagedCheckout } from "../repos/index.js";
 import { dispatchAction } from "../pipeline/actions/dispatcher.js";
 import type { Pipeline } from "../pipeline/index.js";
-import { deleteReviewLocal, listReviewSummaries, touchReviewOpened } from "../reviews/index.js";
+import {
+  deleteAllReviewRows,
+  deleteReviewLocal,
+  listReviewIds,
+  listReviewSummaries,
+  touchReviewOpened,
+} from "../reviews/index.js";
+import { hasAnySubmitLease } from "../update/index.js";
 import { isNoneRunner } from "../agent/factory.js";
 
 export interface ReviewsRouteDeps {
@@ -91,8 +99,7 @@ export async function registerReviews(
   // Front screen "Remove": archive/delete the review's local data only.
   // Never touches GitHub or the user's checkout; removes the managed
   // worktree. Confirm in the UI before calling.
-  app.delete("/api/reviews/:id", async (req, reply) => {
-    const { id } = req.params as { id: string };
+  const removeReview = async (id: string): Promise<boolean> => {
     const jobs = (deps as { jobs?: { listByReview: (id: string) => { id: string; state: string }[]; cancel: (id: string) => void } }).jobs;
     const result = await deleteReviewLocal({
       db: ctx.db,
@@ -118,7 +125,7 @@ export async function registerReviews(
           }
         : {}),
     }, id);
-    if (!result.deleted) return reply.code(404).send({ error: "unknown review" });
+    if (!result.deleted) return false;
     // Close the review's agent sessions (base + conversations) so a review
     // added again for the same change starts from new ones.
     try {
@@ -133,7 +140,29 @@ export async function registerReviews(
     } catch {
       // Best effort: secrets are process-local and die on restart anyway.
     }
+    return true;
+  };
+
+  app.delete("/api/reviews/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await removeReview(id))) return reply.code(404).send({ error: "unknown review" });
     return { ok: true };
+  });
+
+  // Settings → Data "Reset data": Remove for every review, then empty the
+  // review tables. Settings and repos stay. Refused while a Submit is in
+  // flight, so a half-posted review is never forgotten.
+  app.post("/api/reset", async (_req, reply) => {
+    if (hasAnySubmitLease(ctx.db)) {
+      return reply.code(409).send({ error: "A review is being submitted. Try again when it has finished." });
+    }
+    let reviewsRemoved = 0;
+    for (const id of listReviewIds(ctx.db)) {
+      if (await removeReview(id)) reviewsRemoved += 1;
+    }
+    deleteAllReviewRows(ctx.db);
+    const body: ResetDataResponse = { ok: true, reviewsRemoved };
+    return body;
   });
 
   app.post("/api/reviews", async (req, reply) => {

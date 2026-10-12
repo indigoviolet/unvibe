@@ -17,6 +17,7 @@ import { Link, useLocation } from "react-router-dom";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { TabPanel, Tabs, tabIdFromHash, useQueryTab } from "../tabs/Tabs.js";
+import { DataSection } from "./DataSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
@@ -34,6 +35,7 @@ const SETTING_TABS = [
   { id: "prompts", label: "Prompts" },
   { id: "limits", label: "Limits and budgets" },
   { id: "version", label: "Version" },
+  { id: "data", label: "Data" },
 ] as const;
 
 const SETTING_TAB_IDS: readonly string[] = SETTING_TABS.map((t) => t.id);
@@ -131,6 +133,9 @@ export function SettingsPage(): React.JSX.Element {
               </TabPanel>
               <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
                 <VersionSection settings={settings} onSaved={setSettings} />
+              </TabPanel>
+              <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
+                <DataSection />
               </TabPanel>
             </>
           ) : null}

@@ -227,6 +227,62 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
     }
   });
 
+  it("POST /api/reset removes every review, keeps settings and repos, never calls gh", async () => {
+    const dir = await makeRepo();
+    const calls: string[] = [];
+    const runner = {
+      run: async (cmd: string, opts: Parameters<RealCommandRunner["run"]>[1]) => {
+        calls.push(`${cmd} ${opts.args.join(" ")}`);
+        return real.run(cmd, opts);
+      },
+    };
+    const { app, ctx } = await createApp("tok", { runner, autoPipeline: false });
+    try {
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, branch: "feature" },
+      });
+      const id = (created.json() as ReviewSnapshot).review.id;
+      const wt = path.join(ctx.dataDir, "worktrees", id);
+      expect(fs.existsSync(wt)).toBe(true);
+      const settingsBefore = (await app.inject({ method: "GET", url: "/api/settings", headers: authed })).json();
+
+      // Refused while a review is being submitted.
+      ctx.db
+        .prepare("INSERT INTO submit_leases (review_id, started_at, commit_id) VALUES (?, ?, 'abc')")
+        .run(id, Date.now());
+      const busy = await app.inject({ method: "POST", url: "/api/reset", headers: authed });
+      expect(busy.statusCode).toBe(409);
+      expect(fs.existsSync(wt)).toBe(true);
+      ctx.db.prepare("DELETE FROM submit_leases").run();
+
+      calls.length = 0;
+      const reset = await app.inject({ method: "POST", url: "/api/reset", headers: authed });
+      expect(reset.statusCode).toBe(200);
+      expect(reset.json()).toEqual({ ok: true, reviewsRemoved: 1 });
+      expect(fs.existsSync(wt)).toBe(false);
+      expect(calls.some((c) => c.startsWith("gh "))).toBe(false);
+      expect(fs.existsSync(path.join(dir, "a.py"))).toBe(true);
+
+      const list = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
+      expect((list.json() as ReviewsListResponse).reviews).toEqual([]);
+      expect(ctx.db.prepare("SELECT COUNT(*) AS n FROM review_snapshots").get()).toEqual({ n: 0 });
+      const repos = await app.inject({ method: "GET", url: "/api/repos", headers: authed });
+      expect((repos.json() as { repos: { id: string }[] }).repos.some((r) => r.id === repoId)).toBe(true);
+      const settingsAfter = (await app.inject({ method: "GET", url: "/api/settings", headers: authed })).json();
+      expect(settingsAfter).toEqual(settingsBefore);
+
+      const anon = await app.inject({ method: "POST", url: "/api/reset" });
+      expect(anon.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("DELETE is gated by the token", async () => {
     const { app } = await createApp("tok", { runner: real, autoPipeline: false });
     try {

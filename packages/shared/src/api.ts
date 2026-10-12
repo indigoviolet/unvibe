@@ -85,6 +85,16 @@ export interface RemoveRepoResponse {
 }
 
 /**
+ * `POST /api/reset` (#79): every review and everything generated for it is
+ * removed from this machine. Settings and repos stay. Refused (409) while a
+ * review is being submitted.
+ */
+export interface ResetDataResponse {
+  ok: true;
+  reviewsRemoved: number;
+}
+
+/**
  * `POST /api/repos/pick-folder` (#26): ask the service to open a native
  * "choose folder" dialog on the user's own machine and report what
  * happened. No request body. A browser folder picker cannot supply an

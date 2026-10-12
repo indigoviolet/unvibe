@@ -31,6 +31,7 @@ import type {
   ReadinessResponse,
   RefreshResponse,
   RemoveRepoResponse,
+  ResetDataResponse,
   Repo,
   RepoChange,
   RepoChangesResponse,
@@ -1438,6 +1439,13 @@ export const mockApi = {
     if (i < 0) throw new Error(`DELETE /api/reviews/${id}: 404 {"error":"unknown review"}`);
     mockReviewList.splice(i, 1);
     return { ok: true };
+  },
+
+  resetData: async (): Promise<ResetDataResponse> => {
+    await wait(50);
+    const reviewsRemoved = mockReviewList.length;
+    mockReviewList.length = 0;
+    return { ok: true, reviewsRemoved };
   },
 
   readiness: async (): Promise<ReadinessResponse> => {

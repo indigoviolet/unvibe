@@ -46,6 +46,41 @@ function tableExists(db: DatabaseSync, name: string): boolean {
   }
 }
 
+/** Ids of every stored review, including ones that only have a snapshot row. */
+export function listReviewIds(db: DatabaseSync): string[] {
+  const ids = new Set<string>();
+  for (const [table, column] of [
+    ["reviews", "id"],
+    ["review_snapshots", "review_id"],
+  ] as const) {
+    if (!tableExists(db, table)) continue;
+    try {
+      for (const r of db.prepare(`SELECT ${column} AS id FROM ${table}`).all() as { id: string }[]) ids.add(r.id);
+    } catch {
+      // Ignore: an older test DB without the column.
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Reset data (Settings → Data): empty every review table, so rows that a
+ * per-review delete missed go too. Settings and repos are other tables and
+ * are not touched.
+ */
+export function deleteAllReviewRows(db: DatabaseSync): void {
+  transaction(db, () => {
+    for (const table of [...REVIEW_TABLES, "reviews"]) {
+      if (!tableExists(db, table)) continue;
+      try {
+        db.prepare(`DELETE FROM ${table}`).run();
+      } catch {
+        // Ignore per-table.
+      }
+    }
+  });
+}
+
 export async function deleteReviewLocal(
   deps: DeleteReviewDeps,
   reviewId: string,
