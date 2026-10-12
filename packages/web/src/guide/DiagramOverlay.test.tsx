@@ -12,7 +12,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { DiagramBlock } from "@unvibe/shared";
 import { clearD2SvgCache } from "./D2Diagram.js";
 import { DiagramView } from "./DiagramView.js";
-import { zoomAround, fitView, IDENTITY_VIEW } from "./DiagramOverlay.js";
+import { zoomAround, fitContentBox, IDENTITY_VIEW } from "./DiagramOverlay.js";
 import { naturalSize } from "./d2sanitize.js";
 
 // jsdom has no matchMedia: pretend the OS prefers light.
@@ -104,25 +104,43 @@ describe("zoomAround", () => {
   });
 });
 
-describe("fitView", () => {
-  it("fits the whole diagram centered, clamping to the limits", () => {
-    // Wide diagram: width-bound, centered vertically.
-    expect(fitView(1200, 600, 1379, 251)).toEqual({
-      s: 1200 / 1379,
-      x: 0,
-      y: (600 - 251 * (1200 / 1379)) / 2,
-    });
-    // Small diagram: upscales to fill, centered both ways.
-    expect(fitView(1200, 600, 340, 150)).toEqual({ s: 1200 / 340, x: 0, y: (600 - 150 * (1200 / 340)) / 2 });
-    // Clamp: never beyond the zoom limits.
-    expect(fitView(10000, 10000, 10, 10)?.s).toBe(8);
-    expect(fitView(10, 10, 10000, 10000)?.s).toBe(0.25);
-    // Degenerate boxes (e.g. jsdom zero rects): no fit, caller keeps identity.
-    expect(fitView(0, 600, 100, 100)).toBeNull();
-    expect(fitView(600, 600, 0, 100)).toBeNull();
+describe("fitContentBox", () => {
+  it("centers the measured box with equal margins, capped at 1×", () => {
+    // Wide content with a badge overflowing the top (negative boxY): the
+    // box — not the viewBox — is what gets centered.
+    const fit = fitContentBox(1392, 911, -21, -16, 1400, 271);
+    expect(fit).not.toBeNull();
+    const s = 1392 / 1400;
+    expect(fit!.s).toBeCloseTo(s, 10);
+    // Margins are symmetric by construction: left = right, top = bottom.
+    const left = s * -21 + fit!.x;
+    const right = 1392 - (s * (-21 + 1400) + fit!.x);
+    expect(left).toBeCloseTo(right, 10);
+    const top = s * -16 + fit!.y;
+    const bottom = 911 - (s * (-16 + 271) + fit!.y);
+    expect(top).toBeCloseTo(bottom, 10);
+    expect(left).toBeGreaterThanOrEqual(0);
+    expect(top).toBeGreaterThanOrEqual(0);
   });
 
-  it("naturalSize reads the viewBox", () => {
+  it("never upscales: small content centers at natural size", () => {
+    expect(fitContentBox(1392, 911, 0, 0, 340, 150)).toEqual({
+      s: 1,
+      x: (1392 - 340) / 2,
+      y: (911 - 150) / 2,
+    });
+  });
+
+  it("clamps to the zoom limits and rejects degenerate boxes", () => {
+    expect(fitContentBox(10000, 10000, 0, 0, 10, 10)?.s).toBe(1);
+    expect(fitContentBox(10, 10, 0, 0, 10000, 10000)?.s).toBe(0.25);
+    expect(fitContentBox(0, 600, 0, 0, 100, 100)).toBeNull();
+    expect(fitContentBox(600, 600, 0, 0, 0, 100)).toBeNull();
+  });
+});
+
+describe("naturalSize", () => {
+  it("reads the viewBox", () => {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 1379 251");
     expect(naturalSize(svg)).toEqual({ w: 1379, h: 251 });

@@ -401,7 +401,10 @@ mark.anc.on { outline: 2px solid var(--note); }
 .dg-ov-view { flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; padding: 24px; }
 .dg-ov-view.panning { cursor: grabbing; }
 .dg-ov-doc { transform-origin: 0 0; width: max-content; }
-.dg-ov-doc .dg-svg > svg { min-width: 0; }
+/* The SVG viewport clips by default; D2 draws link badges and the padded
+   canvas outside its own viewBox, and the fit is measured from that full
+   rendered content — so the overlay lets it all paint. */
+.dg-ov-doc .dg-svg > svg { min-width: 0; overflow: visible; }
 .dg-cap { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
 .dg-box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
 .dg-box.ok { stroke: var(--accent); } .dg-box.bad { stroke: var(--warn); }
