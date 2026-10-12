@@ -203,7 +203,6 @@ UI); nothing below was edited by this pass.
 Conformance note: this matches PRD §4.2 ("For the selected repo: …")
 more closely than the previous all-repos Reviews list did — no PRD edit
 needed (that deviation is closed, not added).
->>>>>>> main
 
 ### §4.3 Pages — all met
 
@@ -618,6 +617,37 @@ needed (that deviation is closed, not added).
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
+- Preview builds, step 1 (issue #36) — implemented, not a PRD requirement:
+  `mise run preview:publish [-- <branch>] [--push]` builds a branch into a
+  local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
+  guard, `unvibe` provenance field in the generated package.json);
+  `unvibe update --list` / `unvibe update <channel> [--keep-data]`
+  lists channels via `gh` (GITHUB_TOKEN unset) — per-ref version, source
+  commit/branch and build time read without cloning
+  (`.../contents/package.json?ref=…`), typed as `UpdateChannel`
+  (mirrors the step-2 shared type; owned by that branch) — and installs
+  `github:indigoviolet/unvibe#<channel>` with per-channel database copies
+  under `channel-backups/` (never deleted; service must be stopped; no
+  restart logic — refusal points at `unvibe stop`). Same-channel updates
+  compare installed vs published commits (no-op with the commit, else
+  reinstall in place with no database swap); `--list` flags a newer build
+  on the installed row. A new preview never inherits another preview's
+  database (seeds from the release copy, `release-rc` fallback, else the
+  switch stops before installing unless `--keep-data`). Pre-field
+  installs map to their real channel from the version (source checkouts
+  stay unknown). The install is pinned to this binary's npm prefix and
+  verified at its package path — a landing elsewhere fails naming the
+  path and `npm prefix -g`, swapping nothing. Plain modules are exactly
+  `src/update/{channels,install,data-backup}.ts`, composed for the CLI in
+  `src/cli/update-flows.ts`. Only database files are per-channel; the
+  rest of the data dir is shared, and leftover review folders are inert
+  (DB-driven listing, random review ids, self-healing worktrees — see
+  DEVELOPMENT.md).
+  Evidence: `test/preview-publish.test.ts` (12), `test/update.test.ts`
+  (49), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
+  still green. Note: the live database file is `unvibe.db`
+  (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
+  and is corrected there — the backup covers both names when present.
 
 ### §14.1 Endpoints — all met (ran)
 
@@ -776,6 +806,62 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
     (managed only), and only while it has no reviews.
 
 ## Open list
+
+### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
+
+In-app switching between `release`, `release-rc` and `preview/*` builds,
+merged with step 1: one shared switch core (`update/switch.ts`) serves
+the `unvibe update` CLI and the in-app `RealUpdater` (step-1 flow logic
+moved, CLI keeps its output; step-1's 49 `update.test.ts` tests pass
+unchanged via wrappers). One `UpdateChannel` type (shared); build
+identity from the installed package.json (`readInstalledBuild`, no
+second stamp); `dist/update-helper.js` shipped in the release tree and
+asserted by `global-install-check` + a metafile containment test (node
+builtins only). Contract first in `packages/shared/src/api.ts`
+(`UpdateChannel`, `UpdateBuildInfo` on health + status,
+channels/switch/status shapes, `unchanged`). `GET /api/update/status`
+always works; channels + switch are gated off by default
+(`versionPickerEnabled`) with 404, refused with 409 while jobs run / a
+submit is in flight / a switch is pending / not running from an
+installed build, and sit behind the same token + loopback Host/Origin
+gates as every other route. `from` is the locally installed channel
+(never "unknown"); same channel + same commit is 200 `unchanged`, a
+moved commit reinstalls with an Update action on the current row (from
+=== to, no DB swap; rollback is one reinstall + health, then `failed`
+with the recovery command — never loops). Switch = commit + detached
+self-contained helper (copied to the data dir so the npm swap cannot
+pull it) + restart on the same port; the helper stops its own previous
+generation (verified exited, lock released) before the rollback install
+and waits for the install target / rollback source versions
+respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
+log path, `failed` carries the `npm install -g ...#release` recovery) is
+surfaced by status. Web: Settings → Version (toggle, grouped channels,
+refresh, inline-confirm switch, restart wait with reload, rollback
+reason, update-available, installed-only notice, unchanged note) plus a
+quiet preview pill in the review/Settings/Start headers; the mock API
+covers the whole flow incl. simulated switch + rollback.
+ Evidence: `test/update-helper.test.ts` (success, install/unhealthy
+ rollback, failed rollback, stuck service, generation stop order,
+ expected-version waits, stale-sample guard),
+ `test/update-updater.test.ts` (fake semantics + injection, real backend
+ selection/rejection, state files, build identity, lease check),
+ `test/update-routes.test.ts` (gate, busy/lease/pending/installed
+ refusals, same-channel unchanged/update, auth/host, commit path with
+ entry-path identification), `test/update-helper-bundle.test.ts`
+ (metafile containment), `versionFormat.test.ts` (+ newer-available),
+ `e2e/update-picker.spec.ts` (4/4 mock-mode green, full `test:e2e` 113
+ green). Real-install drill (no pushes): two local preview trees via
+ `release.mjs` into a bare repo (HEAD set — npm dereferences it), install
+ A into a temp prefix, run it, switch to B through the real helper +
+ real npm (health flipped, slots `preview-drill-a` + `release` written),
+ then a lying channels file forced a real-npm rollback to B
+ (rolled-back + reason, lock held by the final generation). Privacy
+ (§16) unchanged: the service itself still contacts nothing but loopback;
+ listing shells out through `gh` under the user's login (opt-in gate,
+ concurrent per-ref fetch); the new static-guard entries are the
+ helper's loopback health probe, the `npm` literal, and the bundle shape.
+ Open: helper restart on macOS still needs the human pass in
+ `docs/macos-testing.md` (see #6).
 
 ### Fixed on this branch: managed clones (#27, complete)
 

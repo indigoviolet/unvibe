@@ -162,6 +162,11 @@ describe("static network guards", () => {
         reason: "loopback health probe (http.get to 127.0.0.1 /api/health only)",
       },
       {
+        file: "update/helper-entry.ts",
+        patterns: [/node:http/],
+        reason: "switch helper's loopback health probe (http.get to 127.0.0.1 /api/health only, same as cli/lock.ts)",
+      },
+      {
         file: "mcp/registry.ts",
         patterns: [/node:http/],
         reason: "MCP server handler types only (listens via Fastify on 127.0.0.1; no client)",

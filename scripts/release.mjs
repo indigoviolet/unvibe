@@ -6,10 +6,17 @@
 // release branch at exactly that tree (one commit, no history).
 //
 // The version comes from package.json, or from the tag when set
-// (--version / UNVIBE_RELEASE_VERSION / GITHUB_REF_NAME like v0.0.1-rc.1).
+// (--version / UNVIBE_RELEASE_VERSION / GITHUB_REF_NAME like v0.0.1-rc.1),
+// or from `scripts/preview-publish.mjs` for preview builds
+// (`<base>-preview.<slug>.<shortsha>` with `--branch preview/<slug>`).
 // The branch is --branch / UNVIBE_RELEASE_BRANCH, defaulting to release-rc
 // for -rc versions and release for finals, so candidates never overwrite
 // the `release` ref users install from.
+//
+// The generated package.json carries an `unvibe` field recording what the
+// tree is (channel, source branch, full commit sha, build time), so
+// `unvibe update --list` (and later the in-app picker) can show it without
+// a second mechanism.
 //
 // The release package needs no build step and no lifecycle scripts on the
 // user's machine: no `prepare`, no `postinstall`, no devDependencies, no
@@ -77,10 +84,11 @@ function flagValue(name) {
 }
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  console.log(`usage: node scripts/release.mjs [--version <semver>] [--branch <name>] [--print-notices]
-  --version  override the release version (default: package.json; in CI, the tag via GITHUB_REF_NAME)
-  --branch   local branch to point at the release tree (default: release-rc for -rc versions, else release)
-  env: UNVIBE_RELEASE_VERSION, UNVIBE_RELEASE_BRANCH, GITHUB_REF_NAME (tag like v0.0.1-rc.1)`);
+  console.log(`usage: node scripts/release.mjs [--version <semver>] [--branch <name>] [--source-branch <name>] [--print-notices]
+  --version         override the release version (default: package.json; in CI, the tag via GITHUB_REF_NAME)
+  --branch          local branch to point at the release tree (default: release-rc for -rc versions, else release)
+  --source-branch   source branch the tree was built from (preview builds; recorded in package.json, null otherwise)
+  env: UNVIBE_RELEASE_VERSION, UNVIBE_RELEASE_BRANCH, UNVIBE_RELEASE_SOURCE_BRANCH, GITHUB_REF_NAME (tag like v0.0.1-rc.1)`);
   process.exit(0);
 }
 
@@ -119,6 +127,11 @@ if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
   process.exit(1);
 }
 const releaseBranch = resolveBranch(version);
+// Source branch for preview builds (recorded in the generated package.json;
+// null for tag-built release/release-rc, which run detached).
+const sourceBranch = flagValue("--source-branch") ?? process.env.UNVIBE_RELEASE_SOURCE_BRANCH ?? null;
+const commitFull = sh("git", ["rev-parse", "HEAD"], ROOT);
+const builtAt = new Date().toISOString();
 console.log(`release: unvibe ${version} (source package.json ${srcPkg.version}, branch ${releaseBranch})`);
 
 // 1. Required build output must exist (`mise run release` builds first).
@@ -158,6 +171,10 @@ if (existsSync(path.join(ROOT, "packages/service/dist/index.js.map"))) {
 }
 copy("packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/claude.js");
 copy("packages/service/dist/adapters/codex.js", "packages/service/dist/adapters/codex.js");
+// Self-contained switch-helper bundle for the in-app version picker
+// (issue #36): the service copies it to the data dir and spawns the copy,
+// so the global npm swap cannot pull it out from under the helper.
+copy("packages/service/dist/update-helper.js", "packages/service/dist/update-helper.js");
 copy("packages/web/dist", "packages/web/dist");
 copy("prompts", "prompts");
 copy("fixtures/urllib3-5020", "fixtures/urllib3-5020");
@@ -209,6 +226,16 @@ const releasePkg = {
   bin: { unvibe: "./packages/service/dist/index.js" },
   dependencies: deps,
   engines: { node: ">=24" },
+  // Provenance for `unvibe update --list` (and the later in-app picker):
+  // which channel this tree is, what commit built it, and when. Additive
+  // metadata only — install behaviour is unchanged.
+  unvibe: {
+    channel: releaseBranch,
+    commit: commitFull,
+    builtAt,
+    sourceBranch,
+    sourceVersion: srcPkg.version,
+  },
 };
 writeFileSync(path.join(RELEASE, "package.json"), JSON.stringify(releasePkg, null, 2) + "\n");
 console.log(`release: dependencies: ${Object.entries(deps).map(([k, v]) => `${k}@${v}`).join(", ")}`);
@@ -289,8 +316,12 @@ function commitTree() {
     process.exit(tree.status ?? 1);
   }
   const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" });
+  const short = (head.stdout ?? "").trim().slice(0, 12);
+  const day = new Date().toISOString().slice(0, 10);
   const msg =
-    `unvibe release ${version} (source ${(head.stdout ?? "").trim().slice(0, 12)} ${new Date().toISOString().slice(0, 10)})\n` +
+    (sourceBranch
+      ? `unvibe preview ${version} from ${sourceBranch} (source ${short} ${day})\n`
+      : `unvibe release ${version} (source ${short} ${day})\n`) +
     `\nSelf-contained install tree: no prepare/postinstall, no devDependencies. ` +
     `Install with \`npm install -g github:<org>/unvibe#${releaseBranch}\`.`;
   const commit = spawnSync("git", [...releaseIdentityArgs(), "commit-tree", (tree.stdout ?? "").trim(), "-m", msg], {

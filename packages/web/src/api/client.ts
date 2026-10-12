@@ -43,10 +43,14 @@ import type {
   SubmitReviewRequest,
   SubmitReviewResponse,
   SummarizeHunkResponse,
+  UpdateChannelsResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
   UpdateHunkRequest,
   UpdateReviewResponse,
+  UpdateStatusResponse,
+  UpdateSwitchRequest,
+  UpdateSwitchResponse,
   ViewerResponse,
 } from "@unvibe/shared";
 // Static import keeps mock timing deterministic in dev; the mock modules are
@@ -275,6 +279,12 @@ const realApi = {
     get(`/api/models?provider=${encodeURIComponent(provider)}`),
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
+
+  updateStatus: (): Promise<UpdateStatusResponse> => get("/api/update/status"),
+  updateChannels: (refresh?: boolean): Promise<UpdateChannelsResponse> =>
+    get(`/api/update/channels${refresh ? "?refresh=1" : ""}`),
+  updateSwitch: (ref: string): Promise<UpdateSwitchResponse> =>
+    post("/api/update/switch", { ref } satisfies UpdateSwitchRequest),
 
   prompts: (reviewId?: string): Promise<PromptsResponse> =>
     get(`/api/prompts${reviewId ? `?review=${encodeURIComponent(reviewId)}` : ""}`),

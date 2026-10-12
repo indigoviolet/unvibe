@@ -41,8 +41,14 @@ import type {
   ReviewsListResponse,
   ReviewSummary,
   Settings,
+  SwitchOutcome,
+  UpdateBuildInfo,
+  UpdateChannel,
   UpdateHunkRequest,
+  UpdatePendingSwitch,
   UpdateReviewResponse,
+  UpdateStatusResponse,
+  UpdateSwitchResponse,
   Version,
   VersionStatus,
 } from "@unvibe/shared";
@@ -468,6 +474,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   rebuildAppendedTokens: 10000,
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
+  versionPickerEnabled: false,
 };
 
 function getMockSettings(): Settings {
@@ -673,6 +680,13 @@ export function resetMockState(): void {
   ];
   mockJobs = seedJobs();
   mockContributions = seedContributions();
+  mockUpdatePending = null;
+  mockUpdateDown = false;
+  try {
+    localStorage.removeItem(UPDATE_KEY);
+  } catch {
+    // Ignore.
+  }
   rev = 1;
 }
 
@@ -1067,8 +1081,97 @@ function buildMockDiagnostics(): import("@unvibe/shared").DiagnosticsResponse {
   };
 }
 
+/**
+ * Version picker (issue #36, step 2) in mock mode: the installed ref and
+ * the last outcome persist in localStorage (so a post-switch page reload
+ * keeps them, like the real helper's data-dir files); the pending switch
+ * and the mid-switch outage are transient module state. The failure mode
+ * comes from localStorage `unvibe.mock.update.fail` (`install` |
+ * `health` | `fatal`), read when the switch starts.
+ */
+const UPDATE_KEY = "unvibe.mock.update";
+const UPDATE_FAIL_KEY = "unvibe.mock.update.fail";
+
+const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
+  { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: false },
+  {
+    ref: "release-rc",
+    kind: "release-rc",
+    version: "0.0.1-rc.1",
+    commit: "abc1234def5678",
+    sourceBranch: null,
+    builtAt: new Date(NOW - 86400_000).toISOString(),
+    current: false,
+  },
+  {
+    ref: "preview/feat-x",
+    kind: "preview",
+    version: "0.0.1-preview.feat-x.abc1234",
+    commit: "abc1234def5678",
+    sourceBranch: "feat/x",
+    builtAt: new Date(NOW - 3600_000).toISOString(),
+    current: false,
+  },
+  {
+    ref: "preview/fix-y",
+    kind: "preview",
+    version: "0.0.1-preview.fix-y.9f8e7d6",
+    commit: "9f8e7d6c5b4a3",
+    sourceBranch: "fix/y",
+    builtAt: new Date(NOW - 7200_000).toISOString(),
+    current: false,
+  },
+];
+
+function readUpdatePersisted(): { current: string; outcome: SwitchOutcome | null } {
+  const fallback = { current: "release", outcome: null as SwitchOutcome | null };
+  try {
+    const raw = localStorage.getItem(UPDATE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<typeof fallback>;
+    if (typeof parsed.current !== "string" || !MOCK_UPDATE_CHANNELS.some((c) => c.ref === parsed.current)) {
+      return fallback;
+    }
+    return { current: parsed.current, outcome: parsed.outcome ?? null };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeUpdatePersisted(next: { current: string; outcome: SwitchOutcome | null }): void {
+  try {
+    localStorage.setItem(UPDATE_KEY, JSON.stringify(next));
+  } catch {
+    // Non-fatal.
+  }
+}
+
+let mockUpdatePending: UpdatePendingSwitch | null = null;
+/** True while the mock "service" is down mid-switch (health throws). */
+let mockUpdateDown = false;
+
+function mockUpdateChannels(): UpdateChannel[] {
+  const { current } = readUpdatePersisted();
+  return MOCK_UPDATE_CHANNELS.map((c) => ({ ...c, current: c.ref === current }));
+}
+
+function mockUpdateBuild(): UpdateBuildInfo | null {
+  const { current } = readUpdatePersisted();
+  const found = MOCK_UPDATE_CHANNELS.find((c) => c.ref === current);
+  if (!found?.version) return null;
+  return {
+    version: found.version,
+    sourceBranch: found.sourceBranch,
+    commit: found.commit,
+    builtAt: found.builtAt,
+  };
+}
+
 export const mockApi = {
-  health: async () => ({ ok: true, version: "mock" }),
+  health: async () => {
+    if (mockUpdateDown) throw new Error("mock service restarting");
+    return { ok: true as const, version: "mock", build: mockUpdateBuild() };
+  },
 
   repos: async (): Promise<ReposResponse> => ({ repos: getRepos() }),
 
@@ -2137,6 +2240,91 @@ export const mockApi = {
     );
     emitContributions();
     return { ok: true as const, dismissedId: contributionId };
+  },
+
+  updateStatus: async (): Promise<UpdateStatusResponse> => {
+    await wait(30);
+    return {
+      enabled: getMockSettings().versionPickerEnabled === true,
+      build: mockUpdateBuild(),
+      pending: mockUpdatePending,
+      outcome: readUpdatePersisted().outcome,
+    };
+  },
+
+  updateChannels: async (): Promise<{ channels: UpdateChannel[] }> => {
+    await wait(80);
+    if (getMockSettings().versionPickerEnabled !== true) {
+      throw new Error('GET /api/update/channels: 404 {"error":"version picker is disabled"}');
+    }
+    return { channels: mockUpdateChannels() };
+  },
+
+  updateSwitch: async (ref: string): Promise<UpdateSwitchResponse> => {
+    await wait(80);
+    if (getMockSettings().versionPickerEnabled !== true) {
+      throw new Error('POST /api/update/switch: 404 {"error":"version picker is disabled"}');
+    }
+    const target = MOCK_UPDATE_CHANNELS.find((c) => c.ref === ref);
+    if (!target) {
+      throw new Error(`POST /api/update/switch: 404 {"error":"unknown update channel \\"${ref}\\""}`);
+    }
+    if (mockUpdatePending) {
+      throw new Error(
+        `POST /api/update/switch: 409 {"error":"a switch to \\"${mockUpdatePending.to}\\" is already in progress"}`,
+      );
+    }
+    const { current: from } = readUpdatePersisted();
+    if (from === ref) {
+      // Same channel, same published commit in mock: nothing to do.
+      return { from, to: ref, unchanged: true };
+    }
+    mockUpdatePending = { from, to: ref, startedAt: new Date().toISOString() };
+    mockUpdateDown = true;
+    const fail = (() => {
+      try {
+        return localStorage.getItem(UPDATE_FAIL_KEY);
+      } catch {
+        return null;
+      }
+    })();
+    window.setTimeout(() => {
+      const at = new Date().toISOString();
+      if (!fail) {
+        writeUpdatePersisted({
+          current: ref,
+          outcome: { status: "ok", from, to: ref, finishedAt: at },
+        });
+      } else if (fail === "fatal") {
+        writeUpdatePersisted({
+          current: from,
+          outcome: {
+            status: "failed",
+            from,
+            to: ref,
+            reason: `Mock install of ${ref} failed and the rollback did not come up (simulated)`,
+            finishedAt: at,
+          },
+        });
+      } else {
+        writeUpdatePersisted({
+          current: from,
+          outcome: {
+            status: "rolled-back",
+            from,
+            to: ref,
+            reason:
+              fail === "install"
+                ? `Mock install of ${ref} failed (simulated); restored ${from}`
+                : `Mock build of ${ref} never reported ${target.version ?? "a version"} (simulated); restored ${from}`,
+            finishedAt: at,
+          },
+        });
+      }
+      mockUpdatePending = null;
+      mockUpdateDown = false;
+    }, 900);
+    return { from, to: ref };
   },
 
   diagnostics: async () => {

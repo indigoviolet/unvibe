@@ -58,6 +58,7 @@ import type {
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Toast, toast } from "../floating/Toast.js";
+import { PreviewBuildBadge } from "../shell/PreviewBuildBadge.js";
 
 const REPO_KEY = "unvibe.start.repoId";
 
@@ -604,6 +605,7 @@ export function StartPage(): React.JSX.Element {
               Ready · gh + agents ok
             </span>
           ) : null}
+          <PreviewBuildBadge />
         </div>
         <Link className="tbtn" to="/settings">
           Settings

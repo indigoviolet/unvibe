@@ -28,6 +28,9 @@ export const CLI_USAGE = [
   "  open                   start if needed, open the app URL in a browser",
   "  token                  print the app URL with the per-install token",
   "  doctor [--strict]      check node, git, gh, agents, PATH, data dir, port (exit 1 on problems with --strict)",
+  "  update --list          list install channels (release, release-rc, preview/*)",
+  "  update <channel>       install github:indigoviolet/unvibe#<channel> globally",
+  "                         [--keep-data keeps the live DB instead of restoring]",
   "",
   "Env: UNVIBE_PORT (default 4517), UNVIBE_DATA_DIR (default",
   "     ~/.local/share/unvibe), UNVIBE_IDLE_MS (default 600000, <=0 disables).",
@@ -238,6 +241,46 @@ async function cmdDoctorCmd(args: string[]): Promise<number> {
   return 0;
 }
 
+async function cmdUpdate(args: string[]): Promise<number> {
+  const { UPDATE_USAGE, runUpdateChannelFlow, runUpdateListFlow } = await import("./update-flows.js");
+  const { RealCommandRunner } = await import("../exec/runner.js");
+  const { SERVICE_VERSION } = await import("../server.js");
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(UPDATE_USAGE);
+    return 0;
+  }
+  const config = loadConfig();
+  const deps = {
+    runner: new RealCommandRunner(),
+    dataDir: config.dataDir,
+    cliScriptPath: process.argv[1],
+    serviceVersion: SERVICE_VERSION,
+  };
+  if (args.includes("--list")) {
+    const outcome = await runUpdateListFlow(deps);
+    for (const line of outcome.lines) console.log(line);
+    return outcome.code;
+  }
+  const channel = args.find((a) => !a.startsWith("-"));
+  if (!channel) {
+    console.error(`missing channel.\n\n${UPDATE_USAGE}`);
+    return 2;
+  }
+  const unknown = args.filter((a) => a.startsWith("-") && a !== "--keep-data");
+  if (unknown.length > 0) {
+    console.error(`unknown flag: ${unknown.join(" ")}\n\n${UPDATE_USAGE}`);
+    return 2;
+  }
+  const outcome = await runUpdateChannelFlow(deps, channel, {
+    keepData: args.includes("--keep-data"),
+  });
+  for (const line of outcome.lines) {
+    if (outcome.code === 0) console.log(line);
+    else console.error(line);
+  }
+  return outcome.code;
+}
+
 function openBrowser(url: string): Promise<void> {
   return new Promise((resolve) => {
     const platform = os.platform();
@@ -273,6 +316,8 @@ export async function runCli(argv: string[]): Promise<number> {
       return cmdToken();
     case "doctor":
       return cmdDoctorCmd(rest);
+    case "update":
+      return cmdUpdate(rest);
     case "--version":
     case "-v":
     case "version": {

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { ReviewSummary } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
+import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
 import { SubmitPanel } from "./SubmitPanel.js";
 import { TipsButton } from "./Tips.js";
 
@@ -58,6 +59,7 @@ export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: P
       <div className="pr">
         {num ? <span className="num">{num}</span> : null}
         <b title={title}>{title}</b>
+        <PreviewBuildBadge />
       </div>
       <TipsButton />
       <Link className="tbtn" to={`/review/${encodeURIComponent(reviewId)}/debug`}>
