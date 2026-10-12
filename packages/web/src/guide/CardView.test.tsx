@@ -2,7 +2,8 @@
  * Card immediate feedback (issue #46) against the mock API (`VITE_MOCK=1`):
  * Generate on a pending card and follow-up chips react on click — the
  * request is held open so the immediate state is asserted before it
- * returns.
+ * returns. Plus footnote chips (issue #72): closed expansions render as
+ * hidden chips on the citations line, never as full-width linkstub rows.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -232,5 +233,54 @@ describe("CardView immediate feedback", () => {
     } finally {
       held.restore();
     }
+  });
+
+  test("closed expansions render footnote chips, not linkstub rows (issue #72)", () => {
+    const withPara = card({
+      blocks: [
+        {
+          type: "paragraph",
+          id: "b-p",
+          text: { standard: "The USB stream stays at 48 kHz." },
+          citations: [{ target: "diff:conn:82" }],
+        },
+      ],
+    });
+    const closed: Annotation = {
+      id: "ann_closed",
+      type: "expansion",
+      anchor: {
+        host: { kind: "block", blockId: "c1#b-p" },
+        quotedText: "Draw the Stereo vs mono-mixdown with a very long quote",
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version: 1,
+      },
+      open: false,
+      messages: [],
+      post: false,
+      note: false,
+    } as unknown as Annotation;
+    seedSnapshot([withPara], [], [closed]);
+    render(
+      <CardView
+        reviewId={REVIEW_ID}
+        card={withPara}
+        lookupPage={() => undefined}
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    // No full-width fallback rows.
+    expect(document.querySelector(".linkstub")).toBeNull();
+    // One citations row holding the <> chip plus the footnote chip.
+    const row = document.querySelector(".lo");
+    expect(row).not.toBeNull();
+    expect(row?.querySelector("button.lk[data-refs]")).not.toBeNull();
+    const chip = row?.querySelector("mark.fnote.exl[data-jump='ann_closed']");
+    expect(chip).not.toBeNull();
+    expect(chip?.getAttribute("data-fallback")).toBe("ann_closed");
+    expect(chip?.getAttribute("title")).toMatch(/Stereo/);
   });
 });
