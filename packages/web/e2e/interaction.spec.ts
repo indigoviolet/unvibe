@@ -231,7 +231,7 @@ test("4. corrections show with accept/dismiss; shared-context indicator links to
   // Shared-context indicator links to the per-review debug page.
   const indicator = page.locator("[data-shared-indicator]").first();
   await expect(indicator).toContainText("Debug → Shared context");
-  await expect(indicator.locator("a")).toHaveAttribute("href", "/review/demo/debug");
+  await expect(indicator.locator("a")).toHaveAttribute("href", "/review/demo/debug?tab=context");
 });
 
 test("5. second opinion works on expansions and survives depth", async ({ page }) => {
