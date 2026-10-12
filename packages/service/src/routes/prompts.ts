@@ -590,7 +590,7 @@ export async function registerPrompts(
     const body: PromptsResponse = { templates };
     if (query.review !== undefined) {
       if (!deps.snapshots) {
-        return reply.code(501).send({ error: "review expansion not wired: no snapshot provider" });
+        return reply.code(501).send({ error: "not available in this build" });
       }
       let snapshot: PromptReviewSnapshot | null;
       try {

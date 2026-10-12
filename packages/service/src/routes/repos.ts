@@ -122,7 +122,7 @@ export async function registerRepos(
       ok = false;
     }
     if (!ok) {
-      return reply.code(400).send({ error: `not a git checkout: ${localPath}` });
+      return reply.code(400).send({ error: `not a git repo: ${localPath}` });
     }
     const identity = await deriveIdentity(ctx.runner, localPath);
     const existing = ctx.repos.getByPath(localPath);
