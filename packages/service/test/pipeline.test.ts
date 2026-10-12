@@ -3,16 +3,26 @@
  * failure paths with scripted fakes, and the runInFork/runSmall seam.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AddressInfo } from "node:net";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AgentEvent, Job, ReviewSnapshot } from "@unvibe/shared";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { AgentEvent, Job, Review, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
+import { FakeCommandRunner } from "../src/exec/index.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
+import { buildBasePack } from "../src/context/index.js";
+import { writeReviewRows } from "../src/ingest/index.js";
+import { toPromptSnapshot } from "../src/routes/prompts.js";
+import type { IssuedSession } from "../src/mcp/index.js";
 import { createApp } from "../src/server.js";
 import { createSnapshotLookup, validateReply } from "../src/validate/index.js";
 import { collectTargets } from "@unvibe/shared";
+import { descriptionFor, HEAD_SHA, repoRow, sourceFile, versionRow } from "./m6-helpers.js";
 
 const fixturesDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -509,4 +519,137 @@ describe("pipeline failure paths (scripted fakes)", () => {
       await app.close();
     }
   });
+});
+
+describe("reader pinned code (#37)", () => {
+  it(
+    "a pin through the MCP pin tool persists excerpt text and L1b shows it",
+    async () => {
+      const fileBody = "x = 1\ny = 2\nz = 3\nw = 4\n";
+      const commands = new FakeCommandRunner();
+      commands.enqueue({
+        cmd: "git",
+        args: ["show", `${HEAD_SHA}:a.py`],
+        stdout: fileBody,
+        stderr: "",
+        code: 0,
+      });
+      const agents = new FakeAgentRunner();
+      const readerReply =
+        "## Problem\n\nBody cites [[diff:a-py:1-2]].\n\n```json\n{}\n```\n";
+      let base = "";
+      let issued: IssuedSession | null = null;
+      let pinIssued = false;
+      const origPrompt = agents.prompt.bind(agents);
+      agents.prompt = async function* (session, text) {
+        // Reader turn (or its citation-repair follow-up): answer with a
+        // minimal valid reply. Mid-turn the agent pins code through MCP,
+        // exactly as a live reader session would.
+        if (text.includes("Reader") || text.startsWith("Some citations")) {
+          if (!pinIssued) {
+            pinIssued = true;
+            const client = new Client({ name: "t", version: "0" });
+            await client.connect(
+              new StreamableHTTPClientTransport(new URL(base + issued!.path)),
+            );
+            try {
+              const res = (await client.callTool({
+                name: "pin_context",
+                arguments: { path: "a.py", lines: "2-3", why: "core lines" },
+              })) as { isError?: boolean };
+              if (res.isError) throw new Error("pin_context was refused");
+            } finally {
+              await client.close();
+            }
+          }
+          yield { type: "text", delta: readerReply };
+          yield { type: "usage", inputTokens: 10, cachedTokens: 0, outputTokens: 5 };
+          yield { type: "done", stopReason: "end_turn" };
+          return;
+        }
+        yield* origPrompt(session, text);
+      };
+
+      const { app, ctx } = await createApp("tok", {
+        runner: commands,
+        agents: agents as unknown as never,
+        autoPipeline: false,
+      });
+      try {
+        // Review rows without ingest (same shape as m6-helpers setupReview).
+        const repo = repoRow();
+        ctx.repos.upsert(repo);
+        const reviewId = "rv_pin37";
+        const version = versionRow();
+        const review: Review = {
+          id: reviewId,
+          repoId: repo.id,
+          branch: "feature",
+          prNumber: 7,
+          versions: [version],
+          currentVersion: 1,
+          createdAt: 1,
+        };
+        const files = [sourceFile()];
+        const description = descriptionFor("First para.\n");
+        writeReviewRows(ctx.db, repo.id, {
+          review,
+          version,
+          files,
+          description,
+          worktreePath: os.tmpdir(),
+        });
+        ctx.reviews.putSnapshot(reviewId, {
+          review,
+          version,
+          files,
+          description,
+          pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
+          annotations: [],
+          hunkStates: [],
+          jobs: [],
+          contributions: [],
+          logTail: [],
+          rev: 1,
+        });
+
+        await app.listen({ host: "127.0.0.1", port: 0 });
+        base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+        issued = ctx.mcp.issueSession(reviewId, "sess-reader", "reader");
+
+        ctx.pipeline.startReview(reviewId);
+        await ctx.jobs.drain(15000).catch(() => {});
+
+        const readerJobs = ctx.jobs.listByReview(reviewId).filter((j) => j.kind === "reader");
+        expect(readerJobs.length).toBeGreaterThan(0);
+        expect(readerJobs[0].state).toBe("done");
+
+        // The persisted pin carries the excerpt text at the version head…
+        const snap = ctx.reviews.getSnapshot(reviewId)!;
+        expect(snap.pinnedCode).toHaveLength(1);
+        expect(snap.pinnedCode![0]).toMatchObject({
+          path: "a.py",
+          start: 2,
+          end: 3,
+          sha: HEAD_SHA,
+          text: "y = 2\nz = 3",
+          language: "python",
+        });
+        // …resolved through the injectable command runner (no real git)…
+        expect(
+          commands.calls.some(
+            (c) => c.cmd === "git" && c.opts.args.join(" ") === `show ${HEAD_SHA}:a.py`,
+          ),
+        ).toBe(true);
+        // …and the base pack built afterwards shows it in L1b.
+        const pack = buildBasePack(toPromptSnapshot(snap), "L0 instructions");
+        expect(pack.l1b).toContain("y = 2\nz = 3");
+        expect(pack.l1b).toContain("```python");
+        expect(pack.l1b).toContain("code:a.py:2-3@");
+      } finally {
+        await app.close();
+      }
+    },
+    30000,
+  );
 });
