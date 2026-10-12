@@ -60,7 +60,10 @@ export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: P
         <b title={title}>{title}</b>
       </div>
       <TipsButton />
-      <Link className="tbtn" to={`/settings?review=${encodeURIComponent(reviewId)}`}>
+      <Link className="tbtn" to={`/review/${encodeURIComponent(reviewId)}/debug`}>
+        Debug
+      </Link>
+      <Link className="tbtn" to="/settings">
         Settings
       </Link>
       <SubmitPanel reviewId={reviewId} />

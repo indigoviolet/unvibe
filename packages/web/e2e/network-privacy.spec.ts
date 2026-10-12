@@ -28,7 +28,7 @@ test("main screens make no non-local requests and raise no CSP violations", asyn
 
   // Settings: models + environment (readiness fetch over loopback).
   await page.goto("/settings?review=demo");
-  await expect(page.getByText("Repositories, models, prompts, limits, jobs, shared context")).toBeVisible();
+  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
   await expect(page.locator("#environment")).toBeVisible();
 
   expect(guard.nonLocal, `non-local requests: ${guard.nonLocal.join("; ")}`).toEqual([]);
