@@ -28,6 +28,7 @@ import {
 import { parseId } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/runner.js";
 import type { McpReviewData, PinRecord, ReviewReader } from "./read.js";
+import { readCodeSlice } from "./read.js";
 import { READER_TOOL, toolsForRole } from "./tools.js";
 
 export const MCP_SERVICE_NAME = "unvibe";
@@ -321,16 +322,14 @@ export class McpRegistry {
     McpRegistry.checkPathInRepo(worktree, relPath);
     const { start, end } = this.parseLines(lines);
     const rev = sha ?? review.headSha;
-    const res = await this.opts.commands.run("git", {
-      args: ["show", `${rev}:${relPath}`],
-      cwd: worktree,
-    });
-    if (res.code !== 0) throw new Error(`git show failed: ${res.stderr.trim() || res.stdout.trim()}`);
-    const all = res.stdout.split("\n");
-    if (end > all.length) throw new Error(`lines ${lines} outside file (${all.length} lines)`);
-    const slice = all.slice(start - 1, end);
+    const slice = await readCodeSlice(this.opts.commands, worktree, rev, relPath, start, end);
+    if ("error" in slice) {
+      if (slice.error === "out-of-range") throw new Error(`lines ${lines} outside file ${relPath}@${rev}`);
+      if (slice.error === "binary") throw new Error(`binary file ${relPath}@${rev} is not shown`);
+      throw new Error(`git show failed for ${rev}:${relPath}`);
+    }
     const id = `code:${relPath}:${start === end ? `${start}` : `${start}-${end}`}@${rev}`;
-    return [id, ...slice.map((line, i) => `${start + i}: ${line}`)].join("\n");
+    return [id, ...slice.text.split("\n").map((line, i) => `${start + i}: ${line}`)].join("\n");
   }
 
   private async searchReview(state: SessionState, query: string): Promise<string> {

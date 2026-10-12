@@ -1,11 +1,13 @@
 export { MCP_ROUTE_PREFIX, registerMcp } from "./routes.js";
 export {
+  type CodeSliceError,
   type McpHunk,
   type McpReviewData,
   type McpAnnotation,
   type McpCard,
   type McpContribution,
   type PinRecord,
+  readCodeSlice,
   type ReviewReader,
 } from "./read.js";
 export {
