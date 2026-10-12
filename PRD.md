@@ -94,7 +94,8 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 ### 4.4 Cards
 Every card and every expansion card has the same controls:
-- **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row, or its first line if it has no title.
+- **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Expansions show the quoted selection as their header instead and get no derived title.
+- **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row.
 - **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles.
   - Changing depth rewrites the card's paragraphs in place.
   - + at the deepest level adds an "Underlying principle" block.
@@ -492,6 +493,8 @@ A new base is built when any of these happens:
 | `second_opinion_blind`, `second_opinion_check` | Second opinion | `{{topic}}` or `{{claim}}`, `{{cited_code}}` |
 
 **Diagrams:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/d2-diagrams.md`). Superseded proposal (kept as history): agents were to write Mermaid, rendered on the page, with citation tokens allowed in node labels; the prototype used hand-drawn SVG.
+
+**Shared instructions:** `instructions` (L0) carries guidance shared by every task: every page card has a short title (§4.4), and replies never repeat what the reader already sees — no echo of the selection, the question, the card title or a diagram's caption. As a backstop the parser drops a leading body line that exactly echoes them (no retry, no repair turn).
 
 ---
 
