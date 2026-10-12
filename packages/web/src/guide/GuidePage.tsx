@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
+import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
@@ -200,13 +201,23 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   return (
     <>
       <VersionSwitcher />
-      <PageView
-        reviewId={reviewId}
-        page={current}
-        lookupPage={lookupPage}
-        onOpenPage={onOpenPage}
-        onJumpToCard={onJumpToCard}
-      />
+      <ErrorBoundary
+        name="guide-page"
+        resetKey={`${reviewId}:${pageKey}`}
+        fallback={({ reset }) => (
+          <div className="doc">
+            <InlineFallback message="Couldn't show the guide: something went wrong" onRetry={reset} />
+          </div>
+        )}
+      >
+        <PageView
+          reviewId={reviewId}
+          page={current}
+          lookupPage={lookupPage}
+          onOpenPage={onOpenPage}
+          onJumpToCard={onJumpToCard}
+        />
+      </ErrorBoundary>
     </>
   );
 }

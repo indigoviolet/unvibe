@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
 import { api } from "../../api/client.js";
+import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
@@ -693,28 +694,40 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
       ) : null}
       {visible.length > 0 ? (
         visible.map((f, vi) => (
-          <FileSection
+          // One boundary per file section: a file that fails to render
+          // shows a file-shaped notice instead of blanking the whole pane.
+          <ErrorBoundary
             key={f.fileKey}
-            file={f}
-            view={prefs.view}
-            reviewed={reviewedCount(f)}
-            folded={!!fileFold[f.fileKey]}
-            eager={vi < 3 || eagerFiles.has(f.fileKey)}
-            busy={busy}
-            editingNote={editingNote}
-            slots={slots}
-            commentedLines={commentedLines ?? new Set()}
-            highlight={highlight?.fileKey === f.fileKey ? { start: highlight.start, end: highlight.end } : null}
-            fileHighlighted={fileHighlight === f.fileKey}
-            briefs={briefs}
-            states={states}
-            isHidden={isHidden}
-            actions={actions}
-            onLineClick={onLineClick}
-            onToggleFileFold={(key) => setFileFold((prev) => ({ ...prev, [key]: !prev[key] }))}
-            onMarkFileReviewed={markFileReviewed}
-            onUnhide={(hashes) => setUnhidden((prev) => ({ ...prev, ...Object.fromEntries(hashes.map((h) => [h, true])) }))}
-          />
+            name="diff-file"
+            resetKey={`${reviewId}:${f.fileKey}`}
+            fallback={({ reset }) => (
+              <div className="dfile">
+                <InlineFallback message="Couldn't show this file: something went wrong" onRetry={reset} />
+              </div>
+            )}
+          >
+            <FileSection
+              file={f}
+              view={prefs.view}
+              reviewed={reviewedCount(f)}
+              folded={!!fileFold[f.fileKey]}
+              eager={vi < 3 || eagerFiles.has(f.fileKey)}
+              busy={busy}
+              editingNote={editingNote}
+              slots={slots}
+              commentedLines={commentedLines ?? new Set()}
+              highlight={highlight?.fileKey === f.fileKey ? { start: highlight.start, end: highlight.end } : null}
+              fileHighlighted={fileHighlight === f.fileKey}
+              briefs={briefs}
+              states={states}
+              isHidden={isHidden}
+              actions={actions}
+              onLineClick={onLineClick}
+              onToggleFileFold={(key) => setFileFold((prev) => ({ ...prev, [key]: !prev[key] }))}
+              onMarkFileReviewed={markFileReviewed}
+              onUnhide={(hashes) => setUnhidden((prev) => ({ ...prev, ...Object.fromEntries(hashes.map((h) => [h, true])) }))}
+            />
+          </ErrorBoundary>
         ))
       ) : (
         <p className="hint" style={{ padding: 16 }}>

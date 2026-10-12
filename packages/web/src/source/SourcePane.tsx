@@ -10,6 +10,7 @@ import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
+import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { performFollowUp } from "../guide/actions.js";
 import { useDiffExpansionBindings } from "../guide/expansions/DiffExpansions.js";
 import { useReview } from "../state/store.js";
@@ -80,16 +81,24 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
           <CommentsMenu reviewId={reviewId} />
         </div>
       </div>
-      {tab === "desc" ? (
-        <DescriptionView reviewId={reviewId} />
-      ) : (
-        <DiffView
-          reviewId={reviewId}
-          lineSlots={lineSlots}
-          commentedLines={commentedLines}
-          onLineClick={diffComments.onLineClick}
-        />
-      )}
+      <ErrorBoundary
+        name="source-pane"
+        resetKey={`${reviewId}:${tab}`}
+        fallback={({ reset }) => (
+          <InlineFallback message="Couldn't show the source pane: something went wrong" onRetry={reset} />
+        )}
+      >
+        {tab === "desc" ? (
+          <DescriptionView reviewId={reviewId} />
+        ) : (
+          <DiffView
+            reviewId={reviewId}
+            lineSlots={lineSlots}
+            commentedLines={commentedLines}
+            onLineClick={diffComments.onLineClick}
+          />
+        )}
+      </ErrorBoundary>
     </>
   );
 }

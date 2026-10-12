@@ -8,6 +8,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Card, Page } from "@unvibe/shared";
+import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { Icon } from "../components/Icon.js";
 import { isLiveJobState, useReview } from "../state/store.js";
 import { performAction, performFollowUp } from "./actions.js";
@@ -102,15 +103,27 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   const renderCard = (card: Card, index: number) => (
     // Fragment (not a div): `.doc.finding > .card` and other child
     // selectors in prototype.css depend on the section being a direct child.
+    // The boundary itself renders no element, and its fallback keeps the
+    // card shape, so the selectors hold in both states.
     <Fragment key={card.id}>
       {index === goDeeperIndex ? <div className="divider">Go deeper</div> : null}
-      <CardView
-        reviewId={reviewId}
-        card={card}
-        lookupPage={lookupPage}
-        onOpenPage={(id) => onOpenPage(id)}
-        onFollowUp={(cardId, blockId, i) => performFollowUp(reviewId, cardId, blockId, i)}
-      />
+      <ErrorBoundary
+        name="guide-card"
+        resetKey={`${reviewId}:${card.id}:${card.revision ?? 0}`}
+        fallback={({ reset }) => (
+          <section className="card">
+            <InlineFallback message="Couldn't show this card: something went wrong" onRetry={reset} />
+          </section>
+        )}
+      >
+        <CardView
+          reviewId={reviewId}
+          card={card}
+          lookupPage={lookupPage}
+          onOpenPage={(id) => onOpenPage(id)}
+          onFollowUp={(cardId, blockId, i) => performFollowUp(reviewId, cardId, blockId, i)}
+        />
+      </ErrorBoundary>
     </Fragment>
   );
 
