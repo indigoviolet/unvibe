@@ -49,6 +49,21 @@ unversioned files are swept on start. Fixture seeds keep the unversioned
 layout; they ship with the code, so re-record them (`mise run
 fixture-snapshot`) whenever the sanitiser keeps more or less.
 
+## Inline diagrams (issue #71)
+
+Only the Add diagram action runs the pipeline above. A fenced `d2`
+block anywhere else (Explain expansions, go-deeper results, asides,
+second-opinion reasoning) is stored with `render.status: "unavailable"`
+and rendered on demand when the web fetches it: from the fixture-seed
+cache, or by compiling then (the binary may have appeared since). Hash
+lookup covers every live `Block[]` list through one shared walker
+(`packages/shared/src/content/blocks.ts`), so a new container is added
+there, not in the route. Undo-stack revisions are excluded (stale, never
+rendered); ask thread replies are excluded (raw `<pre class="d2">`
+source in message HTML, not blocks — shown as static source text). An
+inline diagram that fails to compile resolves to `409` with the error
+and its source shown; the card is unaffected.
+
 ## Defences
 
 The source is agent-written, and the binary will act on it. Observed with d2 0.9.0:

@@ -220,6 +220,21 @@ particular never hide a hunk cited by the guide, a one-line functional
 change, or anything unsure).
 The `anchor.quote` must be a real substring of its host block.
 
+Hunk-pass tolerance (issue #99): hunk jobs run on the small model with an
+empty system prompt, so the `{"hunk": …}` object is also accepted bare
+(unfenced, with or without the Markdown line, trailing prose ignored) —
+`parseHunkReply` in `packages/shared/src/content/hunk.ts` prefers the
+trailing fence via `splitReply` and only then scans the raw text. The
+Markdown-line fallback never stores JSON-looking text (starts with `{` /
+`[` or a fence line); over-long fallback lines cut on a word boundary with
+an ellipsis, model-provided summaries are kept whole, and a reply with no
+usable summary stores none (the hunk keeps its Summarize action). A stored
+summary that looks like JSON is treated as missing on reuse, so the next
+on-demand summarize regenerates or clears it, and the diff pane reads it
+as absent meanwhile (Summarize action instead of the JSON text; the stored
+row itself is untouched). Other reply kinds still
+require the fenced trailer (§10 strictness is unchanged).
+
 ## 10. The trailing JSON block
 
 - It is the **last** fenced block in the reply, tagged `json` (or
