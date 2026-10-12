@@ -30,7 +30,8 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 |---|---|---|
 | `install` | `npm install` across workspaces | — |
 | `op -- <cmd>` | Run `<cmd>` with the 1Password Environment secrets (hidden helper) | `.env`, else runs without secrets |
-| `build` | Build shared → service → web (tracked outputs: each `packages/*/dist` + entry files, so a missing `dist/` rebuilds) | — |
+| `build` | Build shared → service → web, via one task per package (`build:shared`, `build:service`, `build:web`, each with only its own `sources`/`outputs`, so a change under any package's `src` rebuilds that package even when another package's `dist` is newer — issue #64; a missing `dist/` still rebuilds) | — |
+| `build-freshness` | Scripted check for #64 (web change + shared rebuild must not skip; no change must skip; ~30 s, too slow for `check` — run it directly) | `build` |
 | `dev` | Service + Vite dev server together | `build` (auto) |
 | `dev:mock` | Web UI against the in-memory mock API, no service | — |
 | `lint` / `typecheck` / `test` | ESLint / tsc / vitest across workspaces | — |
@@ -44,7 +45,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
 | `check-global-install` | `release`, then install the tarball and the `#release` git ref into temp prefixes (npm 10 and 11, no flags) | npm 10 + 11 |
 | `release` | Self-contained release tree + tarball + local `release` branch; no push | `build` first |
-| `preview:publish [-- <branch>] [--push]` | Publish a branch as an installable `preview/<slug>` ref (builds; pushes only with `--push`) | — |
+| `preview:publish [-- <branch>] [--push] [--as-is] [--all] [--prune]` | Publish branches as installable `preview/<slug>` refs (merged builds by default; pushes only with `--push`) | — |
 | `test:live` | Live adapter tests over real CLIs | `claude`/`codex` logins; small token spend |
 | `test:live:pipeline` | Full pipeline on real agents | Logins; token spend |
 | `test:live:second-opinion` | Second-opinion check with real agents | Logins; small spend |
@@ -240,26 +241,42 @@ Every in-flight branch is publishable as an installable build, so a
 second machine (one that only has the global install) can test it without
 a tagged release.
 
-On the dev box, from the branch's worktree:
+On the dev box, from any checkout (no worktree needed for the target branch):
 
 ```sh
-mise run preview:publish                  # this checkout's branch, no push
-mise run preview:publish -- feat/other    # another branch's worktree (must exist)
+mise run preview:publish                  # this checkout's branch, main merged in, no push
+mise run preview:publish -- feat/other    # another branch, main merged in, no push
 mise run preview:publish -- --push        # also push preview/<slug> (opt-in)
+mise run preview:publish -- --as-is      # build the branch as it stands (old behaviour)
+mise run preview:publish -- --all        # every local branch ahead of main, plus main itself
+mise run preview:publish -- --prune      # list stale preview/* refs (dry run; --push deletes)
 ```
 
 What it does (`scripts/preview-publish.mjs`, pure helpers in
-`scripts/preview-lib.mjs`): resolves the target worktree (`git worktree
-list --porcelain`, fails clearly when the branch has none), refuses a
-dirty tree (so the build always corresponds to a commit), builds there,
-then runs that worktree's own `scripts/release.mjs` with
-`--version <base>-preview.<slug>.<shortsha>` (base = package.json, slug =
-branch made safe for semver + ref segments, e.g.
-`feat/repo-add-by-url` → `feat-repo-add-by-url`) and
+`scripts/preview-lib.mjs`): by default it builds current local `main`
+merged with the branch in a throwaway detached worktree (add at `main`,
+merge the branch, `mise trust` the worktree, install, build, release,
+remove the worktree — also on failure). A merge conflict is reported
+clearly and nothing is published. `--as-is` keeps the old behaviour
+(build the branch exactly as it stands: in its worktree when it has one
+— refusing a dirty tree there — else in this checkout, or in a
+throwaway at the branch when it has no worktree). `--all` publishes
+every local branch with commits not on `main`, plus `main` itself
+(publish artifacts `preview/*`, `release`, `release-rc` are never
+selected); one branch failing does not stop the rest and a summary
+prints at the end (exit nonzero when anything failed). The version is
+`<base>-preview.<slug>.<shortsha>` of the built tree (base =
+package.json, slug = branch made safe for semver + ref segments, e.g.
+`feat/repo-add-by-url` → `feat-repo-add-by-url`) with
 `--branch preview/<slug>`. The generated package.json records an `unvibe`
-field (channel, source branch, full commit sha, build time, source
-version) so the installed side can show what a channel is — no second
-mechanism.
+field (channel, source branch + commit, base branch + commit, built
+tree commit, build time, source version) so the installed side can show
+both sides (`main@<sha> + <branch>@<sha>`) — no second mechanism.
+`--prune` lists `preview/*` refs whose source branch (from each ref's
+own `unvibe` record) is merged into `main` or deleted; with `--push`
+they are deleted locally and on `origin` instead. Only refs under
+`preview/` may ever be deleted (guarded in code); refs with unreadable
+provenance and the base's own preview (`preview/main`) are always kept.
 
 Pushing is opt-in and confined: only `--push` pushes, and only the exact
 refspec `refs/heads/preview/<slug>:refs/heads/preview/<slug>` (guarded in
