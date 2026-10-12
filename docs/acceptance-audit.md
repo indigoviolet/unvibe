@@ -528,6 +528,19 @@ UI); nothing below was edited by this pass.
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
+- Preview builds, step 1 (issue #36) — implemented, not a PRD requirement:
+  `mise run preview:publish [-- <branch>] [--push]` builds a branch into a
+  local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
+  guard, `unvibe` provenance field in the generated package.json);
+  `unvibe update --list` / `unvibe update <channel> [--keep-data]`
+  lists channels via `gh` (GITHUB_TOKEN unset) and installs
+  `github:indigoviolet/unvibe#<channel>` with per-channel database copies
+  under `channel-backups/` (never deleted; service must be stopped).
+  Evidence: `test/preview-publish.test.ts` (12), `test/update.test.ts`
+  (20), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
+  still green. Note: the live database file is `unvibe.db`
+  (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
+  and is corrected there — the backup covers both names when present.
 
 ### §14.1 Endpoints — all met (ran)
 
