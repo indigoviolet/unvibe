@@ -491,7 +491,8 @@ needed (that deviation is closed, not added).
   reader never forked; fan-out after warm — met (`pipeline/runner.ts:790
   ensureBase`, `sessions/manager.ts:315 fanOut`, `docs/pipeline.md`).
 - Append-only log (never UI state; card-scoped depth/examples/diagrams;
-  one-line thread settle; full new cards/out-of-base answers; deletion
+  one-line thread settle; new cards, findings, out-of-base answers and
+  contributions in full, as text, never cut short (issue #77); deletion
   lines); 2k-token batch growth; per-session last-seen + filtered change
   lists — met (`context/log.ts`, `sharedctx/*`, `sharedctx.test.ts`
   batch/change-list cases).
