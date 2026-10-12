@@ -108,3 +108,87 @@ describe("diagnoseTool", () => {
     expect(diag.warnings.join(" ")).toMatch(/missing/);
   });
 });
+
+describe("diagnoseTool shim resolution (issue #105)", () => {
+  const TRUST_ERR = "mise ERROR Config files in /tmp/wt/.mise.toml are not trusted.\nTrust them with `mise trust`.";
+
+  function shimWorld(tool: "claude" | "codex"): {
+    dir: string;
+    shim: string;
+    real: string;
+    miseBin: string;
+    pathValue: string;
+  } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-resolve-diag-"));
+    // Content mentioning mise classifies the candidate as a mise shim.
+    const shim = makeBin(dir, tool, "#!/bin/sh\n# fake mise shim\necho untrusted >&2\nexit 1\n");
+    const real = makeBin(dir, `${tool}-real`, "#!/bin/sh\necho real\n");
+    const miseBin = makeBin(dir, "mise", "#!/bin/sh\nexit 0\n");
+    return { dir, shim, real, miseBin, pathValue: dir };
+  }
+
+  it("chooses the resolved real path when the shim fails from a review copy", async () => {
+    const w = shimWorld("claude");
+    const fake = new FakeCommandRunner();
+    // 1. shim --version from the worktree-shaped dir: trust failure.
+    fake.enqueue({ cmd: w.shim, args: ["--version"], stdout: "", stderr: TRUST_ERR, code: 1 });
+    // 2. `mise which` from the neutral dir: the real path.
+    fake.enqueue({ cmd: w.miseBin, args: ["which", "claude"], stdout: `${w.real}\n`, stderr: "", code: 0 });
+    // 3. real binary --version from the worktree-shaped dir: runs.
+    fake.enqueue({ cmd: w.real, args: ["--version"], stdout: "claude 2.1.296", stderr: "", code: 0 });
+    const spec = TOOL_SPECS.find((s) => s.tool === "claude")!;
+    const diag = await diagnoseTool(spec, {
+      pathValue: w.pathValue,
+      env: {},
+      runner: fake as never,
+      timeoutMs: 3000,
+    });
+    expect(diag.candidates).toHaveLength(1);
+    expect(diag.candidates[0].runs).toBe(false);
+    expect(diag.candidates[0].resolvedPath).toBe(w.real);
+    expect(diag.chosen).toBe(w.real);
+    expect(diag.chosenReason).toContain("resolves to");
+    // The shim probe ran from a worktree-shaped directory, the manager
+    // lookup from the neutral one.
+    expect(fake.calls[0].opts.cwd).not.toBe(os.homedir());
+    expect(fake.calls[1].opts.cwd).toBe(os.homedir());
+    expect(diag.warnings.join(" ")).toContain(w.real);
+  });
+
+  it("reports the trust failure when the manager has no answer", async () => {
+    const w = shimWorld("codex");
+    const fake = new FakeCommandRunner();
+    // Hostile probe fails, but `mise which` finds nothing: the shim is
+    // still chosen (it runs outside review copies) — sessions there fail,
+    // and the trust error is reported here first.
+    fake.enqueue({ cmd: w.shim, args: ["--version"], stdout: "", stderr: TRUST_ERR, code: 1 });
+    fake.enqueue({ cmd: w.miseBin, args: ["which", "codex"], stdout: "", stderr: "nope", code: 1 });
+    const spec = TOOL_SPECS.find((s) => s.tool === "codex")!;
+    const diag = await diagnoseTool(spec, {
+      pathValue: w.pathValue,
+      env: {},
+      runner: fake as never,
+      timeoutMs: 3000,
+    });
+    expect(diag.candidates[0].resolvedPath).toBeUndefined();
+    expect(diag.chosen).toBeNull();
+    expect(diag.chosenReason).toContain("none runs");
+    expect(diag.candidates[0].stderr).toContain("not trusted");
+  });
+
+  it("never resolves explicit overrides", async () => {
+    const w = shimWorld("claude");
+    const fake = new FakeCommandRunner();
+    fake.enqueue({ cmd: w.shim, args: ["--version"], stdout: "claude 2.1.296", stderr: "", code: 0 });
+    const spec = TOOL_SPECS.find((s) => s.tool === "claude")!;
+    const diag = await diagnoseTool(spec, {
+      pathValue: w.pathValue,
+      env: { UNVIBE_CLAUDE_BIN: w.shim },
+      runner: fake as never,
+      timeoutMs: 3000,
+    });
+    expect(diag.chosen).toBe(w.shim);
+    expect(diag.candidates[0].resolvedPath).toBeUndefined();
+    expect(fake.calls.some((c) => c.cmd === w.miseBin)).toBe(false);
+  });
+});
