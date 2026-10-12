@@ -164,18 +164,26 @@ UI); nothing below was edited by this pass.
 - Repos are added in Settings — met (`RepositoriesSection.tsx`:
   remembered repos with owner/name + path, add-by-path input with an
   empty-field hint; `#repositories` anchor; `e2e/settings.spec.ts`
-  "repositories section lists remembered repos and adds by path"). No
-  remove-repo endpoint exists on the service, so no Remove action.
-- Add by GitHub URL (#27, service-complete on this branch; web wiring
-  next) — met at the contract/service level, not yet in the UI:
-  `POST /api/repos` accepts a URL / `owner/name` / PR URL (shared
-  `repos.ts` parsing + table tests), clones blobless into
+  "repositories section lists remembered repos and adds by path").
+  Remove is covered by the #27 bullet below (`DELETE /api/repos/:id` +
+  per-kind confirms in the same section).
+- Add by GitHub URL (#27, complete) — met end to end: `POST /api/repos`
+  accepts a URL / `owner/name` / PR URL / `owner/name#N` (shared `repos.ts`
+  parsing + table tests), clones blobless into
   `<dataDir>/repos/<owner>/<name>` via `gh repo clone`
-  (`GITHUB_TOKEN` unset), remembers the repo marked `managed`, reuses it
-  on repeat adds, and refuses/degrades distinctly (404/403/gh-login/502);
+  (`GITHUB_TOKEN` unset, prompt-free env), remembers the repo marked
+  `managed`, reuses it on repeat adds (lowercase-canonical, one row per
+  spelling), and refuses/degrades distinctly (400/404/403/gh-login/502);
   `DELETE /api/repos/:id` forgets the repo and deletes the clone for
-  managed repos only. The Settings UI + start-page paste-PR flow land
-  later on this branch; see the open list.
+  managed repos only (guarded, refused while reviews exist).
+  UI: Settings → Repositories has a separate add-by-URL row (client-side
+  validation with the same parser, "Cloning owner/name…" busy state,
+  service errors via toast), marks managed clones ("Cloned by Unvibe",
+  "(cloned)" in the start-page selector), and removes with per-kind
+  confirm copy (409 surfaces as is). The start page offers to clone on a
+  pasted PR URL for an unknown repo (confirm selects the repo and opens
+  the PR; cancel keeps the input) and shows the service's `fetchError`
+  note once above the lists.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
@@ -760,17 +768,18 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 
 ## Open list
 
-### In flight on this branch: managed clones (#27, service-done, web deferred)
+### Fixed on this branch: managed clones (#27, complete)
 
-- Service + contract + stubbed tests are green (`shared/test/repos.test.ts`
-  44, `service/test/repos-url.test.ts` 24): add-by-URL, blobless clone,
-  fetch-before-list/ingest/refresh, guarded remove.
-- Web wiring is deliberately deferred until #31 merges (Add-by-path is
-  moving to Settings there; this branch must not touch `StartPage.tsx` or a
-  Repositories section): the start-page URL input and the
-  paste-PR-URL-offers-to-add-then-opens-PR step are still open. The client
-  typing (`addRepo` → `AddRepoResponse`, new `removeRepo`) and the mock
-  mirror are already in place for that step.
+- Service + contract + stubbed tests are green (`shared/test/repos.test.ts`,
+  `service/test/repos-url.test.ts` + `repos-review-fixes.test.ts`): add-by-URL,
+  blobless clone, fetch-before-list/ingest/refresh (15 s bound, prompt-free),
+  guarded remove.
+- Web wiring is done: Settings → Repositories has the add-by-URL row (shared
+  client-side validation, named busy state, toasts), managed marks, and
+  per-kind remove confirms; the start page offers to clone on pasted PR URLs
+  for unknown repos and shows `fetchError` once. Covered by mock-mode
+  Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
+  spec for invalid input and path-checkout remove.
 
 ### Fixed in this branch (done, in `check`)
 
