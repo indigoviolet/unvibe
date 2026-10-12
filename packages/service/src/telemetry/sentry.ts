@@ -10,7 +10,8 @@
 
 /** The slice of `@sentry/node` this module uses (tests inject a fake). */
 export interface SentrySdk {
-  init(options: { dsn: string; environment: string }): unknown;
+  init(options: { dsn: string; environment: string; integrations: { name: string }[] }): unknown;
+  onUnhandledRejectionIntegration(options: { mode: "strict" }): { name: string };
   captureException(err: unknown, hint?: { extra?: Record<string, unknown> }): unknown;
   close(timeoutMs?: number): PromiseLike<boolean>;
 }
@@ -55,7 +56,14 @@ export async function initSentry(
     console.warn("SENTRY_DSN_SERVICE is set but @sentry/node is not installed; error reporting is off");
     return null;
   }
-  sdk.init({ dsn, environment: env.SENTRY_ENVIRONMENT?.trim() || "development" });
+  sdk.init({
+    dsn,
+    environment: env.SENTRY_ENVIRONMENT?.trim() || "development",
+    // The SDK's default ("warn") keeps the process alive after an unhandled
+    // rejection. "strict" reports it and then exits, as Node does without
+    // Sentry, so dev fails the same way an installed service does.
+    integrations: [sdk.onUnhandledRejectionIntegration({ mode: "strict" })],
+  });
   active = {
     capture: (err, extra) => {
       sdk.captureException(err, extra ? { extra } : undefined);

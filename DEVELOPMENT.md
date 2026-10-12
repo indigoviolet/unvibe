@@ -14,7 +14,7 @@ Secrets (Sentry DSNs, Axiom) come from a 1Password Environment, never from files
 
 Errors go to Sentry when the DSNs are in the env, which in practice means under `mise run op`; with no DSN nothing loads and nothing is sent.
 
-- **Service** (`SENTRY_DSN_SERVICE`, `packages/service/src/telemetry/sentry.ts`): uncaught exceptions and unhandled rejections, route faults (5xx, not 4xx replies) and jobs that end in `error`. Applies to `mise run dev` and `mise run start`. Other code reports through `reportError(err, extra)`, a no-op when Sentry is off.
+- **Service** (`SENTRY_DSN_SERVICE`, `packages/service/src/telemetry/sentry.ts`): uncaught exceptions and unhandled rejections (both still end the process, as they do without Sentry), route faults (5xx, not 4xx replies) and jobs that end in `error`. Applies to `mise run dev` and `mise run start`. Other code reports through `reportError(err, extra)`, a no-op when Sentry is off.
 - **Web** (`SENTRY_DSN_REACT`, `packages/web/src/sentry.ts`): uncaught errors and unhandled rejections, in the Vite dev server only (`mise run dev`, `mise run dev:mock`). `vite build` defines the DSN as `""`, so the built app served by the service does not report.
 - `SENTRY_ENVIRONMENT` overrides the service's environment tag (default `development`).
 

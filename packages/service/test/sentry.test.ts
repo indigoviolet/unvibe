@@ -7,7 +7,12 @@ import { createApp } from "../src/server.js";
 import { initSentry, reportError, type SentrySdk } from "../src/telemetry/sentry.js";
 
 function fakeSdk(): SentrySdk & { init: ReturnType<typeof vi.fn>; captureException: ReturnType<typeof vi.fn> } {
-  return { init: vi.fn(), captureException: vi.fn(), close: vi.fn(async () => true) };
+  return {
+    init: vi.fn(),
+    onUnhandledRejectionIntegration: vi.fn((options: { mode: "strict" }) => ({ name: "OnUnhandledRejection", ...options })),
+    captureException: vi.fn(),
+    close: vi.fn(async () => true),
+  };
 }
 
 describe("sentry (dev-only error reporting)", () => {
@@ -35,7 +40,12 @@ describe("sentry (dev-only error reporting)", () => {
   it("inits with the DSN, reports errors, and stops reporting after close", async () => {
     const sdk = fakeSdk();
     const reporter = await initSentry({ SENTRY_DSN_SERVICE: "https://key@sentry.invalid/1" }, async () => sdk);
-    expect(sdk.init).toHaveBeenCalledWith({ dsn: "https://key@sentry.invalid/1", environment: "development" });
+    // Unhandled rejections still end the process (strict), as without Sentry.
+    expect(sdk.init).toHaveBeenCalledWith({
+      dsn: "https://key@sentry.invalid/1",
+      environment: "development",
+      integrations: [{ name: "OnUnhandledRejection", mode: "strict" }],
+    });
     const err = new Error("boom");
     reportError(err, { jobId: "j1" });
     expect(sdk.captureException).toHaveBeenCalledWith(err, { extra: { jobId: "j1" } });
