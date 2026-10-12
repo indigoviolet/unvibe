@@ -315,7 +315,7 @@ export async function listChannels(
 export function formatChannelList(channels: UpdateChannel[], installed: InstalledBuild): string[] {
   const lines = ["Available channels:"];
   for (const c of channels) {
-    let head = `${c.current ? "* " : "  "}${c.ref}${c.current ? ` (installed, ${installed.version})` : c.version ? ` (${c.version})` : " (metadata unavailable)"}`;
+    let head = `${c.current ? "* " : "  "}${c.ref}${c.current ? ` (installed, ${installed.version})` : c.version ? ` (${c.version})` : " (no build details)"}`;
     if (c.current && c.commit && c.commit !== installed.commit) {
       const built = c.builtAt ? `, built ${c.builtAt.slice(0, 10)}` : "";
       head += ` — newer build available (installed ${shortCommit(installed.commit)} vs ${c.commit.slice(0, 7)}${built})`;
@@ -331,6 +331,6 @@ export function formatChannelList(channels: UpdateChannel[], installed: Installe
   if (installed.channel && !channels.some((c) => c.ref === installed.channel)) {
     lines.push(`(installed channel ${installed.channel} is not published on the remote)`);
   }
-  lines.push("switch with: unvibe update <channel>");
+  lines.push("to switch: unvibe update <channel>");
   return lines;
 }

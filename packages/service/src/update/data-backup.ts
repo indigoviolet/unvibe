@@ -112,6 +112,6 @@ export function restoreChannel(dataDir: string, channel: string): BackupResult {
  * behaviour is never surprising.
  */
 export const DB_RULE =
-  "Switching keeps your database and backs it up first to " +
-  "<dataDir>/channel-backups/<channel>/. A newer build may upgrade the database; " +
+  "Switching keeps your data and backs it up first to " +
+  "channel-backups/<channel>/ in the data directory. A newer build may change the data format; " +
   "if an older build then cannot open it, copy the backup back.";

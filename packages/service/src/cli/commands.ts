@@ -17,22 +17,25 @@ import { isHealthOk, isPidAlive, readLock, removeLock, removeOwnLock, waitForHea
 import { installSetup, resolveSetupPaths, uninstallSetup } from "./setup/index.js";
 
 export const CLI_USAGE = [
-  "unvibe — local code-review service (PRD §14)",
+  "unvibe: read and review code changes on your machine",
   "",
   "Usage: unvibe <command>",
   "",
   "  start [--foreground]   start the service (reuses it when already running)",
   "  stop                   stop the running service",
-  "  status                 running or not (exit 1 when stopped)",
-  "  setup [--uninstall]    token + unvibe:// handler (idempotent)",
+  "  status                 show whether the service is running (exit 1 when it is not)",
+  "  setup [--uninstall]    install the unvibe:// link handler that lets the app start the service (safe to run again)",
   "  open                   start if needed, open the app URL in a browser",
-  "  token                  print the app URL with the per-install token",
+  "  token                  print the app URL, including your token",
   "  doctor [--strict]      check node, git, gh, agents, PATH, data dir, port (exit 1 on problems with --strict)",
-  "  update --list          list install channels (release, release-rc, preview/*)",
-  "  update <channel>       install github:indigoviolet/unvibe#<channel> globally",
+  "  update --list          list the channels you can install (release, release-rc, preview/*)",
+  "  update <channel>       install that channel (npm install -g github:indigoviolet/unvibe#<channel>)",
+  "  version                print the installed version",
   "",
-  "Env: UNVIBE_PORT (default 4517), UNVIBE_DATA_DIR (default",
-  "     ~/.local/share/unvibe), UNVIBE_IDLE_MS (default 600000, <=0 disables).",
+  "Environment variables:",
+  "  UNVIBE_PORT       port to listen on (default 4517)",
+  "  UNVIBE_DATA_DIR   where reviews and settings are kept (default ~/.local/share/unvibe)",
+  "  UNVIBE_IDLE_MS    stop the service after this long with no open window (default 600000 = 10 minutes; 0 or less: never)",
 ].join("\n");
 
 export function serviceUrl(port: number, token: string): string {
@@ -71,7 +74,7 @@ async function spawnDetached(): Promise<number> {
     env: process.env,
   });
   child.unref();
-  if (child.pid === undefined) throw new Error("failed to spawn the service process");
+  if (child.pid === undefined) throw new Error("couldn't start the service process");
   writeLock(config.dataDir, { pid: child.pid, port: config.port, startedAt: new Date().toISOString() });
   return child.pid;
 }
@@ -111,12 +114,12 @@ async function cmdStop(): Promise<number> {
   const config = loadConfig();
   const lock = readLock(config.dataDir);
   if (!lock) {
-    console.log("Unvibe is not running.");
+    console.log("not running");
     return 0;
   }
   if (!isPidAlive(lock.pid)) {
     removeLock(config.dataDir);
-    console.log("Unvibe was not running (stale lock removed).");
+    console.log("not running (removed a leftover lock file)");
     return 0;
   }
   try {
@@ -136,7 +139,7 @@ async function cmdStop(): Promise<number> {
     }
   }
   removeOwnLock(config.dataDir, lock.pid);
-  console.log("Stopped.");
+  console.log("stopped");
   return 0;
 }
 
@@ -150,7 +153,7 @@ async function cmdStatus(): Promise<number> {
     );
     return 0;
   }
-  console.log("not running (unvibe start)");
+  console.log("not running (start it with: unvibe start)");
   return 1;
 }
 
@@ -160,7 +163,7 @@ async function cmdSetup(args: string[]): Promise<number> {
   if (uninstall) {
     const steps = await uninstallSetup(resolveSetupPaths());
     for (const s of steps) console.log(s);
-    console.log("setup removed (token and data kept).");
+    console.log("removed the link handler (token and data kept)");
     return 0;
   }
   const token = loadOrCreateToken(config.dataDir);
@@ -168,7 +171,7 @@ async function cmdSetup(args: string[]): Promise<number> {
   const steps = await installSetup(resolveSetupPaths());
   for (const s of steps) console.log(s);
   console.log(`token ready in ${config.dataDir}/token`);
-  console.log("undo: unvibe setup --uninstall");
+  console.log("to undo: unvibe setup --uninstall");
   return 0;
 }
 
@@ -219,16 +222,16 @@ async function cmdDoctorCmd(args: string[]): Promise<number> {
           if (diffs.length === 0) {
             console.log(`\nService (pid ${remote.service.pid}, ${remote.service.startMode}) agrees: same PATH and tool choices.`);
           } else {
-            console.log(`\nService (pid ${remote.service.pid}, ${remote.service.startMode}) differs from doctor:`);
+            console.log(`\nService (pid ${remote.service.pid}, ${remote.service.startMode}) differs from this terminal:`);
             for (const d of diffs) console.log(`  ! ${d}`);
-            console.log("Fix the shell config, then restart the service (or POST /api/reload) and see the Doctor page (/doctor).");
+            console.log("Fix your shell startup files, then restart the service (or use Settings → Environment → Reload environment).");
           }
         } else if (local && !remote) {
-          console.log("\nService is running but did not answer /api/diagnostics; doctor's view above is local only.");
+          console.log("\nThe service is running but did not answer, so the checks above cover this terminal only.");
         }
       }
     } else {
-      console.log("\nNo running service; doctor's view above is local only (start the service to compare).");
+      console.log("\nThe service is not running, so the checks above cover this terminal only. Start it to compare.");
     }
   } catch {
     // Doctor stays informational; comparison failures never break it.
