@@ -194,7 +194,7 @@ test("reviews for checkouts no longer listed stay openable and removable", async
   await page.goto("/");
   await expect(group.locator('[data-testid="session-r-gone"]')).toBeVisible();
   await group.getByRole("button", { name: /Remove/ }).click();
-  await expect(group).toContainText("Remove local data only?");
+  await expect(group).toContainText("Remove this review from Unvibe? Nothing changes on GitHub.");
   await group.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(group.locator('[data-testid="session-r-gone"]')).toHaveCount(0);
   // The other rows are untouched.
@@ -204,7 +204,7 @@ test("reviews for checkouts no longer listed stay openable and removable", async
 test("remove asks to confirm and deletes local data only", async ({ page }) => {
   const old = page.locator('[data-testid="session-r-old"]');
   await old.getByRole("button", { name: /Remove/ }).click();
-  await expect(old).toContainText("Remove local data only?");
+  await expect(old).toContainText("Remove this review from Unvibe? Nothing changes on GitHub.");
   await old.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(page.locator('[data-testid="session-r-old"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
