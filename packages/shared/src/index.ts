@@ -1,4 +1,5 @@
 export * from "./entities.js";
+export * from "./guide.js";
 export * from "./ids.js";
 export * from "./links.js";
 export * from "./api.js";

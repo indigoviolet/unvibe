@@ -65,7 +65,11 @@ export interface ReplyData {
 
 /** One parsed card: a title plus its blocks. */
 export interface ParsedCard {
-  /** Null for untitled cards (collapsed view shows the first line). */
+  /**
+   * Null when the reply carried no title (the prompts require one for
+   * every page card; the UI shows the shared fallback then — issues
+   * #49/#50, `content/titles.ts`).
+   */
   title: string | null;
   blocks: import("../entities.js").Block[];
 }
@@ -77,4 +81,12 @@ export interface ParseOptions {
    * with appended text keeps every earlier ID stable.
    */
   idPrefix?: string;
+  /**
+   * Issue #50: when present (even empty), drop each card's leading body
+   * line when it exactly echoes one of these strings (the selection, the
+   * question, the stored title) or the card's own parsed title, after
+   * normalising case, whitespace, surrounding quotes and trailing
+   * punctuation. Exact match only. Absent = no stripping.
+   */
+  echoCandidates?: string[];
 }

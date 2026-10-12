@@ -170,6 +170,9 @@ export async function runExplainFill(
     // Persistent conversation: the next turn's change list resumes from
     // this turn's cursor (sharedctx wire advances it only on success).
     conversationKey: annotationId,
+    // Issue #50: the app shows the selection in the card header; a body
+    // line that merely repeats it is dropped when the reply is parsed.
+    echoCandidates: [quote],
     replay,
     onJob: (job: Job) => {
       capture.onJob(job);

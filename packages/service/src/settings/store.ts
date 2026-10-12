@@ -9,9 +9,15 @@ import type { ModelPick, Settings } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/db.js";
 
 export const DEFAULT_SETTINGS: Settings = {
-  main: { provider: "claude", model: "claude-sonnet" },
-  small: { provider: "codex", model: "gpt-5.4-mini" },
-  secondOpinion: { provider: "codex", model: "gpt-5.4" },
+  // Static fallback only (issue #88): live defaults from
+  // `resolveEffectiveSettings` win whenever adapter listings are known.
+  // These ids must exist on a fresh install with both providers logged in
+  // so the fallback never warns "not offered"; they surface only when no
+  // listing is known (offline, adapter down) or no allowed family is
+  // offered, where readiness reports them plainly.
+  main: { provider: "claude", model: "claude-opus-5-5" },
+  small: { provider: "claude", model: "claude-haiku-5-5" },
+  secondOpinion: { provider: "codex", model: "gpt-6.1-sol" },
   sessionsPerProvider: 4,
   inlineBudgetTokens: 40_000,
   rebuildSupersededRatio: 0.2,

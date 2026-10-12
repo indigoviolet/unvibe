@@ -270,6 +270,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     runner: agents,
     mcp,
     settings,
+    models,
     commands: runner,
     dataDir,
     promptsDir,
@@ -286,6 +287,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     reviews,
     sessions,
     settings,
+    models,
     store: sharedctxStore,
     runConsolidate: (reviewId, text) => pipeline.runConsolidateTask(reviewId, text),
   });

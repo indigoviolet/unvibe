@@ -35,9 +35,9 @@ card that appears right under the block the text came from.
 
 ## Rules
 
-- Explain the selected text, not the whole card. Quote it back at the top
-  of the card, then answer in two to four paragraphs at the card's current
-  depth.
+- Explain the selected text, not the whole card. Start with the answer
+  in two to four paragraphs at the card's current depth. Do not quote
+  the selection back — the app already shows it in the card header.
 - Every claim about the change gets a citation. If the answer needs code
   beyond the base, fetch it with `get_hunk` or `get_code` first.
 - If the anchor text cannot be matched to its host anymore, say so in one
