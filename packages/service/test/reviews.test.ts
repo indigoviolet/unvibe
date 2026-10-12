@@ -19,8 +19,8 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return res.stdout.trim();
 }
 
-async function makeRepo(): Promise<string> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-rev-"));
+async function makeRepo(parent: string = os.tmpdir()): Promise<string> {
+  const dir = fs.mkdtempSync(path.join(parent, "unvibe-rev-"));
   await git(dir, "init", "-b", "main");
   await git(dir, "config", "user.email", "t@example.com");
   await git(dir, "config", "user.name", "T");
@@ -100,6 +100,47 @@ describe("review routes", () => {
       });
       expect(fetched.statusCode).toBe(200);
       expect((fetched.json() as ReviewSnapshot).rev).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("creates a review from a detected (not yet remembered) checkout and remembers it", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-roots-"));
+    const dir = await makeRepo(root);
+    process.env.UNVIBE_REPO_ROOTS = root;
+    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const listed = await app.inject({ method: "GET", url: "/api/repos", headers: authed });
+      const repos = (listed.json() as { repos: { id: string; localPath: string; detected?: boolean }[] }).repos;
+      const detected = repos.find((r) => r.localPath === dir)!;
+      expect(detected.detected).toBe(true);
+
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId: detected.id, branch: "feature" },
+      });
+      expect(created.statusCode).toBe(201);
+      const snap = created.json() as ReviewSnapshot;
+      expect(snap.review.repoId).toBe(detected.id);
+
+      // Now remembered under the same id (refresh/submit look it up by id).
+      const after = await app.inject({ method: "GET", url: "/api/repos", headers: authed });
+      const again = (after.json() as { repos: { id: string; localPath: string; detected?: boolean }[] }).repos.filter(
+        (r) => r.localPath === dir,
+      );
+      expect(again).toHaveLength(1);
+      expect(again[0].id).toBe(detected.id);
+      expect(again[0].detected).toBeUndefined();
+
+      const refreshed = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${snap.review.id}/refresh`,
+        headers: authed,
+      });
+      expect(refreshed.statusCode).toBe(200);
     } finally {
       await app.close();
     }
