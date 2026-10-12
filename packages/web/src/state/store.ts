@@ -287,7 +287,14 @@ export const useReview = create<ReviewState>()((set, get) => ({
         }
         case "job": {
           if (!s.snapshot) return s;
-          const jobs = s.snapshot.jobs.map((j) => (j.id === event.job.id ? event.job : j));
+          // Upsert: jobs created after the snapshot was fetched (every
+          // user-started action) join the list here, so in-flight entries
+          // can hand over to them and reap when they settle. Without this
+          // the event would drop and the entry would stick until its TTL.
+          const known = s.snapshot.jobs.some((j) => j.id === event.job.id);
+          const jobs = known
+            ? s.snapshot.jobs.map((j) => (j.id === event.job.id ? event.job : j))
+            : [...s.snapshot.jobs, event.job];
           return {
             snapshot: { ...s.snapshot, jobs },
             inflight: reapInflight(jobs, s.inflight, Date.now()),
@@ -303,21 +310,17 @@ export const useReview = create<ReviewState>()((set, get) => ({
       }
     }),
   updateJob: (job) =>
-    set((s) =>
-      s.snapshot
-        ? {
-            snapshot: {
-              ...s.snapshot,
-              jobs: s.snapshot.jobs.map((j) => (j.id === job.id ? job : j)),
-            },
-            inflight: reapInflight(
-              s.snapshot.jobs.map((j) => (j.id === job.id ? job : j)),
-              s.inflight,
-              Date.now(),
-            ),
-          }
-        : s,
-    ),
+    set((s) => {
+      if (!s.snapshot) return s;
+      const known = s.snapshot.jobs.some((j) => j.id === job.id);
+      const jobs = known
+        ? s.snapshot.jobs.map((j) => (j.id === job.id ? job : j))
+        : [...s.snapshot.jobs, job];
+      return {
+        snapshot: { ...s.snapshot, jobs },
+        inflight: reapInflight(jobs, s.inflight, Date.now()),
+      };
+    }),
   beginInflight: (targetId, kind, opts) => {
     const startedAt = Date.now();
     const entry: InFlightAction = {
@@ -345,6 +348,15 @@ export const useReview = create<ReviewState>()((set, get) => ({
     set((s) => {
       const cur = s.inflight[targetId];
       if (!cur) return s;
+      // The job can finish before the response is processed (fast or
+      // replayed fills): attaching to an already-terminal job would stick
+      // until the TTL, so reconcile immediately instead.
+      const job = s.snapshot?.jobs.find((j) => j.id === jobId);
+      if (job && isTerminalJobState(job.state)) {
+        const next = { ...s.inflight };
+        delete next[targetId];
+        return { inflight: next };
+      }
       return { inflight: { ...s.inflight, [targetId]: { ...cur, jobId } } };
     }),
   retargetInflight: (fromId, toId) =>
