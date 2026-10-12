@@ -18,7 +18,7 @@ test("top bar links to the debug page, which shows base, log and contributions",
 
   const log = page.locator('section[aria-label="Log"]');
   await expect(log).toContainText("[1 new-card global]");
-  await expect(log).toContainText("waiting for batch");
+  await expect(log).toContainText("Waiting for batch (1)");
 
   const contribs = page.locator('section[aria-label="Contributions"]');
   await expect(contribs).toContainText("ct-seed-1");

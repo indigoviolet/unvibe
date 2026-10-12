@@ -392,8 +392,9 @@ needed (that deviation is closed, not added).
   Settings: `e2e/debug.spec.ts`, `GET /api/jobs` ran; prompt snapshots now
   served per-job to keep lists small).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
-  not in Settings): base keys + stats + current pack, log with
-  in-base/waiting markers, contributions with thread + delete — met
+  not in Settings): base keys + stats + current pack, log lines
+  verbatim in fenced blocks under in-base/ready/waiting headings (issue
+  #75), contributions with thread + delete — met
   (`shared-context-debug.test.ts`, `routes/shared-context.ts`,
   `e2e/debug.spec.ts`).
 
