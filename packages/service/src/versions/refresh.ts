@@ -27,11 +27,13 @@ import type {
 import { summarizeComparison } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import {
+  baseRefCandidates,
   classifyFile,
   fileKeyForPath,
   hashHunkLines,
   parseUnifiedDiff,
   resolveHead,
+  resolvePrMergeBase,
 } from "../ingest/index.js";
 import { uninterestingReason } from "../ingest/index.js";
 import type { DatabaseSync } from "../store/index.js";
@@ -155,9 +157,16 @@ async function resolveNewBase(
   oldBaseRef: string,
   newHead: string,
 ): Promise<{ baseRef: string; mergeBaseSha: string }> {
-  const candidates = [oldBaseRef, "origin/main", "origin/master", "main", "master"];
+  // #93: the stored base may be a bare branch name whose clone only has
+  // `origin/<base>` (stacked PR) — try the shared origin-first candidates.
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (const c of [...baseRefCandidates(oldBaseRef), "origin/main", "origin/master", "main", "master"]) {
+    if (!c || seen.has(c)) continue;
+    seen.add(c);
+    candidates.push(c);
+  }
   for (const base of candidates) {
-    if (!base) continue;
     const mb = await runGit(runner, ["merge-base", base, newHead], repoPath);
     const sha = mb.ok ? mb.stdout.trim().split("\n")[0] : "";
     if (!sha) continue;
@@ -228,8 +237,14 @@ export async function refreshReview(
   const newBaseRef = row.prNumber !== null && head.baseRef ? head.baseRef : base.baseRef;
   let newBaseSha = base.mergeBaseSha;
   if (row.prNumber !== null && head.baseRef && head.baseRef !== base.baseRef) {
-    const mb = await runGit(deps.runner, ["merge-base", head.baseRef, head.headSha], repoPath);
-    if (mb.ok && mb.stdout.trim()) newBaseSha = mb.stdout.trim().split("\n")[0];
+    // #93: same origin-first merge-base as ingest, through the shared helper.
+    try {
+      const resolved = await resolvePrMergeBase(deps.runner, repoPath, head.baseRef, head.headSha);
+      newBaseSha = resolved.mergeBaseSha;
+    } catch {
+      // Keep the resolveNewBase fallback: refresh still produces a diff
+      // against the best base found above rather than failing the refresh.
+    }
   }
 
   const diff = await runGit(

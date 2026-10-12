@@ -58,9 +58,9 @@ async function runGit(
   runner: CommandRunner,
   args: string[],
   cwd: string,
-): Promise<{ ok: boolean; stdout: string }> {
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   const res = await runner.run("git", { args, cwd });
-  return { ok: res.code === 0, stdout: res.stdout };
+  return { ok: res.code === 0, stdout: res.stdout, stderr: res.stderr };
 }
 
 async function bestEffortFetch(runner: CommandRunner, repoPath: string, ref: string): Promise<void> {
@@ -68,6 +68,106 @@ async function bestEffortFetch(runner: CommandRunner, repoPath: string, ref: str
     await runner.run("git", { args: ["fetch", "origin", ref], cwd: repoPath });
   } catch {
     // No remote / offline / test fixture: ingest proceeds with local refs.
+  }
+}
+
+/**
+ * Ordered merge-base candidates for a base branch name (#93). The managed
+ * clone only has `origin/<base>` for non-default branches (stacked PRs),
+ * so the remote-tracking name comes first; the bare name is the fallback
+ * for remote-less fixtures. Already-qualified `origin/…` names pass
+ * through unchanged. All git/gh access in this module assumes the
+ * `origin` remote (like `defaultBranch` below, `detect.ts`, and the
+ * managed clones): a checkout whose GitHub remote has another name is not
+ * handled — detection itself reads only `origin`.
+ */
+export function baseRefCandidates(baseRefName: string): string[] {
+  if (!baseRefName) return [];
+  if (baseRefName.startsWith("origin/")) return [baseRefName];
+  return [`origin/${baseRefName}`, baseRefName];
+}
+
+/**
+ * Fetch a PR head best-effort (#93): `refs/pull/<n>/head` works for fork
+ * and same-repo PRs alike; the branch name is the fallback for remotes
+ * without pull refs. Remote-less fixtures fail both and proceed locally.
+ */
+async function fetchPrHead(
+  runner: CommandRunner,
+  repoPath: string,
+  pr: number,
+  headRefName: string,
+): Promise<void> {
+  try {
+    const res = await runner.run("git", { args: ["fetch", "origin", `refs/pull/${pr}/head`], cwd: repoPath });
+    if (res.code === 0) return;
+  } catch {
+    // Fall through to the branch name.
+  }
+  if (headRefName) {
+    await bestEffortFetch(runner, repoPath, headRefName);
+  }
+}
+
+/**
+ * Merge-base against `origin/<base>` first, bare `<base>` second (#93).
+ * Shared by the PR path here and `versions/refresh.ts` so stacked-PR
+ * bases (and a local default branch behind `origin`) resolve the same way
+ * in both. Throws a plain message naming what is missing (base ref vs
+ * head commit) plus git's stderr.
+ */
+export async function resolvePrMergeBase(
+  runner: CommandRunner,
+  repoPath: string,
+  baseRefName: string,
+  headSha: string,
+): Promise<{ baseRef: string; mergeBaseSha: string }> {
+  const candidates = baseRefCandidates(baseRefName);
+  let lastDetail = "";
+  for (const base of candidates) {
+    const mb = await runGit(runner, ["merge-base", base, headSha], repoPath);
+    if (mb.ok && mb.stdout.trim()) {
+      return { baseRef: base, mergeBaseSha: mb.stdout.trim().split("\n")[0] };
+    }
+    lastDetail = (mb.stderr.trim() || mb.stdout.trim()).slice(0, 500);
+  }
+  const baseOk = await baseRefExists(runner, repoPath, candidates);
+  if (!baseOk) {
+    const tried = candidates.length > 0 ? ` (tried ${candidates.join(", ")})` : "";
+    throw new Error(
+      `cannot compute merge-base: base ref "${baseRefName}" not found in checkout${tried}${lastDetail ? `: ${lastDetail}` : ""}`,
+    );
+  }
+  const headOk = await headCommitExists(runner, repoPath, headSha);
+  if (!headOk) {
+    throw new Error(
+      `cannot compute merge-base: head commit ${headSha} not in checkout${lastDetail ? `: ${lastDetail}` : ""}`,
+    );
+  }
+  throw new Error(
+    `cannot compute merge-base of ${candidates[0] ?? baseRefName} and ${headSha}${lastDetail ? `: ${lastDetail}` : ""}`,
+  );
+}
+
+async function baseRefExists(runner: CommandRunner, repoPath: string, candidates: string[]): Promise<boolean> {
+  for (const base of candidates) {
+    try {
+      const res = await runner.run("git", { args: ["rev-parse", "--verify", base], cwd: repoPath });
+      if (res.code === 0) return true;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return false;
+}
+
+async function headCommitExists(runner: CommandRunner, repoPath: string, headSha: string): Promise<boolean> {
+  if (!headSha) return false;
+  try {
+    const res = await runner.run("git", { args: ["cat-file", "-e", headSha], cwd: repoPath });
+    return res.code === 0;
+  } catch {
+    return false;
   }
 }
 
@@ -233,10 +333,15 @@ export async function resolveSource(
     descriptionEditable = info.state === "OPEN";
     descriptionAuthor = info.authorLogin || undefined;
     descriptionState = info.state || undefined;
-    await bestEffortFetch(runner, repoPath, info.headRefName);
+    await fetchPrHead(runner, repoPath, source.pr, info.headRefName);
     if (!headSha) {
       const local = await runGit(runner, ["rev-parse", info.headRefName], repoPath);
-      if (!local.ok) throw new Error(`cannot resolve PR head ${info.headRefName}`);
+      if (!local.ok) {
+        const detail = (local.stderr.trim() || local.stdout.trim()).slice(0, 300);
+        throw new Error(
+          `cannot resolve PR head ${info.headRefName || `#${source.pr}`} in checkout${detail ? `: ${detail}` : ""}`,
+        );
+      }
       headSha = local.stdout.trim();
     }
     await bestEffortFetch(runner, repoPath, baseRef);
@@ -261,11 +366,9 @@ export async function resolveSource(
     throw new Error("ingest needs either pr or branch");
   }
 
-  const mb = await runGit(runner, ["merge-base", baseRef, headSha], repoPath);
-  if (!mb.ok || !mb.stdout.trim()) {
-    throw new Error(`cannot compute merge-base of ${baseRef} and ${headSha}`);
-  }
-  const mergeBaseSha = mb.stdout.trim().split("\n")[0];
+  const resolvedBase = await resolvePrMergeBase(runner, repoPath, baseRef, headSha);
+  baseRef = resolvedBase.baseRef;
+  const mergeBaseSha = resolvedBase.mergeBaseSha;
   return finishResolve(runner, {
     repoPath, title, branch, prNumber, baseRef, headSha, mergeBaseSha,
     descriptionMarkdown, descriptionEditable, descriptionAuthor, descriptionState, dataDir, reviewId,
@@ -327,7 +430,7 @@ export async function resolveHead(
 ): Promise<{ headSha: string; baseRef: string }> {
   if (opts.pr !== undefined) {
     const info = await fetchPrInfo(runner, repoPath, opts.pr);
-    await bestEffortFetch(runner, repoPath, info.headRefName);
+    await fetchPrHead(runner, repoPath, opts.pr, info.headRefName);
     let headSha = info.headRefOid;
     if (!headSha) {
       const local = await runGit(runner, ["rev-parse", info.headRefName], repoPath);
