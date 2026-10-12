@@ -15,6 +15,7 @@ import type { UpdateHunkRequest } from "@unvibe/shared";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
 import type { Pipeline } from "../pipeline/index.js";
+import { ingestRefusal } from "../reviews/index.js";
 
 export async function registerHunks(
   app: FastifyInstance,
@@ -46,6 +47,8 @@ export async function registerHunks(
 
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const refused = ingestRefusal(snapshot);
+    if (refused) return reply.code(409).send({ error: refused });
 
     try {
       await ctx.reviews.mutate(id, (draft) => {
@@ -78,6 +81,8 @@ export async function registerHunks(
     void req;
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const refusedSum = ingestRefusal(snapshot);
+    if (refusedSum) return reply.code(409).send({ error: refusedSum });
     const pipeline = (deps as { pipeline?: Pipeline }).pipeline;
     if (!pipeline) return reply.code(501).send({ error: "not implemented: pipeline not wired" });
     try {

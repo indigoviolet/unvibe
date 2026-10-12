@@ -14,6 +14,7 @@ import type { SubmitReviewRequest } from "@unvibe/shared";
 import { readReviewRow } from "../ingest/index.js";
 import { buildPreview, fetchExistingComments, runSubmit } from "../submit/index.js";
 import type { ServiceContext } from "./context.js";
+import { ingestRefusal } from "../reviews/index.js";
 
 /** POST /api/reviews/:id/submit — the ONLY path that posts to GitHub. */
 export async function registerSubmit(app: FastifyInstance, ctx?: ServiceContext): Promise<void> {
@@ -45,6 +46,8 @@ export async function registerSubmit(app: FastifyInstance, ctx?: ServiceContext)
     const { id } = req.params as { id: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
+    const refused = ingestRefusal(snapshot);
+    if (refused) return reply.code(409).send({ error: refused });
     const row = readReviewRow(ctx.db, id);
     const prNumber = row?.prNumber ?? snapshot.review.prNumber;
     if (prNumber === null || prNumber === undefined) {
@@ -59,6 +62,8 @@ export async function registerSubmit(app: FastifyInstance, ctx?: ServiceContext)
     const { id } = req.params as { id: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
+    const refusedComments = ingestRefusal(snapshot);
+    if (refusedComments) return reply.code(409).send({ error: refusedComments });
     // Demo reviews have no git source: no GitHub comments exist.
     if (snapshot.review.repoId === "demo") return { comments: [] };
     const row = readReviewRow(ctx.db, id);

@@ -36,6 +36,9 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
     const { id } = req.params as { id: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const { ingestRefusal } = await import("../reviews/index.js");
+    const refused = ingestRefusal(snapshot);
+    if (refused) return reply.code(409).send({ error: refused });
 
     const settings = ctx.settings?.get();
     const provider = settings?.main.provider ?? "unknown";

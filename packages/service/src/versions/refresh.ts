@@ -24,7 +24,7 @@ import type {
   VersionComparison,
   VersionStatus,
 } from "@unvibe/shared";
-import { summarizeComparison } from "@unvibe/shared";
+import { assertReadySnapshot, summarizeComparison } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import {
   baseRefCandidates,
@@ -223,6 +223,8 @@ export async function refreshReview(
   row: RefreshRow,
   snapshot: ReviewSnapshot,
 ): Promise<RefreshResult> {
+  // #92: routes refuse loading/failed first; assert here for the type narrowing.
+  assertReadySnapshot(snapshot);
   const head = await resolveHead(deps.runner, repoPath, {
     ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
   });

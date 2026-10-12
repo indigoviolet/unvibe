@@ -25,6 +25,7 @@ import {
   replyToThread,
 } from "../comments/index.js";
 import type { ServiceContext } from "./context.js";
+import { ingestRefusal } from "../reviews/index.js";
 
 function validAnchor(a: unknown): a is ActionAnchor {
   if (typeof a !== "object" || a === null) return false;
@@ -52,6 +53,11 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
 
   app.post("/api/reviews/:id/comments", async (req, reply) => {
     const { id } = req.params as { id: string };
+    const pre = reviews.getSnapshot(id);
+    if (pre) {
+      const refused = ingestRefusal(pre);
+      if (refused) return reply.code(409).send({ error: refused });
+    }
     const body = (req.body ?? {}) as CreateCommentRequest;
     if (!validAnchor(body.anchor)) {
       return reply.code(400).send({ error: "anchor.where must be block, description, or diff-line with ids" });
@@ -105,6 +111,11 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
 
   app.post("/api/reviews/:id/comments/:commentId/replies", async (req, reply) => {
     const { id, commentId } = req.params as { id: string; commentId: string };
+    const preReply = reviews.getSnapshot(id);
+    if (preReply) {
+      const refused = ingestRefusal(preReply);
+      if (refused) return reply.code(409).send({ error: refused });
+    }
     const body = (req.body ?? {}) as { text?: unknown };
     if (typeof body.text !== "string" || body.text.trim() === "") {
       return reply.code(400).send({ error: "text is required" });
@@ -123,6 +134,11 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
 
   app.patch("/api/reviews/:id/comments/:commentId", async (req, reply) => {
     const { id, commentId } = req.params as { id: string; commentId: string };
+    const prePatch = reviews.getSnapshot(id);
+    if (prePatch) {
+      const refused = ingestRefusal(prePatch);
+      if (refused) return reply.code(409).send({ error: refused });
+    }
     const body = (req.body ?? {}) as UpdateCommentRequest;
     if (typeof body !== "object" || Array.isArray(body)) {
       return reply.code(400).send({ error: "invalid comment patch body" });
@@ -191,6 +207,11 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
 
   app.delete("/api/reviews/:id/comments/:commentId", async (req, reply) => {
     const { id, commentId } = req.params as { id: string; commentId: string };
+    const preDel = reviews.getSnapshot(id);
+    if (preDel) {
+      const refused = ingestRefusal(preDel);
+      if (refused) return reply.code(409).send({ error: refused });
+    }
     try {
       await deleteAnnotation(reviews, id, commentId);
     } catch (err) {

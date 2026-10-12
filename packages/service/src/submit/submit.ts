@@ -28,6 +28,7 @@ import type {
   SubmitPreview,
   SubmitPreviewComment,
 } from "@unvibe/shared";
+import { ingestStatusOf, isReadySnapshot } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
 import { locatePendingThreads, postedThreadIds } from "../comments/location.js";
@@ -129,6 +130,14 @@ export async function runSubmit(
 ): Promise<SubmitResult> {
   const snapshot = ctx.reviews.getSnapshot(reviewId);
   if (!snapshot) return { status: 404, body: { error: "unknown review" } };
+  if (!isReadySnapshot(snapshot)) {
+    const st = ingestStatusOf(snapshot);
+    if (st === "loading") return { status: 409, body: { error: "review is still loading" } };
+    return {
+      status: 409,
+      body: { error: `review ingest failed${snapshot.ingest?.error ? `: ${snapshot.ingest.error}` : ""}` },
+    };
+  }
   const row = readReviewRow(ctx.db, reviewId);
   const prNumber = row?.prNumber ?? snapshot.review.prNumber;
   if (prNumber === null || prNumber === undefined) {
