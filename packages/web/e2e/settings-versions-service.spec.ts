@@ -175,7 +175,7 @@ test.describe("settings + versions on the real service", () => {
     // Model pickers list the adapter's models.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Models" }).click();
-    await expect(page.locator('[data-testid="model-main"]').getByText("claude-sonnet", { exact: false }).first()).toBeAttached();
+    await expect(page.locator('[data-testid="model-main"]').getByText("claude-opus-5-5", { exact: false }).first()).toBeAttached();
   });
 
   test("refresh banners counts; reviewed clears only on the changed hunk; v1 viewable", async ({ page }) => {

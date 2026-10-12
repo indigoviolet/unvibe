@@ -18,7 +18,9 @@ interface Fence {
   content: string;
 }
 
-function findFences(text: string): Fence[] {
+export type { Fence as FencedBlock };
+
+export function findFences(text: string): Fence[] {
   const out: Fence[] = [];
   const lines = text.split("\n");
   // Byte offset of each line start.

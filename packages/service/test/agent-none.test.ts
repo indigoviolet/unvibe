@@ -51,7 +51,7 @@ describe("UNVIBE_AGENT=none", () => {
     const { ctx } = await createApp("tok", { agents: new NoAgentRunner() });
     try {
       ctx.reviews.putSnapshot("rv_none", makeSnapshot());
-      ctx.pipeline.startReview("rv_none");
+      await ctx.pipeline.startReview("rv_none");
       const resumed = await ctx.pipeline.resumeReview("rv_none");
       // Let any fire-and-forget pipeline work settle.
       await new Promise((r) => setTimeout(r, 200));

@@ -8,13 +8,13 @@
  */
 import { useMemo } from "react";
 import type { Page } from "@unvibe/shared";
+import { displayCardTitle } from "@unvibe/shared";
 import { apiErrorCode, friendlyError } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { performAction, requestGuideBlock } from "./actions.js";
 import {
-  cardPreview,
   markKnownLinks,
   pageIdForLinkTarget,
   pagePreview,
@@ -160,7 +160,8 @@ export function previewLinkTarget(target: string, pages: Page[] | undefined): st
     const holder = pages.find((p) => p.cards.some((c) => c.id === cardId));
     const card = holder?.cards.find((c) => c.id === cardId);
     if (!card) return null;
-    const title = card.title ?? cardPreview(card).slice(0, 80);
+    // Issue #49: same shared fallback as the card header and Contents.
+    const title = displayCardTitle(card.title, card.blocks);
     return `<b>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</b><span class="hint">Click to open</span>`;
   }
   if (target.startsWith("concept:")) {
