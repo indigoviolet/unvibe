@@ -3,8 +3,11 @@
  *
  * Other modules (agent runner, store, job queue owners) register teardown
  * here so the idle-exit path — and SIGTERM/SIGINT handling — closes agent
- * subprocesses and the DB. Hooks run in reverse registration order; one
- * hook's failure never blocks the rest.
+ * subprocesses and the DB. Hooks run in reverse registration order, so
+ * register in reverse of the order you want teardown to happen (serve.ts
+ * registers the Sentry flush first so it runs last, and the DB close
+ * before the agents/jobs hooks so the DB closes last); one hook's
+ * failure never blocks the rest.
  */
 
 export type ShutdownHook = () => void | Promise<void>;

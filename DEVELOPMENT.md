@@ -30,15 +30,15 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 |---|---|---|
 | `install` | `npm install` across workspaces | — |
 | `op -- <cmd>` | Run `<cmd>` with the 1Password Environment secrets (hidden helper) | `.env`, else runs without secrets |
-| `build` | Build shared → service → web | — |
-| `dev` | Service + Vite dev server together | — |
+| `build` | Build shared → service → web (tracked outputs: each `packages/*/dist` + entry files, so a missing `dist/` rebuilds) | — |
+| `dev` | Service + Vite dev server together | `build` (auto) |
 | `dev:mock` | Web UI against the in-memory mock API, no service | — |
 | `lint` / `typecheck` / `test` | ESLint / tsc / vitest across workspaces | — |
 | `check` | `lint` + `typecheck` + `test`; must pass from a clean tree with no `dist/` | — |
-| `start` | Run the built service | `build` first |
+| `start` | Run the built service | `build` (auto) |
 | `setup` / `doctor` | Build, then `unvibe setup` / `unvibe doctor` | — |
 | `fixture-snapshot` | Rebuild `fixtures/urllib3-5020/snapshot.json`; fails on unverified citations | — |
-| `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` + browsers (`mise run playwright-install`) |
+| `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `playwright-install` | Install the Playwright Chromium browser | — |
 | `e2e` | Linux shell end-to-end (setup, handler, reuse, idle exit, uninstall, in temp HOME/port) | Linux |
 | `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
@@ -404,7 +404,7 @@ For a rollback drill, lie about the target version in the channels file (with a 
 
 - Data: look in the data dir (`unvibe.db`, per-review folders, `worktrees/`). Point a scratch run at a temp dir with `UNVIBE_DATA_DIR` and a temp port with `UNVIBE_PORT`.
 - Logs: the service logs to stderr (`Unvibe listening on …`, job errors, permission decisions with `UNVIBE_ACP_DEBUG=1`).
-- A job's exact prompt: `GET /api/jobs/:id/prompt` (the Jobs view in Settings links it too), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
+- A job's exact prompt: `GET /api/jobs/:id/prompt` (the Jobs section on the review's debug page links it too), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
 - Environment: `unvibe doctor` locally, `GET /api/readiness` in the app; both share `src/readiness/checks.ts`.
 - Reproduce without tokens: `UNVIBE_AGENT=replay` for agent behaviour, `UNVIBE_AGENT=none` for everything else.
 - Restart behaviour: `node scripts/restart-resilience.mjs` exercises SIGKILL mid-stage against the built service.

@@ -20,6 +20,7 @@ import type { SettingsStore, ModelCatalog } from "../settings/index.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import type { DatabaseSync } from "../store/db.js";
 import type { Updater } from "../update/updater.js";
+import type { ProbedPaths } from "../diagnostics/path-probe.js";
 
 /**
  * Switch wiring for the version picker (issue #36, step 2). Absent in
@@ -62,4 +63,16 @@ export interface RouteDeps {
    * Linux branches on Linux CI.
    */
   pickFolder?: import("../repos/pick-folder.js").PickFolderOptions;
+  /**
+   * Diagnostics probe overrides (tests only): a pre-resolved PATH
+   * picture so `GET /api/diagnostics` and `POST /api/reload` skip
+   * spawning login shells. The tool `--version` probes already run
+   * through the app's injectable command runner (`ctx.runner`), so
+   * tests inject a fake there. Production omits this (real shell
+   * probe, real runner).
+   */
+  diagnostics?: {
+    /** Skips the login-shell probe when present (even null: no shell). */
+    pathProbe?: ProbedPaths | null;
+  };
 }
