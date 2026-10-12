@@ -406,8 +406,9 @@ needed (that deviation is closed, not added).
   served per-job to keep lists small; the per-job prompt toggle lazy-loads
   as before).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
-  not in Settings): base keys + stats + current pack, log with
-  in-base/waiting markers, contributions with thread + delete — met
+  not in Settings): base keys + stats + current pack, log lines
+  verbatim in fenced blocks under in-base/ready/waiting headings (issue
+  #75), contributions with thread + delete — met
   (`shared-context-debug.test.ts`, `routes/shared-context.ts`,
   `e2e/debug.spec.ts`). Issue #60 puts Jobs / Prompts / Shared context in
   tabs (tab in `?tab=`, panels kept mounted) and every large block in a
@@ -498,7 +499,8 @@ needed (that deviation is closed, not added).
   reader never forked; fan-out after warm — met (`pipeline/runner.ts:790
   ensureBase`, `sessions/manager.ts:315 fanOut`, `docs/pipeline.md`).
 - Append-only log (never UI state; card-scoped depth/examples/diagrams;
-  one-line thread settle; full new cards/out-of-base answers; deletion
+  one-line thread settle; new cards, findings, out-of-base answers and
+  contributions in full, as text, never cut short (issue #77); deletion
   lines); 2k-token batch growth; per-session last-seen + filtered change
   lists — met (`context/log.ts`, `sharedctx/*`, `sharedctx.test.ts`
   batch/change-list cases).

@@ -82,7 +82,7 @@ test("shared context blocks collapse and expand; Base starts open", async ({ pag
 
   await log.locator("summary").click();
   await expect(log).toContainText("[1 new-card global]");
-  await expect(log).toContainText("waiting for batch");
+  await expect(log).toContainText("Waiting for batch (1)");
 
   await contribs.locator("summary").click();
   await expect(contribs).toContainText("ct-seed-1");

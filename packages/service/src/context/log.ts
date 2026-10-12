@@ -8,8 +8,8 @@
  *   with a card scope and only shown to sessions anchored on that card.
  *   (Note: the *rewritten text* is logged; the depth *state* never is.)
  * - one line, once a thread settles: a summary of the thread.
- * - in full: new cards and findings, and answers that cited something
- *   outside the base.
+ * - in full: new cards and findings, answers that cited something
+ *   outside the base, and contributions.
  * - a one-line deletion entry for a deleted item that had been shared.
  *
  * The base grows by appending batches (~2k tokens) so its cached prefix
@@ -86,27 +86,60 @@ export function stableStringify(value: unknown): string {
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
 }
 
-/** Render one log entry as Markdown for a batch. */
+/**
+ * Kinds shared in full (PRD §9.3): their text keeps its line breaks. Every
+ * other kind is folded onto one line. Nothing is ever cut short.
+ */
+export const FULL_TEXT_KINDS: ReadonlySet<string> = new Set([
+  "new-card",
+  "new-finding",
+  "out-of-base-answer",
+  "contribution",
+]);
+
+/**
+ * Render one log entry as a Markdown list item. Continuation lines are
+ * indented so multi-line text stays inside its item.
+ */
 export function formatLogEntry(entry: LogEntry): string {
   const scope = entry.scope.scope === "global" ? "global" : `card:${entry.scope.cardId}`;
-  return `- [${entry.seq} ${entry.kind} ${scope}] ${oneLineOf(entry.payload)}`;
+  return `- [${entry.seq} ${entry.kind} ${scope}] ${indentContinuation(logEntryText(entry))}`;
 }
 
-/** One deterministic line for a payload: prefer summary fields, else JSON. */
-export function oneLineOf(payload: unknown, maxChars = 160): string {
-  let line: string;
-  if (typeof payload === "string") {
-    line = payload.split("\n")[0];
-  } else if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+/** The text of an entry: in full for `FULL_TEXT_KINDS`, one line otherwise. */
+export function logEntryText(entry: LogEntry): string {
+  const text = (entry.kind === "contribution" ? contributionText(entry.payload) : null) ?? payloadText(entry.payload);
+  return FULL_TEXT_KINDS.has(entry.kind) ? text.trim() : text.replace(/\s+/g, " ").trim();
+}
+
+/** Text of a payload: prefer summary fields, else deterministic JSON. */
+export function payloadText(payload: unknown): string {
+  if (typeof payload === "string") return payload;
+  if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
     const obj = payload as Record<string, unknown>;
     const pick = ["summary", "oneLine", "one_line", "text", "title", "why"];
     const found = pick.find((k) => typeof obj[k] === "string");
-    line = found ? (obj[found] as string).split("\n")[0] : stableStringify(payload);
-  } else {
-    line = stableStringify(payload);
+    if (found) return obj[found] as string;
   }
-  line = line.replace(/\s+/g, " ").trim();
-  return line.length > maxChars ? `${line.slice(0, maxChars - 1)}…` : line;
+  return stableStringify(payload);
+}
+
+/** A contribution as its id plus one sub-item per kept item (`kind: text`). */
+function contributionText(payload: unknown): string | null {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const { contributionId, items } = payload as Record<string, unknown>;
+  if (typeof contributionId !== "string" || !Array.isArray(items)) return null;
+  const lines = [contributionId];
+  for (const item of items) {
+    const { kind, text } = (item ?? {}) as Record<string, unknown>;
+    if (typeof kind !== "string" || typeof text !== "string") return null;
+    lines.push(`- ${kind}: ${indentContinuation(text.trim())}`);
+  }
+  return lines.join("\n");
+}
+
+function indentContinuation(text: string): string {
+  return text.replace(/\n(?!\n)/g, "\n  ");
 }
 
 /** Render a batch of entries as the L3 text appended to the base. */

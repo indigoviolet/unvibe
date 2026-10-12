@@ -108,7 +108,7 @@ describe("GET /api/reviews/:id/shared-context", () => {
       expect(body.log).toContain("[1 new-card global]");
       expect(body.log).toContain("[2 thread-summary global]");
       expect(body.log).toContain("[3 depth-rewrite card:c-central]");
-      expect(body.log).toContain("waiting for batch");
+      expect(body.log).toContain("### Waiting for batch (3)");
 
       // Contributions: thread fallback vs sourceThread, replaces, status rule.
       expect(body.contributions).toContain("### ct_fact");
@@ -165,21 +165,26 @@ describe("debug markdown builders", () => {
     expect(fenced.endsWith("````")).toBe(true);
   });
 
-  it("log markers distinguish in-base, ready, and waiting entries", () => {
+  it("log groups in-base, ready, and waiting entries under headings, lines verbatim", () => {
     const log: LogEntry[] = [
       { seq: 1, kind: "new-card", payload: { summary: "a" }, scope: { scope: "global" } },
       { seq: 2, kind: "new-card", payload: { summary: "b" }, scope: { scope: "global" } },
     ];
     // Nothing appended yet and a huge threshold: everything waits.
     const waiting = buildLogMarkdown({ log, appendedThroughSeq: 0, currentKey: "k", hasBase: false, batchTokens: 2000 });
-    expect(waiting).toContain("· waiting for batch");
+    expect(waiting).toContain(
+      "### Waiting for batch (2)\n\n```text\n- [1 new-card global] a\n- [2 new-card global] b\n```",
+    );
+    expect(waiting).not.toContain("### In base");
     // First entry already in the base.
     const partial = buildLogMarkdown({ log, appendedThroughSeq: 1, currentKey: "k", hasBase: true, batchTokens: 2000 });
-    expect(partial).toContain("[1 new-card global] a · in base");
-    expect(partial).toContain("[2 new-card global] b · waiting for batch");
+    expect(partial).toContain("### In base (1)\n\n```text\n- [1 new-card global] a\n```");
+    expect(partial).toContain("### Waiting for batch (1)\n\n```text\n- [2 new-card global] b\n```");
     // Forced tiny threshold: the tail is a full ready batch.
     const ready = buildLogMarkdown({ log, appendedThroughSeq: 0, currentKey: "k", hasBase: true, batchTokens: 1 });
-    expect(ready).toContain("· ready to append");
+    expect(ready).toContain("### Ready to append");
+    // Status never lands on a log line.
+    for (const md of [waiting, partial, ready]) expect(md).not.toContain(" · ");
   });
 
   it("showContributionStatus only where it means something", () => {

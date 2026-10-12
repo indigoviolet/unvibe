@@ -13,7 +13,8 @@ import {
   formatChangeList,
   formatLogBatch,
   NEVER_LOGGED_KINDS,
-  oneLineOf,
+  formatLogEntry,
+  payloadText,
   shouldEnterLog,
   stableStringify,
   charTokenEstimator,
@@ -154,12 +155,43 @@ describe("log and change lists (PRD §9.3)", () => {
     expect(formatLogBatch(log2)).toContain("seq 1–2");
   });
 
-  it("stableStringify orders keys; oneLineOf prefers summary fields", () => {
+  it("stableStringify orders keys; payloadText prefers summary fields", () => {
     expect(stableStringify({ b: 1, a: { d: 2, c: 1 } })).toBe('{"a":{"c":1,"d":2},"b":1}');
-    expect(oneLineOf({ summary: "hello\nworld" })).toBe("hello");
+    expect(payloadText({ summary: "hello\nworld" })).toBe("hello\nworld");
     expect(charTokenEstimator.estimateTokens("")).toBe(0);
     expect(charTokenEstimator.estimateTokens("abcd")).toBe(1);
     expect(charTokenEstimator.estimateTokens("abcde")).toBe(2);
+  });
+
+  it("formatLogEntry never cuts text: full kinds keep lines, others fold to one", () => {
+    const long = `${"word ".repeat(80)}end.`;
+    const global = { scope: "global" } as const;
+    // One-line kinds fold whitespace but keep every word.
+    expect(formatLogEntry({ seq: 1, kind: "thread-summary", payload: { summary: `a\n${long}` }, scope: global })).toBe(
+      `- [1 thread-summary global] a ${long}`,
+    );
+    // Full kinds keep their line breaks, indented under the list item.
+    expect(
+      formatLogEntry({ seq: 2, kind: "new-card", payload: { summary: `Explain "q":\n\n${long}` }, scope: global }),
+    ).toBe(`- [2 new-card global] Explain "q":\n\n  ${long}`);
+    // Contributions read as text, not JSON: id, then one sub-item per item.
+    const contribution = formatLogEntry({
+      seq: 3,
+      kind: "contribution",
+      payload: {
+        contributionId: "ct_1",
+        sourceSession: "s1",
+        items: [
+          { kind: "fact", text: long },
+          { kind: "open_question", text: "Why?\nSecond line." },
+        ],
+      },
+      scope: global,
+    });
+    expect(contribution).toBe(
+      `- [3 contribution global] ct_1\n  - fact: ${long}\n  - open_question: Why?\n    Second line.`,
+    );
+    expect(contribution).not.toContain("…");
   });
 
   it("filters change lists: global plus local for the session's card or hunk", () => {
