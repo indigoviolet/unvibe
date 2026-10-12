@@ -70,7 +70,11 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
       const paragraphId = (top as HTMLElement).dataset.top ?? top.id ?? id;
       return { anchor: { where: "description", paragraphId } };
     }
-    return { anchor: { where: "block", blockId: id } };
+    // Block ids repeat across cards (`b1`, `b2`, … in each): qualify with
+    // the owning card, or expansion, so the anchor addresses one block.
+    const owner = top.closest("section.card[id]")?.id ?? "";
+    const cardId = /^[CB]-/.test(owner) ? owner.slice(2) : "";
+    return { anchor: { where: "block", blockId: cardId && !id.includes("#") ? `${cardId}#${id}` : id } };
   }
   // Description paragraphs carry stable `id`s but no `data-top` in live
   // snapshots: fall back to the nearest id under `.desc`.

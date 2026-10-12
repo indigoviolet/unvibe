@@ -94,6 +94,49 @@ describe("comment threads", () => {
     }
   });
 
+  it("anchors a guide comment on one card when block ids repeat across cards (#78)", async () => {
+    const runner = new FakeCommandRunner();
+    const card = (id: string, text: string) => ({
+      id,
+      pageId: "p1",
+      title: id,
+      level: "standard" as const,
+      read: false,
+      collapsed: false,
+      revision: 1,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
+      undoStack: [],
+    });
+    const pages = [
+      {
+        id: "p1",
+        kind: "root" as const,
+        title: "Guide",
+        saved: false,
+        cards: [card("c1", "first card mentions the receiver"), card("c2", "second card names the receiver too")],
+      },
+    ];
+    const { app, ctx, reviewId } = await setupReview(runner, { pages });
+    try {
+      const post = (blockId: string) =>
+        app.inject({
+          method: "POST",
+          url: `/api/reviews/${reviewId}/comments`,
+          headers: authed,
+          payload: { anchor: { where: "block", blockId }, quote: "receiver", note: true, text: "?" },
+        });
+      expect((await post("c2#b1")).statusCode).toBe(201);
+      expect((await post("b1")).statusCode).toBe(201);
+      const [second, bare] = ctx.reviews.getSnapshot(reviewId)!.annotations;
+      expect(second.anchor.host).toEqual({ kind: "block", blockId: "c2#b1" });
+      expect(second.anchor.prefix).toContain("second card");
+      // A bare id is stored against the first card that has the block.
+      expect(bare.anchor.host).toEqual({ kind: "block", blockId: "c1#b1" });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("rejects unknown anchors", async () => {
     const runner = new FakeCommandRunner();
     const { app, reviewId } = await setupReview(runner);

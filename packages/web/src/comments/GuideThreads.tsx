@@ -25,7 +25,7 @@ import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { onOpenBlockThread } from "../guide/annotations.js";
 import { inflightForBlock, inflightLabel } from "../guide/inflight.js";
 import { useReview } from "../state/store.js";
-import { clearMarks, highlightAnchorInRoot, withPreservedSelection } from "./anchor.js";
+import { anchorScope, clearMarks, highlightAnchorInRoot, withPreservedSelection } from "./anchor.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
@@ -107,7 +107,7 @@ export function GuideThreadHooks() {
           const candidates = [host.blockId, bare];
           let done = false;
           for (const top of candidates) {
-            if (highlightAnchorInRoot(page, top, thread.anchor.quotedText, () => makeMark(thread.id))) {
+            if (highlightAnchorInRoot(anchorScope(page, host.blockId), top, thread.anchor.quotedText, () => makeMark(thread.id))) {
               done = true;
               break;
             }

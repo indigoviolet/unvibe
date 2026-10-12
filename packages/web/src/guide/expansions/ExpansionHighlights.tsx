@@ -18,7 +18,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
 import { useReview } from "../../state/store.js";
-import { highlightAnchorInRoot, withPreservedSelection, clearMarks } from "../../comments/anchor.js";
+import { anchorScope, highlightAnchorInRoot, withPreservedSelection, clearMarks } from "../../comments/anchor.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
 function makeExpMark(id: string, closed: boolean): HTMLElement {
@@ -64,7 +64,7 @@ export function ExpansionHighlights() {
             const { cardId, block } = splitBlock(a.anchor.host.blockId);
             const tops = cardId ? [`${cardId}#${block}`, block, a.anchor.host.blockId] : [block, a.anchor.host.blockId];
             for (const top of tops) {
-              if (highlightAnchorInRoot(root, top, a.anchor.quotedText, () => makePageLink(target))) {
+              if (highlightAnchorInRoot(anchorScope(root, a.anchor.host.blockId), top, a.anchor.quotedText, () => makePageLink(target))) {
                 highlighted.add(a.id);
                 break;
               }
@@ -78,7 +78,7 @@ export function ExpansionHighlights() {
           void cardId;
           const tops = [a.anchor.host.blockId, block];
           for (const top of tops) {
-            if (highlightAnchorInRoot(root, top, a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
+            if (highlightAnchorInRoot(anchorScope(root, a.anchor.host.blockId), top, a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
               highlighted.add(a.id);
               break;
             }
