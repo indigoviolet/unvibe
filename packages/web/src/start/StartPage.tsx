@@ -115,25 +115,25 @@ function runningLabel(detail: string | undefined): string {
     case "reader":
       return "Reading the change…";
     case "base":
-      return "Preparing shared context…";
+      return "Preparing…";
     case "critic":
       return "Checking findings…";
     case "concept":
-      return "Writing concepts…";
+      return "Writing concept pages…";
     case "hunk-pass":
       return "Summarizing code…";
     case "go-deeper":
-      return "Filling deeper cards…";
+      return "Writing deeper cards…";
     case "explain":
-      return "Writing an explanation…";
+      return "Writing explanation…";
     case "ask":
       return "Answering a question…";
     case "depth":
-      return "Rewriting depth…";
+      return "Rewriting…";
     case "examples":
       return "Adding examples…";
     case "diagram":
-      return "Drawing a diagram…";
+      return "Drawing diagram…";
     case "second-opinion":
       return "Getting a second opinion…";
     case "update-pass":
@@ -175,7 +175,7 @@ function parsePrInput(
     if (found) return { repoId: found.id, pr: ref.prNumber };
     return { offer: { owner: ref.owner, name: ref.name, pr: ref.prNumber } };
   }
-  return { error: "Enter a PR number (e.g. 5020) or a GitHub PR URL." };
+  return { error: "Enter a PR number or a GitHub PR URL." };
 }
 
 export function StartPage(): React.JSX.Element {
@@ -242,7 +242,7 @@ export function StartPage(): React.JSX.Element {
       setSessions(r.reviews);
       setSessionsError(null);
     } catch {
-      setSessionsError("Couldn't load previous reviews.");
+      setSessionsError("Couldn't load your reviews.");
     }
   }, []);
 
@@ -269,7 +269,7 @@ export function StartPage(): React.JSX.Element {
     if (loadSeq.current !== seq) return;
     if (settled === null) {
       setListErrors(EMPTY_ERRORS);
-      setListsError("the lists request timed out — the service may be busy");
+      setListsError("it took too long — the service may be busy");
       setListsFor(id);
       return;
     }
@@ -458,7 +458,7 @@ export function StartPage(): React.JSX.Element {
       const repo =
         added.repos.find((r) => r.id !== "demo" && r.managed === true && match(r)) ??
         added.repos.find((r) => r.id !== "demo" && match(r));
-      if (!repo) throw new Error("the service added the repo but did not list it");
+      if (!repo) throw new Error("it was cloned but is missing from your repos — reload the page");
       setRepos(added.repos);
       selectRepo(repo.id);
       try {
@@ -490,7 +490,7 @@ export function StartPage(): React.JSX.Element {
         <input
           type="text"
           aria-label="Open a PR by URL or number"
-          placeholder="PR number (5020) or owner/repo pull URL"
+          placeholder="PR number or GitHub PR URL"
           value={prInput}
           onChange={(e) => {
             setPrInput(e.target.value);
@@ -515,7 +515,7 @@ export function StartPage(): React.JSX.Element {
         <div className="ci" data-testid="pr-clone-offer">
           <div style={{ minWidth: 0 }}>
             <span className="hint">
-              {prOffer.owner}/{prOffer.name} isn&apos;t in your list. Clone it and open #
+              {prOffer.owner}/{prOffer.name} isn&apos;t in your repos. Clone it and open #
               {prOffer.pr}?
             </span>
           </div>
@@ -573,7 +573,7 @@ export function StartPage(): React.JSX.Element {
           </Link>
           {realRepos.length > 0 && selectedId ? (
             <select
-              aria-label="Repository"
+              aria-label="Repo"
               className="tbtn"
               value={selectedId}
               title={selected?.localPath ?? ""}
@@ -590,7 +590,7 @@ export function StartPage(): React.JSX.Element {
                 </optgroup>
               ) : null}
               {detected.length > 0 ? (
-                <optgroup label="Detected checkouts">
+                <optgroup label="Found on this machine">
                   {detected.map((r) => (
                     <option key={r.id} value={r.id} title={r.localPath}>
                       {r.owner}/{r.name}
@@ -602,7 +602,7 @@ export function StartPage(): React.JSX.Element {
           ) : null}
           {allReady ? (
             <span className="hint" data-testid="readiness-ready">
-              Ready · gh + agents ok
+              Ready
             </span>
           ) : null}
           <PreviewBuildBadge />
@@ -653,18 +653,18 @@ export function StartPage(): React.JSX.Element {
           <h1 className="divider">Reviews</h1>
           {mainProblem ? (
             <p className="hint" data-testid="newreview-agent-hint">
-              Main agent not ready ({mainProblem.summary}) — the guide may not generate. You can
+              The main model isn&apos;t ready ({mainProblem.summary}), so the guide may not be written. You can
               still open the diff and comment.
             </p>
           ) : null}
           {sessions === null && !sessionsError ? (
-            <p className="hint">Loading previous reviews…</p>
+            <p className="hint">Loading reviews…</p>
           ) : sessionsError ? (
             <p className="hint" role="alert">
               {sessionsError}
             </p>
           ) : (
-            <div aria-label="Prior reviews" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div aria-label="Reviews" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {visibleSessions.map((s) => (
                 <SessionRow
                   key={s.id}
@@ -713,7 +713,7 @@ export function StartPage(): React.JSX.Element {
                         disabled={opening !== null}
                         onClick={() => void openReview(changeKey(c, i), { repoId: "demo" })}
                       >
-                        <span className="cw">Demo · no tokens</span>
+                        <span className="cw">Demo · no agent needed</span>
                         <span className="cx2">{c.title}</span>
                       </button>
                       {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
@@ -723,8 +723,8 @@ export function StartPage(): React.JSX.Element {
               {orphanSessions.length > 0 ? (
                 <div data-testid="orphan-sessions">
                   <p className="hint" data-testid="orphan-sessions-label">
-                    These reviews belong to checkouts that are no longer in the repo list — open or
-                    remove them here.
+                    These reviews are for repos that are no longer in your list. You can still open or
+                    remove them.
                   </p>
                   {orphanSessions.map((s) => (
                     <SessionRow
@@ -777,8 +777,7 @@ export function StartPage(): React.JSX.Element {
               {renderPrOpener()}
               {ghProblem ? (
                 <p className="hint" data-testid="newreview-gh-hint">
-                  PR lists need gh ({ghProblem.summary}). You can still open a local branch below or a
-                  PR by number once gh works.
+                  Listing PRs needs gh ({ghProblem.summary}). You can still open a local branch below.
                 </p>
               ) : null}
 
@@ -788,8 +787,7 @@ export function StartPage(): React.JSX.Element {
                 </p>
               ) : listsError ? (
                 <p className="hint" role="alert" data-testid="lists-error">
-                  Couldn&apos;t load {selected ? `${selected.owner}/${selected.name}` : "this repo"}
-                  &apos;s lists: {listsError}{" "}
+                  Couldn&apos;t load PRs and branches for {selected ? `${selected.owner}/${selected.name}` : "this repo"}: {listsError}{" "}
                   <button className="mini" type="button" onClick={retryLists}>
                     Retry
                   </button>
@@ -802,12 +800,12 @@ export function StartPage(): React.JSX.Element {
                     </p>
                   ) : null}
                   <ChangeSection
-                    title="PRs you're authoring"
+                    title="Your PRs"
                     changes={authoring}
                     error={listErrors.authoring}
                     errorTestId="changes-error-authoring"
                     opening={opening}
-                    empty="Nothing found."
+                    empty="No open PRs."
                     onOpen={(c, i) =>
                       openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
                     }
@@ -818,7 +816,7 @@ export function StartPage(): React.JSX.Element {
                     error={listErrors.requested}
                     errorTestId="changes-error-requested"
                     opening={opening}
-                    empty="Nothing waiting."
+                    empty="No PRs waiting."
                     onOpen={(c, i) =>
                       openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
                     }
@@ -877,13 +875,13 @@ function SessionRow({
         <span className="cx2">{s.title}</span>
         <span className="hint">
           {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-          {s.pendingComments > 0 ? ` · ${s.pendingComments} pending` : ""}
+          {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
           {" · "}
           {guideLabel(s)}
         </span>
       </button>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-        {s.stale ? <span className="prtag">new commits · Update</span> : null}
+        {s.stale ? <span className="prtag">new commits</span> : null}
         {confirmDelete === s.id ? (
           <>
             <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>
@@ -911,7 +909,7 @@ function SessionRow({
             aria-label={`Remove ${s.title}`}
             disabled={deleting !== null}
             onClick={() => setConfirmDelete(s.id)}
-            title="Remove this review's local data (never touches GitHub or your checkout; deletes the managed worktree)"
+            title="Remove this review from Unvibe. GitHub and your own folder are not touched; the working copy Unvibe made is deleted."
           >
             Remove
           </button>
