@@ -33,7 +33,8 @@ export async function registerReadiness(
       {
         runner: full.runner,
         agents,
-        settings: settingsStore as unknown as { get(): import("@unvibe/shared").Settings },
+        settings: settingsStore as unknown as { get(): import("@unvibe/shared").Settings; savedKeys(): string[] },
+        models: full.models ?? null,
       },
       { force },
     );

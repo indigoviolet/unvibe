@@ -1,11 +1,13 @@
 /**
- * Default model selection from live adapter lists (PRD §§4.14/12).
+ * Default model selection from live adapter lists (PRD §§4.14/12, issue #88).
  *
- * Captured listings (see `docs/acp-runner.md`, observed 2026-10-10):
- * - Claude (13): `default` (= Opus 5.5), `opus`, `fable`, `sonnet`,
- *   `haiku`, plus dated pins (`claude-opus-4-6` … `claude-fable-5`, …).
- * - Codex (7): `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`,
- *   `gpt-5.6-sol`, `gpt-5.6-terra` (default), `gpt-5.6-luna`.
+ * Fixtures are built from the issue #88 table (ids as listed on
+ * 2026-10-12) plus the aliases (`default`, `opus`, `sonnet`, `haiku`) and
+ * dated ids (`claude-haiku-4-5-20251001`) the issue mentions. No 2026-10-12
+ * adapter listing is recorded anywhere — `docs/acp-runner.md` still shows
+ * the 2026-10-10 capture — so these are assembled from the issue, not
+ * captured from a probe. The Codex side matches the 7 models the issue
+ * reports; the Claude side has the 13 the issue reports.
  */
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../src/store/db.js";
@@ -14,21 +16,26 @@ import { JobQueue } from "../src/jobs/queue.js";
 import { createApp } from "../src/server.js";
 import { SettingsStore } from "../src/settings/index.js";
 import type { ModelCatalog } from "../src/settings/index.js";
-import { claudeCapabilityScore, selectDefaultModels } from "../src/settings/defaults.js";
+import { parseModelId, resolveEffectiveSettings, selectDefaultModels } from "../src/settings/index.js";
+import { SharedContextService } from "../src/sharedctx/service.js";
 
-const CLAUDE_CAPTURED = [
+const CLAUDE_ISSUE = [
   "default",
   "opus",
   "fable",
   "sonnet",
   "haiku",
-  "claude-opus-4-6",
+  "claude-opus-5-5",
+  "claude-opus-5",
   "claude-fable-5",
-  "claude-sonnet-4-5",
+  "claude-sonnet-5-5",
+  "claude-sonnet-5",
+  "claude-haiku-5-5",
   "claude-haiku-4-5",
+  "claude-haiku-4-5-20251001",
 ];
 
-const CODEX_CAPTURED = [
+const CODEX_ISSUE = [
   "gpt-6.1-sol",
   "gpt-6-astra",
   "gpt-6-sol",
@@ -38,77 +45,180 @@ const CODEX_CAPTURED = [
   "gpt-5.6-luna",
 ];
 
-describe("selectDefaultModels", () => {
-  it("picks opus main, haiku small, and the adapter-default Codex model", () => {
-    const picked = selectDefaultModels({
-      claude: CLAUDE_CAPTURED,
-      codex: CODEX_CAPTURED,
-      codexDefault: "gpt-5.6-terra",
-    });
-    expect(picked.main).toEqual({ provider: "claude", model: "opus" });
-    expect(picked.small).toEqual({ provider: "claude", model: "haiku" });
-    expect(picked.secondOpinion).toEqual({ provider: "codex", model: "gpt-5.6-terra" });
-  });
-
-  it("prefers short family names over dated pins", () => {
-    const picked = selectDefaultModels({
-      claude: ["claude-haiku-4-5", "claude-opus-4-6", "claude-sonnet-4-5"],
-      codex: [],
-    });
-    expect(picked.main.model).toBe("claude-opus-4-6");
-    expect(picked.small.model).toBe("claude-haiku-4-5");
-    expect(picked.secondOpinion).toBeNull();
-  });
-
-  it("leaves second opinion unset when Codex offers nothing", () => {
-    const picked = selectDefaultModels({ claude: ["sonnet", "haiku"], codex: [] });
-    expect(picked.main).toEqual({ provider: "claude", model: "sonnet" });
-    expect(picked.small).toEqual({ provider: "claude", model: "haiku" });
-    expect(picked.secondOpinion).toBeNull();
-  });
-
-  it("falls back to the first Codex model when the adapter default is unknown", () => {
-    const picked = selectDefaultModels({ claude: ["haiku"], codex: CODEX_CAPTURED });
-    expect(picked.main).toEqual({ provider: "claude", model: "haiku" });
-    expect(picked.small).toEqual({ provider: "claude", model: "haiku" });
+describe("selectDefaultModels against the issue #88 table", () => {
+  it("matches every row (main, small, second opinion with main on Claude)", () => {
+    const picked = selectDefaultModels({ claude: CLAUDE_ISSUE, codex: CODEX_ISSUE });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
     expect(picked.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
   });
 
-  it("ignores a stale adapter default that is no longer offered", () => {
+  it("second opinion comes from the provider main is not using (main on Codex)", () => {
+    // No Claude opus new enough for the top matchers, so main lands on
+    // Codex sol — then second opinion ranks Claude opus > opus > sonnet.
     const picked = selectDefaultModels({
-      claude: ["sonnet"],
-      codex: ["gpt-6-sol"],
-      codexDefault: "gpt-5.6-terra",
+      claude: ["claude-opus-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
+      codex: CODEX_ISSUE,
     });
-    expect(picked.secondOpinion).toEqual({ provider: "codex", model: "gpt-6-sol" });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    expect(picked.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5" });
   });
 
-  it("ranks bare default with opus and unknown ids last", () => {
-    expect(claudeCapabilityScore("opus")).toBeGreaterThan(claudeCapabilityScore("sonnet"));
-    expect(claudeCapabilityScore("sonnet")).toBeGreaterThan(claudeCapabilityScore("haiku"));
-    expect(claudeCapabilityScore("fable")).toBeGreaterThan(claudeCapabilityScore("sonnet"));
-    expect(claudeCapabilityScore("default")).toBeLessThan(claudeCapabilityScore("opus"));
-    expect(claudeCapabilityScore("default")).toBeGreaterThan(claudeCapabilityScore("fable"));
-    expect(claudeCapabilityScore("opus")).toBeGreaterThan(claudeCapabilityScore("claude-opus-4-6"));
-    expect(claudeCapabilityScore("something-new")).toBe(0);
+  it("a saved main on Codex takes second opinion from Claude via mainOverride", () => {
+    // A live pick would put main on Claude; the saved pick keeps it on
+    // Codex, so second opinion ranks Claude opus first (issue table row).
+    const picked = selectDefaultModels({ claude: CLAUDE_ISSUE, codex: CODEX_ISSUE }, { provider: "codex" });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    expect(picked.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5-5" });
   });
 
-  it("prefers the opus alias (Opus 5.5) over the dated claude-opus-5 pin (older Opus 5) (#21)", () => {
-    // Issue #21 table: `opus` → Opus 5.5 (resolves to claude-opus-5-5),
-    // while `claude-opus-5` in the same list is the older Opus 5.
-    expect(claudeCapabilityScore("opus")).toBeGreaterThan(claudeCapabilityScore("claude-opus-5"));
+  it("prefers the newer cross-provider model over the older same-provider one", () => {
+    // Table order: gpt-6.1-sol (row 2) beats claude-opus-5 (row 3).
+    const picked = selectDefaultModels({ claude: ["claude-opus-5"], codex: ["gpt-6.1-sol"] });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+  });
+
+  it("falls back within and across tiers in table order", () => {
+    // Only an older sonnet on Claude, only terra on Codex: sonnet row wins.
+    expect(
+      selectDefaultModels({ claude: ["claude-sonnet-5-5"], codex: ["gpt-5.6-terra"] }).main,
+    ).toEqual({ provider: "claude", model: "claude-sonnet-5-5" });
+    // Sonnet too old for its floor: terra row wins.
+    expect(
+      selectDefaultModels({ claude: ["claude-sonnet-5"], codex: ["gpt-5.6-terra"] }).main,
+    ).toEqual({ provider: "codex", model: "gpt-5.6-terra" });
+    // Older opus still fills its own row when nothing newer is offered.
+    expect(selectDefaultModels({ claude: ["claude-opus-5"], codex: [] }).main).toEqual({
+      provider: "claude",
+      model: "claude-opus-5",
+    });
+  });
+});
+
+describe("excluded families are never picked", () => {
+  it("returns null roles when only Fable and Astra are offered", () => {
+    const picked = selectDefaultModels({ claude: ["fable", "claude-fable-5"], codex: ["gpt-6-astra"] });
+    expect(picked).toEqual({ main: null, small: null, secondOpinion: null });
+  });
+
+  it("skips Fable for a lower tier even when it is the only high tier offered", () => {
     const picked = selectDefaultModels({
-      claude: ["claude-opus-5", "opus", "sonnet", "haiku"],
+      claude: ["claude-fable-5"],
+      codex: ["gpt-5.6-terra", "gpt-5.6-luna"],
+    });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-5.6-terra" });
+    expect(picked.small).toEqual({ provider: "codex", model: "gpt-5.6-luna" });
+    // Main is on Codex; Claude offers nothing usable for second opinion.
+    expect(picked.secondOpinion).toBeNull();
+  });
+
+  it("parseModelId rejects Fable, Astra and unknown ids", () => {
+    expect(parseModelId("claude", "fable")).toBeNull();
+    expect(parseModelId("claude", "claude-fable-5")).toBeNull();
+    expect(parseModelId("codex", "gpt-6-astra")).toBeNull();
+    expect(parseModelId("claude", "something-new")).toBeNull();
+    expect(parseModelId("codex", "gpt-9")).toBeNull();
+  });
+});
+
+describe("aliases and dated ids", () => {
+  it("aliases satisfy their family when nothing versioned is offered", () => {
+    const picked = selectDefaultModels({
+      claude: ["default", "opus", "sonnet", "haiku", "claude-haiku-4-5-20251001"],
       codex: [],
     });
-    expect(picked.main.model).toBe("opus");
-    expect(picked.small.model).toBe("haiku");
+    expect(picked.main).toEqual({ provider: "claude", model: "opus" });
+    expect(picked.small).toEqual({ provider: "claude", model: "haiku" });
+    expect(picked.secondOpinion).toBeNull();
+  });
+
+  it("prefers the explicit versioned id over aliases of the same family", () => {
+    const picked = selectDefaultModels({
+      claude: ["default", "opus", "claude-opus-5-5", "haiku"],
+      codex: [],
+    });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+  });
+
+  it("prefers the stable family alias over the drifting default alias", () => {
+    expect(selectDefaultModels({ claude: ["default", "opus"], codex: [] }).main).toEqual({
+      provider: "claude",
+      model: "opus",
+    });
+  });
+
+  it("parses dated pins by version and picks them when they are all there is", () => {
+    expect(parseModelId("claude", "claude-haiku-4-5-20251001")).toMatchObject({
+      family: "haiku",
+      version: [4, 5],
+      dated: true,
+    });
+    const picked = selectDefaultModels({ claude: ["claude-haiku-4-5-20251001"], codex: [] });
+    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-4-5-20251001" });
+    expect(picked.main).toBeNull();
+  });
+
+  it("prefers the plain id over a dated pin on an exact version tie", () => {
+    const picked = selectDefaultModels({
+      claude: ["claude-haiku-4-5-20251001", "claude-haiku-4-5"],
+      codex: [],
+    });
+    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-4-5" });
+  });
+});
+
+describe("new versions win without a code change", () => {
+  it("a hypothetical claude-opus-6 beats claude-opus-5-5 for main", () => {
+    const picked = selectDefaultModels({
+      claude: ["claude-opus-5-5", "claude-opus-6"],
+      codex: CODEX_ISSUE,
+    });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-6" });
+  });
+
+  it("a hypothetical gpt-6.2-sol is picked up for main and second opinion", () => {
+    const picked = selectDefaultModels({ claude: [], codex: ["gpt-6.2-sol", "gpt-6.1-sol"] });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.2-sol" });
+  });
+});
+
+describe("one provider or none", () => {
+  it("with Claude only, second opinion stays unset", () => {
+    const picked = selectDefaultModels({ claude: CLAUDE_ISSUE, codex: [] });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
+    expect(picked.secondOpinion).toBeNull();
+  });
+
+  it("with Codex only, main and small come from Codex and second opinion stays unset", () => {
+    const picked = selectDefaultModels({ claude: [], codex: CODEX_ISSUE });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    expect(picked.small).toEqual({ provider: "codex", model: "gpt-6-luna" });
+    expect(picked.secondOpinion).toBeNull();
+  });
+
+  it("with nothing offered, every role is null (caller keeps stored)", () => {
+    expect(selectDefaultModels({ claude: [], codex: [] })).toEqual({
+      main: null,
+      small: null,
+      secondOpinion: null,
+    });
   });
 });
 
 describe("live settings defaults + validation", () => {
   const auth = { authorization: "Bearer tok" };
 
+  // Second-opinion decision table in terms of offered() results (issue #88):
+  // (a) both known → live pick from the other provider, else unset
+  //     ("GET fills never-saved roles", "saved main on Codex");
+  // (b) main's provider known, the other null → unset
+  //     ("only main's provider answers", "saved main with other unknown");
+  // (c) main's provider known, the other known but empty → unset
+  //     ("definitively offers nothing");
+  // (d) main's provider null, the other known → stored stands
+  //     ("main's listing unknown" ×2);
+  // (e) both null → stored stands ("offerings are unknown").
   /** Stub catalog with live offerings (null = adapter unknown/down). */
   function stubCatalog(
     offered: Record<string, { models: ({ id: string } | string)[]; defaultId: string | null } | null>,
@@ -124,6 +234,13 @@ describe("live settings defaults + validation", () => {
     };
   }
 
+  function liveCatalog(): ModelCatalog {
+    return stubCatalog({
+      claude: { models: [...CLAUDE_ISSUE], defaultId: "default" },
+      codex: { models: [...CODEX_ISSUE], defaultId: "gpt-5.6-terra" },
+    });
+  }
+
   async function makeApp(catalog: ModelCatalog) {
     const db = openDatabase(":memory:");
     migrate(db);
@@ -136,19 +253,14 @@ describe("live settings defaults + validation", () => {
   }
 
   it("GET fills never-saved roles from live lists; PUT rejects unoffered models", async () => {
-    const { app } = await makeApp(
-      stubCatalog({
-        claude: { models: ["opus", "sonnet", "haiku"], defaultId: "opus" },
-        codex: { models: ["gpt-6-sol", "gpt-5.6-terra"], defaultId: "gpt-5.6-terra" },
-      }),
-    );
+    const { app } = await makeApp(liveCatalog());
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       expect(get.statusCode).toBe(200);
       const body = get.json() as { main: { model: string }; small: { model: string }; secondOpinion: { model: string } };
-      expect(body.main.model).toBe("opus");
-      expect(body.small.model).toBe("haiku");
-      expect(body.secondOpinion.model).toBe("gpt-5.6-terra");
+      expect(body.main.model).toBe("claude-opus-5-5");
+      expect(body.small.model).toBe("claude-haiku-5-5");
+      expect(body.secondOpinion.model).toBe("gpt-6.1-sol");
 
       const bad = await app.inject({
         method: "PUT",
@@ -163,29 +275,131 @@ describe("live settings defaults + validation", () => {
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { main: { provider: "claude", model: "sonnet" } },
+        payload: { main: { provider: "claude", model: "claude-sonnet-5-5" } },
       });
       expect(ok.statusCode).toBe(200);
 
       // Saved roles stick even when the live list changes.
       const again = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
-      expect((again.json() as typeof body).main.model).toBe("sonnet");
-      expect((again.json() as typeof body).small.model).toBe("haiku");
+      expect((again.json() as typeof body).main.model).toBe("claude-sonnet-5-5");
+      expect((again.json() as typeof body).small.model).toBe("claude-haiku-5-5");
     } finally {
       await app.close();
     }
   });
 
-  it("GET leaves second opinion unset when Codex offers nothing", async () => {
+  it("a saved main on Codex takes second opinion from Claude (issue table row)", async () => {
+    const { app, ctx } = await makeApp(liveCatalog());
+    try {
+      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol" } });
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol" });
+      expect(body.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(b) GET unsets second opinion when only main's provider answers", async () => {
+    // Claude-only machine: the Codex listing is unknown (not installed).
+    // A stored pick pointing at Codex must not survive — main/small go
+    // live, second opinion unsets.
+    const { app } = await makeApp(
+      stubCatalog({ claude: { models: [...CLAUDE_ISSUE], defaultId: null } }),
+    );
+    try {
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        small: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+      expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(b) saved main with the other provider unknown unsets second opinion", async () => {
+    const { app, ctx } = await makeApp(
+      stubCatalog({ codex: { models: [...CODEX_ISSUE], defaultId: null } }),
+    );
+    try {
+      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol" } });
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(d) GET keeps stored second opinion when main's listing is unknown", async () => {
+    // Claude missing, Codex answering but with nothing usable: live main
+    // is unfillable, so the effective main stays the stored Claude pick
+    // (whose listing is unknown) and stored values stand wholesale.
+    const { app } = await makeApp(
+      stubCatalog({ codex: { models: ["gpt-6-astra"], defaultId: null } }),
+    );
+    try {
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        small: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+      expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(d) saved main on a missing provider keeps stored second opinion", async () => {
+    // The user saved a Claude main, then Claude went away (listing null)
+    // while Codex answers: too uncertain to recompute, stored stands.
+    const { app, ctx } = await makeApp(
+      stubCatalog({ codex: { models: ["gpt-6.1-sol"], defaultId: null } }),
+    );
+    try {
+      ctx.settings.update({ main: { provider: "claude", model: "claude-opus-5" } });
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("GET leaves second opinion unset when Codex definitively offers nothing", async () => {
     const { app } = await makeApp(
       stubCatalog({
-        claude: { models: ["sonnet", "haiku"], defaultId: null },
+        claude: { models: [...CLAUDE_ISSUE], defaultId: null },
         codex: { models: [], defaultId: null },
       }),
     );
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
-      const body = get.json() as { secondOpinion: { provider: string; model: string } };
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
       expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
 
       // Unsetting explicitly is valid; empty main is not.
@@ -212,11 +426,110 @@ describe("live settings defaults + validation", () => {
     const { app } = await makeApp(stubCatalog({}));
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
-      const body = get.json() as { main: { model: string }; secondOpinion: { model: string } };
-      expect(body.main.model).toBe("claude-sonnet");
-      expect(body.secondOpinion.model).toBe("gpt-5.4");
+      const body = get.json() as {
+        main: { model: string };
+        small: { model: string };
+        secondOpinion: { model: string };
+      };
+      expect(body.main.model).toBe("claude-opus-5-5");
+      expect(body.small.model).toBe("claude-haiku-5-5");
+      expect(body.secondOpinion.model).toBe("gpt-6.1-sol");
     } finally {
       await app.close();
     }
+  });
+
+  it("GET keeps stored picks when live lists offer no allowed family", async () => {
+    const { app } = await makeApp(
+      stubCatalog({
+        claude: { models: ["fable", "claude-fable-5"], defaultId: null },
+        codex: { models: ["gpt-6-astra"], defaultId: null },
+      }),
+    );
+    try {
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      // Unfillable roles keep the stored (static) pick; readiness reports it.
+      expect(body.main.model).toBe("claude-opus-5-5");
+      // Codex offering is definitive but unusable: second opinion unsets.
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("resolving effective settings never writes the computed defaults", async () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const settings = new SettingsStore(db);
+    const resolved = await resolveEffectiveSettings({ settings, models: liveCatalog() });
+    expect(resolved.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    expect(resolved.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    // Nothing persisted: no role counts as saved and stored values stand.
+    expect(settings.savedKeys()).toEqual([]);
+    expect(settings.get().main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+  });
+});
+
+describe("shared context sees the same effective settings", () => {
+  function serviceWith(
+    catalog: ModelCatalog,
+  ): { service: SharedContextService; seenBaseKeys: string[] } {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const seenBaseKeys: string[] = [];
+    const service = new SharedContextService({
+      reviews: {
+        getSnapshot: () => ({ version: { n: 1 }, pages: [], logTail: [] }),
+      } as never,
+      sessions: {
+        baseInfo: (key: string) => {
+          seenBaseKeys.push(key);
+          return undefined;
+        },
+      } as never,
+      settings: new SettingsStore(db),
+      models: catalog,
+      store: { statsForReview: () => [], observe: () => {} } as never,
+    });
+    return { service, seenBaseKeys };
+  }
+
+  function codexMainCatalog(): ModelCatalog {
+    const norm = (id: string): { id: string } => ({ id });
+    return {
+      listModels: (p: string) =>
+        Promise.resolve(
+          (p === "claude" ? ["claude-haiku-4-5"] : ["gpt-6-sol", "gpt-5.6-luna"]).map(norm),
+        ),
+      offered: (p: string) =>
+        Promise.resolve({
+          models: (p === "claude" ? ["claude-haiku-4-5"] : ["gpt-6-sol", "gpt-5.6-luna"]).map(norm),
+          defaultId: null,
+        }),
+    };
+  }
+
+  it("base keys use the live main pick, not the stored static one", async () => {
+    const { service, seenBaseKeys } = serviceWith(codexMainCatalog());
+    // Live main is gpt-6-sol on Codex (no new-enough Claude opus offered);
+    // the stored static pick is claude-opus-5-5.
+    await service.maybeGrowBase("r1", async () => {});
+    expect(seenBaseKeys).toHaveLength(1);
+    expect(seenBaseKeys[0]).toContain("codex|gpt-6-sol");
+    expect(seenBaseKeys[0]).not.toContain("opus-5-5");
+  });
+
+  it("base keys keep the stored pick when offerings are unknown", async () => {
+    const { service, seenBaseKeys } = serviceWith({
+      listModels: () => Promise.resolve([]),
+      offered: () => Promise.resolve(null),
+    });
+    await service.maybeGrowBase("r1", async () => {});
+    expect(seenBaseKeys).toHaveLength(1);
+    expect(seenBaseKeys[0]).toContain("claude|claude-opus-5-5");
   });
 });

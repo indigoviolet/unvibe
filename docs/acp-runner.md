@@ -109,12 +109,25 @@ Tightest working configuration per adapter (proven by live tests):
 ## Models and thinking
 
 `listModels(provider)` reads the `model` config option from a throwaway
-session (cached 5 min). Observed 2026-10-10:
+session (cached 5 min). Observed 2026-10-12 (13 + 7):
 
-- Claude (13): `default` (= Opus 5.5), `opus`, `fable`, `sonnet`, `haiku`,
-  plus dated pins (`claude-opus-4-6` … `claude-fable-5`, …).
+- Claude (13): `default`, `opus`, `fable`, `sonnet`, `haiku`, plus
+  versioned ids (`claude-opus-5-5`, `claude-opus-5`, `claude-fable-5`,
+  `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-haiku-5-5`,
+  `claude-haiku-4-5`) and dated pins (`claude-haiku-4-5-20251001`).
 - Codex (7): `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`,
-  `gpt-5.6-sol`, `gpt-5.6-terra` (default), `gpt-5.6-luna`.
+  `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`.
+
+Role defaults (`settings/defaults.ts`, issue #88) rank tiers
+opus | sol > sonnet | terra > haiku | luna, newest version offered within
+a tier, never Fable or Astra; second opinion comes from the provider main
+is not using (unset with one provider). Matching is on family plus
+highest version, not literal strings: aliases satisfy their family but
+lose to explicit versioned ids (`opus` beats drifting `default`; plain
+ids beat dated pins on ties), so new versions are picked up with no code
+change. One source (`settings/effective.ts`) serves Settings, readiness,
+the pipeline, second opinions and shared context: saved picks win, unset
+roles take the live default, unfillable roles keep the stored fallback.
 
 `listThinking(provider)`: Claude `effort` (default `high`; `default/low/
 medium/high/xhigh/max`), Codex `reasoning_effort` (default `medium`;

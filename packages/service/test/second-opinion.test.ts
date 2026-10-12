@@ -21,6 +21,7 @@ import {
   resolveTarget,
 } from "../src/secondopinion/index.js";
 import { createApp } from "../src/server.js";
+import type { ModelCatalog } from "../src/settings/index.js";
 import { setupReview, sourceFile } from "./m6-helpers.js";
 
 const SECOND_REPLY = (verdict: string): string =>
@@ -469,6 +470,45 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
       const snap3 = s.ctx.reviews.getSnapshot(s.reviewId)!;
       const card3 = snap3.pages.flatMap((p) => p.cards).find((c) => c.id === "central")!;
       expect(card3.secondOpinions).toHaveLength(2);
+    } finally {
+      await s.app.close();
+    }
+  });
+
+  it("runs on the live second-opinion default, not the stored static one (issue #88)", async () => {
+    const s = await setup();
+    try {
+      const agents = fakeWithVerdict("agrees");
+      // No gpt-6.1-sol offered: the live second opinion (main is Claude) is
+      // gpt-6-sol. The stored static pick is gpt-6.1-sol and must not win.
+      const liveClaude = [
+        "default",
+        "opus",
+        "sonnet",
+        "haiku",
+        "claude-opus-5-5",
+        "claude-opus-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-haiku-4-5",
+      ];
+      const liveCodex = ["gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+      const norm = (id: string): { id: string } => ({ id });
+      const models: ModelCatalog = {
+        listModels: (p: string) => Promise.resolve((p === "claude" ? liveClaude : liveCodex).map(norm)),
+        offered: (p: string) =>
+          Promise.resolve({ models: (p === "claude" ? liveClaude : liveCodex).map(norm), defaultId: null }),
+      };
+      const deps = { ...depsFor(s, agents), models };
+      const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      if (!("id" in job)) throw new Error("expected a job");
+      expect(job.provider).toBe("codex");
+      expect(job.model).toBe("gpt-6-sol");
+      await s.ctx.jobs.drain(10000);
+      expect(s.ctx.jobs.get(job.id)?.state).toBe("done");
+      const snap = s.ctx.reviews.getSnapshot(s.reviewId)!;
+      const card = snap.pages.flatMap((p) => p.cards).find((c) => c.id === "central")!;
+      expect(card.secondOpinions![0].model).toBe("gpt-6-sol");
     } finally {
       await s.app.close();
     }
