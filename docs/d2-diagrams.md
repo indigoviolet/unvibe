@@ -40,8 +40,9 @@ stanzas stay rejected by the pre-check (they can smuggle fonts).
 6. Render light and dark, rewrite citation anchors to `<a href="#" data-refs data-src>`, strip `<title>` tooltips that contain tokens, sanitise, and cache by content hash. The web app fetches `GET /api/reviews/:id/diagrams/:hash?theme=`.
 
 The sanitiser keeps everything D2 needs for layout: tspan `x`/`dy`
-(multi-line labels), `mask` + `maskUnits` (the gap edges leave behind
-their labels). The data-dir cache filenames carry
+(multi-line labels) and `dx`, `mask` + `maskUnits` (the gap edges leave
+behind their labels), plus the `url()` references to them through both
+the service and the per-instance web adopt passes. The data-dir cache filenames carry
 `DIAGRAM_POSTPROCESS_VERSION` (`<hash>.v<version>.<theme>.svg`), so
 renders cached by an older sanitiser are never served stale — legacy
 unversioned files are swept on start. Fixture seeds keep the unversioned

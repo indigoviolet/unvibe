@@ -66,13 +66,13 @@ function multiline(theme: DiagramTheme): string {
     `<rect x="180" y="100" width="120" height="20" fill="black"/></mask></defs>` +
     `<rect x="0" y="0" width="460" height="220" fill="${bg}"/>` +
     `<a href="#" data-refs="diff:src-urllib3-connection.py:80-82" data-src="diff:src-urllib3-connection.py:80-82">` +
-    `<rect x="20" y="30" width="180" height="80" rx="6" fill="${box}" stroke="${edge}" stroke-width="2"/>` +
-    `<text x="110" y="58" fill="${ink}" style="text-anchor:middle;font-size:16px">` +
+    `<rect x="20" y="30" width="180" height="80" rx="6" fill="${box}" stroke="${edge}" stroke-width="2" class="stroke-B1 fill-B6"/>` +
+    `<text x="110" y="58" fill="${ink}" class="fill-N1" style="text-anchor:middle;font-size:16px">` +
     `<tspan x="110" dy="0">first line</tspan><tspan x="110" dy="18.5">second line</tspan></text></a>` +
-    `<rect x="260" y="20" width="180" height="90" rx="6" fill="${box}" stroke="${edge}" stroke-width="2"/>` +
-    `<text x="350" y="44" fill="${ink}" style="text-anchor:middle;font-size:16px">` +
+    `<rect x="260" y="20" width="180" height="90" rx="6" fill="${box}" stroke="${edge}" stroke-width="2" class="stroke-B1 fill-B6"/>` +
+    `<text x="350" y="44" fill="${ink}" class="fill-N1" style="text-anchor:middle;font-size:16px">` +
     `<tspan x="350" dy="0">one</tspan><tspan x="350" dy="17.6">two</tspan><tspan x="350" dy="17.6">three</tspan></text>` +
-    `<path d="M 200 150 H 440" stroke="${edge}" stroke-width="2" fill="none" mask="url(#d2mock-ml-mask)"/>` +
+    `<path d="M 200 150 H 440" stroke="${edge}" stroke-width="2" fill="none" class="connection stroke-B1" mask="url(#d2mock-ml-mask)"/>` +
     `<text x="240" y="113" fill="${ink}" style="text-anchor:middle;font-size:14px;font-style:italic">edge label</text></svg>`
   );
 }
