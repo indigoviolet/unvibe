@@ -1358,10 +1358,12 @@ export const mockApi = {
         updatedAt: NOW - 3600000,
       },
       {
+        // #91: `gh search prs` has no head-branch field, so PR rows arrive
+        // without `branch` — keep one branch-less row so the row text
+        // (no "undefined", no dangling separator) stays exercised.
         kind: "pr",
         title: "Fix retry backoff on 429s",
         prNumber: 5011,
-        branch: "fix-retry-backoff",
         author: "you",
         updatedAt: NOW - 86400000 * 2,
       },

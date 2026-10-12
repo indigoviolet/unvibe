@@ -921,6 +921,20 @@ function SessionRow({
   );
 }
 
+/**
+ * Head line for a start-page change row (#91): PR rows show `#N · branch`
+ * when the branch is known and just `#N` when it is not (`gh search prs`
+ * has no head-branch field, so `branch` is unset for these rows) — never
+ * `#N · undefined` and never a dangling separator.
+ */
+export function changeHead(c: RepoChange): string {
+  if (c.kind === "pr") {
+    const num = c.prNumber !== undefined ? `#${c.prNumber}` : "PR";
+    return c.branch ? `${num} · ${c.branch}` : num;
+  }
+  return c.branch ?? c.title;
+}
+
 function ChangeSection({
   title,
   changes,
@@ -953,7 +967,7 @@ function ChangeSection({
           <div key={changeKey(c, i)} className="ci">
             <button className="cj" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
               <span className="cw">
-                {c.kind === "pr" ? `#${c.prNumber} · ${c.branch}` : c.branch}
+                {changeHead(c)}
                 {c.author ? ` · ${c.author}` : ""}
               </span>
               <span className="cx2">{c.title}</span>
