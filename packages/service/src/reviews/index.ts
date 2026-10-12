@@ -1,2 +1,2 @@
 export { listReviewSummaries, touchReviewOpened } from "./list.js";
-export { deleteReviewLocal } from "./delete.js";
+export { deleteAllReviewRows, deleteReviewLocal, listReviewIds } from "./delete.js";

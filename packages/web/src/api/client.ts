@@ -31,6 +31,7 @@ import type {
   RefreshResponse,
   ReloadResponse,
   RemoveRepoResponse,
+  ResetDataResponse,
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
@@ -225,6 +226,7 @@ const realApi = {
   reviews: (): Promise<ReviewsListResponse> => get("/api/reviews"),
   deleteReview: (id: string): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  resetData: (): Promise<ResetDataResponse> => post("/api/reset"),
   readiness: (force?: boolean): Promise<ReadinessResponse> =>
     get(`/api/readiness${force ? "?force=1" : ""}`),
   review: (id: string, version?: number): Promise<ReviewSnapshot> =>

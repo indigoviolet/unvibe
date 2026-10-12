@@ -29,6 +29,19 @@ test("settings default to the Repositories tab; tabs switch panels", async ({ pa
   await expect(page.getByRole("tabpanel", { name: "Repositories" })).toBeHidden();
 });
 
+test("data tab resets after a confirm step", async ({ page }) => {
+  await page.goto("/settings?tab=data");
+  const panel = page.getByRole("tabpanel", { name: "Data" });
+  await panel.getByRole("button", { name: "Reset data…" }).click();
+  await panel.getByRole("button", { name: "Cancel" }).click();
+  await expect(panel.getByRole("status")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Reset data…" }).click();
+  await panel.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(panel.getByRole("status")).toHaveText(/Removed \d+ reviews?\./);
+  await page.getByRole("link", { name: "Back to start" }).click();
+  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+});
+
 test("?tab= deep link survives reload", async ({ page }) => {
   await page.goto("/settings?tab=limits");
   await page.getByRole("tab", { name: "Limits and budgets" }).click();
