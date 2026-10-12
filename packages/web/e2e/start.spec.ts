@@ -82,6 +82,8 @@ test("failing lists keep the PR input, show an error with Retry, and recover", a
       JSON.stringify(["authoring", "review-requested", "recent"]),
     );
   });
+  // First load for the repo (no kept lists yet): the error shows alone.
+  await page.evaluate(() => localStorage.removeItem("unvibe.start.keptChanges.v1"));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // The PR input does not wait on the lists.
@@ -120,6 +122,8 @@ test("held lists show loading without stale rows and keep the PR input", async (
   await page.addInitScript(() => {
     localStorage.setItem("unvibe.mock.repoChangesHold", "1");
   });
+  // First load for the repo (no kept lists yet): loading, not sections.
+  await page.evaluate(() => localStorage.removeItem("unvibe.start.keptChanges.v1"));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // Reviews and the demo row do not wait on the lists.
@@ -143,14 +147,16 @@ test("re-selecting the current repo reloads its lists", async ({ page }) => {
   await expect(page.getByText("PRs you're authoring")).toBeVisible();
   // Hold live (addInitScript would only apply after a re-navigation).
   await page.evaluate(() => localStorage.setItem("unvibe.mock.repoChangesHold", "1"));
-  // Re-selecting the already-selected value still fires change and must
-  // pair the cleared lists with a fresh load — never a stuck "Loading…".
+  // Re-selecting the already-selected value still fires change and pairs
+  // the kept lists with a fresh load: the kept rows stay visible with a
+  // refresh sign — never a stuck "Loading…".
   await page.getByLabel("Repository").selectOption("urllib3");
-  await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading urllib3/urllib3…");
-  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
-  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(page.locator('[data-testid="kept-status"]')).toContainText("refreshing");
   await expect(page.getByText("PRs you're authoring")).toBeVisible();
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.locator('[data-testid="kept-status"]')).not.toContainText("refreshing");
 });
 
 test("reviews for checkouts no longer listed stay openable and removable", async ({ page }) => {
