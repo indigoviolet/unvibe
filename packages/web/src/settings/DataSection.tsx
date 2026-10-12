@@ -30,7 +30,7 @@ export function DataSection(): React.JSX.Element {
     <section aria-label="Data">
       <p className="hint">
         Reset removes every review from this machine, with its guide, explanations, comments you have not
-        submitted and the worktrees Unvibe made for it. Settings and repositories stay. Nothing changes on GitHub.
+        submitted and the working copies Unvibe made for it. Settings and repos stay. Nothing changes on GitHub.
       </p>
       <div className="frow" style={{ gap: 8 }}>
         {confirming ? (

@@ -30,22 +30,26 @@ export const KNOWN_PROVIDERS = ["claude", "codex"] as const;
 /**
  * Static fallback when no adapter is reachable (offline, not logged in,
  * replay/test runners). Model ids mirror the adapters' shape
- * (`provider/model`, e.g. `codex/gpt-5.4`).
+ * (`provider/model`, e.g. `codex/gpt-6.1-sol`) and name ids the adapters
+ * offer today (issue #88), so the fallback never warns "not offered" on a
+ * fresh install; live listings replace it whenever they are known.
  */
 export const STATIC_MODELS: Record<string, string[]> = {
-  claude: ["claude-sonnet", "claude-opus"],
-  codex: ["gpt-5.4", "gpt-5.4-mini"],
+  claude: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+  codex: ["gpt-6.1-sol", "gpt-5.6-terra", "gpt-6-luna"],
 };
 
 /** Display names for the static fallback (offline pickers still name models). */
 export const STATIC_MODEL_INFO: Record<string, ModelInfo[]> = {
   claude: [
-    { id: "claude-sonnet", name: "Sonnet" },
-    { id: "claude-opus", name: "Opus" },
+    { id: "claude-opus-5-5", name: "Opus 5.5" },
+    { id: "claude-sonnet-5-5", name: "Sonnet 5.5" },
+    { id: "claude-haiku-5-5", name: "Haiku 5.5" },
   ],
   codex: [
-    { id: "gpt-5.4", name: "GPT 5.4" },
-    { id: "gpt-5.4-mini", name: "GPT 5.4 mini" },
+    { id: "gpt-6.1-sol", name: "Sol 6.1" },
+    { id: "gpt-5.6-terra", name: "Terra 5.6" },
+    { id: "gpt-6-luna", name: "Luna 6" },
   ],
 };
 

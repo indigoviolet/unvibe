@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ReviewSummary } from "@unvibe/shared";
+import { isDefaultGuideTitle } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
@@ -45,15 +46,15 @@ export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: P
   const num = owner && name ? (prNumber !== undefined ? `${owner}/${name}#${prNumber}` : `${owner}/${name}`) : null;
   const rootTitle = snapshot?.pages.find((p) => p.kind === "root")?.title;
   const title =
-    summary?.title && summary.title !== "Guided review"
+    summary?.title && !isDefaultGuideTitle(summary.title)
       ? summary.title
-      : rootTitle && rootTitle !== "Guided review"
+      : rootTitle && !isDefaultGuideTitle(rootTitle)
         ? rootTitle
         : branch || reviewId;
 
   return (
     <header className="top">
-      <Link className="brand" to="/" title="Back to the start screen">
+      <Link className="brand" to="/" title="Back to the start page">
         Unvibe
       </Link>
       <div className="pr">

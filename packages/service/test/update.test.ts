@@ -298,7 +298,7 @@ describe("per-ref metadata without cloning", () => {
       "* preview/feat-x (installed, 0.0.1-preview.feat-x.older) — newer build available (installed older12 vs abc1234, built 2026-10-12)",
     );
     expect(lines).toContain("  release (0.0.1)");
-    expect(lines).toContain("  preview/gone (metadata unavailable)");
+    expect(lines).toContain("  preview/gone (no build details)");
     expect(lines[lines.length - 1]).toMatch(/unvibe update <channel>/);
   });
 
@@ -714,7 +714,7 @@ describe("runUpdateChannelFlow", () => {
     );
     expect(out.code).toBe(0);
     expect(out.lines.some((l) => l.includes("reinstalling preview/feat-x: installed older12 vs published abc1234"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("data kept (backed up to"))).toBe(true);
     expect(out.lines.some((l) => l.includes("Switching keeps your database"))).toBe(false);
     // Backed up first, live database untouched, no restore attempted.
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/feat-x"), "unvibe.db"), "utf8")).toBe("preview-db");
@@ -783,8 +783,8 @@ describe("runUpdateChannelFlow", () => {
     expect(fs.existsSync(channelSlotDir(dataDir, "preview/feat-x"))).toBe(false);
     expect(out.lines.some((l) => l.includes("0.0.1-preview.feat-x.abc1234") && l.includes("(was 0.0.1)"))).toBe(true);
     expect(out.lines.some((l) => l.includes("backed up unvibe.db to"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("Switching keeps your database"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("data kept (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("Switching keeps your data"))).toBe(true);
     expect(out.lines.some((l) => l.includes("unvibe start"))).toBe(true);
   });
 
@@ -880,7 +880,7 @@ describe("runUpdateChannelFlow", () => {
     // The live database carries over; the channel being left is backed up first.
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-a-db");
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/a"), "unvibe.db"), "utf8")).toBe("preview-a-db");
-    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("data kept (backed up to"))).toBe(true);
   });
 
   it("restoreBackupOf restores the pre-switch backup after the install (rollback)", async () => {
@@ -981,7 +981,7 @@ describe("runUpdateChannelFlow", () => {
     expect(out.code).toBe(0);
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "release"), "unvibe.db"), "utf8")).toBe("release-db");
-    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("data kept (backed up to"))).toBe(true);
   });
 
   it("leaves the database untouched when npm fails", async () => {

@@ -109,27 +109,27 @@ export async function installSetup(
     const plistPath = path.join(appPath, "Contents", "Info.plist");
     const patched = patchInfoPlist(fs.readFileSync(plistPath, "utf8"));
     fs.writeFileSync(plistPath, patched);
-    steps.push(`helper app written to ${appPath} (handles unvibe://start)`);
+    steps.push(`installed the link handler at ${appPath} (it opens unvibe://start links)`);
     const registered = await runner.run(LSREGISTER, ["-f", appPath]);
     steps.push(
       registered.code === 0
-        ? "registered unvibe:// with LaunchServices"
-        : `warning: lsregister failed (${registered.stderr.trim()}), opening the app once registers it instead`,
+        ? "registered unvibe:// links with macOS"
+        : `warning: couldn't register unvibe:// links (lsregister: ${registered.stderr.trim()}). Open ${appPath} once in Finder to register it.`,
     );
   } else if (platform === "linux") {
     const file = desktopFilePath(paths.homeDir);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, desktopFileContent(paths.nodePath, paths.cliPath));
-    steps.push(`desktop handler written to ${file} (handles unvibe://start)`);
+    steps.push(`installed the link handler at ${file} (it opens unvibe://start links)`);
     const mime = await runner.run("xdg-mime", ["default", DESKTOP_FILENAME, URL_MIME]);
     steps.push(
       mime.code === 0
-        ? "registered unvibe:// with xdg-mime"
-        : `warning: xdg-mime failed (${mime.stderr.trim() || "no desktop session?"}), invoking the Exec line directly still starts the service`,
+        ? "registered unvibe:// links with your desktop"
+        : `warning: couldn't register unvibe:// links (xdg-mime: ${mime.stderr.trim() || "no desktop session?"}). \`unvibe start\` still starts the service.`,
     );
     await runner.run("update-desktop-database", [path.dirname(file)]);
   } else {
-    throw new Error(`unsupported platform for setup: ${platform}`);
+    throw new Error(`unvibe setup works on macOS and Linux only (this is ${platform})`);
   }
   return steps;
 }
@@ -148,7 +148,7 @@ export async function uninstallSetup(
       rmrf(appPath);
       steps.push(`removed ${appPath}`);
     } else {
-      steps.push("helper app not present; nothing to remove");
+      steps.push("no link handler installed; nothing to remove");
     }
   } else if (platform === "linux") {
     const file = desktopFilePath(paths.homeDir);
@@ -156,11 +156,11 @@ export async function uninstallSetup(
       fs.unlinkSync(file);
       steps.push(`removed ${file}`);
     } else {
-      steps.push("desktop handler not present; nothing to remove");
+      steps.push("no link handler installed; nothing to remove");
     }
     await runner.run("update-desktop-database", [path.dirname(file)]);
   } else {
-    throw new Error(`unsupported platform for setup: ${platform}`);
+    throw new Error(`unvibe setup works on macOS and Linux only (this is ${platform})`);
   }
   return steps;
 }

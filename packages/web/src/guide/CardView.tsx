@@ -17,6 +17,7 @@
  * Accept/Dismiss.
  */
 import type { Annotation, Card, DepthLevel, Page } from "@unvibe/shared";
+import { displayCardTitle } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { Icon } from "../components/Icon.js";
@@ -28,7 +29,6 @@ import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { ExpansionCard } from "./expansions/ExpansionCard.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
-import { cardPreview } from "./guideUtils.js";
 import { busyForCard, updateKey } from "./inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
 
@@ -180,6 +180,10 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   });
 
   if (card.collapsed) {
+    // Issue #49: the header always shows the title — the real one, else
+    // the shared word-boundary fallback. No blank header row, no
+    // body-prefix preview.
+    const title = displayCardTitle(card.title, card.blocks);
     return (
       <section className={`card collapsed${card.read ? " read" : ""}`} id={`C-${card.id}`}>
         <div className="chead">
@@ -190,11 +194,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
               runCardAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: false })
             }
           />
-          {card.title ? (
-            <h2 className="ct">{card.title}</h2>
-          ) : (
-            <p className="cprev">{cardPreview(card)}</p>
-          )}
+          {title ? <h2 className="ct">{title}</h2> : null}
           {card.read ? (
             <ControlButton
               icon="check"
@@ -217,6 +217,8 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const examplesBusy = busyKind === "examples";
   const diagramBusy = busyKind === "diagram";
   const secondOpinionBusy = busyKind === "second_opinion";
+  // Issue #49: same display title as the collapsed header and Contents.
+  const title = displayCardTitle(card.title, card.blocks);
 
   return (
     <section
@@ -232,7 +234,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             runCardAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: true })
           }
         />
-        {card.title ? <h2 className="ct">{card.title}</h2> : null}
+        {title ? <h2 className="ct">{title}</h2> : null}
       </div>
       {card.stale ? (
         <div className="stale" role="status">

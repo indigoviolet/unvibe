@@ -8,7 +8,7 @@
  * guide prose), it travels here instead, so the supervisor can wire the
  * two together without the builder importing state modules.
  */
-import type { FileCategory, LogEntry } from "@unvibe/shared";
+import type { Contribution, FileCategory, LogEntry } from "@unvibe/shared";
 
 /** One diff line's content, without its `+`/`-`/` ` prefix. */
 export interface ContextDiffLine {
@@ -106,6 +106,12 @@ export interface PromptReviewSnapshot {
   concepts: ConceptIndexEntry[];
   /** Append-only log, ascending seq (PRD §9.3). */
   log: LogEntry[];
+  /**
+   * Current contributions: the consolidate input, rendered with the same
+   * formatter the real call uses (issue #80). Absent on snapshots built
+   * before contributions were projected here.
+   */
+  contributions?: Contribution[];
 }
 
 /** Per-session cursor into the log (PRD §9.3). */

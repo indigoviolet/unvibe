@@ -35,7 +35,7 @@ async function fetchViewer(ctx: ServiceContext): Promise<string | null> {
 /** GET /api/viewer — cached `gh api user` login. */
 export async function registerViewer(app: FastifyInstance, ctx?: ServiceContext): Promise<void> {
   if (!ctx) {
-    app.get("/api/viewer", async (_req, reply) => reply.code(501).send({ error: "not implemented" }));
+    app.get("/api/viewer", async (_req, reply) => reply.code(501).send({ error: "not available in this build" }));
     return;
   }
   app.get("/api/viewer", async () => {

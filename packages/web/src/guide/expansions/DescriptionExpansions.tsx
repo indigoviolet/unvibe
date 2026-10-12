@@ -93,7 +93,7 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
       if (!found) return;
       if (found.type === "expansion" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
-          toast(`Couldn't expand: ${friendlyError(err)}`);
+          toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
         window.setTimeout(() => {
           document.getElementById(`B-${id}`)?.scrollIntoView({ block: "nearest" });

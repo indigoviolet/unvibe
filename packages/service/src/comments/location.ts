@@ -109,7 +109,7 @@ function resolveNewSideLine(
   if (!near) return null;
   return {
     ...near,
-    fallbackNote: `Note: line ${line} is outside the diff context; posting on the nearest commentable line ${near.line} in the same hunk.`,
+    fallbackNote: `GitHub can't take a comment on line ${line}, so this goes on line ${near.line}, the nearest line it accepts.`,
   };
 }
 
@@ -126,7 +126,7 @@ function resolveOldSideLine(
   if (!near) return null;
   return {
     ...near,
-    fallbackNote: `Note: line ${line} is outside the diff context; posting on the nearest commentable line ${near.line} in the same hunk.`,
+    fallbackNote: `GitHub can't take a comment on line ${line}, so this goes on line ${near.line}, the nearest line it accepts.`,
   };
 }
 
@@ -243,10 +243,10 @@ export function locateThread(snapshot: ReviewSnapshot, thread: Annotation): Subm
     if (host.kind === "block") {
       const citations = findBlockCitations(snapshot, host.blockId);
       const first = citations.find((t) => t.startsWith("diff:"));
-      if (!first) return { kind: "general", reason: "guide comment without a diff citation" };
-      return locateDiffTarget(snapshot, first) ?? { kind: "general", reason: "unresolvable diff citation" };
+      if (!first) return { kind: "general", reason: "Not tied to a line of the diff, so it posts as a general PR comment." };
+      return locateDiffTarget(snapshot, first) ?? { kind: "general", reason: "The line it points at is not in this diff, so it posts as a general PR comment." };
     }
-    return { kind: "general", reason: "description comment" };
+    return { kind: "general", reason: "A comment on the PR description posts as a general PR comment." };
   }
   return locateDiffLineThread(snapshot, thread);
 }

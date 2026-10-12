@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { DiagramBlock, DiagramTheme } from "@unvibe/shared";
-import { api, DiagramStatusError } from "../api/client.js";
+import { api, DiagramStatusError, friendlyError } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { adoptD2Svg, naturalSize } from "./d2sanitize.js";
 
@@ -118,7 +118,7 @@ export function D2Diagram({ reviewId, block, fetchSvg, legibleText }: Props): Re
     if (!render || status === "unavailable") {
       return { kind: "fallback", note: "unavailable", message: render?.error ?? "" };
     }
-    return { kind: "fallback", note: "error", message: render?.error ?? "This diagram could not be rendered." };
+    return { kind: "fallback", note: "error", message: render?.error ?? "" };
   });
 
   useEffect(() => {
@@ -142,10 +142,10 @@ export function D2Diagram({ reviewId, block, fetchSvg, legibleText }: Props): Re
       }
       const raw = err instanceof Error ? err.message : String(err);
       if (/: 404(\s|$)/.test(raw)) {
-        setState({ kind: "fallback", note: "not-found", message: "This diagram is not on the service." });
+        setState({ kind: "fallback", note: "not-found", message: "the service no longer has it" });
         return;
       }
-      setState({ kind: "fallback", note: "error", message: raw.slice(0, 220) || "This diagram could not be rendered." });
+      setState({ kind: "fallback", note: "error", message: friendlyError(err) });
     };
     if (cached !== undefined) {
       done(cached);
@@ -196,7 +196,7 @@ export function D2Diagram({ reviewId, block, fetchSvg, legibleText }: Props): Re
     setState({
       kind: "fallback",
       note: "error",
-      message: "The service returned a diagram the app could not read.",
+      message: "the service returned a file the app couldn't read",
     });
     return undefined;
   }, [state]);
@@ -228,14 +228,12 @@ export function D2Diagram({ reviewId, block, fetchSvg, legibleText }: Props): Re
         {state.note === "unavailable" ? (
           <p className="hint">
             Diagrams need <code>d2</code>
-            {state.message !== "" ? ` (${state.message})` : ""} — the diagram source is shown
-            above. <Link to="/settings?tab=environment">Settings → Environment</Link> has the install
-            hint.
+            {state.message !== "" ? ` (${state.message})` : ""}. The diagram&apos;s source is shown above. To install d2, see <Link to="/settings?tab=environment">Settings → Environment</Link>.
           </p>
         ) : (
           <p className="hint">
-            This diagram could not be rendered
-            {state.message !== "" ? `: ${state.message}` : ""} — its source is shown above.
+            Couldn&apos;t draw this diagram
+            {state.message !== "" ? `: ${state.message}` : ""}. Its source is shown above.
           </p>
         )}
       </div>

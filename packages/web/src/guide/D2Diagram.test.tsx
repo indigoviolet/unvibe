@@ -197,7 +197,7 @@ describe("D2Diagram status branches", () => {
       />,
     );
     expect(screen.getByText("a - broken")).toBeInTheDocument();
-    expect(screen.getByText(/could not be rendered/)).toBeInTheDocument();
+    expect(screen.getByText(/draw this diagram/)).toBeInTheDocument();
     expect(screen.getByText(/boom/)).toBeInTheDocument();
   });
 
@@ -206,7 +206,7 @@ describe("D2Diagram status branches", () => {
       throw new DiagramStatusError("error", "bad link");
     });
     renderD2(<D2Diagram reviewId="demo" block={d2Block({ source: "a -> b" })} fetchSvg={fetchSvg} />);
-    await waitFor(() => expect(screen.getByText(/could not be rendered/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/draw this diagram/)).toBeInTheDocument());
     expect(screen.getByText(/bad link/)).toBeInTheDocument();
   });
 
@@ -224,7 +224,7 @@ describe("D2Diagram status branches", () => {
       throw new Error("GET /api/reviews/demo/diagrams/h1?theme=light: 404 {\"error\":\"unknown diagram\"}");
     });
     renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={fetchSvg} />);
-    await waitFor(() => expect(screen.getByText(/not on the service/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/no longer has it/)).toBeInTheDocument());
   });
 });
 

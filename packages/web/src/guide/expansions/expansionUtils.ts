@@ -98,4 +98,4 @@ export function isNoAgentMessage(message: string | null | undefined): boolean {
 }
 
 /** Human no-agent copy for toasts and inline states. */
-export const NO_AGENT_COPY = "No agent configured — set up Claude or Codex in Settings → Models to generate explanations.";
+export const NO_AGENT_COPY = "The agent is turned off for this service (UNVIBE_AGENT=none)";

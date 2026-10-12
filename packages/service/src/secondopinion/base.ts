@@ -21,6 +21,8 @@ import type { McpRegistry } from "../mcp/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { ReviewStore } from "../state/store.js";
 import type { SettingsStore } from "../settings/index.js";
+import { resolveEffectiveSettings } from "../settings/index.js";
+import type { ModelCatalog } from "../settings/index.js";
 import { RetryableError } from "../jobs/errors.js";
 
 export interface SecondOpinionBaseDeps {
@@ -29,6 +31,8 @@ export interface SecondOpinionBaseDeps {
   runner: AgentRunner;
   mcp: McpRegistry;
   settings: SettingsStore;
+  /** Model catalog for live role defaults (issue #88): same effective settings as GET /api/settings. Absent → stored settings stand. */
+  models?: ModelCatalog | null;
   dataDir: string;
   promptsDir: string;
   mcpBaseUrl: string;
@@ -47,15 +51,16 @@ function renderInstructions(promptsDir: string): string {
 
 /**
  * Build the common L0 + L1 base text for a review. Deterministic: same
- * snapshot renders to the same bytes (provider caching).
+ * snapshot renders to the same bytes (provider caching). Uses the
+ * effective second-opinion model (issue #88).
  */
-export function buildSecondOpinionBaseText(
-  deps: Pick<SecondOpinionBaseDeps, "reviews" | "settings" | "promptsDir">,
+export async function buildSecondOpinionBaseText(
+  deps: Pick<SecondOpinionBaseDeps, "reviews" | "settings" | "models" | "promptsDir">,
   reviewId: string,
-): { instructions: string; sourceText: string; packText: string; version: number } {
+): Promise<{ instructions: string; sourceText: string; packText: string; version: number }> {
   const snapshot = deps.reviews.getSnapshot(reviewId);
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-  const settings = deps.settings.get();
+  const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const promptSnap = toPromptSnapshot(snapshot, { model: settings.secondOpinion.model });
   const l1 = buildL1Source(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
   const instructions = renderInstructions(deps.promptsDir);
@@ -76,8 +81,8 @@ export async function ensureSecondOpinionBase(
 ): Promise<{ session: Session; viaCache: boolean; version: number }> {
   const snapshot = deps.reviews.getSnapshot(reviewId);
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-  const settings = deps.settings.get();
-  const { packText, version } = buildSecondOpinionBaseText(deps, reviewId);
+  const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
+  const { packText, version } = await buildSecondOpinionBaseText(deps, reviewId);
   const instructions = renderInstructions(deps.promptsDir);
   const key = {
     reviewId,
@@ -113,8 +118,8 @@ export async function forkSecondOpinionBase(
 ): Promise<{ session: Session; viaFork: boolean; version: number }> {
   const snapshot = deps.reviews.getSnapshot(reviewId);
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-  const settings = deps.settings.get();
-  const { packText, version } = buildSecondOpinionBaseText(deps, reviewId);
+  const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
+  const { packText, version } = await buildSecondOpinionBaseText(deps, reviewId);
   const instructions = renderInstructions(deps.promptsDir);
   const base = await ensureSecondOpinionBase(deps, reviewId);
   const runner = deps.runner;
