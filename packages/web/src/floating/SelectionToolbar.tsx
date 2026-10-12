@@ -28,6 +28,7 @@ import { friendlyError } from "../api/client.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
+import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { toast } from "./Toast.js";
 import { useReview } from "../state/store.js";
 
@@ -235,7 +236,7 @@ export function SelectionToolbar() {
     const reviewId = useReview.getState().snapshot?.review.id;
     dismiss();
     if (!reviewId) {
-      toast("The review hasn't loaded yet.");
+      toast("The review is still loading");
       return;
     }
     // The in-flight entry (keyed by anchor) is set synchronously, so a
@@ -247,14 +248,14 @@ export function SelectionToolbar() {
       { toast: false },
     )
       .then((res) => {
-        if (!res.accepted) toast("Couldn't create the explanation.");
+        if (!res.accepted) toast("Not available with mock data");
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (/no agent configured/i.test(msg)) {
-          toast("No agent configured — set up Claude or Codex in Settings → Models to generate explanations.");
+          toast(NO_AGENT_COPY);
         } else {
-          toast(`Explain failed: ${friendlyError(err)}`);
+          toast(`Couldn't explain: ${friendlyError(err)}`);
         }
       });
   };

@@ -309,7 +309,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
           {list.length === 0 ? (
             <p className="hint" style={{ margin: 4 }}>
               {filter === "pr"
-                ? "Nothing marked for the PR yet. Use “For PR” on any comment."
+                ? "Nothing marked for the PR yet. Use “Mark for the PR” on any comment."
                 : "No comments yet. Select text and choose Ask or Note."}
             </p>
           ) : null}
@@ -322,11 +322,11 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             </h3>
             {existing === null ? (
               <p className="hint" style={{ margin: 4 }}>
-                Loading existing comments…
+                Loading comments from GitHub…
               </p>
             ) : existing.length === 0 ? (
               <p className="hint" style={{ margin: 4 }}>
-                No existing review comments.
+                No review comments on GitHub yet.
               </p>
             ) : (
               existing.map((c) => (

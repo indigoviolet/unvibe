@@ -116,10 +116,22 @@ describe("contents model (PRD §4.3)", () => {
     ]);
   });
 
-  it("untitled cards fall back to their first line", () => {
+  it("untitled cards fall back to their first sentence, never cut mid-word (#49)", () => {
     const page = mkPage("p", [mkCard("u", "p", { title: null })]);
     const { cards } = contentsModel(page, () => undefined);
     expect(cards[0].title).toBe("Body of u.");
+  });
+
+  it("long untitled bodies get a word-boundary fallback with an ellipsis (#49)", () => {
+    const body =
+      "A single microphone cannot tell who is speaking because the childrens voices all sound the same in this recording";
+    const card = mkCard("u", "p", { title: null, blocks: [para("u-1", body)] });
+    const { cards } = contentsModel(mkPage("p", [card]), () => undefined);
+    expect(cards[0].title.endsWith("…")).toBe(true);
+    // Word boundary: the stem is a body prefix and the next body char is a space.
+    const stem = cards[0].title.slice(0, -1);
+    expect(body.startsWith(stem)).toBe(true);
+    expect(body[stem.length]).toBe(" ");
   });
 });
 
@@ -218,7 +230,7 @@ describe("emptyGuideState (issue #44)", () => {
     });
     expect(emptyGuideState({ stages: { reader: "error" } }, [])).toEqual({
       kind: "error",
-      detail: "The reader stage failed.",
+      detail: "Something went wrong while reading the change.",
     });
   });
 

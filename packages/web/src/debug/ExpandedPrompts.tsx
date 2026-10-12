@@ -47,7 +47,7 @@ export function ExpandedPrompts({ reviewId }: { reviewId: string }): React.JSX.E
     <section aria-label="Prompts">
       {error ? <p className="err">{error}</p> : null}
       {!data && !error ? <p className="hint">Loading expanded prompts…</p> : null}
-      {data?.templates.length === 0 ? <p className="hint">No templates.</p> : null}
+      {data?.templates.length === 0 ? <p className="hint">No prompts.</p> : null}
       {templates.length > 0 ? (
         <div className="frow" style={{ gap: 8, margin: "6px 0" }}>
           <span className="sp" />
@@ -104,7 +104,7 @@ function PromptCard({
         expanded ? (
           <ExpandedView expanded={expanded} />
         ) : (
-          <p className="hint">No expansion for this review.</p>
+          <p className="hint">No expanded text for this review.</p>
         )
       ) : null}
     </div>
@@ -142,7 +142,7 @@ function ExpandedView({ expanded }: { expanded: PromptExpanded }): React.JSX.Ele
           <details className="lay" key={i}>
             <summary>
               <b>Text</b>
-              <span className="hint">unmarked</span>
+              <span className="hint">outside any layer</span>
             </summary>
             <pre className="code">{s.text}</pre>
           </details>

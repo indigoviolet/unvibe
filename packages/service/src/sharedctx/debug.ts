@@ -74,7 +74,7 @@ export function buildBaseMarkdown(input: BaseSectionInput): string {
   } else {
     out.push(
       `${input.stats.length} base${input.stats.length === 1 ? "" : "s"} built for this review. ` +
-        "The pack below is the current pack — what would be sent now, not a historical rebuild.",
+        "The pack below is what would be sent now, not what was sent when each base was built.",
       "",
     );
     for (const s of input.stats) {
@@ -96,7 +96,7 @@ export function buildBaseMarkdown(input: BaseSectionInput): string {
     }
   }
   out.push(
-    `### Current pack for \`${input.currentKey}\` (${input.packTokens} tokens${input.overBudget ? "; over budget, hunk headers fallback" : ""})`,
+    `### Current pack for \`${input.currentKey}\` (${input.packTokens} tokens${input.overBudget ? "; over budget, so hunks are sent as headers and summaries" : ""})`,
     "",
   );
   if (input.instructionsNote) out.push(`_${input.instructionsNote}_`, "");

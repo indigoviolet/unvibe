@@ -33,6 +33,13 @@ export interface RunInForkOptions {
   threadId?: string;
   /** Called with newly finished cards as they stream in. */
   onPartial?: (cards: ParsedCard[]) => void | Promise<void>;
+  /**
+   * Issue #50: strings an echo of which must not open the reply body
+   * (the selection, the question, the stored card title). Each parsed
+   * card additionally matches its own title. Absent = no stripping;
+   * streaming partials stay raw and the final apply corrects them.
+   */
+  echoCandidates?: string[];
   signal?: AbortSignal;
   /** Extra replay marker for the ReplayAgentRunner (demo/tests). */
   replay?: { kind: string; key?: string };

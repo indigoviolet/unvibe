@@ -14,7 +14,7 @@ import type { FastifyInstance } from "fastify";
 import type { RouteDeps } from "./deps.js";
 
 export async function registerJobs(app: FastifyInstance, deps: RouteDeps = {}): Promise<void> {
-  const TODO = { error: "not implemented" };
+  const TODO = { error: "not available in this build" };
 
   app.get("/api/jobs", async (req, reply) => {
     if (!deps.jobs) return reply.code(501).send(TODO);

@@ -47,7 +47,7 @@ test("fold and unfold a hunk", async ({ page }) => {
 });
 
 test("mark reviewed advances the hunks-reviewed progress", async ({ page }) => {
-  await page.getByRole("button", { name: "Show files panel" }).click();
+  await page.getByRole("button", { name: "Show file list" }).click();
   await expect(page.getByText("1/8 hunks reviewed")).toBeVisible();
   await page.locator(connFile).getByRole("button", { name: "Mark reviewed" }).first().click();
   await expect(page.getByText("2/8 hunks reviewed")).toBeVisible();
@@ -74,7 +74,7 @@ test("split view pairs columns and widens a narrow pane", async ({ page }) => {
 });
 
 test("files filter narrows the visible files", async ({ page }) => {
-  await page.getByRole("button", { name: "Show files panel" }).click();
+  await page.getByRole("button", { name: "Show file list" }).click();
   await page.getByLabel("Filter files by name").fill("socketlevel");
   await expect(page.locator(connFile)).toHaveCount(0);
   await expect(page.locator(tsockFile)).toBeVisible();
@@ -152,7 +152,7 @@ test("start page opens a review", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // The page follows the selected repo; the remembered repo is selected.
-  await expect(page.getByLabel("Repository")).toHaveValue("urllib3");
+  await expect(page.getByLabel("Repo")).toHaveValue("urllib3");
   await page.locator('[data-testid="session-demo"] button.cj').click();
   await expect(page).toHaveURL(/\/review\/demo/);
   await expect(page.locator(connFile)).toBeVisible();

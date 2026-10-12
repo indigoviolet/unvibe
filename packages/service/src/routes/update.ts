@@ -68,12 +68,12 @@ export const UPDATE_BLOCKED_JOBS_CAP = 5;
 export const UPDATE_SHUTDOWN_DELAY_MS = 500;
 
 export const UPDATE_DISABLED_MESSAGE =
-  "version picker is disabled (turn it on in Settings → Version)";
+  "channel switching is turned off (turn it on in Settings → Version)";
 
 /** Switching needs a global install with a channel record — not a source checkout. */
 export const UPDATE_NOT_INSTALLED_MESSAGE =
-  "cannot switch: this service is not running from an installed build (no channel record) — " +
-  "switching is only available in the installed app; from a checkout use `unvibe update`";
+  "switching only works when Unvibe was installed with npm — " +
+  "from a source checkout, run `unvibe update` in a terminal";
 
 /**
  * SERVICE_VERSION for build identity. Set by `server.ts`; the literal is a
@@ -124,7 +124,7 @@ async function spawnHelperCopy(argsFile: string, dataDir: string): Promise<numbe
   copyFileSync(src, copy);
   const child = spawn(process.execPath, [copy, argsFile], { detached: true, stdio: "ignore" });
   child.unref();
-  if (child.pid === undefined) throw new Error("failed to spawn the update helper");
+  if (child.pid === undefined) throw new Error("couldn't start the update");
   return child.pid;
 }
 
@@ -149,7 +149,7 @@ export async function registerUpdate(
   ctx: ServiceContext,
   deps: RouteDeps = {},
 ): Promise<void> {
-  const TODO = { error: "not implemented" };
+  const TODO = { error: "not available in this build" };
   // Channel cache (per registration, so tests with different fakes never
   // share): brief TTL + one shared in-flight call, since listing shells
   // out in the real backend and must not pile up.
@@ -198,7 +198,7 @@ export async function registerUpdate(
     if (!deps.settings) return reply.code(501).send(TODO);
     if (!gateEnabled(deps)) return reply.code(404).send({ error: UPDATE_DISABLED_MESSAGE });
     const updater = deps.updater;
-    if (!updater) return reply.code(501).send({ error: "update backend not wired (issue #36 step 1)" });
+    if (!updater) return reply.code(501).send({ error: "not available in this build" });
     const q = req.query as Record<string, string | undefined>;
     try {
       const list = await channels(q["refresh"] === "1", updater);
@@ -218,9 +218,9 @@ export async function registerUpdate(
     }
     const ref = body.ref.trim();
     const hooks = deps.updateHooks;
-    if (!hooks) return reply.code(501).send({ error: "update switch not wired (no shutdown path)" });
+    if (!hooks) return reply.code(501).send({ error: "not available in this build" });
     const updater = deps.updater;
-    if (!updater) return reply.code(501).send({ error: "update backend not wired" });
+    if (!updater) return reply.code(501).send({ error: "not available in this build" });
 
     // `from` is the installed channel read locally: a preview ref can be
     // deleted from the remote while installed, and a rollback to
@@ -285,7 +285,7 @@ export async function registerUpdate(
       submitInflight = false;
     }
     if (submitInflight) {
-      return reply.code(409).send({ error: "cannot switch while a submit is in flight; wait for it to finish, then retry" });
+      return reply.code(409).send({ error: "a review is being submitted — wait for it to finish, then switch" });
     }
 
     const from = installed.channel;
@@ -310,7 +310,7 @@ export async function registerUpdate(
     const scriptPath = process.argv[1];
     if (!scriptPath) {
       clearPendingSwitch(ctx.dataDir);
-      return reply.code(500).send({ error: "cannot switch: service entry path unknown" });
+      return reply.code(500).send({ error: "couldn't work out where Unvibe is installed, so it can't switch — run `unvibe update` in a terminal instead" });
     }
     const args: HelperArgs = {
       from,
@@ -336,7 +336,7 @@ export async function registerUpdate(
       await hooks.spawnHelper(argsFile);
     } catch (err) {
       clearPendingSwitch(ctx.dataDir);
-      return reply.code(500).send({ error: `could not start the update helper: ${(err as Error).message}` });
+      return reply.code(500).send({ error: `couldn't start the update: ${(err as Error).message}` });
     }
 
     const res: UpdateSwitchResponse = { from, to: ref };

@@ -198,7 +198,7 @@ describe("countReviews fails closed", () => {
       },
     };
     expect(() => removeRepo(fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-guard-")), repos, "rp_x")).toThrow(
-      /refusing to remove/,
+      /so it was kept/,
     );
     expect(removed).toBe(false);
   });
@@ -310,9 +310,9 @@ describe("fetch notes reach every caller", () => {
       refreshManagedCheckout(runner, repo),
     ]);
     expect(fetches).toBe(1);
-    expect(a).toMatch(/couldn't refresh/);
-    expect(b).toMatch(/couldn't refresh/);
-    expect(c).toMatch(/couldn't refresh/);
+    expect(a).toMatch(/couldn't update Unvibe's clone/);
+    expect(b).toMatch(/couldn't update Unvibe's clone/);
+    expect(c).toMatch(/couldn't update Unvibe's clone/);
   });
 
   it("a failed fetch keeps reporting its note during the back-off, then retries", async () => {
@@ -327,14 +327,14 @@ describe("fetch notes reach every caller", () => {
       },
     };
     const repo = managed("rp_backoff");
-    expect(await refreshManagedCheckout(runner, repo)).toMatch(/couldn't refresh/);
+    expect(await refreshManagedCheckout(runner, repo)).toMatch(/couldn't update Unvibe's clone/);
     expect(fetches).toBe(1);
     // Inside the back-off: same note, no new fetch.
-    expect(await refreshManagedCheckout(runner, repo)).toMatch(/couldn't refresh/);
+    expect(await refreshManagedCheckout(runner, repo)).toMatch(/couldn't update Unvibe's clone/);
     expect(fetches).toBe(1);
     // Past the back-off: retries instead of going silent.
     const later = Date.now() + MANAGED_FETCH_FAIL_BACKOFF_MS + 1000;
-    expect(await refreshManagedCheckout(runner, repo, later)).toMatch(/couldn't refresh/);
+    expect(await refreshManagedCheckout(runner, repo, later)).toMatch(/couldn't update Unvibe's clone/);
     expect(fetches).toBe(2);
   });
 });

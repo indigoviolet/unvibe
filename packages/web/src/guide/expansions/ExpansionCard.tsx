@@ -131,7 +131,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   const run = (action: Parameters<typeof performAction>[1]): void => {
     void performAction(reviewId, action).catch((err: unknown) => {
       if (isNoAgentError(err)) toast(NO_AGENT_COPY);
-      else toast(`Action failed: ${friendlyError(err)}`);
+      else toast(`Couldn't do that: ${friendlyError(err)}`);
     });
   };
 
@@ -151,7 +151,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         anchor: toActionAnchor(expansion),
       }).catch((e2: unknown) => {
         if (isNoAgentError(e2)) toast(NO_AGENT_COPY);
-        else toast(`Retry failed: ${friendlyError(e2)}`);
+        else toast(`Couldn't retry: ${friendlyError(e2)}`);
       });
     });
   };
@@ -161,7 +161,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       .action(reviewId, { kind: "promote", annotationId: expansion.id })
       .then((res) => {
         if (res.accepted && res.pageId) onOpenPage(res.pageId);
-        else if (!res.accepted) toast("Needs the service to open this as a page.");
+        else if (!res.accepted) toast("Not available with mock data");
       })
       .catch((err: unknown) => {
         toast(`Couldn't open as a page: ${friendlyError(err)}`);
@@ -172,7 +172,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     void api
       .action(reviewId, { kind: "delete", targetId: expansion.id })
       .catch((err: unknown) => {
-        toast(`Couldn't delete: ${friendlyError(err)}`);
+        toast(`Couldn't delete the explanation: ${friendlyError(err)}`);
       });
   };
 

@@ -32,15 +32,15 @@ const TIPS: { title: string; body: string }[] = [
   },
   {
     title: "New commits",
-    body: "When the branch moves, the diff pane shows what changed with an Update button, and stale cards offer the same update. Older versions stay viewable from the version switcher.",
+    body: "When the branch gets new commits, the Diff tab shows what changed and an Update button. Cards whose code changed offer the same button. Older versions stay readable from the Version menu above the guide.",
   },
   {
     title: "Settings",
-    body: "Models per role, prompt templates with their expanded text, limits and budgets, and running jobs with tokens and cache-hit rate.",
+    body: "Repos, models, environment checks, prompt templates, limits, the installed version and data reset.",
   },
   {
     title: "Debug",
-    body: "The per-review debug page shows the shared context agents build up: the base session, the append-only log, and the contributions.",
+    body: "For this review: the agent jobs with their token counts, the prompts as they were sent, and the notes the agent keeps between conversations.",
   },
 ];
 

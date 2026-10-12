@@ -12,7 +12,7 @@
  * caches, updates the block to `ok`, and serves.
  */
 import type { FastifyInstance } from "fastify";
-import { canonicalizeD2Source, diagramHash, D2_VERSION_UNKNOWN } from "@unvibe/shared";
+import { diagramHash, D2_VERSION_UNKNOWN, findDiagramByHash, findDiagramBySource } from "@unvibe/shared";
 import type { DiagramBlock } from "@unvibe/shared";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
@@ -23,25 +23,11 @@ import { postProcessSvg, type CitationMap } from "../diagrams/sanitize.js";
 import { lookupForSnapshot } from "../pipeline/lookup.js";
 import { validateTarget } from "../validate/index.js";
 
-function findDiagram(snapshot: { pages: { cards: { blocks: unknown[] }[] }[] }, hash: string): DiagramBlock | null {
-  for (const page of snapshot.pages ?? []) {
-    for (const card of page.cards ?? []) {
-      for (const b of card.blocks ?? []) {
-        const block = b as DiagramBlock;
-        if (block?.type === "diagram" && (block as DiagramBlock).render?.hash === hash) {
-          return block as DiagramBlock;
-        }
-        if ((b as { type?: string }).type === "aside") {
-          for (const inner of (b as { inner: unknown[] }).inner ?? []) {
-            const ib = inner as DiagramBlock;
-            if (ib?.type === "diagram" && ib.render?.hash === hash) return ib;
-          }
-        }
-      }
-    }
-  }
-  return null;
-}
+// Diagram lookup lives in `@unvibe/shared` (`content/blocks.ts`): one
+// walker over every live `Block[]` list (page cards, card second
+// opinions, expansion bodies, expansion second opinions, asides at any
+// depth), so a new container cannot be missed silently. This route only
+// calls `findDiagramByHash` / `findDiagramBySource`.
 
 export async function registerDiagrams(
   app: FastifyInstance,
@@ -59,7 +45,7 @@ export async function registerDiagrams(
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
 
-    const block = findDiagram(snapshot, hash);
+    const block = findDiagramByHash(snapshot, hash);
     if (!block) return reply.code(404).send({ error: "unknown diagram hash" });
 
     const cache = new DiagramCache({ dataDir: ctx.dataDir, ...(deps.fixturesDir ? { fixturesDir: deps.fixturesDir } : {}) });
@@ -72,7 +58,7 @@ export async function registerDiagrams(
       if (block.render?.status !== "ok") {
         try {
           await ctx.reviews.mutate(id, (draft) => {
-            const b = findDiagram(draft as never, hash);
+            const b = findDiagramByHash(draft, hash);
             if (b && b.render?.status !== "ok") b.render = { hash, status: "ok" };
           });
         } catch {
@@ -102,7 +88,7 @@ export async function registerDiagrams(
       const status = block.render?.status ?? "unavailable";
       // Re-read (on-demand may have updated the block to error).
       const live = ctx.reviews.getSnapshot(id);
-      const liveBlock = live ? findDiagram(live, hash) ?? findDiagramBySource(live, block.source) : null;
+      const liveBlock = live ? findDiagramByHash(live, hash) ?? findDiagramBySource(live, block.source) : null;
       const err = (liveBlock?.render as { error?: string } | undefined)?.error ?? (block.render as { error?: string } | undefined)?.error;
       return reply.code(409).send({ status, ...(err ? { error: err } : {}) });
     }
@@ -110,19 +96,6 @@ export async function registerDiagrams(
     // Status ok but cache miss and on-demand failed (no binary): 409.
     return reply.code(409).send({ status: block.render?.status ?? "unavailable" });
   });
-}
-
-function findDiagramBySource(snapshot: { pages: { cards: { blocks: unknown[] }[] }[] }, source: string): DiagramBlock | null {
-  const canon = canonicalizeD2Source(source);
-  for (const page of snapshot.pages ?? []) {
-    for (const card of page.cards ?? []) {
-      for (const b of card.blocks ?? []) {
-        const block = b as DiagramBlock;
-        if (block?.type === "diagram" && canonicalizeD2Source(block.source) === canon) return block;
-      }
-    }
-  }
-  return null;
 }
 
 /**
@@ -204,7 +177,7 @@ async function tryRenderOnDemand(
       const err = (!r1.ok ? r1.error : r2.error) ?? "d2 render failed";
       try {
         await ctx.reviews.mutate(reviewId, (draft) => {
-          const b = findDiagram(draft as never, requestedHash) ?? findDiagramBySource(draft as never, source);
+          const b = findDiagramByHash(draft, requestedHash) ?? findDiagramBySource(draft, source);
           if (b) {
             b.render = { hash: requestedHash, status: "error", error: err };
           }
@@ -231,7 +204,7 @@ async function tryRenderOnDemand(
     // Update the stored block to ok (with the new hash).
     try {
       await ctx.reviews.mutate(reviewId, (draft) => {
-        const b = findDiagram(draft as never, requestedHash) ?? findDiagramBySource(draft as never, source);
+        const b = findDiagramByHash(draft, requestedHash) ?? findDiagramBySource(draft, source);
         if (b) {
           b.render = { hash: newHash, status: "ok" };
         }

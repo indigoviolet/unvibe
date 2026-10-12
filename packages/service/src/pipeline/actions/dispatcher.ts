@@ -45,7 +45,7 @@ export interface ActionDeps {
 
 function need(ctx: ActionContext): asserts ctx is Required<Pick<ActionContext, "pipeline" | "jobs" | "reviews">> & ActionContext {
   if (!ctx.pipeline || !ctx.jobs || !ctx.reviews) {
-    throw new Error("not implemented: pipeline not wired");
+    throw new Error("not available in this build");
   }
 }
 
@@ -75,7 +75,7 @@ export async function dispatchAction(
       case "generate": {
         need(ctx);
         if (!deps.pipeline || !deps.jobs || !deps.reviews) {
-          return reply.code(501).send({ error: "not implemented: pipeline not wired" });
+          return reply.code(501).send({ error: "not available in this build" });
         }
         try {
           const res = await generateAction(deps.pipeline, deps.jobs, deps.reviews, deps.reviewId, action.cardId);
@@ -284,7 +284,7 @@ export async function dispatchAction(
         }
       }
       default:
-        return reply.code(501).send({ error: `not implemented: M3 actions (${(action as { kind: string }).kind})` });
+        return reply.code(501).send({ error: `unknown action: ${(action as { kind: string }).kind}` });
     }
   } catch (err) {
     const msg = (err as Error).message;
@@ -294,7 +294,7 @@ export async function dispatchAction(
     if (/required|must be|bad |invalid|no failed|cannot be retried|has a failed/.test(msg)) {
       return reply.code(400).send({ error: msg });
     }
-    if (/not implemented: pipeline not wired/.test(msg)) {
+    if (/not available in this build/.test(msg)) {
       return reply.code(501).send({ error: msg });
     }
     return reply.code(500).send({ error: msg });

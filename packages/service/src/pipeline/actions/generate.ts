@@ -9,6 +9,8 @@
 import { JOB_PRIORITY } from "@unvibe/shared";
 import type { JobQueue } from "../../jobs/index.js";
 import type { ReviewStore } from "../../state/store.js";
+import { resolveEffectiveSettings } from "../../settings/index.js";
+import type { ModelCatalog, SettingsStore } from "../../settings/index.js";
 import type { Pipeline } from "../runner.js";
 
 export async function generateAction(
@@ -44,7 +46,13 @@ async function enqueueGenerate(
   // fillGoDeeper runs as a user-priority job via the pipeline's internal
   // queue; here we wrap it in a job so the action returns a jobId.
   const jobs = (pipeline as unknown as { opts: { jobs: JobQueue } }).opts.jobs;
-  const settings = (pipeline as unknown as { opts: { settings: { get: () => { main: { provider: string; model: string } } } } }).opts.settings.get();
+  const pipelineOpts = (
+    pipeline as unknown as { opts: { settings: SettingsStore; models?: ModelCatalog | null } }
+  ).opts;
+  const settings = await resolveEffectiveSettings({
+    settings: pipelineOpts.settings,
+    models: pipelineOpts.models ?? null,
+  });
   const snapshot = reviews.getSnapshot(reviewId);
   const baseVersion = snapshot ? `v${snapshot.version.n}` : "v1";
   const enqueued = jobs.enqueue({

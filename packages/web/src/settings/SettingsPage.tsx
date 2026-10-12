@@ -29,11 +29,11 @@ import { Toast } from "../floating/Toast.js";
 import "./settings.css";
 
 const SETTING_TABS = [
-  { id: "repositories", label: "Repositories" },
+  { id: "repositories", label: "Repos" },
   { id: "models", label: "Models" },
   { id: "environment", label: "Environment" },
   { id: "prompts", label: "Prompts" },
-  { id: "limits", label: "Limits and budgets" },
+  { id: "limits", label: "Limits" },
   { id: "version", label: "Version" },
   { id: "data", label: "Data" },
 ] as const;

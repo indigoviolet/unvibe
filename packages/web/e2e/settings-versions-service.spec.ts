@@ -104,7 +104,7 @@ test.describe("settings + versions on the real service", () => {
     // Wait for the repo state to settle: the selector or the empty state
     // (the repo may already exist in the service DB from an earlier test).
     await expect(
-      page.locator('select[aria-label="Repository"], [data-testid="no-repos"]').first(),
+      page.locator('select[aria-label="Repo"], [data-testid="no-repos"]').first(),
     ).toBeVisible();
     if (await page.locator('[data-testid="no-repos"]').isVisible()) {
       await page.getByRole("link", { name: "Add one in Settings" }).click();
@@ -115,7 +115,7 @@ test.describe("settings + versions on the real service", () => {
       await page.getByRole("link", { name: "Unvibe" }).click();
       await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     }
-    await page.getByLabel("Repository").selectOption({ label: `local/${path.basename(repoDir)}` });
+    await page.getByLabel("Repo").selectOption({ label: `local/${path.basename(repoDir)}` });
     const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
     await expect(feature).toBeVisible({ timeout: 30_000 });
     await feature.click();
@@ -132,7 +132,7 @@ test.describe("settings + versions on the real service", () => {
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
-    await page.getByRole("tab", { name: "Limits and budgets" }).click();
+    await page.getByRole("tab", { name: "Limits" }).click();
 
     const input = page.locator("#limit-sessionsPerProvider");
     await input.fill("99");
@@ -144,7 +144,7 @@ test.describe("settings + versions on the real service", () => {
     await expect(page.getByText("Saved")).toBeVisible();
     await page.reload();
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
-    await page.getByRole("tab", { name: "Limits and budgets" }).click();
+    await page.getByRole("tab", { name: "Limits" }).click();
     await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("5");
   });
 
@@ -173,7 +173,7 @@ test.describe("settings + versions on the real service", () => {
     // Model pickers list the adapter's models.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Models" }).click();
-    await expect(page.locator('[data-testid="model-main"]').getByText("claude-sonnet", { exact: false }).first()).toBeAttached();
+    await expect(page.locator('[data-testid="model-main"]').getByText("claude-opus-5-5", { exact: false }).first()).toBeAttached();
   });
 
   test("refresh banners counts; reviewed clears only on the changed hunk; v1 viewable", async ({ page }) => {

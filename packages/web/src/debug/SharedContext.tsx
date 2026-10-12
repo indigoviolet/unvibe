@@ -14,9 +14,9 @@ import { MarkdownView } from "./MarkdownView.js";
 type BlockKey = "base" | "log" | "contributions";
 
 const BLOCKS: { key: BlockKey; heading: string; blurb: string }[] = [
-  { key: "base", heading: "Base", blurb: "the base session every conversation starts from" },
-  { key: "log", heading: "Log", blurb: "the append-only log" },
-  { key: "contributions", heading: "Contributions", blurb: "facts, corrections and questions" },
+  { key: "base", heading: "Base", blurb: "what every agent conversation starts with" },
+  { key: "log", heading: "Log", blurb: "what happened in this review, in order" },
+  { key: "contributions", heading: "Contributions", blurb: "facts, corrections and open questions the agent recorded" },
 ];
 
 export function SharedContext({

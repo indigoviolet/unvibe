@@ -43,9 +43,16 @@ Rules:
 
 ## 2. Cards
 
-`## Title` starts a new card. Text before the first `##` is one untitled
-card (normal for single-card replies: explain, ask, depth, examples,
-diagram). Titles are plain text — no tokens.
+Every page card has a short title. `## Title` starts a new card:
+reader and critic replies open with their first `## Title` line (no
+greeting, plan or notes before it — preamble text is discarded).
+Single-card page replies (go-deeper fills, concept pages) carry the
+title in the trailing JSON block's `title` key instead. Titles are
+plain text — no tokens. When the title is missing anyway (no retry or
+repair turn is sent), the UI shows a fallback derived from the body's
+first sentence — never a body prefix cut mid-word. Explanations and
+thread answers need no heading: the app shows the quoted selection as
+their header, and they must not quote it back (see §2b).
 
 ```md
 ## The problem
@@ -56,6 +63,21 @@ Python's `http.client` keeps the folded value … [[desc:d-intro]]
 
 urllib3 now unfolds … [[diff:conn:91-110]]
 ```
+
+## 2b. Reply hygiene (no echo)
+
+The app already shows the selection, the question, the card title and
+the parent card next to the reply — and, for diagrams, the caption
+under the figure. Replies start with the new information: no echo
+line, heading or opening sentence that restates the selection or the
+question, no repetition of the card title as the first sentence of the
+body, no repetition of a diagram's caption in its walkthrough
+(`prompts/instructions.md` "Reply hygiene", shared by every task). As
+a backstop the parser drops a leading body line that exactly echoes
+the selection, the question or the card title (exact match after
+normalising case, whitespace, surrounding quotes and trailing
+punctuation; lines with citations are kept). It never retries or
+repairs for this.
 
 ## 3. Per-depth text (simple / standard / deep)
 
@@ -194,6 +216,21 @@ and the one-line `hiddenReason` (null when the hunk is interesting — in
 particular never hide a hunk cited by the guide, a one-line functional
 change, or anything unsure).
 The `anchor.quote` must be a real substring of its host block.
+
+Hunk-pass tolerance (issue #99): hunk jobs run on the small model with an
+empty system prompt, so the `{"hunk": …}` object is also accepted bare
+(unfenced, with or without the Markdown line, trailing prose ignored) —
+`parseHunkReply` in `packages/shared/src/content/hunk.ts` prefers the
+trailing fence via `splitReply` and only then scans the raw text. The
+Markdown-line fallback never stores JSON-looking text (starts with `{` /
+`[` or a fence line); over-long fallback lines cut on a word boundary with
+an ellipsis, model-provided summaries are kept whole, and a reply with no
+usable summary stores none (the hunk keeps its Summarize action). A stored
+summary that looks like JSON is treated as missing on reuse, so the next
+on-demand summarize regenerates or clears it, and the diff pane reads it
+as absent meanwhile (Summarize action instead of the JSON text; the stored
+row itself is untouched). Other reply kinds still
+require the fenced trailer (§10 strictness is unchanged).
 
 ## 10. The trailing JSON block
 

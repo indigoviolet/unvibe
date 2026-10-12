@@ -16,75 +16,30 @@
  * Without wired stores the endpoints stay 501 stubs (scaffold behaviour).
  */
 import type { FastifyInstance } from "fastify";
-import type { ModelPick, Settings } from "@unvibe/shared";
-import { selectDefaultModels, validateSettings } from "../settings/index.js";
+import type { Settings } from "@unvibe/shared";
+import { resolveEffectiveSettings, unsetSecondOpinion, validateSettings } from "../settings/index.js";
 import type { RouteDeps } from "./deps.js";
+
+export { unsetSecondOpinion };
 
 type Role = "main" | "small" | "secondOpinion";
 
 const ROLES: Role[] = ["main", "small", "secondOpinion"];
 
-/** Unset second-opinion marker: no Codex model chosen yet. */
-export function unsetSecondOpinion(): ModelPick {
-  return { provider: "codex", model: "" };
-}
-
 /**
  * Effective settings: stored values, with live adapter defaults filled in
  * for roles the user never saved. Never throws (falls back to stored).
+ * Single source lives in `settings/effective.ts`; every model consumer
+ * (readiness, pipeline, second-opinion, shared context) resolves through
+ * it so they agree with `GET /api/settings`.
  */
 export async function effectiveSettings(deps: RouteDeps): Promise<Settings> {
-  const stored = deps.settings!.get();
-  const offered = deps.models?.offered;
-  if (typeof offered !== "function") return stored;
-  let saved: string[] = [];
-  try {
-    saved = deps.settings!.savedKeys();
-  } catch {
-    saved = [];
-  }
-  if (ROLES.every((r) => saved.includes(r))) return stored;
-  const next: Settings = structuredClone(stored);
-  try {
-    const [claude, codex] = await Promise.all([
-      offered.call(deps.models, "claude"),
-      offered.call(deps.models, "codex"),
-    ]);
-    const claudeIds = (claude?.models ?? []).map((m) => (typeof m === "string" ? m : m.id));
-    const codexIds = (codex?.models ?? []).map((m) => (typeof m === "string" ? m : m.id));
-    if (!saved.includes("main") || !saved.includes("small")) {
-      if (claude && claude.models.length > 0) {
-        const picked = selectDefaultModels({
-          claude: claudeIds,
-          codex: codexIds,
-          ...(codex?.defaultId ? { codexDefault: codex.defaultId } : {}),
-        });
-        if (!saved.includes("main")) next.main = picked.main;
-        if (!saved.includes("small")) next.small = picked.small;
-      }
-    }
-    if (!saved.includes("secondOpinion")) {
-      if (codex && codex.models.length > 0) {
-        const picked = selectDefaultModels({
-          claude: claudeIds,
-          codex: codexIds,
-          ...(codex.defaultId ? { codexDefault: codex.defaultId } : {}),
-        });
-        next.secondOpinion = picked.secondOpinion ?? unsetSecondOpinion();
-      } else if (codex) {
-        // Definitive empty offering (live adapter, no Codex): unset.
-        next.secondOpinion = unsetSecondOpinion();
-      }
-      // Unknown (null): leave the stored/static default alone.
-    }
-  } catch {
-    // Adapter probe hiccup: stored values stand.
-  }
-  return next;
+  if (!deps.settings) throw new Error("settings are unavailable");
+  return resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
 }
 
 export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {}): Promise<void> {
-  const TODO = { error: "not implemented" };
+  const TODO = { error: "not available in this build" };
 
   app.get("/api/settings", async (_req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
@@ -136,7 +91,7 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
       // No silent empty list (PRD §4.14): the adapter is not installed or
       // the provider is not logged in — say so plainly.
       return reply.code(404).send({
-        error: `no models for provider "${provider}": adapter not installed or not logged in`,
+        error: `couldn't list ${provider} models — check that its CLI is installed and logged in`,
         provider,
         models: [],
       });

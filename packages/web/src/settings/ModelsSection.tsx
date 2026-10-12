@@ -18,8 +18,8 @@ export function modelLabel(m: ModelInfo): string {
 type Role = "main" | "small" | "secondOpinion";
 
 const ROLES: { role: Role; label: string; blurb: string }[] = [
-  { role: "main", label: "Main", blurb: "Everything that needs the review's context." },
-  { role: "small", label: "Small", blurb: "Hunk summaries, titles, contribution cleanup." },
+  { role: "main", label: "Main", blurb: "Writes the guide, explanations and answers." },
+  { role: "small", label: "Small", blurb: "Hunk summaries, titles and other small jobs." },
   { role: "secondOpinion", label: "Second opinion", blurb: "A different model from main, for an independent take." },
 ];
 
@@ -72,7 +72,7 @@ export function ModelsSection({
       settings.secondOpinion.model === settings.main.model ? (
         <p className="warnline" role="status">
           Second opinion uses the same model as main ({settings.main.provider}/{settings.main.model})
-          — pick a different one so the second opinion is actually independent.
+          — pick a different one so the second opinion is independent.
         </p>
       ) : null}
     </section>

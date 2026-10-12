@@ -90,7 +90,7 @@ export function getToken(): string | null {
 export function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   if (/failed to fetch|networkerror|load failed|offline/i.test(raw)) {
-    return "you're offline — try again when connected";
+    return "the Unvibe service isn't answering — check that it is running, then try again";
   }
   const m = raw.match(/^[A-Z]+ \/\S+: (\d{3})?\s?([\s\S]*)$/);
   const body = (m?.[2] ?? raw).trim();
@@ -107,11 +107,11 @@ export function friendlyError(err: unknown): string {
   }
   switch (m?.[1]) {
     case "401":
-      return "the service refused the token — reload the page";
+      return "this browser isn't connected to Unvibe — run `unvibe open` in a terminal";
     case "404":
       return "not found — it may have been removed";
     case "409":
-      return body.slice(0, 220) || "conflicting change — refresh and try again";
+      return body.slice(0, 220) || "something changed in the meantime — reload the page and try again";
     case "500":
     case "502":
       return "the service couldn't reach the repo or the agent — try again";
@@ -134,7 +134,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  if (res.status === 401) throw new Error("unauthorized: missing or invalid token");
+  if (res.status === 401) throw new Error("this browser isn't connected to Unvibe — run `unvibe open` in a terminal");
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${body}`);
@@ -169,7 +169,7 @@ async function requestText(path: string, init?: RequestInit): Promise<string> {
       ...init?.headers,
     },
   });
-  if (res.status === 401) throw new Error("unauthorized: missing or invalid token");
+  if (res.status === 401) throw new Error("this browser isn't connected to Unvibe — run `unvibe open` in a terminal");
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${body}`);

@@ -39,12 +39,12 @@ export function revealSource(target: string): void {
   }
   if (target.startsWith("diff:") || target.startsWith("h:") || target.startsWith("code:")) {
     if (!snapshot) {
-      toast("The review hasn't loaded yet.");
+      toast("The review is still loading");
       return;
     }
     if (diffReveal(canonical)) return;
-    toast("Couldn't find the cited code in this version.");
+    toast("Couldn't find the cited code in this version");
     return;
   }
-  toast("Couldn't open that citation target.");
+  toast("Couldn't open that link");
 }

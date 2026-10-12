@@ -26,7 +26,7 @@ export function desktopFileContent(nodePath: string, cliPath: string): string {
     "Type=Application",
     "Version=1.0",
     "Name=Unvibe",
-    "Comment=Start the Unvibe local service (unvibe:// URL handler)",
+    "Comment=Starts the Unvibe service when an unvibe:// link is opened",
     `Exec=${exec}`,
     "Terminal=false",
     "Categories=Development;",

@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import { looksLikeJson } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
@@ -49,7 +50,7 @@ export const WIDEN_EVENT = "unvibe:widen-pane";
 
 const PREFS_KEY = "unvibe.diff.prefs.v1";
 const CATS = [
-  { k: "source", l: "Source .py" },
+  { k: "source", l: "Code" },
   { k: "tests", l: "Tests" },
   { k: "docs", l: "Docs" },
   { k: "config", l: "Config" },
@@ -206,7 +207,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
       setSnapshot(await api.review(reviewId));
       toast("Review updated");
     } catch {
-      toast("Updated, but couldn't reload the review");
+      toast("Updated. Reload the page to see it.");
     }
   }, [reviewId, setSnapshot]);
 
@@ -220,8 +221,17 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
     }
   }, []);
 
+  // #99: a stored summary holding the agent's raw JSON reads as absent,
+  // so the hunk shows its Summarize action instead of the JSON text. The
+  // stored row is untouched: the next summarize regenerates or clears it.
   const states = useMemo(
-    () => new Map<string, HunkUiState>((snapshot?.hunkStates ?? []).map((s) => [s.contentHash, s])),
+    () =>
+      new Map<string, HunkUiState>(
+        (snapshot?.hunkStates ?? []).map((s) => [
+          s.contentHash,
+          s.summary !== undefined && looksLikeJson(s.summary) ? { ...s, summary: undefined } : s,
+        ]),
+      ),
     [snapshot],
   );
 
@@ -369,7 +379,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
   const patchHunk = useCallback(
     async (hash: string, body: UpdateHunkRequest) => {
       if (readOnly && (body.reviewed !== undefined || body.note !== undefined || body.summary !== undefined)) {
-        toast("Viewing an older version — back to current to change state");
+        toast("Viewing an older version · read-only");
         return;
       }
       try {
@@ -386,12 +396,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
       toggleFold: (hash, folded) => void patchHunk(hash, { folded: !folded }),
       summarize: (hash) => {
         if (readOnly) {
-          toast("Viewing an older version — back to current to change state");
+          toast("Viewing an older version · read-only");
           return;
         }
         setBusy((prev) => ({ ...prev, [hash]: true }));
         api.summarizeHunk(reviewId, hash).catch(() => {
-          toast("Couldn't summarize hunk");
+          toast("Couldn't summarize the hunk");
           setBusy((prev) => {
             const next = { ...prev };
             delete next[hash];
@@ -437,7 +447,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
 
   const foldAll = useCallback(async () => {
     if (readOnly) {
-      toast("Viewing an older version — back to current to change state");
+      toast("Viewing an older version · read-only");
       return;
     }
     const snap = useReview.getState().snapshot;
@@ -468,12 +478,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
     for (const { hunk } of targets) {
       if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
     }
-    toast(`Summarized and folded ${targets.length} hunks.`);
+    toast(`Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. Summaries appear as they are written.`);
   }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions]);
 
   const unfoldAll = useCallback(async () => {
     if (readOnly) {
-      toast("Viewing an older version — back to current to change state");
+      toast("Viewing an older version · read-only");
       return;
     }
     const snap = useReview.getState().snapshot;
@@ -487,14 +497,14 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
   const markFileReviewed = useCallback(
     (file: ReviewFile, allReviewed: boolean) => {
       if (readOnly) {
-        toast("Viewing an older version — back to current to change state");
+        toast("Viewing an older version · read-only");
         return;
       }
       void Promise.all(
         file.hunks.map((h) =>
           api.updateHunk(reviewId, h.contentHash, { reviewed: !allReviewed, folded: !allReviewed }).catch(() => {}),
         ),
-      ).catch(() => toast("Couldn't save hunk state"));
+      ).catch(() => toast("Couldn't save that change"));
     },
     [reviewId, readOnly],
   );
@@ -526,8 +536,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
           className="tbtn"
           type="button"
           aria-expanded={prefs.filesOpen}
-          data-tip={prefs.filesOpen ? "Hide the file list" : "Show the file list"}
-          aria-label={prefs.filesOpen ? "Hide files panel" : "Show files panel"}
+          data-tip={prefs.filesOpen ? "Hide file list" : "Show file list"}
+          aria-label={prefs.filesOpen ? "Hide file list" : "Show file list"}
           onClick={() => setPrefs((p) => ({ ...p, filesOpen: !p.filesOpen }))}
         >
           <Icon name={prefs.filesOpen ? "down" : "right"} />
@@ -578,7 +588,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
         <button
           className="x"
           type="button"
-          data-tip="Fetch and compare with the branch (no agent time)"
+          data-tip="Check the branch for new commits. Doesn't use the agent."
           aria-label="Refresh"
           disabled={refreshing || readOnly}
           onClick={() => void doRefresh()}
@@ -671,7 +681,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
               )
             ) : (
               <p className="hint" style={{ padding: "4px 10px", margin: 0 }}>
-                No files match.
+                No files match the filters.
               </p>
             )}
           </div>
@@ -704,7 +714,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
         ))
       ) : (
         <p className="hint" style={{ padding: 16 }}>
-          No files match the current filters.
+          No files match the filters.
         </p>
       )}
     </div>

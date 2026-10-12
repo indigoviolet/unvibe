@@ -418,7 +418,7 @@ describe("refreshManagedCheckout", () => {
       run: async () => ({ stdout: "", stderr: "offline", code: 1 }),
     };
     const note = await refreshManagedCheckout(runner, managed("rp_2", "/tmp/unused"));
-    expect(note).toMatch(/couldn't refresh/);
+    expect(note).toMatch(/couldn't update Unvibe's clone/);
   });
 });
 
@@ -449,7 +449,7 @@ describe("GET /api/repos/:id/changes fetch behaviour", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as { changes: unknown[]; fetchError?: string };
-      expect(body.fetchError).toMatch(/couldn't refresh/);
+      expect(body.fetchError).toMatch(/couldn't update Unvibe's clone/);
       expect(body.changes.length).toBeGreaterThan(0);
       expect(gitCalls.some((a) => a[0] === "fetch")).toBe(true);
     } finally {
