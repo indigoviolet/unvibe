@@ -6,12 +6,13 @@
  *
  * - `GuideThreadHooks`: mounted once (in `ReviewRoute`, no guide edits).
  *   Highlights every block-anchored thread quote inside `#page`
- *   (`mark.anc[data-thr]`, reusable anchor-highlighting), prunes
- *   highlighted threads out of the end-of-block comment markers, toggles
+ *   (`mark.anc[data-thr]`, reusable anchor-highlighting), toggles
  *   threads from mark clicks, outlines anchors while hovering open threads,
  *   and reveals footnote chips (`[data-tfallback]`, issue #72) for quoted
  *   threads whose highlight landed nowhere (the bare bubble marker now
- *   holds only threads that never had a quote).
+ *   holds only threads that never had a quote, so highlighted ids never
+ *   need pruning out of it — and pruning would mean removing
+ *   React-rendered nodes behind React's back, issue #101).
  * - `GuideBlockThreads`: rendered per block (one additive line in
  *   `CardView`). Shows open threads under their block plus the pending
  *   composer the selection toolbar requests. Guide threads start closed;
@@ -39,25 +40,6 @@ function makeMark(threadId: string): HTMLElement {
   return mark;
 }
 
-/** Remove highlighted ids from `.lk.cm` markers (prototype `dropFromMarker`). */
-function pruneMarkers(root: ParentNode, highlighted: Set<string>): void {
-  for (const btn of root.querySelectorAll(".lk.cm")) {
-    const raw = (btn as HTMLElement).dataset.threads ?? "";
-    const ids = raw.split("|").filter(Boolean);
-    if (!ids.some((id) => highlighted.has(id))) continue;
-    const rest = ids.filter((id) => !highlighted.has(id));
-    if (rest.length === 0) {
-      const lo = btn.closest(".lo");
-      btn.remove();
-      if (lo && lo.children.length === 0) lo.remove();
-    } else {
-      (btn as HTMLElement).dataset.threads = rest.join("|");
-      const last = btn.lastChild;
-      if (last) last.textContent = String(rest.length);
-    }
-  }
-}
-
 export function GuideThreadHooks() {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const pages = useReview((s) => s.snapshot?.pages);
@@ -82,12 +64,16 @@ export function GuideThreadHooks() {
     [],
   );
 
-  // Anchor highlights + marker pruning. Re-runs when threads or guide
-  // content change (depth rewrites re-render blocks and drop DOM marks).
+  // Anchor highlights. Re-runs when threads or guide content change
+  // (depth rewrites re-render blocks and drop DOM marks).
   // Idempotent (issue #15): our own thread marks are cleared first so N
   // store patches leave depth 1, inside one selection-preserving window.
   // Expansion marks (`mark.anc.ex/exl`, `a.cx.pg`) belong to
   // ExpansionHighlights and are never touched (narrow selector).
+  // Markers are never pruned here: the bubble lists only unquoted threads
+  // (see `BlockMarkers`), so highlighted ids cannot occur in it — and
+  // removing React-rendered marker nodes imperatively is exactly the
+  // `removeChild` crash of issue #101.
   useEffect(() => {
     const page = document.getElementById("page");
     if (!page) return;
@@ -117,7 +103,6 @@ export function GuideThreadHooks() {
           }
           if (done) highlighted.add(thread.id);
         }
-        pruneMarkers(page, highlighted);
         // Footnote chips (issue #72): quoted threads whose highlight landed
         // nowhere show their chip; highlighted ones hide it again (level
         // switch / undo). Mirrors ExpansionHighlights' [data-fallback]
