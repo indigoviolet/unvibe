@@ -21,13 +21,20 @@ import { Link } from "react-router-dom";
 import type { DiagramBlock, DiagramTheme } from "@unvibe/shared";
 import { api, DiagramStatusError } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
-import { adoptD2Svg } from "./d2sanitize.js";
+import { adoptD2Svg, naturalSize } from "./d2sanitize.js";
 
 export type FetchDiagramSvg = (
   reviewId: string,
   hash: string,
   theme: DiagramTheme,
 ) => Promise<string>;
+
+/** D2 shape-label size in the service renders (measured on d2 v0.9.0). */
+export const D2_LABEL_PX = 16;
+/** Guide small-text size the inline floor keeps labels at or above. */
+export const GUIDE_SMALL_TEXT_PX = 12.5;
+/** Stylesheet floor for narrow diagrams (matches `.dg-d2 svg`). */
+export const D2_INLINE_MIN_WIDTH_PX = 480;
 
 /** Current page theme: explicit `data-theme` wins, else the OS setting. */
 export function pageTheme(): DiagramTheme {
@@ -76,6 +83,13 @@ interface Props {
   block: DiagramBlock;
   /** Override the fetch (unit tests); defaults to the API client. */
   fetchSvg?: FetchDiagramSvg;
+  /**
+   * Keep label text legible inline (issue #16): floor the SVG width so
+   * D2's 16px labels render at no less than the guide's 12.5px small
+   * text, letting the card scroll horizontally instead of shrinking
+   * further. The overlay leaves this off (it sizes from the viewBox).
+   */
+  legibleText?: boolean;
 }
 
 /**
@@ -89,7 +103,7 @@ export function d2SourceOf(block: DiagramBlock): string {
   return typeof legacy === "string" ? legacy : "";
 }
 
-export function D2Diagram({ reviewId, block, fetchSvg }: Props): React.JSX.Element {
+export function D2Diagram({ reviewId, block, fetchSvg, legibleText }: Props): React.JSX.Element {
   const theme = usePageTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const render = block.render;
@@ -165,6 +179,15 @@ export function D2Diagram({ reviewId, block, fetchSvg }: Props): React.JSX.Eleme
     host.textContent = "";
     const node = adoptD2Svg(state.svgText);
     if (node) {
+      if (legibleText) {
+        const natural = naturalSize(node);
+        if (natural) {
+          // D2 sets shape labels at 16px; the floor keeps them at or
+          // above the guide's 12.5px small text (never below the CSS
+          // floor for narrow diagrams).
+          node.style.minWidth = `${Math.max(D2_INLINE_MIN_WIDTH_PX, Math.ceil((natural.w * GUIDE_SMALL_TEXT_PX) / D2_LABEL_PX))}px`;
+        }
+      }
       host.appendChild(node);
       return () => {
         host.textContent = "";

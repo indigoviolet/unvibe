@@ -152,6 +152,30 @@ test("keyboard Enter on a cited shape reveals without changing the URL", async (
   ).toBeVisible({ timeout: 5000 });
 });
 
+test("wide diagram keeps labels legible and scrolls inside the card (#16)", async ({
+  page,
+}) => {
+  await gotoReview(page);
+  const svg = page.locator(`${FLOW} .dg-svg > svg`);
+  await expect(svg).toBeVisible({ timeout: 15000 });
+  // The 1379-wide flow diagram floors at ceil(1379 * 12.5 / 16) = 1078px,
+  // so its 16px labels render at the guide's 12.5px small text instead of
+  // shrinking; the card scrolls horizontally and the page does not grow.
+  await expect.poll(() => svg.evaluate((el) => (el as SVGSVGElement).style.minWidth)).toBe("1078px");
+  const effective = await svg.evaluate((el) => {
+    const r = (el as SVGSVGElement).getBoundingClientRect();
+    return (16 * r.width) / 1379;
+  });
+  expect(effective).toBeGreaterThanOrEqual(12.4);
+  const scrolled = await page.locator(`${FLOW}`).evaluate((el) => {
+    const dg = el.querySelector(".dg") as HTMLElement;
+    return dg.scrollWidth - dg.clientWidth;
+  });
+  expect(scrolled).toBeGreaterThan(100);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
 test("800px window keeps the diagram readable with scroll, not breakage", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 900 });
   await gotoReview(page);

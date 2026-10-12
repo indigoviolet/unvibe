@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DiagramBlock } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { D2Diagram, type FetchDiagramSvg } from "./D2Diagram.js";
+import { naturalSize } from "./d2sanitize.js";
 
 /** Zoom limits for the overlay (×1 is the diagram's natural size). */
 export const OVERLAY_MIN_SCALE = 0.25;
@@ -46,19 +47,6 @@ export function zoomAround(t: ViewTransform, cx: number, cy: number, factor: num
   const s = Math.min(OVERLAY_MAX_SCALE, Math.max(OVERLAY_MIN_SCALE, t.s * factor));
   const r = s / t.s;
   return { s, x: cx - (cx - t.x) * r, y: cy - (cy - t.y) * r };
-}
-
-/**
- * Natural SVG size from its viewBox (D2 output carries no width/height on
- * the outer svg). Null when the viewBox is missing or degenerate.
- */
-export function naturalSize(svg: Element): { w: number; h: number } | null {
-  const parts = (svg.getAttribute("viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
-  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
-  const w = parts[2];
-  const h = parts[3];
-  if (w <= 0 || h <= 0) return null;
-  return { w, h };
 }
 
 /**

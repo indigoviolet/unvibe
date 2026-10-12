@@ -31,7 +31,7 @@ export function DiagramView({ reviewId, block, onOpenPage, fetchSvg }: Props) {
   return (
     <>
       <div className="dg dg-d2">
-        <D2Diagram reviewId={reviewId} block={block} fetchSvg={fetchSvg} />
+        <D2Diagram reviewId={reviewId} block={block} fetchSvg={fetchSvg} legibleText />
         <div className="dg-bar">
           <button
             type="button"

@@ -236,6 +236,11 @@ needed (that deviation is closed, not added).
   citation hover/click work inside it and a drag never counts as a click
   (`guide/DiagramOverlay.tsx`, `e2e/d2-diagram-overlay.spec.ts`,
   `guide/DiagramOverlay.test.tsx`).
+- Diagrams stay legible inline (#16) — met: a wide diagram floors at the
+  width that keeps D2's 16px labels at the guide's 12.5px small text and
+  scrolls horizontally inside the card instead of shrinking further
+  (`D2Diagram legibleText`, `e2e/d2-diagrams.spec.ts` "wide diagram keeps
+  labels legible"); Expand is the way to see it whole.
 - Undo (depth/examples/diagram, no redo, comments/expansions survive) —
   met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Mark read (grey + collapse), roll-up to page, muted links — met

@@ -54,6 +54,19 @@ export function isAllowedHref(value: string | null): boolean {
 }
 
 /**
+ * Natural SVG size from its viewBox (D2 output carries no width/height on
+ * the outer svg). Null when the viewBox is missing or degenerate.
+ */
+export function naturalSize(svg: Element): { w: number; h: number } | null {
+  const parts = (svg.getAttribute("viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
+  const w = parts[2];
+  const h = parts[3];
+  if (w <= 0 || h <= 0) return null;
+  return { w, h };
+}
+
+/**
  * Scope one `<style>` block's CSS text under `.uid`. Top-level rules are
  * split on `}`; `@`-rules (`@font-face` with its per-diagram `data:` fonts)
  * pass through untouched, every other selector list is prefixed. At-rules
