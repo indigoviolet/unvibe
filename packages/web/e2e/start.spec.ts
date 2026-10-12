@@ -1,10 +1,13 @@
 /**
- * Front screen (PRD §4.2): prior sessions first, then the New-review flow,
- * plus readiness callouts.
+ * Front screen (PRD §4.2): the page follows one chosen repo — the top-bar
+ * selector filters the Reviews list, PR/branch lists and the PR opener —
+ * plus the demo row under Reviews and readiness callouts.
  *
- * Mock mode: two prior sessions (demo ready, r-old stale+running), the
- * standard repo picker flow, PR-by-URL-or-number, and a healthy readiness
- * report (overridable via localStorage for the callout case).
+ * Mock mode: two prior sessions on urllib3 (demo ready, r-old
+ * stale+running), a remembered repo (urllib3/urllib3) plus a detected
+ * checkout (you/demo-lib), the demo entry, PR-by-URL-or-number, and a
+ * healthy readiness report (overridable via localStorage for the callout
+ * case). Repos are added in Settings, not here.
  */
 import { test, expect } from "./network-guard.js";
 
@@ -13,10 +16,26 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
 });
 
-test("prior sessions list across repos, most recent first, with summaries", async ({ page }) => {
+test("repo selector lists remembered and detected repos, persisted", async ({ page }) => {
+  const sel = page.getByLabel("Repository");
+  await expect(sel).toHaveValue("urllib3");
+  await expect(sel.locator('optgroup[label="Repos"] option')).toHaveText(["urllib3/urllib3"]);
+  await expect(sel.locator('optgroup[label="Detected checkouts"] option')).toHaveText(["you/demo-lib"]);
+  // The detected option carries its local path as the title.
+  await expect(sel.locator('optgroup[label="Detected checkouts"] option')).toHaveAttribute(
+    "title",
+    "~/code/demo-lib",
+  );
+  await sel.selectOption("demo-lib");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(page.getByLabel("Repository")).toHaveValue("demo-lib");
+});
+
+test("reviews list follows the selected repo; demo row always shows", async ({ page }) => {
+  // Default selection (urllib3): both prior sessions, most recent first.
   const sessions = page.locator('[data-testid^="session-"]');
   await expect(sessions).toHaveCount(2);
-  // Most recent first: demo (opened recently) before r-old.
   await expect(sessions.nth(0)).toHaveAttribute("data-testid", "session-demo");
   await expect(sessions.nth(1)).toHaveAttribute("data-testid", "session-r-old");
 
@@ -32,9 +51,154 @@ test("prior sessions list across repos, most recent first, with summaries", asyn
   await expect(old).toContainText("new commits · Update");
   await expect(old).toContainText("Checking findings…");
 
+  // The demo row sits inside the Reviews list regardless of the repo.
+  await expect(page.locator('[data-testid="demo-entry"]')).toContainText("Demo · no tokens");
+
+  // Switch to the detected checkout: its sessions list is empty, but the
+  // demo row stays.
+  await page.getByLabel("Repository").selectOption("demo-lib");
+  await expect(page.locator('[data-testid^="session-"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="sessions-empty"]')).toContainText("No reviews for you/demo-lib yet");
+  await expect(page.locator('[data-testid="demo-entry"]')).toBeVisible();
+
+  // Switch back: the repo's sessions return.
+  await page.getByLabel("Repository").selectOption("urllib3");
+  await expect(page.locator('[data-testid^="session-"]')).toHaveCount(2);
+
   // Click resumes the review.
   await demo.locator("button.cj").click();
   await expect(page).toHaveURL(/\/review\/demo/);
+});
+
+test("demo row opens the fixture review", async ({ page }) => {
+  await page.locator('[data-testid="demo-entry"] button').click();
+  await expect(page).toHaveURL(/\/review\/demo/);
+});
+
+test("failing lists keep the PR input, show an error with Retry, and recover", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "unvibe.mock.repoChangesFail",
+      JSON.stringify(["authoring", "review-requested", "recent"]),
+    );
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // The PR input does not wait on the lists.
+  await expect(page.getByLabel("Open a PR by URL or number")).toBeVisible();
+  const err = page.locator('[data-testid="lists-error"]');
+  await expect(err).toContainText("Couldn't load urllib3/urllib3's lists: mock gh is down");
+  await expect(err.getByRole("button", { name: "Retry" })).toBeVisible();
+  // No sections underneath until the load succeeds.
+  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
+  // Retry recovers once the failure clears.
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesFail"));
+  await err.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.locator('[data-testid="lists-error"]')).toHaveCount(0);
+});
+
+test("a partial lists failure shows per-section errors while branches still render", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "unvibe.mock.repoChangesFail",
+      JSON.stringify(["authoring", "review-requested"]),
+    );
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(page.locator('[data-testid="changes-error-authoring"]')).toContainText("mock gh is down");
+  await expect(page.locator('[data-testid="changes-error-requested"]')).toContainText("mock gh is down");
+  // Branches are local: they still render, and no whole-load error shows.
+  await expect(page.getByText("Recent branches")).toBeVisible();
+  await expect(page.locator('[data-testid="lists-error"]')).toHaveCount(0);
+  await page.locator("main .ci button").filter({ hasText: "fix-obs-fold" }).first().click();
+  await expect(page).toHaveURL(/\/review\//);
+});
+
+test("held lists show loading without stale rows and keep the PR input", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.repoChangesHold", "1");
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // Reviews and the demo row do not wait on the lists.
+  await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
+  await expect(page.locator('[data-testid="demo-entry"]')).toBeVisible();
+  // The lists area shows loading, not sections, with the PR input usable.
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading urllib3/urllib3…");
+  await expect(page.getByLabel("Open a PR by URL or number")).toBeVisible();
+  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
+  // Switching repos while held: still loading, never the old repo's rows.
+  await page.getByLabel("Repository").selectOption("demo-lib");
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading you/demo-lib…");
+  await expect(page.getByText("#5020 · fix-obs-fold · you")).toHaveCount(0);
+  // Release: the new selection's lists render.
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
+});
+
+test("re-selecting the current repo reloads its lists", async ({ page }) => {
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  // Hold live (addInitScript would only apply after a re-navigation).
+  await page.evaluate(() => localStorage.setItem("unvibe.mock.repoChangesHold", "1"));
+  // Re-selecting the already-selected value still fires change and must
+  // pair the cleared lists with a fresh load — never a stuck "Loading…".
+  await page.getByLabel("Repository").selectOption("urllib3");
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading urllib3/urllib3…");
+  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
+});
+
+test("reviews for checkouts no longer listed stay openable and removable", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "unvibe.mock.extraSessions",
+      JSON.stringify([
+        {
+          id: "r-gone",
+          repoId: "gone-repo",
+          repoOwner: "gone",
+          repoName: "gone",
+          title: "Work on a removed checkout",
+          branch: "old-branch",
+          createdAt: Date.now() - 86400000 * 3,
+          lastOpened: Date.now() - 86400000 * 2,
+          versionCount: 1,
+          currentVersion: 1,
+          stale: false,
+          totalHunks: 8,
+          reviewedHunks: 0,
+          pendingComments: 0,
+          guideStatus: "idle",
+        },
+      ]),
+    );
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  const group = page.locator('[data-testid="orphan-sessions"]');
+  await expect(group.locator('[data-testid="orphan-sessions-label"]')).toContainText(
+    "no longer in the repo list",
+  );
+  const row = group.locator('[data-testid="session-r-gone"]');
+  await expect(row).toContainText("gone/gone");
+  await expect(row).toContainText("Work on a removed checkout");
+  // Open works.
+  await row.locator("button.cj").click();
+  await expect(page).toHaveURL(/\/review\/r-gone/);
+  // Remove works.
+  await page.goto("/");
+  await expect(group.locator('[data-testid="session-r-gone"]')).toBeVisible();
+  await group.getByRole("button", { name: /Remove/ }).click();
+  await expect(group).toContainText("Remove local data only?");
+  await group.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(group.locator('[data-testid="session-r-gone"]')).toHaveCount(0);
+  // The other rows are untouched.
+  await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
 });
 
 test("remove asks to confirm and deletes local data only", async ({ page }) => {
@@ -46,15 +210,24 @@ test("remove asks to confirm and deletes local data only", async ({ page }) => {
   await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
 });
 
-test("PR by number opens a review; bad input errors", async ({ page }) => {
-  // Pick the remembered repo first (number needs a selected repo).
-  await page.locator("#new-review").getByText("urllib3/urllib3").first().click();
+test("PR by number opens a review; a URL for another known repo switches the selector; bad input errors", async ({
+  page,
+}) => {
+  // The remembered repo is selected by default; a number opens its PR.
   await page.getByLabel("Open a PR by URL or number").fill("5020");
   await page.getByRole("button", { name: "Open PR" }).click();
   await expect(page).toHaveURL(/\/review\/demo/, { timeout: 15000 });
 
+  // A URL for a different known repo opens it and switches the selector.
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await page.getByLabel("Open a PR by URL or number").fill("https://github.com/you/demo-lib/pull/7");
+  await page.getByRole("button", { name: "Open PR" }).click();
+  await expect(page).toHaveURL(/\/review\/demo/, { timeout: 15000 });
+  await page.goto("/");
+  await expect(page.getByLabel("Repository")).toHaveValue("demo-lib");
+
+  await page.getByLabel("Repository").selectOption("urllib3");
   await page.getByLabel("Open a PR by URL or number").fill("not a pr!!!");
   await page.getByRole("button", { name: "Open PR" }).click();
   await expect(page.getByText("Enter a PR number")).toBeVisible();

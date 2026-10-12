@@ -734,6 +734,25 @@ export interface DeleteContributionResponse {
 }
 
 /**
+ * Issue #32: per-review shared-context debug page (`/review/:id/debug`,
+ * PRD §9). `GET /api/reviews/:id/shared-context` returns the three parts
+ * of the review's shared context as Markdown text the page renders as-is:
+ * the base session(s) plus the current base pack, the append-only log, and
+ * the contributions. The web side does no formatting of its own beyond
+ * rendering Markdown (delete still uses the contributions endpoints below).
+ * 404 when the review is unknown.
+ */
+export interface SharedContextResponse {
+  reviewId: string;
+  /** Base section: per-base keys + `SharedContextBaseStats`, then the current pack in fenced blocks. */
+  base: string;
+  /** Log section: every entry in order with in-base/waiting markers. */
+  log: string;
+  /** Contributions section: one block per contribution. */
+  contributions: string;
+}
+
+/**
  * M5 shared context (PRD §9.5): corrections are suggestions on the target
  * card, never silent rewrites.
  *

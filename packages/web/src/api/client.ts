@@ -37,6 +37,7 @@ import type {
   ReviewSnapshot,
   ReviewsListResponse,
   Settings,
+  SharedContextResponse,
   SubmitPreview,
   SubmitReviewRequest,
   SubmitReviewResponse,
@@ -288,6 +289,9 @@ const realApi = {
 
   contributions: (reviewId: string): Promise<ContributionsResponse> =>
     get(`/api/reviews/${encodeURIComponent(reviewId)}/contributions`),
+
+  sharedContext: (reviewId: string): Promise<SharedContextResponse> =>
+    get(`/api/reviews/${encodeURIComponent(reviewId)}/shared-context`),
 
   diagramSvg: (reviewId: string, hash: string, theme: DiagramTheme): Promise<string> =>
     fetchDiagramSvg(reviewId, hash, theme),  deleteContribution: (reviewId: string, contributionId: string): Promise<DeleteContributionResponse> =>

@@ -15,7 +15,7 @@ test("main screens make no non-local requests and raise no CSP violations", asyn
   page,
   guard,
 }) => {
-  // Front screen: prior sessions + new-review flow (fonts load here).
+  // Front screen: repo-scoped reviews + demo row (fonts load here).
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   await expect(page.locator('[data-testid^="session-"]').first()).toBeVisible();
@@ -28,7 +28,7 @@ test("main screens make no non-local requests and raise no CSP violations", asyn
 
   // Settings: models + environment (readiness fetch over loopback).
   await page.goto("/settings?review=demo");
-  await expect(page.getByText("Models, prompts, limits, jobs, shared context")).toBeVisible();
+  await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
   await expect(page.locator("#environment")).toBeVisible();
 
   expect(guard.nonLocal, `non-local requests: ${guard.nonLocal.join("; ")}`).toEqual([]);
