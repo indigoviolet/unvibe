@@ -29,7 +29,8 @@ wrap=()
 if [[ -z "${UNVIBE_OP_RUN:-}" && -n "${OP_ENVIRONMENT_ID:-}" ]]; then
   wrap=(op run --environment "$OP_ENVIRONMENT_ID" --)
 fi
-UNVIBE_OP_RUN=1 exec "${wrap[@]}" "$@"
+# ${wrap[@]+...}: bash 3.2 (macOS) treats an empty array as unbound under `set -u`.
+UNVIBE_OP_RUN=1 exec ${wrap[@]+"${wrap[@]}"} "$@"
 '''
 
 [tasks.install]
