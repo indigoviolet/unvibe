@@ -158,13 +158,14 @@ describe("repo routes", () => {
       expect(branches.map((b) => b.branch).sort()).toEqual(["feature-x", "main"]);
 
       // Open a review, then it shows up as kind "review" with stale=false.
+      // #92: async open (202 loading) still lists immediately via LEFT JOIN.
       const created = await app.inject({
         method: "POST",
         url: "/api/reviews",
         headers: authed,
         payload: { repoId: repo.id, branch: "feature-x" },
       });
-      expect(created.statusCode).toBe(201);
+      expect([201, 202]).toContain(created.statusCode);
 
       const again = await app.inject({
         method: "GET",

@@ -151,7 +151,7 @@ describe("remove refuses while reviews exist (both kinds)", () => {
         headers: authed(),
         payload: { repoId: repo.id, branch: "main" },
       });
-      expect(created.statusCode).toBe(201);
+      expect([201, 202]).toContain(created.statusCode);
 
       const del = await app.inject({ method: "DELETE", url: `/api/repos/${repo.id}`, headers: authed() });
       expect(del.statusCode).toBe(409);

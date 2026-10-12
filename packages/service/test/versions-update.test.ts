@@ -79,7 +79,20 @@ describe("update pass", () => {
       const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
       const repoId = (added.json() as { repos: { id: string; localPath?: string }[] }).repos.find((r) => r.id !== "demo")!.id;
       const created = await app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: { repoId, branch: "feature" } });
-      const id = (created.json() as ReviewSnapshot).review.id;
+      const loading = created.json() as ReviewSnapshot;
+      const id = loading.review.id;
+      // #92: wait for the background ingest (update refuses loading).
+      {
+        const start = Date.now();
+        while (Date.now() - start < 15000) {
+          const got = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+          if (got.statusCode === 200) {
+            const snap = got.json() as ReviewSnapshot;
+            if ((snap.ingest?.status ?? "ready") === "ready" && (snap.version?.n ?? 0) >= 1) break;
+          }
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
 
       // Fresh review: update is 409 (nothing stale).
       const fresh = await app.inject({ method: "POST", url: `/api/reviews/${id}/update`, headers: authed });

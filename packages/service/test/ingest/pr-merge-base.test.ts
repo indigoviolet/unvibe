@@ -329,7 +329,20 @@ describe("refreshReview PR paths (fake gh + real git)", () => {
         headers: authed,
         payload: { repoId, pr: 42 },
       });
-      expect(created.statusCode).toBe(201);
+      expect([201, 202]).toContain(created.statusCode);
+      const id = (created.json() as { review: { id: string } }).review.id;
+      // #92: wait for the background ingest before refreshing.
+      {
+        const start = Date.now();
+        while (Date.now() - start < 15000) {
+          const got = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+          if (got.statusCode === 200) {
+            const snap = got.json() as { ingest?: { status?: string }; version?: { n?: number } };
+            if ((snap.ingest?.status ?? "ready") === "ready" && (snap.version?.n ?? 0) >= 1) break;
+          }
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
 
       // New commit on the PR head, then refresh (second gh pr view).
       fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\nw = 4\n");
@@ -337,7 +350,6 @@ describe("refreshReview PR paths (fake gh + real git)", () => {
       const newHead = await git(dir, "rev-parse", "HEAD");
       fake.enqueue(ghPrView({ baseRefName: "stacked-base", headRefName: "feature", headRefOid: newHead }));
 
-      const id = (created.json() as { review: { id: string } }).review.id;
       const refreshed = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
       expect(refreshed.statusCode).toBe(200);
       expect(refreshed.json()).toMatchObject({ newVersion: true });
@@ -372,7 +384,19 @@ describe("refreshReview PR paths (fake gh + real git)", () => {
         headers: authed,
         payload: { repoId, pr: 1 },
       });
-      expect(created.statusCode).toBe(201);
+      expect([201, 202]).toContain(created.statusCode);
+      const id = (created.json() as { review: { id: string } }).review.id;
+      {
+        const start = Date.now();
+        while (Date.now() - start < 15000) {
+          const got = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+          if (got.statusCode === 200) {
+            const snap = got.json() as { ingest?: { status?: string }; version?: { n?: number } };
+            if ((snap.ingest?.status ?? "ready") === "ready" && (snap.version?.n ?? 0) >= 1) break;
+          }
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
 
       await git(dir, "checkout", "feature");
       fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\nw = 5\n");
@@ -380,7 +404,6 @@ describe("refreshReview PR paths (fake gh + real git)", () => {
       const newHead = await git(dir, "rev-parse", "HEAD");
       fake.enqueue(ghPrView({ baseRefName: "main", headRefName: "feature", headRefOid: newHead }));
 
-      const id = (created.json() as { review: { id: string } }).review.id;
       const refreshed = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
       expect(refreshed.statusCode).toBe(200);
       expect(refreshed.json()).toMatchObject({ newVersion: true });
