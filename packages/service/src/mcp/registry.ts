@@ -28,6 +28,7 @@ import {
 import { parseId } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/runner.js";
 import type { McpReviewData, PinRecord, ReviewReader } from "./read.js";
+import { readCodeSlice } from "./read.js";
 import { READER_TOOL, toolsForRole } from "./tools.js";
 
 export const MCP_SERVICE_NAME = "unvibe";
@@ -172,6 +173,30 @@ export class McpRegistry {
         n += 1;
       }
     }
+    return n;
+  }
+
+  /**
+   * Close every live transport (service shutdown, issue #30): agent
+   * subprocesses are already dead by then, so their SSE streams would
+   * otherwise hold hijacked responses open and block `app.close()`
+   * forever. Best-effort, never throws. Returns the number closed.
+   */
+  async closeAll(): Promise<number> {
+    const states = [...this.sessions.values()];
+    this.sessions.clear();
+    this.byReview.clear();
+    let n = 0;
+    await Promise.all(
+      states.map(async (state) => {
+        try {
+          await state.transport.close();
+        } catch {
+          // Already gone: fine.
+        }
+        n += 1;
+      }),
+    );
     return n;
   }
 
@@ -321,16 +346,14 @@ export class McpRegistry {
     McpRegistry.checkPathInRepo(worktree, relPath);
     const { start, end } = this.parseLines(lines);
     const rev = sha ?? review.headSha;
-    const res = await this.opts.commands.run("git", {
-      args: ["show", `${rev}:${relPath}`],
-      cwd: worktree,
-    });
-    if (res.code !== 0) throw new Error(`git show failed: ${res.stderr.trim() || res.stdout.trim()}`);
-    const all = res.stdout.split("\n");
-    if (end > all.length) throw new Error(`lines ${lines} outside file (${all.length} lines)`);
-    const slice = all.slice(start - 1, end);
+    const slice = await readCodeSlice(this.opts.commands, worktree, rev, relPath, start, end);
+    if ("error" in slice) {
+      if (slice.error === "out-of-range") throw new Error(`lines ${lines} outside file ${relPath}@${rev}`);
+      if (slice.error === "binary") throw new Error(`binary file ${relPath}@${rev} is not shown`);
+      throw new Error(`git show failed for ${rev}:${relPath}`);
+    }
     const id = `code:${relPath}:${start === end ? `${start}` : `${start}-${end}`}@${rev}`;
-    return [id, ...slice.map((line, i) => `${start + i}: ${line}`)].join("\n");
+    return [id, ...slice.text.split("\n").map((line, i) => `${start + i}: ${line}`)].join("\n");
   }
 
   private async searchReview(state: SessionState, query: string): Promise<string> {

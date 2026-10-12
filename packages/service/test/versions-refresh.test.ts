@@ -353,4 +353,46 @@ describe("refresh integration", () => {
       await app.close();
     }
   });
+
+  it("(g) pins remap by content; empty-text pins flag needsRepining", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\nw = 4\n");
+    await git(dir, "commit", "-am", "tail");
+
+    const { app, ctx } = await createApp("tok", {runner: real, autoPipeline: false});
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        (draft.pinnedCode ??= []).push(
+          { path: "a.py", start: 2, end: 3, sha: snap.version.headSha, text: "y = 2\nz = 3" },
+          { path: "a.py", start: 1, end: 1, sha: snap.version.headSha, text: "" },
+        );
+      });
+
+      // New commit: prepend two lines, shifting the pinned block to 4-5.
+      fs.writeFileSync(path.join(dir, "a.py"), "h1\nh2\nx = 1\ny = 2\nz = 3\nw = 4\n");
+      await git(dir, "commit", "-am", "shift");
+
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      // Text pin: found again by content at its shifted location.
+      const textPin = after.pinnedCode!.find((p) => p.text === "y = 2\nz = 3")!;
+      expect(textPin.needsRepining).not.toBe(true);
+      expect(textPin.remappedStart).toBe(4);
+      expect(textPin.remappedEnd).toBe(5);
+      expect(textPin.remappedSha).toBe(after.version.headSha);
+      // Empty-text pin: nothing to match, so flagged — never remapped to
+      // a spurious blank line.
+      const emptyPin = after.pinnedCode!.find((p) => p.text === "")!;
+      expect(emptyPin.needsRepining).toBe(true);
+      expect(emptyPin.remappedSha).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
 });

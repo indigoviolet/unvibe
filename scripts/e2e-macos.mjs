@@ -34,6 +34,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRunRoot, onExit, removeDir } from "./tmp-guard.mjs";
 
 if (process.platform !== "darwin") {
   console.error("e2e-macos: macOS only (use scripts/e2e-linux.mjs on Linux)");
@@ -53,8 +54,15 @@ const PORT = portIdx >= 0 ? Number(args[portIdx + 1]) : 4592;
 // The helper app starts the service with defaults (see NOTE above).
 const DEFAULT_PORT = 4517;
 
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-e2e-home-"));
-const DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-e2e-data-"));
+// Per-run temp root (issue #24): HOME + DATA live under one fresh dir,
+// removed by exact path on success, failure and interruption. Never
+// globs the system temp dir (other suites share it). Not run on Linux
+// (`e2e:macos` needs macOS); changed by reading alongside e2e-linux.mjs.
+const RUN = createRunRoot();
+const HOME = path.join(RUN, "home");
+const DATA = path.join(RUN, "data");
+fs.mkdirSync(HOME, { recursive: true });
+fs.mkdirSync(DATA, { recursive: true });
 const ENV = {
   ...process.env,
   HOME,
@@ -86,6 +94,22 @@ function runCli(cmdArgs, env = ENV) {
   });
   return { code: r.status ?? 1, out: (r.stdout ?? "") + (r.stderr ?? "") };
 }
+
+// Interruption net: stop only our own daemons (temp-port via ENV, plus a
+// dispatched default-port service only when our own `open` call may have
+// started it), then remove only our own root. Foreign owners never touched.
+let cleaned = false;
+function cleanup() {
+  if (cleaned) return;
+  cleaned = true;
+  try {
+    runCli(["stop"]);
+  } catch {
+    // best effort
+  }
+  removeDir(RUN);
+}
+onExit(cleanup);
 
 function health(port) {
   return new Promise((resolve) => {
@@ -254,8 +278,10 @@ if (mayHaveDispatched && via !== "open" && (await health(DEFAULT_PORT))) {
 
 if (failures > 0) {
   console.error(`${failures} assertion(s) failed`);
+  cleanup();
   process.exit(1);
 }
+cleanup();
 console.log(`e2e-macos: all green (service start via ${via})`);
 if (via !== "open") {
   console.log(

@@ -1,13 +1,12 @@
 /**
  * Per-channel database backups (issue #36).
  *
- * Migrations are forward-only and numbered, so two branches can each add a
- * different "version 2": a database migrated by one channel is wrong for
- * another. Each channel therefore keeps its own copy under
- * `<dataDir>/channel-backups/<slot>/`. Switching backs up the old channel
- * first, then restores the new channel's copy when one exists. Slots are
- * never deleted by this module — at worst a channel's own slot is
- * overwritten by a newer backup of that same channel.
+ * There is one database. A switch never swaps it: the live database stays
+ * in place and the new build opens it. Before installing, the switch
+ * copies the live database files into the backup slot of the channel
+ * being left, under `<dataDir>/channel-backups/<slot>/`. Slots are never
+ * deleted by this module — at worst a channel's own slot is overwritten
+ * by a newer backup of that same channel.
  *
  * Plain `node:fs` copies (no SQLite handle): `unvibe update` refuses to run
  * while the service is live, so the files are quiescent and the main file
@@ -81,19 +80,16 @@ export function backupChannel(dataDir: string, channel: string | null): BackupRe
   return { dir, files };
 }
 
-/** True when the channel's slot holds a database worth restoring. */
-export function hasBackup(dataDir: string, channel: string): boolean {
-  const dir = channelSlotDir(dataDir, channel);
-  return liveBases(dataDir).some((base) => isFile(path.join(dir, base)));
-}
-
 /**
  * Copy a slot's files over the live data dir: remove the live database
  * files first (a stale `-wal` must never shadow the copied main file),
- * then copy the slot back. Never touches other slots.
+ * then copy the slot back. Never touches other slots. Used only by
+ * rollback: after a failed or unhealthy switch the old build must never
+ * open a database the new build may have migrated, so the backup taken
+ * at the start of the switch is restored over the live files.
  */
-export function seedFromSlot(dataDir: string, sourceChannel: string): BackupResult {
-  const dir = channelSlotDir(dataDir, sourceChannel);
+export function restoreChannel(dataDir: string, channel: string): BackupResult {
+  const dir = channelSlotDir(dataDir, channel);
   for (const name of dbFileNames(dataDir)) {
     try {
       fs.rmSync(path.join(dataDir, name), { force: true });
@@ -112,20 +108,10 @@ export function seedFromSlot(dataDir: string, sourceChannel: string): BackupResu
 }
 
 /**
- * Restore a channel's own slot over the live data dir.
- */
-export function restoreChannel(dataDir: string, channel: string): BackupResult {
-  return seedFromSlot(dataDir, channel);
-}
-
-/**
  * The rule, stated in `unvibe update` output after every switch so the
  * behaviour is never surprising.
  */
 export const DB_RULE =
-  "DB rule: each channel keeps its own copy under channel-backups/ (migrations are " +
-  "forward-only, so one channel's migrated database is wrong for another) — switching backs " +
-  "up the old channel first, then restores the new channel's copy when one exists. " +
-  "A new preview never inherits another preview's database: it starts from the release " +
-  "copy (release-rc fallback), or the switch stops before installing unless --keep-data; " +
-  "backups are never deleted.";
+  "Switching keeps your database and backs it up first to " +
+  "<dataDir>/channel-backups/<channel>/. A newer build may upgrade the database; " +
+  "if an older build then cannot open it, copy the backup back.";

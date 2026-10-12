@@ -53,6 +53,7 @@ import type {
   VersionStatus,
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
+import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
@@ -1138,6 +1139,8 @@ function buildMockDiagnostics(): import("@unvibe/shared").DiagnosticsResponse {
  */
 const UPDATE_KEY = "unvibe.mock.update";
 const UPDATE_FAIL_KEY = "unvibe.mock.update.fail";
+/** Opt-in running-jobs refusal for the switch-anyway flow (`"1"` refuses). */
+const UPDATE_BLOCK_JOBS_KEY = "unvibe.mock.update.blockJobs";
 
 const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
   { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: false },
@@ -2318,7 +2321,7 @@ export const mockApi = {
     return { channels: mockUpdateChannels() };
   },
 
-  updateSwitch: async (ref: string): Promise<UpdateSwitchResponse> => {
+  updateSwitch: async (ref: string, force?: boolean): Promise<UpdateSwitchResponse> => {
     await wait(80);
     if (getMockSettings().versionPickerEnabled !== true) {
       throw new Error('POST /api/update/switch: 404 {"error":"version picker is disabled"}');
@@ -2332,6 +2335,32 @@ export const mockApi = {
         `POST /api/update/switch: 409 {"error":"a switch to \\"${mockUpdatePending.to}\\" is already in progress"}`,
       );
     }
+    // Running-jobs refusal (#36 follow-up): opt-in via localStorage
+    // `unvibe.mock.update.blockJobs` ("1"), refused from the live mock job
+    // list unless forced — so mock-mode specs exercise the refused →
+    // switch-anyway flow without breaking the plain switch specs.
+    const blockJobs = (() => {
+      try {
+        return localStorage.getItem(UPDATE_BLOCK_JOBS_KEY) === "1";
+      } catch {
+        return false;
+      }
+    })();
+    const active = mockJobs.filter((j) => j.state === "queued" || j.state === "running" || j.state === "backing-off");
+    if (blockJobs && active.length > 0 && force !== true) {
+      const jobs = active.slice(0, 5).map((j) => ({
+        id: j.id,
+        kind: j.kind,
+        ...(j.reviewId !== undefined ? { reviewId: j.reviewId } : {}),
+        state: j.state,
+        ...((j.progress ?? j.cardId ?? j.threadId) ? { label: (j.progress ?? j.cardId ?? j.threadId) as string } : {}),
+      }));
+      throw new UpdateJobsBlockedError(
+        active.length,
+        jobs,
+        `cannot switch while ${active.length} job${active.length === 1 ? " is" : "s are"} running; wait for them to finish, then retry`,
+      );
+    }
     const { current: from } = readUpdatePersisted();
     if (from === ref) {
       // Same channel, same published commit in mock: nothing to do.
@@ -2339,6 +2368,9 @@ export const mockApi = {
     }
     mockUpdatePending = { from, to: ref, startedAt: new Date().toISOString() };
     mockUpdateDown = true;
+    // Forced with jobs running: the shutdown path stops them; the count
+    // rides the outcome so the UI names it after the reload.
+    const interruptedJobs = force === true && active.length > 0 ? active.length : undefined;
     const fail = (() => {
       try {
         return localStorage.getItem(UPDATE_FAIL_KEY);
@@ -2351,7 +2383,13 @@ export const mockApi = {
       if (!fail) {
         writeUpdatePersisted({
           current: ref,
-          outcome: { status: "ok", from, to: ref, finishedAt: at },
+          outcome: {
+            status: "ok",
+            from,
+            to: ref,
+            finishedAt: at,
+            ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
+          },
         });
       } else if (fail === "fatal") {
         writeUpdatePersisted({
@@ -2373,8 +2411,8 @@ export const mockApi = {
             to: ref,
             reason:
               fail === "install"
-                ? `Mock install of ${ref} failed (simulated); restored ${from}`
-                : `Mock build of ${ref} never reported ${target.version ?? "a version"} (simulated); restored ${from}`,
+                ? `Mock install of ${ref} failed (simulated); restored the pre-switch backup`
+                : `Mock build of ${ref} never reported ${target.version ?? "a version"} (simulated); restored the pre-switch backup`,
             finishedAt: at,
           },
         });

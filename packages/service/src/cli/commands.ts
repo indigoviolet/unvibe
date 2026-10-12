@@ -30,7 +30,6 @@ export const CLI_USAGE = [
   "  doctor [--strict]      check node, git, gh, agents, PATH, data dir, port (exit 1 on problems with --strict)",
   "  update --list          list install channels (release, release-rc, preview/*)",
   "  update <channel>       install github:indigoviolet/unvibe#<channel> globally",
-  "                         [--keep-data keeps the live DB instead of restoring]",
   "",
   "Env: UNVIBE_PORT (default 4517), UNVIBE_DATA_DIR (default",
   "     ~/.local/share/unvibe), UNVIBE_IDLE_MS (default 600000, <=0 disables).",
@@ -266,14 +265,12 @@ async function cmdUpdate(args: string[]): Promise<number> {
     console.error(`missing channel.\n\n${UPDATE_USAGE}`);
     return 2;
   }
-  const unknown = args.filter((a) => a.startsWith("-") && a !== "--keep-data");
+  const unknown = args.filter((a) => a.startsWith("-"));
   if (unknown.length > 0) {
     console.error(`unknown flag: ${unknown.join(" ")}\n\n${UPDATE_USAGE}`);
     return 2;
   }
-  const outcome = await runUpdateChannelFlow(deps, channel, {
-    keepData: args.includes("--keep-data"),
-  });
+  const outcome = await runUpdateChannelFlow(deps, channel);
   for (const line of outcome.lines) {
     if (outcome.code === 0) console.log(line);
     else console.error(line);

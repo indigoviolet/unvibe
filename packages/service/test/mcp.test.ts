@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { FakeCommandRunner } from "../src/exec/runner.js";
-import { McpRegistry, type IssuedSession } from "../src/mcp/index.js";
+import { McpRegistry, readCodeSlice, type IssuedSession } from "../src/mcp/index.js";
 import { stableToolSpec } from "../src/mcp/index.js";
 import type { McpReviewData } from "../src/mcp/index.js";
 import { createApp } from "../src/server.js";
@@ -245,6 +245,21 @@ describe("tools", () => {
       await client.close();
     }
   });
+
+  it("readCodeSlice resolves raw slices and reports failures without throwing", async () => {
+    const commands = new FakeCommandRunner();
+    commands.enqueue({ cmd: "git", args: ["show", "abc:a.py"], stdout: "l1\nl2\nl3\n", stderr: "", code: 0 });
+    expect(await readCodeSlice(commands, "/repo", "abc", "a.py", 1, 2)).toEqual({ text: "l1\nl2" });
+    commands.enqueue({ cmd: "git", args: ["show", "abc:missing.py"], stdout: "", stderr: "fatal", code: 128 });
+    expect(await readCodeSlice(commands, "/repo", "abc", "missing.py", 1, 1)).toEqual({ error: "not-found" });
+    commands.enqueue({ cmd: "git", args: ["show", "abc:a.py"], stdout: "l1\nl2\n", stderr: "", code: 0 });
+    expect(await readCodeSlice(commands, "/repo", "abc", "a.py", 1, 9)).toEqual({ error: "out-of-range" });
+    commands.enqueue({ cmd: "git", args: ["show", "abc:bin"], stdout: "a\0b", stderr: "", code: 0 });
+    expect(await readCodeSlice(commands, "/repo", "abc", "bin", 1, 1)).toEqual({ error: "binary" });
+    // An unexpected command (runner throws) also resolves to not-found.
+    expect(await readCodeSlice(commands, "/repo", "abc", "other.py", 1, 1)).toEqual({ error: "not-found" });
+    expect(commands.calls).toHaveLength(5);
+  });
 });
 
 describe("endpoint protection", () => {
@@ -310,6 +325,16 @@ describe("secret lifecycle", () => {
     expect(registry.hasSession(s3.secret)).toBe(true);
     expect(registry.liveSecretCount("r1")).toBe(0);
     expect(registry.revokeForReview("r1")).toBe(0);
+  });
+
+  it("closeAll drops every live transport for shutdown (issue #30)", async () => {
+    const { registry } = makeRegistry();
+    registry.issueSession("r1", "s-1", "session");
+    registry.issueSession("r1", "s-2", "reader");
+    expect(registry.liveSecretCount()).toBe(2);
+    expect(await registry.closeAll()).toBe(2);
+    expect(registry.liveSecretCount()).toBe(0);
+    expect(await registry.closeAll()).toBe(0);
   });
 
   it("revokeBySessionId drops superseded session labels", () => {

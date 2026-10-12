@@ -1,4 +1,21 @@
 import { defineConfig, devices } from "@playwright/test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+// Per-run temp root (issue #24): all `mkdtemp(path.join(os.tmpdir(), ...))`
+// in the specs (data dirs, scratch repos, fake bins) land inside one fresh
+// directory, removed by `e2e/tmp-teardown.ts` even when specs fail. Only
+// exact paths under this root are ever removed — other worktrees' suites
+// share the system temp dir and are never touched. Created once per run:
+// workers inherit the env, so a re-loaded config reuses the same root.
+if (!process.env.UNVIBE_E2E_TMPROOT) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-test-"));
+  process.env.UNVIBE_E2E_TMPROOT = root;
+  process.env.TMPDIR = root;
+  process.env.TEMP = root;
+  process.env.TMP = root;
+}
 
 // Behaviour tests run against mock mode (`VITE_MOCK=1`), so no service is
 // needed. Browsers come from `mise run playwright-install` and are never
@@ -37,4 +54,5 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   outputDir: "./test-results",
+  globalTeardown: "./e2e/tmp-teardown.ts",
 });

@@ -9,14 +9,13 @@
  // any mismatch; without it the verdict is printed but always exits 0.
  // CI runs strict on Linux and report-only on macOS (see DEVELOPMENT.md).
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRunRoot, removeDir } from "./tmp-guard.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-seed-check-"));
+const tmpDir = createRunRoot("unvibe-d2-seed-check-");
 const bundle = path.join(tmpDir, "probe.mjs");
 const esbuild = spawnSync(
   "npx",
@@ -34,6 +33,7 @@ const esbuild = spawnSync(
 );
 if (esbuild.status !== 0) {
   console.error(`d2-seed-check: esbuild failed\n${esbuild.stdout ?? ""}\n${esbuild.stderr ?? ""}`);
+  removeDir(tmpDir);
   process.exit(1);
 }
 const run = spawnSync(process.execPath, [bundle, "--root", ROOT, ...process.argv.slice(2)], {
@@ -43,5 +43,5 @@ const run = spawnSync(process.execPath, [bundle, "--root", ROOT, ...process.argv
 });
 process.stdout.write(run.stdout ?? "");
 process.stderr.write(run.stderr ?? "");
-fs.rmSync(tmpDir, { recursive: true, force: true });
+removeDir(tmpDir);
 process.exit(run.status ?? 1);

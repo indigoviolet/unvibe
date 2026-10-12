@@ -14,6 +14,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRunRoot, onExit, removeDir } from "./tmp-guard.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "packages", "service", "dist", "index.js");
@@ -44,8 +45,11 @@ function freePort() {
   });
 }
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-restart-"));
+// Per-run temp root (issue #24): removed by exact path on success,
+// failure and interruption. Never globs the system temp dir.
+const TMP = createRunRoot();
 const DATA = path.join(TMP, "data");
+fs.mkdirSync(DATA, { recursive: true });
 const PORT = Number(flag("--port", "0")) || (await freePort());
 console.log(`work dir: ${TMP} port: ${PORT}`);
 
@@ -82,12 +86,24 @@ async function waitFor(want, timeoutMs, label) {
 }
 
 /** Foreground service child we can SIGKILL. Resolves when healthy. */
+let currentChild = null;
+onExit(() => {
+  // Interruption net: kill only the service child we started (by recorded
+  // PID), then remove only our own root. Never kills by pattern or port.
+  try {
+    currentChild?.kill("SIGKILL");
+  } catch {
+    // best effort
+  }
+  removeDir(TMP);
+});
 async function startService(label) {
   const child = spawn(process.execPath, [DIST, "start", "--foreground"], {
     cwd: os.tmpdir(),
     env: ENV,
     stdio: ["ignore", "pipe", "pipe"],
   });
+  currentChild = child;
   child.stdout.on("data", () => {});
   child.stderr.on("data", () => {});
   const ok = await waitFor(true, 20_000, `${label} health`);
@@ -245,10 +261,22 @@ const main = async () => {
   assert(stop.status === 0 && (await waitFor(false, 10_000, "final shutdown")), "stop shuts down");
 
   if (failures > 0) {
-    console.error(`${failures} assertion(s) failed (work dir kept: ${TMP})`);
+    console.error(`${failures} assertion(s) failed (work dir removed: ${TMP})`);
+    try {
+      currentChild?.kill("SIGKILL");
+    } catch {
+      // best effort
+    }
+    removeDir(TMP);
     process.exit(1);
   }
-  fs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    currentChild?.kill("SIGKILL");
+  } catch {
+    // best effort
+  }
+  currentChild = null;
+  removeDir(TMP);
   console.log("restart-resilience: all green");
 };
 

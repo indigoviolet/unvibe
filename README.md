@@ -40,7 +40,7 @@ Other commands:
 - `token` — print the app URL with the per-install token.
 - `doctor` — environment checks, each with a fix.
 - `update --list` — list install channels (`release`, `release-rc`, `preview/*`), marking the installed one.
-- `update <channel>` — install that channel globally (`--keep-data` keeps the live database).
+- `update <channel>` — install that channel globally (switching keeps your database and backs it up first).
 
 ## Using it
 
