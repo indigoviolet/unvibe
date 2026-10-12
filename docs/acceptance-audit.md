@@ -495,6 +495,11 @@ needed (that deviation is closed, not added).
 
 - Inline tokens (all six + `ann:`) + `|label` rules — met
   (`reply-format.md` §1, `shared/src/content`, `content-parse.test.ts`).
+- Inline Markdown inside a block (bold, italic, strikethrough, links,
+  escapes; raw HTML escaped, tokens resolved before emphasis) — met
+  (#66; `markdown-it` inline mode in `renderInline`,
+  `content-parse.test.ts`). Streaming returns finished cards only; the
+  unused in-card partial parser is gone (#67).
 - Trailing fenced JSON for structured fields, removed before display —
   met (M0 20/20 parse; `splitReply`, `reply-format.md` §10; malformed =
   job error).
