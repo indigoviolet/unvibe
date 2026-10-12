@@ -45,6 +45,7 @@ import type {
   UpdatePendingSwitch,
   UpdateReviewResponse,
   UpdateStatusResponse,
+  UpdateSwitchResponse,
   Version,
   VersionStatus,
 } from "@unvibe/shared";
@@ -2056,7 +2057,7 @@ export const mockApi = {
     return { channels: mockUpdateChannels() };
   },
 
-  updateSwitch: async (ref: string): Promise<{ from: string; to: string }> => {
+  updateSwitch: async (ref: string): Promise<UpdateSwitchResponse> => {
     await wait(80);
     if (getMockSettings().versionPickerEnabled !== true) {
       throw new Error('POST /api/update/switch: 404 {"error":"version picker is disabled"}');
@@ -2071,6 +2072,10 @@ export const mockApi = {
       );
     }
     const { current: from } = readUpdatePersisted();
+    if (from === ref) {
+      // Same channel, same published commit in mock: nothing to do.
+      return { from, to: ref, unchanged: true };
+    }
     mockUpdatePending = { from, to: ref, startedAt: new Date().toISOString() };
     mockUpdateDown = true;
     const fail = (() => {

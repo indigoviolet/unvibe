@@ -1,6 +1,6 @@
 /** Version-picker display helpers: grouping, short shas, relative times, outcome copy. */
 import { describe, expect, it } from "vitest";
-import { buildLine, groupChannels, outcomeLine, shortCommit, timeAgoIso } from "./versionFormat.js";
+import { buildLine, groupChannels, isNewerAvailable, outcomeLine, shortCommit, timeAgoIso } from "./versionFormat.js";
 import type { UpdateChannel } from "@unvibe/shared";
 
 const NOW = Date.parse("2026-10-12T12:00:00.000Z");
@@ -31,6 +31,24 @@ describe("versionFormat", () => {
     expect(timeAgoIso(new Date(NOW - 2 * 86400_000).toISOString(), NOW)).toBe("2d ago");
     expect(timeAgoIso(null)).toBeNull();
     expect(timeAgoIso("bogus")).toBeNull();
+  });
+
+  it("flags a newer published build on the installed channel only", () => {
+    const build = { version: "0.0.1", sourceBranch: null, commit: "aaa", builtAt: null };
+    const row = (commit: string | null, current: boolean): UpdateChannel => ({
+      ref: "preview/a",
+      kind: "preview",
+      version: "0.0.1",
+      commit,
+      sourceBranch: "a",
+      builtAt: null,
+      current,
+    });
+    expect(isNewerAvailable(row("bbb", true), build)).toBe(true);
+    expect(isNewerAvailable(row("aaa", true), build)).toBe(false);
+    expect(isNewerAvailable(row(null, true), build)).toBe(false);
+    expect(isNewerAvailable(row("bbb", false), build)).toBe(false);
+    expect(isNewerAvailable(row("bbb", true), null)).toBe(false);
   });
 
   it("describes the running build and the last outcome", () => {

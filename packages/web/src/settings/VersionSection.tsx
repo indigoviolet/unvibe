@@ -13,12 +13,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Settings,
+  UpdateBuildInfo,
   UpdateChannel,
   UpdateStatusResponse,
 } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { putErrors } from "./LimitsSection.js";
-import { buildLine, groupChannels, outcomeLine, shortCommit, timeAgoIso } from "./versionFormat.js";
+import { buildLine, groupChannels, isNewerAvailable, outcomeLine, shortCommit, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
 const SWITCH_POLL_MS = 1000;
@@ -40,6 +41,7 @@ export function VersionSection({
   const [confirmRef, setConfirmRef] = useState<string | null>(null);
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
+  const [doneNote, setDoneNote] = useState<string | null>(null);
   const [healthVersion, setHealthVersion] = useState<string | null>(null);
   const cancelled = useRef(false);
 
@@ -175,9 +177,18 @@ export function VersionSection({
       const startedAt = new Date().toISOString();
       setConfirmRef(null);
       setSwitchError(null);
+      setDoneNote(null);
       setSwitchingTo(ref);
       try {
-        await api.updateSwitch(ref);
+        const res = await api.updateSwitch(ref);
+        if (res.unchanged) {
+          if (!cancelled.current) {
+            setSwitchingTo(null);
+            setDoneNote(`Already on the latest published build of ${ref} — nothing to do.`);
+            void loadStatus();
+          }
+          return;
+        }
       } catch (err) {
         if (!cancelled.current) {
           setSwitchingTo(null);
@@ -187,7 +198,7 @@ export function VersionSection({
       }
       await waitForSwitch(ref, target, fromVersion, startedAt);
     },
-    [channels, healthVersion, status, waitForSwitch],
+    [channels, healthVersion, loadStatus, status, waitForSwitch],
   );
 
   const groups = channels ? groupChannels(channels) : null;
@@ -225,16 +236,25 @@ export function VersionSection({
         {!enabled ? null : loading && !channels ? (
           <p className="hint">Loading channels…</p>
         ) : channels && groups ? (
-          <ChannelGroups
-            groups={groups}
-            confirmRef={confirmRef}
-            switchingTo={switchingTo}
-            onSwitch={(ref) => setConfirmRef(ref)}
-            onCancel={() => setConfirmRef(null)}
-            onConfirm={(ref) => void commitSwitch(ref)}
-            onRefresh={() => void loadChannels(true)}
-            refreshing={refreshing}
-          />
+          <>
+            {status && !status.build ? (
+              <p className="warnline" data-testid="update-not-installed">
+                Switching needs the installed app — this service runs from a checkout or an old build, so only
+                listing works here. From the dev checkout, use <code>unvibe update</code> instead.
+              </p>
+            ) : null}
+            <ChannelGroups
+              groups={groups}
+              build={status?.build ?? null}
+              confirmRef={confirmRef}
+              switchingTo={switchingTo}
+              onSwitch={(ref) => setConfirmRef(ref)}
+              onCancel={() => setConfirmRef(null)}
+              onConfirm={(ref) => void commitSwitch(ref)}
+              onRefresh={() => void loadChannels(true)}
+              refreshing={refreshing}
+            />
+          </>
         ) : null}
         {status?.pending && !switchingTo ? (
           <p className="warnline" data-testid="update-pending">
@@ -262,6 +282,11 @@ export function VersionSection({
             {switchError}
           </p>
         ) : null}
+        {doneNote && !switchingTo ? (
+          <p className="hint" data-testid="update-done-note">
+            {doneNote}
+          </p>
+        ) : null}
         {status?.outcome && !switchingTo ? (
           <p className="hint" data-testid="update-outcome">
             Last switch: {outcomeLine(status.outcome)}
@@ -279,6 +304,7 @@ export function VersionSection({
 
 function ChannelGroups({
   groups,
+  build,
   confirmRef,
   switchingTo,
   onSwitch,
@@ -288,6 +314,7 @@ function ChannelGroups({
   refreshing,
 }: {
   groups: ReturnType<typeof groupChannels>;
+  build: UpdateBuildInfo | null;
   confirmRef: string | null;
   switchingTo: string | null;
   onSwitch: (ref: string) => void;
@@ -307,7 +334,12 @@ function ChannelGroups({
         part.rows.length === 0 ? null : (
           <div key={part.title}>
             <div className="hint" style={{ marginBottom: 4 }}>{part.title}</div>
-            {part.rows.map((c) => (
+            {part.rows.map((c) => {
+              // Publish → try → fix → publish loop: the installed commit
+              // behind the published one gets an Update action (same
+              // switch flow, from === to, no DB swap).
+              const newerAvailable = isNewerAvailable(c, build);
+              return (
               <div className="frow" key={c.ref} data-testid="update-channel" data-ref={c.ref} style={{ gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
                 <code>{c.ref}</code>
                 {c.version ? <span className="hint">{c.version}</span> : null}
@@ -317,7 +349,32 @@ function ChannelGroups({
                 ) : null}
                 {c.builtAt ? <span className="hint">built {timeAgoIso(c.builtAt) ?? c.builtAt}</span> : null}
                 {c.current ? (
-                  <span className="st" data-testid="update-current">current</span>
+                  <>
+                    <span className="st" data-testid="update-current">current</span>
+                    {newerAvailable && build && !switchingTo ? (
+                      confirmRef === c.ref ? (
+                        <span className="frow" style={{ gap: 6, alignItems: "center" }}>
+                          <span className="warnline">The service restarts; data is backed up before the switch.</span>
+                          <button className="btn" type="button" onClick={() => onConfirm(c.ref)}>
+                            Confirm update to {c.ref}
+                          </button>
+                          <button className="btn ghost" type="button" onClick={onCancel}>
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="frow" style={{ gap: 6, alignItems: "center" }}>
+                          <span className="warnline" data-testid="update-available">
+                            Newer build available (installed {shortCommit(build.commit)} vs {shortCommit(c.commit)}
+                            {c.builtAt ? `, built ${timeAgoIso(c.builtAt) ?? c.builtAt}` : ""})
+                          </span>
+                          <button className="btn ghost" type="button" onClick={() => onSwitch(c.ref)}>
+                            Update {c.ref}
+                          </button>
+                        </span>
+                      )
+                    ) : null}
+                  </>
                 ) : switchingTo ? (
                   <span className="hint">…</span>
                 ) : confirmRef === c.ref ? (
@@ -336,7 +393,8 @@ function ChannelGroups({
                   </button>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         ),
       )}

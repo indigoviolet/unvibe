@@ -45,6 +45,15 @@ export function groupChannels(channels: UpdateChannel[]): ChannelGroups {
   return groups;
 }
 
+/**
+ * True when the installed build lags the published row: same channel, both
+ * commits known, different. Drives the Update action (same switch flow,
+ * from === to, no DB swap).
+ */
+export function isNewerAvailable(row: UpdateChannel, build: UpdateBuildInfo | null): boolean {
+  return row.current && !!build?.commit && !!row.commit && build.commit !== row.commit;
+}
+
 /** One-line identity for the running build ("on 0.0.1" / "on 0.0.1-preview… (feat/x · abc1234)"). */
 export function buildLine(build: UpdateBuildInfo | null | undefined, fallbackVersion: string): string {
   if (!build) return `on ${fallbackVersion}`;
