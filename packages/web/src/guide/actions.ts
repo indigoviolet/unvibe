@@ -14,7 +14,7 @@
 import type { ActionResponse, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
-import { INFLIGHT_TTL_MS, useReview, type InFlightKind } from "../state/store.js";
+import { INFLIGHT_TTL_MS, inflightExpired, useReview, type InFlightKind } from "../state/store.js";
 import {
   askKey,
   conceptKey,
@@ -162,6 +162,7 @@ function waitForInflightGone(targetId: string, timeoutMs: number): Promise<void>
   if (!useReview.getState().inflight[targetId]) return Promise.resolve();
   return new Promise((resolve) => {
     let done = false;
+    let timer: number | undefined;
     const finish = (): void => {
       if (done) return;
       done = true;
@@ -169,13 +170,29 @@ function waitForInflightGone(targetId: string, timeoutMs: number): Promise<void>
       window.clearTimeout(timer);
       resolve();
     };
-    const timer = window.setTimeout(() => {
-      useReview.getState().clearInflight(targetId);
-      finish();
-    }, timeoutMs);
+    // Same rule as the store TTL: only force-clear when no live job is
+    // attached; a still-running job keeps the wait (and the indicator).
+    const arm = (): void => {
+      timer = window.setTimeout(() => {
+        if (done) return;
+        const st = useReview.getState();
+        const entry = st.inflight[targetId];
+        if (!entry) {
+          finish();
+          return;
+        }
+        if (!inflightExpired(entry, st.snapshot?.jobs ?? [], Date.now())) {
+          arm();
+          return;
+        }
+        st.clearInflight(targetId);
+        finish();
+      }, timeoutMs);
+    };
     const unsub = useReview.subscribe((s) => {
       if (!s.inflight[targetId]) finish();
     });
+    arm();
   });
 }
 

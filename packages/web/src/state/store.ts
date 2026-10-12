@@ -66,8 +66,10 @@ let inflightSeq = 0;
 
 /**
  * Safety cap so an in-flight entry can never spin forever (a lost job
- * event, a mock answer with no snapshot job). Entries are also cleared
- * the moment their job reaches a terminal state.
+ * event, a mock answer with no snapshot job). The cap only applies while
+ * no live job is attached: an entry following a queued/running/
+ * backing-off job stays until that job is terminal, however long the
+ * queue takes.
  */
 export const INFLIGHT_TTL_MS = 120_000;
 
@@ -79,7 +81,24 @@ export function isTerminalJobState(state: Job["state"]): boolean {
   return state === "done" || state === "error" || state === "cancelled";
 }
 
-/** Drop in-flight entries whose job settled (or outlived the TTL). */
+/**
+ * Whether an entry lapses: older than the TTL *and* with no live job
+ * (no `jobId` yet, or a `jobId` the snapshot does not know). A live
+ * attached job holds the entry past the TTL; its terminal state reaps it.
+ */
+export function inflightExpired(
+  entry: InFlightAction,
+  jobs: Job[],
+  now: number,
+): boolean {
+  if (now - entry.startedAt <= INFLIGHT_TTL_MS) return false;
+  if (!entry.jobId) return true;
+  const job = jobs.find((j) => j.id === entry.jobId);
+  if (!job) return true;
+  return !isLiveJobState(job.state);
+}
+
+/** Drop in-flight entries whose job settled or whose wait lapsed. */
 function reapInflight(
   jobs: Job[],
   inflight: Record<string, InFlightAction>,
@@ -90,7 +109,7 @@ function reapInflight(
   const next: Record<string, InFlightAction> = {};
   for (const [key, entry] of Object.entries(inflight)) {
     const job = entry.jobId ? byId.get(entry.jobId) : undefined;
-    if ((job && isTerminalJobState(job.state)) || now - entry.startedAt > INFLIGHT_TTL_MS) {
+    if ((job && isTerminalJobState(job.state)) || inflightExpired(entry, jobs, now)) {
       changed = true;
       continue;
     }
@@ -340,19 +359,25 @@ export const useReview = create<ReviewState>()((set, get) => ({
       seq,
     };
     set((s) => ({ inflight: { ...s.inflight, [targetId]: entry } }));
-    // Never stuck: even with no further store events, a lingering entry
-    // clears itself once the TTL lapses.
-    window.setTimeout(() => {
-      const cur = get().inflight[targetId];
-      if (cur && cur.seq === seq) {
+    // Backstop for entries nobody waits on: re-armed while a live job is
+    // attached, so a long queue never drops the indicator mid-rewrite.
+    const arm = (): void => {
+      window.setTimeout(() => {
+        if (get().inflight[targetId]?.seq !== seq) return;
+        const st = get();
+        if (!inflightExpired(st.inflight[targetId], st.snapshot?.jobs ?? [], Date.now())) {
+          arm();
+          return;
+        }
         set((s) => {
           if (s.inflight[targetId]?.seq !== seq) return s;
           const next = { ...s.inflight };
           delete next[targetId];
           return { inflight: next };
         });
-      }
-    }, INFLIGHT_TTL_MS + 50);
+      }, INFLIGHT_TTL_MS + 50);
+    };
+    arm();
   },
   attachInflightJob: (targetId, jobId) =>
     set((s) => {
