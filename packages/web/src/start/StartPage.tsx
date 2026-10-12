@@ -15,8 +15,16 @@
  * - The PR / branch lists and "Open a PR by URL or number" are scoped to
  *   the selected repo. A pasted PR URL for a different known repo still
  *   works: it opens the review and switches the selector to that repo.
- *   While a newly selected repo's lists load, the previous repo's lists
- *   are hidden (a loading hint shows instead of stale data).
+ *   The PR input never waits on the lists. List loads are tracked per
+ *   selection (loading / loaded / failed): switching repos clears the old
+ *   lists synchronously so stale data can never render; a total failure
+ *   shows an inline error with a Retry button; a single failed filter
+ *   shows its error in that section while the others still render
+ *   (the service already degrades gh/git failures to empty per source).
+ * - Sessions whose repo is in neither the remembered nor the detected
+ *   list (a checkout that went away, or repos failing to load) are not
+ *   dropped: they render in a labelled group at the end of Reviews with
+ *   working open and Remove.
  * - With no repos at all, a short empty state links to Settings
  *   (`/settings#repositories`), where repos are added; the demo row still
  *   shows. Repos are never added here.
@@ -25,7 +33,7 @@
  *   the lists they concern (`newreview-agent-hint` by Reviews,
  *   `newreview-gh-hint` by the PR lists).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type {
   CreateReviewRequest,
@@ -38,6 +46,15 @@ import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 
 const REPO_KEY = "unvibe.start.repoId";
+
+/** Per-section list errors: a failed filter shows its error, not "Nothing found.". */
+interface ListErrors {
+  authoring: string | null;
+  requested: string | null;
+  branches: string | null;
+}
+
+const EMPTY_ERRORS: ListErrors = { authoring: null, requested: null, branches: null };
 
 function changeKey(c: RepoChange, i: number): string {
   return `${c.kind}-${c.reviewId ?? c.prNumber ?? c.branch ?? i}`;
@@ -159,10 +176,17 @@ export function StartPage(): React.JSX.Element {
   const [authoring, setAuthoring] = useState<RepoChange[]>([]);
   const [requested, setRequested] = useState<RepoChange[]>([]);
   const [branches, setBranches] = useState<RepoChange[]>([]);
-  // The repo the PR/branch lists below were loaded for. While a newly
-  // selected repo loads, its lists stay hidden instead of showing the
-  // previous repo's data.
+  const [listErrors, setListErrors] = useState<ListErrors>(EMPTY_ERRORS);
+  // The repo the PR/branch lists below were loaded for (null = none yet or
+  // cleared). The render gates on this so a newly selected repo never shows
+  // the previous repo's data.
   const [listsFor, setListsFor] = useState<string | null>(null);
+  // Whole-load failure (every filter rejected): inline message + Retry.
+  const [listsError, setListsError] = useState<string | null>(null);
+  // True once GET /api/repos has resolved (even demo-only).
+  const [reposLoaded, setReposLoaded] = useState(false);
+  // True when GET /api/repos itself failed (offline service).
+  const [reposError, setReposError] = useState(false);
   const [demo, setDemo] = useState<RepoChange[]>([]);
   const [opening, setOpening] = useState<string | null>(null);
 
@@ -190,6 +214,55 @@ export function StartPage(): React.JSX.Element {
     }
   }, []);
 
+  // Monotonic load id: a superseded selection's late responses are ignored.
+  const loadSeq = useRef(0);
+  const loadLists = useCallback(async (id: string) => {
+    const seq = ++loadSeq.current;
+    // Settled, not all-or-nothing: one failing filter must not sink the
+    // others (branches are local even when the gh-backed PR lists fail).
+    const [a, r, rec] = await Promise.allSettled([
+      api.repoChanges(id, "authoring"),
+      api.repoChanges(id, "review-requested"),
+      api.repoChanges(id, "recent"),
+    ]);
+    if (loadSeq.current !== seq) return;
+    setAuthoring(a.status === "fulfilled" ? a.value.changes : []);
+    setRequested(r.status === "fulfilled" ? r.value.changes : []);
+    // `recent` mixes branches and previous reviews; branches only here
+    // (prior sessions come from GET /api/reviews, filtered per repo).
+    setBranches(rec.status === "fulfilled" ? rec.value.changes.filter((c) => c.kind === "branch") : []);
+    setListErrors({
+      authoring: a.status === "rejected" ? friendlyError(a.reason) : null,
+      requested: r.status === "rejected" ? friendlyError(r.reason) : null,
+      branches: rec.status === "rejected" ? friendlyError(rec.reason) : null,
+    });
+    const rejected = [a, r, rec].filter((x): x is PromiseRejectedResult => x.status === "rejected");
+    setListsError(rejected.length === 3 ? friendlyError(rejected[0].reason) : null);
+    setListsFor(id);
+  }, []);
+
+  /** Select a repo, clearing the old lists synchronously so stale data can
+      never render — not even for one frame before the load effect runs. */
+  const selectRepo = useCallback(
+    (id: string) => {
+      setAuthoring([]);
+      setRequested([]);
+      setBranches([]);
+      setListErrors(EMPTY_ERRORS);
+      setListsError(null);
+      setListsFor(null);
+      setSelectedId(id);
+    },
+    [],
+  );
+
+  const retryLists = useCallback(() => {
+    if (!selectedId) return;
+    setListsError(null);
+    setListsFor(null);
+    void loadLists(selectedId);
+  }, [selectedId, loadLists]);
+
   useEffect(() => {
     let cancelled = false;
     api
@@ -197,6 +270,7 @@ export function StartPage(): React.JSX.Element {
       .then((r) => {
         if (cancelled) return;
         setRepos(r.repos);
+        setReposLoaded(true);
         setSelectedId((prev) => {
           if (prev && prev !== "demo" && r.repos.some((x) => x.id === prev)) return prev;
           // Never auto-select the demo pseudo-repo: the lists below only
@@ -205,7 +279,10 @@ export function StartPage(): React.JSX.Element {
         });
       })
       .catch(() => {
-        // Offline service: the page stays empty.
+        if (cancelled) return;
+        setReposLoaded(true);
+        setReposError(true);
+        // Offline service: repos stay empty; sessions below still render.
       });
     // Demo entry (repo-less `demo` change): no tokens, same pipeline path.
     // It renders as a row inside the Reviews list (see below).
@@ -239,30 +316,8 @@ export function StartPage(): React.JSX.Element {
       // Ignore.
     }
     if (!selectedId) return;
-    let cancelled = false;
-    const load = async (): Promise<void> => {
-      try {
-        const [a, r, rec] = await Promise.all([
-          api.repoChanges(selectedId, "authoring"),
-          api.repoChanges(selectedId, "review-requested"),
-          api.repoChanges(selectedId, "recent"),
-        ]);
-        if (cancelled) return;
-        setAuthoring(a.changes);
-        setRequested(r.changes);
-        // `recent` mixes branches and previous reviews; branches only here
-        // (prior sessions come from GET /api/reviews, filtered per repo).
-        setBranches(rec.changes.filter((c) => c.kind === "branch"));
-        setListsFor(selectedId);
-      } catch {
-        // Leave the loading hint in place (listsFor stays behind).
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId]);
+    void loadLists(selectedId);
+  }, [selectedId, loadLists]);
 
   const openReview = useCallback(
     async (key: string, body: CreateReviewRequest) => {
@@ -317,7 +372,7 @@ export function StartPage(): React.JSX.Element {
     setPrError(null);
     // A pasted URL for a different known repo opens that repo's PR and
     // switches the selector to it.
-    if (parsed.repoId !== selectedId) setSelectedId(parsed.repoId);
+    if (parsed.repoId !== selectedId) selectRepo(parsed.repoId);
     void openReview(`pr-${parsed.pr}`, { repoId: parsed.repoId, pr: parsed.pr });
   }, [prInput, repos, selectedId, openReview]);
 
@@ -336,9 +391,16 @@ export function StartPage(): React.JSX.Element {
   // the service's review row, so this stays correct for remembered and
   // detected repos alike). Demo sessions (`repoId: "demo"`) never match a
   // real selection; they render as the demo row instead (no duplicates).
+  // Sessions whose repo is neither demo nor known (a checkout that went
+  // away, or repos failing to load) render in their own group below so
+  // they stay openable and removable.
   const visibleSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
   const demoSessions = (sessions ?? []).filter((s) => s.repoId === "demo");
   const showDemoEntry = demoSessions.length === 0 && demo.length > 0;
+  const knownIds = new Set(repos.map((r) => r.id));
+  const orphanSessions = reposLoaded
+    ? (sessions ?? []).filter((s) => s.repoId !== "demo" && !knownIds.has(s.repoId))
+    : [];
 
   return (
     <div className="app">
@@ -353,7 +415,7 @@ export function StartPage(): React.JSX.Element {
               className="tbtn"
               value={selectedId}
               title={selected?.localPath ?? ""}
-              onChange={(e) => setSelectedId(e.target.value)}
+              onChange={(e) => selectRepo(e.target.value)}
             >
               {remembered.length > 0 ? (
                 <optgroup label="Repos">
@@ -464,9 +526,9 @@ export function StartPage(): React.JSX.Element {
                   onOpen={() => navigate(`/review/${s.id}`)}
                 />
               ))}
-              {visibleSessions.length === 0 && demoSessions.length === 0 ? (
+              {visibleSessions.length === 0 && demoSessions.length === 0 && orphanSessions.length === 0 ? (
                 <p className="hint" data-testid="sessions-empty">
-                  {realRepos.length === 0 ? (
+                  {reposLoaded && realRepos.length === 0 ? (
                     <>
                       No reviews yet. <Link to="/settings#repositories">Add a repo in Settings</Link>{" "}
                       to open your first review — or try the demo below.
@@ -495,24 +557,51 @@ export function StartPage(): React.JSX.Element {
                     </div>
                   ))
                 : null}
+              {orphanSessions.length > 0 ? (
+                <div data-testid="orphan-sessions">
+                  <p className="hint" data-testid="orphan-sessions-label">
+                    These reviews belong to checkouts that are no longer in the repo list — open or
+                    remove them here.
+                  </p>
+                  {orphanSessions.map((s) => (
+                    <SessionRow
+                      key={s.id}
+                      s={s}
+                      opening={opening}
+                      deleting={deleting}
+                      confirmDelete={confirmDelete}
+                      setConfirmDelete={setConfirmDelete}
+                      removeSession={removeSession}
+                      onOpen={() => navigate(`/review/${s.id}`)}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
 
-          {/* PRs and branches for the selected repo. */}
-          {realRepos.length === 0 ? (
-            <div data-testid="no-repos">
-              <div className="divider">Repositories</div>
-              <p className="hint">
-                No repos yet. <Link to="/settings#repositories">Add one in Settings</Link> to browse
-                its PRs and branches.
-              </p>
-            </div>
+          {/* PRs and branches for the selected repo. The PR input never
+              waits on the lists; the lists track loading / loaded / failed
+              per selection below it. */}
+          {!reposLoaded || realRepos.length === 0 ? (
+            reposLoaded ? (
+              <div data-testid="no-repos">
+                <div className="divider">Repositories</div>
+                {reposError ? (
+                  <p className="hint" role="alert">
+                    Couldn&apos;t load the repo list. Check the service is running, then reload the
+                    page — or <Link to="/settings#repositories">manage repos in Settings</Link>.
+                  </p>
+                ) : (
+                  <p className="hint">
+                    No repos yet. <Link to="/settings#repositories">Add one in Settings</Link> to
+                    browse its PRs and branches.
+                  </p>
+                )}
+              </div>
+            ) : null
           ) : !selectedId ? (
             <p className="hint">Pick a repo above to browse its PRs and branches.</p>
-          ) : listsFor !== selectedId ? (
-            <p className="hint" data-testid="repo-lists-loading">
-              Loading {selected ? `${selected.owner}/${selected.name}` : "repo"}…
-            </p>
           ) : (
             <>
               <div className="divider">Open a PR by URL or number</div>
@@ -547,31 +636,53 @@ export function StartPage(): React.JSX.Element {
                 </p>
               ) : null}
 
-              <ChangeSection
-                title="PRs you're authoring"
-                changes={authoring}
-                opening={opening}
-                empty="Nothing found."
-                onOpen={(c, i) =>
-                  openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
-                }
-              />
-              <ChangeSection
-                title="Waiting on your review"
-                changes={requested}
-                opening={opening}
-                empty="Nothing waiting."
-                onOpen={(c, i) =>
-                  openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
-                }
-              />
-              <ChangeSection
-                title="Recent branches"
-                changes={branches}
-                opening={opening}
-                empty="No branches."
-                onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
-              />
+              {listsFor !== selectedId ? (
+                <p className="hint" data-testid="repo-lists-loading">
+                  Loading {selected ? `${selected.owner}/${selected.name}` : "repo"}…
+                </p>
+              ) : listsError ? (
+                <p className="hint" role="alert" data-testid="lists-error">
+                  Couldn&apos;t load {selected ? `${selected.owner}/${selected.name}` : "this repo"}
+                  &apos;s lists: {listsError}{" "}
+                  <button className="mini" type="button" onClick={retryLists}>
+                    Retry
+                  </button>
+                </p>
+              ) : (
+                <>
+                  <ChangeSection
+                    title="PRs you're authoring"
+                    changes={authoring}
+                    error={listErrors.authoring}
+                    errorTestId="changes-error-authoring"
+                    opening={opening}
+                    empty="Nothing found."
+                    onOpen={(c, i) =>
+                      openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                    }
+                  />
+                  <ChangeSection
+                    title="Waiting on your review"
+                    changes={requested}
+                    error={listErrors.requested}
+                    errorTestId="changes-error-requested"
+                    opening={opening}
+                    empty="Nothing waiting."
+                    onOpen={(c, i) =>
+                      openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                    }
+                  />
+                  <ChangeSection
+                    title="Recent branches"
+                    changes={branches}
+                    error={listErrors.branches}
+                    errorTestId="changes-error-branches"
+                    opening={opening}
+                    empty="No branches."
+                    onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
+                  />
+                </>
+              )}
             </>
           )}
         </div>
@@ -662,12 +773,17 @@ function SessionRow({
 function ChangeSection({
   title,
   changes,
+  error,
+  errorTestId,
   opening,
   empty,
   onOpen,
 }: {
   title: string;
   changes: RepoChange[];
+  /** A failed filter shows its error instead of the empty copy or rows. */
+  error: string | null;
+  errorTestId: string;
   opening: string | null;
   empty: string;
   onOpen: (c: RepoChange, i: number) => void;
@@ -675,7 +791,11 @@ function ChangeSection({
   return (
     <>
       <div className="divider">{title}</div>
-      {changes.length === 0 ? (
+      {error ? (
+        <p className="hint" role="alert" data-testid={errorTestId}>
+          {error}
+        </p>
+      ) : changes.length === 0 ? (
         <p className="hint">{empty}</p>
       ) : (
         changes.map((c, i) => (
