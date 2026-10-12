@@ -95,9 +95,12 @@ export function friendlyError(err: unknown): string {
   const m = raw.match(/^[A-Z]+ \/\S+: (\d{3})?\s?([\s\S]*)$/);
   const body = (m?.[2] ?? raw).trim();
   try {
-    const parsed = JSON.parse(body) as { error?: unknown };
+    const parsed = JSON.parse(body) as { error?: unknown; errors?: unknown };
     if (typeof parsed.error === "string" && parsed.error.trim() !== "") {
       return parsed.error.trim().slice(0, 220);
+    }
+    if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+      return parsed.errors.map(String).join("; ").slice(0, 220);
     }
   } catch {
     // Not JSON: fall through to status-mapped copy.
