@@ -298,16 +298,21 @@ UI); nothing below was edited by this pass.
   with description as secondary text (Claude + Codex); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
-- Prompts (Template raw + Expanded with L0–L4 marks, tokens, cache part;
-  view-only) — met (`settings.spec.ts`, `prompts-route.test.ts`,
+- Prompts (Template raw in Settings; per-review Expanded with L0–L4
+  marks, tokens, cache part on the debug page; view-only) — met
+  (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`,
   `GET /api/prompts` ran 200 from the global install).
 - Limits/budgets (sessions per provider, inline budget, rebuild
   thresholds) — met (`settings.spec.ts` “limits persist across reload”).
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
-  (`settings.spec.ts`, `GET /api/jobs` ran; prompt snapshots now served
-  per-job to keep lists small).
-- Shared context (contributions + thread + delete) — met
-  (`sharedctx.test.ts`, `routes/contributions.ts`).
+  (issue #32; on the per-review debug page now, relocated unchanged from
+  Settings: `e2e/debug.spec.ts`, `GET /api/jobs` ran; prompt snapshots now
+  served per-job to keep lists small).
+- Shared context debug page (issue #32; per-review `/review/:id/debug`,
+  not in Settings): base keys + stats + current pack, log with
+  in-base/waiting markers, contributions with thread + delete — met
+  (`shared-context-debug.test.ts`, `routes/shared-context.ts`,
+  `e2e/debug.spec.ts`).
 
 ### §4.15 Conventions — all met
 
@@ -481,8 +486,9 @@ UI); nothing below was edited by this pass.
   met (`prompt-goldens.test.ts`, `prompts.test.ts`).
 - All 14 template rows present — met (18 files cover every row;
   `routes/prompts.ts` serves template + expanded).
-- Settings shows template + expanded with L0–L4 marks, tokens, cache part
-  — met (`settings.spec.ts`, `prompts-route.test.ts`).
+- Settings shows the template; the debug page shows the per-review
+  expanded text with L0–L4 marks, tokens, cache part — met
+  (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`).
 - Diagrams: D2 with `link:` citations on shapes/connections — met
   (`reply-format.md` §5, `prompts/includes/d2-convention.md` single source,
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
@@ -608,13 +614,15 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   reasons; live: 0 unverified, no hide violations).
 - M3 interaction — met (explain/ask/note everywhere; depth/examples/
   diagrams/undo; expansions→links; open-as-page; read; contents; log +
-  change lists + contributions + shared-context view).
+  change lists + contributions + per-review shared-context debug page,
+  issue #32).
 - M4 comments/submit — met (threads ×3, Comments menu + For-PR drafts,
   suggested comments, author-gated description edit, one-review submit).
 - M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
   hunk state, update pass, rebase-no-change test (a)).
-- M6 second opinion + settings — met (blind/check, models/prompts/limits/
-  jobs+usage settings page; isolation e2e on the real prompt).
+- M6 second opinion + settings — met (blind/check, models/prompt-
+  templates/limits settings page; jobs + expanded prompts + usage on the
+  per-review debug page, issue #32; isolation e2e on the real prompt).
 
 ## §18 Tests — all met
 

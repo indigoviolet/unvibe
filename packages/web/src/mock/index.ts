@@ -488,6 +488,81 @@ function seedContributions(): Contribution[] {
 let mockContributions: Contribution[] = seedContributions();
 
 /**
+ * Mock shared-context debug document (issue #32): canned base + log plus
+ * the live seed contributions, so the debug page shows all three parts and
+ * delete visibly removes an item in mock mode.
+ */
+function mockSharedContext(reviewId: string): {
+  reviewId: string;
+  base: string;
+  log: string;
+  contributions: string;
+} {
+  const base = [
+    "## Base",
+    "",
+    "1 base built for this review. The pack below is the current pack — what would be sent now, not a historical rebuild.",
+    "",
+    "### Base `v1|guide-mock|mock|mock-main`",
+    "",
+    "- version: `v1` · guide revision: `guide-mock` · provider/model: `mock/mock-main`",
+    "- base tokens: 12000",
+    "- appended since build: 0",
+    "- superseded: 0.0%",
+    "- last rebuild: built fresh",
+    "",
+    "### Current pack for `v1|guide-mock|mock|mock-main` (12000 tokens)",
+    "",
+    "#### L0 system",
+    "",
+    "```text",
+    "You are helping a person read and review a code change.",
+    "```",
+    "",
+    "#### L1 + L1b + L2",
+    "",
+    "```text",
+    "PR #5020 on urllib3/urllib3",
+    "Diff: 8 hunks, +42 −18",
+    "### The central change [[card:central]]",
+    "",
+    "Unfold obsolete folded values.",
+    "```",
+    "",
+  ].join("\n");
+  const log = [
+    "## Log",
+    "",
+    "2 entries. Entries up to seq 1 are already in base `v1|guide-mock|mock|mock-main`. Batch threshold 2000 tokens.",
+    "",
+    "- [1 new-card global] central card written · in base",
+    "- [2 thread-summary global] ask about retry settled · waiting for batch",
+    "",
+  ].join("\n");
+  const parts = ["## Contributions", ""];
+  if (reviewId === "demo" && mockContributions.length > 0) {
+    parts.push(`${mockContributions.length} contributions.`, "");
+    for (const c of mockContributions) {
+      parts.push(`### ${c.id}`, "");
+      parts.push(c.sourceThread ? `- thread: \`${c.sourceThread}\`` : `- session: \`${c.sourceSession}\``);
+      if (c.replaces) parts.push(`- replaces: \`${c.replaces}\``);
+      if (c.status === "merged" || c.items.some((i) => i.kind === "correction")) parts.push(`- status: ${c.status}`);
+      for (const item of c.items) {
+        const target = item.target ? ` → \`${item.target}\`` : "";
+        parts.push(`- **${item.kind}**${target}: ${item.text}`);
+        if (item.citations.length > 0) {
+          parts.push(`  - cites: ${item.citations.map((cit) => `\`${cit.target}\``).join(", ")}`);
+        }
+      }
+      parts.push("");
+    }
+  } else {
+    parts.push("(no contributions yet)", "");
+  }
+  return { reviewId, base, log, contributions: parts.join("\n") };
+}
+
+/**
  * Test-only: reset hunk states and the snapshot revision to the seeded
  * fixture (component tests share this module's in-memory state).
  */
@@ -1807,6 +1882,8 @@ export const mockApi = {
   contributions: async (reviewId: string) => ({
     contributions: reviewId === "demo" ? [...mockContributions] : [],
   }),
+
+  sharedContext: async (reviewId: string) => mockSharedContext(reviewId),
 
   deleteContribution: async (reviewId: string, contributionId: string) => {
     void reviewId;

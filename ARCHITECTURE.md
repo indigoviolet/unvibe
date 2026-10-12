@@ -65,7 +65,8 @@ The service never writes into your checkout; agents read the code in a worktree 
 | `packages/web/src/guide/` | Guide pages, cards, citations, hover previews |
 | `packages/web/src/source/` | Source pane: PR description, diff, hunk state |
 | `packages/web/src/comments/` | Threads, selection toolbar, comments menu |
-| `packages/web/src/settings/` | Models, prompts, limits, jobs, shared context, environment |
+| `packages/web/src/settings/` | Models, prompt templates, limits, environment |
+| `packages/web/src/debug/` | Per-review debug page (jobs, expanded prompts, then base, log, contributions as rendered Markdown + delete) |
 | `packages/web/src/versions/` | Refresh banner, stale/outdated markers, Update |
 | `packages/web/src/api/` + `src/state/` | Typed API/WS clients, snapshot store |
 | `packages/web/src/shell/` + `src/components/` + `src/floating/` | App shell, shared controls, tooltips/popovers |
