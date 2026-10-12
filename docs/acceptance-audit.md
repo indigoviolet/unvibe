@@ -191,6 +191,17 @@ UI); nothing below was edited by this pass.
 <- Selections remembered — met (selector in `localStorage`,
   `start.spec.ts` persistence round-trip; last-opened ordering in
   `reviews/list.ts`).
+- Kept PR/branch lists (#90) — met (web-only: `start/keptChanges.ts`
+  keeps the last successful fetch per repo in versioned `localStorage`
+  with an in-memory copy, validated reads, a 10-repo cap, and graceful
+  degradation; `StartPage.tsx` shows the kept rows at once on load,
+  switch and return, refreshes underneath with a quiet "Updated …"
+  line, keeps the rows on a failed refresh with the error note, leaves
+  the first load unchanged, and ignores stale responses; opening a kept
+  row goes through the fresh open path; entries for unlisted repos are
+  pruned and a changed login clears them. No contract change.
+  `start/keptChanges.test.ts`, `start/StartPage.kept.test.tsx`,
+  `e2e/start-kept.spec.ts`).
 - Native folder picker (#26) — met: `POST /api/repos/pick-folder`
   (frontmost osascript dialog / zenity→kdialog with cancelled/unavailable
   outcomes, `pick-folder.test.ts`) plus the `BrowseFolderButton`
