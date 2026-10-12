@@ -5,7 +5,15 @@
  * response carries none.
  */
 import { describe, expect, it } from "vitest";
-import { apiErrorCode, parseApiError } from "./client.js";
+import { apiErrorCode, friendlyError, parseApiError } from "./client.js";
+
+describe("friendlyError 401 (issue #86, finding 1)", () => {
+  it("answers the connect copy for a status-prefixed 401, even with a JSON body", () => {
+    expect(friendlyError(new Error('GET /api/repos: 401 {"error":"missing or invalid token"}'))).toBe(
+      "this browser isn't connected to Unvibe — run `unvibe open` in a terminal",
+    );
+  });
+});
 
 describe("parseApiError", () => {
   it("reads status + code from a coded error body", () => {

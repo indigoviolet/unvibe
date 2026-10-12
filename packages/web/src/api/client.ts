@@ -94,6 +94,13 @@ export function friendlyError(err: unknown): string {
     return "the Unvibe service isn't answering — check that it is running, then try again";
   }
   const m = raw.match(/^[A-Z]+ \/\S+: (\d{3})?\s?([\s\S]*)$/);
+  // 401 answers its own copy even when the body is JSON (finding 1): the
+  // token is missing, so the fix is reconnecting — not the body's wording.
+  // (`request` throws 401s with the same status prefix as every other
+  // failure, so this branch runs for real rejections.)
+  if (m?.[1] === "401") {
+    return "this browser isn't connected to Unvibe — run `unvibe open` in a terminal";
+  }
   const body = (m?.[2] ?? raw).trim();
   try {
     const parsed = JSON.parse(body) as { error?: unknown; errors?: unknown };
@@ -107,8 +114,6 @@ export function friendlyError(err: unknown): string {
     // Not JSON: fall through to status-mapped copy.
   }
   switch (m?.[1]) {
-    case "401":
-      return "this browser isn't connected to Unvibe — run `unvibe open` in a terminal";
     case "404":
       return "not found — it may have been removed";
     case "409":
@@ -181,7 +186,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  if (res.status === 401) throw new Error("this browser isn't connected to Unvibe — run `unvibe open` in a terminal");
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${body}`);
@@ -216,7 +220,6 @@ async function requestText(path: string, init?: RequestInit): Promise<string> {
       ...init?.headers,
     },
   });
-  if (res.status === 401) throw new Error("this browser isn't connected to Unvibe — run `unvibe open` in a terminal");
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${body}`);
