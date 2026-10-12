@@ -41,12 +41,15 @@ whole run on a hard deadline, then the process exits no matter what
 (issues #30, #36 follow-up). The helper waits for the service PID to
 exit (it never kills — a stuck service aborts the switch with outcome
 `failed` naming `unvibe stop` + retry as the recovery, install untouched,
-live service keeps serving), calls `switchTo` through the `Updater` seam (step 1: per-
-channel DB backup/restore, then global `npm install` of the ref),
+live service keeps serving), calls `switchTo` through the `Updater` seam (step 1:
+backup of the channel being left, then global `npm install` of the ref —
+the live database stays in place and the new build opens it),
 restarts the installed entry (`start --foreground`, same port + data
 dir), and polls `/api/health` until it reports the target version (the
 rollback waits for the previous build's version). An install failure or
-an unhealthy build switches back to the previous ref and restarts that
+an unhealthy build switches back to the previous ref (reinstall + restore
+of the pre-switch backup, so the old build never opens a database the
+new build may have migrated) and restarts that
 — stopping the helper's own previous generation first (verified exited,
 lock released, before the rollback install) and trusting only health
 samples from the generation holding the data-dir lock, so builds never
@@ -55,7 +58,7 @@ reason + log path) is written to `<dataDir>/update/outcome.json` and
 surfaced by `GET /api/update/status`. The Settings → Version page waits
 out the restart, reloads on the new version, and shows the rollback
 reason in place; the current row flags a newer published build with an
-Update action (same flow, `from === to`, no DB swap). The `Updater` seam
+Update action (same flow, `from === to`). The `Updater` seam
 (`listChannels` / `switchTo`) fronts one shared switch core
 (`update/switch.ts`) used by both the `unvibe update` CLI and the
 in-app picker; the fake backend (`UNVIBE_UPDATER_BACKEND=fake`) drives

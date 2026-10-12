@@ -624,25 +624,26 @@ needed (that deviation is closed, not added).
   `mise run preview:publish [-- <branch>] [--push]` builds a branch into a
   local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
   guard, `unvibe` provenance field in the generated package.json);
-  `unvibe update --list` / `unvibe update <channel> [--keep-data]`
+  `unvibe update --list` / `unvibe update <channel>`
   lists channels via `gh` (GITHUB_TOKEN unset) — per-ref version, source
   commit/branch and build time read without cloning
   (`.../contents/package.json?ref=…`), typed as `UpdateChannel`
   (mirrors the step-2 shared type; owned by that branch) — and installs
-  `github:indigoviolet/unvibe#<channel>` with per-channel database copies
-  under `channel-backups/` (never deleted; service must be stopped; no
-  restart logic — refusal points at `unvibe stop`). Same-channel updates
+  `github:indigoviolet/unvibe#<channel>`. Switching keeps your database
+  and backs it up first to `<dataDir>/channel-backups/<channel>/`
+  (never deleted; service must be stopped; no restart logic — refusal
+  points at `unvibe stop`). Same-channel updates
   compare installed vs published commits (no-op with the commit, else
-  reinstall in place with no database swap); `--list` flags a newer build
-  on the installed row. A new preview never inherits another preview's
-  database (seeds from the release copy, `release-rc` fallback, else the
-  switch stops before installing unless `--keep-data`). Pre-field
+  reinstall in place); `--list` flags a newer build
+  on the installed row. Pre-field
   installs map to their real channel from the version (source checkouts
   stay unknown). The install is pinned to this binary's npm prefix and
   verified at its package path — a landing elsewhere fails naming the
   path and `npm prefix -g`, swapping nothing. Plain modules are exactly
   `src/update/{channels,install,data-backup}.ts`, composed for the CLI in
-  `src/cli/update-flows.ts`. Only database files are per-channel; the
+  `src/cli/update-flows.ts`. A newer build may upgrade the database; if an
+  older build then cannot open it, copy the backup back. Only database
+  files are backed up; the
   rest of the data dir is shared, and leftover review folders are inert
   (DB-driven listing, random review ids, self-healing worktrees — see
   DEVELOPMENT.md).
@@ -831,9 +832,9 @@ channels/switch/status shapes, `unchanged`). `GET /api/update/status`
  refusal; the shutdown path stops the jobs and the outcome names the
  interrupted count) — and sit behind the same token + loopback
  Host/Origin gates as every other route. `from` is the locally installed channel
-(never "unknown"); same channel + same commit is 200 `unchanged`, a
+ (never "unknown"); same channel + same commit is 200 `unchanged`, a
 moved commit reinstalls with an Update action on the current row (from
-=== to, no DB swap; rollback is one reinstall + health, then `failed`
+=== to; rollback is one reinstall + health, then `failed`
 with the recovery command — never loops). Switch = commit + detached
 self-contained helper (copied to the data dir so the npm swap cannot
 pull it) + restart on the same port; the helper stops its own previous
@@ -866,10 +867,10 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
  `e2e/update-picker.spec.ts` (4/4 mock-mode green, full `test:e2e` 113
  green). Real-install drill (no pushes): two local preview trees via
  `release.mjs` into a bare repo (HEAD set — npm dereferences it), install
- A into a temp prefix, run it, switch to B through the real helper +
- real npm (health flipped, slots `preview-drill-a` + `release` written),
- then a lying channels file forced a real-npm rollback to B
- (rolled-back + reason, lock held by the final generation). Privacy
+  A into a temp prefix, run it, switch to B through the real helper +
+  real npm (health flipped, live DB carried over, slot `preview-drill-a` written),
+  then a lying channels file forced a real-npm rollback to A
+  (rolled-back + reason, pre-switch backup restored, lock held by the final generation). Privacy
  (§16) unchanged: the service itself still contacts nothing but loopback;
  listing shells out through `gh` under the user's login (opt-in gate,
  concurrent per-ref fetch); the new static-guard entries are the
