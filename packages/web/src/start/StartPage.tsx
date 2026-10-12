@@ -60,7 +60,7 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
-import { stageLabel } from "../guide/stageLabels.js";
+import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { PreviewBuildBadge } from "../shell/PreviewBuildBadge.js";
 import {
@@ -1024,9 +1024,9 @@ export function SessionRow({
         <span className="cx2">{s.title}</span>
         <span className="hint">
           {s.ingestStatus === "loading" ? (
-            <>Loading{s.ingestStep ? ` · ${s.ingestStep}` : ""}…</>
+            <>{ingestStepLabel(s.ingestStep)}</>
           ) : s.ingestStatus === "failed" ? (
-            <>Couldn&apos;t open{s.ingestError ? ` · ${s.ingestError}` : ""}</>
+            <>{s.ingestError ? `Couldn't open this review: ${s.ingestError}` : "Couldn't open this review"}</>
           ) : (
             <>
               {s.reviewedHunks}/{s.totalHunks} hunks reviewed
@@ -1038,8 +1038,8 @@ export function SessionRow({
         </span>
       </button>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-        {s.ingestStatus === "loading" ? <span className="prtag">loading</span> : null}
-        {s.ingestStatus === "failed" ? <span className="prtag">failed to open</span> : null}
+        {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
+        {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
         {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" ? (
           <span className="prtag">new commits</span>
         ) : null}

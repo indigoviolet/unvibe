@@ -27,6 +27,15 @@ export function stageLabel(stage: string | undefined): string | undefined {
 }
 
 /**
+ * What a review open was doing while loading (issue #92). The start page
+ * Reviews row and the review loading page name the same progress with the
+ * same words; both read them from here so they cannot drift apart.
+ */
+export function ingestStepLabel(step: string | undefined): string {
+  return (step ?? "").trim().toLowerCase() === "reading diff" ? "Reading the diff…" : "Fetching…";
+}
+
+/**
  * What the guide was doing when it failed, for
  * "Something went wrong while …" (issue #45, entry 46).
  */

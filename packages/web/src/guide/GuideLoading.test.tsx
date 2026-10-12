@@ -1,5 +1,5 @@
 /**
- * #92: loading and failed review pages + Previous reviews row markers.
+ * #92: loading and failed review pages + Reviews row markers.
  */
 import { describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -7,16 +7,17 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach } from "vitest";
 import type { ReviewSummary } from "@unvibe/shared";
-import { FailedOpen, loadingStepLabel } from "./GuidePage.js";
+import { FailedOpen } from "./GuidePage.js";
+import { ingestStepLabel } from "./stageLabels.js";
 import { SessionRow } from "../start/StartPage.js";
 
 afterEach(() => cleanup());
 
-describe("loadingStepLabel (#92)", () => {
+describe("ingestStepLabel (#92)", () => {
   test("names what is being done", () => {
-    expect(loadingStepLabel("fetching")).toBe("Fetching…");
-    expect(loadingStepLabel("reading diff")).toBe("Reading the diff…");
-    expect(loadingStepLabel("")).toBe("Fetching…");
+    expect(ingestStepLabel("fetching")).toBe("Fetching…");
+    expect(ingestStepLabel("reading diff")).toBe("Reading the diff…");
+    expect(ingestStepLabel("")).toBe("Fetching…");
   });
 });
 
@@ -42,8 +43,8 @@ function summary(over: Partial<ReviewSummary> = {}): ReviewSummary {
   };
 }
 
-describe("SessionRow ingest markers (#92 Previous reviews)", () => {
-  test("loading row shows loading + step and stays openable", () => {
+describe("SessionRow ingest markers (#92 Reviews rows)", () => {
+  test("loading row shows the step and stays openable", () => {
     const s = summary({ ingestStatus: "loading", ingestStep: "fetching" });
     const onOpen = vi.fn();
     render(
@@ -59,8 +60,8 @@ describe("SessionRow ingest markers (#92 Previous reviews)", () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/Loading.*fetching/i)).toBeInTheDocument();
-    expect(screen.getByText("loading")).toBeInTheDocument();
+    expect(screen.getByText("Fetching…")).toBeInTheDocument();
+    expect(screen.getByText("opening")).toBeInTheDocument();
     // Reopenable from there (open button enabled).
     const btn = screen.getByTestId("session-r1").querySelector("button.cj");
     expect(btn).not.toBeNull();
@@ -68,7 +69,7 @@ describe("SessionRow ingest markers (#92 Previous reviews)", () => {
   });
 
   test("failed row shows the error and stays removable", () => {
-    const s = summary({ ingestStatus: "failed", ingestError: "gh pr view failed" });
+    const s = summary({ ingestStatus: "failed", ingestError: "the PR wasn't found" });
     render(
       <MemoryRouter>
         <SessionRow
@@ -82,22 +83,22 @@ describe("SessionRow ingest markers (#92 Previous reviews)", () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/Couldn't open/i)).toBeInTheDocument();
-    expect(screen.getByText("failed to open")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't open this review: the PR wasn't found")).toBeInTheDocument();
+    expect(screen.getByText("couldn't open")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Remove PR title/ })).toBeInTheDocument();
   });
 });
 
 describe("FailedOpen (#92 failed page)", () => {
-  test("shows the error with Retry and a way back", () => {
+  test("shows the error with Retry", () => {
     render(
       <MemoryRouter>
-        <FailedOpen reviewId="r1" prLabel="PR #42" error="gh pr view failed: not found" />
+        <FailedOpen reviewId="r1" prLabel="PR #42" error="the PR wasn't found" />
       </MemoryRouter>,
     );
     expect(screen.getByTestId("review-failed")).toBeInTheDocument();
-    expect(screen.getByTestId("review-failed-error")).toHaveTextContent("gh pr view failed");
+    expect(screen.getByTestId("review-failed-error")).toHaveTextContent("the PR wasn't found");
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to start" })).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });

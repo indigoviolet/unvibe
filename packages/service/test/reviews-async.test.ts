@@ -248,7 +248,12 @@ describe("POST /api/reviews async (#92)", () => {
     const head = await git(dir, "rev-parse", "feature");
     const held = heldGhRunner();
     const started: string[] = [];
-    const fakePipeline = { startReview: (id: string) => void started.push(id) };
+    const fakePipeline = {
+      startReview: (id: string): Promise<void> => {
+        started.push(id);
+        return Promise.resolve();
+      },
+    };
     const { app } = await createApp("tok", {
       runner: held.runner,
       autoPipeline: true,
@@ -318,6 +323,77 @@ describe("POST /api/reviews async (#92)", () => {
     try {
       const ready = await awaitStatus(app2, id, "ready");
       expect(ready.version.n).toBeGreaterThanOrEqual(1);
+    } finally {
+      await app2.close();
+    }
+  });
+
+  it("a failed open stays failed across a restart, and Retry works there", async () => {
+    const dir = await makeRepo();
+    const head = await git(dir, "rev-parse", "feature");
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-failed-restart-"));
+    const dbFile = path.join(dataDir, "unvibe.db");
+    const db1 = openDatabase(dbFile);
+    migrate(db1);
+    const failing = new FakeCommandRunner();
+    failing.enqueue({ cmd: "gh", stdout: "", stderr: "no such PR", code: 1 });
+    const failingRunner: CommandRunner = {
+      run: (cmd, opts) => {
+        if (cmd === "gh") return failing.run(cmd, opts);
+        if (cmd === "git" && opts.args[0] === "fetch") return Promise.resolve({ stdout: "", stderr: "", code: 0 });
+        return real.run(cmd, opts);
+      },
+    };
+    const { app: app1 } = await createApp("tok", { runner: failingRunner, db: db1, dataDir, autoPipeline: false });
+    let id = "";
+    let repoId = "";
+    try {
+      process.env.UNVIBE_REPO_ROOTS = "";
+      const added = await app1.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+      const created = await app1.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, pr: 999 },
+      });
+      expect(created.statusCode).toBe(202);
+      id = (created.json() as ReviewSnapshot).review.id;
+      const failed = await awaitStatus(app1, id, "failed");
+      expect(failed.ingest?.error ?? "").toContain("no such PR");
+    } finally {
+      await app1.close();
+    }
+    // Restart on the same db file + data dir with working gh: nothing is in
+    // memory, the row is still failed, and Retry runs the ingest again.
+    const db2 = openDatabase(dbFile);
+    migrate(db2);
+    const good = new FakeCommandRunner();
+    good.enqueue({
+      cmd: "gh",
+      stdout: ghPrView(head),
+      stderr: "",
+      code: 0,
+    });
+    const goodRunner: CommandRunner = {
+      run: (cmd, opts) => {
+        if (cmd === "gh") return good.run(cmd, opts);
+        if (cmd === "git" && opts.args[0] === "fetch") return Promise.resolve({ stdout: "", stderr: "", code: 0 });
+        return real.run(cmd, opts);
+      },
+    };
+    const { app: app2 } = await createApp("tok", { runner: goodRunner, db: db2, dataDir, autoPipeline: false });
+    try {
+      const still = await app2.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+      expect(still.statusCode).toBe(200);
+      const snap = still.json() as ReviewSnapshot;
+      expect(snap.ingest?.status).toBe("failed");
+      expect(snap.ingest?.error ?? "").toContain("no such PR");
+      const retried = await app2.inject({ method: "POST", url: `/api/reviews/${id}/retry`, headers: authed });
+      expect([200, 202]).toContain(retried.statusCode);
+      const ready = await awaitStatus(app2, id, "ready");
+      expect(ready.version.headSha).toBe(head);
+      expect(ready.review.repoId).toBe(repoId);
     } finally {
       await app2.close();
     }

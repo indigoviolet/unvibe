@@ -174,7 +174,7 @@ function startIngestBackground(
   if (!repo) {
     void ctx.reviews
       .mutate(reviewId, (draft) => {
-        draft.ingest = { status: "failed", error: "unknown repo — remove and open again" };
+        draft.ingest = { status: "failed", error: "this review's repo is gone — add the repo again, then open the review again" };
       })
       .catch(() => {});
     return false;
@@ -560,10 +560,10 @@ export async function registerReviews(
     const snap = ctx.reviews.getSnapshot(id);
     if (!snap) return reply.code(404).send({ error: "unknown review" });
     const st = ingestStatusOf(snap);
-    if (st === "ready") return reply.code(409).send({ error: "review is ready" });
+    if (st === "ready") return reply.code(409).send({ error: "the review already opened" });
     if (st === "loading") return reply.code(200).send(snap);
     if (snap.review.repoId === "demo") {
-      return reply.code(409).send({ error: "demo reviews do not retry" });
+      return reply.code(409).send({ error: "the demo can't be retried" });
     }
     await ctx.reviews.mutate(id, (draft) => {
       draft.ingest = { status: "loading", step: "fetching" };
@@ -571,7 +571,7 @@ export async function registerReviews(
     const after = ctx.reviews.getSnapshot(id);
     const started = startIngestBackground(ctx, { ...(pipeline ? { pipeline } : {}), autoPipeline }, id);
     if (!started) {
-      return reply.code(502).send({ error: "could not restart the ingest — remove and open again" });
+      return reply.code(502).send({ error: "this review's repo is gone — add the repo again, then open the review again" });
     }
     return reply.code(202).send(after ?? snap);
   });

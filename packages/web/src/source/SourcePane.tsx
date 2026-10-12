@@ -61,7 +61,7 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
     return (
       <div className="doc">
         <p className="hint">
-          {ingestStatus === "loading" ? "The diff appears here once the review opens." : "No diff — the review failed to open."}
+          {ingestStatus === "loading" ? "The diff appears here once the review opens." : "No diff — the review couldn't be opened."}
         </p>
       </div>
     );

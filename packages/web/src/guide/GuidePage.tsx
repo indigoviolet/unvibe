@@ -11,14 +11,14 @@
  * page, expands its card, scrolls and highlights it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, friendlyError } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { emptyGuideState } from "./guideUtils.js";
-import { stageLabel } from "./stageLabels.js";
+import { ingestStepLabel, stageLabel } from "./stageLabels.js";
 import { PageView } from "./PageView.js";
 import "./guide-m2.css";
 
@@ -152,8 +152,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   // through patch events.
   const ingestStatus = snapshot.ingest?.status ?? "ready";
   if (ingestStatus === "loading") {
-    const step = snapshot.ingest?.step ?? "fetching";
-    const stepLabel = loadingStepLabel(step);
+    const stepLabel = ingestStepLabel(snapshot.ingest?.step);
     const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
     return (
       <div className="doc" data-testid="review-loading">
@@ -235,12 +234,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   );
 }
 
-/** #92: loading step copy (fetching vs reading the diff). */
-export function loadingStepLabel(step: string): string {
-  return step === "reading diff" ? "Reading the diff…" : "Fetching…";
-}
-
-/** #92: failed ingest — error plus Retry (remove lives on the start page). */
+/** #92: failed open — the error plus Retry (removing happens in Reviews). */
 export function FailedOpen({ reviewId, prLabel, error }: { reviewId: string; prLabel: string; error: string }) {
   const setSnapshot = useReview((s) => s.setSnapshot);
   const [retrying, setRetrying] = useState(false);
@@ -267,16 +261,13 @@ export function FailedOpen({ reviewId, prLabel, error }: { reviewId: string; prL
         <button className="btn" type="button" disabled={retrying} onClick={() => void onRetry()}>
           {retrying ? "Retrying…" : "Retry"}
         </button>
-        <Link className="tbtn" to="/">
-          Back to start
-        </Link>
       </div>
       {retryError ? (
         <p className="hint" role="alert">
           Couldn&apos;t retry: {retryError}
         </p>
       ) : null}
-      <p className="hint">Remove it from Previous reviews on the start page.</p>
+      <p className="hint">You can remove it from Reviews on the start page.</p>
     </div>
   );
 }

@@ -130,7 +130,7 @@ describe("resolvePrMergeBase (stubbed git)", () => {
     fake.enqueue({ cmd: "git", args: ["rev-parse", "--verify", "gone"], stdout: "", stderr: "bad", code: 128 });
     fake.enqueue({ cmd: "git", args: ["cat-file", "-e", "abc123"], stdout: "", stderr: "", code: 0 });
     await expect(resolvePrMergeBase(fake, "/repo", "gone", "abc123")).rejects.toThrow(
-      /base ref "gone" not found.*origin\/gone.*unknown revision/,
+      /base branch "gone" wasn't found.*origin\/gone.*unknown revision/,
     );
   });
 
@@ -153,7 +153,7 @@ describe("resolvePrMergeBase (stubbed git)", () => {
     fake.enqueue({ cmd: "git", args: ["rev-parse", "--verify", "origin/main"], stdout: "sha\n", stderr: "", code: 0 });
     fake.enqueue({ cmd: "git", args: ["cat-file", "-e", "deadsha"], stdout: "", stderr: "bad object", code: 128 });
     await expect(resolvePrMergeBase(fake, "/repo", "main", "deadsha")).rejects.toThrow(
-      /head commit deadsha not in checkout.*unknown revision/,
+      /PR's commit deadsha wasn't found.*unknown revision/,
     );
   });
 });

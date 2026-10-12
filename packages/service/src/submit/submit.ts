@@ -132,10 +132,10 @@ export async function runSubmit(
   if (!snapshot) return { status: 404, body: { error: "unknown review" } };
   if (!isReadySnapshot(snapshot)) {
     const st = ingestStatusOf(snapshot);
-    if (st === "loading") return { status: 409, body: { error: "review is still loading" } };
+    if (st === "loading") return { status: 409, body: { error: "the review is still opening" } };
     return {
       status: 409,
-      body: { error: `review ingest failed${snapshot.ingest?.error ? `: ${snapshot.ingest.error}` : ""}` },
+      body: { error: snapshot.ingest?.error ?? "the review couldn't be opened" },
     };
   }
   const row = readReviewRow(ctx.db, reviewId);

@@ -197,9 +197,9 @@ export function isReadySnapshot(snap: ReviewSnapshot): boolean {
 export function assertReadySnapshot(snap: ReviewSnapshot): void {
   if (isReadySnapshot(snap)) return;
   const st = ingestStatusOf(snap);
-  if (st === "loading") throw new Error(`review is still loading${snap.ingest?.step ? `: ${snap.ingest.step}` : ""}`);
-  if (st === "failed") throw new Error(`review ingest failed${snap.ingest?.error ? `: ${snap.ingest.error}` : ""}`);
-  throw new Error("review is still loading");
+  if (st === "loading") throw new Error("the review is still opening");
+  if (st === "failed") throw new Error(snap.ingest?.error ?? "the review couldn't be opened");
+  throw new Error("the review is still opening");
 }
 
 export interface ReviewSnapshot {

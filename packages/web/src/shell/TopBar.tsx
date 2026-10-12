@@ -43,6 +43,9 @@ export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: P
   const owner = summary?.repoOwner ?? (repoId === "demo" ? "demo" : null);
   const name = summary?.repoName ?? (repoId === "demo" ? "urllib3-5020" : null);
   const num = owner && name ? (prNumber !== undefined ? `${owner}/${name}#${prNumber}` : `${owner}/${name}`) : null;
+  // #92: the Debug page needs a finished open (its reads refuse earlier
+  // states), so the link waits until the review is ready.
+  const ingestReady = (snapshot?.ingest?.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
   const rootTitle = snapshot?.pages.find((p) => p.kind === "root")?.title;
   const title =
     summary?.title && summary.title !== "Guided review"
@@ -62,9 +65,11 @@ export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: P
         <PreviewBuildBadge />
       </div>
       <TipsButton />
-      <Link className="tbtn" to={`/review/${encodeURIComponent(reviewId)}/debug`}>
-        Debug
-      </Link>
+      {ingestReady ? (
+        <Link className="tbtn" to={`/review/${encodeURIComponent(reviewId)}/debug`}>
+          Debug
+        </Link>
+      ) : null}
       <Link className="tbtn" to="/settings">
         Settings
       </Link>

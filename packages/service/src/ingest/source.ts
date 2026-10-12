@@ -133,19 +133,19 @@ export async function resolvePrMergeBase(
   }
   const baseOk = await baseRefExists(runner, repoPath, candidates);
   if (!baseOk) {
-    const tried = candidates.length > 0 ? ` (tried ${candidates.join(", ")})` : "";
+    const tried = candidates.length > 0 ? ` (looked for ${candidates.join(", ")})` : "";
     throw new Error(
-      `cannot compute merge-base: base ref "${baseRefName}" not found in checkout${tried}${lastDetail ? `: ${lastDetail}` : ""}`,
+      `the base branch "${baseRefName}" wasn't found in this repo${tried}${lastDetail ? `: ${lastDetail}` : ""}`,
     );
   }
   const headOk = await headCommitExists(runner, repoPath, headSha);
   if (!headOk) {
     throw new Error(
-      `cannot compute merge-base: head commit ${headSha} not in checkout${lastDetail ? `: ${lastDetail}` : ""}`,
+      `the PR's commit ${headSha} wasn't found in this repo${lastDetail ? `: ${lastDetail}` : ""}`,
     );
   }
   throw new Error(
-    `cannot compute merge-base of ${candidates[0] ?? baseRefName} and ${headSha}${lastDetail ? `: ${lastDetail}` : ""}`,
+    `the shared history with ${candidates[0] ?? baseRefName} couldn't be found${lastDetail ? `: ${lastDetail}` : ""}`,
   );
 }
 
@@ -339,7 +339,7 @@ export async function resolveSource(
       if (!local.ok) {
         const detail = (local.stderr.trim() || local.stdout.trim()).slice(0, 300);
         throw new Error(
-          `cannot resolve PR head ${info.headRefName || `#${source.pr}`} in checkout${detail ? `: ${detail}` : ""}`,
+          `the PR's branch ${info.headRefName || `#${source.pr}`} wasn't found in this repo${detail ? `: ${detail}` : ""}`,
         );
       }
       headSha = local.stdout.trim();
