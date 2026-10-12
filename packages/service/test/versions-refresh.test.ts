@@ -395,4 +395,261 @@ describe("refresh integration", () => {
       await app.close();
     }
   });
+
+  it("(h) #52 pin in untouched file unchanged → kept, not flagged", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    fs.writeFileSync(path.join(dir, "b.py"), "p = 1\nq = 2\nr = 3\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change a");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        (draft.pinnedCode ??= []).push({
+          path: "b.py",
+          start: 2,
+          end: 2,
+          sha: snap.version.headSha,
+          text: "q = 2",
+        });
+      });
+
+      // New commit touches only a.py; b.py not in the new diff.
+      fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\n");
+      await git(dir, "commit", "-am", "change a again");
+
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      const pin = after.pinnedCode!.find((p) => p.path === "b.py")!;
+      expect(pin.needsRepining).not.toBe(true);
+      expect(pin.needsRepining).toBe(false);
+      expect(pin.remappedSha).toBe(after.version.headSha);
+      expect(pin.remappedStart).toBe(2);
+      expect(pin.remappedEnd).toBe(2);
+      // Excerpt text stays consistent with the range.
+      expect(pin.text).toBe("q = 2");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(i) #52 pin in untouched file moved by upstream base change → remapped", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    fs.writeFileSync(path.join(dir, "b.py"), "line1\nline2\nline3\nline4\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change a");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        (draft.pinnedCode ??= []).push({
+          path: "b.py",
+          start: 3,
+          end: 3,
+          sha: snap.version.headSha,
+          text: "line3",
+        });
+      });
+
+      // Upstream moves: prepend two lines to b.py on main, then rebase.
+      // After rebase b.py at the new head has the shift, but the PR diff
+      // (base..head) still touches only a.py.
+      await git(dir, "checkout", "main");
+      fs.writeFileSync(path.join(dir, "b.py"), "top1\ntop2\nline1\nline2\nline3\nline4\n");
+      await git(dir, "commit", "-am", "upstream b");
+      await git(dir, "checkout", "feature");
+      await git(dir, "rebase", "main");
+
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      expect(after.files.some((f) => f.path === "b.py")).toBe(false);
+      const pin = after.pinnedCode!.find((p) => p.path === "b.py")!;
+      expect(pin.needsRepining).not.toBe(true);
+      expect(pin.remappedStart).toBe(5);
+      expect(pin.remappedEnd).toBe(5);
+      expect(pin.remappedSha).toBe(after.version.headSha);
+      expect(pin.text).toBe("line3");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(j) #52 pin text gone / file deleted upstream → flagged, no throw", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    fs.writeFileSync(path.join(dir, "b.py"), "keep = 1\ngone = 2\ntail = 3\n");
+    fs.writeFileSync(path.join(dir, "c.py"), "c = 1\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change a");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        (draft.pinnedCode ??= []).push(
+          { path: "b.py", start: 2, end: 2, sha: snap.version.headSha, text: "gone = 2" },
+          { path: "c.py", start: 1, end: 1, sha: snap.version.headSha, text: "c = 1" },
+          { path: "missing.py", start: 1, end: 1, sha: snap.version.headSha, text: "nope" },
+        );
+      });
+
+      // Upstream: delete the pinned line in b.py and delete c.py outright,
+      // then rebase. Neither file enters the PR diff (both heads equal the
+      // new base there), so both pins go through the untouched fallback.
+      await git(dir, "checkout", "main");
+      fs.writeFileSync(path.join(dir, "b.py"), "keep = 1\ntail = 3\n");
+      await git(dir, "rm", "-q", "c.py");
+      await git(dir, "commit", "-am", "upstream removes");
+      await git(dir, "checkout", "feature");
+      await git(dir, "rebase", "main");
+
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      expect(after.pinnedCode!.find((p) => p.path === "b.py")!.needsRepining).toBe(true);
+      expect(after.pinnedCode!.find((p) => p.path === "c.py")!.needsRepining).toBe(true);
+      expect(after.pinnedCode!.find((p) => p.path === "missing.py")!.needsRepining).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(k) #52 pin follows a PR rename → remapped, not flagged", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "old.py"), "x = 1\ny = 2\nz = 3\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "old.py"), "x = 1\ny = 2\nz = 3\nw = 4\n");
+    await git(dir, "commit", "-am", "change");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        (draft.pinnedCode ??= []).push({
+          path: "old.py",
+          start: 2,
+          end: 3,
+          sha: snap.version.headSha,
+          text: "y = 2\nz = 3",
+        });
+      });
+
+      await git(dir, "mv", "old.py", "new.py");
+      await git(dir, "commit", "-m", "rename");
+
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      expect(after.versionStatus?.renamedFiles).toMatchObject([{ oldPath: "old.py", newPath: "new.py" }]);
+      const pin = after.pinnedCode!.find((p) => p.text === "y = 2\nz = 3")!;
+      expect(pin.needsRepining).not.toBe(true);
+      expect(pin.remappedSha).toBe(after.version.headSha);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(l) #52 binary / very large / unreadable pins flag without throwing", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    // Binary blob (NUL) — git treats it as binary.
+    fs.writeFileSync(path.join(dir, "bin.dat"), Buffer.from([0x00, 0x01, 0x02, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00]));
+    // Very large file (>1 MiB guard in refresh): pin cannot be remapped by scan.
+    fs.writeFileSync(path.join(dir, "big.txt"), `${"bigline\n".repeat(140000)}`);
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change a");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        (draft.pinnedCode ??= []).push(
+          { path: "bin.dat", start: 1, end: 1, sha: snap.version.headSha, text: "hello" },
+          { path: "big.txt", start: 1, end: 1, sha: snap.version.headSha, text: "bigline" },
+          { path: "../escape.py", start: 1, end: 1, sha: snap.version.headSha, text: "x" },
+        );
+      });
+
+      fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\n");
+      await git(dir, "commit", "-am", "change a again");
+
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      expect(after.pinnedCode!.find((p) => p.path === "bin.dat")!.needsRepining).toBe(true);
+      expect(after.pinnedCode!.find((p) => p.path === "big.txt")!.needsRepining).toBe(true);
+      expect(after.pinnedCode!.find((p) => p.path === "../escape.py")!.needsRepining).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(m) #52 remap keeps excerpt text consistent with the new range", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    fs.writeFileSync(path.join(dir, "b.py"), "p = 1\nq = 2\nr = 3\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change a");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      // Whitespace-stripped excerpt: matches by the loop's insensitive
+      // equality, but the stored text must end up as the exact file content.
+      await ctx.reviews.mutate(id, (draft) => {
+        (draft.pinnedCode ??= []).push({
+          path: "b.py",
+          start: 2,
+          end: 2,
+          sha: snap.version.headSha,
+          text: "q=2",
+        });
+      });
+
+      fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\n");
+      await git(dir, "commit", "-am", "change a again");
+
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      const pin = after.pinnedCode!.find((p) => p.path === "b.py")!;
+      expect(pin.needsRepining).not.toBe(true);
+      expect(pin.text).toBe("q = 2");
+      const { RealCommandRunner: RCR } = await import("../src/exec/index.js");
+      const runner = new RCR();
+      const shown = await runner.run("git", { args: ["show", `${after.version.headSha}:b.py`], cwd: dir });
+      const fileLines = shown.stdout.split("\n");
+      const atRemapped = fileLines
+        .slice((pin.remappedStart ?? pin.start) - 1, (pin.remappedEnd ?? pin.end))
+        .join("\n");
+      expect(atRemapped).toBe(pin.text);
+    } finally {
+      await app.close();
+    }
+  });
 });

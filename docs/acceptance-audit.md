@@ -582,7 +582,10 @@ needed (that deviation is closed, not added).
   (tests (b)(c)(e)).
 - Cards stale badge + Update; findings rechecked; pinned code re-pinned;
   threads' change lists — met (`versions/citations.ts`, `update.ts`,
-  `versions-update.test.ts`).
+  `versions-update.test.ts`; #52: pins in files the new diff does not touch
+  are decided by content at the new head — unchanged kept, moved remapped,
+  gone/missing/binary/large/unreadable flagged — `versions/refresh.ts`,
+  `versions-refresh.test.ts` (h)–(m)).
 - Manual update only (fetch/compare free on open/refresh; pass on Update)
   — met (`routes/reviews.ts` refresh vs update; update pass jobs).
 - Table row “Pinned code / Thread in progress” — met
