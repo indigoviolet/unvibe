@@ -235,6 +235,74 @@ describe("CardView immediate feedback", () => {
     }
   });
 
+describe("CardView titles (issue #49)", () => {
+  test("an untitled card shows the fallback title in its header, never a blank row", () => {
+    const untitled = card({
+      title: null,
+      blocks: [
+        {
+          type: "paragraph",
+          id: "b1",
+          text: {
+            standard:
+              "A single microphone cannot tell who is speaking because the childrens voices all sound the same in this recording",
+          },
+          citations: [],
+        },
+      ],
+    });
+    seedSnapshot([untitled]);
+    render(
+      <CardView
+        reviewId={REVIEW_ID}
+        card={untitled}
+        lookupPage={() => undefined}
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    const head = document.querySelector(".chead");
+    expect(head).not.toBeNull();
+    const h2 = head?.querySelector("h2.ct");
+    expect(h2).not.toBeNull();
+    expect(h2?.textContent?.endsWith("…")).toBe(true);
+    // No body-prefix preview paragraph in the header.
+    expect(head?.querySelector("p.cprev")).toBeNull();
+  });
+
+  test("a collapsed untitled card shows the fallback title", () => {
+    const untitled = card({ title: null, collapsed: true });
+    seedSnapshot([untitled]);
+    render(
+      <CardView
+        reviewId={REVIEW_ID}
+        card={untitled}
+        lookupPage={() => undefined}
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    // Empty blocks: no title and no preview — but the row is just the
+    // chevron, never a blank-looking preview.
+    expect(document.querySelector("p.cprev")).toBeNull();
+  });
+
+  test("a titled card keeps its title", () => {
+    const titled = card({ title: "The problem" });
+    seedSnapshot([titled]);
+    render(
+      <CardView
+        reviewId={REVIEW_ID}
+        card={titled}
+        lookupPage={() => undefined}
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    expect(document.querySelector("h2.ct")).toHaveTextContent("The problem");
+  });
+});
+
   test("closed expansions render footnote chips, not linkstub rows (issue #72)", () => {
     const withPara = card({
       blocks: [

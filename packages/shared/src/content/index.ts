@@ -32,6 +32,15 @@ export {
 } from "./parse.js";
 export type { CollectedTargets, ParsedReply, RenderedInline } from "./parse.js";
 export {
+  blockPlainText,
+  CARD_TITLE_FALLBACK_MAX,
+  displayCardTitle,
+  fallbackCardTitle,
+  normalizeEchoLine,
+  stripEchoFromCards,
+  stripLeadingEcho,
+} from "./titles.js";
+export {
   D2_MIN_VERSION,
   D2_RENDER_OPTIONS,
   D2_VERSION_UNKNOWN,

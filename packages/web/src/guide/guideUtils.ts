@@ -9,6 +9,7 @@
  * Everything here accepts both.
  */
 import type { Block, Card, DepthLevel, Job, Page } from "@unvibe/shared";
+import { displayCardTitle } from "@unvibe/shared";
 import { stagePhrase } from "./stageLabels.js";
 
 const stripTags = (s: string): string => s.replace(/<[^>]+>/g, " ");
@@ -183,7 +184,9 @@ export function contentsModel(
     .map((c) => ({
       kind: "card" as const,
       id: c.id,
-      title: c.title || c.pending?.label || cardPreview(c).slice(0, 70),
+      // Issue #49: the real title, else the shared word-boundary
+      // fallback — the same string the card header shows.
+      title: c.title || c.pending?.label || displayCardTitle(null, c.blocks),
       read: c.read,
     }));
   const linked = linkedPages(page, lookup);

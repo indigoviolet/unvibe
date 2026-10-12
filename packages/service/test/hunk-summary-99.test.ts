@@ -43,6 +43,19 @@ async function demoApp(agents: FakeAgentRunner): Promise<ReturnType<typeof creat
   return createApp("tok", { agents: agents as unknown as never, autoPipeline: false });
 }
 
+async function waitForSummary(
+  ctx: Awaited<ReturnType<typeof createApp>>["ctx"],
+  id: string,
+  timeoutMs = 15000,
+): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    if (ctx.reviews.getSnapshot(id)?.hunkStates.some((s) => s.summary !== undefined)) return;
+    if (Date.now() - start > timeoutMs) throw new Error("waitForSummary: timed out");
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 async function makeReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"]): Promise<string> {
   const id = `rv_h99${Math.random().toString(36).slice(2, 8)}`;
   ctx.db
@@ -116,7 +129,7 @@ async function summarizeWith(
         draft.hunkStates.push({ contentHash: "h222", folded: false, reviewed: false, summary: seed.summary });
       });
     }
-    const res = ctx.pipeline.summarizeHunk(id, "h222");
+    const res = await ctx.pipeline.summarizeHunk(id, "h222");
     const reused = "reused" in res;
     if (!reused) await ctx.jobs.drain(5000);
     const snap = ctx.reviews.getSnapshot(id)!;
@@ -201,17 +214,28 @@ describe("hunk summarize reply shapes (#99, on-demand site)", () => {
 
 describe("hunk-pass background stage (#99)", () => {
   it("bare JSON reply stores summary + hiddenReason on the hunk-pass path", async () => {
-    const agents = new FakeAgentRunner([
-      { match: "Reader task", events: textEvents("## T\n\nBody with no citations.\n\n```json\n{}\n```\n") },
-      { match: "Critic task", events: textEvents("## T\n\nBody with no citations.\n\n```json\n{}\n```\n") },
-      { match: "concept stubs", events: textEvents("nothing yet\n\n```json\n{\"concepts\": []}\n```\n") },
-      { match: "Hunk pass", events: textEvents(bareJson(SUMMARY, HIDDEN)) },
-    ]);
+    const agents = new FakeAgentRunner([{ match: "Hunk pass", events: textEvents(bareJson(SUMMARY, HIDDEN)) }]);
     const { app, ctx } = await demoApp(agents);
     try {
       const id = await makeReview(ctx);
-      ctx.pipeline.startReview(id);
-      await ctx.jobs.drain(15000).catch(() => {});
+      // Earlier stages already done: resumeReview enqueues only the
+      // hunk-pass jobs (no reader/critic/concepts machinery involved).
+      await ctx.reviews.mutate(id, (draft) => {
+        draft.pipeline = {
+          stages: {
+            reader: "done",
+            base: "done",
+            critic: "done",
+            concepts: "done",
+            "hunk-pass": "pending",
+            "go-deeper": "pending",
+          },
+        };
+      });
+      const resumed = await ctx.pipeline.resumeReview(id);
+      expect(resumed.jobIds.length).toBeGreaterThan(0);
+      await ctx.jobs.drain(15000);
+      await waitForSummary(ctx, id);
       const snap = ctx.reviews.getSnapshot(id)!;
       expect(snap.hunkStates.find((s) => s.contentHash === "h222")?.summary).toBe(SUMMARY);
       expect(snap.files[0].hunks[0].hiddenReason).toBe(HIDDEN);
