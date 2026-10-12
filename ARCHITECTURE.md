@@ -59,6 +59,7 @@ The service never writes into your checkout; agents read the code in a worktree 
 | `packages/service/src/cli/` | `start`/`stop`/`status`/`setup`/`open`/`token`/`doctor`, single-instance lock |
 | `packages/service/src/lifecycle/` | Idle exit, shutdown hooks |
 | `packages/service/src/security/` | Token auth, loopback Host/Origin gates, CSP header |
+| `packages/service/src/telemetry/` | Dev-only Sentry error reporting (off without `SENTRY_DSN_SERVICE`; SDK not in the release) |
 | `packages/service/src/repos/` + `src/reviews/` | Repo detection/list, review create/list/delete |
 | `packages/web/src/start/` | Front screen: prior reviews, demo, repos, PRs, branches |
 | `packages/web/src/guide/` | Guide pages, cards, citations, hover previews |

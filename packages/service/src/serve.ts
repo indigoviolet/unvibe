@@ -15,8 +15,11 @@ import { createApp, listen } from "./server.js";
 import { isAcpRunner } from "./agent/factory.js";
 import { dbFilePath } from "./store/index.js";
 import { migrate, openDatabase } from "./store/index.js";
+import { initSentry } from "./telemetry/sentry.js";
 
 export async function serve(): Promise<void> {
+  // Dev-only error reporting (issue #29): on only with SENTRY_DSN_SERVICE.
+  const sentry = await initSentry();
   const config = loadConfig();
   const token = loadOrCreateToken(config.dataDir);
 
@@ -31,6 +34,9 @@ export async function serve(): Promise<void> {
   migrate(db);
 
   const shutdown = new ShutdownHooks();
+  // Registered first so it runs last (hooks run in reverse): errors from the
+  // other hooks still get flushed.
+  if (sentry) shutdown.onShutdown(() => sentry.close());
   // buildApp (via createApp) is the single composition root: agent runner
   // defaults to ACP (real subprocesses), replay only with UNVIBE_AGENT.
   // The lifecycle closure reads through this holder (assigned after

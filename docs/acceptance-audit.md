@@ -588,6 +588,9 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Privacy: loopback-only enforced at three layers (browser CSP + suite
   network tripwires + static guards + subprocess allowlist —
   `network-*.test.ts`, `subprocess-allowlist.test.ts`, all in `check`).
+  Dev-only exception (issue #29): with a Sentry DSN in the env the service
+  and the Vite dev server report errors to Sentry. Releases carry neither
+  SDK nor DSN (`sentry.test.ts`, dist scan in `network-guards.test.ts`).
 - Snapshot size: 300-file ingest 0.15 s; `GET` 20 ms @ 433 KB;
   +361 B/annotation (200 annotations measured); jobs lists omit prompt
   snapshots (per-job fetch) — `GET` stays reasonable after hundreds of

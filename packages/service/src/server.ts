@@ -33,6 +33,7 @@ import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/
 import { buildApp, type AppContext as UnifiedContext } from "./app.js";
 import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
+import { reportError } from "./telemetry/sentry.js";
 
 export const SERVICE_VERSION = "0.0.1";
 
@@ -196,6 +197,13 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
       }
       reply.code(401).send({ error: "missing or invalid token" });
     }
+  });
+
+  // Dev-only error reporting (issue #29): server faults, not 4xx replies.
+  // A no-op unless Sentry is on.
+  app.addHook("onError", async (req, _reply, err) => {
+    if (err.statusCode !== undefined && err.statusCode < 500) return;
+    reportError(err, { method: req.method, route: req.routeOptions.url });
   });
 
   // HTTP activity counts toward "open window", except health probes: the

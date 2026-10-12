@@ -26,8 +26,15 @@ function webMetaPlugin(): Plugin {
 }
 
 // Dev: the service runs on 127.0.0.1:4517 (UNVIBE_PORT); proxy API + WS there.
-export default defineConfig({
+export default defineConfig(({ command, mode }) => ({
   plugins: [react(), webMetaPlugin()],
+  define: {
+    // Dev-only Sentry (issue #29): the DSN reaches the app only in the Vite
+    // dev server. Builds and tests get "", which drops the SDK entirely.
+    __SENTRY_DSN__: JSON.stringify(
+      command === "serve" && mode !== "test" ? (process.env.SENTRY_DSN_REACT ?? "") : "",
+    ),
+  },
   server: {
     port: 5173,
     proxy: {
@@ -48,4 +55,4 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
   },
-});
+}));
