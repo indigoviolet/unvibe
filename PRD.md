@@ -80,6 +80,13 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   - **recent branches**, local and remote;
   - **reviews you've opened before**, with their unread and stale state ("new commits · Update").
 - Selections are remembered.
+- The PR and branch lists keep the last successful fetch per repo in the
+  web app (`localStorage`, last 10 repos): opening the page, switching
+  repos, or coming back shows the kept rows at once while a fresh fetch
+  runs underneath and replaces them when it lands. A quiet line says how
+  old the shown rows are and when a refresh is in flight; a failed
+  refresh keeps the old rows with the error note; the first load for a
+  repo behaves as before.
 
 ### 4.3 Pages
 - **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
