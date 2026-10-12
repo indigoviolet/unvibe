@@ -11,6 +11,7 @@
  *   guide excerpt, or "General PR comment").
  */
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import { descriptionPaneName } from "../source/description/paneName.js";
 
 export function threadPostText(thread: Annotation): string {
   if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
@@ -65,7 +66,7 @@ export function threadLocationLabel(
     const name = file?.path.split("/").pop() ?? host.fileKey;
     return `${name}:${host.line}`;
   }
-  if (host.kind === "description") return "PR description";
+  if (host.kind === "description") return descriptionPaneName(snapshot);
   const quote = thread.anchor.quotedText;
   if (quote) return `“${quote.length > 42 ? `${quote.slice(0, 41)}…` : quote}”`;
   return "Guide comment";
@@ -81,6 +82,6 @@ export function threadWhereLabel(
     const file = snapshot?.files.find((f) => f.fileKey === host.fileKey);
     return file?.path ?? host.fileKey;
   }
-  if (host.kind === "description") return "PR description";
+  if (host.kind === "description") return descriptionPaneName(snapshot);
   return "Guide";
 }

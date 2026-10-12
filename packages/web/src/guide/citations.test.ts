@@ -14,6 +14,8 @@ function snapshot(): ReviewSnapshot {
       id: "demo",
       repoId: "r",
       branch: "b",
+      // The fixture models a PR review (urllib3-5020).
+      prNumber: 5020,
       versions: [],
       currentVersion: 1,
       createdAt: 0,
@@ -83,6 +85,14 @@ describe("resolveCitation", () => {
   it("previews description paragraphs", () => {
     const r = resolveCitation(snapshot(), { target: "desc:d-p1" });
     expect(r.label).toBe("PR description");
+    expect(r.snippet).toBe("Intro text here.");
+  });
+
+  it("labels description citations Commits on a branch review (finding 22)", () => {
+    const snap = snapshot();
+    (snap.review as { prNumber?: number }).prNumber = undefined;
+    const r = resolveCitation(snap, { target: "desc:d-p1" });
+    expect(r.label).toBe("Commits");
     expect(r.snippet).toBe("Intro text here.");
   });
 

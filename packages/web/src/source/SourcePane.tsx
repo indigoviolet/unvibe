@@ -14,6 +14,7 @@ import { performFollowUp } from "../guide/actions.js";
 import { useDiffExpansionBindings } from "../guide/expansions/DiffExpansions.js";
 import { useReview } from "../state/store.js";
 import { DescriptionView } from "./description/DescriptionView.js";
+import { descriptionPaneName } from "./description/paneName.js";
 import { DiffView } from "./diff/DiffView.js";
 import { REVEAL_EVENT } from "./diff/revealSource.js";
 
@@ -45,6 +46,8 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
   // Line-number icons mark comment threads only (expansions use the dotted
   // link); slot rows still render for both via `lineSlots`.
   const commentedLines = diffComments.commentedLines;
+  // Finding 22: branch reviews (no PR) name this tab "Commits".
+  const snapshot = useReview((s) => s.snapshot);
   useEffect(() => {
     const onReveal = (e: Event): void => {
       const ref = (e as CustomEvent<{ ref?: unknown }>).detail?.ref;
@@ -65,7 +68,7 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
             aria-selected={tab === "desc"}
             onClick={() => onTab("desc")}
           >
-            PR description
+            {descriptionPaneName(snapshot)}
           </button>
           <button
             className="tab"

@@ -8,6 +8,7 @@
  */
 import type { Citation, HunkLine, ReviewSnapshot } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
+import { descriptionPaneName } from "../source/description/paneName.js";
 
 export interface ResolvedCitation {
   target: string;
@@ -90,7 +91,7 @@ export function resolveCitation(
   if (parsed.kind === "desc") {
     return {
       target,
-      label: "PR description",
+      label: descriptionPaneName(snapshot),
       snippet: descText(snapshot, parsed.paragraph) ?? "",
       unverified: citation.unverified,
     };

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
-import { forPrThreads, pendingCount, threadPostText } from "./threads.js";
+import {
+  forPrThreads,
+  pendingCount,
+  threadLocationLabel,
+  threadPostText,
+  threadWhereLabel,
+} from "./threads.js";
 
 function thread(over: Partial<Annotation> = {}): Annotation {
   return {
@@ -47,5 +53,20 @@ describe("pending counts", () => {
       description: { html: "<div></div>", pendingHtml: "<div>e</div>" },
     } as unknown as ReviewSnapshot;
     expect(pendingCount(snap)).toBe(1);
+  });
+});
+
+describe("description thread labels (finding 22)", () => {
+  const descThread = thread({
+    anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "q", prefix: "", suffix: "", position: 0, version: 1 },
+  });
+  const prSnap = { review: { prNumber: 12 } } as unknown as ReviewSnapshot;
+  const branchSnap = { review: {} } as unknown as ReviewSnapshot;
+
+  test("location + where name the PR tab for PR reviews, Commits for branch reviews", () => {
+    expect(threadLocationLabel(prSnap, descThread)).toBe("PR description");
+    expect(threadWhereLabel(prSnap, descThread)).toBe("PR description");
+    expect(threadLocationLabel(branchSnap, descThread)).toBe("Commits");
+    expect(threadWhereLabel(branchSnap, descThread)).toBe("Commits");
   });
 });
