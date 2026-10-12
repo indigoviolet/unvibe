@@ -191,6 +191,17 @@ UI); nothing below was edited by this pass.
 <- Selections remembered — met (selector in `localStorage`,
   `start.spec.ts` persistence round-trip; last-opened ordering in
   `reviews/list.ts`).
+- Kept PR/branch lists (#90) — met (web-only: `start/keptChanges.ts`
+  keeps the last successful fetch per repo in versioned `localStorage`
+  with an in-memory copy, validated reads, a 10-repo cap, and graceful
+  degradation; `StartPage.tsx` shows the kept rows at once on load,
+  switch and return, refreshes underneath with a quiet "Updated …"
+  line, keeps the rows on a failed refresh with the error note, leaves
+  the first load unchanged, and ignores stale responses; opening a kept
+  row goes through the fresh open path; entries for unlisted repos are
+  pruned and a changed login clears them. No contract change.
+  `start/keptChanges.test.ts`, `start/StartPage.kept.test.tsx`,
+  `e2e/start-kept.spec.ts`).
 - Native folder picker (#26) — met: `POST /api/repos/pick-folder`
   (frontmost osascript dialog / zenity→kdialog with cancelled/unavailable
   outcomes, `pick-folder.test.ts`) plus the `BrowseFolderButton`
@@ -213,6 +224,9 @@ needed (that deviation is closed, not added).
 - Contents box (cards jump + linked pages, read muted, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
   `guide.spec.ts` “renders cards, contents and generated go-deeper cards”).
+  Card entries show the title (real or the shared #49 fallback), never a
+  body prefix cut mid-word (`guideUtils.ts` `contentsModel`,
+  `guideUtils.test.ts`).
 - Go deeper placeholders + Generate fills + follow-ups — met
   (`pipeline/demo.ts` auto-fill, `actions/generate.ts`,
   `guide-service.spec.ts`).
@@ -222,6 +236,16 @@ needed (that deviation is closed, not added).
 ### §4.4 Cards — all met (audit-10)
 
 - Collapse chevron, title-row-only collapsed — met (`guide.spec.ts`).
+  Every page card shows a title: the prompts require one for every card
+  (issues #49/#50), and when the agent omits it the header and Contents
+  share one derived fallback — the first sentence or clause of the body,
+  cut on a word boundary with an ellipsis (`shared/src/content/titles.ts`,
+  `CardView.test.tsx`). Expansions keep their quoted-selection header
+  with no derived second title. Replies never repeat what the reader
+  already sees (shared "Reply hygiene" guidance in `instructions.md`;
+  the `explain` "quote it back" rule is removed), with a deterministic
+  exact-match strip of a leading echo line at parse time
+  (`actions-echo.test.ts`, `content-titles.test.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”).
@@ -395,6 +419,13 @@ needed (that deviation is closed, not added).
   with description as secondary text (Claude + Codex); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
+- Live role defaults (#88) — met: tiers opus | sol > sonnet | terra >
+  haiku | luna with newest version per tier, never Fable/Astra, matched on
+  family plus highest version (aliases lose to versioned ids, `opus` beats
+  `default`, plain beats dated pins); one effective-settings source serves
+  Settings, readiness, the pipeline, second opinions and shared context
+  (saved picks win, defaults never persisted); static fallbacks name ids
+  offered today (`settings-defaults.test.ts` table rows + caller coverage).
 - Prompts (Template raw in Settings — six sections in tabs, issue #61:
   Repositories, Models, Environment, Prompts, Limits and budgets, Version,
   with the tab in `?tab=`, older `#section` links still landing on the
@@ -566,7 +597,9 @@ needed (that deviation is closed, not added).
 ## §12 Models and concurrency — all met (audit-10)
 
 - Main/small/second-opinion roles; one base per model; small jobs get only
-  what they need — met (`settings.models`, `runSmall` no-fork).
+  what they need — met (`settings.models`, `runSmall` no-fork). All
+  role consumers (readiness, pipeline, second-opinion runner, shared
+  context) resolve the same effective settings as Settings (#88).
 - Second-opinion isolation (own base L0+L1, never guide text/findings/
   contributions/pins beyond cited) — met (structural: `secondopinion/base.ts`;
   tool-level: `registry.ts:286` restricted search/resolve; e2e asserts the
@@ -608,7 +641,8 @@ needed (that deviation is closed, not added).
 - Files with front matter (role/tier/variables) — met (`prompts/*.md` 18
   templates; `prompts/loader.ts`).
 - Deterministic rendering (stable order, no timestamps, golden files) —
-  met (`prompt-goldens.test.ts`, `prompts.test.ts`).
+  met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens refreshed
+  for the #49/#50 template edits (`instructions`, `explain`).
 - All 14 template rows present — met (18 files cover every row;
   `routes/prompts.ts` serves template + expanded).
 - Settings shows the template; the debug page shows the per-review
