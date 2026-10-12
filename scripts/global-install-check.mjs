@@ -323,7 +323,9 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
     const line = d.out.split("\n").find((l) => l.includes(`] ${cli}:`)) ?? "";
     assert(/\[ok\]|\[warn\]/.test(line), `${label}: doctor reports ${cli}`);
     // Either the executable it will run (path) or the install hint when missing.
-    assert(/at |does not install it for you/.test(line), `${label}: doctor says which ${cli} executable it runs (or how to install it)`);
+    // Doctor names a single choice with `at <path>`; with several installs
+    // it reports `(N candidates; chose <path>: <reason>)` instead (issue #33).
+    assert(/at |candidates|does not install it for you/.test(line), `${label}: doctor says which ${cli} executable it runs (or how to install it)`);
   }
 
   const start = runInstalled(["start"]);

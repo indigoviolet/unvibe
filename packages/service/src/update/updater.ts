@@ -99,6 +99,9 @@ export interface FakeChannelSpec {
   version?: string | null;
   commit?: string | null;
   sourceBranch?: string | null;
+  sourceCommit?: string | null;
+  baseBranch?: string | null;
+  baseCommit?: string | null;
   builtAt?: string | null;
 }
 
@@ -201,6 +204,9 @@ export class FakeUpdater implements Updater {
       version: c.version ?? null,
       commit: c.commit ?? null,
       sourceBranch: c.sourceBranch ?? null,
+      sourceCommit: c.sourceCommit ?? null,
+      baseBranch: c.baseBranch ?? null,
+      baseCommit: c.baseCommit ?? null,
       builtAt: c.builtAt ?? null,
       current: c.ref === current,
     }));
