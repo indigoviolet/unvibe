@@ -375,6 +375,10 @@ needed (that deviation is closed, not added).
   (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
   — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
+- Syntax highlighting (issue #23): plain rows first, token colours after
+  (lazy Shiki core/engine/grammars, class-based theme colours, content-hash
+  cache); unshipped languages stay plain — met
+  (`source/diff/highlight/*.test.ts(x)`, `e2e/shiki-highlight.spec.ts`).
 - New-commits banner; stale/outdated per §8 — met
   (`settings-versions-service.spec.ts` “refresh banners counts”).
 
