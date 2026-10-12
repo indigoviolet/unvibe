@@ -289,6 +289,67 @@ describe("pipeline failure paths (scripted fakes)", () => {
     }
   });
 
+  // #28: a real agent sends no `cardIds`, narrates before its first card,
+  // and streams cards before the reply ends.
+  it("reader cards are stored once, without the agent's preamble", async () => {
+    const trailer = `\`\`\`json\n{"pendingCards": [{"id": "g-flow", "label": "Data flow", "why": "w"}]}\n\`\`\`\n`;
+    const agents = new FakeAgentRunner([
+      {
+        match: "Reader",
+        events: [
+          { type: "text", delta: "I'll start by reading the files to ground my restatement." },
+          { type: "tool", name: "read", status: "start" },
+          { type: "tool", name: "read", status: "end" },
+          { type: "text", delta: "Two notes before the cards: only two files changed.\n\n" },
+          { type: "text", delta: "## The problem\n\nIt was broken.\n\n" },
+          { type: "text", delta: "## The central change\n\nNow it works.\n\n" },
+          { type: "text", delta: trailer },
+          { type: "done", stopReason: "end_turn" },
+        ],
+      },
+    ]);
+    const { app, ctx } = await demoApp(agents);
+    try {
+      const id = await makeDemoReview(ctx);
+      ctx.pipeline.startReview(id);
+      await waitFor(() => ctx.jobs.listByReview(id).some((j) => j.kind === "reader" && j.state === "done"));
+      const root = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!;
+      expect(root.cards.map((c) => [c.id, c.title])).toEqual([
+        ["problem", "The problem"],
+        ["central", "The central change"],
+        ["g-flow", "Data flow"],
+      ]);
+      expect(JSON.stringify(root.cards)).not.toMatch(/I'll start|Two notes/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("an untitled first card is kept when only one titled card follows", async () => {
+    const agents = new FakeAgentRunner([
+      {
+        match: "Reader",
+        events: [
+          { type: "text", delta: "It was broken.\n\n## The central change\n\nNow it works.\n\n```json\n{}\n```\n" },
+          { type: "done", stopReason: "end_turn" },
+        ],
+      },
+    ]);
+    const { app, ctx } = await demoApp(agents);
+    try {
+      const id = await makeDemoReview(ctx);
+      ctx.pipeline.startReview(id);
+      await waitFor(() => ctx.jobs.listByReview(id).some((j) => j.kind === "reader" && j.state === "done"));
+      const root = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!;
+      expect(root.cards.map((c) => [c.id, c.title])).toEqual([
+        ["problem", null],
+        ["central", "The central change"],
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("several bad citations → exactly one repair turn", async () => {
     let prompts = 0;
     const bad = `First [[diff:a-py:99-100]] and second [[diff:a-py:101-102]].\n\n\`\`\`json\n{}\n\`\`\`\n`;

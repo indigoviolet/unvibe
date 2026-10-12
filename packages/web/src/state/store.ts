@@ -254,6 +254,14 @@ function queuePatch(pending: PatchEvent[], event: PatchEvent): PatchEvent[] {
   return next.length > MAX_PENDING ? next.slice(next.length - MAX_PENDING) : next;
 }
 
+/**
+ * True when `next` is an older fetch of the review already in the store.
+ * `rev` counts per review, so a snapshot of another review is never stale.
+ */
+function isStale(current: ReviewSnapshot | null, next: ReviewSnapshot): boolean {
+  return current !== null && current.review.id === next.review.id && next.rev < current.rev;
+}
+
 export const useReview = create<ReviewState>()((set, get) => ({
   snapshot: null,
   connected: false,
@@ -265,7 +273,7 @@ export const useReview = create<ReviewState>()((set, get) => ({
       // A stale fetch must never clobber newer WS state. Equal revs are
       // accepted (live job lists merge into the snapshot without a bump).
       // In-flight entries survive resyncs; only settled jobs reap them.
-      if (s.snapshot && snapshot.rev < s.snapshot.rev) return s;
+      if (isStale(s.snapshot, snapshot)) return s;
       const drained = drainPending(snapshot, s.pending);
       return {
         snapshot: drained.snapshot,
@@ -280,7 +288,7 @@ export const useReview = create<ReviewState>()((set, get) => ({
       switch (event.type) {
         case "snapshot": {
           const snapshot = event.snapshot;
-          if (s.snapshot && snapshot.rev < s.snapshot.rev) return s;
+          if (isStale(s.snapshot, snapshot)) return s;
           const drained = drainPending(snapshot, s.pending);
           return {
             snapshot: drained.snapshot,

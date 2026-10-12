@@ -506,6 +506,11 @@ needed (that deviation is closed, not added).
 
 - Inline tokens (all six + `ann:`) + `|label` rules — met
   (`reply-format.md` §1, `shared/src/content`, `content-parse.test.ts`).
+- Inline Markdown inside a block (bold, italic, strikethrough, links,
+  escapes; raw HTML escaped, tokens resolved before emphasis) — met
+  (#66; `markdown-it` inline mode in `renderInline`,
+  `content-parse.test.ts`). Streaming returns finished cards only; the
+  unused in-card partial parser is gone (#67).
 - Trailing fenced JSON for structured fields, removed before display —
   met (M0 20/20 parse; `splitReply`, `reply-format.md` §10; malformed =
   job error).
@@ -525,6 +530,11 @@ needed (that deviation is closed, not added).
    ran).
 2. Reader (explore, problem/central/directions, hidden concepts,
    `pin_context`) — met (`pipeline/runner.ts:879`, demo 17 cards — ran).
+   Root cards stored once (#28): streamed cards and the final apply share
+   one id scheme (`readerCardId`), the final reply replaces whatever was
+   streamed, and text before the first `## ` card is dropped — met
+   (`pipeline/apply.ts`, `pipeline.test.ts` “stored once”). Reviews
+   created before the fix keep their duplicate cards; no migration.
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×2 with evidence/assessment/confidence +
    suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
@@ -532,6 +542,8 @@ needed (that deviation is closed, not added).
    — met (demo 8 summaries — ran from global install).
 6. On demand (depth/go-deeper/explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
+   Full concept pages may draw a `d2` diagram inline, same rule as
+   explain/go_deeper (#69; the template used to recommend one in prose).
 7. Update pass (changed/new hunks only) — met (`versions/update.ts`,
    `enqueueUpdatePass`, `versions-update.test.ts`).
 
@@ -727,6 +739,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Restart loses no user data; sessions reopen/rebuild: restart script
   (SIGKILL mid-reader, mid-ask) all green; jobs interrupted-visible +
   resumable; reply falls back to fresh fork.
+  A base rebuilt after a restart keeps the MCP secret it was started
+  with (#68: `getBase` reported it as not fresh and the caller revoked
+  it, so forks ran without the review tools); a restored base is never
+  rebuilt from its persisted MCP URL (`sessions.test.ts`,
+  `review-base-sessions.test.ts` restart case).
 - Privacy: loopback-only enforced at three layers (browser CSP + suite
   network tripwires + static guards + subprocess allowlist —
   `network-*.test.ts`, `subprocess-allowlist.test.ts`, all in `check`).
@@ -902,6 +919,17 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
   for unknown repos and shows `fetchError` once. Covered by mock-mode
   Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
   spec for invalid input and path-checkout remove.
+
+### Switching reviews in one tab (#70)
+
+The web review store is global. Opening a second review in the same tab
+used to keep the first review's guide whenever the second had a lower
+`rev` (the stale-fetch guard compared revs across reviews). The guard
+now applies within one review only, and `ReviewRoute` clears the store
+when its review changes or it unmounts — met (`web/src/state/store.ts`,
+`store.test.ts` “switching reviews”). The route clear has no test of its
+own. A refetch of the previous review that resolves after the switch can
+still land in the store; not seen, not guarded.
 
 ### Immediate action feedback (#46, complete)
 

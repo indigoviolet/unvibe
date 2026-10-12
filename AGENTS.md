@@ -37,12 +37,17 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 - Work is tracked in GitHub issues at `indigoviolet/unvibe` (`gh issue list`). Each piece of work has an issue; name the issue in your report and in the merge commit (`Closes #N`), tick its checklist as items land, and open a new issue for anything you find but do not fix. Labels: `in-progress`, `waiting-for-user-testing`, `waiting-for-user-response`, `needs-decision`, `needs-mac`, `future`.
 - Keep the issue current, so its state always says where the work is:
   - Starting: add `in-progress`.
-  - Implemented but not yet on `main`: comment with the worktree branch name and the status (what was built, what was verified, how to try it, including the preview build if one was published). Swap `in-progress` for `waiting-for-user-testing`.
+  - Implemented and waiting on the owner: comment with the worktree branch name, the preview build and its install command, and the status (what was built, what was verified, how to try it). Swap `in-progress` for `waiting-for-user-testing`. This state always has a published preview (see the finishing rule below).
   - Blocked on a question for the owner: ask it in a comment and add `waiting-for-user-response` (`needs-decision` is for a design choice the owner has to make). Remove the label once it is answered.
   - Part done, part left: split the issue into sub-issues, one per piece. Close the ones that are done and on `main`, leave the rest open under the parent.
   - Close the issue when its work is merged into `main`, never at "implemented on a branch". Close it yourself with a comment naming the merge commit and the branch: `Closes #N` only takes effect on push, and agents do not push. Remove the status labels when it closes.
 - Spikes, evaluations and experiments never go to `main`. They live on a pushed branch named `spike/<topic>` (harness, screenshots and write-up together) and are linked from their issue. Only work that is adopted gets merged.
 - Never develop in the main checkout. It stays on `main` with a clean tree. Before the first edit, create a git worktree on a new branch (a Paseo worktree workspace, whose setup in `paseo.json` copies `.env` and installs) and do all edits, installs, builds and commits there. This holds for small changes too.
-- Commit in small logical commits on your branch; do not push, do not merge, do not touch other worktrees.
+- Commit in small logical commits on your branch; do not push, do not touch other worktrees.
+- Finished work never sits on a local branch waiting. Once it is verified, do one of two things:
+  - Merge it into `main` yourself, if you judge it does not need the owner's approval. Close the issue as described above.
+  - Otherwise publish a preview build, always, so the owner can try it, and put the install command in the issue comment.
+
+  A subagent working for a supervisor reports back instead; the supervisor does this step.
 - The one push an agent may make is a preview build: `mise run preview:publish -- <branch> --push` force-pushes the orphan ref `preview/<slug>` and nothing else (the script refuses any other ref). Source branches stay local. See `DEVELOPMENT.md` (preview builds).
 - When done, report: what was built, what was verified (commands + results), what is stubbed or missing, and anything in the PRD you deviated from.
