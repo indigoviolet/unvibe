@@ -1,17 +1,31 @@
 /**
- * Start page (`/`, PRD §4.2): prior sessions first, then a New-review flow.
+ * Start page (`/`, PRD §4.2): everything follows one chosen repo.
  *
- * - Prior sessions: `GET /api/reviews` across ALL repos, most recent first,
- *   with title, repo, PR/branch, last opened, version count, stale state,
- *   progress (hunks reviewed/total, pending comments) and guide status.
- *   Click resumes; Remove (with confirm) deletes local data only.
- * - New review (primary action): the existing picker flow (recent, detected,
- *   add by path → authoring / review-requested / branches, PR by URL or
- *   number, demo). Selections remembered in `localStorage`.
+ * - A repo selector sits in the top bar next to the "Unvibe" brand, listing
+ *   remembered repos and detected checkouts (grouped so detected ones are
+ *   distinguishable; `owner/name` with the local path as the title).
+ *   Selection persists in `localStorage` (`unvibe.start.repoId`); the `demo`
+ *   pseudo-repo is never selectable.
+ * - The Reviews list shows only the selected repo's reviews (filtered on
+ *   `ReviewSummary.repoId`, which the service populates from the review
+ *   row). The demo is a row inside the Reviews list ("Demo · no tokens",
+ *   opening with `{ repoId: "demo" }`), shown regardless of the selected
+ *   repo; when a demo review already exists as a session, that session row
+ *   shows instead of a second demo entry.
+ * - The PR / branch lists and "Open a PR by URL or number" are scoped to
+ *   the selected repo. A pasted PR URL for a different known repo still
+ *   works: it opens the review and switches the selector to that repo.
+ *   While a newly selected repo's lists load, the previous repo's lists
+ *   are hidden (a loading hint shows instead of stale data).
+ * - With no repos at all, a short empty state links to Settings
+ *   (`/settings#repositories`), where repos are added; the demo row still
+ *   shows. Repos are never added here.
  * - Readiness callouts fill in after render (never block page load); each
- *   links to the relevant Settings section.
+ *   links to the relevant Settings section. The agent/gh hints sit next to
+ *   the lists they concern (`newreview-agent-hint` by Reviews,
+ *   `newreview-gh-hint` by the PR lists).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type {
   CreateReviewRequest,
@@ -106,7 +120,7 @@ function parsePrInput(
   if (!input) return { error: "Enter a PR number or URL." };
   const num = input.match(/^#?(\d+)$/);
   if (num) {
-    if (!selectedId) return { error: "Pick a repo first, then enter its PR number." };
+    if (!selectedId) return { error: "Add a repo in Settings first, then enter its PR number." };
     return { repoId: selectedId, pr: Number(num[1]) };
   }
   const url = input.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/pull\/(\d+)/i);
@@ -115,7 +129,7 @@ function parsePrInput(
     const found = repos.find(
       (r) => r.owner.toLowerCase() === owner.toLowerCase() && r.name.toLowerCase() === name.toLowerCase(),
     );
-    if (!found) return { error: `Repo ${owner}/${name} isn't in your list — add it by path first.` };
+    if (!found) return { error: `Repo ${owner}/${name} isn't in your list — add it in Settings.` };
     return { repoId: found.id, pr: Number(n) };
   }
   const short = input.match(/^([^/\s]+)\/([^/\s#]+)#(\d+)$/);
@@ -124,7 +138,7 @@ function parsePrInput(
     const found = repos.find(
       (r) => r.owner.toLowerCase() === owner.toLowerCase() && r.name.toLowerCase() === name.toLowerCase(),
     );
-    if (!found) return { error: `Repo ${owner}/${name} isn't in your list — add it by path first.` };
+    if (!found) return { error: `Repo ${owner}/${name} isn't in your list — add it in Settings.` };
     return { repoId: found.id, pr: Number(n) };
   }
   return { error: "Enter a PR number (e.g. 5020) or a GitHub PR URL." };
@@ -145,11 +159,14 @@ export function StartPage(): React.JSX.Element {
   const [authoring, setAuthoring] = useState<RepoChange[]>([]);
   const [requested, setRequested] = useState<RepoChange[]>([]);
   const [branches, setBranches] = useState<RepoChange[]>([]);
+  // The repo the PR/branch lists below were loaded for. While a newly
+  // selected repo loads, its lists stay hidden instead of showing the
+  // previous repo's data.
+  const [listsFor, setListsFor] = useState<string | null>(null);
   const [demo, setDemo] = useState<RepoChange[]>([]);
-  const [path, setPath] = useState("");
   const [opening, setOpening] = useState<string | null>(null);
 
-  // Prior sessions (front-screen list).
+  // Prior sessions (front-screen list, filtered to the selected repo below).
   const [sessions, setSessions] = useState<ReviewSummary[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -162,7 +179,6 @@ export function StartPage(): React.JSX.Element {
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
   const [checking, setChecking] = useState(false);
-  const newReviewRef = useRef<HTMLDivElement>(null);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -183,7 +199,7 @@ export function StartPage(): React.JSX.Element {
         setRepos(r.repos);
         setSelectedId((prev) => {
           if (prev && prev !== "demo" && r.repos.some((x) => x.id === prev)) return prev;
-          // Never auto-select the demo pseudo-repo: PR sections below only
+          // Never auto-select the demo pseudo-repo: the lists below only
           // make sense for a real checkout.
           return r.repos.find((x) => x.id !== "demo")?.id ?? null;
         });
@@ -192,13 +208,14 @@ export function StartPage(): React.JSX.Element {
         // Offline service: the page stays empty.
       });
     // Demo entry (repo-less `demo` change): no tokens, same pipeline path.
+    // It renders as a row inside the Reviews list (see below).
     api
       .repoChanges("demo")
       .then((r) => {
         if (!cancelled) setDemo(r.changes.filter((c) => c.kind === "demo"));
       })
       .catch(() => {
-        // Demo unavailable: the section stays hidden.
+        // Demo unavailable: the entry stays hidden.
       });
     void loadSessions();
     // Readiness fills in after first paint (never blocks page load).
@@ -234,10 +251,11 @@ export function StartPage(): React.JSX.Element {
         setAuthoring(a.changes);
         setRequested(r.changes);
         // `recent` mixes branches and previous reviews; branches only here
-        // (prior sessions come from GET /api/reviews across all repos).
+        // (prior sessions come from GET /api/reviews, filtered per repo).
         setBranches(rec.changes.filter((c) => c.kind === "branch"));
+        setListsFor(selectedId);
       } catch {
-        // Leave previous lists in place.
+        // Leave the loading hint in place (listsFor stays behind).
       }
     };
     void load();
@@ -261,20 +279,6 @@ export function StartPage(): React.JSX.Element {
     },
     [navigate, loadSessions],
   );
-
-  const addRepo = useCallback(async () => {
-    const trimmed = path.trim();
-    if (!trimmed) return;
-    try {
-      const r = await api.addRepo({ path: trimmed });
-      setRepos(r.repos);
-      const added = r.repos.find((x) => x.localPath === trimmed) ?? r.repos[0];
-      if (added) setSelectedId(added.id);
-      setPath("");
-    } catch (err) {
-      toast(`Couldn't add that repo: ${friendlyError(err)}`);
-    }
-  }, [path]);
 
   const removeSession = useCallback(
     async (id: string) => {
@@ -311,19 +315,31 @@ export function StartPage(): React.JSX.Element {
       return;
     }
     setPrError(null);
+    // A pasted URL for a different known repo opens that repo's PR and
+    // switches the selector to it.
+    if (parsed.repoId !== selectedId) setSelectedId(parsed.repoId);
     void openReview(`pr-${parsed.pr}`, { repoId: parsed.repoId, pr: parsed.pr });
   }, [prInput, repos, selectedId, openReview]);
 
-  const scrollToNew = useCallback(() => {
-    newReviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
-
+  // The demo pseudo-repo is never selectable; detected checkouts group
+  // separately so they read as auto-found rather than remembered.
   const remembered = repos.filter((r) => !r.detected && r.id !== "demo");
   const detected = repos.filter((r) => r.detected && r.id !== "demo");
+  const realRepos = repos.filter((r) => r.id !== "demo");
+  const selected = realRepos.find((r) => r.id === selectedId) ?? null;
   const problems = (readiness ?? []).filter((c) => c.status !== "ok");
   const ghProblem = problems.find((c) => c.id === "gh");
   const mainProblem = problems.find((c) => c.id === "agent:main");
   const allReady = readiness !== null && problems.length === 0;
+
+  // Reviews for the selected repo only (`ReviewSummary.repoId` comes from
+  // the service's review row, so this stays correct for remembered and
+  // detected repos alike). Demo sessions (`repoId: "demo"`) never match a
+  // real selection; they render as the demo row instead (no duplicates).
+  const visibleSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
+  const demoSessions = (sessions ?? []).filter((s) => s.repoId === "demo");
+  const showDemoEntry = demoSessions.length === 0 && demo.length > 0;
+  const reviewRows = visibleSessions.length + demoSessions.length + (showDemoEntry ? demo.length : 0);
 
   return (
     <div className="app">
@@ -332,6 +348,34 @@ export function StartPage(): React.JSX.Element {
           <Link className="brand" to="/">
             Unvibe
           </Link>
+          {realRepos.length > 0 && selectedId ? (
+            <select
+              aria-label="Repository"
+              className="tbtn"
+              value={selectedId}
+              title={selected?.localPath ?? ""}
+              onChange={(e) => setSelectedId(e.target.value)}
+            >
+              {remembered.length > 0 ? (
+                <optgroup label="Repos">
+                  {remembered.map((r) => (
+                    <option key={r.id} value={r.id} title={r.localPath}>
+                      {r.owner}/{r.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {detected.length > 0 ? (
+                <optgroup label="Detected checkouts">
+                  {detected.map((r) => (
+                    <option key={r.id} value={r.id} title={r.localPath}>
+                      {r.owner}/{r.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          ) : null}
           {allReady ? (
             <span className="hint" data-testid="readiness-ready">
               Ready · gh + agents ok
@@ -380,253 +424,238 @@ export function StartPage(): React.JSX.Element {
             </div>
           ) : null}
 
-          {/* Prior reviews first. */}
+          {/* Reviews for the selected repo, then the demo row. */}
           <div className="eyebrow">Unvibe</div>
           <h1 className="title">Reviews</h1>
+          {mainProblem ? (
+            <p className="hint" data-testid="newreview-agent-hint">
+              Main agent not ready ({mainProblem.summary}) — the guide may not generate. You can
+              still open the diff and comment.
+            </p>
+          ) : null}
           {sessions === null && !sessionsError ? (
             <p className="hint">Loading previous reviews…</p>
           ) : sessionsError ? (
             <p className="hint" role="alert">
               {sessionsError}
             </p>
-          ) : sessions!.length === 0 ? (
+          ) : reviewRows === 0 ? (
             <div data-testid="sessions-empty">
-              <p className="hint" style={{ fontSize: 13, color: "var(--ink)" }}>
-                Unvibe reads a branch or pull request with an agent alongside, keeping
-                explanations tied to the code.
-              </p>
-              <p className="hint">
-                Open your first review below — pick a repo, a PR or a branch, or try the demo.
-              </p>
-              <button className="btn" type="button" onClick={scrollToNew}>
-                New review
-              </button>
+              {realRepos.length === 0 ? (
+                <p className="hint">
+                  No reviews yet. <Link to="/settings#repositories">Add a repo in Settings</Link> to
+                  open your first review — or try the demo below.
+                </p>
+              ) : (
+                <p className="hint">
+                  No reviews for {selected ? `${selected.owner}/${selected.name}` : "this repo"} yet.
+                  Open a PR or branch below to start one.
+                </p>
+              )}
             </div>
           ) : (
             <div aria-label="Prior reviews" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {sessions!.map((s) => (
-                <div key={s.id} className="ci" data-testid={`session-${s.id}`}>
-                  <button
-                    className="cj"
-                    type="button"
-                    disabled={opening !== null || deleting !== null}
-                    onClick={() => navigate(`/review/${s.id}`)}
-                    title={`${s.title} (${s.branch})`}
-                  >
-                    <span className="cw">
-                      {s.repoOwner}/{s.repoName} · {s.prNumber ? `#${s.prNumber}` : s.branch}
-                      {s.currentVersion > 1 ? ` · v${s.currentVersion}` : ""}
-                      {" · "}
-                      {timeAgo(s.lastOpened)}
-                    </span>
-                    <span className="cx2">{s.title}</span>
-                    <span className="hint">
-                      {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-                      {s.pendingComments > 0 ? ` · ${s.pendingComments} pending` : ""}
-                      {" · "}
-                      {guideLabel(s)}
-                    </span>
-                  </button>
-                  <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-                    {s.stale ? <span className="prtag">new commits · Update</span> : null}
-                    {confirmDelete === s.id ? (
-                      <>
-                        <span className="hint">Remove local data only?</span>
-                        <button
-                          className="btn"
-                          type="button"
-                          disabled={deleting === s.id}
-                          onClick={() => void removeSession(s.id)}
-                        >
-                          {deleting === s.id ? "Removing…" : "Remove"}
-                        </button>
-                        <button
-                          className="btn ghost"
-                          type="button"
-                          disabled={deleting === s.id}
-                          onClick={() => setConfirmDelete(null)}
-                        >
-                          Keep
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className="mini"
-                        type="button"
-                        aria-label={`Remove ${s.title}`}
-                        disabled={deleting !== null}
-                        onClick={() => setConfirmDelete(s.id)}
-                        title="Remove this review's local data (never touches GitHub or your checkout; deletes the managed worktree)"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
+              {visibleSessions.map((s) => (
+                <SessionRow
+                  key={s.id}
+                  s={s}
+                  opening={opening}
+                  deleting={deleting}
+                  confirmDelete={confirmDelete}
+                  setConfirmDelete={setConfirmDelete}
+                  removeSession={removeSession}
+                  onOpen={() => navigate(`/review/${s.id}`)}
+                />
               ))}
+              {demoSessions.map((s) => (
+                <SessionRow
+                  key={s.id}
+                  s={s}
+                  opening={opening}
+                  deleting={deleting}
+                  confirmDelete={confirmDelete}
+                  setConfirmDelete={setConfirmDelete}
+                  removeSession={removeSession}
+                  onOpen={() => navigate(`/review/${s.id}`)}
+                />
+              ))}
+              {showDemoEntry
+                ? demo.map((c, i) => (
+                    <div key={changeKey(c, i)} className="ci" data-testid="demo-entry">
+                      <button
+                        className="cj"
+                        type="button"
+                        disabled={opening !== null}
+                        onClick={() => void openReview(changeKey(c, i), { repoId: "demo" })}
+                      >
+                        <span className="cw">Demo · no tokens</span>
+                        <span className="cx2">{c.title}</span>
+                      </button>
+                      {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
+                    </div>
+                  ))
+                : null}
             </div>
           )}
 
-          {/* New review: the existing picker flow, led by an obvious primary action. */}
-          <div ref={newReviewRef} id="new-review" style={{ scrollMarginTop: 12 }}>
-            <div className="divider">New review</div>
-            {mainProblem ? (
-              <p className="hint" data-testid="newreview-agent-hint">
-                Main agent not ready ({mainProblem.summary}) — the guide may not generate. You can
-                still open the diff and comment.
+          {/* PRs and branches for the selected repo. */}
+          {realRepos.length === 0 ? (
+            <div data-testid="no-repos">
+              <div className="divider">Repositories</div>
+              <p className="hint">
+                No repos yet. <Link to="/settings#repositories">Add one in Settings</Link> to browse
+                its PRs and branches.
               </p>
-            ) : null}
-
-            {demo.length > 0 ? (
-              <>
-                <div className="divider">Try the demo</div>
-                {demo.map((c, i) => (
-                  <div key={changeKey(c, i)} className="ci">
-                    <button
-                      className="cj"
-                      type="button"
-                      disabled={opening !== null}
-                      onClick={() => void openReview(changeKey(c, i), { repoId: "demo" })}
-                    >
-                      <span className="cw">Demo · no tokens</span>
-                      <span className="cx2">{c.title}</span>
-                    </button>
-                    {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
-                  </div>
-                ))}
-              </>
-            ) : null}
-
-            <div className="divider">Repositories</div>
-            <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-              <input
-                type="text"
-                aria-label="Add a repo by path"
-                placeholder="/path/to/checkout"
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void addRepo();
-                }}
-                style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
-              />
-              <button className="btn" type="button" onClick={() => void addRepo()}>
-                Add by path
-              </button>
             </div>
-            {repos.length === 0 ? (
-              <p className="hint">No repos yet. Add a checkout by path.</p>
-            ) : (
-              <>
-                {remembered.length > 0 ? (
-                  <div className="frow" role="group" aria-label="Recent repos" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {remembered.map((r) => (
-                      <RepoChip key={r.id} repo={r} selected={r.id === selectedId} onSelect={setSelectedId} />
-                    ))}
-                  </div>
-                ) : null}
-                {detected.length > 0 ? (
-                  <>
-                    <p className="hint" style={{ margin: "8px 0 4px" }}>
-                      Detected checkouts
-                    </p>
-                    <div className="frow" role="group" aria-label="Detected checkouts" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                      {detected.map((r) => (
-                        <RepoChip key={r.id} repo={r} selected={r.id === selectedId} onSelect={setSelectedId} />
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-              </>
-            )}
+          ) : !selectedId ? (
+            <p className="hint">Pick a repo above to browse its PRs and branches.</p>
+          ) : listsFor !== selectedId ? (
+            <p className="hint" data-testid="repo-lists-loading">
+              Loading {selected ? `${selected.owner}/${selected.name}` : "repo"}…
+            </p>
+          ) : (
+            <>
+              <div className="divider">Open a PR by URL or number</div>
+              <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                <input
+                  type="text"
+                  aria-label="Open a PR by URL or number"
+                  placeholder="PR number (5020) or owner/repo pull URL"
+                  value={prInput}
+                  onChange={(e) => {
+                    setPrInput(e.target.value);
+                    setPrError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") openPrInput();
+                  }}
+                  style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+                />
+                <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null}>
+                  Open PR
+                </button>
+              </div>
+              {prError ? (
+                <p className="hint" role="alert">
+                  {prError}
+                </p>
+              ) : null}
+              {ghProblem ? (
+                <p className="hint" data-testid="newreview-gh-hint">
+                  PR lists need gh ({ghProblem.summary}). You can still open a local branch below or a
+                  PR by number once gh works.
+                </p>
+              ) : null}
 
-            <div className="divider">Open a PR by URL or number</div>
-            <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-              <input
-                type="text"
-                aria-label="Open a PR by URL or number"
-                placeholder="PR number (5020) or owner/repo pull URL"
-                value={prInput}
-                onChange={(e) => {
-                  setPrInput(e.target.value);
-                  setPrError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") openPrInput();
-                }}
-                style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+              <ChangeSection
+                title="PRs you're authoring"
+                changes={authoring}
+                opening={opening}
+                empty="Nothing found."
+                onOpen={(c, i) =>
+                  openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                }
               />
-              <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null}>
-                Open PR
-              </button>
-            </div>
-            {prError ? (
-              <p className="hint" role="alert">
-                {prError}
-              </p>
-            ) : null}
-            {ghProblem ? (
-              <p className="hint" data-testid="newreview-gh-hint">
-                PR lists need gh ({ghProblem.summary}). You can still open a local branch below or a
-                PR by number once gh works.
-              </p>
-            ) : null}
-
-            {selectedId && selectedId !== "demo" ? (
-              <>
-                <ChangeSection
-                  title="PRs you're authoring"
-                  changes={authoring}
-                  opening={opening}
-                  empty="Nothing found."
-                  onOpen={(c, i) =>
-                    openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
-                  }
-                />
-                <ChangeSection
-                  title="Waiting on your review"
-                  changes={requested}
-                  opening={opening}
-                  empty="Nothing waiting."
-                  onOpen={(c, i) =>
-                    openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
-                  }
-                />
-                <ChangeSection
-                  title="Recent branches"
-                  changes={branches}
-                  opening={opening}
-                  empty="No branches."
-                  onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
-                />
-              </>
-            ) : null}
-          </div>
+              <ChangeSection
+                title="Waiting on your review"
+                changes={requested}
+                opening={opening}
+                empty="Nothing waiting."
+                onOpen={(c, i) =>
+                  openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                }
+              />
+              <ChangeSection
+                title="Recent branches"
+                changes={branches}
+                opening={opening}
+                empty="No branches."
+                onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
+              />
+            </>
+          )}
         </div>
       </main>
     </div>
   );
 }
 
-function RepoChip({
-  repo,
-  selected,
-  onSelect,
+function SessionRow({
+  s,
+  opening,
+  deleting,
+  confirmDelete,
+  setConfirmDelete,
+  removeSession,
+  onOpen,
 }: {
-  repo: Repo;
-  selected: boolean;
-  onSelect: (id: string) => void;
+  s: ReviewSummary;
+  opening: string | null;
+  deleting: string | null;
+  confirmDelete: string | null;
+  setConfirmDelete: (id: string | null) => void;
+  removeSession: (id: string) => Promise<void>;
+  onOpen: () => void;
 }): React.JSX.Element {
   return (
-    <button
-      className="chip"
-      type="button"
-      aria-pressed={selected}
-      title={repo.localPath}
-      onClick={() => onSelect(repo.id)}
-    >
-      {repo.owner}/{repo.name}
-    </button>
+    <div key={s.id} className="ci" data-testid={`session-${s.id}`}>
+      <button
+        className="cj"
+        type="button"
+        disabled={opening !== null || deleting !== null}
+        onClick={onOpen}
+        title={`${s.title} (${s.branch})`}
+      >
+        <span className="cw">
+          {s.repoOwner}/{s.repoName} · {s.prNumber ? `#${s.prNumber}` : s.branch}
+          {s.currentVersion > 1 ? ` · v${s.currentVersion}` : ""}
+          {" · "}
+          {timeAgo(s.lastOpened)}
+        </span>
+        <span className="cx2">{s.title}</span>
+        <span className="hint">
+          {s.reviewedHunks}/{s.totalHunks} hunks reviewed
+          {s.pendingComments > 0 ? ` · ${s.pendingComments} pending` : ""}
+          {" · "}
+          {guideLabel(s)}
+        </span>
+      </button>
+      <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+        {s.stale ? <span className="prtag">new commits · Update</span> : null}
+        {confirmDelete === s.id ? (
+          <>
+            <span className="hint">Remove local data only?</span>
+            <button
+              className="btn"
+              type="button"
+              disabled={deleting === s.id}
+              onClick={() => void removeSession(s.id)}
+            >
+              {deleting === s.id ? "Removing…" : "Remove"}
+            </button>
+            <button
+              className="btn ghost"
+              type="button"
+              disabled={deleting === s.id}
+              onClick={() => setConfirmDelete(null)}
+            >
+              Keep
+            </button>
+          </>
+        ) : (
+          <button
+            className="mini"
+            type="button"
+            aria-label={`Remove ${s.title}`}
+            disabled={deleting !== null}
+            onClick={() => setConfirmDelete(s.id)}
+            title="Remove this review's local data (never touches GitHub or your checkout; deletes the managed worktree)"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
