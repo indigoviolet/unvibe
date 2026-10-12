@@ -652,4 +652,155 @@ describe("reader pinned code (#37)", () => {
     },
     30000,
   );
+  it(
+    "re-pinning an empty-text range refills it; ranged with text are left alone",
+    async () => {
+      const fileBody = "x = 1\ny = 2\nz = 3\nw = 4\n";
+      const commands = new FakeCommandRunner();
+      // One `git show` per pin (same file, resolved per range).
+      for (let i = 0; i < 2; i++) {
+        commands.enqueue({
+          cmd: "git",
+          args: ["show", `${HEAD_SHA}:a.py`],
+          stdout: fileBody,
+          stderr: "",
+          code: 0,
+        });
+      }
+      const agents = new FakeAgentRunner();
+      const readerReply =
+        "## Problem\n\nBody cites [[diff:a-py:1-2]].\n\n```json\n{}\n```\n";
+      let base = "";
+      let issued: IssuedSession | null = null;
+      let pinIssued = false;
+      const origPrompt = agents.prompt.bind(agents);
+      agents.prompt = async function* (session, text) {
+        if (text.includes("Reader") || text.startsWith("Some citations")) {
+          if (!pinIssued) {
+            pinIssued = true;
+            const client = new Client({ name: "t", version: "0" });
+            await client.connect(
+              new StreamableHTTPClientTransport(new URL(base + issued!.path)),
+            );
+            try {
+              for (const lines of ["2-3", "1-1"]) {
+                const res = (await client.callTool({
+                  name: "pin_context",
+                  arguments: { path: "a.py", lines, why: "re-pin" },
+                })) as { isError?: boolean };
+                if (res.isError) throw new Error("pin_context was refused");
+              }
+            } finally {
+              await client.close();
+            }
+          }
+          yield { type: "text", delta: readerReply };
+          yield { type: "usage", inputTokens: 10, cachedTokens: 0, outputTokens: 5 };
+          yield { type: "done", stopReason: "end_turn" };
+          return;
+        }
+        yield* origPrompt(session, text);
+      };
+
+      const { app, ctx } = await createApp("tok", {
+        runner: commands,
+        agents: agents as unknown as never,
+        autoPipeline: false,
+      });
+      try {
+        const repo = repoRow();
+        ctx.repos.upsert(repo);
+        const reviewId = "rv_pin37_refill";
+        const version = versionRow();
+        const review: Review = {
+          id: reviewId,
+          repoId: repo.id,
+          branch: "feature",
+          prNumber: 7,
+          versions: [version],
+          currentVersion: 1,
+          createdAt: 1,
+        };
+        const files = [sourceFile()];
+        const description = descriptionFor("First para.\n");
+        writeReviewRows(ctx.db, repo.id, {
+          review,
+          version,
+          files,
+          description,
+          worktreePath: os.tmpdir(),
+        });
+        ctx.reviews.putSnapshot(reviewId, {
+          review,
+          version,
+          files,
+          description,
+          pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
+          annotations: [],
+          hunkStates: [],
+          jobs: [],
+          contributions: [],
+          logTail: [],
+          rev: 1,
+        });
+        // Seed: an empty-text pin (stale remap fields included) plus a
+        // pin on another range that already has text.
+        await ctx.reviews.mutate(reviewId, (draft) => {
+          draft.pinnedCode = [
+            {
+              path: "a.py",
+              start: 2,
+              end: 3,
+              sha: "0".repeat(40),
+              text: "",
+              language: "python",
+              needsRepining: true,
+              remappedSha: "0".repeat(40),
+              remappedStart: 9,
+              remappedEnd: 9,
+            },
+            {
+              path: "a.py",
+              start: 1,
+              end: 1,
+              sha: "0".repeat(40),
+              text: "STALE",
+              language: "python",
+            },
+          ];
+        });
+
+        await app.listen({ host: "127.0.0.1", port: 0 });
+        base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+        issued = ctx.mcp.issueSession(reviewId, "sess-reader", "reader");
+
+        ctx.pipeline.startReview(reviewId);
+        await ctx.jobs.drain(15000).catch(() => {});
+
+        const snap = ctx.reviews.getSnapshot(reviewId)!;
+        expect(snap.pinnedCode).toHaveLength(2);
+        // The empty entry was refilled in place: text, current head sha,
+        // flags cleared — and no duplicate row.
+        const refilled = snap.pinnedCode!.find((p) => p.start === 2)!;
+        expect(refilled.text).toBe("y = 2\nz = 3");
+        expect(refilled.sha).toBe(HEAD_SHA);
+        expect(refilled.language).toBe("python");
+        expect(refilled.needsRepining).toBeUndefined();
+        expect(refilled.remappedSha).toBeUndefined();
+        expect(refilled.remappedStart).toBeUndefined();
+        expect(refilled.remappedEnd).toBeUndefined();
+        // The entry that already had text is left alone.
+        const kept = snap.pinnedCode!.find((p) => p.start === 1)!;
+        expect(kept.text).toBe("STALE");
+        expect(kept.sha).toBe("0".repeat(40));
+        // L1b renders the refilled code, not the "unavailable" line.
+        const pack = buildBasePack(toPromptSnapshot(snap), "L0 instructions");
+        expect(pack.l1b).toContain("y = 2\nz = 3");
+        expect(pack.l1b).not.toContain("unavailable");
+      } finally {
+        await app.close();
+      }
+    },
+    30000,
+  );
 });

@@ -1735,7 +1735,10 @@ export class Pipeline {
       try {
         McpRegistry.checkPathInRepo(cwd, pin.path);
         const slice = await readCodeSlice(this.opts.commands, cwd, headSha, pin.path, start, end);
-        if ("text" in slice) text = slice.text;
+        // A range that resolves to nothing but whitespace carries no
+        // excerpt: treat it like an unresolvable pin so it renders
+        // honestly instead of as an empty fence.
+        if ("text" in slice && slice.text.trim() !== "") text = slice.text;
       } catch {
         text = null;
       }
@@ -1743,13 +1746,29 @@ export class Pipeline {
     }
     if (resolved.length === 0) return;
     await this.opts.reviews.mutate(reviewId, (draft) => {
-      const existing = new Set((draft.pinnedCode ?? []).map((p) => `${p.path}:${p.start}-${p.end}`));
+      const byKey = new Map((draft.pinnedCode ?? []).map((p) => [`${p.path}:${p.start}-${p.end}`, p]));
       for (const r of resolved) {
         const key = `${r.path}:${r.start}-${r.end}`;
-        if (existing.has(key)) continue;
-        existing.add(key);
+        const prev = byKey.get(key);
         const language = languageForPath(r.path);
-        (draft.pinnedCode ??= []).push({
+        if (prev) {
+          // Re-pin of a range whose stored excerpt is empty (on disk from
+          // before text was persisted, or never resolvable until now):
+          // refill it in place. Entries that already have text are left
+          // alone, as are empty entries the text still does not resolve for.
+          if (prev.text === "" && r.text !== null) {
+            prev.text = r.text;
+            prev.sha = headSha;
+            if (language !== undefined) prev.language = language;
+            else delete prev.language;
+            delete prev.needsRepining;
+            delete prev.remappedSha;
+            delete prev.remappedStart;
+            delete prev.remappedEnd;
+          }
+          continue;
+        }
+        const entry = {
           path: r.path,
           start: r.start,
           end: r.end,
@@ -1757,7 +1776,9 @@ export class Pipeline {
           text: r.text ?? "",
           ...(language !== undefined ? { language } : {}),
           ...(r.text === null ? { needsRepining: true as const } : {}),
-        });
+        };
+        (draft.pinnedCode ??= []).push(entry);
+        byKey.set(key, entry);
       }
     });
   }
