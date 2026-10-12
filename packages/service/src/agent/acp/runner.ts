@@ -25,6 +25,7 @@ import {
   type SessionPolicy,
   type TransportFactory,
 } from "./connection.js";
+import { friendlySessionStartError } from "../../exec/shim-resolve.js";
 import { toAcpMcpServers } from "./mcp.js";
 import { aggregateTurnUsage, deltaTurnUsage, type TurnUsage } from "./usage.js";
 import { errorMessage, isCancelError, isRetryableError } from "./errors.js";
@@ -184,7 +185,12 @@ export class AcpAgentRunner implements AgentRunner {
         _meta: meta,
       });
     } catch (e) {
-      throw new Error(`couldn't start a ${provider} session: ${errorMessage(e)}`, { cause: e });
+      // A version manager refusing the review copy (issue #105) reads as
+      // raw adapter JSON; say in plain words which command failed and what
+      // to do (the real path is named when the transport knows it).
+      throw new Error(friendlySessionStartError(provider, errorMessage(e), this.conn(provider).adapterBin), {
+        cause: e,
+      });
     }
     const r = res as {
       sessionId: string;

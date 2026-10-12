@@ -24,6 +24,8 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { resolvePathFromLoginShell } from "../../exec/shell-path.js";
 import { agentBinEnv, resolveAgentBin } from "../../exec/agent-bins.js";
+import { miseIgnoreEnv } from "../../exec/shim-resolve.js";
+import { loadConfig } from "../../config.js";
 import { diagnoseTool, TOOL_SPECS } from "../../diagnostics/tools.js";
 import { RealCommandRunner } from "../../exec/runner.js";
 import {
@@ -96,6 +98,11 @@ export interface Transport {
   /** Resolves when the underlying process/stream dies. */
   onDeath: Promise<void>;
   dispose: () => void;
+  /**
+   * The agent executable the adapter was pointed at
+   * (`CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`), for error messages.
+   */
+  adapterBin?: string;
 }
 
 export type TransportFactory = (provider: ProviderId) => Promise<Transport>;
@@ -290,12 +297,28 @@ export async function spawnAdapterTransport(
     );
   }
   void wanted;
+  // Second layer (issue #105): a stray version-manager invocation inside
+  // the session must ignore the review copies' configs. `mise` reads
+  // MISE_IGNORED_CONFIG_PATHS before any config file, so pointing it at
+  // our own worktrees directory keeps the shim working from a global
+  // default there without ever trusting the review copy.
+  const spawnEnv = {
+    ...process.env,
+    ...AutoBins,
+    ...(opts?.env ?? {}),
+  };
+  let worktreesIgnore: Record<string, string> = {};
+  try {
+    worktreesIgnore = miseIgnoreEnv(loadConfig().dataDir, spawnEnv);
+  } catch {
+    // best-effort: the session still runs without it
+  }
+  const adapterBin = spawnEnv[adapterVar];
   const proc: ChildProcess = spawn(process.execPath, [entry], {
     stdio: ["pipe", "pipe", "pipe"],
     env: {
-      ...process.env,
-      ...AutoBins,
-      ...(opts?.env ?? {}),
+      ...spawnEnv,
+      ...worktreesIgnore,
       PATH: mergedPath,
       NO_BROWSER: "1",
     },
@@ -339,6 +362,7 @@ export async function spawnAdapterTransport(
   } = {
     caller,
     onDeath,
+    ...(adapterBin ? { adapterBin } : {}),
     dispose: () => {
       try {
         conn.close();
@@ -385,6 +409,12 @@ export class ProviderConnection {
 
   get alive(): boolean {
     return this.transport !== null;
+  }
+
+  /** The agent executable the live adapter was pointed at, if known. */
+  get adapterBin(): string | null {
+    const t = this.transport as { adapterBin?: string } | null;
+    return t?.adapterBin ?? null;
   }
 
   async ensure(): Promise<AgentCaller> {
