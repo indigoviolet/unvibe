@@ -55,4 +55,11 @@ export interface RouteDeps {
   updateHooks?: UpdateHooks;
   /** SERVICE_VERSION, set by `server.ts` for build identity in update routes. */
   serviceVersion?: string;
+  /**
+   * Native folder picker overrides (#26): platform + env for the
+   * `POST /api/repos/pick-folder` dialog. Production omits both (real
+   * platform, real display); tests inject them to cover the macOS and
+   * Linux branches on Linux CI.
+   */
+  pickFolder?: import("../repos/pick-folder.js").PickFolderOptions;
 }

@@ -50,10 +50,59 @@ export interface ReposResponse {
   repos: Repo[];
 }
 
+/**
+ * Add a repo (#27): exactly one of `path` / `url`.
+ * - `path`: absolute local path of an existing checkout (unchanged M1 shape).
+ * - `url`: GitHub repo URL, bare `owner/name`, or PR URL — Unvibe clones
+ *   into its own storage (`<dataDir>/repos/<owner>/<name>`) and remembers
+ *   it marked `managed`. See `repos.ts` for the accepted forms.
+ */
 export interface AddRepoRequest {
   /** Absolute local path of the checkout. */
-  path: string;
+  path?: string;
+  /** GitHub repo URL, `owner/name`, or PR URL (managed clone). */
+  url?: string;
 }
+
+/**
+ * `POST /api/repos` response: the full list (like `GET /api/repos`) plus
+ * the PR number when the request added via a PR URL, for the later web
+ * step (paste-PR-offers-to-add then opens the PR).
+ */
+export interface AddRepoResponse extends ReposResponse {
+  prNumber?: number;
+}
+
+/**
+ * `DELETE /api/repos/:id` response (#27): the repo is forgotten; the local
+ * clone is removed only for repos Unvibe cloned (`managed`). Refused (409)
+ * while the repo still has reviews — delete those first, never orphaned.
+ */
+export interface RemoveRepoResponse {
+  ok: true;
+  /** True when a managed clone directory was removed from the data dir. */
+  removedClone: boolean;
+}
+
+/**
+ * `POST /api/repos/pick-folder` (#26): ask the service to open a native
+ * "choose folder" dialog on the user's own machine and report what
+ * happened. No request body. A browser folder picker cannot supply an
+ * absolute path, so the dialog runs service-side (macOS `osascript`,
+ * Linux `zenity`/`kdialog`); the caller still adds the chosen path through
+ * `POST /api/repos`, which validates it as a git checkout.
+ */
+export type PickFolderResponse =
+  /** The user chose a folder: absolute path, trailing newline/slash trimmed. */
+  | { status: "picked"; path: string }
+  /** The user dismissed the dialog: the caller does nothing. */
+  | { status: "cancelled" }
+  /**
+   * No dialog could be opened (no tool, no display, other platform):
+   * `reason` is short human-readable copy the UI shows inline so the user
+   * falls back to typing the path.
+   */
+  | { status: "unavailable"; reason: string };
 
 export type ChangesFilter = "authoring" | "review-requested" | "branches" | "recent" | "all";
 
@@ -74,6 +123,12 @@ export interface RepoChange {
 
 export interface RepoChangesResponse {
   changes: RepoChange[];
+  /**
+   * #27: set when a managed clone's refresh fetch failed (offline,
+   * logged-out `gh`). The listing still succeeds on stale data; the UI
+   * shows this note instead of failing.
+   */
+  fetchError?: string;
 }
 
 // --- reviews -------------------------------------------------------------

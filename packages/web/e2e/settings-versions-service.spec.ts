@@ -100,10 +100,25 @@ test.describe("settings + versions on the real service", () => {
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-    await page.getByLabel("Add a repo by path").fill(repoDir);
-    await page.getByRole("button", { name: "Add by path" }).click();
-    await expect(page.getByText(`local/${path.basename(repoDir)}`).first()).toBeVisible();
-    await page.locator("#new-review .ci button").filter({ hasText: "feature" }).first().click();
+    // Repos are added in Settings; the start page follows the selector.
+    // Wait for the repo state to settle: the selector or the empty state
+    // (the repo may already exist in the service DB from an earlier test).
+    await expect(
+      page.locator('select[aria-label="Repository"], [data-testid="no-repos"]').first(),
+    ).toBeVisible();
+    if (await page.locator('[data-testid="no-repos"]').isVisible()) {
+      await page.getByRole("link", { name: "Add one in Settings" }).click();
+      await expect(page).toHaveURL(/\/settings#repositories/);
+      await page.getByLabel("Add a repo by path").fill(repoDir);
+      await page.getByRole("button", { name: "Add by path" }).click();
+      await expect(page.locator('[data-testid^="repo-"]')).toContainText(path.basename(repoDir));
+      await page.getByRole("link", { name: "Back to start" }).click();
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+    }
+    await page.getByLabel("Repository").selectOption({ label: `local/${path.basename(repoDir)}` });
+    const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
+    await expect(feature).toBeVisible({ timeout: 30_000 });
+    await feature.click();
     await page.waitForURL(/\/review\/rv_[0-9a-f]+/, { timeout: 60_000 });
     const id = page.url().match(/\/review\/([^/?#]+)/)?.[1] ?? "";
     expect(id).toMatch(/^rv_[0-9a-f]+$/);
@@ -116,7 +131,7 @@ test.describe("settings + versions on the real service", () => {
     test.setTimeout(120_000);
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Models, prompts, limits")).toBeVisible();
+    await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
 
     const input = page.locator("#limit-sessionsPerProvider");
     await input.fill("99");
@@ -127,7 +142,7 @@ test.describe("settings + versions on the real service", () => {
     await page.getByRole("button", { name: "Save limits" }).click();
     await expect(page.getByText("Saved")).toBeVisible();
     await page.reload();
-    await expect(page.getByText("Models, prompts, limits")).toBeVisible();
+    await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
     await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("5");
   });
 
@@ -137,7 +152,7 @@ test.describe("settings + versions on the real service", () => {
     reviewId = await openFeatureReview(page);
     // Settings keeps the review-agnostic template view.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Models, prompts, limits")).toBeVisible();
+    await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
     // All 18 PRD §13 templates, from the real prompts dir.
     await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(18);
     const reader = page.locator('[data-testid="prompt-reader"]');

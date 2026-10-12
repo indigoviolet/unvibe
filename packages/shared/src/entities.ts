@@ -21,6 +21,14 @@ export interface Repo {
    * explicitly added (M1 service addition; absent/false = remembered).
    */
   detected?: boolean;
+  /**
+   * #27: true when Unvibe cloned this checkout itself into
+   * `<dataDir>/repos/<owner>/<name>`. Managed clones are refreshed
+   * automatically (`git fetch` before listings/ingest) and their directory
+   * is deleted when the repo is removed. Absent/false = the user's own
+   * checkout, never fetched implicitly, never deleted.
+   */
+  managed?: boolean;
 }
 
 /** One review of a branch or PR. */

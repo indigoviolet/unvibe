@@ -112,14 +112,97 @@ UI); nothing below was edited by this pass.
 
 ### §4.2 Start page — all met
 
-- Repo picker with recents + local checkout detection — met
-  (`routes/repos.ts`, `e2e/start.spec.ts` "prior sessions list").
+- Repo selector in the top bar with remembered + detected checkouts —
+  met (`StartPage.tsx` native `<select>` next to the brand: remembered
+  under "Repos", detected under "Detected checkouts" with the local path
+  as the title; selection persisted in `unvibe.start.repoId`, demo never
+  selectable; `e2e/start.spec.ts` "repo selector lists remembered and
+  detected repos, persisted").
+- Everything follows the chosen repo — met: the Reviews list shows only
+  the selected repo's reviews (filtered on `ReviewSummary.repoId`, which
+  the service populates from the review row — `reviews/list.ts:151` — so
+  no owner/name matching in web code, correct for remembered and
+  `detected-<sha1>` ids alike); PR / branch lists and "Open a PR by URL
+  or number" stay scoped as before; a pasted PR URL for a different known
+  repo opens it and switches the selector; while a new selection loads,
+  the old repo's lists stay hidden behind a loading hint (`listsFor`
+  gate in `StartPage.tsx`; `e2e/start.spec.ts` "reviews list follows the
+  selected repo").
+- No "New review" / "Try the demo" sections — met: no divider,
+  scroll-to button or `newReviewRef` plumbing; the PR / branch sections
+  follow the Reviews list; the demo is a row inside Reviews ("Demo · no
+  tokens", `{ repoId: "demo" }`, shown regardless of the selected repo;
+  an existing demo session row replaces the second entry —
+  `e2e/start.spec.ts` "demo row opens the fixture review").
+  `newreview-agent-hint` sits by Reviews, `newreview-gh-hint` by the PR
+  lists (same `data-testid`s).
+- No repos: short empty state linking to `/settings#repositories` (demo
+  row still shows) — met (`data-testid="no-repos"`; exercised by
+  `e2e/real-service.spec.ts`, whose fresh data dir starts repo-less).
+  A failed `GET /api/repos` keeps sessions visible instead (offline copy
+  in the same box).
+- List loads are per-selection loading / loaded / failed — met: the PR
+  input never waits on the lists; switching repos clears the old lists
+  synchronously (no stale frame) behind a loading hint, and a nonce
+  guarantees every selection pairs with a fresh load (re-selecting the
+  current repo still fires `change` and reloads — without this the
+  effect's id-equality bail-out stuck the page on "Loading…", found via
+  a 3-minute e2e hang whose trace showed completed responses); a 30 s
+  timeout bounds the loading state regardless; a total failure shows an
+  inline error with Retry; one failed filter shows its error in that
+  section while the others render (`Promise.allSettled` in
+  `StartPage.tsx`; the service already degrades gh/git failures to empty
+  per source in `repos/changes.ts`, so gh being down never rejects —
+  whole-request failures are unknown-repo 404s or an unreachable
+  service). Covered by `e2e/start.spec.ts` (fail-all + Retry recovery,
+  fail-two section errors with branches intact, deterministic held-load
+  with release, same-value reselect reloads).
+- Reviews whose repo is in neither list stay reachable — met: sessions
+  with an unknown non-demo `repoId` render in a labelled orphan group at
+  the end of Reviews with working open and Remove (`e2e/start.spec.ts`
+  "reviews for checkouts no longer listed").
+- Repos are added in Settings — met (`RepositoriesSection.tsx`:
+  remembered repos with owner/name + path, add-by-path input with an
+  empty-field hint; `#repositories` anchor; `e2e/settings.spec.ts`
+  "repositories section lists remembered repos and adds by path").
+  Remove is covered by the #27 bullet below (`DELETE /api/repos/:id` +
+  per-kind confirms in the same section).
+- Add by GitHub URL (#27, complete) — met end to end: `POST /api/repos`
+  accepts a URL / `owner/name` / PR URL / `owner/name#N` (shared `repos.ts`
+  parsing + table tests), clones blobless into
+  `<dataDir>/repos/<owner>/<name>` via `gh repo clone`
+  (`GITHUB_TOKEN` unset, prompt-free env), remembers the repo marked
+  `managed`, reuses it on repeat adds (lowercase-canonical, one row per
+  spelling), and refuses/degrades distinctly (400/404/403/gh-login/502);
+  `DELETE /api/repos/:id` forgets the repo and deletes the clone for
+  managed repos only (guarded, refused while reviews exist).
+  UI: Settings → Repositories has a separate add-by-URL row (client-side
+  validation with the same parser, "Cloning owner/name…" busy state,
+  service errors via toast), marks managed clones ("Cloned by Unvibe",
+  "(cloned)" in the start-page selector), and removes with per-kind
+  confirm copy (409 surfaces as is). The start page offers to clone on a
+  pasted PR URL for an unknown repo (confirm selects the repo and opens
+  the PR; cancel keeps the input) and shows the service's `fetchError`
+  note once above the lists.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
   refresh banner counts).
-- Selections remembered — met (`reviews/list.ts` last-opened ordering,
-  `start.spec.ts` “most recent first”).
+<- Selections remembered — met (selector in `localStorage`,
+  `start.spec.ts` persistence round-trip; last-opened ordering in
+  `reviews/list.ts`).
+- Native folder picker (#26) — met: `POST /api/repos/pick-folder`
+  (frontmost osascript dialog / zenity→kdialog with cancelled/unavailable
+  outcomes, `pick-folder.test.ts`) plus the `BrowseFolderButton`
+  (`BrowseFolderButton.test.tsx`), mounted in the Settings Repositories
+  section beside the path field: picking fills the input (the user still
+  clicks "Add by path"), the unavailable reason shows inline
+  (`RepositoriesSection.test.tsx`), and the text field stays as the
+  fallback.
+
+Conformance note: this matches PRD §4.2 ("For the selected repo: …")
+more closely than the previous all-repos Reviews list did — no PRD edit
+needed (that deviation is closed, not added).
 
 ### §4.3 Pages — all met
 
@@ -568,7 +651,9 @@ UI); nothing below was edited by this pass.
 
 ### §14.1 Endpoints — all met (ran)
 
-`GET/POST /api/repos` ✓, `GET /api/repos/:id/changes` ✓,
+`GET/POST /api/repos` ✓, `DELETE /api/repos/:id` ✓ (new, #27: forgets the
+row; deletes the clone directory for managed repos only, guarded to
+`<dataDir>/repos`, refused while reviews exist), `GET /api/repos/:id/changes` ✓,
 `POST /api/reviews` ✓, `GET /api/reviews/:id` (+`?version=n`) ✓,
 `POST …/refresh` ✓, `POST …/update` ✓, `POST …/actions` ✓,
 `PATCH …/hunks/:hash` ✓, `POST …/hunks/:hash/summarize` ✓,
@@ -597,7 +682,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Description round-trip (unedited paragraphs byte-identical) — met
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
-  `gh-writes.test.ts`, doctor/readiness share the wrapper).
+  `gh-writes.test.ts`, doctor/readiness share the wrapper). Managed-clone
+  refresh (#27) is `git fetch origin` on managed checkouts only, before
+  changes listings and review ingest/refresh (best effort, 30 s freshness +
+  in-flight sharing; failures degrade to stale data with a `fetchError`
+  note). User checkouts are never fetched implicitly.
 - Live GitHub submit — met (audit-10, ran 2026-10-11):
   `mise run test:live:submit` green against sandbox draft PR
   `indigoviolet/lvu#2` (fresh temp clone, never `~/dev/lvu`, never merged,
@@ -706,6 +795,15 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
    demo ships pre-rendered SVGs so it needs nothing.
 10. Acronym: second-opinion `workspace-write` (not `read-only`) for Codex
     (`read-only` refuses MCP calls) — `docs/acp-runner.md` quirks 6–7.
+11. Managed clones (#27): the PRD assumes reviews open on existing local
+    checkouts (§4.2 "finds local checkouts", §14 storage). Unvibe now also
+    clones repos itself (`gh repo clone -- --filter=blob:none` into
+    `<dataDir>/repos/<owner>/<name>`, migration 005 `repos.managed`) and
+    keeps those checkouts fresh with `git fetch`; reviews of a managed
+    clone work exactly like reviews of a user checkout (a worktree per
+    review, no separate ingest path). The user never edits the managed
+    checkout, so fetching is safe; removing the repo deletes the clone
+    (managed only), and only while it has no reviews.
 
 ## Open list
 
@@ -764,6 +862,19 @@ covers the whole flow incl. simulated switch + rollback.
  helper's loopback health probe, the `npm` literal, and the bundle shape.
  Open: helper restart on macOS still needs the human pass in
  `docs/macos-testing.md` (see #6).
+
+### Fixed on this branch: managed clones (#27, complete)
+
+- Service + contract + stubbed tests are green (`shared/test/repos.test.ts`,
+  `service/test/repos-url.test.ts` + `repos-review-fixes.test.ts`): add-by-URL,
+  blobless clone, fetch-before-list/ingest/refresh (15 s bound, prompt-free),
+  guarded remove.
+- Web wiring is done: Settings → Repositories has the add-by-URL row (shared
+  client-side validation, named busy state, toasts), managed marks, and
+  per-kind remove confirms; the start page offers to clone on pasted PR URLs
+  for unknown repos and shows `fetchError` once. Covered by mock-mode
+  Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
+  spec for invalid input and path-checkout remove.
 
 ### Fixed in this branch (done, in `check`)
 
