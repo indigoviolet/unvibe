@@ -280,9 +280,18 @@ unvibe start
 `update` refuses while the service runs (the backup needs a quiet store,
 and npm must not replace code under a live process) and reports the
 version before and after. Channel logic lives in plain
-`packages/service/src/update/` (`channels.ts`, `backup.ts`, `update.ts`;
-the CLI is a thin caller) so the step-2 in-app picker can reuse it
-through a service route. `gh` runs with `GITHUB_TOKEN` unset through the
+`packages/service/src/update/` — exactly `channels.ts` (listing, incl.
+the `UpdateChannel` shape: ref, kind, version, commit, source branch,
+build time, current), `install.ts` (global npm install of a ref) and
+`data-backup.ts` (the database rule) — composed for the CLI in
+`src/cli/update-flows.ts`. The step-2 in-app picker reuses the same
+three modules through a service route (`Updater`, owned by that branch);
+`UpdateChannel` mirrors the shared type landing in
+`packages/shared/src/api.ts`, which this branch does not touch. Per-ref
+metadata is read without cloning (`gh api .../contents/package.json?ref=…`
+over the injectable runner); the installed build reports its own
+channel/ref, source branch, commit and build time from its package.json
+(`readInstalledBuild`). `gh` runs with `GITHUB_TOKEN` unset through the
 injectable command runner, like everything else.
 
 Database rule (migrations are forward-only and numbered, so one

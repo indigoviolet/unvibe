@@ -533,11 +533,17 @@ UI); nothing below was edited by this pass.
   local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
   guard, `unvibe` provenance field in the generated package.json);
   `unvibe update --list` / `unvibe update <channel> [--keep-data]`
-  lists channels via `gh` (GITHUB_TOKEN unset) and installs
+  lists channels via `gh` (GITHUB_TOKEN unset) — per-ref version, source
+  commit/branch and build time read without cloning
+  (`.../contents/package.json?ref=…`), typed as `UpdateChannel`
+  (mirrors the step-2 shared type; owned by that branch) — and installs
   `github:indigoviolet/unvibe#<channel>` with per-channel database copies
-  under `channel-backups/` (never deleted; service must be stopped).
+  under `channel-backups/` (never deleted; service must be stopped; no
+  restart logic — refusal points at `unvibe stop`). Plain modules are
+  exactly `src/update/{channels,install,data-backup}.ts`, composed for
+  the CLI in `src/cli/update-flows.ts`.
   Evidence: `test/preview-publish.test.ts` (12), `test/update.test.ts`
-  (20), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
+  (27), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
   still green. Note: the live database file is `unvibe.db`
   (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
   and is corrected there — the backup covers both names when present.

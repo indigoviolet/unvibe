@@ -109,3 +109,13 @@ export function restoreChannel(dataDir: string, channel: string): BackupResult {
   }
   return { dir, files };
 }
+
+/**
+ * The rule, stated in `unvibe update` output after every switch so the
+ * behaviour is never surprising.
+ */
+export const DB_RULE =
+  "DB rule: each channel keeps its own copy under channel-backups/ (migrations are " +
+  "forward-only, so one channel's migrated database is wrong for another). Switching backs " +
+  "up the old channel first, then restores the new channel's copy when one exists; " +
+  "backups are never deleted.";

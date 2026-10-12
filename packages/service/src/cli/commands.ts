@@ -242,8 +242,9 @@ async function cmdDoctorCmd(args: string[]): Promise<number> {
 }
 
 async function cmdUpdate(args: string[]): Promise<number> {
-  const { UPDATE_USAGE, runUpdateList, runUpdateToChannel } = await import("../update/update.js");
+  const { UPDATE_USAGE, runUpdateChannelFlow, runUpdateListFlow } = await import("./update-flows.js");
   const { RealCommandRunner } = await import("../exec/runner.js");
+  const { SERVICE_VERSION } = await import("../server.js");
   if (args.includes("--help") || args.includes("-h")) {
     console.log(UPDATE_USAGE);
     return 0;
@@ -253,9 +254,10 @@ async function cmdUpdate(args: string[]): Promise<number> {
     runner: new RealCommandRunner(),
     dataDir: config.dataDir,
     cliScriptPath: process.argv[1],
+    serviceVersion: SERVICE_VERSION,
   };
   if (args.includes("--list")) {
-    const outcome = await runUpdateList(deps);
+    const outcome = await runUpdateListFlow(deps);
     for (const line of outcome.lines) console.log(line);
     return outcome.code;
   }
@@ -269,7 +271,7 @@ async function cmdUpdate(args: string[]): Promise<number> {
     console.error(`unknown flag: ${unknown.join(" ")}\n\n${UPDATE_USAGE}`);
     return 2;
   }
-  const outcome = await runUpdateToChannel(deps, channel, {
+  const outcome = await runUpdateChannelFlow(deps, channel, {
     keepData: args.includes("--keep-data"),
   });
   for (const line of outcome.lines) {
