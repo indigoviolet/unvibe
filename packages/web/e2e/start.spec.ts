@@ -329,3 +329,36 @@ test("a stale managed clone shows the refresh note once", async ({ page }) => {
   // The lists still render underneath.
   await expect(page.getByText("PRs you're authoring")).toBeVisible();
 });
+
+test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.noRepos", "1");
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // Both routes in: paste a PR URL here, or add a repo in Settings.
+  const empty = page.locator('[data-testid="no-repos"]');
+  await expect(empty).toContainText("Paste a PR URL below");
+  await expect(empty.getByRole("link", { name: "add one in Settings" })).toHaveAttribute(
+    "href",
+    "/settings#repositories",
+  );
+  // No repos, no selector yet.
+  await expect(page.getByLabel("Repository")).toHaveCount(0);
+  // A bare number still needs a repo first.
+  await empty.getByLabel("Open a PR by URL or number").fill("5020");
+  await empty.getByRole("button", { name: "Open PR" }).click();
+  await expect(empty).toContainText("Add a repo in Settings first");
+  // A PR URL offers the clone.
+  await empty.getByLabel("Open a PR by URL or number").fill("https://github.com/acme/app/pull/123");
+  await empty.getByRole("button", { name: "Open PR" }).click();
+  const offer = page.locator('[data-testid="pr-clone-offer"]');
+  await expect(offer).toContainText("acme/app isn't in your list. Clone it and open #123?");
+  await offer.getByRole("button", { name: "Clone and open #123" }).click();
+  await expect(page).toHaveURL(/\/review\//, { timeout: 15000 });
+  // Back on the start page the selector exists with the clone selected.
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(page.getByLabel("Repository")).toHaveValue("managed-acme-app");
+  await expect(page.locator('[data-testid="no-repos"]')).toHaveCount(0);
+});

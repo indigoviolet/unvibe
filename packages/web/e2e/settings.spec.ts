@@ -86,8 +86,13 @@ test("repositories add by URL surfaces the service error", async ({ page }) => {
   await expect(section).toBeVisible();
   await section.getByLabel("Add a repo by URL").fill("acme/app");
   await section.getByRole("button", { name: "Clone and add" }).click();
-  await expect(page.locator("#toast")).toContainText("repository not found: acme/app");
+  // The service message stays inline under the row where it can be read
+  // and acted on — not just a transient toast.
+  await expect(section.getByRole("alert")).toContainText("repository not found: acme/app");
   await expect(section.locator('[data-testid="repo-managed-acme-app"]')).toHaveCount(0);
+  // Typing clears it; the control stays usable.
+  await section.getByLabel("Add a repo by URL").fill("acme/other");
+  await expect(section.getByRole("alert")).toHaveCount(0);
 });
 
 test("repositories remove deletes a managed clone with clear confirm copy", async ({ page }) => {
@@ -122,8 +127,11 @@ test("repositories remove is refused while reviews exist", async ({ page }) => {
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Remove urllib3/urllib3" }).click();
   await row.getByRole("button", { name: "Remove", exact: true }).click();
-  await expect(page.locator("#toast")).toContainText("still has 2 reviews");
-  // The row survives the refusal.
+  // The refusal stays inline on the row, with Keep working.
+  await expect(row.getByRole("alert")).toContainText("still has 2 reviews");
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Keep" }).click();
+  await expect(row.getByRole("alert")).toHaveCount(0);
   await expect(row).toBeVisible();
 });
 
