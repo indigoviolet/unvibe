@@ -1366,7 +1366,7 @@ export class Pipeline {
               draft.logTail.push({
                 seq,
                 kind: "new-finding",
-                payload: { summary: applied.title, unverified: validation.unverified },
+                payload: { summary: `${applied.title}\n\n${applied.summary}`, unverified: validation.unverified },
                 scope: { scope: "global" },
               });
             });

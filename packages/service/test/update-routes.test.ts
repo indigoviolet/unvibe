@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { UpdateChannel, UpdateStatusResponse } from "@unvibe/shared";
 import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
-import { createApp } from "../src/server.js";
+import { createApp, SERVICE_VERSION } from "../src/server.js";
 import { SettingsStore } from "../src/settings/index.js";
 import { JobQueue } from "../src/jobs/queue.js";
 import { FakeUpdater, type Updater } from "../src/update/updater.js";
@@ -275,7 +275,7 @@ describe("update switch", () => {
         fromVersion: "0.0.1",
         dataDir: h.dataDir,
         servicePid: process.pid,
-        serviceVersion: "0.0.1",
+        serviceVersion: SERVICE_VERSION,
       });
       // The installed build is identified from the service entry path.
       expect(args["scriptPath"]).toBe(process.argv[1]);
