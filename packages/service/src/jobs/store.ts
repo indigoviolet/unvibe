@@ -20,6 +20,7 @@ interface JobData {
   dedupeKey?: string;
   attempts?: number;
   nextRetryAt?: number;
+  cardId?: string;
 }
 
 export interface JobPersistence {
@@ -57,6 +58,7 @@ function rowToJob(row: {
     ...(data.dedupeKey !== undefined ? { dedupeKey: data.dedupeKey } : {}),
     ...(data.attempts !== undefined ? { attempts: data.attempts } : {}),
     ...(data.nextRetryAt !== undefined ? { nextRetryAt: data.nextRetryAt } : {}),
+    ...(data.cardId !== undefined ? { cardId: data.cardId } : {}),
   };
 }
 
@@ -73,6 +75,7 @@ export class JobStore implements JobPersistence {
       ...(job.dedupeKey !== undefined ? { dedupeKey: job.dedupeKey } : {}),
       ...(job.attempts !== undefined ? { attempts: job.attempts } : {}),
       ...(job.nextRetryAt !== undefined ? { nextRetryAt: job.nextRetryAt } : {}),
+      ...(job.cardId !== undefined ? { cardId: job.cardId } : {}),
     };
     this.db
       .prepare(

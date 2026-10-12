@@ -63,7 +63,12 @@ export interface EnqueueOptions {
   dedupe?: JobDedupeKey;
   promptSnapshot?: string;
   sessionId?: string;
-  /** Card the streamed text belongs to (for `text` events). */
+  /**
+   * Card the job works on, when card-scoped (depth/examples/diagram/
+   * generate/concept/second-opinion). Carried on the job itself (so
+   * snapshots, WS events and the debug views can match it) as well as on
+   * the entry (for `text` events).
+   */
   cardId?: string;
   /** M4: annotation the streamed text belongs to (ask replies, expansions). */
   threadId?: string;
@@ -147,6 +152,7 @@ export class JobQueue {
       ...(opts.promptSnapshot !== undefined ? { promptSnapshot: opts.promptSnapshot } : {}),
       ...(dedupeKey ? { dedupeKey } : {}),
       ...(opts.threadId ? { threadId: opts.threadId } : {}),
+      ...(opts.cardId ? { cardId: opts.cardId } : {}),
     };
     const entry: Entry = {
       job,
@@ -310,6 +316,7 @@ export class JobQueue {
         job,
         run: undefined,
         reviewId: job.reviewId ?? "",
+        ...(job.cardId ? { cardId: job.cardId } : {}),
         seq: this.seq++,
       });
       const entry = this.entries.get(job.id)!;

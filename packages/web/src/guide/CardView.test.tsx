@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Card, ReviewSnapshot } from "@unvibe/shared";
+import type { Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { performFollowUp } from "./actions.js";
@@ -30,7 +30,7 @@ function card(over: Partial<Card> = {}): Card {
   } as unknown as Card;
 }
 
-function seedSnapshot(cards: Card[]): void {
+function seedSnapshot(cards: Card[], jobs: Job[] = []): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
@@ -39,7 +39,7 @@ function seedSnapshot(cards: Card[]): void {
     pages: [{ id: "root", kind: "root", title: "Root", saved: false, cards }],
     annotations: [],
     hunkStates: [],
-    jobs: [],
+    jobs,
     contributions: [],
     logTail: [],
     rev: 1,
@@ -121,6 +121,33 @@ describe("CardView immediate feedback", () => {
     } finally {
       held.restore();
     }
+  });
+
+  test("a live card job with no in-flight entry still shows busy (reload mid-rewrite)", () => {
+    const live = {
+      id: "job-depth-1",
+      kind: "depth",
+      provider: "claude",
+      model: "m",
+      reviewId: REVIEW_ID,
+      priority: 100,
+      state: "running",
+      cardId: "c1",
+    } as Job;
+    seedSnapshot([card()], [live]);
+    expect(useReview.getState().inflight).toEqual({});
+    render(
+      <CardView
+        reviewId={REVIEW_ID}
+        card={card()}
+        lookupPage={() => undefined}
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    expect(document.getElementById("C-c1")?.className).toMatch(/rewriting/);
+    expect(screen.getByRole("status")).toHaveTextContent("Rewriting…");
+    expect(screen.getByRole("button", { name: "Use examples" })).toBeDisabled();
   });
 
   test("depth marks the card as rewriting on click", () => {
