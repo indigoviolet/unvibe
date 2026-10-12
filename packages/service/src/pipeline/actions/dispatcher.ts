@@ -150,6 +150,10 @@ export async function dispatchAction(
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
         if (res.reused) out.reused = true;
+        // Issue #65: the client tells a stored-level switch (silent) from
+        // already-at-the-limit (toast) by comparing this to the level it
+        // saw at click time.
+        if (res.level) out.level = res.level;
         return out;
       }
       case "examples": {

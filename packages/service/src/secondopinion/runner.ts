@@ -598,6 +598,9 @@ export async function requestSecondOpinion(
           jobId: job.id,
         };
         void finalText;
+        // Remove while in flight cancels this job (issue #76): a result
+        // arriving after the abort must not resurrect the block.
+        if (ctx.signal.aborted || req.signal?.aborted) return;
         // Store on the card (attached, not revisable): replace any entry
         // with the same mode (keep one per mode), keep the other mode.
         // Expansions store on the expansion body so depth/undo leave the

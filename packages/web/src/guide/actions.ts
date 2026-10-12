@@ -11,7 +11,7 @@
  * fails, or the answer needs no job (`accepted: false`, `reused`, no
  * `jobId`). `deduplicated` answers follow the existing job.
  */
-import type { ActionResponse, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
+import type { ActionResponse, DepthLevel, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { INFLIGHT_TTL_MS, inflightExpired, useReview, type InFlightKind } from "../state/store.js";
@@ -140,6 +140,18 @@ function serverIdFor(action: ReviewAction, res: ActionResponse): string | null {
     default:
       return null;
   }
+}
+
+/** Current level of a page card or expansion (depth toast baseline). */
+function currentLevel(cardId: string): DepthLevel | undefined {
+  const snap = useReview.getState().snapshot;
+  for (const p of snap?.pages ?? []) {
+    const card = p.cards.find((c) => c.id === cardId);
+    if (card) return card.level;
+  }
+  const ann = snap?.annotations.find((a) => a.id === cardId);
+  if (ann?.type === "expansion" && ann.expansion) return ann.expansion.level;
+  return undefined;
 }
 
 /** Current revision of a page card or expansion (insert toast baseline). */
@@ -293,6 +305,12 @@ export async function performAction(
     target && (action.kind === "examples" || action.kind === "diagram")
       ? currentRevision(target.targetId)
       : undefined;
+  // Depth toast baseline (issue #65): the level at click time. The
+  // service answers a reused depth with the level after the action, so a
+  // stored-level switch (changed) stays silent while already-at-the-limit
+  // (unchanged) toasts.
+  const beforeLevel =
+    target && action.kind === "depth" ? currentLevel(target.targetId) : undefined;
   if (target) useReview.getState().beginInflight(target.targetId, target.kind);
   // Generation guard: a newer click may re-begin the same key while this
   // request is in flight; only this generation's response may settle it.
@@ -338,12 +356,18 @@ export async function performAction(
   }
   if (notAvailable(res)) return res;
   // Audit-10 (#10) reuse: the service returned the stored result with no job.
-  // Tell the user when a repeat adds nothing (deepest + with principle
-  // already, saturated examples/diagram); other reuses are silent since the
-  // stored content is already visible.
+  // Depth toasts only when the level did not change and nothing was added
+  // (issue #65): a stored-level switch answers reused with the new level
+  // and stays silent; already-at-the-limit answers reused with the same
+  // level. Other reuses are silent since the stored content is already
+  // visible.
   if (res.reused) {
-    if (action.kind === "depth") {
-      toast("Already at the deepest level");
+    if (action.kind === "depth" && !res.jobId) {
+      // No level to compare (unknown shape): keep today's toast rather
+      // than silently dropping at-the-limit feedback.
+      if (res.level === undefined || res.level === beforeLevel) {
+        toast(action.direction === "simpler" ? "Already at the simplest level" : "Already at the deepest level");
+      }
     } else if (action.kind === "examples" || action.kind === "diagram") {
       toast("Nothing more to add to this card");
     }

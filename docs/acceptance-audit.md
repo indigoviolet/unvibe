@@ -402,6 +402,11 @@ needed (that deviation is closed, not added).
   (`second-opinion.spec.ts` “disagrees prominently”,
   `second-opinion-service.spec.ts` “blind … cites code, prompt has no
   guide text” — isolation asserted on the real prompt).
+- Remove while a re-run is in flight stays removed (#76): removal
+  cancels the run (`pipeline/actions/second_opinion.ts`) and a result
+  aborted before storing is dropped (`secondopinion/runner.ts`); the
+  mock mirrors it. Re-run waits on its own working state in
+  `second-opinion.spec.ts`.
 
 ### §4.11 PR description — all met
 
@@ -1285,9 +1290,11 @@ Audit-10: §4.4 principle now has an end-to-end drive
 is closed. UI sections were NOT re-audited wholesale per #10; suspicious
 items noticed while passing through (not verified, listed only):
 - Depth + at deepest now toasts via `performAction` `reused` handling
-  (`web/src/guide/actions.ts`) — confirm the copy (“deepest/nothing
-  more”) reads naturally alongside the examples/diagram “Nothing more”
-  toast in `CardView.runInsertAction`.
+  (`web/src/guide/actions.ts`) — settled by #65: the depth response
+  carries the resulting level (`ActionResponse.level`), so a stored-level
+  switch stays silent and only already-at-the-limit toasts (“Already at
+  the deepest level”, “Already at the simplest level” for Simpler —
+  `depthToast.test.ts`, `reuse.test.ts`).
 - `depthViaAgent` normal steps now strip the fixture principle
   (service-only change) — the guide still renders pre-existing principle
   blocks from older snapshots; no migration was added.
