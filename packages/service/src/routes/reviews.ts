@@ -32,6 +32,7 @@ import {
 import { transaction } from "../store/index.js";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
+import { listAllRepos } from "./repos.js";
 import { loadVersionFiles, saveVersionFiles } from "../versions/files.js";
 import { refreshReview } from "../versions/refresh.js";
 import {
@@ -196,7 +197,16 @@ export async function registerReviews(
     if (body.pr === undefined && !body.branch) {
       return reply.code(400).send({ error: "either pr or branch is required" });
     }
-    const repo = ctx.repos.get(body.repoId);
+    let repo = ctx.repos.get(body.repoId);
+    if (!repo) {
+      // Detected checkouts are addressable too: the first review remembers
+      // the checkout under the same id, so the start page's selection holds.
+      const found = (await listAllRepos(ctx)).find((r) => r.id === body.repoId);
+      if (found) {
+        ctx.repos.upsert(found);
+        repo = ctx.repos.get(found.id);
+      }
+    }
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
 
     // #27: managed clones stay fresh — fetch before ingest so PR heads and

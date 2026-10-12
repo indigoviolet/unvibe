@@ -404,7 +404,7 @@ For a rollback drill, lie about the target version in the channels file (with a 
 
 - Data: look in the data dir (`unvibe.db`, per-review folders, `worktrees/`). Point a scratch run at a temp dir with `UNVIBE_DATA_DIR` and a temp port with `UNVIBE_PORT`.
 - Logs: the service logs to stderr (`Unvibe listening on …`, job errors, permission decisions with `UNVIBE_ACP_DEBUG=1`).
-- A job's exact prompt: `GET /api/jobs/:id/prompt` (the Jobs view in Settings links it too), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
+- A job's exact prompt: `GET /api/jobs/:id/prompt` (the Jobs section on the review's debug page links it too), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
 - Environment: `unvibe doctor` locally, `GET /api/readiness` in the app; both share `src/readiness/checks.ts`.
 - Reproduce without tokens: `UNVIBE_AGENT=replay` for agent behaviour, `UNVIBE_AGENT=none` for everything else.
 - Restart behaviour: `node scripts/restart-resilience.mjs` exercises SIGKILL mid-stage against the built service.
