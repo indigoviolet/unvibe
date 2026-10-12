@@ -742,7 +742,7 @@ export function StartPage(): React.JSX.Element {
           {!reposLoaded || realRepos.length === 0 ? (
             reposLoaded ? (
               <div data-testid="no-repos">
-                <div className="divider">Repositories</div>
+                <div className="divider">Repos</div>
                 {reposError ? (
                   <p className="hint" role="alert">
                     Couldn&apos;t load the repo list. Check the service is running, then reload the

@@ -128,7 +128,7 @@ export function RepositoriesSection(): React.JSX.Element {
   const remembered = (repos ?? []).filter((r) => !r.detected);
 
   return (
-    <section aria-label="Repositories" id="repositories" style={{ scrollMarginTop: 12 }} data-testid="repositories-section">
+    <section aria-label="Repos" id="repositories" style={{ scrollMarginTop: 12 }} data-testid="repositories-section">
       <p className="hint">
         Repos you can open reviews from. The start page lists these, plus any it finds on this machine.
       </p>

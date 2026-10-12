@@ -15,18 +15,18 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
 });
 
-test("settings default to the Repositories tab; tabs switch panels", async ({ page }) => {
+test("settings default to the Repos tab; tabs switch panels", async ({ page }) => {
   const tabs = page.getByRole("tablist", { name: "Settings sections" });
-  await expect(tabs.getByRole("tab", { name: "Repositories" })).toHaveAttribute(
+  await expect(tabs.getByRole("tab", { name: "Repos" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await expect(page.getByRole("tabpanel", { name: "Repositories" })).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "Repos" })).toBeVisible();
   await expect(page.getByRole("tabpanel", { name: "Models" })).toBeHidden();
   await tabs.getByRole("tab", { name: "Models" }).click();
   await expect(page).toHaveURL("/settings?tab=models");
   await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
-  await expect(page.getByRole("tabpanel", { name: "Repositories" })).toBeHidden();
+  await expect(page.getByRole("tabpanel", { name: "Repos" })).toBeHidden();
 });
 
 test("data tab resets after a confirm step", async ({ page }) => {
@@ -87,7 +87,7 @@ test("repositories section is reachable at ?tab=repositories", async ({ page }) 
 
 test("older #section links land on the matching tab", async ({ page }) => {
   await page.goto("/settings#repositories");
-  await expect(page.getByRole("tab", { name: "Repositories" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Repos" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
