@@ -35,6 +35,11 @@ test("card control is one icon button running check by default; run shows disagr
   await expect(block.locator(".lk[data-refs]").first()).toBeVisible();
   // Re-run keeps one per mode; remove clears it.
   await block.getByRole("button", { name: /Re-run second opinion/ }).click();
+  // Wait for the re-run itself to finish: its working state appears and
+  // clears when the new result lands (the old block already satisfies a
+  // plain visibility wait, so that would prove nothing — issue #76).
+  await expect(block.getByRole("button", { name: "Working…" })).toBeVisible({ timeout: 5000 });
+  await expect(block.getByRole("button", { name: "Working…" })).toHaveCount(0, { timeout: 5000 });
   await expect(page.locator('#C-central [data-so][data-verdict="disagrees"]')).toBeVisible({ timeout: 5000 });
   expect(await page.locator('#C-central [data-so][data-verdict="disagrees"]').count()).toBe(1);
   await block.getByRole("button", { name: "Remove second opinion" }).click();

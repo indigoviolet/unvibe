@@ -695,6 +695,9 @@ export function resetMockState(): void {
   mockContributions = seedContributions();
   mockUpdatePending = null;
   mockUpdateDown = false;
+  mockSoSeq = 0;
+  for (const p of pendingSecondOpinions) window.clearTimeout(p.timer);
+  pendingSecondOpinions = [];
   try {
     localStorage.removeItem(UPDATE_KEY);
   } catch {
@@ -975,6 +978,41 @@ function settleMockJob(jobId: string): void {
   if (!job || job.state === "done") return;
   job.state = "done";
   emitJobs();
+}
+
+/**
+ * Pending mock second-opinion fills (issue #76): like the service, every
+ * run gets its own job id, so a re-run shows its own working state instead
+ * of attaching to the previous run's done job. Deleting the opinion drops
+ * its fill (a late timer must not resurrect the block) and settles the job
+ * cancelled so no working state sticks around.
+ */
+let mockSoSeq = 0;
+
+interface PendingSecondOpinion {
+  cardId: string;
+  mode: string;
+  jobId: string;
+  resultId: string;
+  timer: number;
+}
+
+let pendingSecondOpinions: PendingSecondOpinion[] = [];
+
+/** Drop pending mock second-opinion fills matching `predicate` (issue #76). */
+function cancelPendingSecondOpinions(predicate: (p: PendingSecondOpinion) => boolean): void {
+  const dropped = pendingSecondOpinions.filter(predicate);
+  if (dropped.length === 0) return;
+  pendingSecondOpinions = pendingSecondOpinions.filter((p) => !predicate(p));
+  for (const p of dropped) window.clearTimeout(p.timer);
+  let changed = false;
+  mockJobs = mockJobs.map((j) => {
+    if (j.state !== "running" && j.state !== "queued" && j.state !== "backing-off") return j;
+    if (!dropped.some((p) => p.jobId === j.id)) return j;
+    changed = true;
+    return { ...j, state: "cancelled" as const };
+  });
+  if (changed) emitJobs();
 }
 
 /** Emit contributions (accept/dismiss flips status without a refetch). */
@@ -1545,12 +1583,13 @@ export const mockApi = {
     // the mode switch without a service. Blind → partly, check →
     // disagrees (prominent warn styling).
     if (a.kind === "second_opinion") {
-      const jobId = `mock-so-${a.cardId}-${a.mode}`;
+      const jobId = `mock-so-${a.cardId}-${a.mode}-${++mockSoSeq}`;
       const verdict = a.mode === "blind" ? "partly" : "disagrees";
       const missed =
         a.mode === "blind" ? "A lone CR ending is untested too." : "Set-Cookie comma handling is out of scope.";
+      const resultId = `so-${a.cardId}-${a.mode}-mock-second`;
       const result = {
-        id: `so-${a.cardId}-${a.mode}-mock-second`,
+        id: resultId,
         cardId: a.cardId,
         mode: a.mode,
         provider: "codex",
@@ -1576,7 +1615,8 @@ export const mockApi = {
         jobId,
       };
       trackMockJob(jobId, "second-opinion", { cardId: a.cardId });
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
+        pendingSecondOpinions = pendingSecondOpinions.filter((p) => p.jobId !== jobId);
         settleMockJob(jobId);
         // Expansions store the result on the expansion body (survives
         // depth/undo); page cards store on the card.
@@ -1603,12 +1643,21 @@ export const mockApi = {
         mockPages = JSON.parse(JSON.stringify(pages));
         emitPages();
       }, 400);
+      pendingSecondOpinions.push({ cardId: a.cardId, mode: a.mode, jobId, resultId, timer });
       return { accepted: true, jobId };
     }
     if (a.kind === "delete") {
       const target = (a as { targetId?: string }).targetId ?? "";
       const m = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
       if (m) {
+        // Drop the pending fill first (issue #76): a late timer must not
+        // resurrect the removed block.
+        if (m[1].startsWith("so-")) {
+          cancelPendingSecondOpinions((p) => p.resultId === m[1]);
+        } else {
+          const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
+          cancelPendingSecondOpinions((p) => p.cardId === cardId && p.mode === mode);
+        }
         // Expansion results first (stored on the expansion body).
         let removedExp = false;
         for (const ann of annotations) {
