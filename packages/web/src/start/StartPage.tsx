@@ -374,7 +374,7 @@ export function StartPage(): React.JSX.Element {
     // switches the selector to it.
     if (parsed.repoId !== selectedId) selectRepo(parsed.repoId);
     void openReview(`pr-${parsed.pr}`, { repoId: parsed.repoId, pr: parsed.pr });
-  }, [prInput, repos, selectedId, openReview]);
+  }, [prInput, repos, selectedId, openReview, selectRepo]);
 
   // The demo pseudo-repo is never selectable; detected checkouts group
   // separately so they read as auto-found rather than remembered.
