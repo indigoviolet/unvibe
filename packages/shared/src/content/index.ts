@@ -49,3 +49,10 @@ export {
   diagramHash,
   extractD2Links,
 } from "./d2.js";
+export {
+  allDiagramBlocks,
+  findDiagramByHash,
+  findDiagramBySource,
+  liveBlockLists,
+} from "./blocks.js";
+export type { BlockSnapshot } from "./blocks.js";
