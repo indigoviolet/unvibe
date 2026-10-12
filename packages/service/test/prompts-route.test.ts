@@ -3,9 +3,12 @@ import { PROMPT_TEMPLATE_NAMES } from "@unvibe/shared";
 import Fastify from "fastify";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expandAll, registerPrompts, type ExpandedPrompt } from "../src/routes/prompts.js";
+import { expandAll, registerPrompts, toPromptSnapshot, type ExpandedPrompt } from "../src/routes/prompts.js";
+import { buildBasePack } from "../src/context/index.js";
+import { FakeCommandRunner } from "../src/exec/index.js";
 import { loadTemplatesDirSync } from "../src/prompts/index.js";
 import { fixtureSnapshot, HEAD_SHA } from "./fixtures.js";
+import { setupReview } from "./m6-helpers.js";
 
 const REPO_PROMPTS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "prompts");
 
@@ -103,5 +106,67 @@ describe("GET /api/prompts", () => {
     const a = expandAll(lib, fixtureSnapshot());
     const b = expandAll(lib, fixtureSnapshot());
     expect(a.map((e) => e.expanded)).toEqual(b.map((e) => e.expanded));
+  });
+});
+
+describe("toPromptSnapshot pinned code (#37)", () => {
+  const PIN_TEXT = "PIN-PROBE-37 y = 2";
+  const authed = { authorization: "Bearer tok" };
+
+  it("passes the snapshot's pins through so the base pack and expanded prompt render L1b", async () => {
+    const { app, ctx, reviewId } = await setupReview(new FakeCommandRunner());
+    try {
+      await ctx.reviews.mutate(reviewId, (draft) => {
+        draft.pinnedCode = [
+          { path: "a.py", start: 1, end: 2, sha: "a".repeat(40), text: PIN_TEXT, language: "python" },
+        ];
+      });
+      const snap = ctx.reviews.getSnapshot(reviewId)!;
+      expect(snap.pinnedCode).toHaveLength(1);
+
+      // The adapter the pipeline, the prompts expansion and the debug page share.
+      const promptSnap = toPromptSnapshot(snap);
+      expect(promptSnap.pinnedCode).toHaveLength(1);
+      expect(promptSnap.pinnedCode[0].text).toBe(PIN_TEXT);
+
+      // Pipeline base pack: the same builder `ensureBase` uses.
+      const pack = buildBasePack(promptSnap, "L0 instructions");
+      expect(pack.l1b).toContain(PIN_TEXT);
+      expect(pack.l1b).toContain("code:a.py:1-2@");
+      expect(pack.l1b).not.toContain("(none)");
+      expect(pack.user).toContain(PIN_TEXT);
+
+      // Expanded-prompt view: the same expansion `GET /api/prompts?review=` uses.
+      const lib = loadTemplatesDirSync(REPO_PROMPTS);
+      const base = expandAll(lib, promptSnap).find((e) => e.name === "base_pack")!;
+      expect(base.expanded).toContain(PIN_TEXT);
+
+      // End to end through the wired snapshot provider.
+      const res = await app.inject({ method: "GET", url: `/api/prompts?review=${reviewId}`, headers: authed });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { expanded: { name: string; expanded: string }[] };
+      expect(body.expanded.find((e) => e.name === "base_pack")!.expanded).toContain(PIN_TEXT);
+
+      // Size accounting: the pack token total covers L1b, so pins count
+      // toward the base tokens the pipeline records.
+      const bare = buildBasePack(toPromptSnapshot({ ...snap, pinnedCode: undefined }), "L0 instructions");
+      expect(pack.tokens).toBeGreaterThan(bare.tokens);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("no pins still renders (none) in L1b", async () => {
+    const { app, ctx, reviewId } = await setupReview(new FakeCommandRunner());
+    try {
+      const snap = ctx.reviews.getSnapshot(reviewId)!;
+      expect(snap.pinnedCode ?? []).toHaveLength(0);
+      const promptSnap = toPromptSnapshot(snap);
+      expect(promptSnap.pinnedCode).toEqual([]);
+      const pack = buildBasePack(promptSnap, "L0 instructions");
+      expect(pack.l1b).toContain("(none)");
+    } finally {
+      await app.close();
+    }
   });
 });
