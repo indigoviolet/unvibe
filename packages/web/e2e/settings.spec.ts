@@ -38,7 +38,7 @@ test("data tab resets after a confirm step", async ({ page }) => {
   await panel.getByRole("button", { name: "Reset data…" }).click();
   await panel.getByRole("button", { name: "Reset", exact: true }).click();
   await expect(panel.getByRole("status")).toHaveText(/Removed \d+ reviews?\./);
-  await page.getByRole("link", { name: "Back to start" }).click();
+  await page.getByRole("link", { name: "Back to start page" }).click();
   await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
 });
 
@@ -177,7 +177,7 @@ test("repositories remove only forgets a path checkout", async ({ page }) => {
   await expect(row).toBeVisible();
   await expect(row).not.toContainText("Cloned by Unvibe");
   await row.getByRole("button", { name: "Remove local/fake-checkout" }).click();
-  await expect(row).toContainText("Forget this repo? /tmp/fake-checkout stays untouched on disk.");
+  await expect(row).toContainText("Remove this repo from the list? /tmp/fake-checkout is not touched.");
   await row.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(row).toHaveCount(0);
 });
@@ -189,10 +189,10 @@ test("repositories remove is refused while reviews exist", async ({ page }) => {
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Remove urllib3/urllib3" }).click();
   await row.getByRole("button", { name: "Remove", exact: true }).click();
-  // The refusal stays inline on the row, with Keep working.
+  // The refusal stays inline on the row, with Cancel working.
   await expect(row.getByRole("alert")).toContainText("still has 2 reviews");
   await expect(row).toBeVisible();
-  await row.getByRole("button", { name: "Keep" }).click();
+  await row.getByRole("button", { name: "Cancel" }).click();
   await expect(row.getByRole("alert")).toHaveCount(0);
   await expect(row).toBeVisible();
 });
@@ -212,7 +212,7 @@ test("model pickers list provider models and warn on same-model second opinion",
   });
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Models" }).click();
-  await expect(page.locator('[data-testid="model-main"]').getByText(/adapter not installed or not logged in/)).toBeVisible();
+  await expect(page.locator('[data-testid="model-main"]').getByText(/couldn't list custom models/)).toBeVisible();
 
   // Second opinion on the same model as main warns (PRD §4.10).
   const second = page.locator('[data-testid="model-secondOpinion"]');
@@ -267,7 +267,7 @@ test("settings link is plain; the review context lives on the debug page", async
   await page.goto("/review/demo");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL("/settings");
-  await expect(page.getByRole("link", { name: "Back to start" })).toHaveAttribute("href", "/");
+  await expect(page.getByRole("link", { name: "Back to start page" })).toHaveAttribute("href", "/");
   // Browser back returns to the review (Settings pushes a history entry).
   await page.goBack();
   await expect(page).toHaveURL("/review/demo");

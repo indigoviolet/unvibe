@@ -24,9 +24,7 @@
     /* storage unavailable: polling still works */
   }
   var status = document.getElementById("status");
-  var tries = 0;
   function poll() {
-    tries += 1;
     fetch("/api/health", { cache: "no-store" })
       .then(function (res) {
         if (!res.ok) throw new Error("down");

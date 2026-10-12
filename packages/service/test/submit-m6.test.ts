@@ -151,7 +151,7 @@ describe("submit", () => {
         payload: {},
       });
       expect(res.statusCode).toBe(409);
-      expect((res.json() as { error: string }).error).toMatch(/head moved/i);
+      expect((res.json() as { error: string }).error).toMatch(/new commits/i);
       expect(runner.calls).toHaveLength(1);
     } finally {
       await app.close();
@@ -328,7 +328,7 @@ describe("submit crash safety (in-flight lease)", () => {
         headers: authed,
         payload: {},
       });
-      expect((again.json() as { reason: string }).reason).toMatch(/already submitted/);
+      expect((again.json() as { reason: string }).reason).toMatch(/already on GitHub/);
     } finally {
       await app.close();
     }

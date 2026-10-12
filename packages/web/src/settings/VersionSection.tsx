@@ -251,8 +251,7 @@ export function VersionSection({
             Couldn&apos;t load version info: {error}
           </p>
         ) : null}
-        {!enabled ? (
-        ) : (
+        {!enabled ? null : (
           <>
             <CurrentVersion row={currentRow} build={status?.build ?? null} fallback={healthVersion} />
             {status && !status.build ? (

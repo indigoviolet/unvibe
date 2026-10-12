@@ -1044,7 +1044,7 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
         ? { kind: "inline", path: file.path, line: host.line, side: "RIGHT" }
         : { kind: "general", reason: `unknown file ${host.fileKey}` };
     } else {
-      location = { kind: "general", reason: host.kind === "block" ? "guide comment" : "description comment" };
+      location = { kind: "general", reason: host.kind === "block" ? "Not tied to a line of the diff, so it posts as a general PR comment." : "A comment on the PR description posts as a general PR comment." };
     }
     return { threadId: thread.id, location, text: mockPostText(thread) };
   });
@@ -1856,8 +1856,8 @@ export const mockApi = {
         messages: [],
         post: false,
         note: false,
-        working: "Thinking…",
-        expansion: { blocks: [], level: "standard", read: false, collapsed: false, revision: 1, undoStack: [], working: "Thinking…" },
+        working: "Writing answer…",
+        expansion: { blocks: [], level: "standard", read: false, collapsed: false, revision: 1, undoStack: [], working: "Writing answer…" },
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
       trackMockJob(jobId, "ask", { cardId, threadId: id });
@@ -2226,7 +2226,7 @@ export const mockApi = {
     const models = catalog[provider];
     if (!models) {
       throw new Error(
-        `GET /api/models?provider=${provider}: 404 {"error":"no models for provider \\"${provider}\\": adapter not installed or not logged in"}`,
+        `GET /api/models?provider=${provider}: 404 {"error":"couldn't list ${provider} models — check that its CLI is installed and logged in"}`,
       );
     }
     return { provider, models };
@@ -2343,7 +2343,7 @@ export const mockApi = {
   updateChannels: async (): Promise<{ channels: UpdateChannel[] }> => {
     await wait(80);
     if (getMockSettings().versionPickerEnabled !== true) {
-      throw new Error('GET /api/update/channels: 404 {"error":"version picker is disabled"}');
+      throw new Error('GET /api/update/channels: 404 {"error":"channel switching is turned off (turn it on in Settings → Version)"}');
     }
     return { channels: mockUpdateChannels() };
   },
@@ -2351,7 +2351,7 @@ export const mockApi = {
   updateSwitch: async (ref: string, force?: boolean): Promise<UpdateSwitchResponse> => {
     await wait(80);
     if (getMockSettings().versionPickerEnabled !== true) {
-      throw new Error('POST /api/update/switch: 404 {"error":"version picker is disabled"}');
+      throw new Error('POST /api/update/switch: 404 {"error":"channel switching is turned off (turn it on in Settings → Version)"}');
     }
     const target = MOCK_UPDATE_CHANNELS.find((c) => c.ref === ref);
     if (!target) {

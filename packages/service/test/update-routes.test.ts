@@ -195,7 +195,7 @@ describe("update channels", () => {
       expect((await h.app.inject(auth("/api/update/channels"))).statusCode).toBe(404);
       expect((await h.app.inject({ method: "GET", url: "/api/update/channels" })).statusCode).toBe(401);
       const body = (await h.app.inject(auth("/api/update/channels"))).json() as { error: string };
-      expect(body.error).toContain("disabled");
+      expect(body.error).toContain("turned off");
     } finally {
       await h.close();
     }
@@ -410,7 +410,7 @@ describe("update switch", () => {
     try {
       const res = await checkout.app.inject(auth("/api/update/switch", { ref: "release", force: true }, "POST"));
       expect(res.statusCode).toBe(409);
-      expect((res.json() as { error: string }).error).toContain("installed build");
+      expect((res.json() as { error: string }).error).toContain("installed with npm");
       expect(checkout.spawned).toHaveLength(0);
     } finally {
       await checkout.close();
@@ -447,7 +447,7 @@ describe("update switch", () => {
     try {
       const res = await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"));
       expect(res.statusCode).toBe(409);
-      expect((res.json() as { error: string }).error).toContain("installed build");
+      expect((res.json() as { error: string }).error).toContain("installed with npm");
       expect(h.spawned).toHaveLength(0);
     } finally {
       await h.close();

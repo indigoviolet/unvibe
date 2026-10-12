@@ -104,8 +104,8 @@ describe("locateThread", () => {
     const located = locateThreadWithText(snap, t);
     expect(located.location.kind).toBe("inline");
     if (located.location.kind === "inline") {
-      expect(located.location.fallbackNote).toMatch(/nearest commentable line/);
-      expect(located.text.startsWith("Note:")).toBe(true);
+      expect(located.location.fallbackNote).toMatch(/nearest line it accepts/);
+      expect(located.text.startsWith("GitHub")).toBe(true);
     }
   });
 
