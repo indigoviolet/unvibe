@@ -285,7 +285,7 @@ mark.anc.exl:hover { color: var(--accent); }
 mark.anc.exl.on { outline: none; }
 #pop .xprev { max-width: 400px; max-height: 50vh; overflow: auto; font-size: 13px; }
 #pop .xprev .prose { font-size: 14px; margin: 4px 0; }
-#pop .xprev .dg svg { min-width: 0; }
+#pop .xprev .dg > .dg-svg > svg { min-width: 0; }
 #pop .xprev pre.code { font-size: 11.5px; }
 mark.anc.on { outline: 2px solid var(--note); }
 .ithread { background: var(--note-soft); border: 1px solid transparent; border-left: 3px solid var(--note); border-radius: 10px; padding: 8px 14px; margin: 8px 0 14px 10px; font-size: 13.5px; }
@@ -347,7 +347,7 @@ mark.anc.on { outline: 2px solid var(--note); }
 .card.child.placeholder { border-style: dashed; background: none; }
 @media (prefers-reduced-motion: reduce) { .fresh, .dots i, .card.rewriting { animation: none; } }
 .dg { overflow-x: auto; margin: 12px 0 4px; }
-.dg svg { display: block; min-width: 540px; width: 100%; height: auto; }
+.dg > .dg-svg > svg { display: block; min-width: 540px; width: 100%; height: auto; }
 /* D2 diagrams (service-rendered SVG, inlined): scale to the container width
    preserving aspect ratio; below the minimum legible width the container
    scrolls instead of shrinking further. The dark theme is a separate

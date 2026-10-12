@@ -163,6 +163,10 @@ test("theme switch while expanded swaps the render", async ({ page }) => {
   expect(lightHtml).toContain("#FFFFFF");
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
   await expect.poll(() => host.innerHTML(), { timeout: 10000 }).toContain("1E1E2E");
+  // The swapped render keeps its size (no blank overlay).
+  const box = await page.locator(`${DIALOG} .dg-ov-doc .dg-svg > svg`).boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThan(500);
   // Close still works after the swap.
   await page.keyboard.press("Escape");
   await expect(page.locator(DIALOG)).toBeHidden();

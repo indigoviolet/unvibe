@@ -75,12 +75,21 @@ interface Props {
 
 export function DiagramOverlay({ reviewId, block, fetchSvg, onClose }: Props): React.JSX.Element {
   const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW);
-  const rootRef = useRef<HTMLDivElement>(null);
+  /** setView that also mirrors into viewRef (theme-swap preservation). */
+  const applyView = (next: ViewTransform | ((v: ViewTransform) => ViewTransform)): void => {
+    setView((v) => {
+      const n = typeof next === "function" ? (next as (v: ViewTransform) => ViewTransform)(v) : next;
+      viewRef.current = n;
+      return n;
+    });
+  };  const rootRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<HTMLDivElement>(null);
   /** The fitted view (whole diagram visible): initial view + Reset target. */
   const fitRef = useRef<ViewTransform>(IDENTITY_VIEW);
-  const fittedFor = useRef<string>("");
+  const viewRef = useRef<ViewTransform>(IDENTITY_VIEW);
+  /** The SVG node already sized (theme swaps adopt a fresh node). */
+  const sizedSvg = useRef<Element | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ d: number; cx: number; cy: number } | null>(null);
   const moved = useRef(0);
@@ -114,26 +123,29 @@ export function DiagramOverlay({ reviewId, block, fetchSvg, onClose }: Props): R
   // Fit-to-view on arrival (pure, unit-tested core in `fitView`): the
   // adopted SVG carries only a viewBox (no width/height), so without an
   // explicit size it would measure 0×0 inside the max-content wrapper.
-  // Stamp its natural size from the viewBox, then fit the whole diagram
-  // into the viewport, centered. Runs once per SVG (theme swaps keep the
-  // user's current zoom); Reset returns here.
+  // Every fresh node gets its natural size stamped; the view only moves
+  // when the user has not diverged from the fit (so a theme swap while
+  // expanded keeps the user's zoom). Reset returns to the fit.
   useEffect(() => {
     const viewport = viewportRef.current;
     const doc = docRef.current;
     if (!viewport || !doc) return;
+    const sameView = (a: ViewTransform, b: ViewTransform): boolean =>
+      a.s === b.s && a.x === b.x && a.y === b.y;
     const fitIfReady = (): void => {
       const svg = doc.querySelector(".dg-svg > svg");
-      if (!svg || fittedFor.current === block.id) return;
+      if (!svg || sizedSvg.current === svg) return;
       const natural = naturalSize(svg);
       if (!natural) return;
+      sizedSvg.current = svg;
       svg.setAttribute("width", String(natural.w));
       svg.setAttribute("height", String(natural.h));
-      const rect = viewport.getBoundingClientRect();
-      const fit = fitView(rect.width, rect.height, natural.w, natural.h);
+      if (!sameView(viewRef.current, fitRef.current)) return;
+      // Content box (clientWidth/Height): the 24px padding is not usable.
+      const fit = fitView(viewport.clientWidth, viewport.clientHeight, natural.w, natural.h);
       if (!fit) return;
-      fittedFor.current = block.id;
       fitRef.current = fit;
-      setView(fit);
+      applyView(fit);
     };
     fitIfReady();
     const observer = new MutationObserver(fitIfReady);
@@ -152,7 +164,7 @@ export function DiagramOverlay({ reviewId, block, fetchSvg, onClose }: Props): R
       const rect = el.getBoundingClientRect();
       const unit = e.deltaMode === 1 ? 16 : 1;
       const factor = Math.exp(-e.deltaY * unit * 0.0015);
-      setView((v) => zoomAround(v, e.clientX - rect.left, e.clientY - rect.top, factor));
+      applyView((v) => zoomAround(v, e.clientX - rect.left, e.clientY - rect.top, factor));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -163,7 +175,7 @@ export function DiagramOverlay({ reviewId, block, fetchSvg, onClose }: Props): R
     const rect = el?.getBoundingClientRect();
     const cx = rect ? rect.width / 2 : 0;
     const cy = rect ? rect.height / 2 : 0;
-    setView((v) => zoomAround(v, cx, cy, factor));
+    applyView((v) => zoomAround(v, cx, cy, factor));
   };
 
   /** Capture a pointer to the viewport (best-effort: absent in jsdom). */
@@ -218,7 +230,7 @@ export function DiagramOverlay({ reviewId, block, fetchSvg, onClose }: Props): R
       if (base.d > 0 && dist > 0) {
         const anchorX = base.cx - rect.left;
         const anchorY = base.cy - rect.top;
-        setView((v) => {
+        applyView((v) => {
           const zoomed = zoomAround(v, anchorX, anchorY, dist / base.d);
           return { ...zoomed, x: zoomed.x + (cx - base.cx), y: zoomed.y + (cy - base.cy) };
         });
@@ -234,7 +246,7 @@ export function DiagramOverlay({ reviewId, block, fetchSvg, onClose }: Props): R
       if (moved.current > OVERLAY_DRAG_THRESHOLD_PX) capture(e.pointerId);
       const ox = dx;
       const oy = dy;
-      setView((v) => ({ ...v, x: v.x + ox, y: v.y + oy }));
+      applyView((v) => ({ ...v, x: v.x + ox, y: v.y + oy }));
     }
   };
 
@@ -274,7 +286,7 @@ export function DiagramOverlay({ reviewId, block, fetchSvg, onClose }: Props): R
           <button type="button" className="ib" aria-label="Zoom in" onClick={() => zoomBy(OVERLAY_ZOOM_STEP)}>
             <span aria-hidden="true">+</span>
           </button>
-          <button type="button" className="tbtn" aria-label="Reset view" onClick={() => setView(fitRef.current)}>
+          <button type="button" className="tbtn" aria-label="Reset view" onClick={() => applyView(fitRef.current)}>
             Reset
           </button>
           <button type="button" className="ib" aria-label="Close diagram" onClick={onClose}>
