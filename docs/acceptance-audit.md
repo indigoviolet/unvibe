@@ -627,6 +627,10 @@ needed (that deviation is closed, not added).
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
   SVG sanitisation, `GET /api/reviews/:id/diagrams/:hash?theme=` endpoint;
   Mermaid removed entirely per user direction, PRD §19.4 resolved as D2).
+  Prompt guidance (#16): short labels (at most two lines), `direction:`
+  to suit the flow, cites on each code-mapped shape/connection, `.class:
+  [ok|bad]` for states — mirrored into `diagram.md`, `explain.md`,
+  `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
 
 ## §14 Shell, install, security, storage — all met
 

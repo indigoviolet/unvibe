@@ -7,16 +7,20 @@
 
 Diagrams are fenced `d2` blocks, optionally followed by a `Caption:` line.
 Cite code by putting link: "diff:<fileKey>:<START>-<END>" (ranges from your
-context, no [[ ]], no tooltip:) directly on 2-3 shapes or connections.
-D2 rules: first line `direction: right` for flows; `shape:
+context, no [[ ]], no tooltip:) inline in braces on each shape or
+connection that maps to code (at least 2), e.g. `a -> b: unfold
+{link: "diff:conn:91-110"}` or `norm: "_normalize_header_values"
+{link: "diff:conn:80-88"}` (a `link:` on its own indented line is
+silently dropped — always attach inline).
+D2 rules: first line `direction:` to suit the flow (`right` for
+left-to-right pipelines, `down` for top-down chains); `shape:
 sequence_diagram` for sequences with participants; shapes as `id: "Short
-label"`; edges as `a -> b: label`; citations inline in braces, e.g.
-`a -> b: unfold {link: "diff:conn:91-110"}` or `norm:
-"_normalize_header_values" {link: "diff:conn:80-88"}` (a `link:` on its own
-indented line is silently dropped — always attach inline).
+label"` with every label short (a few words, at most two lines — long
+single-line labels overflow their boxes); edges as `a -> b: label`; mark
+good/bad states with `*.class: [ok]` / `[bad]`.
 Limits: at most 12 shapes and 16 connections; no icon:, no shape: image, no
 imports, no markdown labels, no layers/scenarios/steps/boards, no vars, no
-classes, no tooltip:. Example:
+`classes:` stanzas, no tooltip:. Example:
 
 ```d2
 direction: right
