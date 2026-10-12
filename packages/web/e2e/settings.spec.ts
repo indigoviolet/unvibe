@@ -12,7 +12,7 @@ import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/settings");
-  await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
 });
 
 test("settings default to the Repositories tab; tabs switch panels", async ({ page }) => {
@@ -227,7 +227,7 @@ test("limits persist across reload", async ({ page }) => {
   await page.getByRole("button", { name: "Save limits" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Limits and budgets" })).toHaveAttribute(
     "aria-selected",
     "true",

@@ -66,7 +66,7 @@ test.describe("doctor on the real service", () => {
     test.setTimeout(60000);
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 20000 });
     await page.getByRole("tab", { name: "Models" }).click();
     // Static fallback carries names (Sonnet/Opus/GPT) even with UNVIBE_AGENT=none.
     const main = page.locator('[data-testid="model-main"]');

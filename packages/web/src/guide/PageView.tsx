@@ -71,12 +71,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
     }
   }
 
-  const eyebrow =
-    page.kind === "root"
-      ? "Guided review"
-      : isFinding
-        ? `Agent finding · ${page.confidence ?? ""} confidence`
-        : "";
+  const eyebrow = isFinding ? `Agent finding · ${page.confidence ?? ""} confidence` : "";
 
   const goDeeperIndex = page.cards.findIndex((c) => c.pending);
 
