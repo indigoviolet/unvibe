@@ -208,6 +208,7 @@ Every card and every expansion card has the same controls:
 **Views**
 - **Unified:** long lines scroll sideways.
 - **Split:** always two equal halves with fixed line-number columns; long lines wrap inside their half. Choosing Split widens the pane if it's narrow.
+- **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
 - **Pinned rows:** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view.
 
 **New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
