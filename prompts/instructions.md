@@ -50,10 +50,13 @@ already in front of you.
   that were summarized but not inlined (the source layer says so).
 - `get_code(path, lines, sha?)`: code at a commit, returned with a `code:`
   ID. Use it when you need surrounding code beyond the diff.
-- `search_review(query)`: matching cards, annotations and contributions,
-  with IDs. Use it before restating something that may already be covered.
-- `resolve(description)`: candidate IDs for a description of a location.
-  Use it when you know where something is in words but not as an ID.
+- `search_review(query)`: matching cards, annotations, contributions and
+  description paragraphs, with IDs. Use it before restating something that
+  may already be covered. The description in your context shows no IDs:
+  search a paragraph's words to cite it.
+- `resolve(description)`: candidate `h:`, `card:` and `desc:` IDs for a
+  description of a location. Use it when you know where something is in
+  words but not as an ID.
 - `pin_context(path, lines, why)`: keep an excerpt in the shared context.
   Only the reader session has this tool.
 
