@@ -304,3 +304,20 @@ describe("D2Diagram legibleText (#16)", () => {
     expect((document.querySelector(".dg-svg svg") as SVGSVGElement).style.minWidth).toBe("");
   });
 });
+
+describe("D2Diagram ok/bad classes (#16)", () => {
+  // D2 passes unknown classes through on the shape group; the app's
+  // stylesheet paints `.ok`/`.bad` in the guide palette (no `classes:`
+  // stanza needed, and those stay rejected by the service pre-check).
+  const CLASSED =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">` +
+    `<g class="YQ== ok"><rect id="a" class="stroke-B1 fill-B6" x="1" y="1" width="10" height="10"/></g>` +
+    `<g class="Yg== bad"><rect id="b" class="stroke-B1 fill-B6" x="20" y="1" width="10" height="10"/></g></svg>`;
+
+  it("keeps ok/bad classes through adoption", async () => {
+    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => CLASSED} />);
+    await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
+    expect(document.querySelector(".dg-svg svg .ok rect")).not.toBeNull();
+    expect(document.querySelector(".dg-svg svg .bad rect")).not.toBeNull();
+  });
+});

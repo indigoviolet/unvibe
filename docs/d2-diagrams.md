@@ -20,6 +20,16 @@ normalize: _normalize_header_values { link: "diff:conn:91-110" }
 
 No `[[ ]]` wrapper and no `tooltip:`. The single source of the wording given to models is `prompts/includes/d2-convention.md`. In a 16-generation live run across both providers, every output compiled first try and citations reached the SVG intact in 15 of 16 first try, 16 of 16 after one repair.
 
+## Look (issue #16)
+
+The two renders keep D2's built-in themes (0 light / 200 dark); the web
+app remaps D2's uniform blue to the guide palette with stylesheet rules
+over the classes D2 emits (`prototype.css`, `.dg-d2 …`), so served bytes
+— and the fixture seeds — never change. Agents may mark shapes
+`*.class: [ok]` / `[bad]`: D2 passes unknown classes through and the
+stylesheet paints them with the guide's ok/warn colours. `classes:`
+stanzas stay rejected by the pre-check (they can smuggle fonts).
+
 ## Pipeline (`packages/service/src/diagrams/`)
 
 1. Extract every `link:` value from the source.

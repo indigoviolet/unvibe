@@ -176,6 +176,27 @@ test("wide diagram keeps labels legible and scrolls inside the card (#16)", asyn
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
+test("diagram wears the guide palette in light and dark (#16)", async ({ page }) => {
+  await gotoReview(page);
+  const shape = page.locator(`${FLOW} .dg-svg rect.stroke-B1`).first();
+  const label = page.locator(`${FLOW} .dg-svg text.fill-N1`).first();
+  await expect(shape).toBeVisible({ timeout: 15000 });
+  const light = await shape.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { fill: cs.fill, stroke: cs.stroke };
+  });
+  // D2's default blue (#0D32B2 on #F7F8FE) is remapped: teal borders on
+  // surface fills, ink labels.
+  expect(light).toEqual({ fill: "rgb(255, 255, 255)", stroke: "rgb(11, 110, 120)" });
+  expect(await label.evaluate((el) => getComputedStyle(el).fill)).toBe("rgb(27, 31, 39)");
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+  await expect
+    .poll(() => shape.evaluate((el) => getComputedStyle(el).stroke), { timeout: 10000 })
+    .toBe("rgb(86, 194, 203)");
+  expect(await shape.evaluate((el) => getComputedStyle(el).fill)).toBe("rgb(25, 29, 35)");
+  expect(await label.evaluate((el) => getComputedStyle(el).fill)).toBe("rgb(229, 232, 237)");
+});
+
 test("800px window keeps the diagram readable with scroll, not breakage", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 900 });
   await gotoReview(page);

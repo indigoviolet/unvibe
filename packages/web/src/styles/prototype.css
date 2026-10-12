@@ -355,6 +355,29 @@ mark.anc.on { outline: 2px solid var(--note); }
 .dg-d2 > .dg-svg > svg { min-width: 480px; }
 .dg-loading { min-height: 220px; display: flex; align-items: center; }
 .dg-loading .working { flex: 1; }
+/* D2 palette restyle (issue #16): D2's default uniform blue (light
+   #0D32B2, dark #CBA6f7) is remapped to the guide palette through the
+   classes D2 emits on every shape/connection. These selectors beat D2's
+   own per-render rules (scoped to three classes by `d2sanitize.ts`) and
+   also override the matching presentation attributes, in both themes
+   (each render only carries its own theme's hexes; `var()` resolves to
+   the current one). Served bytes are untouched, so cached renders and
+   fixture seeds stay valid. */
+.dg-d2 .dg-svg svg .fill-B1 { fill: var(--accent); }
+.dg-d2 .dg-svg svg .stroke-B1, .dg-d2 .dg-svg svg .stroke-B2 { stroke: var(--accent); }
+.dg-d2 .dg-svg svg .fill-B6 { fill: var(--surface); }
+.dg-d2 .dg-svg svg .fill-N7 { fill: var(--surface); }
+.dg-d2 .dg-svg svg .fill-N1 { fill: var(--ink); }
+.dg-d2 .dg-svg svg .fill-N2 { fill: var(--muted); }
+/* ok/bad states (issue #16): agents mark shapes with `.class: [ok]` or
+   `[bad]` (D2 passes unknown classes through; `classes:` stanzas stay
+   rejected). These outrank the default restyle above. */
+.dg-d2 .dg-svg svg .ok .fill-B6 { fill: var(--add); }
+.dg-d2 .dg-svg svg .ok .fill-B1 { fill: var(--ok); }
+.dg-d2 .dg-svg svg .ok .stroke-B1, .dg-d2 .dg-svg svg .ok .stroke-B2 { stroke: var(--ok); }
+.dg-d2 .dg-svg svg .bad .fill-B6 { fill: var(--warn-soft); }
+.dg-d2 .dg-svg svg .bad .fill-B1 { fill: var(--warn); }
+.dg-d2 .dg-svg svg .bad .stroke-B1, .dg-d2 .dg-svg svg .bad .stroke-B2 { stroke: var(--warn); }
 /* Cited shapes: the whole shape is the target, with a pointer cursor.
    Unverified citations are dimmed (the tooltip text matches the `<>`
    marker's). Focus stays visible for keyboard users. */

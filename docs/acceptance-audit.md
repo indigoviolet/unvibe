@@ -240,7 +240,11 @@ needed (that deviation is closed, not added).
   width that keeps D2's 16px labels at the guide's 12.5px small text and
   scrolls horizontally inside the card instead of shrinking further
   (`D2Diagram legibleText`, `e2e/d2-diagrams.spec.ts` "wide diagram keeps
-  labels legible"); Expand is the way to see it whole.
+  labels legible"); Expand is the way to see it whole. The uniform D2
+  blue is remapped to the guide palette by stylesheet rules over D2's
+  shape classes (served bytes and seeds untouched), with `.class: [ok]` /
+  `[bad]` for ok/warn states (`e2e/d2-diagrams.spec.ts` "diagram wears
+  the guide palette", `docs/d2-diagrams.md` "Look").
 - Undo (depth/examples/diagram, no redo, comments/expansions survive) —
   met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Mark read (grey + collapse), roll-up to page, muted links — met
