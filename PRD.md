@@ -113,7 +113,8 @@ Every card and every expansion card has the same controls:
   - Click opens the source pane at that spot and highlights it. If needed it unfolds or shows hidden hunks, and clears file filters.
   - Inline code chips in agent answers behave the same way.
 - **Unverified citations:** a citation the app couldn't check or repair (§10) is shown dimmed, with a tooltip saying so.
-- **Comment marker:** a speech bubble with a count, shown only for comments that have no highlighted anchor text.
+- **Comment marker:** a speech bubble with a count, shown only for comments that never had highlighted anchor text. A thread whose quote can no longer be found in its host paragraph shows a footnote chip with its quote instead (see §4.7).
+- **Anchor footnotes:** when an annotation's quote cannot be found in its host paragraph's rendered text (for example after a depth rewrite), a small muted chip on the paragraph's citations line shows the truncated quote (full quote on hover). Hover previews and click behave as the highlight did. One row per paragraph, shared with the `<>` chip; 12px muted, no underline until hover. A closed explanation shows dotted-link styling, an opened-as-page link an arrow, a thread a speech bubble. When the phrase returns, the highlight comes back and the chip disappears. Open cards stay in place with a muted "from an earlier wording" hint next to the quote.
 - **Hover cards and tooltips:**
   - open after a short pause (about 0.2 s);
   - close on any scroll anywhere, a press outside them, Escape, the window losing focus or the pointer, and on resize;
@@ -129,7 +130,7 @@ Every card and every expansion card has the same controls:
 - **Explain** creates an expansion card right under the block the text came from: under the paragraph in the description, under the line in the diff. The selected text is highlighted.
 - **Header:** the quoted text, then **Open as page**, **Delete** and **Close**. Below that, the standard card controls.
 - **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click expands it. Marking an expansion read closes it the same way.
-- **If the anchor text can't be found** (for example after a depth rewrite), a collapsed card is shown instead.
+- **If the anchor text can't be found** (for example after a depth rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
 - **Open as page** moves the content to a new page titled with the quoted text, and the anchor text becomes a link to that page.
 
 ### 4.8 Comments
