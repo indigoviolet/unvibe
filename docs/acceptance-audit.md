@@ -224,6 +224,9 @@ needed (that deviation is closed, not added).
 - Contents box (cards jump + linked pages, read muted, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
   `guide.spec.ts` “renders cards, contents and generated go-deeper cards”).
+  Card entries show the title (real or the shared #49 fallback), never a
+  body prefix cut mid-word (`guideUtils.ts` `contentsModel`,
+  `guideUtils.test.ts`).
 - Go deeper placeholders + Generate fills + follow-ups — met
   (`pipeline/demo.ts` auto-fill, `actions/generate.ts`,
   `guide-service.spec.ts`).
@@ -233,6 +236,16 @@ needed (that deviation is closed, not added).
 ### §4.4 Cards — all met (audit-10)
 
 - Collapse chevron, title-row-only collapsed — met (`guide.spec.ts`).
+  Every page card shows a title: the prompts require one for every card
+  (issues #49/#50), and when the agent omits it the header and Contents
+  share one derived fallback — the first sentence or clause of the body,
+  cut on a word boundary with an ellipsis (`shared/src/content/titles.ts`,
+  `CardView.test.tsx`). Expansions keep their quoted-selection header
+  with no derived second title. Replies never repeat what the reader
+  already sees (shared "Reply hygiene" guidance in `instructions.md`;
+  the `explain` "quote it back" rule is removed), with a deterministic
+  exact-match strip of a leading echo line at parse time
+  (`actions-echo.test.ts`, `content-titles.test.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”).
@@ -381,7 +394,13 @@ needed (that deviation is closed, not added).
   run with reason, click reveals; one-line never hidden; cited never
   hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
   `runner.ts:1383`, `diff.spec.ts` “hide uninteresting collapses runs”,
-  live runs: “hide violations: none”).
+  live runs: “hide violations: none”). Hunk replies tolerate format slips
+  (issue #99): bare/unfenced `{"hunk": …}` still yields summary +
+  `hiddenReason` (`shared/src/content/hunk.ts`, one helper for both call
+  sites); JSON-looking text is never stored, long fallbacks cut on a word
+  boundary, and a stored JSON-looking summary is treated as missing on
+  reuse (regenerated or cleared on the next summarize) and reads as absent
+  in the diff pane (Summarize action, never the JSON text).
 - Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
   (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
@@ -445,7 +464,7 @@ needed (that deviation is closed, not added).
 
 - Chevron/Delete/×/check placement + AI/user initials + teal/amber — met
   (walk screenshot; prototype CSS class names kept).
-- Only “Guided review” + “Agent finding” labels — met (walk).
+- Only “Guide” + “Agent finding” labels — met (walk).
 - Comments/expansions share header layout — met (`ThreadView` shared).
 - `hidden` stays hidden — met (`styles/prototype.css:25`
   `[hidden]{display:none!important}` — the two prototype bugs' fix,
@@ -590,6 +609,15 @@ needed (that deviation is closed, not added).
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
    explain/go_deeper (#69; the template used to recommend one in prose).
+   Inline diagrams in expansions used to 404 on the diagrams route, which
+   only searched page cards; the route now looks every live `Block[]`
+   list up through one shared walker (`shared/src/content/blocks.ts`:
+   page cards, card/expansion second opinions, expansion bodies, asides
+   at any depth — #71; `diagrams.test.ts` expansion cases,
+   `shared/test/blocks.test.ts`, web `ExpansionDiagram.test.tsx`). Ask
+   thread replies still show the raw D2 source (`<pre class="d2">`, no
+   on-demand render — storing thread replies as blocks would be a
+   storage change, deliberately not built).
 7. Update pass (changed/new hunks only) — met (`versions/update.ts`,
    `enqueueUpdatePass`, `versions-update.test.ts`).
 
@@ -640,7 +668,8 @@ needed (that deviation is closed, not added).
 - Files with front matter (role/tier/variables) — met (`prompts/*.md` 18
   templates; `prompts/loader.ts`).
 - Deterministic rendering (stable order, no timestamps, golden files) —
-  met (`prompt-goldens.test.ts`, `prompts.test.ts`).
+  met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens refreshed
+  for the #49/#50 template edits (`instructions`, `explain`).
 - All 14 template rows present — met (18 files cover every row;
   `routes/prompts.ts` serves template + expanded).
 - Settings shows the template; the debug page shows the per-review
@@ -985,7 +1014,9 @@ environment check names are Main/Small/Second-opinion model; Reload
 environment + Limits tab + plain Limits labels), then the copy guard.
 Skipped entries (with reasons) and the commit hashes are in the
 implementer's report on the issue; glossary item 5 ("Guided review"
-default title) is deliberately not done and needs the owner's decision.
+default title) was deliberately not done pending the owner's decision —
+decided 2026-10-12 and renamed to "Guide" under #102 (no data migration:
+stored "Guided review" still counts as the default).
 Small companion code changes the list calls for: shared stage→label map
 (`web/src/guide/stageLabels.ts`, used by the start page and the guide
 empty state, with `stageLabels.test.ts`); one `NO_AGENT_COPY` constant;
@@ -1035,6 +1066,26 @@ buildAnchor`), and highlight marks search only the named card — met
 (`comments-m6.test.ts`, `anchor.test.ts`, `SelectionToolbar.test.tsx`;
 `test:e2e` 150 passed). Anchors stored bare before the fix still match
 every card; no migration.
+
+### Expansion diagrams render on demand (#71)
+
+Inline `d2` blocks in Explain expansions (and go-deeper results, which
+land as ordinary cards) used to 404 on `GET
+/api/reviews/:id/diagrams/:hash`, which only searched page cards — so
+they never rendered. The route now looks every live `Block[]` list up
+through one shared walker (`shared/src/content/blocks.ts`: page cards,
+card/expansion second-opinion reasoning, expansion bodies, asides at any
+depth; undo stacks and thread HTML deliberately excluded) — met
+(`diagrams.test.ts` fake-Explain cases: top-level, aside-nested,
+invalid; `shared/test/blocks.test.ts` one case per container;
+`ExpansionDiagram.test.tsx` pins light + dark rendering with no
+component change). An inline diagram with invalid D2 or a bad citation
+resolves to 409 with the source shown and a note, never 404/500, and
+never breaks its card — no validate-and-repair pass by design.
+Open: ask thread replies still show the raw D2 source (`<pre
+class="d2">`, no fetch). Serving them through the same endpoint would
+need thread replies stored as blocks (a storage change) or parsing the
+HTML back (fragile); left as static source text with working citations.
 
 ### Immediate action feedback (#46, complete)
 

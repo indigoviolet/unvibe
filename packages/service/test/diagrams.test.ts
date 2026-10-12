@@ -45,9 +45,10 @@ import {
 } from "../src/diagrams/sanitize.js";
 import { finalizeDiagramBlock } from "../src/diagrams/pipeline.js";
 import { createSnapshotLookup } from "../src/validate/index.js";
+import { FakeAgentRunner } from "../src/agent/fake.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
-import type { ReviewSnapshot } from "@unvibe/shared";
+import type { AgentEvent, ReviewSnapshot } from "@unvibe/shared";
 
 const fixturesDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -449,6 +450,258 @@ describe("diagrams endpoint", () => {
           headers: authed,
         } as never);
         expect(badTheme.statusCode).toBe(400);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+    }
+  });
+});
+
+// --- issue #71: diagrams outside page cards -----------------------------------
+
+function textEvents(text: string): AgentEvent[] {
+  return [
+    { type: "text", delta: text },
+    { type: "usage", inputTokens: 10, cachedTokens: 5, outputTokens: 10 },
+    { type: "done", stopReason: "end_turn" },
+  ];
+}
+
+const MINIMAL_READER = `## The problem
+
+The problem paragraph.
+
+## The central change
+
+The central paragraph.
+
+\`\`\`json
+{"cardIds": ["problem", "central"]}
+\`\`\`
+`;
+
+/** Explain reply carrying an inline fenced d2 block (novel shapes, unseeded). */
+const EXPLAIN_WITH_DIAGRAM = `An explanation with a diagram.
+
+\`\`\`d2
+direction: right
+explain-demo-a -> explain-demo-b: hello
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+describe("expansion diagrams (#71)", () => {
+  it("serves a diagram stored in an Explain expansion (not 404)", { timeout: 90000 }, async () => {
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = "/nonexistent/d2-for-test";
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_WITH_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitFor(() => {
+          const s = ctx.reviews.getSnapshot(id);
+          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+        }, 60000);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const dg = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          source: string;
+          render?: { hash: string; status: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.render?.hash).toMatch(/^[0-9a-f]{16}$/);
+
+        // No d2 binary: the block is found but unrendered → 409, never 404.
+        const got = await app.inject({
+          method: "GET",
+          url: `/api/reviews/${id}/diagrams/${dg.render!.hash}?theme=light`,
+          headers: authed,
+        } as never);
+        expect(got.statusCode).toBe(409);
+        expect((got.json() as { status?: string }).status).toBe("unavailable");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+    }
+  });
+
+  it("serves a diagram nested in an aside inside an expansion", { timeout: 90000 }, async () => {
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = "/nonexistent/d2-for-test";
+    try {
+      const reply = `An explanation with an example.
+
+::: example
+\`\`\`d2
+direction: right
+aside-demo-a -> aside-demo-b: hi
+\`\`\`
+:::
+
+\`\`\`json
+{}
+\`\`\`
+`;
+      const agents = new FakeAgentRunner([
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(reply) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitFor(() => {
+          const s = ctx.reviews.getSnapshot(id);
+          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+        }, 60000);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const expansion = snap.annotations.find((a) => a.id === annotationId)!.expansion!;
+        const asideBlock = expansion.blocks.find((b) => b.type === "aside") as unknown as {
+          inner: { type: string; render?: { hash: string } }[];
+        };
+        expect(asideBlock).toBeDefined();
+        const dg = asideBlock.inner.find((b) => b.type === "diagram")!;
+        expect(dg.render?.hash).toMatch(/^[0-9a-f]{16}$/);
+
+        const got = await app.inject({
+          method: "GET",
+          url: `/api/reviews/${id}/diagrams/${dg.render!.hash}?theme=dark`,
+          headers: authed,
+        } as never);
+        expect(got.statusCode).toBe(409);
+        expect((got.json() as { status?: string }).status).toBe("unavailable");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+    }
+  });
+
+  it("an invalid inline diagram is found and fails quietly (409, never 404/500)", { timeout: 90000 }, async () => {
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = "/nonexistent/d2-for-test";
+    try {
+      // Invalid D2 syntax plus an unverifiable citation: the parser still
+      // stores the block, and the route reports it as unrendered rather
+      // than unknown. The card itself is unaffected (the web shows the
+      // source with a note; D2Diagram.test.tsx covers the fallbacks).
+      const reply = `An explanation with a broken diagram.
+
+\`\`\`d2
+this is not valid d2 {{{
+broken-shape: "x" {link: "diff:nope:999999"}
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+      const agents = new FakeAgentRunner([
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(reply) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitFor(() => {
+          const s = ctx.reviews.getSnapshot(id);
+          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+        }, 60000);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const dg = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          render?: { hash: string; status: string };
+        };
+        expect(dg).toBeDefined();
+
+        const got = await app.inject({
+          method: "GET",
+          url: `/api/reviews/${id}/diagrams/${dg.render!.hash}?theme=light`,
+          headers: authed,
+        } as never);
+        expect(got.statusCode).toBe(409);
       } finally {
         await app.close();
       }

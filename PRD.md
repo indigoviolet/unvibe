@@ -91,7 +91,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ### 4.3 Pages
 - **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
-  - a label, but only where it matters: **"Guided review"** on the root page, **"Agent finding · <confidence>"** on a finding page;
+  - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page;
   - a **bookmark** icon (save or unsave the page);
   - the title.
 - **Trail:** a breadcrumb back to the root, on every page except the root.
@@ -101,7 +101,8 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 ### 4.4 Cards
 Every card and every expansion card has the same controls:
-- **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row, or its first line if it has no title.
+- **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Expansions show the quoted selection as their header instead and get no derived title.
+- **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row.
 - **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles.
   - Changing depth rewrites the card's paragraphs in place.
   - + at the deepest level adds an "Underlying principle" block.
@@ -232,7 +233,7 @@ Every card and every expansion card has the same controls:
 | Read / reviewed | Check in a circle | Right end of card controls; hunk and file headers |
 | Agent content vs the user's | "AI" or the user's initials on each message; teal for the agent, amber for the user's comments | Threads, hunk cards |
 
-- The only type labels are "Guided review" and "Agent finding".
+- The only type labels are "Guide" and "Agent finding".
 - Comments and expansions use the same header layout.
 - An element hidden with the `hidden` attribute must stay hidden even if its own style sets `display`. Two prototype bugs came from this.
 
@@ -501,6 +502,8 @@ A new base is built when any of these happens:
 | `second_opinion_blind`, `second_opinion_check` | Second opinion | `{{topic}}` or `{{claim}}`, `{{cited_code}}` |
 
 **Diagrams:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/d2-diagrams.md`). Superseded proposal (kept as history): agents were to write Mermaid, rendered on the page, with citation tokens allowed in node labels; the prototype used hand-drawn SVG.
+
+**Shared instructions:** `instructions` (L0) carries guidance shared by every task: every page card has a short title (§4.4), and replies never repeat what the reader already sees — no echo of the selection, the question, the card title or a diagram's caption. As a backstop the parser drops a leading body line that exactly echoes them (no retry, no repair turn).
 
 ---
 

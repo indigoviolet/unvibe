@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import { looksLikeJson } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
@@ -220,8 +221,17 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
     }
   }, []);
 
+  // #99: a stored summary holding the agent's raw JSON reads as absent,
+  // so the hunk shows its Summarize action instead of the JSON text. The
+  // stored row is untouched: the next summarize regenerates or clears it.
   const states = useMemo(
-    () => new Map<string, HunkUiState>((snapshot?.hunkStates ?? []).map((s) => [s.contentHash, s])),
+    () =>
+      new Map<string, HunkUiState>(
+        (snapshot?.hunkStates ?? []).map((s) => [
+          s.contentHash,
+          s.summary !== undefined && looksLikeJson(s.summary) ? { ...s, summary: undefined } : s,
+        ]),
+      ),
     [snapshot],
   );
 
