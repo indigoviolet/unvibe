@@ -365,7 +365,7 @@ export class Pipeline {
               },
             );
             throwIfMcpRefusal(text);
-            const first = this.parseAndValidate(o.reviewId, text);
+            const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
             let finalText = text;
             let finalCards = first.cards;
             let finalData = first.data;
@@ -388,7 +388,7 @@ export class Pipeline {
               usage.outputTokens += repair.usage.outputTokens;
               throwIfMcpRefusal(repair.text);
               finalText = repair.text;
-              const second = this.parseAndValidate(o.reviewId, repair.text);
+              const second = this.parseAndValidate(o.reviewId, repair.text, o.echoCandidates);
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
@@ -678,7 +678,11 @@ export class Pipeline {
         ctx.reportUsage(usage);
         throwIfMcpRefusal(text);
         await this.recordUsage(reviewId, usage);
-        const { cards, data, validation } = this.parseAndValidate(reviewId, text);
+        // Issue #50: match the page title (an echo of the concept name).
+        const { cards, data, validation } = this.parseAndValidate(reviewId, text, [
+          ...(existing?.title ? [existing.title] : []),
+          slug,
+        ]);
         const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
         await this.opts.reviews.mutate(reviewId, (draft) => {
           let page = draft.pages.find((p) => p.id === `c-${slug}`);
@@ -804,6 +808,7 @@ export class Pipeline {
   private parseAndValidate(
     reviewId: string,
     text: string,
+    echoCandidates?: string[],
   ): { cards: ParsedCard[]; data: ReplyData | null; validation: ReturnType<typeof validateReply>; body: string } {
     const split = splitReply(text);
     // Malformed / non-object trailers are job-visible errors (reply-format
@@ -812,7 +817,11 @@ export class Pipeline {
       throw new Error(`the agent's reply was not in the expected format (${split.error.kind}: ${split.error.message})`);
     }
     const body = split.body;
-    const cards = parseCards(body);
+    // Issue #50: the echo strip runs here, before validation, so a dropped
+    // echo line's citations never enter the report (an echo line carries
+    // none — lines with citations are kept).
+    const cards =
+      echoCandidates === undefined ? parseCards(body) : parseCards(body, { echoCandidates });
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const lookup = this.lookupWithAliases(snapshot);
@@ -1063,7 +1072,8 @@ export class Pipeline {
           ctx.reportUsage(usage);
           throwIfMcpRefusal(text);
           await this.recordUsage(reviewId, usage);
-          const { cards, data, validation } = this.parseAndValidate(reviewId, buffer);
+          // Issue #50: reader cards match their own `##` titles.
+          const { cards, data, validation } = this.parseAndValidate(reviewId, buffer, []);
           let finalCards = cards;
           let finalData = data;
           let finalValidation = validation;
@@ -1084,7 +1094,7 @@ export class Pipeline {
             ctx.reportUsage(repair.usage);
             throwIfMcpRefusal(repair.text);
             await this.recordUsage(reviewId, repair.usage);
-            const second = this.parseAndValidate(reviewId, repair.text);
+            const second = this.parseAndValidate(reviewId, repair.text, []);
             finalCards = second.cards;
             finalData = second.data;
             finalValidation = second.validation;
@@ -1295,7 +1305,8 @@ export class Pipeline {
             ctx.reportUsage(usage);
             throwIfMcpRefusal(text);
             await this.recordUsage(reviewId, usage);
-            const { cards, data, validation } = this.parseAndValidate(reviewId, text);
+            // Issue #50: finding cards match their own `##` titles.
+            const { cards, data, validation } = this.parseAndValidate(reviewId, text, []);
             const applied = criticApply(
               cards.map((c) => ({ title: c.title, blocks: c.blocks })),
               (data ?? null) as Record<string, unknown> | null,
@@ -1603,7 +1614,8 @@ export class Pipeline {
     ctx?.reportUsage(usage);
     throwIfMcpRefusal(text);
     await this.recordUsage(reviewId, usage);
-    const { cards, data, validation } = this.parseAndValidate(reviewId, text);
+    // Issue #50: match the placeholder label (the card's future title).
+    const { cards, data, validation } = this.parseAndValidate(reviewId, text, [card.pending.label]);
     const blocks = this.withValidation(
       reviewId,
       cards.flatMap((c) => c.blocks),
@@ -1655,7 +1667,11 @@ export class Pipeline {
     const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, undefined, () => {});
     throwIfMcpRefusal(text);
     await this.recordUsage(reviewId, usage);
-    const { cards, data, validation } = this.parseAndValidate(reviewId, text);
+    // Issue #50: match the page title (an echo of the concept name).
+    const { cards, data, validation } = this.parseAndValidate(reviewId, text, [
+      ...(existing?.title ? [existing.title] : []),
+      slug,
+    ]);
     const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let page = draft.pages.find((p) => p.id === `c-${slug}`);

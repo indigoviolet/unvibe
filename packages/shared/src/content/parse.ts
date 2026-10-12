@@ -6,7 +6,9 @@
  * prompt templates copy):
  *
  * - `## Title` starts a new card (handled by `parseCards`); `parseBlocks`
- *   skips those lines. Text before the first `##` is one untitled card.
+ *   skips those lines. Text before the first `##` is a card with a null
+ *   title (the prompts require a title for every page card, issue #49;
+ *   the UI shows the shared fallback from `titles.ts` then).
  * - A paragraph's citations are the `diff:`/`code:`/`desc:`/`h:` tokens it
  *   contains. They are stripped from the display text (a token with a
  *   `|label` keeps its label as plain text); the targets land in
@@ -52,6 +54,7 @@ import { parseId, type ParsedId } from "../ids.js";
 import { tokenizeLinks, type LinkToken } from "../links.js";
 import type { ParsedCard, ParseOptions, ReplyData, SplitError } from "./types.js";
 import { splitReply } from "./split.js";
+import { stripEchoFromCards } from "./titles.js";
 import { extractD2Links, canonicalizeD2Source, diagramHash, D2_MIN_VERSION } from "./d2.js";
 import MarkdownIt from "markdown-it";
 
@@ -687,10 +690,15 @@ export function splitCardSections(body: string): CardSection[] {
 
 /** Parse a reply body into cards (`## Title` boundaries). */
 export function parseCards(body: string, opts?: ParseOptions): ParsedCard[] {
-  return splitCardSections(body).map((s) => ({
+  const cards = splitCardSections(body).map((s) => ({
     title: s.title,
     blocks: parseBlocks(s.markdown, opts),
   }));
+  // Issue #50: deterministic echo strip. Each card additionally matches
+  // its own title; streaming (`parseCardsPartial`) stays raw and the
+  // final apply corrects it.
+  if (opts?.echoCandidates === undefined) return cards;
+  return stripEchoFromCards(cards, opts.echoCandidates);
 }
 
 export interface ParsedReply {

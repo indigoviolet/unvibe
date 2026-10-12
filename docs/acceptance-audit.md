@@ -224,6 +224,9 @@ needed (that deviation is closed, not added).
 - Contents box (cards jump + linked pages, read muted, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
   `guide.spec.ts` “renders cards, contents and generated go-deeper cards”).
+  Card entries show the title (real or the shared #49 fallback), never a
+  body prefix cut mid-word (`guideUtils.ts` `contentsModel`,
+  `guideUtils.test.ts`).
 - Go deeper placeholders + Generate fills + follow-ups — met
   (`pipeline/demo.ts` auto-fill, `actions/generate.ts`,
   `guide-service.spec.ts`).
@@ -233,6 +236,16 @@ needed (that deviation is closed, not added).
 ### §4.4 Cards — all met (audit-10)
 
 - Collapse chevron, title-row-only collapsed — met (`guide.spec.ts`).
+  Every page card shows a title: the prompts require one for every card
+  (issues #49/#50), and when the agent omits it the header and Contents
+  share one derived fallback — the first sentence or clause of the body,
+  cut on a word boundary with an ellipsis (`shared/src/content/titles.ts`,
+  `CardView.test.tsx`). Expansions keep their quoted-selection header
+  with no derived second title. Replies never repeat what the reader
+  already sees (shared "Reply hygiene" guidance in `instructions.md`;
+  the `explain` "quote it back" rule is removed), with a deterministic
+  exact-match strip of a leading echo line at parse time
+  (`actions-echo.test.ts`, `content-titles.test.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”).
@@ -628,7 +641,8 @@ needed (that deviation is closed, not added).
 - Files with front matter (role/tier/variables) — met (`prompts/*.md` 18
   templates; `prompts/loader.ts`).
 - Deterministic rendering (stable order, no timestamps, golden files) —
-  met (`prompt-goldens.test.ts`, `prompts.test.ts`).
+  met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens refreshed
+  for the #49/#50 template edits (`instructions`, `explain`).
 - All 14 template rows present — met (18 files cover every row;
   `routes/prompts.ts` serves template + expanded).
 - Settings shows the template; the debug page shows the per-review

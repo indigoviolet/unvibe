@@ -21,7 +21,7 @@ import {
   setTargetContent,
   targetLevel,
 } from "../../interaction/index.js";
-import { cardTitle } from "./events.js";
+import { cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   baseVersionOf,
@@ -64,6 +64,8 @@ export async function diagramAction(
   const variables = { card: cardPromptText(snapshot, cardId), level };
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "diagram" } : undefined;
+  // Issue #50: the walkthrough must not open by repeating the card title.
+  const echoTitle = storedCardTitle(snapshot, cardId);
 
   const done = pipeline.runInFork({
     reviewId,
@@ -73,6 +75,7 @@ export async function diagramAction(
     priority: JOB_PRIORITY.userRequested,
     dedupeKey: key,
     cardId,
+    ...(echoTitle ? { echoCandidates: [echoTitle] } : {}),
     replay,
     onJob: (job: Job) => capture.onJob(job),
   });
@@ -215,6 +218,7 @@ async function repairDiagrams(
     level,
   };
   const live = getSnapshotOrThrow(reviews, reviewId);
+  const echoTitle = storedCardTitle(live, cardId);
   const res = await pipeline.runInFork({
     reviewId,
     kind: "diagram",
@@ -227,6 +231,7 @@ async function repairDiagrams(
       baseVersion: baseVersionOf(live),
     },
     cardId,
+    ...(echoTitle ? { echoCandidates: [echoTitle] } : {}),
     ...(isReplayRunner(pipeline.runner) ? { replay: { kind: "diagram" } } : {}),
   });
   const retry = res.cards.flatMap((c) => c.blocks) as Block[];

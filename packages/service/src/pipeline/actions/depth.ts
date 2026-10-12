@@ -23,7 +23,7 @@ import {
   setTargetContent,
   stepLevel,
 } from "../../interaction/index.js";
-import { cardTitle } from "./events.js";
+import { cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   baseVersionOf,
@@ -123,6 +123,8 @@ async function depthViaAgent(
   // existing reply format.
   const replayKey = cardId.startsWith("ann_") ? `expansion:${target}` : `${cardId}:${target}`;
   const replay = isReplayRunner(pipeline.runner) ? { kind: "depth", key: replayKey } : undefined;
+  // Issue #50: a rewrite must not open by repeating the card title.
+  const echoTitle = storedCardTitle(snapshot, cardId);
 
   const done = pipeline.runInFork({
     reviewId,
@@ -132,6 +134,7 @@ async function depthViaAgent(
     priority: JOB_PRIORITY.userRequested,
     dedupeKey: key,
     cardId,
+    ...(echoTitle ? { echoCandidates: [echoTitle] } : {}),
     replay,
     onJob: (job: Job) => capture.onJob(job),
   });
