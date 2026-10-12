@@ -36,6 +36,9 @@ export function fakeBuildInfo(dataDir: string): UpdateBuildInfo | null {
   return {
     version: found.version,
     sourceBranch: typeof found.sourceBranch === "string" ? found.sourceBranch : null,
+    sourceCommit: typeof found.sourceCommit === "string" ? found.sourceCommit : null,
+    baseBranch: typeof found.baseBranch === "string" ? found.baseBranch : null,
+    baseCommit: typeof found.baseCommit === "string" ? found.baseCommit : null,
     commit: typeof found.commit === "string" ? found.commit : null,
     builtAt: typeof found.builtAt === "string" ? found.builtAt : null,
   };
@@ -51,6 +54,9 @@ export function resolveBuildInfo(inputs: BuildInfoInputs): UpdateBuildInfo | nul
   return {
     version: installed.version,
     sourceBranch: installed.sourceBranch,
+    sourceCommit: installed.sourceCommit,
+    baseBranch: installed.baseBranch,
+    baseCommit: installed.baseCommit,
     commit: installed.commit,
     builtAt: installed.builtAt,
   };

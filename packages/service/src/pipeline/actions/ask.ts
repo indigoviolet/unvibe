@@ -561,7 +561,7 @@ function parseAndValidateLocal(
   // owns the full version; this path only runs for same-session turns).
   const split = splitReply(text);
   if (!split.ok && (split.error.kind === "malformed" || split.error.kind === "not-object")) {
-    throw new Error(`trailing JSON ${split.error.kind}: ${split.error.message}`);
+    throw new Error(`the agent's reply was not in the expected format (${split.error.kind}: ${split.error.message})`);
   }
   const body = split.ok ? split.body : (split as { body: string }).body;
   // Issue #50: same echo strip as `runInFork` (selection, question).

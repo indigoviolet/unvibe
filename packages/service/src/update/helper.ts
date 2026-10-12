@@ -230,7 +230,7 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
     }
     const why = back
       ? `the rolled-back build reported ${describeHealth(back)}`
-      : `the rolled-back build did not become healthy within ${plan.healthTimeoutMs}ms`;
+      : `the previous build did not start within ${Math.round(plan.healthTimeoutMs / 1000)} seconds`;
     return finish({
       status: "failed",
       from: plan.from,
@@ -253,10 +253,8 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
       from: plan.from,
       to: plan.to,
       reason:
-        `service (pid ${plan.servicePid}) did not exit within ${plan.exitWaitMs}ms — ` +
-        `it is likely stuck shutting down with open connections; the install was left untouched ` +
-        `and the live service keeps serving. Recover with \`unvibe stop\`, then retry the switch ` +
-        `(or \`unvibe update ${plan.to}\` with the service stopped)`,
+        `the service did not stop within ${Math.round(plan.exitWaitMs / 1000)} seconds, so nothing was installed and it is still running. ` +
+        `Run \`unvibe stop\`, then switch again (or run \`unvibe update ${plan.to}\` while it is stopped)`,
       logPath: plan.logPath,
     });
   }
@@ -276,6 +274,6 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
   }
   const why = healthy
     ? `new build reported ${describeHealth(healthy)} instead of ${plan.targetVersion ?? "a healthy build"}`
-    : `new build was not healthy within ${plan.healthTimeoutMs}ms`;
+    : `the new build did not start within ${Math.round(plan.healthTimeoutMs / 1000)} seconds`;
   return rollback(why);
 }

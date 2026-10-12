@@ -10,6 +10,7 @@
  */
 import type { Block, Card, DepthLevel, Job, Page } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
+import { stagePhrase } from "./stageLabels.js";
 
 const stripTags = (s: string): string => s.replace(/<[^>]+>/g, " ");
 
@@ -292,7 +293,8 @@ export function emptyGuideState(
   const failedJob = jobs.find((j) => j.state === "error");
   if (failed || failedJob) {
     const detail = (failed && pipeline?.errors?.[failed[0]]) ?? failedJob?.error;
-    return { kind: "error", detail: detail ?? `The ${failed ? failed[0] : failedJob?.kind} stage failed.` };
+    const stage = failed ? failed[0] : failedJob?.kind;
+    return { kind: "error", detail: detail ?? `Something went wrong while ${stagePhrase(stage)}.` };
   }
   // Some stages done, the rest pending: the next job is about to be queued.
   if (stages.some(([, v]) => v === "done")) return { kind: "building" };

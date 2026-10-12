@@ -24,18 +24,16 @@
     /* storage unavailable: polling still works */
   }
   var status = document.getElementById("status");
-  var tries = 0;
   function poll() {
-    tries += 1;
     fetch("/api/health", { cache: "no-store" })
       .then(function (res) {
         if (!res.ok) throw new Error("down");
-        status.textContent = "Service is up — opening Unvibe…";
+        status.textContent = "Opening Unvibe…";
         window.location.href = "/";
       })
       .catch(function () {
         status.textContent =
-          "Waiting for the service… (tried " + tries + "× — click Start Unvibe if it isn't starting)";
+          "Waiting for the service… If nothing happens, click Start Unvibe.";
         setTimeout(poll, 2000);
       });
   }

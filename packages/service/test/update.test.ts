@@ -72,7 +72,7 @@ function contentsStdout(pkg: unknown): string {
 }
 
 function installed(channel: string | null, version = "0.0.1"): InstalledBuild {
-  return { version, channel, sourceBranch: null, commit: null, builtAt: null, packagePath: null };
+  return { version, channel, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null, packagePath: null };
 }
 
 describe("channel names + install specs", () => {
@@ -160,6 +160,9 @@ describe("per-ref metadata without cloning", () => {
       builtAt: "2026-10-12T00:50:12.402Z",
       sourceBranch: "feat/x",
       sourceVersion: "0.0.1",
+      sourceCommit: "aaa111122223333",
+      baseBranch: "main",
+      baseCommit: "bbb222233334444",
     },
   };
 
@@ -168,12 +171,15 @@ describe("per-ref metadata without cloning", () => {
       version: "0.0.1-preview.feat-x.abc1234",
       commit: "abc1234full",
       sourceBranch: "feat/x",
+      sourceCommit: "aaa111122223333",
+      baseBranch: "main",
+      baseCommit: "bbb222233334444",
       builtAt: "2026-10-12T00:50:12.402Z",
     });
   });
 
   it("returns nulls for unreadable responses (old builds without metadata stay listed)", () => {
-    const blank = { version: null, commit: null, sourceBranch: null, builtAt: null };
+    const blank = { version: null, commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null };
     expect(decodeRefPackage("not json")).toEqual(blank);
     expect(decodeRefPackage(JSON.stringify({ content: "!!!not-base64!!!" }))).toEqual(blank);
     expect(decodeRefPackage(contentsStdout({ name: "unvibe", version: "0.0.1" }))).toEqual({
@@ -213,6 +219,9 @@ describe("per-ref metadata without cloning", () => {
         version: "0.0.1",
         commit: null,
         sourceBranch: null,
+        sourceCommit: null,
+        baseBranch: null,
+        baseCommit: null,
         builtAt: null,
         current: true,
       },
@@ -222,6 +231,9 @@ describe("per-ref metadata without cloning", () => {
         version: "0.0.1-preview.feat-x.abc1234",
         commit: "abc1234full",
         sourceBranch: "feat/x",
+        sourceCommit: "aaa111122223333",
+        baseBranch: "main",
+        baseCommit: "bbb222233334444",
         builtAt: "2026-10-12T00:50:12.402Z",
         current: false,
       },
@@ -257,6 +269,9 @@ describe("per-ref metadata without cloning", () => {
         version: null,
         commit: null,
         sourceBranch: null,
+        sourceCommit: null,
+        baseBranch: null,
+        baseCommit: null,
         builtAt: null,
         current: false,
       },
@@ -271,9 +286,9 @@ describe("per-ref metadata without cloning", () => {
 
   it("formats the list with versions, provenance and newer-build notes", () => {
     const rows: UpdateChannel[] = [
-      { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: false },
-      { ref: "preview/feat-x", kind: "preview", version: "0.0.1-preview.feat-x.abc1234", commit: "abc1234full", sourceBranch: "feat/x", builtAt: "2026-10-12T00:50:12.402Z", current: true },
-      { ref: "preview/gone", kind: "preview", version: null, commit: null, sourceBranch: null, builtAt: null, current: false },
+      { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null, current: false },
+      { ref: "preview/feat-x", kind: "preview", version: "0.0.1-preview.feat-x.abc1234", commit: "abc1234full", sourceBranch: "feat/x", sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: "2026-10-12T00:50:12.402Z", current: true },
+      { ref: "preview/gone", kind: "preview", version: null, commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null, current: false },
     ];
     const lines = formatChannelList(rows, {
       ...installed("preview/feat-x", "0.0.1-preview.feat-x.older"),
@@ -283,13 +298,13 @@ describe("per-ref metadata without cloning", () => {
       "* preview/feat-x (installed, 0.0.1-preview.feat-x.older) — newer build available (installed older12 vs abc1234, built 2026-10-12)",
     );
     expect(lines).toContain("  release (0.0.1)");
-    expect(lines).toContain("  preview/gone (metadata unavailable)");
+    expect(lines).toContain("  preview/gone (no build details)");
     expect(lines[lines.length - 1]).toMatch(/unvibe update <channel>/);
   });
 
   it("notes a newer build on the current row with both commits and the build time", () => {
     const rows: UpdateChannel[] = [
-      { ref: "preview/feat-x", kind: "preview", version: "0.0.1-preview.feat-x.abc1234", commit: "abc1234full", sourceBranch: "feat/x", builtAt: "2026-10-12T00:50:12.402Z", current: true },
+      { ref: "preview/feat-x", kind: "preview", version: "0.0.1-preview.feat-x.abc1234", commit: "abc1234full", sourceBranch: "feat/x", sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: "2026-10-12T00:50:12.402Z", current: true },
     ];
     const lines = formatChannelList(rows, { ...installed("preview/feat-x", "0.0.1-preview.feat-x.older"), commit: "older1234full" });
     expect(lines).toContain(
@@ -297,9 +312,19 @@ describe("per-ref metadata without cloning", () => {
     );
   });
 
+  it("names both sides of a merged preview, single side for older builds", () => {
+    const rows: UpdateChannel[] = [
+      { ref: "preview/feat-x", kind: "preview", version: "0.0.1-preview.feat-x.abc1234", commit: "merge9999full", sourceBranch: "feat/x", sourceCommit: "aaa111122223333", baseBranch: "main", baseCommit: "bbb222233334444", builtAt: "2026-10-12T00:50:12.402Z", current: false },
+      { ref: "preview/old", kind: "preview", version: "0.0.1-preview.old.abc1234", commit: "abc1234full", sourceBranch: "old", sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null, current: false },
+    ];
+    const lines = formatChannelList(rows, installed("release"));
+    expect(lines).toContain("    from main@bbb2222 + feat/x@aaa1111, built 2026-10-12");
+    expect(lines).toContain("    from old @ abc1234");
+  });
+
   it("stays quiet on the current row when commits match or are unknown", () => {
     const row = (commit: string | null): UpdateChannel[] => [
-      { ref: "release", kind: "release", version: "0.0.1", commit, sourceBranch: null, builtAt: null, current: true },
+      { ref: "release", kind: "release", version: "0.0.1", commit, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null, current: true },
     ];
     expect(formatChannelList(row("same1234"), { ...installed("release"), commit: "same1234" })).toContain(
       "* release (installed, 0.0.1)",
@@ -327,7 +352,39 @@ describe("readInstalledBuild", () => {
       version: "0.0.1-preview.feat-x.abc1234",
       channel: "preview/feat-x",
       sourceBranch: "feat/x",
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
       commit: "abc1234full",
+      builtAt: "2026-10-12T00:50:12.402Z",
+      packagePath,
+    });
+  });
+
+  it("reads both sides of a merged preview; old builds keep nulls", () => {
+    const root = tmpDir("unvibe-installed-merged-");
+    const { scriptPath, packagePath } = makeInstall(path.join(root, "pkg"), {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.abc1234",
+      unvibe: {
+        channel: "preview/feat-x",
+        commit: "merge9999full",
+        builtAt: "2026-10-12T00:50:12.402Z",
+        sourceBranch: "feat/x",
+        sourceVersion: "0.0.1",
+        sourceCommit: "aaa111122223333",
+        baseBranch: "main",
+        baseCommit: "bbb222233334444",
+      },
+    });
+    expect(readInstalledBuild(scriptPath, "fallback")).toEqual({
+      version: "0.0.1-preview.feat-x.abc1234",
+      channel: "preview/feat-x",
+      sourceBranch: "feat/x",
+      sourceCommit: "aaa111122223333",
+      baseBranch: "main",
+      baseCommit: "bbb222233334444",
+      commit: "merge9999full",
       builtAt: "2026-10-12T00:50:12.402Z",
       packagePath,
     });
@@ -389,6 +446,9 @@ describe("readInstalledBuild", () => {
       version: "fallback",
       channel: null,
       sourceBranch: null,
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
       commit: null,
       builtAt: null,
       packagePath: null,
@@ -654,7 +714,7 @@ describe("runUpdateChannelFlow", () => {
     );
     expect(out.code).toBe(0);
     expect(out.lines.some((l) => l.includes("reinstalling preview/feat-x: installed older12 vs published abc1234"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("data kept (backed up to"))).toBe(true);
     expect(out.lines.some((l) => l.includes("Switching keeps your database"))).toBe(false);
     // Backed up first, live database untouched, no restore attempted.
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/feat-x"), "unvibe.db"), "utf8")).toBe("preview-db");
@@ -723,8 +783,8 @@ describe("runUpdateChannelFlow", () => {
     expect(fs.existsSync(channelSlotDir(dataDir, "preview/feat-x"))).toBe(false);
     expect(out.lines.some((l) => l.includes("0.0.1-preview.feat-x.abc1234") && l.includes("(was 0.0.1)"))).toBe(true);
     expect(out.lines.some((l) => l.includes("backed up unvibe.db to"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("Switching keeps your database"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("data kept (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("Switching keeps your data"))).toBe(true);
     expect(out.lines.some((l) => l.includes("unvibe start"))).toBe(true);
   });
 
@@ -820,7 +880,7 @@ describe("runUpdateChannelFlow", () => {
     // The live database carries over; the channel being left is backed up first.
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-a-db");
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/a"), "unvibe.db"), "utf8")).toBe("preview-a-db");
-    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("data kept (backed up to"))).toBe(true);
   });
 
   it("restoreBackupOf restores the pre-switch backup after the install (rollback)", async () => {
@@ -921,7 +981,7 @@ describe("runUpdateChannelFlow", () => {
     expect(out.code).toBe(0);
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "release"), "unvibe.db"), "utf8")).toBe("release-db");
-    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("data kept (backed up to"))).toBe(true);
   });
 
   it("leaves the database untouched when npm fails", async () => {

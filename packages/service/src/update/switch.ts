@@ -105,7 +105,7 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
   if (backup.files.length > 0) {
     log(`backed up ${backup.files.join(", ")} to ${backup.dir}`);
   } else {
-    log(`no database in ${req.dataDir} to back up (fresh machine?)`);
+    log(`no data in ${req.dataDir} to back up yet`);
   }
   const prefix = installPrefixForPackage(before.packagePath);
   log(`installing ${installSpec(req.channel)}${prefix ? ` (prefix ${prefix})` : ""} ...`);
@@ -116,8 +116,8 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
     if (tail) log(tail);
     log(
       backup.files.length > 0
-        ? `the live database is untouched; the pre-switch copy is in ${backup.dir}`
-        : "the live database is untouched.",
+        ? `your data is untouched; the backup is in ${backup.dir}`
+        : "your data is untouched",
     );
     return done(1, before);
   }
@@ -135,7 +135,7 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
     );
     log(
       `fix PATH/prefix and retry, or install by hand: npm install -g ${installSpec(req.channel)}. ` +
-        `The live database is untouched` +
+        `Your data is untouched` +
         (backup.files.length > 0 ? `; the pre-switch copy is in ${backup.dir}` : "."),
     );
     return done(1, before);
@@ -144,12 +144,12 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
   if (req.restoreBackupOf) {
     const restored = restoreChannel(req.dataDir, req.restoreBackupOf);
     if (restored.files.length > 0) {
-      log(`restored the pre-switch backup from ${restored.dir} (${restored.files.join(", ")})`);
+      log(`restored the backup from ${restored.dir} (${restored.files.join(", ")})`);
     } else {
-      log(`no pre-switch backup in ${restored.dir} to restore; the live database is unchanged`);
+      log(`no backup in ${restored.dir} to restore; your data is unchanged`);
     }
   } else {
-    log(`database left in place (backed up to ${backup.dir})`);
+    log(`data kept (backed up to ${backup.dir})`);
   }
   log(DB_RULE);
   return done(0, before, true);
@@ -193,7 +193,7 @@ async function runSameChannelReinstall(
     const tail = `${inst.stdout}\n${inst.stderr}`.trim().split("\n").slice(-10).join("\n");
     log(`npm install failed (exit ${inst.code}):`);
     if (tail) log(tail);
-    log("the live database is untouched.");
+    log("your data is untouched");
     return done(1, before);
   }
   const after = readInstalledBuild(req.serviceScriptPath, before.version);
@@ -206,7 +206,7 @@ async function runSameChannelReinstall(
     );
     log(
       `fix PATH/prefix and retry, or install by hand: npm install -g ${installSpec(req.channel)}. ` +
-        "The live database is untouched.",
+        "Your data is untouched.",
     );
     return done(1, before);
   }
@@ -214,12 +214,12 @@ async function runSameChannelReinstall(
   if (req.restoreBackupOf) {
     const restored = restoreChannel(req.dataDir, req.restoreBackupOf);
     if (restored.files.length > 0) {
-      log(`restored the pre-switch backup from ${restored.dir} (${restored.files.join(", ")})`);
+      log(`restored the backup from ${restored.dir} (${restored.files.join(", ")})`);
     } else {
-      log(`no pre-switch backup in ${restored.dir} to restore; the live database is unchanged`);
+      log(`no backup in ${restored.dir} to restore; your data is unchanged`);
     }
   } else {
-    log(`database left in place (backed up to ${backup.dir})`);
+    log(`data kept (backed up to ${backup.dir})`);
   }
   return done(0, before, true);
 }

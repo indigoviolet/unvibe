@@ -84,7 +84,7 @@ export async function effectiveSettings(deps: RouteDeps): Promise<Settings> {
 }
 
 export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {}): Promise<void> {
-  const TODO = { error: "not implemented" };
+  const TODO = { error: "not available in this build" };
 
   app.get("/api/settings", async (_req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
@@ -136,7 +136,7 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
       // No silent empty list (PRD §4.14): the adapter is not installed or
       // the provider is not logged in — say so plainly.
       return reply.code(404).send({
-        error: `no models for provider "${provider}": adapter not installed or not logged in`,
+        error: `couldn't list ${provider} models — check that its CLI is installed and logged in`,
         provider,
         models: [],
       });

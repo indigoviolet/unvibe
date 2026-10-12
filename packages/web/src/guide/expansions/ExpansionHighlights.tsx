@@ -117,7 +117,7 @@ export function ExpansionHighlights() {
       if (!reviewId || !found) return;
       if (found.type === "expansion" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
-          toast(`Couldn't expand: ${friendlyError(err)}`);
+          toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
       }
       window.setTimeout(() => {

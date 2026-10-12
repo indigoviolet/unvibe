@@ -481,7 +481,7 @@ export async function refreshManagedCheckout(
 }
 
 function fetchNote(): string {
-  return "couldn't refresh the local clone (offline?) — showing last fetched data";
+  return "couldn't update Unvibe's clone (are you offline?) — showing what was fetched last time";
 }
 
 // --- remove ----------------------------------------------------------------
@@ -517,13 +517,13 @@ export function removeRepo(
     // Fail closed: a query error must never read as "no reviews" on a
     // destructive path.
     throw new CloneError(
-      `cannot verify whether ${label} has reviews (${(err as Error).message}): refusing to remove it`,
+      `couldn't check whether ${label} has reviews (${(err as Error).message}), so it was kept`,
       500,
     );
   }
   if (reviewCount > 0) {
     throw new CloneError(
-      `repo ${label} still has ${reviewCount} review${reviewCount === 1 ? "" : "s"} — delete ${reviewCount === 1 ? "it" : "them"} first, then remove the repo`,
+      `repo ${label} still has ${reviewCount} review${reviewCount === 1 ? "" : "s"} — remove ${reviewCount === 1 ? "it" : "them"} on the start page first, then remove the repo`,
       409,
     );
   }
@@ -534,7 +534,7 @@ export function removeRepo(
   }
   const resolved = assertManagedPath(dataDir, repo.localPath);
   const existed = fs.existsSync(resolved);
-  if (existed) removeDirStrict(resolved, `managed clone of ${label}`);
+  if (existed) removeDirStrict(resolved, `Unvibe's clone of ${label}`);
   repos.remove(id);
   return { removedClone: existed };
 }
@@ -548,7 +548,7 @@ function removeDirStrict(dir: string, what: string): void {
     fs.rmSync(dir, { recursive: true, force: true });
   } catch (err) {
     throw new CloneError(
-      `could not delete ${what} at ${dir} (${(err as Error).message}): the repo was kept — fix the filesystem and try again`,
+      `could not delete ${what} at ${dir} (${(err as Error).message}): the repo was kept — fix the problem above and try again`,
       500,
     );
   }

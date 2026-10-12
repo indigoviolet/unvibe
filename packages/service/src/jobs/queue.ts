@@ -36,7 +36,7 @@ export const DEFAULT_CONCURRENCY_CAP = 4;
 export const DEFAULT_MAX_ATTEMPTS = 8;
 export const DEFAULT_BACKOFF_BASE_MS = 1000;
 export const DEFAULT_BACKOFF_MAX_MS = 60_000;
-export const INTERRUPTED_MESSAGE = "interrupted: service restarted";
+export const INTERRUPTED_MESSAGE = "stopped because the service restarted — retry to run it again";
 
 /** Context handed to a job's `run` function. */
 export interface JobContext {
