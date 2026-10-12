@@ -21,6 +21,7 @@ import type {
 } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
 import { threadPostText } from "./threads.js";
+import { findBlock } from "../interaction/l4.js";
 
 export interface LocatedComment {
   thread: Annotation;
@@ -34,24 +35,8 @@ function fileByKey(snapshot: ReviewSnapshot, fileKey: string): ReviewFile | null
 }
 
 function findBlockCitations(snapshot: ReviewSnapshot, blockId: string): string[] {
-  for (const page of snapshot.pages ?? []) {
-    for (const card of page.cards ?? []) {
-      for (const block of card.blocks ?? []) {
-        const b = block as { id?: string; citations?: Array<{ target: string }> };
-        if (b.id === blockId) {
-          return (b.citations ?? []).map((c) => c.target);
-        }
-        const inner = (block as { inner?: Array<{ id?: string; citations?: Array<{ target: string }> }> })
-          .inner;
-        if (Array.isArray(inner)) {
-          for (const ib of inner) {
-            if (ib.id === blockId) return (ib.citations ?? []).map((c) => c.target);
-          }
-        }
-      }
-    }
-  }
-  return [];
+  const block = findBlock(snapshot, blockId)?.block as { citations?: Array<{ target: string }> } | undefined;
+  return (block?.citations ?? []).map((c) => c.target);
 }
 
 interface CommentableIndex {

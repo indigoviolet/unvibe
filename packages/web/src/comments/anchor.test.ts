@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  anchorScope,
   highlightAnchorInRoot,
   locateQuoteSegments,
   markTextInElement,
@@ -129,5 +130,21 @@ describe("mark idempotence (issue #15)", () => {
       highlightAnchorInRoot(root, "b1", "slow lane", () => makeExpMark("e1", true));
     }
     expect(maxMarkDepth(root)).toBe(1);
+  });
+});
+
+describe("anchorScope (#78)", () => {
+  test("a card#block anchor marks only its own card when block ids repeat", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      `<section id="C-problem"><p data-top="b1">uses the receiver</p></section>` +
+      `<section id="C-central"><p data-top="b1">the receiver again</p></section>`;
+    const make = (): HTMLElement => makeExpMark("ann_1", false);
+    expect(highlightAnchorInRoot(anchorScope(root, "central#b1"), "b1", "receiver", make)).toBe(true);
+    expect(root.querySelector("#C-problem mark")).toBeNull();
+    expect(root.querySelector("#C-central mark")?.textContent).toBe("receiver");
+    // Bare ids and unknown cards search the whole root.
+    expect(anchorScope(root, "b1")).toBe(root);
+    expect(anchorScope(root, "gone#b1")).toBe(root);
   });
 });

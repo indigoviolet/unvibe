@@ -16,11 +16,6 @@ import type { SettingsStore } from "../../settings/index.js";
 import type { SharedContextService } from "../../sharedctx/service.js";
 import { findBlock, recordInteraction } from "../../interaction/index.js";
 
-function findBlockInSnapshot(snapshot: ReviewSnapshot, blockId: string): string | null {
-  const found = findBlock(snapshot, blockId);
-  return found ? found.block.id : null;
-}
-
 export { JOB_PRIORITY };
 export { recordInteraction };
 
@@ -124,17 +119,17 @@ export function cancelAnnotationJob(jobs: JobQueue, reviewId: string, jobId: str
 }
 
 /**
- * Tolerate `card:<card>#<block>` / `<card>#<block>` block ids in action
- * anchors: resolve to the real block id first so `buildAnchor` (which
- * matches plain block ids) keeps working when the web sends the
- * card-qualified form from link tokens.
+ * Store block anchors as `<card>#<block>`. Block ids restart at `b1` in
+ * every card, so a bare id addresses the same-numbered block of every
+ * card: an Explain on one card showed under the others (#78). Accepts the
+ * qualified form, `card:<card>#<block>` from link tokens, and bare ids
+ * (first card with that block). Unknown blocks pass through for
+ * `buildAnchor` to reject.
  */
 export function normalizeBlockAnchor(snapshot: ReviewSnapshot, anchor: ActionAnchor): ActionAnchor {
   if (anchor.where !== "block") return anchor;
-  const raw = anchor.blockId;
-  if (!raw.includes("#") && !raw.includes(":")) return anchor;
-  const found = findBlockInSnapshot(snapshot, raw);
-  if (found) return { where: "block", blockId: found };
+  const found = findBlock(snapshot, anchor.blockId);
+  if (found) return { where: "block", blockId: `${found.cardId}#${found.block.id}` };
   return anchor;
 }
 

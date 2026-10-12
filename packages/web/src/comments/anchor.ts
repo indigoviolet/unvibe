@@ -150,6 +150,18 @@ export function highlightAnchorInRoot(
   return false;
 }
 
+/**
+ * Element to search for a `card#block` anchor's host: the card (`C-<id>`)
+ * or expansion (`B-<id>`) it names, so a mark never lands on the
+ * same-numbered block of another card. Bare ids search all of `root`.
+ */
+export function anchorScope(root: ParentNode, anchorBlockId: string): ParentNode {
+  const hash = anchorBlockId.indexOf("#");
+  if (hash < 0) return root;
+  const card = CSS.escape(anchorBlockId.slice(0, hash));
+  return root.querySelector(`#C-${card}, #B-${card}`) ?? root;
+}
+
 /** Remove all anchor marks created by `make` (class `anc` by default). */
 export function clearAnchorMarks(root: ParentNode, cls = "anc"): void {
   clearMarks(root, `mark.${cls}`);
