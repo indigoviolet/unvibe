@@ -368,11 +368,7 @@ export class McpRegistry {
         i < 0 ? text.slice(0, 120) : text.slice(Math.max(0, i - 40), i + 80).replace(/\s+/g, " ");
       hits.push(`${kind} ${id}: ${snippet}`);
     };
-    // Second-opinion isolation (PRD §12): this role must not see guide
-    // text, other findings, contributions, or discussion — even via tools.
-    // Only the description is searchable (it is already in L1).
-    const restricted = state.role === "second-opinion";
-    if (!restricted) {
+    if (!this.isRestrictedRole(state)) {
       for (const c of review.cards) {
         if ((c.title ?? "").toLowerCase().includes(q) || c.text.toLowerCase().includes(q)) {
           push(`card:${c.id}`, "card", `${c.title ?? ""} ${c.text}`);
@@ -387,16 +383,40 @@ export class McpRegistry {
         if (c.text.toLowerCase().includes(q)) push(c.id, "contribution", c.text);
       }
     }
-    for (const d of review.description) {
-      if (d.text.toLowerCase().includes(q)) push(`desc:${d.id}`, "description", d.text);
+    for (const d of this.matchDescription(review, query)) {
+      push(`desc:${d.id}`, "description", d.text);
     }
     return hits.length > 0 ? hits.join("\n") : "no matches";
+  }
+
+  /**
+   * Second-opinion isolation (PRD §12): this role must not see guide
+   * text, other findings, contributions, or discussion — even via tools.
+   * Only the description is available (it is already in L1). Shared by
+   * `search_review` and `resolve` (issue #96).
+   */
+  private isRestrictedRole(state: SessionState): boolean {
+    return state.role === "second-opinion";
+  }
+
+  /**
+   * Description paragraphs matching a query (case-insensitive substring),
+   * shared by `search_review` and `resolve` (issue #96). The description
+   * is allowed for every role, including second-opinion.
+   */
+  private matchDescription(
+    review: McpReviewData,
+    query: string,
+  ): { id: string; text: string }[] {
+    const q = query.toLowerCase();
+    if (!q) return [];
+    return review.description.filter((d) => d.text.toLowerCase().includes(q));
   }
 
   private async resolve(state: SessionState, description: string): Promise<string> {
     const review = await this.loadReview(state);
     const out: string[] = [];
-    const restricted = state.role === "second-opinion";
+    const restricted = this.isRestrictedRole(state);
     // file paths with optional :line[-line]
     for (const m of description.matchAll(/([\w./-]+\.\w+)(?::(\d+)(?:-(\d+))?)?/g)) {
       const file = m[1];
@@ -409,6 +429,12 @@ export class McpRegistry {
         const cards = review.cards.filter((c) => c.text.includes(file)).slice(0, 2);
         for (const c of cards) out.push(`card:${c.id} (mentions ${file})`);
       }
+    }
+    // description text (allowed for every role, including second-opinion:
+    // same restriction rule as search_review, issue #96).
+    for (const d of this.matchDescription(review, description)) {
+      out.push(`desc:${d.id} (description match)`);
+      if (out.length >= 10) break;
     }
     if (!restricted) {
       // quoted code → cards/annotations containing it

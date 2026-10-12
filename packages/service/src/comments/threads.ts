@@ -34,6 +34,7 @@ import type {
   ReviewSnapshot,
 } from "@unvibe/shared";
 import type { WritableDraft } from "immer";
+import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
 import { findBlock } from "../interaction/l4.js";
 
@@ -117,16 +118,10 @@ function stripTags(html: string): string {
     .trim();
 }
 
-function descriptionParagraphText(snapshot: ReviewSnapshot, paragraphId: string): string | null {
-  const html = snapshot.description?.html ?? snapshot.description?.pendingHtml ?? null;
+function snapshotDescriptionParagraphText(snapshot: ReviewSnapshot, paragraphId: string): string | null {
+  const html = currentDescriptionHtml(snapshot.description);
   if (!html) return null;
-  const re = new RegExp(
-    `<[^>]*\\bid=["']${paragraphId.replace(/["'\\]/g, "")}["'][^>]*>([\\s\\S]*?)<\\/(?:p|ul|ol|pre|li|div)>`,
-    "i",
-  );
-  const m = html.match(re);
-  if (!m) return null;
-  return stripTags(m[1]);
+  return descriptionParagraphText(html, paragraphId);
 }
 
 function diffLineContext(
@@ -188,7 +183,7 @@ export function buildAnchor(
     };
   }
   if (host.kind === "description") {
-    const text = descriptionParagraphText(snapshot, host.paragraphId);
+    const text = snapshotDescriptionParagraphText(snapshot, host.paragraphId);
     if (text === null) {
       // Paragraph ids come from the rendered description; unknown ids are
       // a client bug, but keep the message actionable.

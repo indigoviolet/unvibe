@@ -146,6 +146,76 @@ export function renderMarkdownBlocks(src: string): RenderedDescription {
   return { html: `<div class="desc">${parts.join("")}</div>`, paragraphs };
 }
 
+/**
+ * Single source of description paragraph IDs (issue #96).
+ *
+ * `renderMarkdownBlocks` assigns one `d-p<n>` per block (headings get no
+ * ID, a whole list is one ID) and persists them as `id="..."` attributes
+ * in the stored HTML. Everything that maps `desc:` IDs back to text —
+ * MCP `search`/`resolve`, the citation validator, second-opinion excerpts,
+ * comment anchors — reads the IDs back from the stored HTML here instead
+ * of counting again, so the IDs always agree with ingest.
+ */
+function decodeDescEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(Number(d)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function descBlockText(inner: string): string {
+  return decodeDescEntities(inner.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+/** Stored description HTML as agents see it: the pending edit when there is one. */
+export function currentDescriptionHtml(
+  desc: { html?: string; pendingHtml?: string } | null | undefined,
+): string {
+  return desc?.pendingHtml ?? desc?.html ?? "";
+}
+
+/**
+ * Parse stored description HTML back into paragraphs in document order.
+ * Blocks keep the `id="..."` ingest wrote; headings (which carry no ID)
+ * are skipped. When the HTML predates stable IDs entirely (no `id="..."`
+ * anywhere), fall back to positional `d-p<n>` per non-heading block —
+ * headings take no number and a whole list is one block, matching
+ * `renderMarkdownBlocks` numbering for the same block structure.
+ */
+export function parseDescriptionParagraphs(html: string): DescriptionParagraph[] {
+  if (!html) return [];
+  const inner = html.replace(/^[\s\S]*?<div class="desc"[^>]*>/i, "").replace(/<\/div>\s*$/, "");
+  const re = /<(p|ul|ol|pre|h1|h2|h3|h4|h5|h6)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+  const blocks: { tag: string; id: string | null; text: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(inner)) !== null) {
+    const tag = m[1].toLowerCase();
+    const id = m[2].match(/\bid=["']([^"']+)["']/i)?.[1] ?? null;
+    blocks.push({ tag, id, text: descBlockText(m[3]) });
+  }
+  if (blocks.some((b) => b.id !== null)) {
+    return blocks.filter((b) => b.id !== null && b.text !== "").map((b) => ({ id: b.id!, text: b.text }));
+  }
+  const out: DescriptionParagraph[] = [];
+  let n = 0;
+  for (const b of blocks) {
+    if (b.tag.startsWith("h") || b.text === "") continue;
+    n += 1;
+    out.push({ id: `d-p${n}`, text: b.text });
+  }
+  return out;
+}
+
+/** Plain text of one description paragraph by ID, or null when unknown. */
+export function descriptionParagraphText(html: string, paragraphId: string): string | null {
+  const found = parseDescriptionParagraphs(html).find((p) => p.id === paragraphId);
+  return found ? found.text : null;
+}
+
 export interface CommitMessage {
   sha: string;
   subject: string;

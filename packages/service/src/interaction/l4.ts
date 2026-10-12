@@ -7,6 +7,7 @@
  * `note_ack` templates through `runInFork`.
  */
 import type { Annotation, Block, ReviewSnapshot } from "@unvibe/shared";
+import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
 
 function blockPlainText(block: Block): string {
   switch (block.type) {
@@ -107,11 +108,8 @@ export function hostBlockText(snapshot: ReviewSnapshot, anchor: Annotation["anch
     return `(unknown block ${host.blockId})`;
   }
   if (host.kind === "description") {
-    const html = snapshot.description?.html ?? snapshot.description?.pendingHtml ?? "";
-    const m = html.match(
-      new RegExp(`<[^>]*\\bid=["']${host.paragraphId.replace(/["'\\]/g, "")}["'][^>]*>([\\s\\S]*?)<\\/(?:p|ul|ol|pre|li|div)>`, "i"),
-    );
-    if (m) return m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const text = descriptionParagraphText(currentDescriptionHtml(snapshot.description), host.paragraphId);
+    if (text !== null) return text;
     return `(unknown description paragraph ${host.paragraphId})`;
   }
   const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
