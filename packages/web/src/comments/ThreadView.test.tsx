@@ -155,3 +155,12 @@ describe("ThreadView reply box", () => {
     }
   });
 });
+
+describe("ThreadView authorship (issue #86, finding 21)", () => {
+  test("the user's avatar and name read alike", () => {
+    const found = useReview.getState().snapshot?.annotations[0] as Annotation;
+    const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
+    expect(container.querySelector(".av.you")?.textContent).toBe("You");
+    expect(screen.getByText("You", { selector: ".who" })).toBeInTheDocument();
+  });
+});
