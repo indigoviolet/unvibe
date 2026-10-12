@@ -471,7 +471,10 @@ needed (that deviation is closed, not added).
 
 - Layers L0–L4 ordering + budgets (40k guess, hunk-header fallback) —
   met (`context/layers.ts`, `context.test.ts` header/summary fallback).
-- Per-model base cache; base key (version, guide rev, model) — met
+- Per-model base cache; base key (review, version, guide rev, model) — met
+  (#43: the key had no review id, so reviews shared a base and a removed
+  review's session was reused when the change was added again; Remove now
+  closes the review's sessions)
   (`sessions/manager.ts`, `decideRebuild`).
 - Base = L0 + one L1+L1b+L2 message + “ready”; conversations fork(base)+L4;
   reader never forked; fan-out after warm — met (`pipeline/runner.ts:790

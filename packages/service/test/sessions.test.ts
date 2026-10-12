@@ -78,7 +78,7 @@ class StubRunner implements AgentRunner {
   }
 }
 
-const KEY: BaseKey = { reviewVersion: "r1@v1", guideRevision: "g1", provider: "claude", model: "m" };
+const KEY: BaseKey = { reviewId: "r1", reviewVersion: "v1", guideRevision: "g1", provider: "claude", model: "m" };
 
 function basePack(): string {
   return "L1+L1b+L2 BASE PACK";
@@ -261,8 +261,35 @@ describe("invalidate and restore", () => {
 
     const other: BaseKey = { ...KEY, guideRevision: "g2" };
     await mgr.getBase({ ...opts, key: other });
-    await mgr.pruneBases(new Set([baseKeyString(other)]));
+    // Another review's base on the same version/guide/model is its own base
+    // and survives this review's prune.
+    const elsewhere: BaseKey = { ...KEY, reviewId: "r2" };
+    const theirs = await mgr.getBase({ ...opts, key: elsewhere });
+    expect(theirs.fresh).toBe(true);
+    expect(theirs.session.id).not.toBe(rebuilt.session.id);
+    await mgr.pruneBases("r1", new Set([baseKeyString(other)]));
     await expect(mgr.forkConversation(base.key, "hello")).rejects.toThrow(/unknown base/);
+    expect(runner.closed).not.toContain(theirs.session.id);
+    expect((await mgr.getBase({ ...opts, key: elsewhere })).fresh).toBe(false);
+  });
+
+  it("closeReview closes and forgets the review's base and conversations only", async () => {
+    const { mgr, runner, opts } = build();
+    const base = await mgr.getBase(opts);
+    const conv = await mgr.forkConversation(base.key, "hello");
+    const elsewhere: BaseKey = { ...KEY, reviewId: "r2" };
+    const theirs = await mgr.getBase({ ...opts, key: elsewhere });
+
+    await mgr.closeReview("r1");
+    expect(runner.closed).toEqual(expect.arrayContaining([base.session.id, conv.session.id]));
+    expect(runner.closed).not.toContain(theirs.session.id);
+    expect(mgr.baseKeys()).toEqual([baseKeyString(elsewhere)]);
+    // The same key later builds a new session instead of reusing or
+    // reloading the old one.
+    const again = await mgr.getBase(opts);
+    expect(again.fresh).toBe(true);
+    expect(again.session.id).not.toBe(base.session.id);
+    expect(runner.loads).toEqual([]);
   });
 
   it("restores closed sessions after a restart and reopens lazily", async () => {

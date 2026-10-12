@@ -91,7 +91,7 @@ describe("GET /api/reviews/:id/shared-context", () => {
         draft.contributions = [...CONTRIBUTIONS];
       });
       const snap = ctx.reviews.getSnapshot(reviewId)!;
-      const key = `v${snap.version.n}|${guideRevisionForSnapshot(snap)}|claude|claude-sonnet`;
+      const key = `${reviewId}|v${snap.version.n}|${guideRevisionForSnapshot(snap)}|claude|claude-sonnet`;
       ctx.sharedctx.noteBaseBuilt(reviewId, key, 1234);
 
       const res = await app.inject({ method: "GET", url: `/api/reviews/${reviewId}/shared-context`, headers: auth });
@@ -130,8 +130,8 @@ describe("GET /api/reviews/:id/shared-context", () => {
 });
 
 describe("debug markdown builders", () => {
-  it("parseBaseKey splits version|guide|provider|model", () => {
-    expect(parseBaseKey("v2|guide-abc123|codex|gpt-5.4")).toEqual({
+  it("parseBaseKey splits review|version|guide|provider|model", () => {
+    expect(parseBaseKey("rv_1|v2|guide-abc123|codex|gpt-5.4")).toEqual({
       version: "v2",
       guideRevision: "guide-abc123",
       provider: "codex",

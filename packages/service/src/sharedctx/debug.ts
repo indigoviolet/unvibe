@@ -29,14 +29,14 @@ export function fence(text: string, info = "text"): string {
   return `${fence}${info}\n${text}\n${fence}`;
 }
 
-/** Parsed view of a session-manager base key (`version|guideRevision|provider|model`). */
+/** Parsed view of a session-manager base key (`reviewId|version|guideRevision|provider|model`). */
 export function parseBaseKey(baseKey: string): {
   version: string;
   guideRevision: string;
   provider: string;
   model: string;
 } {
-  const [version = "?", guideRevision = "?", provider = "?", ...modelRest] = baseKey.split("|");
+  const [, version = "?", guideRevision = "?", provider = "?", ...modelRest] = baseKey.split("|");
   return { version, guideRevision, provider, model: modelRest.join("|") || "?" };
 }
 

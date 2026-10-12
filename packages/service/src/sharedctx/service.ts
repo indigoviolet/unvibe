@@ -171,6 +171,7 @@ export class SharedContextService {
     if (!snap) return null;
     const settings = this.deps.settings.get();
     return baseKeyString({
+      reviewId,
       reviewVersion: `v${snap.version.n}`,
       guideRevision: guideRevisionForSnapshot(snap),
       provider: settings.main.provider,
@@ -228,7 +229,7 @@ export class SharedContextService {
       /** Base under evaluation; defaults to the review's current base key. */
       baseKey?: string;
       onRebuild: (reasons: string[]) => Promise<{ newBaseKey: string; newBaseTokens: number }>;
-      pruneBases?: (keep: Set<string>) => Promise<void>;
+      pruneBases?: (reviewId: string, keep: Set<string>) => Promise<void>;
     },
   ): Promise<{ rebuilt: boolean; reasons: string[] }> {
     const snap = this.snapshot(reviewId);
@@ -244,9 +245,9 @@ export class SharedContextService {
     const baseVersion = snap.version.n;
     // Guide revision is content-derived (guideRevisionForSnapshot): log
     // appends never move it, so the live base stays put while the log grows.
-    const baseGuideRevision = baseKey.split("|")[1] ?? guideRevisionForSnapshot(snap);
+    const baseGuideRevision = baseKey.split("|")[2] ?? guideRevisionForSnapshot(snap);
     const plan = planRebuild({
-      baseVersion: Number(baseKey.split("|")[0]?.slice(1) ?? baseVersion),
+      baseVersion: Number(baseKey.split("|")[1]?.slice(1) ?? baseVersion),
       baseGuideRevision,
       baseTokens,
       appendedTokens,
@@ -319,7 +320,7 @@ export class SharedContextService {
       lastUsedAt: this.clock.now(),
     });
     if (opts.pruneBases) {
-      await opts.pruneBases(new Set([built.newBaseKey]));
+      await opts.pruneBases(reviewId, new Set([built.newBaseKey]));
     }
     return { rebuilt: true, reasons: [...plan.reasons] };
   }

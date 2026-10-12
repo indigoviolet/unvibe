@@ -834,6 +834,7 @@ export class Pipeline {
     // instruction so fakes and real models alike acknowledge.
     const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
     const key = {
+      reviewId,
       reviewVersion: `v${snapshot.version.n}`,
       guideRevision: guideRevisionForSnapshot(snapshot),
       provider: settings.main.provider,
@@ -878,6 +879,7 @@ export class Pipeline {
     const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
     const base = await this.opts.sessions.getBase({
       key: {
+        reviewId,
         reviewVersion: `v${snapshot.version.n}`,
         guideRevision: guideRevisionForSnapshot(snapshot),
         provider: settings.main.provider,

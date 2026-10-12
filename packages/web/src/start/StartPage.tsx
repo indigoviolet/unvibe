@@ -887,7 +887,7 @@ function SessionRow({
         {s.stale ? <span className="prtag">new commits · Update</span> : null}
         {confirmDelete === s.id ? (
           <>
-            <span className="hint">Remove local data only?</span>
+            <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>
             <button
               className="btn"
               type="button"
@@ -902,7 +902,7 @@ function SessionRow({
               disabled={deleting === s.id}
               onClick={() => setConfirmDelete(null)}
             >
-              Keep
+              Cancel
             </button>
           </>
         ) : (
