@@ -45,7 +45,7 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
     fn()
       .then(() => toast(done))
       .catch((err: unknown) => {
-        toast(`Couldn't update the suggestion: ${friendlyError(err)}`);
+        toast(`Couldn't update the correction: ${friendlyError(err)}`);
       })
       .finally(() => setBusy(null));
   };
@@ -58,7 +58,7 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
         const threadId = contribution.sourceThread ?? contribution.sourceSession;
         return (
           <div className="suggest" key={key} data-correction={contribution.id}>
-            <div className="stag">Suggested correction · pending</div>
+            <div className="stag">Suggested correction</div>
             <p>{item.text}</p>
             {item.citations.length > 0 ? (
               <p className="hint">
@@ -86,19 +86,17 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
                       document.getElementById(threadId)?.scrollIntoView({ block: "nearest" });
                     }}
                   >
-                    thread {threadId}
+                    this comment
                   </button>
                 </span>
-              ) : (
-                <span className="hint">from {contribution.sourceSession}</span>
-              )}
+              ) : null}
               <span className="sp" />
               <button
                 className="btn ghost"
                 type="button"
                 disabled={busy === key}
                 onClick={() =>
-                  act(key, () => api.dismissContribution(reviewId, contribution.id), "Correction dismissed.")
+                  act(key, () => api.dismissContribution(reviewId, contribution.id), "Correction dismissed")
                 }
               >
                 Dismiss
@@ -108,7 +106,7 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
                 type="button"
                 disabled={busy === key}
                 onClick={() =>
-                  act(key, () => api.acceptContribution(reviewId, contribution.id), "Correction accepted — new card revision.")
+                  act(key, () => api.acceptContribution(reviewId, contribution.id), "Correction accepted. The card was updated.")
                 }
               >
                 Accept

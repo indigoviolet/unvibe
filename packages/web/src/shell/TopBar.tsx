@@ -53,7 +53,7 @@ export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: P
 
   return (
     <header className="top">
-      <Link className="brand" to="/" title="Back to the start screen">
+      <Link className="brand" to="/" title="Back to the start page">
         Unvibe
       </Link>
       <div className="pr">

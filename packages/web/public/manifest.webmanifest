@@ -1,7 +1,7 @@
 {
   "name": "Unvibe",
   "short_name": "Unvibe",
-  "description": "Reader for code changes. Runs on your machine via the Unvibe localhost service.",
+  "description": "Read and review code changes with an AI guide. Runs on your machine.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

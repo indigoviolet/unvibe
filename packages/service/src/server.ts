@@ -38,7 +38,7 @@ import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
 import { reportError } from "./telemetry/sentry.js";
 
-export const SERVICE_VERSION = "0.0.2";
+export const SERVICE_VERSION = "0.0.3";
 
 /** `createApp` return: Fastify app + unified context (all singletons). */
 export interface AppContext {
@@ -113,11 +113,11 @@ export function missingTokenHtml(): string {
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8" />',
-    "<title>Unvibe — sign in</title></head><body>",
-    "<h1>Unvibe needs its per-install token</h1>",
-    "<p>This page was opened without a token. Get one by running:</p>",
+    "<title>Unvibe: connect this browser</title></head><body>",
+    "<h1>This browser isn't connected to Unvibe</h1>",
+    "<p>Run this in a terminal:</p>",
     "<p><code>unvibe open</code></p>",
-    "<p>That starts the service if needed and opens the app URL (the token lives in the URL once, then in the app's local storage).</p>",
+    "<p>It starts the service if needed and opens Unvibe with your token.</p>",
     "</body></html>",
   ].join("\n");
 }

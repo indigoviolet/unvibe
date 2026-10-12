@@ -80,9 +80,16 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   - **recent branches**, local and remote;
   - **reviews you've opened before**, with their unread and stale state ("new commits · Update").
 - Selections are remembered.
+- The PR and branch lists keep the last successful fetch per repo in the
+  web app (`localStorage`, last 10 repos): opening the page, switching
+  repos, or coming back shows the kept rows at once while a fresh fetch
+  runs underneath and replaces them when it lands. A quiet line says how
+  old the shown rows are and when a refresh is in flight; a failed
+  refresh keeps the old rows with the error note; the first load for a
+  repo behaves as before.
 
 ### 4.3 Pages
-- **Kinds:** the guided review (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
+- **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
   - a label, but only where it matters: **"Guided review"** on the root page, **"Agent finding · <confidence>"** on a finding page;
   - a **bookmark** icon (save or unsave the page);
@@ -94,7 +101,8 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 ### 4.4 Cards
 Every card and every expansion card has the same controls:
-- **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row, or its first line if it has no title.
+- **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Expansions show the quoted selection as their header instead and get no derived title.
+- **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row.
 - **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles.
   - Changing depth rewrites the card's paragraphs in place.
   - + at the deepest level adds an "Underlying principle" block.
@@ -201,14 +209,15 @@ Every card and every expansion card has the same controls:
 **Views**
 - **Unified:** long lines scroll sideways.
 - **Split:** always two equal halves with fixed line-number columns; long lines wrap inside their half. Choosing Split widens the pane if it's narrow.
+- **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
 - **Pinned rows:** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view.
 
 **New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
 
 ### 4.14 Settings page
-- **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers.
+- **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers. A role never explicitly saved takes a live default picked from what the adapters offer, ranked by tier (opus | sol > sonnet | terra > haiku | luna, newest version offered within a tier, never Fable or Astra); second opinion comes from the provider main is not using, and stays unset with one provider. Saved picks always win; defaults are never written into settings.
 - **Prompts:** each template (Template view): the raw text with its variables marked. View-only to start. The per-review "Expanded for this review" view — the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart — lives on the debug page below.
-- **Limits and budgets:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
+- **Limits:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
 - **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
   - **Jobs:** running and queued jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider.
   - **Shared context** as a rendered Markdown document — the base session(s) with the current base pack, the append-only log (§9.3), and every contribution (§9.5) with the thread it came from — plus delete for any item. No formatting beyond Markdown rendering.
@@ -460,6 +469,7 @@ A new base is built when any of these happens:
 - **Main model:** everything that needs the review's context. Using one model means one base.
 - **Small model:** hunk summaries, the uninteresting classification, consolidating contributions, titles. These jobs get only what they need and don't fork the base.
 - **Second-opinion model:** a different provider or model. It runs in a fresh session with its own base, containing L0 + L1 + the cited code. It never sees guide text, other findings, contributions, or the main model's pinned code beyond what's cited.
+- **Role defaults:** tiers opus | sol > sonnet | terra > haiku | luna; the newest version offered within a tier wins; Fable and Astra are never picked. Second opinion is picked from the provider main is not using, and stays unset with a single provider. One source of effective settings serves Settings, readiness, the pipeline, second opinions and shared context: a saved pick wins, an unset role takes the live default, and unfillable roles keep the stored fallback (readiness reports it plainly).
 - **Concurrency:**
   - a per-provider session cap, starting at 4;
   - a priority queue: what the user asked for, then what's visible on screen, then background work;
@@ -493,15 +503,17 @@ A new base is built when any of these happens:
 
 **Diagrams:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/d2-diagrams.md`). Superseded proposal (kept as history): agents were to write Mermaid, rendered on the page, with citation tokens allowed in node labels; the prototype used hand-drawn SVG.
 
+**Shared instructions:** `instructions` (L0) carries guidance shared by every task: every page card has a short title (§4.4), and replies never repeat what the reader already sees — no echo of the selection, the question, the card title or a diagram's caption. As a backstop the parser drops a leading body line that exactly echoes them (no retry, no repair turn).
+
 ---
 
 ## 14. App shell, install and security
 
-- **Service:** Node and TypeScript, listening on `127.0.0.1` only. It requires a **per-install token**: generated at setup, held by the UI, and checked on every HTTP and WebSocket request.
+- **Service:** Node and TypeScript, listening on `127.0.0.1` only. It requires a **token** (one per install): generated at setup, held by the UI, and checked on every HTTP and WebSocket request.
 - **UI:** a React (Vite) build served by the service, and **installable as a web app** from Chrome (localhost counts as secure). There are no browser extensions.
 - **Nothing starts at login.**
-  - `unvibe setup` writes a small helper app to `~/Applications`. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing, and it registers the `unvibe://` URL scheme.
-  - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The helper starts the service, and the page reloads.
+  - `unvibe setup` writes a small link-handler app to `~/Applications`. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing, and it registers the `unvibe://` URL scheme.
+  - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The link handler starts the service, and the page reloads.
   - The service exits after a period with no open window and no running jobs (default 10 minutes).
 - **Install:** `npm install -g github:<org>/unvibe#release`, then `unvibe setup`. Updates use the same install command. The agent CLIs (`claude`/`codex`) are the user's own installs (see `DEVELOPMENT.md` "Releases" and `docs/acceptance-audit.md` "Intentional deviations" item 1).
 - **macOS gotcha:** apps opened from Finder don't inherit the shell's `PATH`. On startup the service must read it from a login shell (`zsh -lc 'echo $PATH'`) so it can find `gh`, `git`, `claude`, `codex` and mise-installed tools.

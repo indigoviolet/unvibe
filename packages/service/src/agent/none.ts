@@ -12,7 +12,7 @@
 import type { AgentRunner, Session } from "@unvibe/shared";
 
 export const NO_AGENT_MESSAGE =
-  "no agent configured (UNVIBE_AGENT=none): set UNVIBE_AGENT=replay for recordings or configure ACP models";
+  "no agent configured: the service was started with UNVIBE_AGENT=none";
 
 function fail(): never {
   throw new Error(NO_AGENT_MESSAGE);

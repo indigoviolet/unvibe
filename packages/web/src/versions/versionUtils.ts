@@ -150,9 +150,9 @@ export function staleHeadline(status: VersionStatus): string {
 export function refreshErrorNotice(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/failed to fetch|networkerror|load failed|offline/i.test(msg)) {
-    return "You're offline — showing the last fetched version.";
+    return "The Unvibe service isn't answering. Showing the last fetched version.";
   }
-  if (/\b404\b/.test(msg)) return "The service no longer has this review.";
-  if (/\b502\b/.test(msg)) return "Couldn't reach the repo — showing the last fetched version.";
+  if (/\b404\b/.test(msg)) return "This review no longer exists";
+  if (/\b502\b/.test(msg)) return "Couldn't fetch from the repo's remote. Showing the last fetched version.";
   return "Couldn't check for new commits — showing the last fetched version.";
 }

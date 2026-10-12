@@ -35,7 +35,7 @@ function locationLabel(comment: SubmitPreview["comments"][number]): string {
         : `${loc.line}`;
     return `${name}:${range}`;
   }
-  return loc.reason ?? "General PR comment";
+  return "General PR comment";
 }
 
 type PanelState =
@@ -90,7 +90,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
               disabledReason: res.reason,
             },
           });
-        } else setState({ status: "error", error: "Couldn't load the submit preview." });
+        } else setState({ status: "error", error: "Couldn't load the comments to submit." });
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -119,7 +119,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
       .submit(reviewId, { dryRun: true })
       .then((res) => {
         if (res.preview) setState({ status: "ready", preview: res.preview });
-        else setState({ status: "error", error: res.reason ?? "Couldn't load the submit preview." });
+        else setState({ status: "error", error: res.reason ?? "Couldn't load the comments to submit." });
       })
       .catch((err: unknown) => {
         setState({ status: "error", error: friendlyError(err) });
@@ -133,7 +133,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
       .then((snap) => {
         useReview.getState().setSnapshot(snap);
         reloadPreview();
-        toast("Review refreshed — check the preview before submitting.");
+        toast("Review refreshed. Check the list before submitting.");
       })
       .catch((err: unknown) => {
         toast(refreshErrorNotice(err));
@@ -155,7 +155,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
             status: "partial",
             commentCount: res.commentCount,
             reviewUrl: res.reviewUrl,
-            error: res.reason ?? "The review posted but the description update failed.",
+            error: res.reason ?? "The review was posted, but the description wasn't updated.",
           });
           return;
         }
@@ -175,9 +175,9 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         if (/409/.test(message) && /head moved|refresh/i.test(message)) {
-          setState({ status: "conflict", error: message });
+          setState({ status: "conflict", error: friendlyError(err) });
         } else {
-          setState({ status: "error", error: message });
+          setState({ status: "error", error: friendlyError(err) });
         }
       });
   };
@@ -200,7 +200,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
       </button>
       {open ? (
         <div className="submit" role="dialog" aria-label="Submit review">
-          {state.status === "loading" ? <span className="hint">Loading the preview…</span> : null}
+          {state.status === "loading" ? <span className="hint">Loading…</span> : null}
           {state.status === "submitting" ? <span className="hint">Submitting…</span> : null}
           {state.status === "error" ? (
             <>
@@ -218,7 +218,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
           ) : null}
           {state.status === "conflict" ? (
             <>
-              <b>The branch moved</b>
+              <b>The PR has new commits</b>
               <span className="hint">{state.error}</span>
               <div className="frow" style={{ justifyContent: "flex-end" }}>
                 <button className="btn ghost" type="button" data-submitclose="" onClick={() => setOpen(false)}>
@@ -260,7 +260,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
           ) : null}
           {state.status === "partial" ? (
             <>
-              <b>Review posted, description failed</b>
+              <b>Review posted, description not updated</b>
               <span className="hint">{state.error}</span>
               {state.reviewUrl ? (
                 <a href={state.reviewUrl} target="_blank" rel="noreferrer noopener">
@@ -269,7 +269,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
               ) : null}
               <div className="frow" style={{ justifyContent: "flex-end" }}>
                 <button className="btn ghost" type="button" data-submitclose="" onClick={() => setOpen(false)}>
-                  Cancel
+                  Close
                 </button>
                 <button
                   className="btn"
@@ -312,7 +312,7 @@ function PreviewBody({
         <span className="hint">{preview.disabledReason}</span>
         <div className="frow" style={{ justifyContent: "flex-end" }}>
           <button className="btn ghost" type="button" data-submitclose="" onClick={onCancel}>
-            Cancel
+            Close
           </button>
         </div>
       </>
@@ -323,7 +323,7 @@ function PreviewBody({
       <b>Submit review</b>
       {preview.alreadyPosted.length > 0 ? (
         <span className="hint">
-          {preview.alreadyPosted.length} already posted — they won't be posted twice.
+          {preview.alreadyPosted.length} already on GitHub. They won't be posted again.
         </span>
       ) : null}
       {n > 0 ? (
@@ -346,7 +346,7 @@ function PreviewBody({
           ) : null}
         </ul>
       ) : (
-        <span className="hint">Nothing pending. Mark comments “For PR” or edit the description first.</span>
+        <span className="hint">Nothing to submit. Mark comments for the PR or edit the description first.</span>
       )}
       <div className="frow" style={{ justifyContent: "flex-end" }}>
         <button className="btn ghost" type="button" data-submitclose="" onClick={onCancel}>

@@ -1115,7 +1115,7 @@ function commentsMenu() {
     ${state.cmFilter === "pr" ? `<textarea id="ob-${t.id}" aria-label="Draft PR comment">${esc(t.draft ?? (t.msgs.find(m => m.who === "you") || t.msgs.find(m => m.suggested) || {}).text ?? "")}</textarea>` : ""}</div>`).join("");
   const post = state.cmFilter === "pr" && pr.length ? `<span class="hint">These are drafts. Nothing reaches GitHub until you use Submit review.</span>` : "";
   return `<div class="cmenu" role="dialog" aria-label="Comments"><div class="frow"><span class="seg"><button data-cmf="all" aria-pressed="${state.cmFilter === "all"}">All ${all.length}</button><button data-cmf="pr" aria-pressed="${state.cmFilter === "pr"}">For PR ${pr.length}</button></span><span class="sp"></span>${ib("x", "Close", "data-cm")}</div>
-    ${items || `<p class="hint" style="margin:4px">${state.cmFilter === "pr" ? "Nothing marked for the PR yet. Use “For PR” on any comment." : "No comments yet. Select text and choose Ask or Note."}</p>`}${post}</div>`;
+    ${items || `<p class="hint" style="margin:4px">${state.cmFilter === "pr" ? "Nothing marked for the PR yet. Use “Mark for the PR” on any comment." : "No comments yet. Select text and choose Ask or Note."}</p>`}${post}</div>`;
 }
 // Everything that would change the PR on GitHub, gathered for one submit.
 function pending() { return { comments: allComments().filter(x => x.t.post), desc: !!state.descHtml }; }

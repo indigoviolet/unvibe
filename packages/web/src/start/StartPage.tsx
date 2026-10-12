@@ -25,8 +25,11 @@
  *   lists synchronously so stale data can never render, a nonce guarantees
  *   the clear is always paired with a fresh load (even re-selecting the
  *   current repo, which still fires `change`), and a 30 s timeout bounds
- *   the loading state so it can never stick forever. A total failure
- *   shows an inline error with a Retry button; a single failed filter
+ *   the loading state so it can never stick forever. When storage holds
+ *   the new repo's last successful fetch (#90), those kept rows show at
+ *   once and the fresh fetch only refreshes underneath. A total failure
+ *   shows an inline error with a Retry button (a background refresh keeps
+ *   the kept rows rendered underneath); a single failed filter
  *   shows its error in that section while the others still render
  *   (the service already degrades gh/git failures to empty per source).
  *   A managed clone that could not be refreshed reports the service's
@@ -57,8 +60,19 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { stageLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { PreviewBuildBadge } from "../shell/PreviewBuildBadge.js";
+import {
+  clearAllKeptLists,
+  getKeptLists,
+  getKeptViewer,
+  initialKept,
+  keptStatusText,
+  pruneKeptLists,
+  setKeptLists,
+  setKeptViewer,
+} from "./keptChanges.js";
 
 const REPO_KEY = "unvibe.start.repoId";
 
@@ -111,29 +125,21 @@ function guideLabel(s: ReviewSummary): string {
 function runningLabel(detail: string | undefined): string {
   const kinds = (detail ?? "").replace(/^Running:\s*/i, "").split(",").map((k) => k.trim().toLowerCase());
   const first = kinds.find((k) => k !== "");
+  // Stage names shared with the guide empty state (guide/stageLabels.ts);
+  // the rest are start-page-only labels.
+  const shared = stageLabel(first);
+  if (shared) return shared;
   switch (first) {
-    case "reader":
-      return "Reading the change…";
-    case "base":
-      return "Preparing shared context…";
-    case "critic":
-      return "Checking findings…";
-    case "concept":
-      return "Writing concepts…";
-    case "hunk-pass":
-      return "Summarizing code…";
-    case "go-deeper":
-      return "Filling deeper cards…";
     case "explain":
-      return "Writing an explanation…";
+      return "Writing explanation…";
     case "ask":
       return "Answering a question…";
     case "depth":
-      return "Rewriting depth…";
+      return "Rewriting…";
     case "examples":
       return "Adding examples…";
     case "diagram":
-      return "Drawing a diagram…";
+      return "Drawing diagram…";
     case "second-opinion":
       return "Getting a second opinion…";
     case "update-pass":
@@ -175,7 +181,7 @@ function parsePrInput(
     if (found) return { repoId: found.id, pr: ref.prNumber };
     return { offer: { owner: ref.owner, name: ref.name, pr: ref.prNumber } };
   }
-  return { error: "Enter a PR number (e.g. 5020) or a GitHub PR URL." };
+  return { error: "Enter a PR number or a GitHub PR URL." };
 }
 
 export function StartPage(): React.JSX.Element {
@@ -190,14 +196,19 @@ export function StartPage(): React.JSX.Element {
       return null;
     }
   });
-  const [authoring, setAuthoring] = useState<RepoChange[]>([]);
-  const [requested, setRequested] = useState<RepoChange[]>([]);
-  const [branches, setBranches] = useState<RepoChange[]>([]);
+  // Kept rows (#90) for the initially selected repo, read once: the list
+  // states below all initialise from this one value.
+  const [initial] = useState(() => initialKept(REPO_KEY));
+  const [authoring, setAuthoring] = useState<RepoChange[]>(initial.kept?.authoring ?? []);
+  const [requested, setRequested] = useState<RepoChange[]>(initial.kept?.requested ?? []);
+  const [branches, setBranches] = useState<RepoChange[]>(initial.kept?.branches ?? []);
   const [listErrors, setListErrors] = useState<ListErrors>(EMPTY_ERRORS);
   // The repo the PR/branch lists below were loaded for (null = none yet or
   // cleared). The render gates on this so a newly selected repo never shows
-  // the previous repo's data.
-  const [listsFor, setListsFor] = useState<string | null>(null);
+  // the previous repo's data. With kept lists (#90) this starts as the
+  // selected repo when a kept entry exists, so the kept rows render on the
+  // first paint and the fetch only refreshes underneath.
+  const [listsFor, setListsFor] = useState<string | null>(initial.kept ? initial.repoId : null);
   // Whole-load failure (every filter rejected, or the load timed out):
   // inline message + Retry.
   const [listsError, setListsError] = useState<string | null>(null);
@@ -230,7 +241,12 @@ export function StartPage(): React.JSX.Element {
   const [cloningPr, setCloningPr] = useState<string | null>(null);
   // Stale-clone note from the lists (`fetchError` on RepoChangesResponse):
   // the three calls all carry it, so the first one wins and shows once.
-  const [fetchNote, setFetchNote] = useState<string | null>(null);
+  const [fetchNote, setFetchNote] = useState<string | null>(initial.kept?.fetchNote ?? null);
+  // Kept lists (#90): when the shown rows came from storage, their fetch
+  // time drives the quiet "Updated …" line. `refreshing` is true while a
+  // background refresh is in flight on top of kept rows.
+  const [keptFetchedAt, setKeptFetchedAt] = useState<number | null>(initial.kept?.fetchedAt ?? null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
@@ -242,16 +258,24 @@ export function StartPage(): React.JSX.Element {
       setSessions(r.reviews);
       setSessionsError(null);
     } catch {
-      setSessionsError("Couldn't load previous reviews.");
+      setSessionsError("Couldn't load your reviews.");
     }
   }, []);
 
   // Monotonic load id: a superseded selection's late responses are ignored.
   // (A late batch for the CURRENT id still applies: it is fresher than the
   // cleared state and newer than nothing else in flight.)
+  // With kept lists (#90) a load is a background refresh when storage held
+  // rows for the repo: the kept rows stay rendered, the fetch replaces them
+  // when it lands, and a failed refresh keeps them with the error note.
   const loadSeq = useRef(0);
   const loadLists = useCallback(async (id: string) => {
     const seq = ++loadSeq.current;
+    const kept = getKeptLists(id);
+    const hadKept = kept !== null;
+    // A background refresh shows its quiet sign; a first load keeps the
+    // existing "Loading…" state (no kept age to describe).
+    if (hadKept) setRefreshing(true);
     // Settled, not all-or-nothing: one failing filter must not sink the
     // others (branches are local even when the gh-backed PR lists fail).
     // Raced against a timeout so the page can never stick on "Loading…"
@@ -266,26 +290,63 @@ export function StartPage(): React.JSX.Element {
         window.setTimeout(() => resolve(null), LISTS_TIMEOUT_MS);
       }),
     ]);
-    if (loadSeq.current !== seq) return;
     if (settled === null) {
+      // Timeout: a superseded selection's late timer is ignored so it can
+      // never overwrite the current repo's lists.
+      if (loadSeq.current !== seq) return;
+      if (hadKept) {
+        // Failed background refresh: keep the old lists, show the note.
+        setListErrors(EMPTY_ERRORS);
+        setListsError("it took too long — the service may be busy");
+        setRefreshing(false);
+        return;
+      }
       setListErrors(EMPTY_ERRORS);
-      setListsError("the lists request timed out — the service may be busy");
+      setListsError("it took too long — the service may be busy");
       setListsFor(id);
       return;
     }
     const [a, r, rec] = settled;
-    setAuthoring(a.status === "fulfilled" ? a.value.changes : []);
-    setRequested(r.status === "fulfilled" ? r.value.changes : []);
+    const fulfilled = [a, r, rec].filter((x) => x.status === "fulfilled").length;
+    const freshAuthoring = a.status === "fulfilled" ? a.value.changes : (kept?.authoring ?? []);
+    const freshRequested = r.status === "fulfilled" ? r.value.changes : (kept?.requested ?? []);
     // `recent` mixes branches and previous reviews; branches only here
     // (prior sessions come from GET /api/reviews, filtered per repo).
-    setBranches(rec.status === "fulfilled" ? rec.value.changes.filter((c) => c.kind === "branch") : []);
+    const freshBranches =
+      rec.status === "fulfilled"
+        ? rec.value.changes.filter((c) => c.kind === "branch")
+        : (kept?.branches ?? []);
     // A managed clone that could not be refreshed reports the same
-    // `fetchError` on every call: show it once, near the lists.
-    setFetchNote(
+    // `fetchError` on every call: show it once, near the lists. A fresh
+    // success clears a stale note; a total failure keeps the old one.
+    const freshNote =
       [a, r, rec].flatMap((x) =>
         x.status === "fulfilled" && x.value.fetchError ? [x.value.fetchError] : [],
-      )[0] ?? null,
-    );
+      )[0] ?? (fulfilled === 0 ? (kept?.fetchNote ?? null) : null);
+    // Stale response for a previous repo: refresh its kept entry so a return
+    // visit shows fresh rows, but never touch the current repo's state.
+    if (loadSeq.current !== seq) {
+      if (fulfilled > 0) {
+        try {
+          setKeptLists(id, {
+            authoring: freshAuthoring,
+            requested: freshRequested,
+            branches: freshBranches,
+            fetchNote:
+              [a, r, rec].flatMap((x) =>
+                x.status === "fulfilled" && x.value.fetchError ? [x.value.fetchError] : [],
+              )[0] ?? null,
+          });
+        } catch {
+          // Best effort.
+        }
+      }
+      return;
+    }
+    setAuthoring(freshAuthoring);
+    setRequested(freshRequested);
+    setBranches(freshBranches);
+    setFetchNote(freshNote);
     setListErrors({
       authoring: a.status === "rejected" ? friendlyError(a.reason) : null,
       requested: r.status === "rejected" ? friendlyError(r.reason) : null,
@@ -293,22 +354,55 @@ export function StartPage(): React.JSX.Element {
     });
     const rejected = [a, r, rec].filter((x): x is PromiseRejectedResult => x.status === "rejected");
     setListsError(rejected.length === 3 ? friendlyError(rejected[0].reason) : null);
+    // Keep the last successful response per repo (failed filters reuse the
+    // kept rows merged above). A total failure keeps the old entry and its
+    // age, so the status line still describes what is shown.
+    if (fulfilled > 0) {
+      try {
+        const saved = setKeptLists(id, {
+          authoring: freshAuthoring,
+          requested: freshRequested,
+          branches: freshBranches,
+          fetchNote: freshNote,
+        });
+        setKeptFetchedAt(saved.fetchedAt);
+      } catch {
+        // Storage is best effort; the rendered lists are already updated.
+      }
+    }
     setListsFor(id);
+    setRefreshing(false);
   }, []);
 
-  /** Select a repo, clearing the old lists synchronously so stale data can
-      never render — not even for one frame before the load effect runs.
-      The nonce bump guarantees the effect fires a fresh load even when
-      the id is unchanged (same-value selection still clears). */
+  /** Select a repo: with kept rows (#90) they render synchronously so the
+      previous repo's data can never flash, and the load effect refreshes
+      underneath. Without kept rows the old lists clear as before, so a
+      first load behaves exactly as today. The nonce bump guarantees the
+      effect fires a fresh load even when the id is unchanged. */
   const selectRepo = useCallback(
     (id: string) => {
-      setAuthoring([]);
-      setRequested([]);
-      setBranches([]);
-      setListErrors(EMPTY_ERRORS);
-      setListsError(null);
-      setFetchNote(null);
-      setListsFor(null);
+      const kept = getKeptLists(id);
+      if (kept) {
+        setAuthoring(kept.authoring);
+        setRequested(kept.requested);
+        setBranches(kept.branches);
+        setListErrors(EMPTY_ERRORS);
+        setListsError(null);
+        setFetchNote(kept.fetchNote);
+        setListsFor(id);
+        setKeptFetchedAt(kept.fetchedAt);
+        setRefreshing(true);
+      } else {
+        setAuthoring([]);
+        setRequested([]);
+        setBranches([]);
+        setListErrors(EMPTY_ERRORS);
+        setListsError(null);
+        setFetchNote(null);
+        setListsFor(null);
+        setKeptFetchedAt(null);
+        setRefreshing(false);
+      }
       setSelectedId(id);
       setListsNonce((n) => n + 1);
     },
@@ -317,9 +411,10 @@ export function StartPage(): React.JSX.Element {
 
   const retryLists = useCallback(() => {
     if (!selectedId) return;
+    // Retry keeps the shown rows (kept or fresh) and refreshes underneath;
+    // a first load with nothing shown behaves as before.
     setListsError(null);
-    setFetchNote(null);
-    setListsFor(null);
+    if (getKeptLists(selectedId)) setRefreshing(true);
     void loadLists(selectedId);
   }, [selectedId, loadLists]);
 
@@ -331,6 +426,31 @@ export function StartPage(): React.JSX.Element {
         if (cancelled) return;
         setRepos(r.repos);
         setReposLoaded(true);
+        // Kept lists (#90) must not outlive their repo: drop entries for
+        // repos no longer listed (removed repo, changed login's list).
+        try {
+          pruneKeptLists(r.repos.map((x) => x.id));
+        } catch {
+          // Best effort.
+        }
+        // A changed login must not keep showing the previous user's PRs:
+        // the viewer login rides alongside the kept lists, and a mismatch
+        // clears them (the background refresh replaces them right away).
+        api
+          .viewer()
+          .then((v) => {
+            if (cancelled) return;
+            try {
+              const prev = getKeptViewer();
+              if (prev !== null && v.login !== prev) clearAllKeptLists();
+              if (v.login !== prev) setKeptViewer(v.login);
+            } catch {
+              // Best effort.
+            }
+          })
+          .catch(() => {
+            // Viewer unknown (offline/gh down): keep what is stored.
+          });
         setSelectedId((prev) => {
           if (prev && prev !== "demo" && r.repos.some((x) => x.id === prev)) return prev;
           // Never auto-select the demo pseudo-repo: the lists below only
@@ -458,7 +578,7 @@ export function StartPage(): React.JSX.Element {
       const repo =
         added.repos.find((r) => r.id !== "demo" && r.managed === true && match(r)) ??
         added.repos.find((r) => r.id !== "demo" && match(r));
-      if (!repo) throw new Error("the service added the repo but did not list it");
+      if (!repo) throw new Error("it was cloned but is missing from your repos — reload the page");
       setRepos(added.repos);
       selectRepo(repo.id);
       try {
@@ -490,7 +610,7 @@ export function StartPage(): React.JSX.Element {
         <input
           type="text"
           aria-label="Open a PR by URL or number"
-          placeholder="PR number (5020) or owner/repo pull URL"
+          placeholder="PR number or GitHub PR URL"
           value={prInput}
           onChange={(e) => {
             setPrInput(e.target.value);
@@ -515,7 +635,7 @@ export function StartPage(): React.JSX.Element {
         <div className="ci" data-testid="pr-clone-offer">
           <div style={{ minWidth: 0 }}>
             <span className="hint">
-              {prOffer.owner}/{prOffer.name} isn&apos;t in your list. Clone it and open #
+              {prOffer.owner}/{prOffer.name} isn&apos;t in your repos. Clone it and open #
               {prOffer.pr}?
             </span>
           </div>
@@ -562,6 +682,12 @@ export function StartPage(): React.JSX.Element {
   const orphanSessions = reposLoaded
     ? (sessions ?? []).filter((s) => s.repoId !== "demo" && !knownIds.has(s.repoId))
     : [];
+  // Quiet kept-lists sign (#90): how old the shown rows are, plus a refresh
+  // marker while the background fetch is in flight. Short plain sentence
+  // case. The line always renders once lists show (even as a blank) so it
+  // never shifts the layout when it appears or disappears.
+  const keptStatus =
+    listsFor !== null && listsFor === selectedId ? keptStatusText(keptFetchedAt, refreshing) : null;
 
   return (
     <div className="app">
@@ -573,7 +699,7 @@ export function StartPage(): React.JSX.Element {
           </Link>
           {realRepos.length > 0 && selectedId ? (
             <select
-              aria-label="Repository"
+              aria-label="Repo"
               className="tbtn"
               value={selectedId}
               title={selected?.localPath ?? ""}
@@ -590,7 +716,7 @@ export function StartPage(): React.JSX.Element {
                 </optgroup>
               ) : null}
               {detected.length > 0 ? (
-                <optgroup label="Detected checkouts">
+                <optgroup label="Found on this machine">
                   {detected.map((r) => (
                     <option key={r.id} value={r.id} title={r.localPath}>
                       {r.owner}/{r.name}
@@ -602,7 +728,7 @@ export function StartPage(): React.JSX.Element {
           ) : null}
           {allReady ? (
             <span className="hint" data-testid="readiness-ready">
-              Ready · gh + agents ok
+              Ready
             </span>
           ) : null}
           <PreviewBuildBadge />
@@ -653,18 +779,18 @@ export function StartPage(): React.JSX.Element {
           <h1 className="divider">Reviews</h1>
           {mainProblem ? (
             <p className="hint" data-testid="newreview-agent-hint">
-              Main agent not ready ({mainProblem.summary}) — the guide may not generate. You can
+              The main model isn&apos;t ready ({mainProblem.summary}), so the guide may not be written. You can
               still open the diff and comment.
             </p>
           ) : null}
           {sessions === null && !sessionsError ? (
-            <p className="hint">Loading previous reviews…</p>
+            <p className="hint">Loading reviews…</p>
           ) : sessionsError ? (
             <p className="hint" role="alert">
               {sessionsError}
             </p>
           ) : (
-            <div aria-label="Prior reviews" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div aria-label="Reviews" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {visibleSessions.map((s) => (
                 <SessionRow
                   key={s.id}
@@ -713,7 +839,7 @@ export function StartPage(): React.JSX.Element {
                         disabled={opening !== null}
                         onClick={() => void openReview(changeKey(c, i), { repoId: "demo" })}
                       >
-                        <span className="cw">Demo · no tokens</span>
+                        <span className="cw">Demo · no agent needed</span>
                         <span className="cx2">{c.title}</span>
                       </button>
                       {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
@@ -723,8 +849,8 @@ export function StartPage(): React.JSX.Element {
               {orphanSessions.length > 0 ? (
                 <div data-testid="orphan-sessions">
                   <p className="hint" data-testid="orphan-sessions-label">
-                    These reviews belong to checkouts that are no longer in the repo list — open or
-                    remove them here.
+                    These reviews are for repos that are no longer in your list. You can still open or
+                    remove them.
                   </p>
                   {orphanSessions.map((s) => (
                     <SessionRow
@@ -749,7 +875,7 @@ export function StartPage(): React.JSX.Element {
           {!reposLoaded || realRepos.length === 0 ? (
             reposLoaded ? (
               <div data-testid="no-repos">
-                <div className="divider">Repositories</div>
+                <div className="divider">Repos</div>
                 {reposError ? (
                   <p className="hint" role="alert">
                     Couldn&apos;t load the repo list. Check the service is running, then reload the
@@ -777,8 +903,7 @@ export function StartPage(): React.JSX.Element {
               {renderPrOpener()}
               {ghProblem ? (
                 <p className="hint" data-testid="newreview-gh-hint">
-                  PR lists need gh ({ghProblem.summary}). You can still open a local branch below or a
-                  PR by number once gh works.
+                  Listing PRs needs gh ({ghProblem.summary}). You can still open a local branch below.
                 </p>
               ) : null}
 
@@ -786,28 +911,38 @@ export function StartPage(): React.JSX.Element {
                 <p className="hint" data-testid="repo-lists-loading">
                   Loading {selected ? `${selected.owner}/${selected.name}` : "repo"}…
                 </p>
-              ) : listsError ? (
+              ) : listsError && keptFetchedAt === null ? (
                 <p className="hint" role="alert" data-testid="lists-error">
-                  Couldn&apos;t load {selected ? `${selected.owner}/${selected.name}` : "this repo"}
-                  &apos;s lists: {listsError}{" "}
+                  Couldn&apos;t load PRs and branches for {selected ? `${selected.owner}/${selected.name}` : "this repo"}: {listsError}{" "}
                   <button className="mini" type="button" onClick={retryLists}>
                     Retry
                   </button>
                 </p>
               ) : (
                 <>
+                  {listsError ? (
+                    <p className="hint" role="alert" data-testid="lists-error">
+                      Couldn&apos;t load PRs and branches for {selected ? `${selected.owner}/${selected.name}` : "this repo"}: {listsError}{" "}
+                      <button className="mini" type="button" onClick={retryLists}>
+                        Retry
+                      </button>
+                    </p>
+                  ) : null}
                   {fetchNote ? (
                     <p className="hint" data-testid="fetch-note">
                       {fetchNote}
                     </p>
                   ) : null}
+                  <p className="hint" data-testid="kept-status" style={{ minHeight: "1.2em", margin: 0 }}>
+                    {keptStatus ?? " "}
+                  </p>
                   <ChangeSection
-                    title="PRs you're authoring"
+                    title="Your PRs"
                     changes={authoring}
                     error={listErrors.authoring}
                     errorTestId="changes-error-authoring"
                     opening={opening}
-                    empty="Nothing found."
+                    empty="No open PRs."
                     onOpen={(c, i) =>
                       openReview(changeKey(c, i), {
                         repoId: selectedId,
@@ -824,7 +959,7 @@ export function StartPage(): React.JSX.Element {
                     error={listErrors.requested}
                     errorTestId="changes-error-requested"
                     opening={opening}
-                    empty="Nothing waiting."
+                    empty="No PRs waiting."
                     onOpen={(c, i) =>
                       openReview(changeKey(c, i), {
                         repoId: selectedId,
@@ -895,7 +1030,7 @@ export function SessionRow({
           ) : (
             <>
               {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-              {s.pendingComments > 0 ? ` · ${s.pendingComments} pending` : ""}
+              {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
               {" · "}
               {guideLabel(s)}
             </>
@@ -906,7 +1041,7 @@ export function SessionRow({
         {s.ingestStatus === "loading" ? <span className="prtag">loading</span> : null}
         {s.ingestStatus === "failed" ? <span className="prtag">failed to open</span> : null}
         {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" ? (
-          <span className="prtag">new commits · Update</span>
+          <span className="prtag">new commits</span>
         ) : null}
         {confirmDelete === s.id ? (
           <>
@@ -935,7 +1070,7 @@ export function SessionRow({
             aria-label={`Remove ${s.title}`}
             disabled={deleting !== null}
             onClick={() => setConfirmDelete(s.id)}
-            title="Remove this review's local data (never touches GitHub or your checkout; deletes the managed worktree)"
+            title="Remove this review from Unvibe. GitHub and your own folder are not touched; the working copy Unvibe made is deleted."
           >
             Remove
           </button>
@@ -970,7 +1105,8 @@ function ChangeSection({
 }: {
   title: string;
   changes: RepoChange[];
-  /** A failed filter shows its error instead of the empty copy or rows. */
+  /** A failed filter shows its error; with kept rows (#90) the kept rows
+      stay rendered underneath instead of emptying the section. */
   error: string | null;
   errorTestId: string;
   opening: string | null;
@@ -984,7 +1120,8 @@ function ChangeSection({
         <p className="hint" role="alert" data-testid={errorTestId}>
           {error}
         </p>
-      ) : changes.length === 0 ? (
+      ) : null}
+      {changes.length === 0 && !error ? (
         <p className="hint">{empty}</p>
       ) : (
         changes.map((c, i) => (

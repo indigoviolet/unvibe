@@ -110,7 +110,7 @@ describe("contributions routes", () => {
         headers: { authorization: "Bearer tok" },
       });
       expect(res.statusCode).toBe(404);
-      expect(res.json().error).toContain('provider "bogus"');
+      expect(res.json().error).toContain("couldn't list bogus models");
       expect(res.json().models).toEqual([]);
     } finally {
       await app.close();

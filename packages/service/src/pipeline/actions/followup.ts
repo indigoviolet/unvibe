@@ -73,7 +73,7 @@ export async function followupAction(
       messages: [],
       post: false,
       note: false,
-      working: "Thinking…",
+      working: "Writing answer…",
       expansion: {
         blocks: [],
         level: "standard",
@@ -81,7 +81,7 @@ export async function followupAction(
         collapsed: false,
         revision: 1,
         undoStack: [],
-        working: "Thinking…",
+        working: "Writing answer…",
       },
     } as unknown as Annotation);
   });
@@ -99,6 +99,9 @@ export async function followupAction(
     dedupeKey: key,
     threadId: annotationId,
     conversationKey: annotationId,
+    // Issue #50: the expansion header shows the suggestion label; the
+    // question is the label (or its pre-baked ask text).
+    echoCandidates: [quote, message],
     replay: isReplayRunner(pipeline.runner) ? { kind: "ask" } : undefined,
     onJob: (job: Job) => {
       capture.onJob(job);

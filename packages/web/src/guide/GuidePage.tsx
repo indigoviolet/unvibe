@@ -18,6 +18,7 @@ import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { emptyGuideState } from "./guideUtils.js";
+import { stageLabel } from "./stageLabels.js";
 import { PageView } from "./PageView.js";
 import "./guide-m2.css";
 
@@ -140,7 +141,6 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   if (!snapshot || !pages) {
     return (
       <div className="doc">
-        <h1 className="title">Review {reviewId}</h1>
         <p className="hint">Loading the guide…</p>
       </div>
     );
@@ -175,6 +175,9 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   // built yet have no pages, but their versions still switch.
   if (!current && pageId === null) {
     const empty = emptyGuideState(snapshot.pipeline, snapshot.jobs ?? []);
+    // Plain-words label for whatever is running (shared with the start
+    // page); omitted when the detail names nothing in the map.
+    const emptyLabel = empty.kind === "building" ? stageLabel(empty.detail?.split(",")[0]) : undefined;
     return (
       <>
         <VersionSwitcher />
@@ -183,19 +186,18 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
             <>
               <h1 className="title">Building the guide…</h1>
               <p className="hint">
-                The guide appears here as it is written{empty.detail ? ` (running: ${empty.detail})` : ""}. The diff
-                is ready to read in the meantime.
+                {emptyLabel ? `${emptyLabel} ` : ""}The diff is ready to read while you wait.
               </p>
             </>
           ) : empty.kind === "error" ? (
             <>
-              <h1 className="title">The guide could not be built</h1>
+              <h1 className="title">Couldn't build the guide</h1>
               <p className="hint">{empty.detail}</p>
             </>
           ) : (
             <>
               <h1 className="title">No guide yet</h1>
-              <p className="hint">Guide generation has not started for this review. The diff is ready to read.</p>
+              <p className="hint">The guide hasn't been started for this review. The diff is ready to read.</p>
             </>
           )}
         </div>
@@ -211,7 +213,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
           <p className="hint">
             There is no page <code>{pageId}</code> in this review.{" "}
             <button type="button" className="x" onClick={() => onOpenPage(null)}>
-              Back to the guided review
+              Back to the guide
             </button>
           </p>
         </div>

@@ -114,3 +114,101 @@ export function resolveWorktree(output, branch) {
   }
   return null;
 }
+
+/**
+ * Guard for prune deletes (issue #41): throw unless `ref` is a `preview/*`
+ * ref. Call before any local delete (`git update-ref -d`) and before any
+ * `git push origin --delete` — only refs under `preview/` may ever pass.
+ */
+export function assertPreviewDeleteRef(ref) {
+  if (!isPreviewRef(ref)) {
+    throw new Error(`refusing to delete non-preview ref: ${JSON.stringify(ref)}`);
+  }
+  return ref;
+}
+
+/**
+ * Branch selection for `preview:publish --all` (issue #41): every local
+ * branch with commits not on the base, plus the base itself.
+ *
+ * - `allBranches`: every local branch short name (`git for-each-ref`).
+ * - `aheadBranches`: the subset with ≥1 commit not on the base
+ *   (`git rev-list --count <base>..<branch>` > 0, computed by the caller).
+ * - Publish artifacts (`preview/*`, `release`, `release-rc`) are never
+ *   selected — they are orphan build refs, not sources.
+ */
+export function selectAllBranches(allBranches, aheadBranches, mainName = "main") {
+  const all = (allBranches ?? []).map(String);
+  const ahead = new Set((aheadBranches ?? []).map(String));
+  const out = [];
+  const seen = new Set();
+  for (const b of all) {
+    if (b === mainName) continue;
+    if (b === "release" || b === "release-rc" || b.startsWith("preview/")) continue;
+    if (!ahead.has(b)) continue;
+    if (seen.has(b)) continue;
+    seen.add(b);
+    out.push(b);
+  }
+  if (all.includes(mainName)) out.unshift(mainName);
+  return out;
+}
+
+/**
+ * The `unvibe` provenance record for a generated release package.json
+ * (issue #41): which channel the tree is, what built it, and — for
+ * previews built as base + branch in a throwaway worktree — both sides
+ * (`baseBranch@baseCommit + sourceBranch@sourceCommit`; `commit` is the
+ * built tree itself, the merge result). Missing sides stay null so
+ * previews published before the fields existed keep working.
+ */
+export function buildUnvibeField({
+  channel,
+  commit,
+  builtAt,
+  sourceBranch,
+  sourceVersion,
+  sourceCommit = null,
+  baseBranch = null,
+  baseCommit = null,
+}) {
+  return {
+    channel,
+    commit,
+    builtAt,
+    sourceBranch,
+    sourceVersion,
+    sourceCommit,
+    baseBranch,
+    baseCommit,
+  };
+}
+
+/**
+ * Prune selection for `preview:publish --prune` (issue #41): the
+ * `preview/*` refs whose source branch is merged into the base or no
+ * longer exists locally.
+ *
+ * - `entries`: `{ ref, sourceBranch | null }` per local `preview/*` ref
+ *   (`sourceBranch` from that ref's own package.json `unvibe` field).
+ * - Returns `{ ref, reason }` with reason `"merged"` or
+ *   `"source-branch deleted"`. Anything else is kept: refs outside
+ *   `preview/` (never deletable), refs with an unknown source branch
+ *   (cannot prove either condition), and the base's own preview
+ *   (`sourceBranch === mainName` — e.g. `preview/main` tracks the base
+ *   itself and is refreshed, not pruned).
+ */
+export function selectPruneRefs(entries, mergedBranches, existingBranches, mainName = "main") {
+  const merged = new Set((mergedBranches ?? []).map(String));
+  const existing = new Set((existingBranches ?? []).map(String));
+  const out = [];
+  for (const e of entries ?? []) {
+    const ref = String(e?.ref ?? "");
+    const source = typeof e?.sourceBranch === "string" && e.sourceBranch.length > 0 ? e.sourceBranch : null;
+    if (!isPreviewRef(ref)) continue;
+    if (!source || source === mainName) continue;
+    if (merged.has(source)) out.push({ ref, reason: "merged" });
+    else if (!existing.has(source)) out.push({ ref, reason: "source-branch deleted" });
+  }
+  return out;
+}

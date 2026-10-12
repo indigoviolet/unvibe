@@ -45,7 +45,7 @@ function validAnchor(a: unknown): a is ActionAnchor {
 export async function registerComments(app: FastifyInstance, ctx?: ServiceContext): Promise<void> {
   if (!ctx) {
     app.patch("/api/reviews/:id/comments/:commentId", async (_req, reply) =>
-      reply.code(501).send({ error: "not implemented" }),
+      reply.code(501).send({ error: "not available in this build" }),
     );
     return;
   }

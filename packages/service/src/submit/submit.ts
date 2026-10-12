@@ -141,7 +141,7 @@ export async function runSubmit(
   const row = readReviewRow(ctx.db, reviewId);
   const prNumber = row?.prNumber ?? snapshot.review.prNumber;
   if (prNumber === null || prNumber === undefined) {
-    const reason = "branch has no PR: submit is disabled";
+    const reason = "This branch has no PR, so there is nothing to submit to.";
     if (opts.dryRun) {
       const preview = buildPreview(snapshot);
       return { status: 200, body: { posted: false, preview: { ...preview, disabledReason: reason }, reason } };
@@ -172,7 +172,7 @@ export async function runSubmit(
     return {
       status: 409,
       body: {
-        error: `expected ${opts.expectedCount} comment(s) but ${pending.length} are pending; refresh the Submit panel`,
+        error: `the comments changed since this list was loaded — close the panel and open it again`,
       },
     };
   }
@@ -180,7 +180,7 @@ export async function runSubmit(
     return {
       status: 400,
       body: {
-        error: `comment ${emptyText[0].thread.id} has no text; edit its draft before submitting`,
+        error: `a comment marked for the PR is empty — write its text under Comments → For PR, then submit`,
       },
     };
   }
@@ -196,7 +196,7 @@ export async function runSubmit(
         commentCount: 0,
         descriptionUpdated: false,
         alreadyPosted: already,
-        reason: already.length > 0 ? "already submitted" : "nothing pending",
+        reason: already.length > 0 ? "Everything here is already on GitHub." : "Nothing is marked for the PR.",
       },
     };
   }
@@ -209,13 +209,13 @@ export async function runSubmit(
     return { status: 502, body: { error: (err as Error).message } };
   }
   if (view.state !== "" && view.state !== "OPEN") {
-    return { status: 409, body: { error: `PR is ${view.state}; submit is disabled`, reason: `PR is ${view.state}` } };
+    return { status: 409, body: { error: `the PR is ${view.state.toLowerCase()}, so a review can't be submitted`, reason: `PR is ${view.state}` } };
   }
   if (view.headRefOid && view.headRefOid !== snapshot.version.headSha) {
     return {
       status: 409,
       body: {
-        error: `PR head moved since you reviewed it (reviewed ${snapshot.version.headSha.slice(0, 7)}, now ${view.headRefOid.slice(0, 7)}); refresh the review before submitting`,
+        error: `the PR has new commits since this review was loaded (${snapshot.version.headSha.slice(0, 7)} → ${view.headRefOid.slice(0, 7)}) — refresh the review, then submit`,
         reason: "head moved",
         reviewedCommit: snapshot.version.headSha,
         currentHead: view.headRefOid,
@@ -263,7 +263,7 @@ export async function runSubmit(
         return {
           status: 409,
           body: {
-            error: "a submit for this review is already in progress; wait for it to finish, then retry",
+            error: "this review is already being submitted — wait for it to finish, then try again",
             reason: "submit in progress",
           },
         };
@@ -314,13 +314,13 @@ export async function runSubmit(
       });
     } catch (err) {
       clearSubmitLease(ctx.db, reviewId);
-      return { status: 502, body: { error: `submit review failed: ${(err as Error).message}` } };
+      return { status: 502, body: { error: `GitHub didn't accept the review: ${(err as Error).message}` } };
     }
     if (apiRes.code !== 0) {
       clearSubmitLease(ctx.db, reviewId);
       return {
         status: 502,
-        body: { error: `submit review failed: ${apiRes.stderr.trim() || apiRes.stdout.trim()}` },
+        body: { error: `GitHub didn't accept the review: ${apiRes.stderr.trim() || apiRes.stdout.trim()}` },
       };
     }
     try {
@@ -359,7 +359,7 @@ export async function runSubmit(
         return {
           status: 502,
           body: {
-            error: `review posted but description update failed: ${editRes.stderr.trim() || editRes.stdout.trim()}`,
+            error: `The review was posted, but GitHub didn't accept the description update: ${editRes.stderr.trim() || editRes.stdout.trim()}`,
             posted: true,
             partial: true,
             commentCount: postedCount,

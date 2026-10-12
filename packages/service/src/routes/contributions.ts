@@ -78,7 +78,7 @@ export async function registerContributions(app: FastifyInstance, ctx: Ctx): Pro
 
   app.post("/api/reviews/:id/contributions/:contributionId/accept", async (req, reply) => {
     const { id, contributionId } = req.params as { id: string; contributionId: string };
-    if (!svc()) return reply.code(501).send({ error: "not implemented: shared context not wired" });
+    if (!svc()) return reply.code(501).send({ error: "not available in this build" });
     try {
       const res = await svc()!.acceptContribution(id, contributionId);
       const body: AcceptContributionResponse = {
@@ -96,7 +96,7 @@ export async function registerContributions(app: FastifyInstance, ctx: Ctx): Pro
 
   app.post("/api/reviews/:id/contributions/:contributionId/dismiss", async (req, reply) => {
     const { id, contributionId } = req.params as { id: string; contributionId: string };
-    if (!svc()) return reply.code(501).send({ error: "not implemented: shared context not wired" });
+    if (!svc()) return reply.code(501).send({ error: "not available in this build" });
     try {
       const res = await svc()!.dismissContribution(id, contributionId);
       const body: DismissContributionResponse = { ok: true, dismissedId: res.dismissedId };

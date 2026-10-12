@@ -35,7 +35,7 @@ async function ghJson(
 export async function registerDescription(app: FastifyInstance, ctx?: ServiceContext): Promise<void> {
   if (!ctx) {
     app.put("/api/reviews/:id/description", async (_req, reply) =>
-      reply.code(501).send({ error: "not implemented" }),
+      reply.code(501).send({ error: "not available in this build" }),
     );
     return;
   }
@@ -53,7 +53,7 @@ export async function registerDescription(app: FastifyInstance, ctx?: ServiceCon
     const row = readReviewRow(ctx.db, id);
     const prNumber = row?.prNumber ?? snapshot.review.prNumber;
     if (prNumber === null || prNumber === undefined) {
-      return reply.code(400).send({ error: "branch has no PR: description is read-only commit messages" });
+      return reply.code(400).send({ error: "this branch has no PR, so there is no description to edit" });
     }
     if (!snapshot.description || snapshot.description.source !== "pr") {
       return reply.code(400).send({ error: "description is read-only for this review" });
@@ -101,7 +101,7 @@ export async function registerDescription(app: FastifyInstance, ctx?: ServiceCon
       });
     }
     if (state !== "OPEN") {
-      return reply.code(403).send({ error: `PR is ${state || "not open"}; description is read-only` });
+      return reply.code(403).send({ error: `the PR is ${(state || "not open").toLowerCase()}, so its description can't be edited` });
     }
 
     const cleaned = cleanEditedHtml(reqBody.html);
@@ -125,7 +125,7 @@ export async function registerDescription(app: FastifyInstance, ctx?: ServiceCon
       const bodyArgs = ["pr", "view", String(prNumber), "--json", "body"];
       const bodyRes = await ghJson(ctx, repo.localPath, bodyArgs);
       if (bodyRes.code !== 0) {
-        return reply.code(502).send({ error: "cannot load PR body for round-trip" });
+        return reply.code(502).send({ error: "couldn't load the PR description from GitHub" });
       }
       try {
         baseMarkdown = (JSON.parse(bodyRes.stdout) as { body?: string }).body ?? "";
@@ -159,7 +159,7 @@ export async function registerDescription(app: FastifyInstance, ctx?: ServiceCon
 
   app.delete("/api/reviews/:id/description", async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!ctx) return reply.code(501).send({ error: "not implemented" });
+    if (!ctx) return reply.code(501).send({ error: "not available in this build" });
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
     const refusedDel = ingestRefusal(snapshot);

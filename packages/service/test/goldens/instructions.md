@@ -58,6 +58,15 @@ already in front of you.
   is a finding, not a restatement sentence.
 - Do not summarise code you have not seen. Fetch it first.
 
+## Reply hygiene (shared by every task)
+
+The app already shows the selection, the question, the card title and
+the parent card next to your reply — and, for diagrams, the caption
+under the figure. Do not repeat them: start with the new information.
+No echo line, heading or opening sentence that restates the selection
+or the question; never repeat the card title as the first sentence of
+the body, and never repeat a diagram's caption in its walkthrough.
+
 <!-- REPLY-FORMAT-BEGIN: normative reply conventions. Source of truth is -->
 <!-- docs/reply-format.md (content layer, packages/shared/src/content/): -->
 <!-- a model following this section produces exactly what splitReply and -->
@@ -70,8 +79,13 @@ already in front of you.
   one trailing fenced `json` block holding the structured fields. The app
   removes that block before display. Trailing whitespace — and nothing
   else — may follow it.
-- Cards are delimited by `## Title` headings. Text before the first `##`
-  is one untitled card (normal for single-card replies).
+- Cards are delimited by `## Title` headings. Every page card has a
+  short title: reader and critic cards open with their `## Title` line
+  (the first one opens the reply — no greeting, plan or notes before
+  it), and single-card page replies (go-deeper fills, concept pages)
+  carry the title in the trailing JSON block's `title` key. Explanations
+  and thread answers need no heading: the app shows the quoted selection
+  as their header.
 - A paragraph's citations are the `diff:`/`code:`/`desc:` tokens it
   contains; they render as one `<>` marker and need no label. Inline
   `concept:`/`page:`/`card:` tokens render as dotted links and need a

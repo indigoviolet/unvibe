@@ -158,7 +158,7 @@ describe("update pass", () => {
     const parser = new JsonBlockReplyParser();
     const ok = parser.parseReply('prose\n```json\n{"revisedCards":[],"recheckedFindings":[],"newFindings":[],"hunkSummaries":{"ab":"s"}}\n```\n');
     expect(ok.hunkSummaries).toEqual({ ab: "s" });
-    expect(() => parser.parseReply("no block here")).toThrow(/no trailing JSON/);
+    expect(() => parser.parseReply("no block here")).toThrow(/expected format/);
     expect(() =>
       parser.parseReply('```json\n{"recheckedFindings":[{"pageId":"f","verdict":"bogus"}]}\n```'),
     ).toThrow(/bad finding verdict/);

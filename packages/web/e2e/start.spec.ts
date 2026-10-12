@@ -17,19 +17,19 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("repo selector lists remembered and detected repos, persisted", async ({ page }) => {
-  const sel = page.getByLabel("Repository");
+  const sel = page.getByLabel("Repo");
   await expect(sel).toHaveValue("urllib3");
   await expect(sel.locator('optgroup[label="Repos"] option')).toHaveText(["urllib3/urllib3"]);
-  await expect(sel.locator('optgroup[label="Detected checkouts"] option')).toHaveText(["you/demo-lib"]);
+  await expect(sel.locator('optgroup[label="Found on this machine"] option')).toHaveText(["you/demo-lib"]);
   // The detected option carries its local path as the title.
-  await expect(sel.locator('optgroup[label="Detected checkouts"] option')).toHaveAttribute(
+  await expect(sel.locator('optgroup[label="Found on this machine"] option')).toHaveAttribute(
     "title",
     "~/code/demo-lib",
   );
   await sel.selectOption("demo-lib");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-  await expect(page.getByLabel("Repository")).toHaveValue("demo-lib");
+  await expect(page.getByLabel("Repo")).toHaveValue("demo-lib");
 });
 
 test("reviews list follows the selected repo; demo row always shows", async ({ page }) => {
@@ -48,21 +48,21 @@ test("reviews list follows the selected repo; demo row always shows", async ({ p
 
   const old = page.locator('[data-testid="session-r-old"]');
   await expect(old).toContainText("Fix retry backoff on 429s");
-  await expect(old).toContainText("new commits · Update");
+  await expect(old).toContainText("new commits");
   await expect(old).toContainText("Checking findings…");
 
   // The demo row sits inside the Reviews list regardless of the repo.
-  await expect(page.locator('[data-testid="demo-entry"]')).toContainText("Demo · no tokens");
+  await expect(page.locator('[data-testid="demo-entry"]')).toContainText("Demo · no agent needed");
 
   // Switch to the detected checkout: its sessions list is empty, but the
   // demo row stays.
-  await page.getByLabel("Repository").selectOption("demo-lib");
+  await page.getByLabel("Repo").selectOption("demo-lib");
   await expect(page.locator('[data-testid^="session-"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="sessions-empty"]')).toContainText("No reviews for you/demo-lib yet");
   await expect(page.locator('[data-testid="demo-entry"]')).toBeVisible();
 
   // Switch back: the repo's sessions return.
-  await page.getByLabel("Repository").selectOption("urllib3");
+  await page.getByLabel("Repo").selectOption("urllib3");
   await expect(page.locator('[data-testid^="session-"]')).toHaveCount(2);
 
   // Click resumes the review.
@@ -82,19 +82,21 @@ test("failing lists keep the PR input, show an error with Retry, and recover", a
       JSON.stringify(["authoring", "review-requested", "recent"]),
     );
   });
+  // First load for the repo (no kept lists yet): the error shows alone.
+  await page.evaluate(() => localStorage.removeItem("unvibe.start.keptChanges.v1"));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // The PR input does not wait on the lists.
   await expect(page.getByLabel("Open a PR by URL or number")).toBeVisible();
   const err = page.locator('[data-testid="lists-error"]');
-  await expect(err).toContainText("Couldn't load urllib3/urllib3's lists: mock gh is down");
+  await expect(err).toContainText("Couldn't load PRs and branches for urllib3/urllib3: mock gh is down");
   await expect(err.getByRole("button", { name: "Retry" })).toBeVisible();
   // No sections underneath until the load succeeds.
-  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
+  await expect(page.getByText("Your PRs")).toHaveCount(0);
   // Retry recovers once the failure clears.
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesFail"));
   await err.getByRole("button", { name: "Retry" }).click();
-  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.getByText("Your PRs")).toBeVisible();
   await expect(page.locator('[data-testid="lists-error"]')).toHaveCount(0);
 });
 
@@ -120,6 +122,8 @@ test("held lists show loading without stale rows and keep the PR input", async (
   await page.addInitScript(() => {
     localStorage.setItem("unvibe.mock.repoChangesHold", "1");
   });
+  // First load for the repo (no kept lists yet): loading, not sections.
+  await page.evaluate(() => localStorage.removeItem("unvibe.start.keptChanges.v1"));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // Reviews and the demo row do not wait on the lists.
@@ -128,29 +132,31 @@ test("held lists show loading without stale rows and keep the PR input", async (
   // The lists area shows loading, not sections, with the PR input usable.
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading urllib3/urllib3…");
   await expect(page.getByLabel("Open a PR by URL or number")).toBeVisible();
-  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
+  await expect(page.getByText("Your PRs")).toHaveCount(0);
   // Switching repos while held: still loading, never the old repo's rows.
-  await page.getByLabel("Repository").selectOption("demo-lib");
+  await page.getByLabel("Repo").selectOption("demo-lib");
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading you/demo-lib…");
   await expect(page.getByText("#5020 · fix-obs-fold · you")).toHaveCount(0);
   // Release: the new selection's lists render.
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
-  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.getByText("Your PRs")).toBeVisible();
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
 });
 
 test("re-selecting the current repo reloads its lists", async ({ page }) => {
-  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.getByText("Your PRs")).toBeVisible();
   // Hold live (addInitScript would only apply after a re-navigation).
   await page.evaluate(() => localStorage.setItem("unvibe.mock.repoChangesHold", "1"));
-  // Re-selecting the already-selected value still fires change and must
-  // pair the cleared lists with a fresh load — never a stuck "Loading…".
-  await page.getByLabel("Repository").selectOption("urllib3");
-  await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading urllib3/urllib3…");
-  await expect(page.getByText("PRs you're authoring")).toHaveCount(0);
-  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
-  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  // Re-selecting the already-selected value still fires change and pairs
+  // the kept lists with a fresh load: the kept rows stay visible with a
+  // refresh sign — never a stuck "Loading…".
+  await page.getByLabel("Repo").selectOption("urllib3");
+  await expect(page.locator('[data-testid="kept-status"]')).toContainText("refreshing");
+  await expect(page.getByText("Your PRs")).toBeVisible();
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  await expect(page.locator('[data-testid="kept-status"]')).not.toContainText("refreshing");
 });
 
 test("reviews for checkouts no longer listed stay openable and removable", async ({ page }) => {
@@ -182,7 +188,7 @@ test("reviews for checkouts no longer listed stay openable and removable", async
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   const group = page.locator('[data-testid="orphan-sessions"]');
   await expect(group.locator('[data-testid="orphan-sessions-label"]')).toContainText(
-    "no longer in the repo list",
+    "no longer in your list",
   );
   const row = group.locator('[data-testid="session-r-gone"]');
   await expect(row).toContainText("gone/gone");
@@ -225,9 +231,9 @@ test("PR by number opens a review; a URL for another known repo switches the sel
   await page.getByRole("button", { name: "Open PR" }).click();
   await expect(page).toHaveURL(/\/review\/demo/, { timeout: 15000 });
   await page.goto("/");
-  await expect(page.getByLabel("Repository")).toHaveValue("demo-lib");
+  await expect(page.getByLabel("Repo")).toHaveValue("demo-lib");
 
-  await page.getByLabel("Repository").selectOption("urllib3");
+  await page.getByLabel("Repo").selectOption("urllib3");
   await page.getByLabel("Open a PR by URL or number").fill("not a pr!!!");
   await page.getByRole("button", { name: "Open PR" }).click();
   await expect(page.getByText("Enter a PR number")).toBeVisible();
@@ -256,9 +262,9 @@ test("failing readiness shows compact callouts linking to Settings", async ({ pa
             fix: "Run gh auth login, then Re-check.",
             settingsAnchor: "#environment",
           },
-          { id: "agent:main", label: "Agent · main", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
-          { id: "agent:small", label: "Agent · small", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
-          { id: "agent:secondOpinion", label: "Agent · second opinion", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
+          { id: "agent:main", label: "Main model", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
+          { id: "agent:small", label: "Small model", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
+          { id: "agent:secondOpinion", label: "Second-opinion model", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
           { id: "agents-distinct", label: "Second opinion independence", status: "ok", summary: "ok", fix: "", settingsAnchor: "#models" },
         ],
         generatedAt: Date.now(),
@@ -272,7 +278,7 @@ test("failing readiness shows compact callouts linking to Settings", async ({ pa
   await expect(callout).toContainText("gh not logged in");
   await expect(callout.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings?tab=environment");
   // Starting a local-branch review stays possible: the hint says what needs gh.
-  await expect(page.locator('[data-testid="newreview-gh-hint"]')).toContainText("PR lists need gh");
+  await expect(page.locator('[data-testid="newreview-gh-hint"]')).toContainText("Listing PRs needs gh");
 });
 
 test("pasting a PR URL for an unknown repo offers to clone it, then selects the repo and opens the PR", async ({
@@ -281,14 +287,14 @@ test("pasting a PR URL for an unknown repo offers to clone it, then selects the 
   await page.getByLabel("Open a PR by URL or number").fill("https://github.com/acme/app/pull/123");
   await page.getByRole("button", { name: "Open PR" }).click();
   const offer = page.locator('[data-testid="pr-clone-offer"]');
-  await expect(offer).toContainText("acme/app isn't in your list. Clone it and open #123?");
+  await expect(offer).toContainText("acme/app isn't in your repos. Clone it and open #123?");
   await offer.getByRole("button", { name: "Clone and open #123" }).click();
   // Clone, select, open: the mock review opens and the selector follows.
   await expect(page).toHaveURL(/\/review\//, { timeout: 15000 });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-  await expect(page.getByLabel("Repository")).toHaveValue("managed-acme-app");
-  await expect(page.getByLabel("Repository").locator('option[value="managed-acme-app"]')).toContainText(
+  await expect(page.getByLabel("Repo")).toHaveValue("managed-acme-app");
+  await expect(page.getByLabel("Repo").locator('option[value="managed-acme-app"]')).toContainText(
     "acme/app (cloned)",
   );
 });
@@ -297,7 +303,7 @@ test("pasting owner/name#N for an unknown repo offers the same clone flow", asyn
   await page.getByLabel("Open a PR by URL or number").fill("acme/app#7");
   await page.getByRole("button", { name: "Open PR" }).click();
   const offer = page.locator('[data-testid="pr-clone-offer"]');
-  await expect(offer).toContainText("acme/app isn't in your list. Clone it and open #7?");
+  await expect(offer).toContainText("acme/app isn't in your repos. Clone it and open #7?");
   await offer.getByRole("button", { name: "Clone and open #7" }).click();
   await expect(page).toHaveURL(/\/review\//, { timeout: 15000 });
 });
@@ -312,7 +318,7 @@ test("cancelling the clone offer leaves the input as typed", async ({ page }) =>
   await expect(offer).toHaveCount(0);
   await expect(input).toHaveValue("https://github.com/acme/app/pull/123");
   // Nothing was added: the selector still offers only the seeds.
-  await expect(page.getByLabel("Repository")).toHaveValue("urllib3");
+  await expect(page.getByLabel("Repo")).toHaveValue("urllib3");
   await expect(page).toHaveURL("/");
 });
 
@@ -327,7 +333,7 @@ test("a stale managed clone shows the refresh note once", async ({ page }) => {
   await expect(note).toHaveCount(1);
   await expect(note).toContainText("couldn't refresh the local clone");
   // The lists still render underneath.
-  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.getByText("Your PRs")).toBeVisible();
 });
 
 test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ page }) => {
@@ -344,7 +350,7 @@ test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ p
     "/settings?tab=repositories",
   );
   // No repos, no selector yet.
-  await expect(page.getByLabel("Repository")).toHaveCount(0);
+  await expect(page.getByLabel("Repo")).toHaveCount(0);
   // A bare number still needs a repo first.
   await empty.getByLabel("Open a PR by URL or number").fill("5020");
   await empty.getByRole("button", { name: "Open PR" }).click();
@@ -353,12 +359,12 @@ test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ p
   await empty.getByLabel("Open a PR by URL or number").fill("https://github.com/acme/app/pull/123");
   await empty.getByRole("button", { name: "Open PR" }).click();
   const offer = page.locator('[data-testid="pr-clone-offer"]');
-  await expect(offer).toContainText("acme/app isn't in your list. Clone it and open #123?");
+  await expect(offer).toContainText("acme/app isn't in your repos. Clone it and open #123?");
   await offer.getByRole("button", { name: "Clone and open #123" }).click();
   await expect(page).toHaveURL(/\/review\//, { timeout: 15000 });
   // Back on the start page the selector exists with the clone selected.
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-  await expect(page.getByLabel("Repository")).toHaveValue("managed-acme-app");
+  await expect(page.getByLabel("Repo")).toHaveValue("managed-acme-app");
   await expect(page.locator('[data-testid="no-repos"]')).toHaveCount(0);
 });

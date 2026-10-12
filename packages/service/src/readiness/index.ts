@@ -15,6 +15,8 @@ import type { ReadinessResponse, Settings } from "@unvibe/shared";
 import type { AgentRunner } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { resolveLoginShellPath } from "../exec/shell-path.js";
+import { resolveEffectiveSettings } from "../settings/index.js";
+import type { ModelCatalog, SettingsSource } from "../settings/index.js";
 import {
   agentCheck,
   d2Check,
@@ -23,6 +25,7 @@ import {
   gitCheck,
   gitVersion,
   probeGh,
+  ROLE_LABEL,
   type AgentRole,
 } from "./checks.js";
 
@@ -32,7 +35,9 @@ export const READINESS_TIMEOUT_MS = 10_000;
 export interface ReadinessDeps {
   runner: CommandRunner;
   agents: AgentRunner;
-  settings: { get(): Settings };
+  settings: SettingsSource;
+  /** Model catalog for live role defaults (issue #88): readiness reports the same effective settings as GET /api/settings. Absent → stored settings stand. */
+  models?: ModelCatalog | null;
   /** Test override for the login-shell PATH (else resolved live). */
   loginPathValue?: string;
   /** Test override for the agent probe timeout. */
@@ -62,7 +67,9 @@ async function loginPath(): Promise<string> {
 }
 
 export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean } = {}): Promise<ReadinessResponse> {
-  const settings = deps.settings.get();
+  // Same effective settings as GET /api/settings: saved picks win, unsaved
+  // roles take live defaults. Never throws (falls back to stored).
+  const settings: Settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const key = JSON.stringify([settings.main, settings.small, settings.secondOpinion]);
   const now = Date.now();
   if (!opts.force && cache && now - cache.at < READINESS_CACHE_MS && cache.key === key) {
@@ -86,7 +93,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       installed: false,
       authenticated: false,
       apiReachable: false,
-      detail: "gh probe timed out",
+      detail: "the gh check timed out",
     }),
   ]);
 
@@ -110,10 +117,10 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
         }),
         {
           id: `agent:${role}`,
-          label: `Agent · ${role}`,
+          label: ROLE_LABEL[role],
           status: "warning" as const,
-          summary: "Agent probe timed out",
-          fix: "Re-check; ensure the provider CLI is logged in.",
+          summary: "The check timed out",
+          fix: "Re-check, and make sure the provider's CLI is logged in.",
           settingsAnchor: "#models",
         },
       ),
@@ -126,7 +133,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       id: "d2",
       label: "Diagrams · d2",
       status: "warning" as const,
-      summary: "Diagrams need d2 (probe timed out)",
+      summary: "Diagrams need d2 (the check timed out)",
       fix: "Re-check; ensure d2 is on your login-shell PATH. Reviews still work without it.",
       settingsAnchor: "#environment",
     },

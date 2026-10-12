@@ -297,7 +297,7 @@ export async function ensureWorktree(
   }
   const res = await runner.run("git", { args: ["worktree", "add", wt, headSha], cwd: repoPath });
   if (res.code !== 0) {
-    throw new Error(`git worktree add failed: ${res.stderr.trim() || res.stdout.trim()}`);
+    throw new Error(`couldn't create a working copy (git worktree add): ${res.stderr.trim() || res.stdout.trim()}`);
   }
   return wt;
 }
@@ -353,7 +353,7 @@ export async function resolveSource(
     if (!head.ok) {
       head = await runGit(runner, ["rev-parse", `origin/${branch}`], repoPath);
     }
-    if (!head.ok) throw new Error(`cannot resolve branch ${branch}`);
+    if (!head.ok) throw new Error(`branch ${branch} was not found in this repo`);
     headSha = head.stdout.trim();
     const base = await resolveBranchBase(runner, repoPath, branch, headSha);
     baseRef = base.baseRef;

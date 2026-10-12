@@ -126,7 +126,7 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/service/src/repos/` + `src/reviews/` | Repo detection/list, review create/list/delete |
 | `packages/web/src/start/` | Front screen: prior reviews, demo, repos, PRs, branches |
 | `packages/web/src/guide/` | Guide pages, cards, citations, hover previews |
-| `packages/web/src/source/` | Source pane: PR description, diff, hunk state |
+| `packages/web/src/source/` | Source pane: PR description, diff, hunk state. Diff code rows upgrade to Shiki token colours after first paint (`diff/highlight/`: lazy core/engine/grammars, content-hash cache, `?nohl=1` escape hatch) |
 | `packages/web/src/comments/` | Threads, selection toolbar, comments menu |
 | `packages/web/src/settings/` | Models, prompt templates, limits, environment |
 | `packages/web/src/debug/` | Per-review debug page (jobs, expanded prompts, then base, log, contributions as rendered Markdown + delete) |

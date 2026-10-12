@@ -4,6 +4,7 @@ import {
   blockedJobLine,
   buildLine,
   isNewerAvailable,
+  mergedProvenance,
   outcomeLine,
   shortCommit,
   sortVersionsByRecency,
@@ -14,7 +15,7 @@ import type { UpdateChannel } from "@unvibe/shared";
 const NOW = Date.parse("2026-10-12T12:00:00.000Z");
 
 function channel(ref: string, kind: UpdateChannel["kind"], builtAt: string | null = null): UpdateChannel {
-  return { ref, kind, version: "0.0.1", commit: null, sourceBranch: null, builtAt, current: false };
+  return { ref, kind, version: "0.0.1", commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt, current: false };
 }
 
 describe("versionFormat", () => {
@@ -50,13 +51,16 @@ describe("versionFormat", () => {
   });
 
   it("flags a newer published build on the installed channel only", () => {
-    const build = { version: "0.0.1", sourceBranch: null, commit: "aaa", builtAt: null };
+    const build = { version: "0.0.1", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: "aaa", builtAt: null };
     const row = (commit: string | null, current: boolean): UpdateChannel => ({
       ref: "preview/a",
       kind: "preview",
       version: "0.0.1",
       commit,
       sourceBranch: "a",
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
       builtAt: null,
       current,
     });
@@ -71,7 +75,7 @@ describe("versionFormat", () => {
     expect(buildLine(null, "0.0.1")).toBe("on 0.0.1");
     expect(
       buildLine(
-        { version: "0.0.1-preview.feat-x.abc1234", sourceBranch: "feat/x", commit: "abc1234def", builtAt: null },
+        { version: "0.0.1-preview.feat-x.abc1234", sourceBranch: "feat/x", sourceCommit: null, baseBranch: null, baseCommit: null, commit: "abc1234def", builtAt: null },
         "0.0.1",
       ),
     ).toBe("on 0.0.1-preview.feat-x.abc1234 (feat/x · abc1234)");
@@ -87,6 +91,21 @@ describe("versionFormat", () => {
     expect(
       outcomeLine({ status: "ok", from: "release", to: "preview/a", finishedAt: new Date(NOW - 1000).toISOString() }),
     ).toContain("Switched to preview/a");
+  });
+
+  it("names both sides of a merged preview, null otherwise", () => {
+    const merged = {
+      sourceBranch: "feat/x",
+      sourceCommit: "aaa111122223333",
+      baseBranch: "main",
+      baseCommit: "bbb222233334444",
+    };
+    expect(mergedProvenance(merged)).toBe("main@bbb2222 + feat/x@aaa1111");
+    expect(
+      buildLine({ version: "0.0.1-preview.feat-x.abc1234", ...merged, commit: "merge9999", builtAt: null }, "0.0.1"),
+    ).toBe("on 0.0.1-preview.feat-x.abc1234 (main@bbb2222 + feat/x@aaa1111)");
+    expect(mergedProvenance(null)).toBeNull();
+    expect(mergedProvenance({ ...merged, baseCommit: null })).toBeNull();
   });
 
   it("names the interrupted count of a forced switch", () => {

@@ -40,7 +40,7 @@ function RecheckStatus({ page }: { page: Page }) {
         ? "Rechecked · resolved"
         : recheckStatus === "changed"
           ? "Rechecked · changed"
-          : "Cited code changed · awaiting recheck";
+          : "Cited code changed · not rechecked yet";
   return (
     <div className="meta" data-recheck={recheckStatus ?? "pending"}>
       <span>{text}</span>
@@ -163,7 +163,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       ) : null}
       {sharedCount > 0 ? (
         <p className="hint" data-shared-indicator>
-          {sharedCount} shared context {sharedCount === 1 ? "item" : "items"} from this review ·{" "}
+          The agent kept {sharedCount} {sharedCount === 1 ? "note" : "notes"} from your conversations in this review ·{" "}
           <Link to={`/review/${encodeURIComponent(reviewId)}/debug?tab=context`}>Debug → Shared context</Link>
         </p>
       ) : null}
