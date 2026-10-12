@@ -25,6 +25,8 @@ describe("parseGitHubRepoInput", () => {
     ["https://github.com/acme/app/pull/123/", { owner: "acme", name: "app", prNumber: 123 }],
     ["https://github.com/acme/app/pull/123/files", { owner: "acme", name: "app", prNumber: 123 }],
     ["https://github.com/acme/app.git/pull/7", { owner: "acme", name: "app", prNumber: 7 }],
+    ["acme/app#123", { owner: "acme", name: "app", prNumber: 123 }],
+    ["acme/app#1", { owner: "acme", name: "app", prNumber: 1 }],
   ])("%s parses with PR number", (input, expected) => {
     expect(parseGitHubRepoInput(input)).toEqual(expected);
   });
@@ -43,6 +45,8 @@ describe("parseGitHubRepoInput", () => {
     ["https://github.com/acme/app/issues/5", /not a GitHub repo URL or owner\/name/],
     ["https://github.com/acme/app/pull/abc", /invalid PR number/],
     ["https://github.com/acme/app/pull/0", /invalid PR number/],
+    ["acme/app#0", /invalid PR number/],
+    ["acme/app#abc", /not a GitHub repo URL or owner\/name/],
     ["ftp://github.com/acme/app", /not a GitHub repo URL or owner\/name/],
     // Path/command safety: separators, traversal, flag-like names.
     ["../evil", /invalid owner|not a GitHub/],

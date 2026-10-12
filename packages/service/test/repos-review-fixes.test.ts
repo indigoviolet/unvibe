@@ -24,6 +24,7 @@ import {
   CloneError,
   managedRepoDir,
   MANAGED_FETCH_FAIL_BACKOFF_MS,
+  MANAGED_FETCH_TIMEOUT_MS,
   refreshManagedCheckout,
   removeRepo,
   resetManagedCloneStateForTests,
@@ -363,7 +364,7 @@ describe("bounded, prompt-free subprocess env", () => {
       expect(res.statusCode).toBe(200);
       const fetch = gitCalls.find((c) => c.args[0] === "fetch");
       expect(fetch).toBeDefined();
-      expect(fetch!.timeoutMs).toBeGreaterThan(0);
+      expect(fetch!.timeoutMs).toBe(MANAGED_FETCH_TIMEOUT_MS);
       expect(fetch!.env?.["GIT_TERMINAL_PROMPT"]).toBe("0");
     } finally {
       await app.close();

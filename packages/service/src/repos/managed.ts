@@ -413,8 +413,15 @@ export const MANAGED_FETCH_FRESH_MS = 30_000;
  */
 export const MANAGED_FETCH_FAIL_BACKOFF_MS = 10_000;
 
-/** Bound for a background freshness fetch: expiry degrades to the note. */
-export const MANAGED_FETCH_TIMEOUT_MS = 60_000;
+/**
+ * Bound for a background freshness fetch: expiry degrades to the note.
+ * 15 s keeps a slow fetch well inside the start page's 30 s lists window
+ * (`LISTS_TIMEOUT_MS`): a fetch that cannot finish in 15 s was unlikely to
+ * finish by 30 s either, and the failure back-off retries on the next
+ * listing, so slow-but-healthy networks still converge without ever
+ * showing the client's "timed out" state for a working service.
+ */
+export const MANAGED_FETCH_TIMEOUT_MS = 15_000;
 
 interface FetchEntry {
   at: number;

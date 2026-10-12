@@ -14,6 +14,7 @@
  * - a PR URL `https://github.com/owner/name/pull/123` (trailing path like
  *   `/files` ignored): yields owner/name plus the PR number for the later
  *   web step (paste-PR-offers-to-add).
+ * - bare `owner/name#123`: the start page's short PR form, same yield.
  *
  * Rejected with a clear message: anything else (non-github.com hosts,
  * `owner/name/extra`, issue URLs, empty segments, …). Only `github.com`
@@ -32,7 +33,6 @@ export interface ParsedRepoRef {
   /** Present when the input was a PR URL. */
   prNumber?: number;
 }
-
 /**
  * GitHub login: alphanumerics and hyphens, 1–39 chars, never leading or
  * trailing hyphen (github.com/join rules, lower bound relaxed to 1).
@@ -143,10 +143,18 @@ export function parseGitHubRepoInput(raw: string): ParsedRepoRef {
     );
   }
 
-  // Bare owner/name (also tolerates a pasted path with a trailing slash).
+  // Bare owner/name (also tolerates a pasted path with a trailing slash),
+  // or owner/name#N (a PR in that repo — the start page's offer flow and
+  // the service's add-then-open step share this form).
   // Leading `/`, `.` or `~` means a local path was pasted as a URL.
   if (/^[/.~]/.test(input)) {
     throw new Error(`"${input}" looks like a local path, not a GitHub URL — add it by path instead`);
+  }
+  const hash = input.match(/^([^/\s#]+)\/([^/\s#]+)#(\d+)$/);
+  if (hash) {
+    const prNumber = parsePrNumber(hash[3], input);
+    const ref = checked(hash[1], hash[2], input);
+    return { ...ref, prNumber };
   }
   const segs = input.split("/").filter((s) => s !== "");
   if (segs.length === 2 && !input.includes(":") && !input.includes(" ") && !input.includes("?") && !input.includes("#")) {
