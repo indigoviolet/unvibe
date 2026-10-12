@@ -35,22 +35,37 @@ UNVIBE_OP_RUN=1 exec "${wrap[@]}" "$@"
 [tasks.install]
 description = "Install npm workspace dependencies"
 run = "npm install"
-sources = ["package.json", "packages/*/package.json"]
+# Same missing-`outputs` trap as `build` (issue #39): without an output, a
+# deleted `node_modules/` never invalidated the task. npm records the
+# installed tree in `node_modules/.package-lock.json` on every platform, so
+# removing `node_modules/` reruns the install. The lockfile is a source: a
+# changed dependency graph must reinstall even when no manifest changed.
+sources = ["package.json", "package-lock.json", "packages/*/package.json"]
+outputs = ["node_modules/.package-lock.json"]
 
 [tasks.dev]
 description = "Run service + Vite dev server together"
 raw = true
 run = "mise run op -- node ./scripts/dev.mjs"
+depends = ["build"]
 sources = ["packages/service/src/**/*.ts", "packages/web/src/**/*", "packages/shared/src/**/*"]
+# A dev server writes no files: `outputs = []` declares that, so freshness
+# checks never skip it (issue #39). The `sources` stay for `mise watch`.
+outputs = []
 
 [tasks."dev:mock"]
 description = "Run the web UI against the in-memory mock API (no service needed)"
 raw = true
 run = "VITE_MOCK=1 mise run op -- npm run dev --workspace @unvibe/web --if-present"
 sources = ["packages/web/src/**/*", "packages/shared/src/**/*"]
+# As above: no output files, so never skip (issue #39).
+outputs = []
 
 [tasks."test:e2e"]
 description = "Playwright behaviour tests against mock mode (needs browsers: mise run playwright-install)"
+# The real-service specs boot `packages/service/dist/index.js`; ensure a build
+# exists first (issue #39). A fresh build is skipped, so this is a no-op then.
+depends = ["build"]
 run = "npm run test:e2e --workspace @unvibe/web --if-present"
 
 [tasks."playwright-install"]
@@ -60,7 +75,42 @@ run = "npx --workspace @unvibe/web playwright install chromium"
 [tasks.build]
 description = "Build shared, service and web"
 run = "mise run op -- sh -c 'npm run build --workspaces --if-present && npm run build --workspace @unvibe/web --if-present'"
-sources = ["packages/*/src/**/*", "packages/*/package.json"]
+# Freshness (issue #39): with `sources` but no `outputs`, mise falls back to
+# `outputs = { auto = true }` — a marker file in its state dir — so deleting
+# `dist/` never invalidated the task and the build was skipped. The explicit
+# `outputs` below are the directories plus the load-bearing files
+# (`scripts/release.mjs` and the service entry require them), so a missing or
+# partial `dist/` makes the task stale again.
+# Sources cover everything the builds read: tsc reads the base + package
+# tsconfigs (web's `tsc --noEmit` also typechecks `e2e/`, `vite.config.ts` and
+# `playwright.config.ts`, failing the build on type errors there); vite reads
+# `index.html`, `public/` and `vite.config.ts`; the root manifests pin the
+# installed dependency tree that esbuild/vite bundle.
+sources = [
+  "package.json",
+  "package-lock.json",
+  "tsconfig.base.json",
+  "packages/*/src/**/*",
+  "packages/*/package.json",
+  "packages/*/tsconfig.json",
+  "packages/web/e2e/**/*",
+  "packages/web/index.html",
+  "packages/web/public/**/*",
+  "packages/web/vite.config.ts",
+  "packages/web/playwright.config.ts",
+]
+outputs = [
+  "packages/shared/dist",
+  "packages/service/dist",
+  "packages/web/dist",
+  "packages/shared/dist/index.js",
+  "packages/service/dist/index.js",
+  "packages/service/dist/update-helper.js",
+  "packages/service/dist/adapters/claude.js",
+  "packages/service/dist/adapters/codex.js",
+  "packages/web/dist/index.html",
+  "packages/web/dist/web-meta.json",
+]
 
 [tasks.test]
 description = "Run vitest across workspaces"
@@ -85,6 +135,8 @@ run = "mise run lint && mise run typecheck && mise run test"
 [tasks.start]
 description = "Run the built service"
 raw = true
+# Needs `dist/`; build first when stale (issue #39), a no-op when fresh.
+depends = ["build"]
 run = "mise run op -- node packages/service/dist/index.js"
 
 [tasks.fixture-snapshot]

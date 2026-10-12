@@ -30,15 +30,15 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 |---|---|---|
 | `install` | `npm install` across workspaces | — |
 | `op -- <cmd>` | Run `<cmd>` with the 1Password Environment secrets (hidden helper) | `.env`, else runs without secrets |
-| `build` | Build shared → service → web | — |
-| `dev` | Service + Vite dev server together | — |
+| `build` | Build shared → service → web (tracked outputs: each `packages/*/dist` + entry files, so a missing `dist/` rebuilds) | — |
+| `dev` | Service + Vite dev server together | `build` (auto) |
 | `dev:mock` | Web UI against the in-memory mock API, no service | — |
 | `lint` / `typecheck` / `test` | ESLint / tsc / vitest across workspaces | — |
 | `check` | `lint` + `typecheck` + `test`; must pass from a clean tree with no `dist/` | — |
-| `start` | Run the built service | `build` first |
+| `start` | Run the built service | `build` (auto) |
 | `setup` / `doctor` | Build, then `unvibe setup` / `unvibe doctor` | — |
 | `fixture-snapshot` | Rebuild `fixtures/urllib3-5020/snapshot.json`; fails on unverified citations | — |
-| `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` + browsers (`mise run playwright-install`) |
+| `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `playwright-install` | Install the Playwright Chromium browser | — |
 | `e2e` | Linux shell end-to-end (setup, handler, reuse, idle exit, uninstall, in temp HOME/port) | Linux |
 | `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
