@@ -29,16 +29,19 @@ const SETTINGS: Settings = {
   versionPickerEnabled: true,
 };
 
-const BUILD = { version: "0.0.1", sourceBranch: null, commit: null, builtAt: null };
+const BUILD = { version: "0.0.1", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null };
 
 const CHANNELS: UpdateChannel[] = [
-  { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: true },
+  { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null, current: true },
   {
     ref: "preview/feat-x",
     kind: "preview",
     version: "0.0.1-preview.feat-x.abc1234",
     commit: "abc1234def5678",
     sourceBranch: "feat/x",
+    sourceCommit: null,
+    baseBranch: null,
+    baseCommit: null,
     builtAt: new Date(Date.now() - 3600_000).toISOString(),
     current: false,
   },
