@@ -6,10 +6,13 @@
  * - `GET /api/update/channels[?refresh=1]` — installable channels from the
  *   `Updater` seam, cached briefly (listing shells out in the real
  *   backend, so concurrent requests share one in-flight call). Gated.
- * - `POST /api/update/switch { ref }` — validate, refuse while jobs run
- *   or a submit is in flight, record the pending switch, spawn the
+ * - `POST /api/update/switch { ref, force? }` — validate, refuse while
+ *   jobs run (structured 409 with a short job list; skipped with
+ *   `force: true`, recording how many jobs the shutdown path stops) or
+ *   while a submit is in flight, record the pending switch, spawn the
  *   detached helper, reply 202, then shut down through the normal shutdown
- *   path. Gated.
+ *   path. Gated. `force` never bypasses the submit lease, a pending
+ *   switch, the gate, or the installed-build check.
  *
  * Gate: `versionPickerEnabled` in settings (off by default). Gated-off
  * channels/switch answer 404 "not available"; status keeps working so the
@@ -25,8 +28,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import type {
+  UpdateBlockedJob,
   UpdateChannel,
   UpdateChannelsResponse,
+  UpdateJobsBlockedBody,
   UpdateStatusResponse,
   UpdateSwitchRequest,
   UpdateSwitchResponse,
@@ -53,6 +58,12 @@ export const UPDATE_HEALTH_TIMEOUT_MS = 120_000;
 export const UPDATE_POLL_MS = 500;
 /** Bound for the helper stopping its own previous generation before a later start. */
 export const UPDATE_STOP_WAIT_MS = 10_000;
+/**
+ * Cap for the blocking-job list on the jobs-running 409 (issue #36
+ * follow-up). `activeJobs` on the body carries the full count so the UI
+ * can add "+N more".
+ */
+export const UPDATE_BLOCKED_JOBS_CAP = 5;
 /** Delay between the 202 reply and the shutdown trigger (lets the reply flush). */
 export const UPDATE_SHUTDOWN_DELAY_MS = 500;
 
@@ -234,16 +245,38 @@ export async function registerUpdate(
     if (pending) {
       return reply.code(409).send({ error: `a switch to "${pending.to}" is already in progress; wait for it to finish` });
     }
+    // `force` skips only this refusal: the jobs are stopped by the normal
+    // shutdown path after the 202 (no second cancellation mechanism), and
+    // their count rides the pending switch + helper args into the outcome.
+    const force = body.force === true;
     let activeJobs = 0;
+    let blocked: UpdateBlockedJob[] = [];
     try {
       activeJobs = deps.jobs?.activeCount() ?? 0;
+      if (activeJobs > 0) {
+        blocked = (deps.jobs?.listActive(UPDATE_BLOCKED_JOBS_CAP) ?? []).map((j) => {
+          const label = j.progress ?? j.cardId ?? j.threadId;
+          return {
+            id: j.id,
+            kind: j.kind,
+            ...(j.reviewId !== undefined ? { reviewId: j.reviewId } : {}),
+            state: j.state,
+            ...(label ? { label } : {}),
+          };
+        });
+      }
     } catch {
       activeJobs = 0;
+      blocked = [];
     }
-    if (activeJobs > 0) {
-      return reply.code(409).send({
+    if (activeJobs > 0 && !force) {
+      const refused: UpdateJobsBlockedBody = {
         error: `cannot switch while ${activeJobs} job${activeJobs === 1 ? " is" : "s are"} running; wait for them to finish, then retry`,
-      });
+        code: "jobs-running",
+        activeJobs,
+        jobs: blocked,
+      };
+      return reply.code(409).send(refused);
     }
     let submitInflight = false;
     try {
@@ -263,7 +296,16 @@ export async function registerUpdate(
       return reply.code(200).send(unchanged);
     }
     const now = new Date().toISOString();
-    writePendingSwitch(ctx.dataDir, { from, to: ref, startedAt: now });
+    // Forced with jobs running: the shutdown path stops them after the
+    // 202; the count rides the pending record + helper args into the
+    // outcome so the UI can say so after the reload.
+    const interruptedJobs = force && activeJobs > 0 ? activeJobs : undefined;
+    writePendingSwitch(ctx.dataDir, {
+      from,
+      to: ref,
+      startedAt: now,
+      ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
+    });
 
     const scriptPath = process.argv[1];
     if (!scriptPath) {
@@ -285,6 +327,7 @@ export async function registerUpdate(
       logPath: path.join(updateDir(ctx.dataDir), `switch-${Date.now()}.log`),
       scriptPath,
       serviceVersion: routeServiceVersion(deps),
+      ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
     };
     const argsFile = path.join(updateDir(ctx.dataDir), `helper-args-${Date.now()}.json`);
     try {

@@ -156,6 +156,24 @@ describe("runSwitchFlow", () => {
     expect(deps.outcomes).toHaveLength(1);
   });
 
+  it("forced switch carries the interrupted count onto every outcome", async () => {
+    const okDeps = makeDeps({ health: [HEALTHY] });
+    const ok = await runSwitchFlow({ ...PLAN, interruptedJobs: 2 }, okDeps);
+    expect(ok.status).toBe("ok");
+    expect(ok.interruptedJobs).toBe(2);
+
+    const backDeps = makeDeps({ switchThrows: ["preview/feat-x"], health: [OLD_HEALTHY] });
+    const back = await runSwitchFlow({ ...PLAN, interruptedJobs: 2 }, backDeps);
+    expect(back.status).toBe("rolled-back");
+    expect(back.interruptedJobs).toBe(2);
+  });
+
+  it("unforced switch leaves the interrupted count absent", async () => {
+    const deps = makeDeps({ health: [HEALTHY] });
+    const out = await runSwitchFlow(PLAN, deps);
+    expect(out.interruptedJobs).toBeUndefined();
+  });
+
   it("install failure rolls back to the previous ref", async () => {
     const deps = makeDeps({ switchThrows: ["preview/feat-x"], health: [OLD_HEALTHY] });
     const out = await runSwitchFlow(PLAN, deps);

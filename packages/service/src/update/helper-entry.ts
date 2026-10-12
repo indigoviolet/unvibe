@@ -104,6 +104,15 @@ function parseArgs(raw: unknown): HelperArgs {
     if (v !== null && typeof v !== "string") throw new Error(`helper args: bad ${k}`);
     return v;
   };
+  // Optional forced-switch job count (service-side only; absent otherwise).
+  const interruptedJobs = (() => {
+    const v = o["interruptedJobs"];
+    if (v === undefined) return undefined;
+    if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0) {
+      throw new Error("helper args: bad interruptedJobs");
+    }
+    return v;
+  })();
   return {
     from: str("from"),
     to: str("to"),
@@ -119,6 +128,7 @@ function parseArgs(raw: unknown): HelperArgs {
     logPath: str("logPath"),
     scriptPath: str("scriptPath"),
     serviceVersion: str("serviceVersion"),
+    ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
   };
 }
 

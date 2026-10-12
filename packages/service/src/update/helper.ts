@@ -39,6 +39,13 @@ export interface SwitchPlan {
   /** Bound for stopping the helper's own previous generation before a later start. */
   stopWaitMs: number;
   logPath: string;
+  /**
+   * Jobs the service stopped via its normal shutdown path on a forced
+   * switch (#36 follow-up: `force: true` on `POST /api/update/switch`).
+   * Copied onto every outcome so the UI can name the count after the
+   * reload. Absent on unforced switches.
+   */
+  interruptedJobs?: number;
 }
 
 /** Recovery path when the app cannot come back on its own (docs + failure outcomes). */
@@ -116,8 +123,12 @@ export function describeHealth(health: ObservedHealth): string {
 }
 
 export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise<SwitchOutcome> {
-  const finish = (outcome: Omit<SwitchOutcome, "finishedAt">): SwitchOutcome => {
-    const full: SwitchOutcome = { ...outcome, finishedAt: deps.nowIso() };
+  const finish = (outcome: Omit<SwitchOutcome, "finishedAt" | "interruptedJobs">): SwitchOutcome => {
+    const full: SwitchOutcome = {
+      ...outcome,
+      ...(plan.interruptedJobs !== undefined ? { interruptedJobs: plan.interruptedJobs } : {}),
+      finishedAt: deps.nowIso(),
+    };
     deps.log(`outcome: ${full.status} ${full.from} -> ${full.to}${full.reason ? ` (${full.reason})` : ""}`);
     deps.clearPending();
     deps.recordOutcome(full);
