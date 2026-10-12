@@ -159,6 +159,22 @@ describe("readiness checks", () => {
     expect(diff.checks.find((c) => c.id === "agents-distinct")!.status).toBe("ok");
   });
 
+  it("unset second opinion names the enforced rule: a different model from main (finding 19)", async () => {
+    const r = await getReadiness(
+      {
+        runner: real,
+        agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
+        settings: settingsStore({ secondOpinion: { provider: "codex", model: "" } }),
+        loginPathValue: "/nonexistent",
+        timeoutMs: 1000,
+      },
+      { force: true },
+    );
+    const check = r.checks.find((c) => c.id === "agent:secondOpinion")!;
+    expect(check.status).toBe("warning");
+    expect(check.summary).toContain("different model from main");
+  });
+
   it("d2 warns (not ok) when UNVIBE_D2_BIN points at a missing file or cannot be probed", async () => {
     // Missing override file: warn even though resolveD2Bin returns a path.
     const missing = await d2Check({

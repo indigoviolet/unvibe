@@ -7,7 +7,7 @@
  * - small: the smallest/fastest Claude model offered (one provider for
  *   main + small keeps one login sufficient);
  * - second opinion: the default Codex model when Codex is available,
- *   otherwise unset (the UI explains a second provider is needed).
+ *   otherwise unset (the UI explains a different model from main is needed).
  *
  * Pure functions over captured id lists, unit-tested against the real
  * adapter listings (see `docs/acp-runner.md`).

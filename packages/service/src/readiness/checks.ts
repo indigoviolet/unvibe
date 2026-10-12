@@ -324,15 +324,15 @@ export async function agentCheck(opts: {
 
   const provider = pick.provider;
   const cli = CLI_FOR_PROVIDER[provider] ?? provider;
-  // Unset second opinion (no Codex yet): not an error — the guide and
-  // small jobs work with one provider; only second opinions need another.
+  // Unset second opinion: not an error — the guide and small jobs work
+  // without one; only second opinions need a different model from main.
   if (role === "secondOpinion" && pick.model === "") {
     return {
       id,
       label,
       status: "warning",
-      summary: "Second opinion not set — needs a second provider (Codex)",
-      fix: "Pick a Codex model in Settings → Models to enable second opinions. Everything else works with one provider.",
+      summary: "Second opinion not set — needs a different model from main",
+      fix: "Pick a model different from main in Settings → Models to enable second opinions. Everything else works without one.",
       settingsAnchor: "#models",
     };
   }
