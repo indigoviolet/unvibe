@@ -120,6 +120,12 @@ UI); nothing below was edited by this pass.
   refresh banner counts).
 - Selections remembered — met (`reviews/list.ts` last-opened ordering,
   `start.spec.ts` “most recent first”).
+- Native folder picker (#26, in progress — built, not yet mounted):
+  `POST /api/repos/pick-folder` (osascript / zenity→kdialog with
+  cancelled/unavailable outcomes, `pick-folder.test.ts`) plus the
+  `BrowseFolderButton` component (`BrowseFolderButton.test.tsx`) exist but
+  are wired into no page yet; mounting in the Settings Repositories
+  section waits for #31.
 
 ### §4.3 Pages — all met
 

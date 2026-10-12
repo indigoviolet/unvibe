@@ -31,11 +31,16 @@ describe("BrowseFolderButton", () => {
 
   it("does nothing on cancel", async () => {
     const onPick = vi.fn();
-    vi.spyOn(api, "pickFolder").mockResolvedValue({ status: "cancelled" });
+    let resolvePick!: (res: PickFolderResponse) => void;
+    const gate = new Promise<PickFolderResponse>((resolve) => {
+      resolvePick = resolve;
+    });
+    vi.spyOn(api, "pickFolder").mockReturnValue(gate);
     render(<BrowseFolderButton onPick={onPick} />);
     clickBrowse();
     // The round-trip completes (busy clears) with no pick and no hint.
     expect(await screen.findByRole("button", { name: "Choosing…" })).toBeDisabled();
+    resolvePick({ status: "cancelled" });
     expect(await screen.findByRole("button", { name: "Browse…" })).toBeEnabled();
     expect(onPick).not.toHaveBeenCalled();
     expect(screen.queryByRole("status")).toBeNull();
