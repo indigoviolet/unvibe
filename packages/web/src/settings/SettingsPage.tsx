@@ -1,10 +1,12 @@
 /**
- * Settings page (`/settings`, PRD §4.14): models, prompts (template +
- * expanded), limits and budgets, jobs, shared context.
+ * Settings page (`/settings`, PRD §4.14): repositories, models, prompts
+ * (template + expanded), limits and budgets, jobs, shared context.
  *
  * Reachable from the top bar and the start page; also openable in the
  * context of a review (`/settings?review=:id`), which gives "Expanded for
- * this review" and the Jobs / Shared context sections a subject.
+ * this review" and the Jobs / Shared context sections a subject. The
+ * Repositories section carries `#repositories` so the start page's empty
+ * state can link straight to it.
  */
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -16,6 +18,7 @@ import { JobsSection } from "./JobsSection.js";
 import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
 import { PromptsSection } from "./PromptsSection.js";
+import { RepositoriesSection } from "./RepositoriesSection.js";
 import "./settings.css";
 
 export function SettingsPage(): React.JSX.Element {
@@ -73,7 +76,7 @@ export function SettingsPage(): React.JSX.Element {
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
           <div className="eyebrow">Settings</div>
-          <h1 className="title">Models, prompts, limits, jobs, shared context</h1>
+          <h1 className="title">Repositories, models, prompts, limits, jobs, shared context</h1>
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load settings: {error}
@@ -82,6 +85,7 @@ export function SettingsPage(): React.JSX.Element {
           {!settings && !error ? <p className="hint">Loading settings…</p> : null}
           {settings ? (
             <>
+              <RepositoriesSection />
               <ModelsSection settings={settings} onSaved={setSettings} />
               <EnvironmentSection />
               <PromptsSection reviewId={reviewId} />
