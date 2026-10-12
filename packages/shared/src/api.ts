@@ -78,6 +78,26 @@ export interface RemoveRepoResponse {
   removedClone: boolean;
 }
 
+/**
+ * `POST /api/repos/pick-folder` (#26): ask the service to open a native
+ * "choose folder" dialog on the user's own machine and report what
+ * happened. No request body. A browser folder picker cannot supply an
+ * absolute path, so the dialog runs service-side (macOS `osascript`,
+ * Linux `zenity`/`kdialog`); the caller still adds the chosen path through
+ * `POST /api/repos`, which validates it as a git checkout.
+ */
+export type PickFolderResponse =
+  /** The user chose a folder: absolute path, trailing newline/slash trimmed. */
+  | { status: "picked"; path: string }
+  /** The user dismissed the dialog: the caller does nothing. */
+  | { status: "cancelled" }
+  /**
+   * No dialog could be opened (no tool, no display, other platform):
+   * `reason` is short human-readable copy the UI shows inline so the user
+   * falls back to typing the path.
+   */
+  | { status: "unavailable"; reason: string };
+
 export type ChangesFilter = "authoring" | "review-requested" | "branches" | "recent" | "all";
 
 export interface RepoChange {

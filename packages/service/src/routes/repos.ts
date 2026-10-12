@@ -5,6 +5,8 @@
  * - `POST /api/repos` — remember a checkout path (validated as a git
  *   checkout; owner/name derived from the `origin` remote), or clone a
  *   GitHub URL into Unvibe's own storage (#27, marked `managed: true`).
+ * - `POST /api/repos/pick-folder` — open a native folder dialog and return
+ *   the chosen path (#26; one dialog at a time, 409 while one is open).
  * - `DELETE /api/repos/:id` — forget a repo; deletes the managed clone
  *   directory only for clones Unvibe made (#27). Refused while reviews
  *   reference the repo.
@@ -20,6 +22,7 @@ import {
   type AddRepoRequest,
   type AddRepoResponse,
   type ChangesFilter,
+  type PickFolderResponse,
   type RemoveRepoResponse,
   type Repo,
   type ReposResponse,
@@ -32,12 +35,14 @@ import {
   CloneError,
   isGitCheckout,
   newRepoId,
+  pickFolder,
   refreshManagedCheckout,
   removeRepo,
   repoChanges,
   resolveRepoRoots,
 } from "../repos/index.js";
 import type { ServiceContext } from "./context.js";
+import type { RouteDeps } from "./deps.js";
 
 /** Stable id for a detected (not yet remembered) checkout. */
 export function detectedRepoId(localPath: string): string {
@@ -80,8 +85,15 @@ export const DEMO_REPO = {
   detected: true,
 } as const;
 
-/** GET /api/repos · POST /api/repos · DELETE /api/repos/:id · GET /api/repos/:id/changes */
-export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): Promise<void> {
+/** GET /api/repos · POST /api/repos · POST /api/repos/pick-folder · DELETE /api/repos/:id · GET /api/repos/:id/changes */
+export async function registerRepos(
+  app: FastifyInstance,
+  ctx: ServiceContext,
+  deps: RouteDeps = {},
+): Promise<void> {
+  // One dialog at a time per app: the pick awaits the user's action, so a
+  // second request while one is open gets 409 instead of stacking dialogs.
+  let pickInFlight = false;
   app.get("/api/repos", async () => {
     const repos = await listAllRepos(ctx);
     // Demo first so the start page shows it without tokens (M3).
@@ -140,6 +152,18 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
         return reply.code(err.status).send({ error: err.message });
       }
       throw err;
+    }
+  });
+
+  app.post("/api/repos/pick-folder", async (_req, reply) => {
+    if (pickInFlight) {
+      return reply.code(409).send({ error: "a folder dialog is already open" });
+    }
+    pickInFlight = true;
+    try {
+      return (await pickFolder(ctx.runner, deps.pickFolder)) satisfies PickFolderResponse;
+    } finally {
+      pickInFlight = false;
     }
   });
 
