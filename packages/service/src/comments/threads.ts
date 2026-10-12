@@ -35,6 +35,7 @@ import type {
 } from "@unvibe/shared";
 import type { WritableDraft } from "immer";
 import type { ReviewStore } from "../state/store.js";
+import { findBlock } from "../interaction/l4.js";
 
 export interface CreateThreadParams {
   anchor: ActionAnchor;
@@ -116,18 +117,6 @@ function stripTags(html: string): string {
     .trim();
 }
 
-function findBlockText(snapshot: ReviewSnapshot, blockId: string): string | null {
-  for (const page of snapshot.pages ?? []) {
-    for (const card of page.cards ?? []) {
-      for (const block of card.blocks ?? []) {
-        const b = block as { id?: string };
-        if (b.id === blockId) return blockText(block);
-      }
-    }
-  }
-  return null;
-}
-
 function descriptionParagraphText(snapshot: ReviewSnapshot, paragraphId: string): string | null {
   const html = snapshot.description?.html ?? snapshot.description?.pendingHtml ?? null;
   if (!html) return null;
@@ -185,11 +174,12 @@ export function buildAnchor(
   const host = actionAnchorToHost(anchor);
   const version = snapshot.version?.n ?? snapshot.review?.currentVersion ?? 1;
   if (host.kind === "block") {
-    const text = findBlockText(snapshot, host.blockId);
-    if (text === null) throw new Error(`unknown block ${host.blockId}`);
-    const ctx = contextAround(text, quote);
+    const found = findBlock(snapshot, host.blockId);
+    if (!found) throw new Error(`unknown block ${host.blockId}`);
+    const ctx = contextAround(blockText(found.block), quote);
     return {
-      host,
+      // Stored as `<card>#<block>`: block ids repeat across cards (#78).
+      host: { kind: "block", blockId: `${found.cardId}#${found.block.id}` },
       quotedText: quote,
       prefix: opts.prefix ?? ctx.prefix,
       suffix: opts.suffix ?? ctx.suffix,

@@ -37,14 +37,40 @@ function shortBlockId(raw: string): string {
   return raw;
 }
 
-/** Locate a block by id across all pages; returns card + block. */
+/**
+ * Card part of a `<card>#<block>` / `card:<card>#<block>` block id, or
+ * null for a bare id.
+ */
+function cardOfBlockId(raw: string): string | null {
+  const hash = raw.lastIndexOf("#");
+  if (hash < 0) return null;
+  const card = raw.slice(0, hash);
+  return card.startsWith("card:") ? card.slice("card:".length) : card;
+}
+
+/**
+ * Locate a block by id; returns card + block. Block ids restart at `b1`
+ * in every card, so a `<card>#<block>` id is looked up in that card (or
+ * expansion) only. A bare id, or a card that no longer exists, falls back
+ * to the first block with that id on any page.
+ */
 export function findBlock(
   snapshot: ReviewSnapshot,
   blockId: string,
 ): { cardId: string; pageId: string; cardTitle: string | null; block: Block } | null {
+  const cardId = cardOfBlockId(blockId);
+  return (cardId !== null ? findBlockIn(snapshot, blockId, cardId) : null) ?? findBlockIn(snapshot, blockId, null);
+}
+
+function findBlockIn(
+  snapshot: ReviewSnapshot,
+  blockId: string,
+  onlyCard: string | null,
+): { cardId: string; pageId: string; cardTitle: string | null; block: Block } | null {
   const short = shortBlockId(blockId);
   for (const page of snapshot.pages ?? []) {
     for (const card of page.cards ?? []) {
+      if (onlyCard !== null && card.id !== onlyCard) continue;
       for (const block of card.blocks ?? []) {
         if (block.id === blockId || block.id === short) {
           return { cardId: card.id, pageId: page.id, cardTitle: card.title, block };
@@ -62,6 +88,7 @@ export function findBlock(
   // Expansion bodies hold blocks too.
   for (const ann of snapshot.annotations ?? []) {
     if (ann.type !== "expansion" || !ann.expansion) continue;
+    if (onlyCard !== null && ann.id !== onlyCard) continue;
     for (const block of ann.expansion.blocks) {
       if (block.id === blockId || block.id === short) {
         return { cardId: ann.id, pageId: "", cardTitle: ann.anchor.quotedText, block };

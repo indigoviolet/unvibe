@@ -931,6 +931,20 @@ when its review changes or it unmounts — met (`web/src/state/store.ts`,
 own. A refetch of the previous review that resolves after the switch can
 still land in the store; not seen, not guarded.
 
+### Block anchors are card-scoped (#78)
+
+Block ids restart at `b1` in every card, and a selection used to be
+anchored on the bare block id, so an Explain or comment on one card also
+rendered under the same-numbered block of other cards, and the service
+read the host text from the first card with that id. Selections now send
+`<card>#<block>` (expansions use their annotation id as the card), the
+service looks a qualified id up in that card only and stores block
+anchors qualified (`interaction/l4.ts: findBlock`, `comments/threads.ts:
+buildAnchor`), and highlight marks search only the named card — met
+(`comments-m6.test.ts`, `anchor.test.ts`, `SelectionToolbar.test.tsx`;
+`test:e2e` 150 passed). Anchors stored bare before the fix still match
+every card; no migration.
+
 ### Immediate action feedback (#46, complete)
 
 Every agent-starting control reacts on click, before the request
