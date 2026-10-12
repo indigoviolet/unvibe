@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { UpdateBuildInfo } from "@unvibe/shared";
 import { api } from "../api/client.js";
-import { shortCommit } from "../settings/versionFormat.js";
+import { mergedProvenance, shortCommit } from "../settings/versionFormat.js";
 
 export function PreviewBuildBadge(): React.JSX.Element | null {
   const [build, setBuild] = useState<UpdateBuildInfo | null>(null);
@@ -29,15 +29,18 @@ export function PreviewBuildBadge(): React.JSX.Element | null {
   }, []);
 
   if (!build?.sourceBranch) return null;
-  const sha = shortCommit(build.commit);
+  // Prefer the branch-side commit (the merge result in `commit` names no
+  // branch); fall back to it for older builds without the field.
+  const sha = shortCommit(build.sourceCommit ?? build.commit);
+  const merged = mergedProvenance(build);
   return (
     <Link
       className="pill"
       data-testid="preview-badge"
       to="/settings?tab=version"
-      title={`Preview build ${build.version} from ${build.sourceBranch}${sha ? ` (${sha})` : ""} — open Settings → Version to switch back.`}
+      title={`Preview build ${build.version} from ${merged ?? build.sourceBranch}${sha && !merged ? ` (${sha})` : ""} — open Settings → Version to switch back.`}
     >
-      preview · {build.sourceBranch}
+      preview · {merged ?? build.sourceBranch}
       {sha ? ` · ${sha}` : ""}
     </Link>
   );

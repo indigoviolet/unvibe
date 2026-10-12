@@ -849,10 +849,25 @@ export interface UpdateChannel {
   kind: "release" | "release-rc" | "preview";
   /** e.g. "0.0.1-preview.feat-x.abc1234"; null when unknown. */
   version: string | null;
-  /** Source commit sha; null when unknown. */
+  /** Built tree's commit sha (for a merged preview, the merge result); null when unknown. */
   commit: string | null;
   /** e.g. "feat/x"; null for release builds. */
   sourceBranch: string | null;
+  /**
+   * Branch-side commit the build was made from (issue #41: previews are
+   * built as base + branch, so this differs from `commit`, the merge
+   * result). Equals `commit` for branch-as-is builds; null for release
+   * builds and for previews published before the field existed.
+   */
+  sourceCommit: string | null;
+  /**
+   * Base the branch was merged onto for the build (usually "main");
+   * null for release builds, branch-as-is previews, and previews
+   * published before the field existed.
+   */
+  baseBranch: string | null;
+  /** Base-side commit sha; null when unknown. */
+  baseCommit: string | null;
   /** ISO build time; null when unknown. */
   builtAt: string | null;
   current: boolean;
@@ -867,6 +882,12 @@ export interface UpdateChannel {
 export interface UpdateBuildInfo {
   version: string;
   sourceBranch: string | null;
+  /** Branch-side commit (for a merged preview, the branch head — see `UpdateChannel.sourceCommit`); null when unknown. */
+  sourceCommit: string | null;
+  /** Base the branch was merged onto (usually "main"); null when unknown. */
+  baseBranch: string | null;
+  /** Base-side commit sha; null when unknown. */
+  baseCommit: string | null;
   commit: string | null;
   builtAt: string | null;
 }
