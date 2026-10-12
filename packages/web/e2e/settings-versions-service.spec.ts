@@ -131,7 +131,7 @@ test.describe("settings + versions on the real service", () => {
     test.setTimeout(120_000);
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
     await page.getByRole("tab", { name: "Limits and budgets" }).click();
 
     const input = page.locator("#limit-sessionsPerProvider");
@@ -143,7 +143,7 @@ test.describe("settings + versions on the real service", () => {
     await page.getByRole("button", { name: "Save limits" }).click();
     await expect(page.getByText("Saved")).toBeVisible();
     await page.reload();
-    await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
     await page.getByRole("tab", { name: "Limits and budgets" }).click();
     await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("5");
   });
@@ -154,7 +154,7 @@ test.describe("settings + versions on the real service", () => {
     reviewId = await openFeatureReview(page);
     // Settings keeps the review-agnostic template view.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
     await page.getByRole("tab", { name: "Prompts" }).click();
     // All 18 PRD §13 templates, from the real prompts dir.
     await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(18);
