@@ -141,9 +141,8 @@ test("held lists show loading without stale rows and keep the PR input", async (
 
 test("re-selecting the current repo reloads its lists", async ({ page }) => {
   await expect(page.getByText("PRs you're authoring")).toBeVisible();
-  await page.addInitScript(() => {
-    localStorage.setItem("unvibe.mock.repoChangesHold", "1");
-  });
+  // Hold live (addInitScript would only apply after a re-navigation).
+  await page.evaluate(() => localStorage.setItem("unvibe.mock.repoChangesHold", "1"));
   // Re-selecting the already-selected value still fires change and must
   // pair the cleared lists with a fresh load — never a stuck "Loading…".
   await page.getByLabel("Repository").selectOption("urllib3");
