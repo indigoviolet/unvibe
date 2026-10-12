@@ -41,7 +41,7 @@ describe("route error handler (#86 finding 2)", () => {
     const fault = await boomApp();
     const res = await fault.inject({ method: "GET", url: "/api/__bad", headers });
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toEqual({ error: "bad input" });
+    expect(res.json()).toEqual({ error: "bad input", code: "invalid-request" });
   });
 
   it("logs the stack server-side and never sends it", async () => {

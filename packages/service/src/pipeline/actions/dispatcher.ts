@@ -31,6 +31,7 @@ import { promoteAction } from "./promote.js";
 import { removeSecondOpinionAction, secondOpinionAction } from "./second_opinion.js";
 import { undoAction } from "./undo.js";
 import type { ActionContext } from "./common.js";
+import { errorCodeFor, errorCodeOf, sendError } from "../../errors.js";
 
 export interface ActionDeps {
   pipeline?: Pipeline;
@@ -50,7 +51,32 @@ function need(ctx: ActionContext): asserts ctx is Required<Pick<ActionContext, "
 }
 
 function bad(reply: FastifyReply, message: string): unknown {
-  return reply.code(400).send({ error: message });
+  return sendError(reply, 400, message, "invalid-request");
+}
+
+/**
+ * Status for a caught action error (issue #86, finding 10): derived from
+ * the error's code (carried or classified in `errors.ts`), never matched
+ * here. Preserves the old mapping: unknown → 404, bad-request text →
+ * 400, unwired → 501, else 500.
+ */
+function caughtStatus(code: ReturnType<typeof errorCodeFor>): number {
+  switch (code) {
+    case "not-found":
+      return 404;
+    case "invalid-request":
+      return 400;
+    case "not-implemented":
+      return 501;
+    default:
+      return 500;
+  }
+}
+
+function sendCaught(reply: FastifyReply, err: unknown): unknown {
+  const msg = (err as Error).message;
+  const code = errorCodeOf(err) ?? errorCodeFor(500, msg);
+  return sendError(reply, caughtStatus(code), msg, code);
 }
 
 export async function dispatchAction(
@@ -84,9 +110,7 @@ export async function dispatchAction(
           if (res.reused) out.reused = true;
           return out;
         } catch (err) {
-          const msg = (err as Error).message;
-          if (/no pending card|unknown review/.test(msg)) return reply.code(404).send({ error: msg });
-          return reply.code(500).send({ error: msg });
+          return sendCaught(reply, err);
         }
       }
       case "explain": {
@@ -232,11 +256,7 @@ export async function dispatchAction(
             }
             return { accepted: true } satisfies ActionResponse;
           } catch (err) {
-            const msg = (err as Error).message;
-            if (/unknown second opinion|unknown card|unknown review/.test(msg)) {
-              return reply.code(404).send({ error: msg });
-            }
-            return reply.code(500).send({ error: msg });
+            return sendCaught(reply, err);
           }
         }
         const res = await deleteAction(ctx, target);
@@ -277,26 +297,13 @@ export async function dispatchAction(
           if (res.reused) out.reused = true;
           return out satisfies ActionResponse;
         } catch (err) {
-          const msg = (err as Error).message;
-          if (/unknown review|unknown card/.test(msg)) return reply.code(404).send({ error: msg });
-          if (/different model|Settings/.test(msg)) return reply.code(400).send({ error: msg });
-          return reply.code(500).send({ error: msg });
+          return sendCaught(reply, err);
         }
       }
       default:
         return reply.code(501).send({ error: `unknown action: ${(action as { kind: string }).kind}` });
     }
   } catch (err) {
-    const msg = (err as Error).message;
-    if (/unknown review|unknown card|unknown annotation|unknown comment|unknown follow-up|unknown page|unknown block|unknown file|unknown description|unknown thread|unknown second opinion/.test(msg)) {
-      return reply.code(404).send({ error: msg });
-    }
-    if (/required|must be|bad |invalid|no failed|cannot be retried|has a failed/.test(msg)) {
-      return reply.code(400).send({ error: msg });
-    }
-    if (/not available in this build/.test(msg)) {
-      return reply.code(501).send({ error: msg });
-    }
-    return reply.code(500).send({ error: msg });
+    return sendCaught(reply, err);
   }
 }

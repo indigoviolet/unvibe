@@ -238,6 +238,30 @@ export interface ReviewsListResponse {
   reviews: ReviewSummary[];
 }
 
+// --- errors --------------------------------------------------------------
+
+/**
+ * Machine-readable error codes (issue #86, finding 10): behaviour that
+ * used to depend on matching error message text (HTTP status picking in
+ * `pipeline/actions/dispatcher.ts`, web no-agent checks, the Submit
+ * panel's head-moved check) keys off this instead, so wording can change
+ * freely. The human `error` message is unchanged; `code` is optional so
+ * old stored errors without one keep working (every reader falls back to
+ * the previous text match when it is absent).
+ */
+export type ApiErrorCode =
+  | "not-found"
+  | "invalid-request"
+  | "no-agent"
+  | "head-moved"
+  | "not-implemented";
+
+/** The app's usual error body: a human message plus its machine code. */
+export interface ApiErrorBody {
+  error: string;
+  code?: ApiErrorCode;
+}
+
 // --- readiness -----------------------------------------------------------
 
 /**

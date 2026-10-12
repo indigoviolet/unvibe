@@ -3,6 +3,7 @@
  * then persisted in `localStorage` (and mirrored to the `__unvibe_token`
  * cookie so static loads authenticate). Sent as `Authorization: Bearer`.
  */
+import type { ApiErrorCode } from "@unvibe/shared";
 import type {
   AcceptContributionResponse,
   ActionResponse,
@@ -118,6 +119,52 @@ export function friendlyError(err: unknown): string {
     default:
       return body.slice(0, 220) || "something went wrong — try again";
   }
+}
+
+const API_ERROR_CODES: ReadonlySet<string> = new Set([
+  "not-found",
+  "invalid-request",
+  "no-agent",
+  "head-moved",
+  "not-implemented",
+]);
+
+function validCode(v: unknown): ApiErrorCode | undefined {
+  return typeof v === "string" && API_ERROR_CODES.has(v) ? (v as ApiErrorCode) : undefined;
+}
+
+/**
+ * Machine code + status behind a failed request (issue #86, finding
+ * 10): parses the `METHOD path: STATUS {json}` transport error the
+ * client itself throws. `code` is optional — old responses and stored
+ * errors without one keep working, so every caller falls back to its
+ * previous text match when it is absent.
+ */
+export interface ParsedApiError {
+  status?: number;
+  code?: ApiErrorCode;
+  /** Raw body text after the status (JSON when the service sent one). */
+  bodyText: string;
+}
+
+export function parseApiError(err: unknown): ParsedApiError {
+  const raw = err instanceof Error ? err.message : String(err);
+  const m = raw.match(/^[A-Z]+ \/\S+: (\d{3}) ([\s\S]*)$/);
+  if (!m) return { bodyText: raw };
+  const status = Number(m[1]);
+  const bodyText = (m[2] ?? "").trim();
+  try {
+    const parsed = JSON.parse(bodyText) as { code?: unknown };
+    const code = validCode(parsed.code);
+    return code === undefined ? { status, bodyText } : { status, code, bodyText };
+  } catch {
+    return { status, bodyText };
+  }
+}
+
+/** Error code for a failed request, or undefined when it carries none. */
+export function apiErrorCode(err: unknown): ApiErrorCode | undefined {
+  return parseApiError(err).code;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

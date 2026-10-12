@@ -15,7 +15,7 @@
  */
 import { useEffect, useState } from "react";
 import type { SubmitPreview } from "@unvibe/shared";
-import { api, friendlyError } from "../api/client.js";
+import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { refreshErrorNotice } from "../versions/versionUtils.js";
 import { useViewer } from "../comments/viewer.js";
@@ -174,7 +174,9 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
-        if (/409/.test(message) && /head moved|refresh/i.test(message)) {
+        // Code first (finding 10); responses without one fall back to text.
+        const code = apiErrorCode(err);
+        if (/409/.test(message) && (code === "head-moved" || (code === undefined && /head moved|refresh/i.test(message)))) {
           setState({ status: "conflict", error: friendlyError(err) });
         } else {
           setState({ status: "error", error: friendlyError(err) });
