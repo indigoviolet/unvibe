@@ -524,7 +524,7 @@ export async function requestSecondOpinion(
         );
         const split = splitReply(text);
         if (!split.ok && (split.error.kind === "malformed" || split.error.kind === "not-object")) {
-          throw new Error(`trailing JSON ${split.error.kind}: ${split.error.message}`);
+          throw new Error(`the agent's reply was not in the expected format (${split.error.kind}: ${split.error.message})`);
         }
         const body = split.body;
         const cards = parseCards(body);
@@ -560,7 +560,7 @@ export async function requestSecondOpinion(
           usage.outputTokens += repair.usage.outputTokens;
           const secondSplit = splitReply(repair.text);
           if (!secondSplit.ok && (secondSplit.error.kind === "malformed" || secondSplit.error.kind === "not-object")) {
-            throw new Error(`trailing JSON ${secondSplit.error.kind}: ${secondSplit.error.message}`);
+            throw new Error(`the agent's reply was not in the expected format (${secondSplit.error.kind}: ${secondSplit.error.message})`);
           }
           finalText = repair.text;
           finalBlocks = parseCards(secondSplit.body).flatMap((c) => c.blocks);
@@ -573,7 +573,7 @@ export async function requestSecondOpinion(
         }
         const so = (finalData as unknown as { secondOpinion?: { verdict?: unknown; reasoning?: unknown; missed?: unknown } } | null)?.secondOpinion;
         if (!so || typeof so !== "object") {
-          throw new Error("second-opinion reply is missing its trailing secondOpinion JSON block");
+          throw new Error("the second opinion's reply was not in the expected format");
         }
         const verdict = parseVerdict((so as { verdict?: unknown }).verdict);
         const reasoningRaw = (so as { reasoning?: unknown }).reasoning;

@@ -38,7 +38,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
       performAction(reviewId, { kind: "ask", anchor, quote, message: value }, { toast: false })
         .then((res) => {
           const id = res.threadId ?? res.annotationId;
-          if (!id) throw new Error("ask returned no thread");
+          if (!id) throw new Error("the service didn't create the comment — try again");
           markAskSent(id);
           onCreated(id);
         })

@@ -196,7 +196,7 @@ describe("runSwitchFlow", () => {
     const deps = makeDeps({ health: [null, OLD_HEALTHY] });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("rolled-back");
-    expect(out.reason).toContain("not healthy within 2000ms");
+    expect(out.reason).toContain("did not start within 2 seconds");
     expect(deps.switches).toEqual(["preview/feat-x", "release"]);
     expect(deps.switchOpts).toEqual([undefined, { restoreBackupOf: "release" }]);
     expect(deps.starts).toBe(2);
@@ -240,7 +240,7 @@ describe("runSwitchFlow", () => {
     const deps = makeDeps({ health: [null, null] });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("failed");
-    expect(out.reason).toContain("rolled-back build did not become healthy");
+    expect(out.reason).toContain("previous build did not start within 2 seconds");
     expect(out.reason).toContain("npm install -g github:indigoviolet/unvibe#release");
   });
 
@@ -248,11 +248,11 @@ describe("runSwitchFlow", () => {
     const deps = makeDeps({ exit: false });
     const out = await runSwitchFlow(PLAN, deps);
     expect(out.status).toBe("failed");
-    expect(out.reason).toContain("did not exit within 1000ms");
-    expect(out.reason).toContain("install was left untouched");
-    // The failure names the likely cause and the exact recovery: the live
+    expect(out.reason).toContain("did not stop within 1 seconds");
+    expect(out.reason).toContain("nothing was installed and it is still running");
+    // The failure names the exact recovery: the live
     // service keeps serving (pending was cleared, nothing half-applied).
-    expect(out.reason).toContain("stuck shutting down");
+    expect(out.reason).toContain("it is still running");
     expect(out.reason).toContain("unvibe stop");
     expect(out.reason).toContain(`unvibe update ${PLAN.to}`);
     expect(deps.switches).toEqual([]);
@@ -297,7 +297,7 @@ describe("runSwitchFlow", () => {
     const deps = makeDeps({ health: [HEALTHY, HEALTHY], current: [false, false, false, false] });
     const out = await runSwitchFlow({ ...PLAN, healthTimeoutMs: 50, pollIntervalMs: 5 }, deps);
     expect(out.status).toBe("failed");
-    expect(out.reason).toContain("did not become healthy");
+    expect(out.reason).toContain("did not start within 0 seconds");
     // The first generation was stopped before the rollback restart; the
     // told-about service PID was never passed to stopService.
     expect(deps.stopped).toEqual([deps.startedPids[0]]);

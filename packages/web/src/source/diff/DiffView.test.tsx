@@ -66,7 +66,7 @@ describe("DiffView", () => {
 
   it("marks a hunk reviewed (greys + folds) and advances progress", async () => {
     await renderDiff();
-    await fireEvent.click(screen.getByRole("button", { name: "Show files panel" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
     expect(await screen.findByText("1/8 hunks reviewed")).toBeInTheDocument();
     const conn = within(connSection());
     await fireEvent.click(conn.getAllByRole("button", { name: "Mark reviewed" })[0]);
@@ -92,7 +92,7 @@ describe("DiffView", () => {
 
   it("filters files by name", async () => {
     await renderDiff();
-    await fireEvent.click(screen.getByRole("button", { name: "Show files panel" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
     const input = screen.getByLabelText("Filter files by name");
     await fireEvent.change(input, { target: { value: "socketlevel" } });
     expect(document.getElementById(`F-${CONN}`)).toBeNull();

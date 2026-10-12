@@ -123,13 +123,13 @@ export async function registerDiagnostics(
     try {
       const applied = await applyLoginShellPath();
       if (applied) {
-        changes.push("PATH re-probed");
-        detail.push(`PATH updated via ${applied.shell} (was ${applied.before.length} chars, now ${applied.after.length} chars)`);
+        changes.push("PATH re-read");
+        detail.push(`PATH was re-read from ${applied.shell} and has changed.`);
       } else {
-        detail.push("PATH unchanged (probe matched inherited)");
+        detail.push("PATH is unchanged.");
       }
     } catch (e) {
-      detail.push(`PATH re-probe failed: ${String(e)}`);
+      detail.push(`Couldn't re-read PATH: ${String(e)}`);
     }
 
     // 2. Restart agent adapter subprocesses (in-flight fail as retryable).
@@ -140,22 +140,21 @@ export async function registerDiagnostics(
         | undefined;
       if (agents && typeof agents.restartTransports === "function") {
         agents.restartTransports("reload");
-        changes.push("agent adapters restarted");
-        detail.push("Agent adapter subprocesses restarted; in-flight prompts fail as retryable (jobs back off and retry with a clear message).");
+        changes.push("agent CLIs restarted");
+        detail.push("The agent CLIs were restarted. Jobs that were running are retried automatically.");
       } else if (agents && typeof agents.clearModelCache === "function") {
         agents.clearModelCache();
-        detail.push("Model cache cleared (no live adapters to restart).");
+        detail.push("The model list was cleared. No agent CLI was running.");
       } else {
-        detail.push("No live agent runner (none/replay); nothing to restart.");
+        detail.push("No agent CLI is in use, so nothing was restarted.");
       }
     } catch (e) {
-      detail.push(`Adapter restart failed: ${String(e)}`);
+      detail.push(`Couldn't restart the agent CLIs: ${String(e)}`);
     }
 
     // 3. Clear readiness + model caches.
     try {
       clearReadinessCache();
-      changes.push("readiness cache cleared");
     } catch {
       // ignore
     }
@@ -163,7 +162,7 @@ export async function registerDiagnostics(
       const catalog = (deps as RouteDeps).models as unknown as { clearCache?: () => void } | undefined;
       if (catalog && typeof catalog.clearCache === "function") {
         catalog.clearCache();
-        detail.push("Model catalog cache cleared.");
+        detail.push("The model list was cleared.");
       }
     } catch {
       // ignore
@@ -182,10 +181,10 @@ export async function registerDiagnostics(
         },
         { force: true },
       );
-      changes.push("readiness re-checked");
-      detail.push("Readiness re-probed (including d2); diagrams that were unavailable re-check automatically.");
+      changes.push("checks re-run");
+      detail.push("All checks were run again, including d2. Diagrams that could not be drawn are tried again.");
     } catch (e) {
-      detail.push(`Readiness re-check failed: ${String(e)}`);
+      detail.push(`Couldn't re-run the checks: ${String(e)}`);
     }
 
     const after = await collectDiagnostics({
@@ -205,7 +204,6 @@ export async function registerDiagnostics(
       }
     }
     if (changes.length === 0) changes.push("no changes");
-    else detail.push(`Reload complete without restarting the service (pid ${after.service.pid}).`);
 
     return { ok: true, generatedAt: Date.now(), changed: changes, detail, diagnostics: after };
   });

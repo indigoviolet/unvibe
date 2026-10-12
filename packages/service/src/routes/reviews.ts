@@ -178,7 +178,7 @@ export async function registerReviews(
       try {
         ingested = ingestDemo(fixturesDir, reviewId, ctx.dataDir);
       } catch (err) {
-        return reply.code(500).send({ error: `demo ingest failed: ${(err as Error).message}` });
+        return reply.code(500).send({ error: `couldn't load the demo: ${(err as Error).message}` });
       }
       const snapshot: ReviewSnapshot = {
         review: ingested.review,
@@ -249,7 +249,7 @@ export async function registerReviews(
         reviewId,
       );
     } catch (err) {
-      return reply.code(502).send({ error: `ingest failed: ${(err as Error).message}` });
+      return reply.code(502).send({ error: `couldn't load the PR or branch: ${(err as Error).message}` });
     }
 
     const snapshot: ReviewSnapshot = {
@@ -370,7 +370,7 @@ export async function registerReviews(
   app.post("/api/reviews/:id/update", async (req, reply) => {
     const { id } = req.params as { id: string };
     if (!deps.jobs || !deps.baseRunner) {
-      return reply.code(501).send({ error: "not implemented: update pass not wired (no job queue / base runner)" });
+      return reply.code(501).send({ error: "not available in this build" });
     }
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
@@ -412,7 +412,7 @@ export async function registerReviews(
 
   app.post("/api/reviews/:id/resume", async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!pipeline) return reply.code(501).send({ error: "not implemented: pipeline not wired" });
+    if (!pipeline) return reply.code(501).send({ error: "not available in this build" });
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
     void req;

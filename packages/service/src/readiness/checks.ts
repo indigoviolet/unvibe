@@ -239,10 +239,10 @@ export function ghCheck(probe: GhProbe): ReadinessCheck {
 
 export type AgentRole = "main" | "small" | "secondOpinion";
 
-const ROLE_LABEL: Record<AgentRole, string> = {
-  main: "Agent · main",
-  small: "Agent · small",
-  secondOpinion: "Agent · second opinion",
+export const ROLE_LABEL: Record<AgentRole, string> = {
+  main: "Main model",
+  small: "Small model",
+  secondOpinion: "Second-opinion model",
 };
 
 const CLI_FOR_PROVIDER: Record<string, string> = {
@@ -306,7 +306,7 @@ export async function agentCheck(opts: {
       id,
       label,
       status: "ok",
-      summary: "Agent disabled (UNVIBE_AGENT=none) — reviews open without a guide",
+      summary: "Agent turned off (UNVIBE_AGENT=none). Reviews open without a guide.",
       fix: "",
       settingsAnchor: "#models",
     };
@@ -380,7 +380,7 @@ export async function agentCheck(opts: {
       label,
       status: "error",
       summary: `${tried}${missingBinMessage(provider as "claude" | "codex")}`,
-      fix: `${agentBinSpec(provider as "claude" | "codex").installHint} Then Re-check. See the Doctor page (/doctor) for every candidate and full error text.`,
+      fix: `${agentBinSpec(provider as "claude" | "codex").installHint} Then Re-check.`,
       settingsAnchor: "#models",
     };
   }
@@ -394,7 +394,7 @@ export async function agentCheck(opts: {
       label,
       status: "error",
       summary: `${versionTooOldMessage(provider as "claude" | "codex", binVersion)} (running ${bin.path})`,
-      fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check. See the Doctor page (/doctor) for every candidate.`,
+      fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check.`,
       settingsAnchor: "#models",
     };
   }
@@ -410,8 +410,8 @@ export async function agentCheck(opts: {
         id,
         label,
         status: "warning",
-        summary: `${provider} probe timed out${binSuffix}`,
-        fix: `The ${provider} adapter didn't answer. Re-check; ensure ${cli} is logged in. See the Doctor page (/doctor) for the full diagnostic.`,
+        summary: `${provider} didn't answer${binSuffix}`,
+        fix: `Re-check, and make sure ${cli} is logged in.`,
         settingsAnchor: "#models",
       };
     }
@@ -421,7 +421,7 @@ export async function agentCheck(opts: {
         label,
         status: "error",
         summary: `${provider} not logged in (${msg})${binSuffix}`,
-        fix: `Log in with ${cli}, then Re-check. See the Doctor page (/doctor) for the full diagnostic.`,
+        fix: `Log in with ${cli}, then Re-check.`,
         settingsAnchor: "#models",
       };
     }
@@ -432,8 +432,8 @@ export async function agentCheck(opts: {
         id,
         label,
         status: "error",
-        summary: `${provider} adapter not usable (${msg})${binSuffix}. ${tried}`,
-        fix: `Reinstall the ${provider} adapter/CLI and ensure ${cli} is on your login-shell PATH, then Re-check. Unvibe does not install ${cli} for you. See the Doctor page (/doctor).`,
+        summary: `${provider} can't be started (${msg})${binSuffix}. ${tried}`,
+        fix: `Reinstall ${cli} and make sure it is on your login-shell PATH, then Re-check. Unvibe does not install ${cli} for you.`,
         settingsAnchor: "#models",
       };
     }
@@ -446,7 +446,7 @@ export async function agentCheck(opts: {
         label,
         status: "error",
         summary: `${provider} CLI incompatible (${msg}; running ${cli} ${found} at ${bin.path}). ${versionTooOldMessage(provider as "claude" | "codex", binVersion ?? agentBinSpec(provider as "claude" | "codex").minVersion)}`,
-        fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check. See the Doctor page (/doctor).`,
+        fix: `${agentBinSpec(provider as "claude" | "codex").updateHint} Then Re-check.`,
         settingsAnchor: "#models",
       };
     }
@@ -455,7 +455,7 @@ export async function agentCheck(opts: {
       label,
       status: "error",
       summary: `${provider} unusable: ${msg}${binSuffix}`,
-      fix: `Check ${cli} login and the adapter install, then Re-check. See the Doctor page (/doctor) for the full diagnostic.`,
+      fix: `Check that ${cli} is installed and logged in, then Re-check.`,
       settingsAnchor: "#models",
     };
   }
@@ -465,7 +465,7 @@ export async function agentCheck(opts: {
       label,
       status: "error",
       summary: `${provider} logged in but returned no models${binSuffix}`,
-      fix: `Check ${cli} login, then Re-check. See the Doctor page (/doctor).`,
+      fix: `Check ${cli} login, then Re-check.`,
       settingsAnchor: "#models",
     };
   }
@@ -476,7 +476,7 @@ export async function agentCheck(opts: {
       label,
       status: "warning",
       summary: `${provider} ready${binSuffix}, but model "${pick.model}" not offered (has ${models.length} models)`,
-      fix: "Pick one of the offered models in Settings → Models. See the Doctor page (/doctor) for display names.",
+      fix: "Pick one of the offered models in Settings → Models.",
       settingsAnchor: "#models",
     };
   }
@@ -552,7 +552,7 @@ export async function d2Check(opts: {
       label: "Diagrams · d2",
       status: "warning",
       summary: "Diagrams need d2 (not found on login-shell PATH)",
-      fix: `${d2InstallHint()} Then Re-check. Reviews still work; diagrams show their source until d2 is installed. See the Doctor page (/doctor).`,
+      fix: `${d2InstallHint()} Then Re-check. Reviews still work; diagrams show their source until d2 is installed.`,
       settingsAnchor: "#environment",
     };
   }
@@ -566,7 +566,7 @@ export async function d2Check(opts: {
       label: "Diagrams · d2",
       status: "warning",
       summary: `${D2_ENV_OVERRIDE} points at a missing file (${bin.path}); diagrams show their source`,
-      fix: `Point ${D2_ENV_OVERRIDE} at your d2 executable (≥ ${D2_MIN}), or unset it to use the login-shell PATH. ${d2InstallHint()} Then Re-check. See the Doctor page (/doctor).`,
+      fix: `Point ${D2_ENV_OVERRIDE} at your d2 executable (≥ ${D2_MIN}), or unset it to use the login-shell PATH. ${d2InstallHint()} Then Re-check.`,
       settingsAnchor: "#environment",
     };
   }
@@ -591,7 +591,7 @@ export async function d2Check(opts: {
       label: "Diagrams · d2",
       status: "warning",
       summary: `Diagrams need d2 ≥ ${D2_MIN} (running ${version} at ${bin.path})`,
-      fix: `Update d2, then Re-check. Reviews still work; diagrams show their source until d2 is updated. See the Doctor page (/doctor).`,
+      fix: `Update d2, then Re-check. Reviews still work; diagrams show their source until d2 is updated.`,
       settingsAnchor: "#environment",
     };
   }
@@ -606,7 +606,7 @@ export async function d2Check(opts: {
       label: "Diagrams · d2",
       status: "warning",
       summary: `d2 at ${bin.path} (via ${bin.source}) did not answer --version; diagrams show their source. ${tried}`,
-      fix: `Check the binary runs (${bin.path} --version), or unset ${D2_ENV_OVERRIDE} to use the login-shell PATH. ${d2InstallHint()} Then Re-check. See the Doctor page (/doctor).`,
+      fix: `Check the binary runs (${bin.path} --version), or unset ${D2_ENV_OVERRIDE} to use the login-shell PATH. ${d2InstallHint()} Then Re-check.`,
       settingsAnchor: "#environment",
     };
   }

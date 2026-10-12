@@ -127,9 +127,9 @@ export function diffDiagnostics(local: DiagnosticsResponse, remote: DiagnosticsR
   const out: string[] = [];
   if (local.path.effectivePath !== remote.path.effectivePath) {
     out.push(
-      `PATH differs: doctor sees ${local.path.effectivePath.split(":").length} dirs via ${local.path.shell}, service sees ${remote.path.effectivePath.split(":").length} dirs via ${remote.path.shell}. ` +
-        `Only in doctor: ${local.path.onlyInInherited.slice(0, 3).join(", ") || "(none)"}; only in service: ${remote.path.onlyInInherited.slice(0, 3).join(", ") || "(none)"}. ` +
-        `Fix the machine (rc files, then restart the service) and see the Doctor page (/doctor).`,
+      `PATH differs: this terminal has ${local.path.effectivePath.split(":").length} entries (from ${local.path.shell}), the service has ${remote.path.effectivePath.split(":").length} (from ${remote.path.shell}). ` +
+        `Only in this terminal: ${local.path.onlyInInherited.slice(0, 3).join(", ") || "(none)"}; only in service: ${remote.path.onlyInInherited.slice(0, 3).join(", ") || "(none)"}. ` +
+        `Fix your shell startup files, then restart the service.`,
     );
   }
   const byTool = new Map(remote.tools.map((t) => [t.tool, t]));
@@ -138,7 +138,7 @@ export function diffDiagnostics(local: DiagnosticsResponse, remote: DiagnosticsR
     if (!rt) continue;
     if (lt.chosen !== rt.chosen) {
       out.push(
-        `${lt.tool} differs: doctor chose ${lt.chosen ?? "(none)"} (${lt.chosenReason}), service chose ${rt.chosen ?? "(none)"} (${rt.chosenReason}). ` +
+        `${lt.tool} differs: this terminal uses ${lt.chosen ?? "(none)"} (${lt.chosenReason}), the service uses ${rt.chosen ?? "(none)"} (${rt.chosenReason}). ` +
           `The service was started with a different PATH; restart it after fixing the shell config.`,
       );
     }
@@ -153,7 +153,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
   checks.push({
     name: "node",
     status: nodeMajor >= 24 ? "ok" : "fail",
-    detail: `${process.version} (need >= 24 for node:sqlite) at ${process.execPath}`,
+    detail: `${process.version} (Unvibe needs Node 24 or newer) at ${process.execPath}`,
   });
 
   const runner = new RealCommandRunner();
@@ -193,7 +193,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
       checks.push({
         name: t.tool,
         status: t.chosen ? status : "warn",
-        detail: `${t.chosen ? `${t.tool} ${t.candidates.find((c) => c.path === t.chosen)?.version ?? ""}`.trim() : t.tool}${candSuffix}.${warnSuffix} See the Doctor page (/doctor) for every candidate and full error text.`,
+        detail: `${t.chosen ? `${t.tool} ${t.candidates.find((c) => c.path === t.chosen)?.version ?? ""}`.trim() : t.tool}${candSuffix}.${warnSuffix}`,
       });
     }
     checks.push({
@@ -201,11 +201,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
       status: diag.path.shell === "(none answered)" ? "warn" : "ok",
       detail:
         diag.path.shell === "(none answered)"
-          ? "no login shell answered; using inherited PATH"
+          ? "couldn't read PATH from your login shell; using this terminal's PATH"
           : `from ${diag.path.shell}: ${diag.path.effectivePath} (probed ${diag.path.probedPath.length > 0 ? "ok" : "empty"}; ${diag.path.onlyInProbed.length} only in shell, ${diag.path.onlyInInherited.length} only inherited)`,
     });
   } else {
-    checks.push({ name: "diagnostics", status: "warn", detail: "diagnostics probe failed; using inherited PATH" });
+    checks.push({ name: "diagnostics", status: "warn", detail: "couldn't check the tools; using this terminal's PATH" });
   }
 
   try {
@@ -225,7 +225,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
     checks.push({
       name: "port",
       status: "warn",
-      detail: `${opts.port} is in use by something else; set UNVIBE_PORT to a free port (the installed web app is bound to its origin, so reinstall it after changing ports)`,
+      detail: `${opts.port} is in use by something else; set UNVIBE_PORT to a free port (if you installed Unvibe as a browser app, reinstall it after changing the port)`,
     });
   }
 
@@ -233,7 +233,10 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
 }
 
 export function formatDoctor(checks: DoctorCheck[]): string {
-  return checks.map((c) => `[${c.status}] ${c.name}: ${c.detail}`).join("\n");
+  return (
+    checks.map((c) => `[${c.status}] ${c.name}: ${c.detail}`).join("\n") +
+    "\nFor every copy found and the full error text, open the Doctor page in the app."
+  );
 }
 
 export { formatDiagnosticsText };

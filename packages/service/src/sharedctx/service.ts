@@ -40,7 +40,7 @@ import { logEntryForEvent } from "./taxonomy.js";
 import type { InteractionEvent } from "./hooks.js";
 import { planGrowth, forceBatches, renderBatchTurn } from "./growth.js";
 import { planRebuild } from "./rebuild.js";
-import { applyConsolidation } from "./contributions.js";
+import { applyConsolidation, formatContributionLines } from "./contributions.js";
 import { isThreadSettled, summarizeSettledThread, toThreadSnapshot, type ThreadSnapshot } from "./threads.js";
 import { SharedContextStore } from "./store.js";
 
@@ -273,14 +273,7 @@ export class SharedContextService {
     if (!plan.rebuild) return { rebuilt: false, reasons: [] };
 
     if (this.deps.runConsolidate && snap.contributions.length > 0) {
-      const text = snap.contributions
-        .map(
-          (c) =>
-            `- ${c.id} [${c.status}] replaces=${c.replaces ?? "-"}: ${c.items
-              .map((i) => `[${i.kind}] ${i.text}`)
-              .join(" / ")}`,
-        )
-        .join("\n");
+      const text = formatContributionLines(snap.contributions);
       try {
         const verdict = await this.deps.runConsolidate(reviewId, text);
         const { merged, droppedIds } = applyConsolidation(snap.contributions, verdict);

@@ -36,15 +36,18 @@ export function hostCardId(snapshot: ReviewSnapshot, anchor: Annotation["anchor"
   return found.cardId;
 }
 
-/** Card title for human-readable log lines. */
+/** Card title for human-readable log lines. Never an internal id. */
 export function cardTitle(snapshot: ReviewSnapshot, cardId: string): string {
   for (const page of snapshot.pages ?? []) {
     const card = page.cards.find((c) => c.id === cardId);
     if (card?.title) return card.title;
+    if (card) return "untitled card";
   }
   const ann = snapshot.annotations.find((a) => a.id === cardId);
-  if (ann?.type === "expansion") return ann.anchor.quotedText;
-  return cardId;
+  if (ann?.type === "expansion") {
+    return ann.anchor.quotedText.trim() !== "" ? ann.anchor.quotedText : "explanation";
+  }
+  return "untitled card";
 }
 
 /**

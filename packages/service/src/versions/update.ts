@@ -159,13 +159,13 @@ export function resolveUpdatePromptsDir(explicit?: string): string | null {
 export class JsonBlockReplyParser implements UpdateReplyParser {
   parseReply(text: string): UpdatePassResult {
     const blocks = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)];
-    if (blocks.length === 0) throw new Error("update pass: no trailing JSON block found");
+    if (blocks.length === 0) throw new Error("the agent's reply was not in the expected format");
     const raw = (blocks[blocks.length - 1][1] ?? "").trim();
     let json: Record<string, unknown>;
     try {
       json = JSON.parse(raw) as Record<string, unknown>;
     } catch (err) {
-      throw new Error(`update pass: trailing JSON block does not parse: ${(err as Error).message}`);
+      throw new Error(`the agent's reply was not in the expected format: trailing JSON block does not parse: ${(err as Error).message}`);
     }
     const revisedCards = Array.isArray(json["revisedCards"]) ? (json["revisedCards"] as UpdatePassResult["revisedCards"]) : [];
     const recheckedFindings = Array.isArray(json["recheckedFindings"])
@@ -180,7 +180,7 @@ export class JsonBlockReplyParser implements UpdateReplyParser {
     for (const r of recheckedFindings) {
       const v = (r as { verdict: string }).verdict as FindingVerdict;
       if (v !== "still-applies" && v !== "resolved" && v !== "changed") {
-        throw new Error(`update pass: bad finding verdict ${JSON.stringify(v)}`);
+        throw new Error(`the agent's reply was not in the expected format: bad finding verdict ${JSON.stringify(v)}`);
       }
     }
     return {
@@ -278,7 +278,7 @@ export function enqueueUpdatePass(
 ): Job {
   const snapshot = deps.reviews.getSnapshot(opts.reviewId);
   if (!snapshot) throw new Error(`unknown review ${opts.reviewId}`);
-  if (!snapshot.versionStatus?.stale) throw new Error("review is up to date: no stale version to update");
+  if (!snapshot.versionStatus?.stale) throw new Error("this review is already up to date");
 
   const promptsDir = resolveUpdatePromptsDir(deps.promptsDir);
   if (!promptsDir) throw new Error("update pass: no prompts dir (set UNVIBE_PROMPTS_DIR)");

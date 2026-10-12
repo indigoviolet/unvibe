@@ -63,12 +63,12 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
       const lib = loadTemplatesDirSync(ctx.promptsDir ?? "");
       const tpl = lib.get("instructions");
       if (!tpl) {
-        instructionsNote = "Instructions template unavailable; L0 shown empty.";
+        instructionsNote = "The instructions prompt could not be loaded, so L0 is shown empty.";
       } else {
         system = renderTemplate(tpl, {});
       }
     } catch {
-      instructionsNote = "Instructions template unavailable; L0 shown empty.";
+      instructionsNote = "The instructions prompt could not be loaded, so L0 is shown empty.";
     }
     const pack = buildBasePack(promptSnap, system, {
       ...(settings?.inlineBudgetTokens !== undefined
