@@ -35,6 +35,9 @@ Rules:
   **unverified**.
 - Inline code uses backticks and is preserved: `` `HTTPMessage` ``. Tokens
   inside backticks or fenced code blocks are literal, never citations.
+- Standard inline Markdown also renders inside a block: `**bold**`,
+  `*italic*`, `~~strikethrough~~`, `[text](url)` links (opened in a new
+  tab), backslash escapes and `` `code` ``. Raw HTML stays escaped.
 - Short forms (`[[diff:conn:82]]`, `[[desc:d-intro]]`) may drop the
   `@<sha>`/`@<rev>` suffix; stored references keep it.
 
@@ -146,7 +149,7 @@ inline text form. It renders as `Comment: [[ann:<thread>]] [[<diff:…>]]`.
 ## 8. Tables and lists
 
 GitHub Markdown tables and `-`/`*`/`1.` lists. Every table cell and list
-item supports inline code and tokens; a list item's citations attach to
+item supports inline Markdown and tokens; a list item's citations attach to
 the item, and the block carries the union.
 
 ## 9. Finding metadata and other structured fields
