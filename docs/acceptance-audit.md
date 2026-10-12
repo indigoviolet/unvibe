@@ -244,7 +244,14 @@ needed (that deviation is closed, not added).
   blue is remapped to the guide palette by stylesheet rules over D2's
   shape classes (served bytes and seeds untouched), with `.class: [ok]` /
   `[bad]` for ok/warn states (`e2e/d2-diagrams.spec.ts` "diagram wears
-  the guide palette", `docs/d2-diagrams.md` "Look").
+  the guide palette", `docs/d2-diagrams.md` "Look"). Uneven letter
+  spacing (#16) reproduces identically in headed Chromium, so it is not
+  a session artifact: D2's embedded subset font carries no kerning
+  tables (WOFF has OS/2, cmap, glyf, head, hhea, hmtx, loca, maxp, name,
+  post — no GPOS/GSUB/kern), and neither side's sanitiser touches font
+  bytes. Not fixed in app code (overriding the family would break D2's
+  tight box layout); shorter labels + the size floor + overlay zoom are
+  the mitigations.
 - Undo (depth/examples/diagram, no redo, comments/expansions survive) —
   met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Mark read (grey + collapse), roll-up to page, muted links — met
