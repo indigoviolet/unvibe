@@ -1,7 +1,7 @@
 /**
- * Front screen (PRD §4.2): the page follows one chosen repo — the top-bar
- * selector filters the Reviews list, PR/branch lists and the PR opener —
- * plus the demo row under Reviews and readiness callouts.
+ * Front screen (PRD §4.2): the page follows one chosen repo — the repo
+ * selector above Reviews filters the Reviews list, PR/branch lists and the
+ * PR opener — plus the demo row under Reviews and readiness callouts.
  *
  * Mock mode: two prior sessions on urllib3 (demo ready, r-old
  * stale+running), a remembered repo (urllib3/urllib3) plus a detected
@@ -30,6 +30,34 @@ test("repo selector lists remembered and detected repos, persisted", async ({ pa
   await page.reload();
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   await expect(page.getByLabel("Repository")).toHaveValue("demo-lib");
+});
+
+test("repo selector sits centered above Reviews, outside the top bar", async ({ page }) => {
+  await expect(page.locator("header.top").getByLabel("Repository")).toHaveCount(0);
+  const sel = page.getByLabel("Repository");
+  await expect(sel).toBeVisible();
+  const headerBox = await page.locator("header.top").boundingBox();
+  const selBox = await sel.boundingBox();
+  const reviewsBox = await page.getByRole("heading", { name: "Reviews" }).boundingBox();
+  expect(selBox?.y).toBeGreaterThan(headerBox?.y ?? 0);
+  expect(selBox && reviewsBox ? selBox.y + selBox.height : 0).toBeLessThanOrEqual(
+    reviewsBox?.y ?? 0,
+  );
+  // Centred in the content column.
+  const mainBox = await page.locator("main .doc").boundingBox();
+  const selCenter = (selBox?.x ?? 0) + (selBox?.width ?? 0) / 2;
+  const mainCenter = (mainBox?.x ?? 0) + (mainBox?.width ?? 0) / 2;
+  expect(Math.abs(selCenter - mainCenter)).toBeLessThanOrEqual(120);
+});
+
+test("ready indicator shows as a quiet content line, not in the top bar", async ({ page }) => {
+  await expect(page.locator("header.top").locator('[data-testid="readiness-ready"]')).toHaveCount(0);
+  const ready = page.locator('[data-testid="readiness-ready"]');
+  await expect(ready).toBeVisible();
+  await expect(ready).toContainText("Ready · gh + agents ok");
+  const readyBox = await ready.boundingBox();
+  const reviewsBox = await page.getByRole("heading", { name: "Reviews" }).boundingBox();
+  expect(readyBox?.y).toBeGreaterThan(reviewsBox ? reviewsBox.y + reviewsBox.height : 0);
 });
 
 test("reviews list follows the selected repo; demo row always shows", async ({ page }) => {

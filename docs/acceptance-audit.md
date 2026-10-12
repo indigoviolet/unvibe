@@ -100,9 +100,17 @@ UI); nothing below was edited by this pass.
 
 ### §4.1 Layout — all met
 
-- Top bar (Unvibe + app-wide Settings on the left; title, Tips, Submit + count, Source toggle on the right) — met
-  (`e2e/guide.spec.ts`, ui-walk screenshot shows all five; `settings.spec.ts`
-  "settings sits next to Unvibe in the review and start top bars", issue #55).
+- Top bar (app-wide only: Unvibe home link, breadcrumb trail, badge/Tips
+  where shown, gear Settings icon in the same place; Settings screen has
+  none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
+  cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
+  #31/#55 round 2).
+- Review bar (identity + GitHub link-out + Debug icon, [ Guide | Source ]
+  pane toggles incl. full-width source per #83, Comments + primary Submit;
+  source tabs keep PR description / Diff only) — met (`ReviewBar.tsx`,
+  `AppShell.test.tsx`, `e2e/review-bar.spec.ts`;
+  `docs/screenshots/55-review.png`, `55-review-800px.png`,
+  `55-review-dark.png`, `83-source-full-width.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -113,12 +121,13 @@ UI); nothing below was edited by this pass.
 
 ### §4.2 Start page — all met
 
-- Repo selector in the top bar with remembered + detected checkouts —
-  met (`StartPage.tsx` native `<select>` next to the brand: remembered
+- Repo selector centred above Reviews with remembered + detected checkouts —
+  met (`StartPage.tsx` native `<select>`: remembered
   under "Repos", detected under "Detected checkouts" with the local path
   as the title; selection persisted in `unvibe.start.repoId`, demo never
   selectable; `e2e/start.spec.ts` "repo selector lists remembered and
-  detected repos, persisted").
+  detected repos, persisted" + "sits centered above Reviews"; quiet
+  "Ready · gh + agents ok" content line when healthy; issues #31/#55 round 2).
 - Everything follows the chosen repo — met: the Reviews list shows only
   the selected repo's reviews (filtered on `ReviewSummary.repoId`, which
   the service populates from the review row — `reviews/list.ts:151` — so
@@ -303,8 +312,10 @@ needed (that deviation is closed, not added).
   (`comments.spec.ts` “diff line click starts a comment; close leaves an
   icon; reopen works”).
 - Comments menu (all comments, jump, For PR filter with editable drafts,
-  never posts) — met (`comments-service.spec.ts` “mark for PR, edit the
-  draft, submit posts exactly one review”).
+  never posts; lives in the review bar next to Submit since round 2, so it
+  opens with the source pane closed) — met (`comments-service.spec.ts`
+  “mark for PR, edit the draft, submit posts exactly one review”;
+  `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
 
 ### §4.9 Findings — all met
 

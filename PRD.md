@@ -67,13 +67,14 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ## 4. Product behaviour
 
 ### 4.1 Layout
-- **Top bar:** the **Unvibe** home link with app-wide **Settings** beside it on the left; then the PR or branch title, Tips, **Submit review** with a count of pending changes, and **Source**, which shows or hides the right-hand pane. Settings sits on the left because it is app-wide — everything to its right is review-scoped. The start page's top bar matches: Unvibe + Settings, then the repo selector.
+- **Top bar (app-wide only):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge and Tips where they show, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button).
+- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action.
 - **Guide** (left, main column): the current page.
-- **Source pane** (right): tabs for **PR description** and **Diff**, plus the **Comments** menu. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
+- **Source pane** (right): tabs for **PR description** and **Diff**. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
 
 ### 4.2 Start page
-- A repo picker that remembers recent repos and finds local checkouts.
+- A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
 - For the selected repo:
   - **PRs you're authoring:** `gh search prs --author @me`;
   - **PRs waiting on your review:** `gh search prs --review-requested @me`;
