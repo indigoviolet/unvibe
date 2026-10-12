@@ -396,7 +396,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
                 type="button"
                 data-threads={markers.map((t) => t.id).join("|")}
                 aria-label={`${markers.length} comments`}
-                data-tip="Preview the comment thread"
+                data-tip="Show comments"
                 onClick={() => markers.forEach((t) => openThread(t.id))}
               >
                 <Icon name="comment" />

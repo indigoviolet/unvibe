@@ -57,6 +57,7 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { stageLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { PreviewBuildBadge } from "../shell/PreviewBuildBadge.js";
 
@@ -111,19 +112,11 @@ function guideLabel(s: ReviewSummary): string {
 function runningLabel(detail: string | undefined): string {
   const kinds = (detail ?? "").replace(/^Running:\s*/i, "").split(",").map((k) => k.trim().toLowerCase());
   const first = kinds.find((k) => k !== "");
+  // Stage names shared with the guide empty state (guide/stageLabels.ts);
+  // the rest are start-page-only labels.
+  const shared = stageLabel(first);
+  if (shared) return shared;
   switch (first) {
-    case "reader":
-      return "Reading the change…";
-    case "base":
-      return "Preparing…";
-    case "critic":
-      return "Checking findings…";
-    case "concept":
-      return "Writing concept pages…";
-    case "hunk-pass":
-      return "Summarizing code…";
-    case "go-deeper":
-      return "Writing deeper cards…";
     case "explain":
       return "Writing explanation…";
     case "ask":

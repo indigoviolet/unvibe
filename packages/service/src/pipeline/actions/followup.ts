@@ -73,7 +73,7 @@ export async function followupAction(
       messages: [],
       post: false,
       note: false,
-      working: "Thinking…",
+      working: "Writing answer…",
       expansion: {
         blocks: [],
         level: "standard",
@@ -81,7 +81,7 @@ export async function followupAction(
         collapsed: false,
         revision: 1,
         undoStack: [],
-        working: "Thinking…",
+        working: "Writing answer…",
       },
     } as unknown as Annotation);
   });
