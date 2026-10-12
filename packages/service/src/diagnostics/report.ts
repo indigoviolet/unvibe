@@ -174,6 +174,7 @@ export function formatDiagnosticsText(
     t.candidates.forEach((c, i) => {
       lines.push(`  [${i + 1}] ${redact(c.path)} (${c.source}; ${c.kind}) runs=${c.runs}${c.exitCode !== undefined ? ` exit=${c.exitCode}` : ""}${c.version ? ` version=${c.version}` : ""}${c.meetsMin !== undefined ? ` meetsMin=${c.meetsMin}` : ""}`);
       if (c.symlinkTarget) lines.push(`      → ${redact(c.symlinkTarget)}`);
+      if (c.resolvedPath) lines.push(`      resolves to ${redact(c.resolvedPath)} (what sessions run)`);
       if (c.stdout) lines.push(`      stdout: ${redact(c.stdout.slice(0, 2000))}`);
       if (c.stderr) lines.push(`      stderr: ${redact(c.stderr.slice(0, 2000))}`);
     });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AcpAgentRunner } from "../src/agent/acp/runner.js";
+import type { Transport } from "../src/agent/acp/connection.js";
 import type { AgentEvent } from "@unvibe/shared";
 import { createFakeState, fakeTransportFactory } from "./fake-acp.js";
 
@@ -272,5 +273,51 @@ describe("AcpAgentRunner over fake ACP agent", () => {
       outputTokens: 10,
     });
     await runner.dispose();
+  });
+
+  it("session start refused by a version manager reads in plain words (issue #105)", async () => {
+    const raw =
+      'acp claude session/new failed: Internal error :: {"details":"Claude Code process exited with code 1. ' +
+      'stderr: mise ERROR Config files in ~/.local/share/unvibe/worktrees/rv_0d1a/.mise.toml are not trusted."}';
+    const failingCaller = {
+      request: async (): Promise<unknown> => {
+        throw new Error(raw);
+      },
+      notify: async (): Promise<void> => {},
+    };
+    const factory = async (provider: string): Promise<Transport> => ({
+      caller: failingCaller,
+      onDeath: new Promise<void>(() => {}),
+      dispose: () => {},
+      ...(provider === "claude" ? { adapterBin: "/shims/claude" } : {}),
+    });
+    const runner = new AcpAgentRunner({ factories: { claude: factory, codex: factory } });
+    await expect(
+      runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] }),
+    ).rejects.toThrow(
+      "couldn't start a claude session: the claude command would not run inside the review's working copy — " +
+        "its version manager refused the review's settings (it tried /shims/claude). " +
+        "Set UNVIBE_CLAUDE_BIN to the real claude executable and restart the service " +
+        "(`mise which claude` prints the real path).",
+    );
+    // Another provider, unknown binary: same shape, no tried-path.
+    await expect(
+      runner.start({ provider: "codex", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] }),
+    ).rejects.toThrow(/couldn't start a codex session:.*UNVIBE_CODEX_BIN.*`mise which codex`/);
+    // Unrelated failures keep the established prefix untouched.
+    const otherCaller = {
+      request: async (): Promise<unknown> => {
+        throw new Error("boom");
+      },
+      notify: async (): Promise<void> => {},
+    };
+    const other = new AcpAgentRunner({
+      factories: { claude: async () => ({ caller: otherCaller, onDeath: new Promise<void>(() => {}), dispose: () => {} }) },
+    });
+    await expect(
+      other.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] }),
+    ).rejects.toThrow("couldn't start a claude session: boom");
+    await runner.dispose();
+    await other.dispose();
   });
 });

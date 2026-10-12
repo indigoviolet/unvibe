@@ -555,6 +555,18 @@ needed (that deviation is closed, not added).
   mid-reply, crash/restart).
 - Usage aggregation incl. background titling models — met
   (`agent/acp/usage.ts`, delta-ized Claude counters, unit-pinned).
+- Version-manager shims + untrusted review configs (#105) — met: agent
+  candidates are probed from a worktree-shaped temp dir and mise/asdf
+  shims resolve to the real executable (`mise which` / `asdf which`
+  from home, cached, refreshed by Reload environment); sessions,
+  readiness and Doctor all use the real path (shown next to the shim);
+  the adapter environment points `MISE_IGNORED_CONFIG_PATHS` at our own
+  worktrees dir (the review copy is never trusted); residual start
+  failures read in plain words with the `UNVIBE_*_BIN` fix
+  (`exec/shim-resolve.ts`, `diagnostics/tools.ts`, `agent/acp/`,
+  `agent-shim-mise.test.ts`, `shim-resolve.test.ts`).
+  Open: same exposure for `git`/`gh`-as-shims (open list); final check
+  needs a Mac with mise (`docs/macos-testing.md` step 10).
 
 ## §7 Data model and IDs — all met
 
@@ -1319,6 +1331,32 @@ own CATS — needs a rebase), offline "10 minutes", pre-write fold toast,
 start-page Update-looking tag, Debug tip survival. Left for the owner:
 the Version-tab running-jobs sentence (18), the "PR description" tab on
 branch reviews (22).
+
+### Version-manager shims for git/gh (follow-up to #105, found not fixed)
+
+The service's own `git`/`gh` calls have the same exposure class when
+those tools are manager shims (the command runner spawns whatever
+`cwd` the caller sets, and several callers set a review copy):
+
+- Review-worktree cwd, degrading not fatal: `git show` in
+  `mcp/read.ts` (`get_code` + reader pin excerpts) and
+  `secondopinion/excerpts.ts` — a shim trust failure there yields a
+  missing excerpt (shown dimmed/honestly), never a failed review.
+- Checkout/clone cwd, load-bearing: ingest (`git fetch`,
+  `worktree add/remove`, `gh pr view` — throws), submit (`gh pr …`
+  posts), repos/refresh (`git merge-base`, `rev-list`, `show`,
+  `range-diff`, `gh api`). Unvibe-managed clones
+  (`<dataDir>/repos/<owner>/<name>`) hold the reviewed repo's config,
+  untrusted like the worktree; user checkouts hold the user's own
+  (trusted) config.
+
+Not fixed here on purpose: `git`/`gh` go through `runner.run("git"/"gh",
+…)` PATH-literal lookups at ~20 call sites with fake-runner seams keyed
+on those literals, so "resolve once, call the real path" is not the same
+small shape as the agent-CLI fix (one choice point in `diagnoseTool`
+consumed by adapter startup, readiness and Doctor). No failure of this
+kind has been reported (`git`/`gh`-via-mise is rare; `claude`-via-mise
+is the reported case).
 
 ### Fixed in this branch (done, in `check`)
 

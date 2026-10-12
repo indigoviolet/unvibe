@@ -106,6 +106,10 @@ describe("subprocess allowlist", () => {
           // timeout-guarded; never a bundle) — issue #20.
           if (/diagnostics\/tools/.test(rel) && /runner\.run\(\s*binPath/.test(line)) return;
           if (/diagnostics\/tools/.test(rel) && /runner\.run\(\s*(raw|p)\b/.test(line)) return;
+          // Shim resolution asks the version manager for the real path
+          // behind a shim (`mise which`/`asdf which`, read-only, from the
+          // home directory, timeout-guarded; never trusts config) — issue #105.
+          if (/exec\/shim-resolve/.test(rel) && /runner\.run\(\s*managerBin\b/.test(line)) return;
           offenders.push(`${rel}:${i + 1}: dynamic spawn ${line.trim().slice(0, 80)}`);
           return;
         }

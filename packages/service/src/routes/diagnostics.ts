@@ -14,6 +14,7 @@
 import type { FastifyInstance } from "fastify";
 import type { DiagnosticsResponse, ModelInfo } from "@unvibe/shared";
 import { collectDiagnostics } from "../diagnostics/report.js";
+import { clearShimResolutionCache } from "../exec/shim-resolve.js";
 import { applyLoginShellPath } from "../exec/shell-path.js";
 import { clearReadinessCache, getReadiness } from "../readiness/index.js";
 import { loadConfig } from "../config.js";
@@ -152,9 +153,10 @@ export async function registerDiagnostics(
       detail.push(`Couldn't restart the agent CLIs: ${String(e)}`);
     }
 
-    // 3. Clear readiness + model caches.
+    // 3. Clear readiness + model caches (+ shim resolutions, issue #105).
     try {
       clearReadinessCache();
+      clearShimResolutionCache();
     } catch {
       // ignore
     }
