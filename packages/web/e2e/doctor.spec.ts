@@ -5,7 +5,19 @@ import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/doctor");
-  await expect(page.getByRole("heading", { name: "Doctor" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toBeVisible();
+});
+
+test("doctor breadcrumb trails back through Settings", async ({ page }) => {
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(crumbs.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    "href",
+    "/settings?tab=environment",
+  );
+  await expect(crumbs.getByText("Doctor")).toHaveAttribute("aria-current", "page");
+  const gear = page.locator("header.top > a.ib");
+  await expect(gear).toHaveAttribute("aria-label", "Settings");
+  await expect(gear).toHaveAttribute("title", "Settings");
 });
 
 test("doctor page shows service, PATH and tool detail with copy", async ({ page }) => {

@@ -1,5 +1,5 @@
 /**
- * Source pane: `PR description` / `Diff` tabs plus the Comments menu slot.
+ * Source pane: `PR description` / `Diff` tabs.
  * Diff and description bodies live in their own directories for parallel owners.
  *
  * `revealSource` (see `source/diff/revealSource.ts` + `source/reveal.ts`)
@@ -8,11 +8,11 @@
  */
 import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { performFollowUp } from "../guide/actions.js";
 import { useDiffExpansionBindings } from "../guide/expansions/DiffExpansions.js";
+import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { DescriptionView } from "./description/DescriptionView.js";
 import { DiffView } from "./diff/DiffView.js";
@@ -32,6 +32,9 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
   const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
     pages?.find((p) => p.id === id);
   const onOpenPage = (pageId: string): void => {
+    // "Open as page" from a diff expansion navigates to the guide: bring
+    // the guide pane back when only the source pane is showing (#83).
+    showGuidePane();
     navigate(`/review/${reviewId}/page/${encodeURIComponent(pageId)}`);
   };
   const onFollowUp = (cardId: string, blockId: string, index: number): void => {
@@ -77,8 +80,6 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
           >
             Diff
           </button>
-          <span className="sp" />
-          <CommentsMenu reviewId={reviewId} />
         </div>
       </div>
       <ErrorBoundary

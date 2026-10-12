@@ -28,7 +28,7 @@ const TIPS: { title: string; body: string }[] = [
   },
   {
     title: "Comments",
-    body: "The Comments menu (top of the source pane) lists every comment. “For PR” comments and description edits stay drafts until you click Submit review.",
+    body: "The Comments menu (in the review bar, next to Submit review) lists every comment. “For PR” comments and description edits stay drafts until you click Submit review.",
   },
   {
     title: "New commits",

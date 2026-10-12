@@ -38,7 +38,7 @@ test("data tab resets after a confirm step", async ({ page }) => {
   await panel.getByRole("button", { name: "Reset data…" }).click();
   await panel.getByRole("button", { name: "Reset", exact: true }).click();
   await expect(panel.getByRole("status")).toHaveText(/Removed \d+ reviews?\./);
-  await page.getByRole("link", { name: "Back to start page" }).click();
+  await page.getByRole("link", { name: "Unvibe" }).click();
   await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
 });
 
@@ -272,14 +272,31 @@ test("tips popover opens from the review top bar", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Usage tips" })).toContainText("Settings");
 });
 
-test("settings link is plain; the review context lives on the debug page", async ({ page }) => {
+test("settings gear opens settings; the breadcrumb marks the page", async ({ page }) => {
   await page.goto("/review/demo");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL("/settings");
-  await expect(page.getByRole("link", { name: "Back to start page" })).toHaveAttribute("href", "/");
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(crumbs.getByText("Settings")).toHaveAttribute("aria-current", "page");
+  // The Settings screen itself has no Settings button.
+  await expect(page.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
   // Browser back returns to the review (Settings pushes a history entry).
   await page.goBack();
   await expect(page).toHaveURL("/review/demo");
+});
+
+test("settings gear sits in the review and start top bars", async ({ page }) => {
+  // Review top bar: brand, review breadcrumb, Tips, then the gear.
+  await page.goto("/review/demo");
+  const gear = page.locator("header.top").getByRole("link", { name: "Settings", exact: true });
+  await expect(gear).toBeVisible();
+  await expect(gear).toHaveAttribute("title", "Settings");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("urllib3/urllib3#5020");
+  // Start page top bar: brand, then the gear.
+  await page.goto("/");
+  const startGear = page.locator("header.top").getByRole("link", { name: "Settings", exact: true });
+  await expect(startGear).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
 });
 
 test("stale review shows banner counts, range-diff and stale hunks", async ({ page }) => {

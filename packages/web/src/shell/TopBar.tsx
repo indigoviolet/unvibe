@@ -1,84 +1,31 @@
-/** Top bar: home link, review identity, Tips, Settings, Submit review slot, Source toggle. */
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import type { ReviewSummary } from "@unvibe/shared";
-import { isDefaultGuideTitle } from "@unvibe/shared";
-import { api } from "../api/client.js";
-import { useReview } from "../state/store.js";
-import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
-import { SubmitPanel } from "./SubmitPanel.js";
-import { TipsButton } from "./Tips.js";
+/**
+ * Review top rows (issue #31 round 2): the app-wide `ScreenTopBar` with a
+ * breadcrumb for the review, then the review-specific `ReviewBar`.
+ */
+import { ReviewBar } from "./ReviewBar.js";
+import { ScreenTopBar } from "./ScreenTopBar.js";
+import { useReviewIdentity } from "./reviewIdentity.js";
 
 interface Props {
   reviewId: string;
-  pendingCount: number;
+  guideOpen: boolean;
   sourceOpen: boolean;
+  onToggleGuide: () => void;
   onToggleSource: () => void;
 }
 
-export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: Props) {
-  void pendingCount;
-  const snapshot = useReview((s) => s.snapshot);
-  const [summary, setSummary] = useState<ReviewSummary | null>(null);
-
-  // Review identity (owner/repo + PR number + title) from the front-screen
-  // list; falls back to the loaded snapshot while it arrives.
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .reviews()
-      .then((r) => {
-        if (!cancelled) setSummary(r.reviews.find((s) => s.id === reviewId) ?? null);
-      })
-      .catch(() => {
-        // Offline: the snapshot fallback below still identifies the review.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [reviewId]);
-
-  const repoId = snapshot?.review.repoId;
-  const prNumber = summary?.prNumber ?? snapshot?.review.prNumber;
-  const branch = summary?.branch ?? snapshot?.review.branch ?? "";
-  const owner = summary?.repoOwner ?? (repoId === "demo" ? "demo" : null);
-  const name = summary?.repoName ?? (repoId === "demo" ? "urllib3-5020" : null);
-  const num = owner && name ? (prNumber !== undefined ? `${owner}/${name}#${prNumber}` : `${owner}/${name}`) : null;
-  const rootTitle = snapshot?.pages.find((p) => p.kind === "root")?.title;
-  const title =
-    summary?.title && !isDefaultGuideTitle(summary.title)
-      ? summary.title
-      : rootTitle && !isDefaultGuideTitle(rootTitle)
-        ? rootTitle
-        : branch || reviewId;
-
+export function TopBar({ reviewId, guideOpen, sourceOpen, onToggleGuide, onToggleSource }: Props) {
+  const { short } = useReviewIdentity(reviewId);
   return (
-    <header className="top">
-      <Link className="brand" to="/" title="Back to the start page">
-        Unvibe
-      </Link>
-      <div className="pr">
-        {num ? <span className="num">{num}</span> : null}
-        <b title={title}>{title}</b>
-        <PreviewBuildBadge />
-      </div>
-      <TipsButton />
-      <Link className="tbtn" to={`/review/${encodeURIComponent(reviewId)}/debug`}>
-        Debug
-      </Link>
-      <Link className="tbtn" to="/settings">
-        Settings
-      </Link>
-      <SubmitPanel reviewId={reviewId} />
-      <button
-        className="tbtn"
-        id="toggleRight"
-        type="button"
-        aria-pressed={sourceOpen}
-        onClick={onToggleSource}
-      >
-        Source
-      </button>
-    </header>
+    <>
+      <ScreenTopBar crumbs={[{ label: short }]} showBadge showTips />
+      <ReviewBar
+        reviewId={reviewId}
+        guideOpen={guideOpen}
+        sourceOpen={sourceOpen}
+        onToggleGuide={onToggleGuide}
+        onToggleSource={onToggleSource}
+      />
+    </>
   );
 }

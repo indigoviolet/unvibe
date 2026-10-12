@@ -56,7 +56,7 @@ test.describe("doctor on the real service", () => {
     test.setTimeout(60000);
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/doctor?token=${svc.token}`);
-    await expect(page.getByRole("heading", { name: "Doctor" })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toBeVisible({ timeout: 20000 });
     await expect(page.getByTestId("doctor-report")).toBeVisible({ timeout: 20000 });
     await expect(page.getByTestId("doctor-service")).toContainText("pid");
     await expect(page.getByTestId("doctor-path")).toContainText("effective");

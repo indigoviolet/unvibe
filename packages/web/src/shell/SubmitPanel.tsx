@@ -47,7 +47,7 @@ type PanelState =
   | { status: "conflict"; error: string }
   | { status: "error"; error: string };
 
-export function SubmitPanel({ reviewId }: { reviewId: string }) {
+export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?: boolean }) {
   const snapshot = useReview((s) => s.snapshot);
   const readOnly = useIsReadOnlyVersion();
   const viewer = useViewer();
@@ -185,7 +185,7 @@ export function SubmitPanel({ reviewId }: { reviewId: string }) {
   return (
     <span id="submitSlot">
       <button
-        className="tbtn"
+        className={primary ? "btn" : "tbtn"}
         type="button"
         data-submit=""
         aria-expanded={open}

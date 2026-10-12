@@ -45,6 +45,32 @@ code { font-family: var(--mono); font-size: .86em; }
 /* Product home link: same on every top bar, never link-styled. */
 .brand { font-weight: 650; color: inherit; text-decoration: none; white-space: nowrap; }
 .brand:hover { color: var(--accent); }
+/* Breadcrumb after the home link (issue #31 round 2): quiet, muted
+   separators, same type size as the top bar. The current page truncates
+   first in narrow windows. */
+.tcrumbs { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--muted); }
+.tcrumb { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tcrumb .tsep { opacity: .7; flex: none; }
+.tcrumbs a { color: var(--muted); text-decoration: none; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tcrumbs a:hover { color: var(--accent); text-decoration: underline; }
+.tcrumbs [aria-current="page"] { color: var(--ink); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* The breadcrumb's current item is the page's h1; keep it visually identical
+   to the surrounding trail text. */
+.tcrumbs h1 { margin: 0; font-size: inherit; font-weight: inherit; }
+/* Review bar (issue #31 round 2): the review-specific second row under the
+   top bar — identity left (truncates first), Guide|Source selector, then
+   Comments + Submit. Never wraps; the dropdowns anchor inside it. */
+.rbar { display: flex; align-items: center; gap: 10px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.rbar .rid { display: flex; gap: 8px; align-items: baseline; min-width: 0; flex: 1 1 auto; }
+.rbar .rid .num { font-family: var(--mono); color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; }
+.rbar .rid b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.rbar .rid .ib { flex: none; align-self: center; }
+.rbar .seg { flex: none; }
+.rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
+/* A review shows two bars (top + review), so the grid needs three rows. */
+.app.with-reviewbar { grid-template-rows: auto auto minmax(0, 1fr); }
+/* The narrow-window overlay floats below both bars. */
+.with-reviewbar .col.overlay { top: 92px; }
 /* Second-opinion mode menu: one icon button in the row, modes in a popover. */
 .so-ctl { display: inline-flex; align-items: center; gap: 0; position: relative; }
 .so-menu { position: absolute; left: 0; top: calc(100% + 4px); min-width: 220px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 4px; z-index: 30; display: flex; flex-direction: column; gap: 2px; }
@@ -112,6 +138,23 @@ code { font-family: var(--mono); font-size: .86em; }
 .st .a { color: var(--add-ink); } .st .d { color: var(--del-ink); }
 .gtag { font-size: 9.5px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; flex: none; }
 .cmenu { position: absolute; right: 12px; top: calc(100% - 4px); width: min(380px, calc(100% - 24px)); max-height: 60vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 8px; z-index: 6; display: flex; flex-direction: column; gap: 6px; }
+/* Comments menu (issue #56): the panel lives in a narrow relative wrapper
+   around the "Comments N" button, so the generic width above (100% of the
+   button) collapses it to the button's width and the tabs/paths wrap.
+   Anchor to the button's right edge with a fixed sensible width capped by
+   the viewport, so the tabs fit on one line and paths/previews show. */
+.rbar .cmenu { right: 0; top: calc(100% + 4px); min-width: min(360px, calc(100vw - 24px)); width: min(420px, calc(100vw - 24px)); }
+/* Diff file-filter dropdown (issue #57): one button next to the name
+   filter; options are checkable rows with counts. Right-anchored so the
+   menu stays inside the pane. Follows the second-opinion menu behaviour
+   (outside press / Escape closes). */
+.fctl { display: inline-flex; position: relative; flex: none; }
+.fmenu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 220px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 4px; z-index: 30; display: flex; flex-direction: column; gap: 2px; }
+.fmenu button { display: flex; align-items: center; gap: 8px; border: 0; background: none; border-radius: 6px; padding: 6px 8px; text-align: left; font-size: 12.5px; width: 100%; white-space: nowrap; }
+.fmenu button:hover, .fmenu button:focus-visible { background: var(--sunk); }
+.fmenu .tick { width: 1.2em; flex: none; }
+.fmenu .lbl { flex: 1; }
+.fmenu .cnt { color: var(--muted); font-size: 11.5px; flex: none; }
 .ci { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; padding: 6px; border-radius: 6px; }
 .ci:hover { background: var(--sunk); }
 .cj { border: 0; background: none; text-align: left; padding: 0; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
