@@ -18,6 +18,10 @@
 import net from "node:net";
 import tls from "node:tls";
 import dns from "node:dns";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterAll } from "vitest";
 
 declare global {
   var __unvibeNonLoopbackAttempts: string[] | undefined;
@@ -146,3 +150,143 @@ if (typeof origFetch === "function") {
     return origFetch(input, init);
   }) as typeof fetch;
 }
+
+/**
+ * Per-run temp root (issue #24).
+ *
+ * Every test file runs under this setup: a fresh directory is created in
+ * the real system temp dir, `os.tmpdir()` is patched to return it (and
+ * `TMPDIR`/`TEMP`/`TMP` point there for spawned children), and
+ * `fs.mkdtemp*` calls under the real system temp dir are redirected into
+ * it. At teardown the root is removed, so interrupted or failing tests
+ * cannot leak `unvibe-*` directories — with no per-file edits.
+ *
+ * Guard (trap-safe): only exact paths this run created are judged. Other
+ * worktrees' suites share the system temp dir; their `unvibe-test-*` roots
+ * and entries are never touched. A bypass that creates a tracked path
+ * outside the root and leaves it behind fails the file loudly.
+ */
+declare global {
+  var __unvibeTmpReal: string | undefined;
+  var __unvibeTmpRoots: string[] | undefined;
+  var __unvibeTmpTracked: string[] | undefined;
+  var __unvibeTmpPatched: boolean | undefined;
+}
+
+const realTmp: string =
+  globalThis.__unvibeTmpReal ?? (globalThis.__unvibeTmpReal = (os.tmpdir as () => string).call(os));
+if (!globalThis.__unvibeTmpRoots) globalThis.__unvibeTmpRoots = [];
+if (!globalThis.__unvibeTmpTracked) globalThis.__unvibeTmpTracked = [];
+const roots = globalThis.__unvibeTmpRoots;
+const tracked = globalThis.__unvibeTmpTracked;
+
+function redirectPrefix(prefix: string, root: string): string {
+  // Already inside this run's root (the common case: path.join(os.tmpdir(),
+  // ...) after the patch): leave it alone.
+  if (root !== realTmp && (prefix === root || prefix.startsWith(root + path.sep))) return prefix;
+  if (prefix === realTmp || prefix.startsWith(realTmp + path.sep)) {
+    return path.join(root, prefix.slice(realTmp.length + (prefix === realTmp ? 0 : 1)));
+  }
+  return prefix;
+}
+
+function isUnder(p: string, root: string): boolean {
+  const rel = path.relative(root, p);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+if (!globalThis.__unvibeTmpPatched) {
+  globalThis.__unvibeTmpPatched = true;
+  const origTmpdir = os.tmpdir.bind(os);
+  void origTmpdir;
+  const origMkdtempSync = fs.mkdtempSync;
+  const origMkdtemp = fs.mkdtemp;
+  const origPromisesMkdtemp = fs.promises.mkdtemp;
+
+  const currentRoot = (): string => roots[roots.length - 1] ?? realTmp;
+
+  (os as unknown as { tmpdir: () => string }).tmpdir = () => currentRoot();
+
+  (fs as unknown as { mkdtempSync: typeof fs.mkdtempSync }).mkdtempSync = ((prefix: string, ...rest: unknown[]) => {
+    const out = (origMkdtempSync as (...a: unknown[]) => string)(redirectPrefix(prefix, currentRoot()), ...rest);
+    tracked.push(out);
+    return out;
+  }) as typeof fs.mkdtempSync;
+
+  (fs as unknown as { mkdtemp: typeof fs.mkdtemp }).mkdtemp = ((prefix: string, ...rest: unknown[]) => {
+    const cb = rest.find((a) => typeof a === "function") as ((err: Error | null, dir?: string) => void) | undefined;
+    const args = rest.filter((a) => typeof a !== "function");
+    const wrappedCb = cb
+      ? (err: Error | null, dir?: string) => {
+          if (!err && dir) tracked.push(dir);
+          cb(err, dir);
+        }
+      : undefined;
+    return (origMkdtemp as (...a: unknown[]) => unknown)(
+      redirectPrefix(prefix, currentRoot()),
+      ...args,
+      ...(wrappedCb ? [wrappedCb] : []),
+    );
+  }) as typeof fs.mkdtemp;
+
+  fs.promises.mkdtemp = (async (prefix: string, ...rest: unknown[]) => {
+    const out = await (origPromisesMkdtemp as (...a: unknown[]) => Promise<string>)(
+      redirectPrefix(prefix, currentRoot()),
+      ...rest,
+    );
+    tracked.push(out);
+    return out;
+  }) as typeof fs.promises.mkdtemp;
+
+  // Interruption safety net: remove only our own roots by exact path.
+  process.once("exit", () => {
+    for (const r of [...roots]) {
+      try {
+        fs.rmSync(r, { recursive: true, force: true });
+      } catch {
+        // best effort
+      }
+    }
+  });
+}
+
+// One root per test file (setup runs before each file). `afterAll` below
+// belongs to that file, so its root is removed when the file finishes —
+// including when tests fail.
+const fileRoot: string = (fs.mkdtempSync as (...a: unknown[]) => string)(
+  path.join(realTmp, "unvibe-test-"),
+) as string;
+// The root itself is created before the patch records it; track explicitly.
+tracked.push(fileRoot);
+roots.push(fileRoot);
+process.env.TMPDIR = fileRoot;
+process.env.TEMP = fileRoot;
+process.env.TMP = fileRoot;
+
+afterAll(() => {
+  const stillOutside: string[] = [];
+  for (const p of tracked) {
+    if (isUnder(p, fileRoot)) continue;
+    // Other files' roots in this worker are theirs to clean; only judge
+    // paths outside every known root of this process.
+    if (roots.some((r) => r !== fileRoot && isUnder(p, r))) continue;
+    try {
+      if (fs.existsSync(p)) stillOutside.push(p);
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    fs.rmSync(fileRoot, { recursive: true, force: true });
+  } catch {
+    // best effort
+  }
+  const idx = roots.indexOf(fileRoot);
+  if (idx >= 0) roots.splice(idx, 1);
+  if (stillOutside.length > 0) {
+    throw new Error(
+      `unvibe temp guard (#24): ${stillOutside.length} tracked temp path(s) left outside the per-run root:\n` +
+        stillOutside.slice(0, 10).join("\n"),
+    );
+  }
+});
