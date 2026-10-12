@@ -293,7 +293,7 @@ async function main(): Promise<number> {
     { ...args, exitWaitMs, healthTimeoutMs, pollIntervalMs, stopWaitMs },
     {
       waitForExit,
-      switchTo: (ref) => updater.switchTo(ref),
+      switchTo: (ref, opts) => updater.switchTo(ref, opts),
       startService,
       stopService,
       isCurrentService,

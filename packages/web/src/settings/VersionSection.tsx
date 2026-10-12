@@ -4,7 +4,8 @@
  * the toggle renders. When on: the running build, channels grouped
  * release / release-candidate / previews (source branch, short commit,
  * relative build time), refresh, and per-row Switch with an inline
- * confirm (the service restarts; data is backed up per channel).
+ * confirm (the service restarts; switching keeps your database and
+ * backs it up first).
  *
  * Switching survives the service going away: after the 202 the page polls
  * health + status until the new build reports (then reloads) or the
@@ -385,7 +386,7 @@ function ChannelGroups({
                         <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
                       ) : confirmRef === c.ref ? (
                         <span className="frow" style={{ gap: 6, alignItems: "center" }}>
-                          <span className="warnline">The service restarts; data is backed up before the switch.</span>
+                          <span className="warnline">The service restarts. Switching keeps your database and backs it up first.</span>
                           <button className="btn" type="button" onClick={() => onConfirm(c.ref)}>
                             Confirm update to {c.ref}
                           </button>
@@ -412,7 +413,7 @@ function ChannelGroups({
                   <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
                 ) : confirmRef === c.ref ? (
                   <span className="frow" style={{ gap: 6, alignItems: "center" }}>
-                    <span className="warnline">The service restarts; data is backed up before the switch.</span>
+                    <span className="warnline">The service restarts. Switching keeps your database and backs it up first.</span>
                     <button className="btn" type="button" onClick={() => onConfirm(c.ref)}>
                       Confirm switch to {c.ref}
                     </button>

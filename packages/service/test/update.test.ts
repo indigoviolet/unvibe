@@ -1,10 +1,11 @@
 /**
  * `unvibe update` (issue #36, step 1 + review fixes): channel listing
  * parsing (incl. per-ref metadata without cloning), the install command
- * built for a channel, same-channel reinstalls, preview seeding, channel
- * inference, prefix pinning, and the DB backup/restore rules against a
- * temp data dir. No network, no real gh/git/npm: `gh` and `npm` go through
- * the injectable command runner (faked here).
+ * built for a channel, same-channel reinstalls, channel inference,
+ * prefix pinning, and the DB backup rule against a temp data dir
+ * (switching keeps the live database and backs it up first; rollback
+ * restores the pre-switch backup). No network, no real gh/git/npm: `gh`
+ * and `npm` go through the injectable command runner (faked here).
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -12,7 +13,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeLock } from "../src/cli/lock.js";
 import {
-  dbPlanForSwitch,
   runUpdateChannelFlow,
   runUpdateListFlow,
 } from "../src/cli/update-flows.js";
@@ -21,10 +21,9 @@ import { FakeCommandRunner } from "../src/exec/runner.js";
 import {
   backupChannel,
   channelSlotDir,
-  hasBackup,
   restoreChannel,
-  seedFromSlot,
 } from "../src/update/data-backup.js";
+import { runSwitchCore } from "../src/update/switch.js";
 import {
   channelKind,
   decodeRefPackage,
@@ -409,8 +408,7 @@ describe("per-channel DB backup/restore", () => {
     const res = backupChannel(dataDir, "release");
     expect(res.dir).toBe(channelSlotDir(dataDir, "release"));
     expect(res.files).toEqual(["unvibe.db", "unvibe.db-wal", "unvibe.db-shm"]);
-    expect(hasBackup(dataDir, "release")).toBe(true);
-    expect(hasBackup(dataDir, "preview/feat-x")).toBe(false);
+    expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "release"), "unvibe.db"), "utf8")).toBe("live");
   });
 
   it("maps preview/ channels to one slot segment; unknown installs to _unknown", () => {
@@ -436,19 +434,9 @@ describe("per-channel DB backup/restore", () => {
     expect(restored.files).toEqual(["unvibe.db"]);
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
     expect(fs.existsSync(path.join(dataDir, "unvibe.db-wal"))).toBe(false);
-    expect(hasBackup(dataDir, "preview/feat-x")).toBe(true);
-  });
-
-  it("seeds a channel from another channel's slot", () => {
-    const dataDir = tmpDir("unvibe-seed-");
-    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
-    backupChannel(dataDir, "release");
-    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
-    const seeded = seedFromSlot(dataDir, "release");
-    expect(seeded.files).toEqual(["unvibe.db"]);
-    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
-    // The target gains no slot of its own from seeding.
-    expect(hasBackup(dataDir, "preview/b")).toBe(false);
+    expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/feat-x"), "unvibe.db"), "utf8")).toBe(
+      "preview-db",
+    );
   });
 
   it("handles the legacy unvibe.sqlite name when present", () => {
@@ -456,55 +444,12 @@ describe("per-channel DB backup/restore", () => {
     fs.writeFileSync(path.join(dataDir, "unvibe.sqlite"), "legacy");
     const res = backupChannel(dataDir, "release");
     expect(res.files).toContain("unvibe.sqlite");
-    expect(hasBackup(dataDir, "release")).toBe(true);
   });
 
   it("backs up nothing on a fresh machine, without failing", () => {
     const dataDir = tmpDir("unvibe-fresh-");
     const res = backupChannel(dataDir, "release");
     expect(res.files).toEqual([]);
-    expect(hasBackup(dataDir, "release")).toBe(false);
-  });
-});
-
-describe("dbPlanForSwitch", () => {
-  function planned(dataDir: string, to: string, from: string | null, keepData: boolean): string {
-    const plan = dbPlanForSwitch(dataDir, to, from, keepData);
-    return plan.kind === "seed" ? `seed:${plan.from}` : plan.kind;
-  }
-
-  it("--keep-data always keeps", () => {
-    const dataDir = tmpDir("unvibe-plan-keep-");
-    expect(planned(dataDir, "preview/b", "preview/a", true)).toBe("keep");
-  });
-
-  it("restores the target copy when one exists", () => {
-    const dataDir = tmpDir("unvibe-plan-restore-");
-    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "x");
-    backupChannel(dataDir, "preview/b");
-    expect(planned(dataDir, "preview/b", "preview/a", false)).toBe("restore");
-  });
-
-  it("leaving release, release-rc or a source checkout keeps the live DB", () => {
-    const dataDir = tmpDir("unvibe-plan-rel-");
-    expect(planned(dataDir, "preview/b", "release", false)).toBe("keep");
-    expect(planned(dataDir, "preview/b", "release-rc", false)).toBe("keep");
-    expect(planned(dataDir, "preview/b", null, false)).toBe("keep");
-  });
-
-  it("leaving a preview seeds from release, else release-rc, else aborts", () => {
-    const seeded = tmpDir("unvibe-plan-seed-");
-    fs.writeFileSync(path.join(seeded, "unvibe.db"), "x");
-    backupChannel(seeded, "release");
-    backupChannel(seeded, "preview/a");
-    expect(planned(seeded, "preview/b", "preview/a", false)).toBe("seed:release");
-
-    const rcOnly = tmpDir("unvibe-plan-rconly-");
-    fs.writeFileSync(path.join(rcOnly, "unvibe.db"), "x");
-    backupChannel(rcOnly, "release-rc");
-    expect(planned(rcOnly, "preview/b", "preview/a", false)).toBe("seed:release-rc");
-
-    expect(planned(tmpDir("unvibe-plan-abort-"), "preview/b", "preview/a", false)).toBe("abort");
   });
 });
 
@@ -639,7 +584,6 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir: tmpDir("unvibe-badchan-"), cliScriptPath: undefined, serviceVersion: "0" },
       "main",
-      { keepData: false },
     );
     expect(out.code).toBe(2);
     expect(runner.calls).toHaveLength(0);
@@ -652,7 +596,6 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: undefined, serviceVersion: "0" },
       "preview/feat-x",
-      { keepData: false },
     );
     expect(out.code).toBe(1);
     expect(out.lines.some((l) => l.includes("unvibe stop"))).toBe(true);
@@ -675,14 +618,13 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir: tmpDir("unvibe-same-data-"), cliScriptPath: scriptPath, serviceVersion: "0" },
       "preview/feat-x",
-      { keepData: false },
     );
     expect(out.code).toBe(0);
     expect(out.lines).toEqual(["already on preview/feat-x (0.0.1-preview.feat-x.abc1234, abc1234) — nothing to do."]);
     expect(runner.calls).toHaveLength(1); // the gh contents read only
   });
 
-  it("reinstalls the same channel when commits differ, without swapping databases", async () => {
+  it("reinstalls the same channel when commits differ, keeping the database", async () => {
     const dataDir = tmpDir("unvibe-reinstall-");
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-db");
     const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-reinstall-installed-"), {
@@ -708,12 +650,11 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
       "preview/feat-x",
-      { keepData: false },
     );
     expect(out.code).toBe(0);
     expect(out.lines.some((l) => l.includes("reinstalling preview/feat-x: installed older12 vs published abc1234"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("same channel: database left in place"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("DB rule:"))).toBe(false);
+    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("Switching keeps your database"))).toBe(false);
     // Backed up first, live database untouched, no restore attempted.
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/feat-x"), "unvibe.db"), "utf8")).toBe("preview-db");
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-db");
@@ -734,14 +675,13 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir: tmpDir("unvibe-reinstall-blind-data-"), cliScriptPath: scriptPath, serviceVersion: "0" },
       "preview/feat-x",
-      { keepData: false },
     );
     expect(out.code).toBe(0);
     expect(out.lines.some((l) => l.includes("could not read the published commit"))).toBe(true);
     expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
   });
 
-  it("backs up, installs the channel spec, restores the target copy, reports versions", async () => {
+  it("backs up, installs the channel spec, keeps the live database, reports versions", async () => {
     const dataDir = tmpDir("unvibe-switch-");
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
     const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-switch-installed-"), {
@@ -749,9 +689,6 @@ describe("runUpdateChannelFlow", () => {
       version: "0.0.1",
       unvibe: { channel: "release" },
     });
-    const slot = channelSlotDir(dataDir, "preview/feat-x");
-    fs.mkdirSync(slot, { recursive: true });
-    fs.writeFileSync(path.join(slot, "unvibe.db"), "preview-db");
 
     const runner = new SwitchRunner(
       packagePath,
@@ -771,7 +708,6 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
       "preview/feat-x",
-      { keepData: false },
     );
     expect(out.code).toBe(0);
     expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
@@ -781,10 +717,13 @@ describe("runUpdateChannelFlow", () => {
       "github:indigoviolet/unvibe#preview/feat-x",
     ]);
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "release"), "unvibe.db"), "utf8")).toBe("release-db");
-    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-db");
+    // The live database stays in place for the new build; no target slot is created.
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
+    expect(fs.existsSync(channelSlotDir(dataDir, "preview/feat-x"))).toBe(false);
     expect(out.lines.some((l) => l.includes("0.0.1-preview.feat-x.abc1234") && l.includes("(was 0.0.1)"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("restored unvibe.db"))).toBe(true);
-    expect(out.lines.some((l) => l.includes("DB rule:"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("backed up unvibe.db to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("Switching keeps your database"))).toBe(true);
     expect(out.lines.some((l) => l.includes("unvibe start"))).toBe(true);
   });
 
@@ -804,7 +743,6 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
       "release-rc",
-      { keepData: false },
     );
     expect(out.code).toBe(0);
     expect(runner.calls.find((c) => c.cmd === "npm")?.opts.args).toEqual([
@@ -825,9 +763,6 @@ describe("runUpdateChannelFlow", () => {
       version: "0.0.1",
       unvibe: { channel: "release" },
     });
-    const slot = channelSlotDir(dataDir, "preview/feat-x");
-    fs.mkdirSync(slot, { recursive: true });
-    fs.writeFileSync(path.join(slot, "unvibe.db"), "preview-db");
     // npm "succeeds" but our package is untouched: it went to another prefix.
     const runner = new SwitchRunner(
       packagePath,
@@ -844,18 +779,18 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
       "preview/feat-x",
-      { keepData: false },
     );
     expect(out.code).toBe(1);
     expect(out.lines.some((l) => l.includes(packagePath) && l.includes("npm installed elsewhere"))).toBe(true);
     expect(out.lines.some((l) => l.includes("npm prefix -g: /other/prefix"))).toBe(true);
-    // No database swap on a miss: live DB and target slot both untouched.
+    // The live database stays in place on a miss; the pre-switch backup was still taken.
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
-    expect(fs.readFileSync(path.join(slot, "unvibe.db"), "utf8")).toBe("preview-db");
-    expect(hasBackup(dataDir, "release")).toBe(true);
+    expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "release"), "unvibe.db"), "utf8")).toBe("release-db");
   });
 
-  it("seeds a new preview from the release copy instead of inheriting another preview's DB", async () => {
+  it("preview -> preview with no release backup installs and keeps the data", async () => {
+    // The reported failure (#36): first install was a preview, so no
+    // release slot exists. The switch must proceed, keeping the live DB.
     const dataDir = tmpDir("unvibe-seedflow-");
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
     const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-seedflow-installed-"), {
@@ -863,11 +798,6 @@ describe("runUpdateChannelFlow", () => {
       version: "0.0.1-preview.a.1111111",
       unvibe: { channel: "preview/a", commit: "1111111full" },
     });
-    // preview/a was backed up when last left; release has its own copy.
-    backupChannel(dataDir, "preview/a");
-    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
-    backupChannel(dataDir, "release");
-    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
 
     const runner = new SwitchRunner(
       packagePath,
@@ -883,93 +813,81 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
       "preview/b",
-      { keepData: false },
     );
     expect(out.code).toBe(0);
-    // preview/a's backup kept, live DB is the release seed, b gains no slot yet.
+    expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
+    // The live database carries over; the channel being left is backed up first.
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-a-db");
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/a"), "unvibe.db"), "utf8")).toBe("preview-a-db");
-    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
-    expect(hasBackup(dataDir, "preview/b")).toBe(false);
-    expect(out.lines.some((l) => l.includes("started preview/b from the release copy"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
   });
 
-  it("aborts before installing when a new preview has no seed and no backup", async () => {
-    const dataDir = tmpDir("unvibe-noseed-");
-    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
-    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-noseed-installed-"), {
+  it("restoreBackupOf restores the pre-switch backup after the install (rollback)", async () => {
+    const dataDir = tmpDir("unvibe-rollback-restore-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "pre-switch-db");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-rollback-restore-installed-"), {
       name: "unvibe",
-      version: "0.0.1-preview.a.1111111",
-      unvibe: { channel: "preview/a", commit: "1111111full" },
+      version: "0.0.1-preview.b.2222222",
+      unvibe: { channel: "preview/b", commit: "2222222full" },
     });
-    const runner = new SwitchRunner(packagePath, null, {});
-    const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
-      "preview/b",
-      { keepData: false },
-    );
-    expect(out.code).toBe(1);
-    expect(out.lines.some((l) => l.includes("--keep-data"))).toBe(true);
-    expect(runner.calls.filter((c) => c.cmd === "npm")).toHaveLength(0);
-    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-a-db");
-  });
-
-  it("--keep-data overrides the missing-seed abort", async () => {
-    const dataDir = tmpDir("unvibe-seedkeep-");
-    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
-    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-seedkeep-installed-"), {
-      name: "unvibe",
-      version: "0.0.1-preview.a.1111111",
-      unvibe: { channel: "preview/a", commit: "1111111full" },
-    });
-    const runner = new SwitchRunner(
-      packagePath,
-      { name: "unvibe", version: "0.0.1-preview.b.2222222", unvibe: { channel: "preview/b", commit: "2222222full" } },
-      {},
-    );
-    const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
-      "preview/b",
-      { keepData: true },
-    );
-    expect(out.code).toBe(0);
-    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-a-db");
-  });
-
-  it("--keep-data skips the restore but still backs up", async () => {
-    const dataDir = tmpDir("unvibe-keep-");
-    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
-    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-keep-installed-"), {
-      name: "unvibe",
-      version: "0.0.1",
-      unvibe: { channel: "release" },
-    });
-    const slot = channelSlotDir(dataDir, "preview/feat-x");
-    fs.mkdirSync(slot, { recursive: true });
-    fs.writeFileSync(path.join(slot, "unvibe.db"), "preview-db");
+    // The forward switch backed up preview/a before installing preview/b;
+    // preview/b has since (possibly) migrated the live database.
+    backupChannel(dataDir, "preview/a");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "migrated-by-b");
 
     const runner = new SwitchRunner(
       packagePath,
+      { name: "unvibe", version: "0.0.1-preview.a.1111111", unvibe: { channel: "preview/a", commit: "1111111full" } },
       {
-        name: "unvibe",
-        version: "0.0.1-preview.feat-x.abc1234",
-        unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
-      },
-      {
-        "preview/feat-x": {
+        "preview/a": {
           name: "unvibe",
-          version: "0.0.1-preview.feat-x.abc1234",
-          unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+          version: "0.0.1-preview.a.1111111",
+          unvibe: { channel: "preview/a", commit: "1111111full" },
         },
       },
     );
-    const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
-      "preview/feat-x",
-      { keepData: true },
-    );
-    expect(out.code).toBe(0);
-    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
-    expect(out.lines.some((l) => l.includes("--keep-data"))).toBe(true);
+    const result = await runSwitchCore({
+      runner,
+      dataDir,
+      serviceScriptPath: scriptPath,
+      serviceVersion: "0",
+      channel: "preview/a",
+      restoreBackupOf: "preview/a",
+      log: () => {},
+    });
+    expect(result.code).toBe(0);
+    // The old build reopens its pre-switch database, not the migrated one.
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("pre-switch-db");
+  });
+
+  it("rolling back a same-channel update restores the pre-switch backup instead of overwriting it", async () => {
+    const dataDir = tmpDir("unvibe-rollback-same-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "pre-switch-db");
+    backupChannel(dataDir, "preview/a");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "migrated-by-new-a");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-rollback-same-installed-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.a.2222222",
+      unvibe: { channel: "preview/a", commit: "2222222full" },
+    });
+    const published = {
+      name: "unvibe",
+      version: "0.0.1-preview.a.3333333",
+      unvibe: { channel: "preview/a", commit: "3333333full" },
+    };
+    const runner = new SwitchRunner(packagePath, published, { "preview/a": published });
+    const result = await runSwitchCore({
+      runner,
+      dataDir,
+      serviceScriptPath: scriptPath,
+      serviceVersion: "0",
+      channel: "preview/a",
+      restoreBackupOf: "preview/a",
+      log: () => {},
+    });
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/a"), "unvibe.db"), "utf8")).toBe("pre-switch-db");
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("pre-switch-db");
   });
 
   it("keeps the live database when leaving release for a target with no backup", async () => {
@@ -998,11 +916,11 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
       "preview/other",
-      { keepData: false },
     );
     expect(out.code).toBe(0);
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
-    expect(out.lines.some((l) => l.includes("no backup for preview/other"))).toBe(true);
+    expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "release"), "unvibe.db"), "utf8")).toBe("release-db");
+    expect(out.lines.some((l) => l.includes("database left in place (backed up to"))).toBe(true);
   });
 
   it("leaves the database untouched when npm fails", async () => {
@@ -1025,10 +943,10 @@ describe("runUpdateChannelFlow", () => {
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
       "preview/feat-x",
-      { keepData: false },
     );
     expect(out.code).toBe(1);
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
-    expect(hasBackup(dataDir, "release")).toBe(true);
+    // The backup is written before the install, so the pre-switch copy survives the failure.
+    expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "release"), "unvibe.db"), "utf8")).toBe("release-db");
   });
 });

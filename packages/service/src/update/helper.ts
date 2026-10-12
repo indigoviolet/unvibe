@@ -6,12 +6,15 @@
  *
  * 1. wait for the service PID to exit (never kill — abort instead);
  * 2. `switchTo(to)` via the `Updater` seam (step 1 backs up the DB and
- *    installs `github:indigoviolet/unvibe#<ref>` globally);
+ *    installs `github:indigoviolet/unvibe#<ref>` globally; the live
+ *    database stays in place and the new build opens it);
  * 3. start the service again on the same port + data dir;
  * 4. poll `/api/health` until it reports the target version;
- * 5. on install failure or an unhealthy new build: `switchTo(from)`,
- *    restart that, and record `rolled-back` (+ reason); when the rollback
- *    itself fails, record `failed`.
+ * 5. on install failure or an unhealthy new build: `switchTo(from, {
+ *    restoreBackupOf: from })` (reinstall + restore the pre-switch
+ *    backup, so the old build never opens a database the new build may
+ *    have migrated), restart that, and record `rolled-back` (+ reason);
+ *    when the rollback itself fails, record `failed`.
  *
  * Every step is injected through `HelperDeps` (clock, exit wait, Updater,
  * spawn, health probe, outcome record) so unit tests drive the whole
@@ -21,6 +24,8 @@
  * copies to the data dir and spawns detached).
  */
 import type { SwitchOutcome } from "@unvibe/shared";
+import type { SwitchToOptions } from "./updater.js";
+import { channelSlotDir } from "./data-backup.js";
 
 export interface SwitchPlan {
   from: string;
@@ -84,7 +89,7 @@ export interface HelperArgs extends SwitchPlan {
 
 export interface HelperDeps {
   waitForExit(pid: number, timeoutMs: number): Promise<boolean>;
-  switchTo(ref: string): Promise<{ from: string; to: string }>;
+  switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }>;
   /** Spawn a service generation; resolves its pid. */
   startService(): Promise<number>;
   /**
@@ -182,10 +187,9 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
   const rollback = async (reason: string): Promise<SwitchOutcome> => {
     deps.log(`rolling back to ${plan.from}: ${reason}`);
     // Stop the unhealthy generation BEFORE the rollback install: npm must
-    // not replace files under a live service, the DB files must not be
-    // swapped under an open handle, and the switch core refuses while a
-    // service holds the lock. Only generations the helper itself started
-    // are ever stopped — never the told-about service PID.
+    // not replace files under a live service, and the switch core refuses
+    // while a service holds the lock. Only generations the helper itself
+    // started are ever stopped — never the told-about service PID.
     if (activePid !== null) {
       deps.log(`stopping unhealthy generation (pid ${activePid}) before rolling back`);
       await deps.stopService(activePid);
@@ -198,14 +202,20 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
       }
       activePid = null;
     }
+    const backupDir = channelSlotDir(plan.dataDir, plan.from);
     try {
-      await deps.switchTo(plan.from);
+      // Reinstall the old build AND restore the backup taken at the start
+      // of this switch, so the old build never opens a database the new
+      // build may have migrated.
+      await deps.switchTo(plan.from, { restoreBackupOf: plan.from });
     } catch (err) {
       return finish({
         status: "failed",
         from: plan.from,
         to: plan.to,
-        reason: `${reason}; rollback to ${plan.from} also failed: ${(err as Error).message}. ${RECOVER_BY_HAND}`,
+        reason:
+          `${reason}; rollback to ${plan.from} also failed: ${(err as Error).message}. ` +
+          `The pre-switch database backup is in ${backupDir}. ${RECOVER_BY_HAND}`,
         logPath: plan.logPath,
       });
     }

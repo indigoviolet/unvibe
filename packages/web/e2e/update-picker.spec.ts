@@ -51,7 +51,7 @@ test("switch moves to the preview: confirm, restart wait, reload, badge", async 
   await enablePicker(page);
   const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
   await feat.getByRole("button", { name: "Switch to preview/feat-x" }).click();
-  await expect(page.getByText("The service restarts; data is backed up before the switch.")).toBeVisible();
+  await expect(page.getByText("The service restarts. Switching keeps your database and backs it up first.")).toBeVisible();
   await page.getByRole("button", { name: "Confirm switch to preview/feat-x" }).click();
   await expect(page.getByTestId("update-switching")).toBeVisible();
   // The page reloads once the new build reports; the badge names the branch.
