@@ -8,8 +8,11 @@
  * runner and shared context all resolve through here, so they agree.
  *
  * Never throws and never writes: unknown offerings (adapter down, timed
- * out, no live catalog) or unfillable roles keep the stored values, and
- * readiness reports those picks plainly. A computed default is never
+ * out, no live catalog) keep the stored values for main/small, and for
+ * second opinion whenever nothing is known about main's provider either.
+ * When only main's provider answers, second opinion unsets instead of
+ * keeping a stored pick that points at a provider that is not there.
+ * Readiness reports stored picks plainly. A computed default is never
  * persisted — a saved pick is something the user chose.
  */
 import type { ModelPick, Settings } from "@unvibe/shared";
@@ -72,17 +75,30 @@ export async function resolveEffectiveSettings(deps: EffectiveSettingsDeps): Pro
       if (!saved.includes("small") && picked.small) next.small = picked.small;
     }
     if (!saved.includes("secondOpinion")) {
-      // Against the final effective main (a saved main on Codex still
-      // takes its second opinion from Claude). The other provider's
-      // offering decides: definitive (even empty) means live-or-unset;
-      // unknown keeps the stored pick.
-      const other = next.main.provider === "codex" ? codex : claude;
-      if (other !== null && other !== undefined) {
-        const picked = selectDefaultModels(
-          { claude: claudeIds, codex: codexIds },
-          { provider: next.main.provider },
-        );
-        next.secondOpinion = picked.secondOpinion ?? unsetSecondOpinion();
+      // Second opinion comes from the provider the final effective main is
+      // NOT using (a saved main on Codex still takes its second opinion
+      // from Claude). Listings are read relative to that main: M is main's
+      // own listing, O the other's. The decision table (issue #88):
+      // - (a) both known: live pick from O, unset when nothing matches;
+      // - (b) M known, O null (not installed / not logged in): unset — a
+      //   stored pick would point at a provider that is not there;
+      // - (c) M known, O known but empty: unset (no match);
+      // - (d) M null, O known: stored stands (nothing is known about
+      //   main either, so the live computation is not trusted);
+      // - (e) both null: stored stands.
+      const mainProvider = next.main.provider;
+      const mainListing = mainProvider === "codex" ? codex : claude;
+      const otherListing = mainProvider === "codex" ? claude : codex;
+      if (mainListing !== null && mainListing !== undefined) {
+        if (otherListing !== null && otherListing !== undefined) {
+          const picked = selectDefaultModels(
+            { claude: claudeIds, codex: codexIds },
+            { provider: mainProvider },
+          );
+          next.secondOpinion = picked.secondOpinion ?? unsetSecondOpinion();
+        } else {
+          next.secondOpinion = unsetSecondOpinion();
+        }
       }
     }
   } catch {

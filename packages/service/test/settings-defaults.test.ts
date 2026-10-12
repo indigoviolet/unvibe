@@ -209,6 +209,16 @@ describe("one provider or none", () => {
 describe("live settings defaults + validation", () => {
   const auth = { authorization: "Bearer tok" };
 
+  // Second-opinion decision table in terms of offered() results (issue #88):
+  // (a) both known → live pick from the other provider, else unset
+  //     ("GET fills never-saved roles", "saved main on Codex");
+  // (b) main's provider known, the other null → unset
+  //     ("only main's provider answers", "saved main with other unknown");
+  // (c) main's provider known, the other known but empty → unset
+  //     ("definitively offers nothing");
+  // (d) main's provider null, the other known → stored stands
+  //     ("main's listing unknown" ×2);
+  // (e) both null → stored stands ("offerings are unknown").
   /** Stub catalog with live offerings (null = adapter unknown/down). */
   function stubCatalog(
     offered: Record<string, { models: ({ id: string } | string)[]; defaultId: string | null } | null>,
@@ -289,6 +299,88 @@ describe("live settings defaults + validation", () => {
       };
       expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol" });
       expect(body.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(b) GET unsets second opinion when only main's provider answers", async () => {
+    // Claude-only machine: the Codex listing is unknown (not installed).
+    // A stored pick pointing at Codex must not survive — main/small go
+    // live, second opinion unsets.
+    const { app } = await makeApp(
+      stubCatalog({ claude: { models: [...CLAUDE_ISSUE], defaultId: null } }),
+    );
+    try {
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        small: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+      expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(b) saved main with the other provider unknown unsets second opinion", async () => {
+    const { app, ctx } = await makeApp(
+      stubCatalog({ codex: { models: [...CODEX_ISSUE], defaultId: null } }),
+    );
+    try {
+      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol" } });
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(d) GET keeps stored second opinion when main's listing is unknown", async () => {
+    // Claude missing, Codex answering but with nothing usable: live main
+    // is unfillable, so the effective main stays the stored Claude pick
+    // (whose listing is unknown) and stored values stand wholesale.
+    const { app } = await makeApp(
+      stubCatalog({ codex: { models: ["gpt-6-astra"], defaultId: null } }),
+    );
+    try {
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        small: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+      expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(d) saved main on a missing provider keeps stored second opinion", async () => {
+    // The user saved a Claude main, then Claude went away (listing null)
+    // while Codex answers: too uncertain to recompute, stored stands.
+    const { app, ctx } = await makeApp(
+      stubCatalog({ codex: { models: ["gpt-6.1-sol"], defaultId: null } }),
+    );
+    try {
+      ctx.settings.update({ main: { provider: "claude", model: "claude-opus-5" } });
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const body = get.json() as {
+        main: { provider: string; model: string };
+        secondOpinion: { provider: string; model: string };
+      };
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
     } finally {
       await app.close();
     }

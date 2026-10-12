@@ -252,6 +252,62 @@ describe("readiness checks", () => {
     }
   });
 
+  it("Claude-only machine: main/small ready with no 'not offered', second opinion not set (issue #88)", async () => {
+    // Scratch PATH with only a claude CLI; the Codex listing is unknown
+    // (not installed), so with nothing saved the live main/small come from
+    // Claude and second opinion unsets instead of pointing at Codex.
+    const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "unvibe-bins-claude-only-"));
+    try {
+      const claudeBin = join(dir, "claude");
+      writeFileSync(claudeBin, "#!/bin/sh\necho claude 2.1.300\n");
+      chmodSync(claudeBin, 0o755);
+      const fake = new FakeCommandRunner();
+      // main + small both resolve to Claude: two claude probes run.
+      fake.enqueue({ cmd: claudeBin, args: ["--version"], stdout: "2.1.300", stderr: "", code: 0 });
+      fake.enqueue({ cmd: claudeBin, args: ["--version"], stdout: "2.1.300", stderr: "", code: 0 });
+      const ids = { claude: ["claude-opus-5-5", "claude-haiku-5-5"] };
+      const norm = (id: string): { id: string } => ({ id });
+      const catalog: ModelCatalog = {
+        listModels: (p: string) => Promise.resolve((ids[p as keyof typeof ids] ?? []).map(norm)),
+        offered: (p: string) =>
+          p === "claude"
+            ? Promise.resolve({ models: ids.claude.map(norm), defaultId: null })
+            : Promise.resolve(null),
+      };
+      const db = openDatabase(":memory:");
+      migrate(db);
+      const r = await getReadiness(
+        {
+          runner: fake as never,
+          agents: fakeAgents(ids) as never,
+          settings: new SettingsStore(db),
+          models: catalog,
+          loginPathValue: dir,
+          timeoutMs: 5000,
+        },
+        { force: true },
+      );
+      const summary = (id: string): string => r.checks.find((c) => c.id === id)!.summary;
+      const main = r.checks.find((c) => c.id === "agent:main")!;
+      expect(main.status).toBe("ok");
+      expect(summary("agent:main")).toContain("claude-opus-5-5");
+      expect(summary("agent:main")).not.toContain("not offered");
+      const small = r.checks.find((c) => c.id === "agent:small")!;
+      expect(small.status).toBe("ok");
+      expect(summary("agent:small")).toContain("claude-haiku-5-5");
+      expect(summary("agent:small")).not.toContain("not offered");
+      // Not set — a warning, never a failed (error) check.
+      const second = r.checks.find((c) => c.id === "agent:secondOpinion")!;
+      expect(second.status).toBe("warning");
+      expect(summary("agent:secondOpinion")).toMatch(/not set/i);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("caches briefly and force bypasses", async () => {
     const deps = {
       runner: real,
