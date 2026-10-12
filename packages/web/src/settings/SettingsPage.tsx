@@ -1,8 +1,9 @@
 /**
  * Settings page (`/settings`, PRD §4.14): models, prompt templates, limits
- * and budgets. App-level only: nothing here is review-scoped. Jobs, the
- * per-review prompt expansions and shared context live on the per-review
- * debug page (`/review/:id/debug`, issue #32), not here.
+ * and budgets, plus the version picker (Settings → Version, issue #36
+ * step 2, off by default). App-level only: nothing here is review-scoped.
+ * Jobs, the per-review prompt expansions and shared context live on the
+ * per-review debug page (`/review/:id/debug`, issue #32), not here.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -12,6 +13,8 @@ import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
 import { PromptsSection } from "./PromptsSection.js";
+import { VersionSection } from "./VersionSection.js";
+import { PreviewBuildBadge } from "../shell/PreviewBuildBadge.js";
 import "./settings.css";
 
 export function SettingsPage(): React.JSX.Element {
@@ -57,6 +60,7 @@ export function SettingsPage(): React.JSX.Element {
         </Link>
         <div className="pr">
           <b>Settings</b>
+          <PreviewBuildBadge />
         </div>
         <Link className="tbtn" to="/">
           Back to start
@@ -78,6 +82,7 @@ export function SettingsPage(): React.JSX.Element {
               <EnvironmentSection />
               <PromptsSection />
               <LimitsSection settings={settings} onSaved={setSettings} />
+              <VersionSection settings={settings} onSaved={setSettings} />
             </>
           ) : null}
         </div>
