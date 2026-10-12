@@ -63,7 +63,6 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
 
   return (
     <section aria-label="Jobs">
-      <div className="divider">Jobs</div>
       {!reviewId ? (
         <p className="hint">Open the debug page from a review (`/review/:id/debug`) to see its jobs.</p>
       ) : error ? (

@@ -106,7 +106,7 @@ export function DoctorPage(): React.JSX.Element {
         <div className="pr">
           <b>Doctor</b>
         </div>
-        <Link className="tbtn" to="/settings#environment">
+        <Link className="tbtn" to="/settings?tab=environment">
           Settings
         </Link>
       </header>
@@ -126,7 +126,7 @@ export function DoctorPage(): React.JSX.Element {
             <button className="btn ghost" type="button" onClick={() => void copy()} disabled={!report}>
               {copied ? "Copied" : "Copy diagnostics"}
             </button>
-            <Link className="tbtn" to="/settings#environment">
+            <Link className="tbtn" to="/settings?tab=environment">
               Settings → Environment
             </Link>
           </div>

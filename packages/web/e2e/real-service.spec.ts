@@ -98,7 +98,7 @@ test.describe("real service", () => {
     if (await page.locator('[data-testid="no-repos"]').isVisible()) {
       await expect(page.locator('[data-testid="no-repos"]')).toBeVisible();
       await page.getByRole("link", { name: "Add one in Settings" }).click();
-      await expect(page).toHaveURL(/\/settings#repositories/);
+      await expect(page).toHaveURL(/\/settings\?tab=repositories/);
       await page.getByLabel("Add a repo by path").fill(repoDir);
       await page.getByRole("button", { name: "Add by path" }).click();
       await expect(page.locator('[data-testid^="repo-"]')).toContainText(path.basename(repoDir));
@@ -168,7 +168,7 @@ test.describe("real service", () => {
     if (!svc) throw new Error("service not running");
     // Client-side verdict first: no request, no toast, control stays live.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+    await expect(page.getByText("Repositories, models, environment, prompts, limits and version")).toBeVisible();
     const section = page.locator('[data-testid="repositories-section"]');
     await section.getByLabel("Add a repo by URL").fill("not a repo!!!");
     await section.getByRole("button", { name: "Clone and add" }).click();

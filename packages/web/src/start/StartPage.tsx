@@ -38,7 +38,7 @@
  *   working open and Remove.
  * - With no repos at all, a short empty state offers both routes in:
  *   paste a PR URL below and Unvibe clones the repo and opens it, or add
- *   a repo in `/settings#repositories` (the demo row still shows). The PR
+  *   a repo in `/settings?tab=repositories` (the demo row still shows). The PR
  *   opener also renders whenever no repo is selected. Repos are never
  *   added via a path here.
  * - Readiness callouts fill in after render (never block page load); each
@@ -632,7 +632,7 @@ export function StartPage(): React.JSX.Element {
                     {c.fix ? <div className="hint">{c.fix}</div> : null}
                   </div>
                   <div className="frow" style={{ gap: 6 }}>
-                    <Link className="tbtn" to={`/settings${c.settingsAnchor ?? "#environment"}`}>
+                    <Link className="tbtn" to={`/settings?tab=${(c.settingsAnchor ?? "#environment").replace(/^#/, "")}`}>
                       Settings
                     </Link>
                     <Link className="tbtn" to="/doctor">
@@ -694,7 +694,7 @@ export function StartPage(): React.JSX.Element {
                 <p className="hint" data-testid="sessions-empty">
                   {reposLoaded && realRepos.length === 0 ? (
                     <>
-                      No reviews yet. <Link to="/settings#repositories">Add a repo in Settings</Link>{" "}
+                      No reviews yet. <Link to="/settings?tab=repositories">Add a repo in Settings</Link>{" "}
                       to open your first review — or try the demo below.
                     </>
                   ) : (
@@ -754,13 +754,13 @@ export function StartPage(): React.JSX.Element {
                 {reposError ? (
                   <p className="hint" role="alert">
                     Couldn&apos;t load the repo list. Check the service is running, then reload the
-                    page — or <Link to="/settings#repositories">manage repos in Settings</Link>.
+                       page — or <Link to="/settings?tab=repositories">manage repos in Settings</Link>.
                   </p>
                 ) : (
                   <>
                     <p className="hint">
                       No repos yet. Paste a PR URL below and Unvibe will clone the repo and open
-                      it — or <Link to="/settings#repositories">add one in Settings</Link> to
+                       it — or <Link to="/settings?tab=repositories">add one in Settings</Link> to
                       browse its PRs and branches.
                     </p>
                     {renderPrOpener()}

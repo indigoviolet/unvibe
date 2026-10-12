@@ -355,6 +355,87 @@ mark.anc.on { outline: 2px solid var(--note); }
 pre.code { background: var(--sunk); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.55 var(--mono); margin: 10px 0; }
 pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 
+/* Collapsible text blocks (debug page jobs/prompts/shared context, settings
+   prompt layers): native details/summary in the same .lay style everywhere.
+   The summary row sticks to the top of its block, so a long open block can
+   be closed from wherever the reader is in it. */
+.lay {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 6px 0;
+  /* Clip (not hidden): a hidden scroll container would trap the sticky
+     summary inside the block instead of the viewport. */
+  overflow: clip;
+}
+.lay > summary {
+  cursor: pointer;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.lay > summary:hover {
+  background: var(--sunk);
+}
+.lay.cached > summary {
+  background: var(--accent-soft);
+}
+.lay pre.code {
+  margin: 0;
+  border-radius: 0;
+  max-height: 320px;
+  overflow: auto;
+}
+.laypad { padding: 4px 12px 10px; }
+.jobrow {
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.jobrow:first-of-type {
+  border-top: 0;
+}
+.jobrow pre.code {
+  max-height: 320px;
+  overflow: auto;
+}
+.st {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--sunk);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.st.running {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.st.backing-off,
+.st.error {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.st.done,
+.st.cancelled {
+  background: var(--sunk);
+  color: var(--muted);
+}
+.kind {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
 /* floating: selection bar, hover popover, tooltip, toast */
 #selbar { position: fixed; z-index: 30; display: flex; width: max-content; white-space: nowrap; gap: 2px; padding: 3px; border-radius: 8px; background: var(--ink); box-shadow: 0 6px 18px rgb(0 0 0 / .2); }
 #selbar button { border: 0; background: none; color: var(--surface); font-size: 12.5px; padding: 4px 9px; border-radius: 5px; }
