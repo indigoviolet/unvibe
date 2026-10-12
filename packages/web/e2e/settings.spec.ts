@@ -44,10 +44,10 @@ test("data tab resets after a confirm step", async ({ page }) => {
 
 test("?tab= deep link survives reload", async ({ page }) => {
   await page.goto("/settings?tab=limits");
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
-  await expect(page.getByRole("tabpanel", { name: "Limits and budgets" })).toBeVisible();
+  await page.getByRole("tab", { name: "Limits" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Limits" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("tab", { name: "Limits and budgets" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Limits" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -55,11 +55,11 @@ test("?tab= deep link survives reload", async ({ page }) => {
 });
 
 test("unsaved edits survive a tab switch", async ({ page }) => {
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.getByRole("tab", { name: "Limits" }).click();
   await page.locator("#limit-sessionsPerProvider").fill("9");
   await page.getByRole("tab", { name: "Models" }).click();
   await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.getByRole("tab", { name: "Limits" }).click();
   await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("9");
 });
 
@@ -234,14 +234,14 @@ test("prompts show template variables (expanded text lives on the debug page)", 
 });
 
 test("limits persist across reload", async ({ page }) => {
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.getByRole("tab", { name: "Limits" }).click();
   const input = page.locator("#limit-sessionsPerProvider");
   await input.fill("6");
   await page.getByRole("button", { name: "Save limits" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Limits and budgets" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Limits" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -249,7 +249,7 @@ test("limits persist across reload", async ({ page }) => {
 });
 
 test("limits show service validation errors inline", async ({ page }) => {
-  await page.getByRole("tab", { name: "Limits and budgets" }).click();
+  await page.getByRole("tab", { name: "Limits" }).click();
   // Mock accepts anything, so drive the inline-error path through the
   // real-service spec; here just assert the field + hint render.
   await expect(page.locator("#limit-inlineBudgetTokens")).toBeVisible();

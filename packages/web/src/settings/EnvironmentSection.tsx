@@ -106,7 +106,7 @@ export function EnvironmentSection(): React.JSX.Element {
               disabled={reloading}
               data-testid="reload-everything"
             >
-              {reloading ? "Reloading…" : "Reload everything"}
+              {reloading ? "Reloading…" : "Reload environment"}
             </button>
             <Link className="tbtn" to="/doctor">
               Doctor page

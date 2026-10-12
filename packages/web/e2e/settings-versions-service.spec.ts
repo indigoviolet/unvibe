@@ -132,7 +132,7 @@ test.describe("settings + versions on the real service", () => {
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
-    await page.getByRole("tab", { name: "Limits and budgets" }).click();
+    await page.getByRole("tab", { name: "Limits" }).click();
 
     const input = page.locator("#limit-sessionsPerProvider");
     await input.fill("99");
@@ -144,7 +144,7 @@ test.describe("settings + versions on the real service", () => {
     await expect(page.getByText("Saved")).toBeVisible();
     await page.reload();
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
-    await page.getByRole("tab", { name: "Limits and budgets" }).click();
+    await page.getByRole("tab", { name: "Limits" }).click();
     await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("5");
   });
 
