@@ -6,9 +6,8 @@
  * - Left: the review identity (`owner/name#N` + title, truncated with the
  *   full title on hover), a GitHub link-out for PR reviews, and Debug as
  *   an icon button.
- * - Middle: the `[ Guide | Source ]` pane selector. Guide is selected
- *   whenever the guide pane is visible; Source toggles the source pane
- *   as the old `Source` button did (`#toggleRight` stays on it).
+ * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
+ *   its pane (issue #83); `#toggleRight` stays on the Source segment.
  * - Right: Comments and Submit side by side, Submit as the primary button.
  */
 import { Link } from "react-router-dom";

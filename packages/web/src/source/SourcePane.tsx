@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
 import { performFollowUp } from "../guide/actions.js";
 import { useDiffExpansionBindings } from "../guide/expansions/DiffExpansions.js";
+import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { DescriptionView } from "./description/DescriptionView.js";
 import { DiffView } from "./diff/DiffView.js";
@@ -30,6 +31,9 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
   const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
     pages?.find((p) => p.id === id);
   const onOpenPage = (pageId: string): void => {
+    // "Open as page" from a diff expansion navigates to the guide: bring
+    // the guide pane back when only the source pane is showing (#83).
+    showGuidePane();
     navigate(`/review/${reviewId}/page/${encodeURIComponent(pageId)}`);
   };
   const onFollowUp = (cardId: string, blockId: string, index: number): void => {

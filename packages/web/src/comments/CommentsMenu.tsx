@@ -24,6 +24,7 @@ import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { requestGuideBlock } from "../guide/actions.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { revealSource } from "../source/reveal.js";
+import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
 import { threadPostText } from "./threads.js";
@@ -233,6 +234,8 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       return;
     }
     // Guide thread: open its page, expand a collapsed card, scroll to it.
+    // The menu now lives in the review bar, so jumping to a guide thread
+    // while only the source pane is showing brings the guide back (#83).
     const holder = snap.pages
       .flatMap((p) => p.cards.map((c) => ({ page: p, card: c })))
       .find(({ card }) =>
@@ -240,6 +243,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       );
     if (!holder) return;
     const go = (): void => {
+      showGuidePane();
       if (holder.card.collapsed) {
         api.action(reviewId, { kind: "collapse", cardId: holder.card.id, collapsed: false }).catch(() => {});
       }

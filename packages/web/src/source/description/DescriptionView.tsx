@@ -30,6 +30,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../../comments/readOnly.js";
+import { showGuidePane } from "../../shell/panes.js";
 import { ThreadView } from "../../comments/ThreadView.js";
 import { useViewer } from "../../comments/viewer.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/SelectionToolbar.js";
@@ -277,6 +278,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
     snapshot?.pages.find((p) => p.id === id);
   const onOpenPage = (pageId: string): void => {
+    showGuidePane();
     navigate(`/review/${reviewId}/page/${encodeURIComponent(pageId)}`);
   };
   const onFollowUp = (cardId: string, blockId: string, index: number): void => {
@@ -378,6 +380,9 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         const card = snap?.pages
           .flatMap((p) => p.cards)
           .find((c) => c.id === blockId || c.blocks.some((b) => b.id === blockId));
+        // "Restated →" jumps to the guide: bring the guide pane back when
+        // only the source pane is showing (#83).
+        if (card) showGuidePane();
         if (card) requestGuideBlock(card.id, blockId);
       }}
     >
