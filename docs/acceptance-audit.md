@@ -553,6 +553,15 @@ needed (that deviation is closed, not added).
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
    explain/go_deeper (#69; the template used to recommend one in prose).
+   Inline diagrams in expansions used to 404 on the diagrams route, which
+   only searched page cards; the route now looks every live `Block[]`
+   list up through one shared walker (`shared/src/content/blocks.ts`:
+   page cards, card/expansion second opinions, expansion bodies, asides
+   at any depth — #71; `diagrams.test.ts` expansion cases,
+   `shared/test/blocks.test.ts`, web `ExpansionDiagram.test.tsx`). Ask
+   thread replies still show the raw D2 source (`<pre class="d2">`, no
+   on-demand render — storing thread replies as blocks would be a
+   storage change, deliberately not built).
 7. Update pass (changed/new hunks only) — met (`versions/update.ts`,
    `enqueueUpdatePass`, `versions-update.test.ts`).
 
@@ -955,6 +964,26 @@ buildAnchor`), and highlight marks search only the named card — met
 (`comments-m6.test.ts`, `anchor.test.ts`, `SelectionToolbar.test.tsx`;
 `test:e2e` 150 passed). Anchors stored bare before the fix still match
 every card; no migration.
+
+### Expansion diagrams render on demand (#71)
+
+Inline `d2` blocks in Explain expansions (and go-deeper results, which
+land as ordinary cards) used to 404 on `GET
+/api/reviews/:id/diagrams/:hash`, which only searched page cards — so
+they never rendered. The route now looks every live `Block[]` list up
+through one shared walker (`shared/src/content/blocks.ts`: page cards,
+card/expansion second-opinion reasoning, expansion bodies, asides at any
+depth; undo stacks and thread HTML deliberately excluded) — met
+(`diagrams.test.ts` fake-Explain cases: top-level, aside-nested,
+invalid; `shared/test/blocks.test.ts` one case per container;
+`ExpansionDiagram.test.tsx` pins light + dark rendering with no
+component change). An inline diagram with invalid D2 or a bad citation
+resolves to 409 with the source shown and a note, never 404/500, and
+never breaks its card — no validate-and-repair pass by design.
+Open: ask thread replies still show the raw D2 source (`<pre
+class="d2">`, no fetch). Serving them through the same endpoint would
+need thread replies stored as blocks (a storage change) or parsing the
+HTML back (fragile); left as static source text with working citations.
 
 ### Immediate action feedback (#46, complete)
 
