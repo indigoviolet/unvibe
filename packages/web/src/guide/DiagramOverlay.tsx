@@ -305,7 +305,7 @@ export function DiagramOverlay({ reviewId, block, fetchSvg, onClose }: Props): R
       >
         <div
           ref={docRef}
-          className="dg-ov-doc"
+          className="dg-ov-doc dg-d2"
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})` }}
         >
           <D2Diagram reviewId={reviewId} block={block} fetchSvg={fetchSvg} />
