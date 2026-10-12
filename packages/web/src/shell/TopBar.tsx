@@ -1,4 +1,4 @@
-/** Top bar: home link, review identity, Tips, Settings, Submit review slot, Source toggle. */
+/** Top bar: home link + app-wide Settings on the left; review identity, Tips, Submit review slot, Source toggle on the right. */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ReviewSummary } from "@unvibe/shared";
@@ -56,6 +56,9 @@ export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: P
       <Link className="brand" to="/" title="Back to the start screen">
         Unvibe
       </Link>
+      <Link className="tbtn" to="/settings">
+        Settings
+      </Link>
       <div className="pr">
         {num ? <span className="num">{num}</span> : null}
         <b title={title}>{title}</b>
@@ -64,9 +67,6 @@ export function TopBar({ reviewId, pendingCount, sourceOpen, onToggleSource }: P
       <TipsButton />
       <Link className="tbtn" to={`/review/${encodeURIComponent(reviewId)}/debug`}>
         Debug
-      </Link>
-      <Link className="tbtn" to="/settings">
-        Settings
       </Link>
       <SubmitPanel reviewId={reviewId} />
       <button

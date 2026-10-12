@@ -571,6 +571,9 @@ export function StartPage(): React.JSX.Element {
           <Link className="brand" to="/">
             Unvibe
           </Link>
+          <Link className="tbtn" to="/settings">
+            Settings
+          </Link>
           {realRepos.length > 0 && selectedId ? (
             <select
               aria-label="Repository"
@@ -607,9 +610,6 @@ export function StartPage(): React.JSX.Element {
           ) : null}
           <PreviewBuildBadge />
         </div>
-        <Link className="tbtn" to="/settings">
-          Settings
-        </Link>
       </header>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>

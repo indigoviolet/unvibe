@@ -103,12 +103,12 @@ export function DoctorPage(): React.JSX.Element {
         <Link className="brand" to="/" title="Back to the start screen">
           Unvibe
         </Link>
-        <div className="pr">
-          <h1>Doctor</h1>
-        </div>
         <Link className="tbtn" to="/settings?tab=environment">
           Settings
         </Link>
+        <div className="pr">
+          <h1>Doctor</h1>
+        </div>
       </header>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 860 }}>
