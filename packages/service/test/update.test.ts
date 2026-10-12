@@ -278,6 +278,23 @@ describe("readInstalledBuild", () => {
     });
   });
 
+  it("resolves the global bin symlink to the installed package", () => {
+    const root = tmpDir("unvibe-installed-link-");
+    const { scriptPath } = makeInstall(root, {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.abc1234",
+      unvibe: { channel: "preview/feat-x" },
+    });
+    // <prefix>/bin/unvibe -> ../lib/node_modules/unvibe/.../index.js, as npm lays it out.
+    const binDir = path.join(root, "prefix", "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const link = path.join(binDir, "unvibe");
+    fs.symlinkSync(scriptPath, link);
+    const got = readInstalledBuild(link, "fallback");
+    expect(got.channel).toBe("preview/feat-x");
+    expect(got.version).toBe("0.0.1-preview.feat-x.abc1234");
+  });
+
   it("falls back cleanly without metadata, garbage, or package", () => {
     const root = tmpDir("unvibe-installed-old-");
     const plain = makeInstall(root, { name: "unvibe", version: "0.0.1" });

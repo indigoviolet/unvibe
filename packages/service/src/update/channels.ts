@@ -81,9 +81,20 @@ export function parseChannelList(stdout: string): string[] {
   return out;
 }
 
-/** Walk up from the CLI script to the `unvibe` package.json, if any. */
+/**
+ * Walk up from the CLI script to the `unvibe` package.json, if any. The
+ * global `bin/unvibe` entry is a symlink into the installed tree, so the
+ * path is resolved first — otherwise the walk starts in `<prefix>/bin/`
+ * and never finds the package.
+ */
 export function findInstalledPackagePath(scriptPath: string): string | null {
-  let dir = path.dirname(path.resolve(scriptPath));
+  let start: string;
+  try {
+    start = fs.realpathSync(path.resolve(scriptPath));
+  } catch {
+    start = path.resolve(scriptPath);
+  }
+  let dir = path.dirname(start);
   for (let i = 0; i < 6; i++) {
     const candidate = path.join(dir, "package.json");
     try {
