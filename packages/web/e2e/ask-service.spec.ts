@@ -127,10 +127,11 @@ test.describe("ask over the real service", () => {
   test("ask answers with citations through the streamed patch path", async ({ page }) => {
     test.setTimeout(120_000);
     await openReview(page);
-    // Record transient streaming UI: the working indicator and the stream
-    // tail render only while the job runs (the replay backend answers in
-    // ~a second, faster than an assertion round trip), so observe the DOM
-    // continuously from before the Ask click.
+    // Record transient processing UI: the working indicator renders only
+    // while the job runs (the replay backend answers in ~a second, faster
+    // than an assertion round trip), so observe the DOM continuously from
+    // before the Ask click. Streamed agent text must never render (issue
+    // #46): the indicator carries a fixed label only.
     await page.evaluate(() => {
       (window as unknown as { __m4seen?: { working: boolean; stream: boolean } }).__m4seen = {
         working: false,
@@ -165,12 +166,13 @@ test.describe("ask over the real service", () => {
     await expect(marker.first()).toBeVisible({ timeout: 30_000 });
     await expect(marker.first()).toHaveAttribute("data-refs", /diff:/);
     await expect(thread.locator(".working")).toHaveCount(0);
-    // And the working + stream states really rendered mid-flight.
+    // And the working state really rendered mid-flight, with no streamed
+    // agent text anywhere (issue #46).
     const seen = await page.evaluate(
       () => (window as unknown as { __m4seen?: { working: boolean; stream: boolean } }).__m4seen,
     );
     expect(seen?.working).toBe(true);
-    expect(seen?.stream).toBe(true);
+    expect(seen?.stream).toBe(false);
   });
 
   test("explain runs without breaking", async ({ page }) => {

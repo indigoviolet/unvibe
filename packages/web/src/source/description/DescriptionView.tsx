@@ -35,8 +35,10 @@ import { useViewer } from "../../comments/viewer.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/SelectionToolbar.js";
 import { toast } from "../../floating/Toast.js";
 import { Icon } from "../../components/Icon.js";
+import { WorkingPlaceholder } from "../../components/WorkingPlaceholder.js";
 import { requestGuideBlock, performFollowUp } from "../../guide/actions.js";
 import { DescriptionExpansions } from "../../guide/expansions/DescriptionExpansions.js";
+import { inflightForAnchor, inflightLabel } from "../../guide/inflight.js";
 import { useReview } from "../../state/store.js";
 import { cleanEditedHtml, DescriptionEditor as DefaultEditor } from "./DescriptionEditor.js";
 import { canEditDescription } from "./canEdit.js";
@@ -271,6 +273,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   const innerRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const snapshot = useReview((s) => s.snapshot);
+  const inflight = useReview((s) => s.inflight);
   const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
     snapshot?.pages.find((p) => p.id === id);
   const onOpenPage = (pageId: string): void => {
@@ -414,6 +417,21 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
                 onFollowUp={onFollowUp}
               />
             ) : null}
+            {(() => {
+              // An explain started from a selection in this paragraph shows
+              // a placeholder where the expansion will land (issue #46).
+              if (!seg.id || readOnly) return null;
+              const incoming = inflightForAnchor(inflight, {
+                where: "description",
+                paragraphId: seg.id,
+              });
+              if (incoming?.kind !== "explain") return null;
+              return (
+                <div className="dann">
+                  <WorkingPlaceholder label={inflightLabel(incoming.kind)} />
+                </div>
+              );
+            })()}
             {showPending && pending && !readOnly ? (
               <div className="dann">
                 <NewThreadComposer

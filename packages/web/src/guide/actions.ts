@@ -5,14 +5,23 @@
  *
  * Read / collapse / bookmark update the snapshot optimistically so the UI
  * responds instantly; a failed request resyncs from the service and toasts.
- * Depth / examples / diagram / undo / generate are service-driven (jobs +
- * WS patches); in mock mode the stub answers `accepted: false` and the UI
- * toasts that generation needs the service.
+ * Every action that starts an agent session sets an in-flight entry
+ * synchronously at click time (issue #46), hands it over to the snapshot
+ * job once it appears, and clears it when the job settles, the request
+ * fails, or the answer needs no job (`accepted: false`, `reused`, no
+ * `jobId`). `deduplicated` answers follow the existing job.
  */
 import type { ActionResponse, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
-import { useReview } from "../state/store.js";
+import { INFLIGHT_TTL_MS, inflightExpired, useReview, type InFlightKind } from "../state/store.js";
+import {
+  askKey,
+  conceptKey,
+  explainKey,
+  followupKey,
+  updateKey,
+} from "./inflight.js";
 
 function optimistic(fn: (snap: ReviewSnapshot) => ReviewSnapshot): void {
   const { snapshot, setSnapshot } = useReview.getState();
@@ -88,9 +97,172 @@ function notAvailable(res: ActionResponse): boolean {
   return false;
 }
 
+/** In-flight target for an action, or null when the kind is purely local. */
+function targetForAction(action: ReviewAction): { targetId: string; kind: InFlightKind } | null {
+  switch (action.kind) {
+    case "depth":
+    case "examples":
+    case "diagram":
+    case "generate":
+    case "second_opinion":
+      return { targetId: action.cardId, kind: action.kind };
+    case "followup":
+      return { targetId: followupKey(action.cardId, action.blockId, action.index), kind: "followup" };
+    case "explain":
+      return { targetId: explainKey(action.anchor), kind: "explain" };
+    case "ask":
+      return { targetId: askKey(action.anchor), kind: "ask" };
+    case "reply":
+      return { targetId: action.threadId, kind: "reply" };
+    case "retry":
+      return { targetId: action.threadId, kind: "retry" };
+    case "concept":
+      return { targetId: conceptKey(action.slug), kind: "concept" };
+    default:
+      // read, collapse, bookmark, note, promote, close, delete, undo:
+      // purely local, no agent session.
+      return null;
+  }
+}
+
+/** Server id an anchor-keyed entry moves to once the response arrives. */
+function serverIdFor(action: ReviewAction, res: ActionResponse): string | null {
+  switch (action.kind) {
+    case "explain":
+      return res.annotationId ?? null;
+    case "ask":
+      return res.threadId ?? res.annotationId ?? null;
+    case "followup":
+      return res.annotationId ?? null;
+    case "concept":
+      return res.pageId ?? null;
+    default:
+      return null;
+  }
+}
+
+/** Current revision of a page card or expansion (insert toast baseline). */
+function currentRevision(cardId: string): number | undefined {
+  const snap = useReview.getState().snapshot;
+  for (const p of snap?.pages ?? []) {
+    const card = p.cards.find((c) => c.id === cardId);
+    if (card) return card.revision;
+  }
+  const ann = snap?.annotations.find((a) => a.id === cardId);
+  if (ann?.type === "expansion" && ann.expansion) return ann.expansion.revision;
+  return undefined;
+}
+
+/**
+ * Resolve once an in-flight entry is gone (job settled and reaped, or an
+ * explicit clear). Force-clears on timeout so waiters never hang; the
+ * store's own TTL is the backstop for entries nobody waits on.
+ */
+function waitForInflightGone(targetId: string, timeoutMs: number): Promise<void> {
+  if (!useReview.getState().inflight[targetId]) return Promise.resolve();
+  return new Promise((resolve) => {
+    let done = false;
+    let timer: number | undefined;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      unsub();
+      window.clearTimeout(timer);
+      resolve();
+    };
+    // Same rule as the store TTL: only force-clear when no live job is
+    // attached; a still-running job keeps the wait (and the indicator).
+    const arm = (): void => {
+      timer = window.setTimeout(() => {
+        if (done) return;
+        const st = useReview.getState();
+        const entry = st.inflight[targetId];
+        if (!entry) {
+          finish();
+          return;
+        }
+        if (!inflightExpired(entry, st.snapshot?.jobs ?? [], Date.now())) {
+          arm();
+          return;
+        }
+        st.clearInflight(targetId);
+        finish();
+      }, timeoutMs);
+    };
+    const unsub = useReview.subscribe((s) => {
+      if (!s.inflight[targetId]) finish();
+    });
+    arm();
+  });
+}
+
+/**
+ * Quiet window before concluding an insert added nothing: the job-done
+ * event can be processed before the patch that bumps the revision. Job
+ * events apply immediately, while patches gate on `baseRev` and can queue
+ * behind a gap — and the service emits them in no guaranteed relative
+ * order (`runInFork` settles the job while the fill continuation
+ * mutates; see `pipeline/actions/examples.ts`). A repeat that truly adds
+ * nothing (`insertExamples` with `added === 0`) emits no content patch at
+ * all, so the watch ends on quiet, not on content.
+ */
+const INSERT_QUIET_MS = 1500;
+const INSERT_MAX_MS = 10_000;
+
+/**
+ * True once the insert's content could have landed: the revision moved,
+ * or the job settled with nothing queued and a quiet window passed, or
+ * the cap elapsed. Never hangs; callers compare revisions afterwards.
+ */
+function waitForInsertOutcome(cardId: string, beforeRevision: number, jobId: string): Promise<boolean> {
+  const t0 = Date.now();
+  let lastSnap = useReview.getState().snapshot;
+  let lastChange = t0;
+  return new Promise((resolve) => {
+    let done = false;
+    let timer: number | undefined;
+    const finish = (moved: boolean): void => {
+      if (done) return;
+      done = true;
+      unsub();
+      window.clearTimeout(timer);
+      resolve(moved);
+    };
+    const check = (): void => {
+      if (done) return;
+      const st = useReview.getState();
+      if (st.snapshot !== lastSnap) {
+        lastSnap = st.snapshot;
+        lastChange = Date.now();
+      }
+      if (currentRevision(cardId) !== beforeRevision) {
+        finish(true);
+        return;
+      }
+      const job = st.snapshot?.jobs.find((j) => j.id === jobId);
+      const settled =
+        !job || job.state === "done" || job.state === "error" || job.state === "cancelled";
+      const quiet = Date.now() - lastChange >= INSERT_QUIET_MS;
+      if ((settled && st.pending.length === 0 && quiet) || Date.now() - t0 >= INSERT_MAX_MS) {
+        finish(false);
+        return;
+      }
+      timer = window.setTimeout(check, 250);
+    };
+    const unsub = useReview.subscribe(() => check());
+    check();
+  });
+}
+
+export interface PerformOptions {
+  /** False skips the failure toast (the caller toasts); still resyncs. */
+  toast?: boolean;
+}
+
 export async function performAction(
   reviewId: string,
   action: ReviewAction,
+  opts?: PerformOptions,
 ): Promise<ActionResponse> {
   if (action.kind === "read" || action.kind === "collapse") {
     optimistic((snap) => ({
@@ -113,18 +285,47 @@ export async function performAction(
       pages: snap.pages.map((p) => (p.id === action.pageId ? { ...p, saved: action.saved } : p)),
     }));
   }
+  // Set synchronously: `performAction` is called (not awaited) in click
+  // handlers, so everything before the first await runs at click time.
+  const target = targetForAction(action);
+  const beforeRevision =
+    target && (action.kind === "examples" || action.kind === "diagram")
+      ? currentRevision(target.targetId)
+      : undefined;
+  if (target) useReview.getState().beginInflight(target.targetId, target.kind);
+  // Generation guard: a newer click may re-begin the same key while this
+  // request is in flight; only this generation's response may settle it.
+  const mySeq = target ? useReview.getState().inflight[target.targetId]?.seq : undefined;
+  const mine = (): boolean =>
+    !target || useReview.getState().inflight[target.targetId]?.seq === mySeq;
   let res: ActionResponse;
   try {
     res = await api.action(reviewId, action);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/no agent configured/i.test(msg)) {
-      toast("No agent configured — set up Claude or Codex in Settings → Models to generate.");
-    } else {
-      toast(`Action failed: ${friendlyError(err)}`);
+    if (target && mine()) useReview.getState().clearInflight(target.targetId);
+    if (opts?.toast !== false) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/no agent configured/i.test(msg)) {
+        toast("No agent configured — set up Claude or Codex in Settings → Models to generate.");
+      } else {
+        toast(`Action failed: ${friendlyError(err)}`);
+      }
     }
     await resync(reviewId);
     throw err;
+  }
+  if (target && mine()) {
+    const st = useReview.getState();
+    if (!res.accepted || res.reused || !res.jobId) {
+      // No job to follow (mock instant state, stored result, undo): the
+      // content is already patched or arrives with the next snapshot.
+      st.clearInflight(target.targetId);
+    } else {
+      const serverId = serverIdFor(action, res);
+      const finalId = serverId ?? target.targetId;
+      if (serverId && serverId !== target.targetId) st.retargetInflight(target.targetId, serverId);
+      st.attachInflightJob(finalId, res.jobId);
+    }
   }
   if (
     (action.kind === "read" || action.kind === "collapse" || action.kind === "bookmark") &&
@@ -146,7 +347,37 @@ export async function performAction(
       toast("Nothing more to add to this card.");
     }
   }
+  if (beforeRevision !== undefined && res.jobId && target) {
+    // The fill is async: watch the entry until its job settles, then wait
+    // out trailing patches before concluding nothing was added (the done
+    // event can precede the revision-bumping patch).
+    const jobId = res.jobId;
+    const cardId = target.targetId;
+    void waitForInflightGone(cardId, INFLIGHT_TTL_MS).then(async () => {
+      const moved = await waitForInsertOutcome(cardId, beforeRevision, jobId);
+      if (moved) return;
+      const job = useReview.getState().snapshot?.jobs.find((j) => j.id === jobId);
+      if (job?.state === "done" && currentRevision(cardId) === beforeRevision) {
+        toast("Nothing more to add to this card.");
+      }
+    });
+  }
   return res;
+}
+
+/**
+ * Examples/diagrams insert blocks after the paragraphs they relate to and
+ * never duplicate one already there (fire-and-forget; failures toast
+ * through `performAction`).
+ */
+export function performInsertAction(
+  reviewId: string,
+  cardId: string,
+  kind: "examples" | "diagram",
+): void {
+  void performAction(reviewId, { kind, cardId }).catch(() => {
+    // performAction already toasted; the control stays so the user can retry.
+  });
 }
 
 /**
@@ -195,7 +426,22 @@ export function performFollowUp(
 
 /** Stale-card Update button (PRD §8): runs the service update pass. */
 export function performUpdate(reviewId: string): void {
-  api.update(reviewId).catch((err: unknown) => {
-    toast(`Update failed: ${friendlyError(err)}`);
-  });
+  const key = updateKey(reviewId);
+  useReview.getState().beginInflight(key, "update");
+  const mySeq = useReview.getState().inflight[key]?.seq;
+  const mine = (): boolean => useReview.getState().inflight[key]?.seq === mySeq;
+  api
+    .update(reviewId)
+    .then((res) => {
+      if (!mine()) return;
+      if (res.jobId) useReview.getState().attachInflightJob(key, res.jobId);
+      else useReview.getState().clearInflight(key);
+      // The update pass clears staleness when it lands; the entry follows
+      // its job and the TTL is the backstop.
+      void waitForInflightGone(key, INFLIGHT_TTL_MS);
+    })
+    .catch((err: unknown) => {
+      if (mine()) useReview.getState().clearInflight(key);
+      toast(`Update failed: ${friendlyError(err)}`);
+    });
 }

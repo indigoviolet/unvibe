@@ -24,9 +24,10 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { ActionAnchor } from "@unvibe/shared";
-import { api, friendlyError } from "../api/client.js";
+import { friendlyError } from "../api/client.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
+import { performAction } from "../guide/actions.js";
 import { toast } from "./Toast.js";
 import { useReview } from "../state/store.js";
 
@@ -233,8 +234,14 @@ export function SelectionToolbar() {
       toast("The review hasn't loaded yet.");
       return;
     }
-    api
-      .action(reviewId, { kind: "explain", quote: current.quote, anchor: current.anchor })
+    // The in-flight entry (keyed by anchor) is set synchronously, so a
+    // placeholder shows where the explanation will land before the
+    // request returns.
+    performAction(
+      reviewId,
+      { kind: "explain", quote: current.quote, anchor: current.anchor },
+      { toast: false },
+    )
       .then((res) => {
         if (!res.accepted) toast("Couldn't create the explanation.");
       })

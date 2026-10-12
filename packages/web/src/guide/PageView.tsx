@@ -9,10 +9,11 @@ import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Card, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
-import { useReview } from "../state/store.js";
+import { isLiveJobState, useReview } from "../state/store.js";
 import { performAction, performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
+import { inflightLabel } from "./inflight.js";
 
 interface Props {
   reviewId: string;
@@ -54,7 +55,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   const saved = isSaved(page);
   const allPages = useReview((s) => s.snapshot?.pages);
   const jobs = useReview((s) => s.snapshot?.jobs ?? []);
-  const streams = useReview((s) => s.streams);
+  const inflight = useReview((s) => s.inflight);
   const contributions = useReview((s) => s.snapshot?.contributions ?? []);
   const { cards, links } = contentsModel(page, lookupPage, allPages);
 
@@ -79,18 +80,22 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
 
   const goDeeperIndex = page.cards.findIndex((c) => c.pending);
 
-  // Concept pages are written on first open: while the `concept` job runs
-  // for an empty stub card, show the working state with streamed text.
+  // Concept pages are written on first open: while the `concept` action is
+  // in flight (or its job runs) for an empty stub card, show a plain
+  // working state with a fixed label — never streamed or progress text.
   const conceptWorking = (() => {
     if (page.kind !== "concept" && page.kind !== "opened-expansion") return null;
     const stub = page.cards[0];
     if (!stub || stub.blocks.length > 0) return null;
+    const entry = inflight[page.id] ?? inflight[stub.id];
+    if (entry) return inflightLabel(entry.kind);
     const job = jobs.find(
-      (j) => (j.cardId === stub.id || j.dedupeKey?.includes(`concept:${page.id.slice(2)}`)) && (j.state === "running" || j.state === "queued"),
+      (j) =>
+        (j.cardId === stub.id || j.dedupeKey?.includes(`concept:${page.id.slice(2)}`)) &&
+        isLiveJobState(j.state),
     );
-    const stream = streams[stub.id];
-    if (!job && !stream) return null;
-    return job?.progress ?? (stream ? stream.slice(-160) : "Writing the concept page…");
+    if (!job) return null;
+    return inflightLabel("concept");
   })();
 
   // Small unobtrusive indicator when a conversation contributed facts/open

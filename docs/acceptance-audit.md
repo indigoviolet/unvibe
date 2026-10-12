@@ -891,6 +891,59 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
   Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
   spec for invalid input and path-checkout remove.
 
+### Immediate action feedback (#46, complete)
+
+Every agent-starting control reacts on click, before the request
+returns: one client-side in-flight entry per target (zustand store,
+`web/src/state/store.ts` + `web/src/guide/inflight.ts`), set
+synchronously in the click handler through `performAction`
+(`web/src/guide/actions.ts`), handed to the snapshot job once the
+response attaches a `jobId`, cleared when the job settles, the request
+throws, or the answer needs no job (`accepted: false`, `reused`, no
+`jobId`; `deduplicated` follows the existing job). Entries survive
+snapshot resyncs, adopt jobs created after the snapshot was fetched
+(WS `job` upsert), reconcile at attach time when the fill beat the
+response, ignore stale generations (seq guard), and lapse via a 120 s
+TTL that applies only with no live job attached — a queued/running/
+backing-off job holds its entry indefinitely. The old
+revision-polling loop is replaced by a store-driven settle wait plus a
+quiescence window keeping the "Nothing more to add" toast without false
+positives (the done event can precede the revision-bumping patch).
+Covered kinds (verified against `pipeline/actions/`): depth, examples,
+diagram, generate, followup, explain, ask, reply, retry, second_opinion,
+concept, and the update pass. Local-only kinds (read, collapse,
+bookmark, note, promote, close, delete, undo) need nothing.
+UI: the clicked control shows dots with `aria-busy` and conflicting
+controls go disabled; rewrites (depth/examples/diagram) get an accent
+left border plus a pale wash with the text readable (the wash is what
+sets expansions apart from their resting accent border, statically too);
+new content gets a placeholder where it lands (pending card, explain
+slot, one dashed answer-shaped placeholder per follow-up, verdict spot,
+concept stub, thread). All processing states carry short fixed
+labels — no streamed agent text, thinking text, or `job.progress`
+anywhere in guide/comments (the debug Jobs view still shows progress as
+diagnostics). Mock mode reports real running→done snapshot jobs for
+every agent action so the same handover runs. Service jobs now carry
+`cardId` on the job itself (queue + persisted JSON column + recovery;
+#62 closed here), so a reload mid-rewrite matches the live job.
+ Evidence: `state/inflight.test.ts` (lifecycle incl. live-job TTL hold),
+ `guide/inflight.test.ts` (labels/keys/busy/answer detection),
+ `guide/actions.test.ts` (funnel incl. stale-response guard and insert
+ ordering), `service/test/jobs.test.ts` (card scope incl. persistence),
+ `CardView.test.tsx` (incl. reload-mid-rewrite) + `ThreadView.test.tsx` +
+ `GuideThreads.test.tsx` (component immediacy), new
+ `e2e/immediate-feedback.spec.ts` (mock-mode explain/follow-up/second
+ opinion), updated `ask-service.spec.ts` (streams never render), full
+ `test:e2e` green incl. the depth-principle + journey service specs
+ (which caught and verify the job-upsert handover fix). Screenshots in
+ the issue report (before/after for depth, examples, generate,
+ follow-up, explain; replay fills run sub-second, captured via CDP
+ bursts).
+ Open: `threadId` persistence has the same pre-existing gap as `cardId`
+ had (not carried through the jobs-store JSON column) — noticed, not
+ fixed. Hunk summarize busy never clears on success (#63, adjacent,
+ untracked here).
+
 ### Fixed in this branch (done, in `check`)
 
 Stale-dist guard; Host/Origin gate; MCP secret lifecycle; submit crash

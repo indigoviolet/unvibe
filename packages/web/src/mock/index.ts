@@ -507,7 +507,9 @@ function seedJobs(): Job[] {
       priority: 100,
       state: "running",
       sessionId: "sess-reader-1",
-      cardId: "central",
+      // Explain fills are annotation-scoped on the service (threadId, never
+      // cardId): keep the seed faithful so no card shows a stuck busy state.
+      threadId: "ann_seed_thread",
       promptSnapshot: "Explain the quoted text with citations to the diff.",
       usage: { inputTokens: 42500, cachedTokens: 38900, outputTokens: 1200 },
       cacheHitRate: 0.915,
@@ -918,6 +920,51 @@ function emitPages(): void {
     headRev: rev,
     ops: [{ op: "replace", path: "/pages", value: JSON.parse(JSON.stringify(mockPages)) }],
   });
+}
+
+/** Emit the jobs list through the WS-patch path (job handover converges). */
+function emitJobs(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [{ op: "replace", path: "/jobs", value: JSON.parse(JSON.stringify(mockJobs)) }],
+  });
+}
+
+/**
+ * Mock agent job (issue #46): like the service, every agent-starting mock
+ * action reports a real snapshot job (`running` now, `done` when its fill
+ * lands) so the web's in-flight → job handover runs the same path as live.
+ */
+function trackMockJob(
+  jobId: string,
+  kind: Job["kind"],
+  opts?: { cardId?: string; threadId?: string; dedupeKey?: string },
+): void {
+  if (mockJobs.some((j) => j.id === jobId)) return;
+  mockJobs.push({
+    id: jobId,
+    kind,
+    provider: "claude",
+    model: "mock-main",
+    reviewId: "demo",
+    priority: 100,
+    state: "running",
+    ...(opts?.cardId !== undefined ? { cardId: opts.cardId } : {}),
+    ...(opts?.threadId !== undefined ? { threadId: opts.threadId } : {}),
+    ...(opts?.dedupeKey !== undefined ? { dedupeKey: opts.dedupeKey } : {}),
+  });
+  emitJobs();
+}
+
+function settleMockJob(jobId: string): void {
+  const job = mockJobs.find((j) => j.id === jobId);
+  if (!job || job.state === "done") return;
+  job.state = "done";
+  emitJobs();
 }
 
 /** Emit contributions (accept/dismiss flips status without a refetch). */
@@ -1444,7 +1491,10 @@ export const mockApi = {
 
   update: async (id: string): Promise<UpdateReviewResponse> => {
     await wait(100);
-    return { jobId: `mock-update-${id}`, toVersion: isStaleReview(id) ? 2 : 1 };
+    const jobId = `mock-update-${id}`;
+    trackMockJob(jobId, "update-pass");
+    window.setTimeout(() => settleMockJob(jobId), 800);
+    return { jobId, toVersion: isStaleReview(id) ? 2 : 1 };
   },
 
   action: async (_id: string, a: ReviewAction): Promise<ActionResponse> => {
@@ -1483,7 +1533,9 @@ export const mockApi = {
         createdAt: Date.now(),
         jobId,
       };
+      trackMockJob(jobId, "second-opinion", { cardId: a.cardId });
       window.setTimeout(() => {
+        settleMockJob(jobId);
         // Expansions store the result on the expansion body (survives
         // depth/undo); page cards store on the card.
         const exp = annotations.find((x) => x.id === a.cardId && x.type === "expansion");
@@ -1568,8 +1620,9 @@ export const mockApi = {
     // Ask turns (M4): create/answer through the patch path like the
     // service (working flag, delayed canned answer, patch delivery).
     if (a.kind === "ask" || a.kind === "reply" || a.kind === "retry") {
-      const answerLater = (tid: string, text: string, quote: string): void => {
+      const answerLater = (tid: string, text: string, quote: string, jobId: string): void => {
         void wait(700).then(() => {
+          settleMockJob(jobId);
           const target = annotations.find((x) => x.id === tid);
           if (!target || target.type !== "thread") return;
           target.messages.push({ who: "ai", html: mockAnswerFor(text, quote) });
@@ -1591,7 +1644,10 @@ export const mockApi = {
           emitAnnotations();
           const tid = thread.id;
           const quote = thread.anchor.quotedText;
+          const retryJobId = `mock-retry-${thread.id}`;
+          trackMockJob(retryJobId, "ask", { cardId: thread.id, threadId: thread.id });
           window.setTimeout(() => {
+            settleMockJob(retryJobId);
             const live = annotations.find((x) => x.id === tid);
             if (!live || live.type !== "expansion" || !live.expansion) return;
             live.expansion.blocks = mockExplainBlocks(quote) as never;
@@ -1600,7 +1656,7 @@ export const mockApi = {
             live.expansion.working = null;
             emitAnnotations();
           }, 700);
-          return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-retry-${thread.id}` };
+          return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: retryJobId };
         } else {
           if (!thread || thread.type !== "thread") throw new Error(`unknown comment ${threadId}`);
           if (a.kind === "retry" && !thread.error) throw new Error(`thread ${thread.id} has no failed reply to retry`);
@@ -1612,8 +1668,10 @@ export const mockApi = {
           thread.open = true;
           emitAnnotations();
           const lastYou = [...thread.messages].reverse().find((m) => m.who === "you" && m.text);
-          answerLater(thread.id, lastYou?.text ?? "", thread.anchor.quotedText);
-          return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-${a.kind}-${thread.id}` };
+          const threadJobId = `mock-${a.kind}-${thread.id}`;
+          trackMockJob(threadJobId, "ask", { threadId: thread.id });
+          answerLater(thread.id, lastYou?.text ?? "", thread.anchor.quotedText, threadJobId);
+          return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: threadJobId };
         }
       }
       if (a.kind === "ask") {
@@ -1643,8 +1701,10 @@ export const mockApi = {
         };
         annotations.push(thread);
         emitAnnotations();
-        answerLater(thread.id, a.message, a.quote);
-        return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: `mock-ask-${thread.id}` };
+        const askJobId = `mock-ask-${thread.id}`;
+        trackMockJob(askJobId, "ask", { threadId: thread.id });
+        answerLater(thread.id, a.message, a.quote, askJobId);
+        return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: askJobId };
       }
     }
     // M4 interaction (mock): explain, depth, examples, diagram, undo,
@@ -1689,14 +1749,9 @@ export const mockApi = {
         },
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
-      // Streamed deltas, then the final blocks (same patch path as live).
-      const deltas = ["Reading the diff…", "Checking citations…"];
-      deltas.forEach((d, i) => {
-        window.setTimeout(() => {
-          useReview.getState().applyEvent({ type: "text", jobId, threadId: id, delta: d.slice(0, 24) } as never);
-        }, 120 * (i + 1));
-      });
+      trackMockJob(jobId, "explain", { threadId: id });
       window.setTimeout(() => {
+        settleMockJob(jobId);
         const found = annotations.find((x) => x.id === id);
         if (!found || found.type !== "expansion" || !found.expansion) return;
         if (!found.open) {
@@ -1727,10 +1782,9 @@ export const mockApi = {
       if (!card) throw new Error(`unknown card ${a.cardId}`);
       if (!card.pending) return { accepted: true, jobId: `mock-generate-${card.id}` };
       const jobId = `mock-generate-${card.id}`;
+      trackMockJob(jobId, "go-deeper", { cardId: card.id });
       window.setTimeout(() => {
-        useReview.getState().applyEvent({ type: "text", jobId, cardId: card.id, delta: "Reading the diff…" } as never);
-      }, 120);
-      window.setTimeout(() => {
+        settleMockJob(jobId);
         const target = mockPages.flatMap((p) => p.cards).find((c) => c.id === card.id);
         if (!target || !target.pending) return;
         delete target.pending;
@@ -1779,7 +1833,9 @@ export const mockApi = {
         expansion: { blocks: [], level: "standard", read: false, collapsed: false, revision: 1, undoStack: [], working: "Thinking…" },
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
+      trackMockJob(jobId, "ask", { cardId, threadId: id });
       window.setTimeout(() => {
+        settleMockJob(jobId);
         const found = annotations.find((x) => x.id === id);
         if (!found || found.type !== "expansion" || !found.expansion) return;
         found.expansion.blocks = mockExplainBlocks(item.label) as never;
@@ -1808,7 +1864,9 @@ export const mockApi = {
         page = mockPages.find((p) => p.id === pageId)!;
       }
       const jobId = `mock-concept-${slug}`;
+      trackMockJob(jobId, "concept", { cardId: `cc-${slug}`, dedupeKey: `concept:${slug}|concept-page||v1` });
       window.setTimeout(() => {
+        settleMockJob(jobId);
         const live = mockPages.find((p) => p.id === pageId);
         if (!live) return;
         live.title = `${slug} (mock concept)`;
