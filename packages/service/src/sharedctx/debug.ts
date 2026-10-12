@@ -5,8 +5,8 @@
  * page renders the three strings as-is; the web side does no formatting of
  * its own beyond rendering Markdown and plain section headings. Prefer the
  * text the agents actually receive: log lines reuse `formatLogEntry`, and
- * the base pack is the `buildBasePack` output (shown in fenced blocks so
- * diff/code lines are never mangled by the Markdown renderer).
+ * the base pack is the `buildBasePack` output. Both are shown verbatim in
+ * fenced blocks; anything the page adds (status, counts) stays outside them.
  *
  * No behaviour change: nothing here decides what enters the log, rebuild
  * rules, or contribution validation — it only renders existing state.
@@ -119,9 +119,11 @@ export interface LogSectionInput {
 }
 
 /**
- * Log section: every entry in order via `formatLogEntry`, each marked
- * `in base` (already appended), `ready to append` (a full batch waiting
- * for the next grow turn), or `waiting for batch` (below the threshold).
+ * Log section: every entry in order, grouped under a plain heading per
+ * status: `In base` (already appended), `Ready to append` (a full batch
+ * waiting for the next grow turn), `Waiting for batch` (below the
+ * threshold). Each group is a fenced block of `formatLogEntry` lines, the
+ * exact text agents receive: status never goes on the lines themselves.
  * Readiness reuses `planGrowth`, the same pure planner the grow path uses.
  */
 export function buildLogMarkdown(input: LogSectionInput): string {
@@ -142,16 +144,15 @@ export function buildLogMarkdown(input: LogSectionInput): string {
       ` Batch threshold ${input.batchTokens} tokens${pending > 0 ? `; ${pending} tokens waiting` : ""}.`,
     "",
   );
-  for (const entry of input.log) {
-    const marker =
-      entry.seq <= input.appendedThroughSeq
-        ? "in base"
-        : ready.has(entry.seq)
-          ? "ready to append"
-          : "waiting for batch";
-    out.push(`${formatLogEntry(entry)} · ${marker}`);
+  const groups: Array<[string, LogEntry[]]> = [
+    ["In base", input.log.filter((e) => e.seq <= input.appendedThroughSeq)],
+    ["Ready to append", input.log.filter((e) => e.seq > input.appendedThroughSeq && ready.has(e.seq))],
+    ["Waiting for batch", input.log.filter((e) => e.seq > input.appendedThroughSeq && !ready.has(e.seq))],
+  ];
+  for (const [heading, entries] of groups) {
+    if (entries.length === 0) continue;
+    out.push(`### ${heading} (${entries.length})`, "", fence(entries.map(formatLogEntry).join("\n")), "");
   }
-  out.push("");
   return out.join("\n");
 }
 
