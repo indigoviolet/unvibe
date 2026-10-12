@@ -39,6 +39,15 @@ stanzas stay rejected by the pre-check (they can smuggle fonts).
 5. Any failure in 2 to 4 triggers exactly one repair turn carrying the validator or compiler message.
 6. Render light and dark, rewrite citation anchors to `<a href="#" data-refs data-src>`, strip `<title>` tooltips that contain tokens, sanitise, and cache by content hash. The web app fetches `GET /api/reviews/:id/diagrams/:hash?theme=`.
 
+The sanitiser keeps everything D2 needs for layout: tspan `x`/`dy`
+(multi-line labels), `mask` + `maskUnits` (the gap edges leave behind
+their labels). The data-dir cache filenames carry
+`DIAGRAM_POSTPROCESS_VERSION` (`<hash>.v<version>.<theme>.svg`), so
+renders cached by an older sanitiser are never served stale — legacy
+unversioned files are swept on start. Fixture seeds keep the unversioned
+layout; they ship with the code, so re-record them (`mise run
+fixture-snapshot`) whenever the sanitiser keeps more or less.
+
 ## Defences
 
 The source is agent-written, and the binary will act on it. Observed with d2 0.9.0:
