@@ -44,6 +44,7 @@ function formatTextReport(report: DiagnosticsResponse): string {
     t.candidates.forEach((c, i) => {
       lines.push(`  [${i + 1}] ${c.path} (${c.source}; ${c.kind}) runs=${c.runs}${c.exitCode !== undefined ? ` exit=${c.exitCode}` : ""}${c.version ? ` version=${c.version}` : ""}${c.meetsMin !== undefined ? ` meetsMin=${c.meetsMin}` : ""}`);
       if (c.symlinkTarget) lines.push(`      -> ${c.symlinkTarget}`);
+      if (c.resolvedPath) lines.push(`      resolves to ${c.resolvedPath} (what sessions run)`);
       if (c.stdout) lines.push(`      stdout: ${c.stdout.slice(0, 2000)}`);
       if (c.stderr) lines.push(`      stderr: ${c.stderr.slice(0, 2000)}`);
     });
@@ -211,6 +212,7 @@ export function DoctorPage(): React.JSX.Element {
                           {c.meetsMin !== undefined ? ` meetsMin=${String(c.meetsMin)}` : ""}
                         </div>
                         {c.symlinkTarget ? <div className="hint">→ {c.symlinkTarget}</div> : null}
+                        {c.resolvedPath ? <div className="hint">resolves to {c.resolvedPath} (what sessions run)</div> : null}
                         {c.shimManager ? <div className="hint">manager: {c.shimManager}</div> : null}
                         {c.stdout ? (
                           <pre className="code" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }} data-testid={`doctor-stdout-${t.tool}-${i}`}>

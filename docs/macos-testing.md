@@ -275,6 +275,33 @@ Token and data are kept. Re-run uninstall ⇒ `not present; nothing to
 remove`. Full removal: delete `~/.local/share/unvibe` (see README “Your data
 and the network”).
 
+## 10. Agent CLI via mise + reviewed repo with a mise config (2 min, issue #105)
+
+Prereqs: `claude` installed through mise (so `which claude` is a mise
+shim), `UNVIBE_CLAUDE_BIN` unset, and a repo whose checkout contains a
+`.mise.toml` you have never trusted.
+
+```
+$ which claude; mise which claude
+.../mise/shims/claude
+.../mise/installs/.../bin/claude
+$ unvibe doctor 2>&1 | grep -A3 claude
+```
+
+Expected:
+
+- Doctor shows the shim **and** what it resolves to (the `mise which`
+  path), e.g. `resolves to …/installs/…/bin/claude (what sessions run)`.
+- Open a review of the mise-config repo: the guide builds. Before the
+  fix every agent job on such a review failed with
+  `mise ERROR … are not trusted`.
+- Do **not** run `mise trust` on anything under
+  `~/.local/share/unvibe/worktrees/` — the fix must work without it, and
+  nothing in the UI may suggest it.
+
+**Send back:** the doctor lines for `claude` (and `codex` if it is also
+a shim), whether the guide built, and any job error text shown in the UI.
+
 ## CI coverage on macOS (`.github/workflows/ci.yml`, issue #7)
 
 The `macos-latest` leg runs headless on a runner — no GUI session, no
