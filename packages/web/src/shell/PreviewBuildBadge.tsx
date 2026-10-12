@@ -34,7 +34,7 @@ export function PreviewBuildBadge(): React.JSX.Element | null {
     <Link
       className="pill"
       data-testid="preview-badge"
-      to="/settings#version"
+      to="/settings?tab=version"
       title={`Preview build ${build.version} from ${build.sourceBranch}${sha ? ` (${sha})` : ""} — open Settings → Version to switch back.`}
     >
       preview · {build.sourceBranch}

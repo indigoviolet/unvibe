@@ -140,7 +140,6 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   if (!snapshot || !pages) {
     return (
       <div className="doc">
-        <div className="eyebrow">Guided review</div>
         <h1 className="title">Review {reviewId}</h1>
         <p className="hint">Loading the guide…</p>
       </div>
@@ -156,7 +155,6 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
       <>
         <VersionSwitcher />
         <div className="doc" data-testid="guide-empty" data-state={empty.kind}>
-          <div className="eyebrow">Guided review</div>
           {empty.kind === "building" ? (
             <>
               <h1 className="title">Building the guide…</h1>
@@ -185,7 +183,6 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
       <>
         <VersionSwitcher />
         <div className="doc">
-          <div className="eyebrow">Guided review</div>
           <h1 className="title">Page not found</h1>
           <p className="hint">
             There is no page <code>{pageId}</code> in this review.{" "}

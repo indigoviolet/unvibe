@@ -18,7 +18,6 @@ export {
   parseBlocks,
   parseCards,
   parseCardsPartial,
-  parsePartial,
   parseReply,
   renderInline,
   renderMarkdown,

@@ -19,6 +19,10 @@ export function ReviewRoute() {
   const setConnected = useReview((s) => s.setConnected);
   const resyncSeq = useReview((s) => s.resyncSeq);
 
+  // The store is global: drop the snapshot when leaving a review, so the
+  // next review never renders (or patches) the previous one's guide.
+  useEffect(() => () => useReview.getState().clear(), [reviewId]);
+
   useEffect(() => {
     return connectEvents({ reviewId, onEvent: applyEvent, onStatus: setConnected });
   }, [reviewId, applyEvent, setConnected]);

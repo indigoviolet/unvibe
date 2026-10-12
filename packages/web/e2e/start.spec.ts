@@ -270,7 +270,7 @@ test("failing readiness shows compact callouts linking to Settings", async ({ pa
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   const callout = page.locator('[data-testid="readiness-callout-gh"]');
   await expect(callout).toContainText("gh not logged in");
-  await expect(callout.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings#environment");
+  await expect(callout.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings?tab=environment");
   // Starting a local-branch review stays possible: the hint says what needs gh.
   await expect(page.locator('[data-testid="newreview-gh-hint"]')).toContainText("PR lists need gh");
 });
@@ -341,7 +341,7 @@ test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ p
   await expect(empty).toContainText("Paste a PR URL below");
   await expect(empty.getByRole("link", { name: "add one in Settings" })).toHaveAttribute(
     "href",
-    "/settings#repositories",
+    "/settings?tab=repositories",
   );
   // No repos, no selector yet.
   await expect(page.getByLabel("Repository")).toHaveCount(0);

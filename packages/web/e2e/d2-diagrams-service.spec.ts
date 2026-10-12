@@ -390,7 +390,7 @@ for (const mode of [
         await expect(fallback.locator("pre.code")).toContainText("d2seedprobe");
         await expect(fallback).toContainText("Diagrams need");
         const link = fallback.getByRole("link", { name: /Settings → Environment/ });
-        await expect(link).toHaveAttribute("href", "/settings#environment");
+        await expect(link).toHaveAttribute("href", "/settings?tab=environment");
       }
     });
 

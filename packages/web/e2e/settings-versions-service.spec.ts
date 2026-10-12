@@ -108,7 +108,7 @@ test.describe("settings + versions on the real service", () => {
     ).toBeVisible();
     if (await page.locator('[data-testid="no-repos"]').isVisible()) {
       await page.getByRole("link", { name: "Add one in Settings" }).click();
-      await expect(page).toHaveURL(/\/settings#repositories/);
+      await expect(page).toHaveURL(/\/settings\?tab=repositories/);
       await page.getByLabel("Add a repo by path").fill(repoDir);
       await page.getByRole("button", { name: "Add by path" }).click();
       await expect(page.locator('[data-testid^="repo-"]')).toContainText(path.basename(repoDir));
@@ -131,7 +131,8 @@ test.describe("settings + versions on the real service", () => {
     test.setTimeout(120_000);
     if (!svc) throw new Error("service not running");
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
+    await page.getByRole("tab", { name: "Limits and budgets" }).click();
 
     const input = page.locator("#limit-sessionsPerProvider");
     await input.fill("99");
@@ -142,7 +143,8 @@ test.describe("settings + versions on the real service", () => {
     await page.getByRole("button", { name: "Save limits" }).click();
     await expect(page.getByText("Saved")).toBeVisible();
     await page.reload();
-    await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
+    await page.getByRole("tab", { name: "Limits and budgets" }).click();
     await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("5");
   });
 
@@ -152,7 +154,8 @@ test.describe("settings + versions on the real service", () => {
     reviewId = await openFeatureReview(page);
     // Settings keeps the review-agnostic template view.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
-    await expect(page.getByText("Repositories, models, prompts, limits")).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
+    await page.getByRole("tab", { name: "Prompts" }).click();
     // All 18 PRD §13 templates, from the real prompts dir.
     await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(18);
     const reader = page.locator('[data-testid="prompt-reader"]');
@@ -161,6 +164,7 @@ test.describe("settings + versions on the real service", () => {
     // The debug page expands them for the review. Forked templates
     // (explain) serve L0–L3 from the warm base: cached.
     await page.goto(`${svc.origin}/review/${reviewId}/debug?token=${svc.token}`);
+    await page.getByRole("tab", { name: "Prompts" }).click();
     const explain = page.locator('section[aria-label="Prompts"]').locator('[data-testid="prompt-explain"]');
     await explain.getByRole("button", { name: "Expand explain" }).click();
     await expect(explain.locator('details.lay[data-layer="L0"]')).toBeVisible();
@@ -168,6 +172,7 @@ test.describe("settings + versions on the real service", () => {
     await expect(explain.locator('details.lay[data-layer="L4"]')).not.toContainText("cached");
     // Model pickers list the adapter's models.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
+    await page.getByRole("tab", { name: "Models" }).click();
     await expect(page.locator('[data-testid="model-main"]').getByText("claude-sonnet", { exact: false }).first()).toBeAttached();
   });
 

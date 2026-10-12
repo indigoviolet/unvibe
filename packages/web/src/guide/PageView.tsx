@@ -71,12 +71,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
     }
   }
 
-  const eyebrow =
-    page.kind === "root"
-      ? "Guided review"
-      : isFinding
-        ? `Agent finding · ${page.confidence ?? ""} confidence`
-        : "";
+  const eyebrow = isFinding ? `Agent finding · ${page.confidence ?? ""} confidence` : "";
 
   const goDeeperIndex = page.cards.findIndex((c) => c.pending);
 
@@ -169,7 +164,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       {sharedCount > 0 ? (
         <p className="hint" data-shared-indicator>
           {sharedCount} shared context {sharedCount === 1 ? "item" : "items"} from this review ·{" "}
-          <Link to={`/review/${encodeURIComponent(reviewId)}/debug`}>Debug → Shared context</Link>
+          <Link to={`/review/${encodeURIComponent(reviewId)}/debug?tab=context`}>Debug → Shared context</Link>
         </p>
       ) : null}
       <nav className="toc" aria-label="Contents">

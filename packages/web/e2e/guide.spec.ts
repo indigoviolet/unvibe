@@ -88,7 +88,7 @@ async function openPopover(page: Page): Promise<void> {
 
 test("root page renders cards, contents and generated go-deeper cards", async ({ page }) => {
   await gotoReview(page);
-  await expect(page.locator("#page .eyebrow")).toContainText("Guided review");
+  await expect(page.locator("#page h1.title")).toBeVisible();
   await expect(page.locator("#C-problem h2")).toContainText("The problem");
   await expect(page.locator("#C-central h2")).toContainText("The central change");
   await expect(page.locator('nav.toc [data-tocard="problem"]')).toBeVisible();

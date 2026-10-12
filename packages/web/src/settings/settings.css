@@ -45,81 +45,13 @@ mark.tm {
   font-family: var(--mono);
   font-size: 0.86em;
 }
-.lay {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  margin: 6px 0;
-  overflow: hidden;
-}
-.lay > summary {
-  cursor: pointer;
-  padding: 5px 10px;
-  font-size: 12.5px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  background: var(--surface);
-}
-.lay > summary:hover {
-  background: var(--sunk);
-}
-.lay.cached > summary {
-  background: var(--accent-soft);
-}
-.lay pre.code {
-  margin: 0;
-  border-radius: 0;
-  max-height: 320px;
-  overflow: auto;
-}
-.jobrow {
-  border-top: 1px solid var(--line);
-  padding: 8px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.jobrow:first-of-type {
-  border-top: 0;
-}
-.st {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 1px 7px;
-  border-radius: 99px;
-  background: var(--sunk);
-  color: var(--muted);
-  white-space: nowrap;
-}
-.st.running {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.st.backing-off,
-.st.error {
-  background: var(--warn-soft);
-  color: var(--warn);
-}
-.st.done,
-.st.cancelled {
-  background: var(--sunk);
-  color: var(--muted);
-}
-.kind {
-  font-family: var(--mono);
-  font-size: 12px;
-}
 /* Version section (issue #73): the enable checkbox sits above the card,
-   top right of the section header; versions are one grid row each. */
+   top right; versions are one grid row each. */
 .ver-head {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.ver-head .divider {
-  flex: 1 1 auto;
+  margin-bottom: 6px;
 }
 .ver-toggle {
   margin-left: auto;

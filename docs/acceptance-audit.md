@@ -381,21 +381,32 @@ needed (that deviation is closed, not added).
   with description as secondary text (Claude + Codex); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
-- Prompts (Template raw in Settings; per-review Expanded with L0–L4
-  marks, tokens, cache part on the debug page; view-only) — met
+- Prompts (Template raw in Settings — six sections in tabs, issue #61:
+  Repositories, Models, Environment, Prompts, Limits and budgets, Version,
+  with the tab in `?tab=`, older `#section` links still landing on the
+  right tab, and unsaved edits surviving tab switches; per-review Expanded
+  with L0–L4 marks, tokens, cache part on the debug page's Prompts tab,
+  issue #60: collapsible templates + layers with Expand/Collapse all;
+  view-only) — met
   (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`,
   `GET /api/prompts` ran 200 from the global install).
 - Limits/budgets (sessions per provider, inline budget, rebuild
   thresholds) — met (`settings.spec.ts` “limits persist across reload”).
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
-  (issue #32; on the per-review debug page now, relocated unchanged from
-  Settings: `e2e/debug.spec.ts`, `GET /api/jobs` ran; prompt snapshots now
-  served per-job to keep lists small).
+  (issue #32; on the per-review debug page's Jobs tab now, relocated
+  unchanged from Settings apart from the redundant divider: `e2e/debug.spec.ts`,
+  `GET /api/jobs` ran; prompt snapshots now
+  served per-job to keep lists small; the per-job prompt toggle lazy-loads
+  as before).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log with
   in-base/waiting markers, contributions with thread + delete — met
   (`shared-context-debug.test.ts`, `routes/shared-context.ts`,
-  `e2e/debug.spec.ts`).
+  `e2e/debug.spec.ts`). Issue #60 puts Jobs / Prompts / Shared context in
+  tabs (tab in `?tab=`, panels kept mounted) and every large block in a
+  collapsible with a sticky summary (Base open, the rest closed;
+  Expand/Collapse all on Prompts + Shared context; open state survives tab
+  switches, job updates and contribution deletes).
 
 ### §4.15 Conventions — all met
 
@@ -495,6 +506,11 @@ needed (that deviation is closed, not added).
 
 - Inline tokens (all six + `ann:`) + `|label` rules — met
   (`reply-format.md` §1, `shared/src/content`, `content-parse.test.ts`).
+- Inline Markdown inside a block (bold, italic, strikethrough, links,
+  escapes; raw HTML escaped, tokens resolved before emphasis) — met
+  (#66; `markdown-it` inline mode in `renderInline`,
+  `content-parse.test.ts`). Streaming returns finished cards only; the
+  unused in-card partial parser is gone (#67).
 - Trailing fenced JSON for structured fields, removed before display —
   met (M0 20/20 parse; `splitReply`, `reply-format.md` §10; malformed =
   job error).
@@ -526,6 +542,8 @@ needed (that deviation is closed, not added).
    — met (demo 8 summaries — ran from global install).
 6. On demand (depth/go-deeper/explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
+   Full concept pages may draw a `d2` diagram inline, same rule as
+   explain/go_deeper (#69; the template used to recommend one in prose).
 7. Update pass (changed/new hunks only) — met (`versions/update.ts`,
    `enqueueUpdatePass`, `versions-update.test.ts`).
 
@@ -580,6 +598,7 @@ needed (that deviation is closed, not added).
 - Settings shows the template; the debug page shows the per-review
   expanded text with L0–L4 marks, tokens, cache part — met
   (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`).
+  Both pages are tabbed now (issues #60/#61; see §4.14).
 - Diagrams: D2 with `link:` citations on shapes/connections — met
   (`reply-format.md` §5, `prompts/includes/d2-convention.md` single source,
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
@@ -720,6 +739,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Restart loses no user data; sessions reopen/rebuild: restart script
   (SIGKILL mid-reader, mid-ask) all green; jobs interrupted-visible +
   resumable; reply falls back to fresh fork.
+  A base rebuilt after a restart keeps the MCP secret it was started
+  with (#68: `getBase` reported it as not fresh and the caller revoked
+  it, so forks ran without the review tools); a restored base is never
+  rebuilt from its persisted MCP URL (`sessions.test.ts`,
+  `review-base-sessions.test.ts` restart case).
 - Privacy: loopback-only enforced at three layers (browser CSP + suite
   network tripwires + static guards + subprocess allowlist —
   `network-*.test.ts`, `subprocess-allowlist.test.ts`, all in `check`).
@@ -897,6 +921,17 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
   for unknown repos and shows `fetchError` once. Covered by mock-mode
   Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
   spec for invalid input and path-checkout remove.
+
+### Switching reviews in one tab (#70)
+
+The web review store is global. Opening a second review in the same tab
+used to keep the first review's guide whenever the second had a lower
+`rev` (the stale-fetch guard compared revs across reviews). The guard
+now applies within one review only, and `ReviewRoute` clears the store
+when its review changes or it unmounts — met (`web/src/state/store.ts`,
+`store.test.ts` “switching reviews”). The route clear has no test of its
+own. A refetch of the previous review that resolves after the switch can
+still land in the store; not seen, not guarded.
 
 ### Immediate action feedback (#46, complete)
 

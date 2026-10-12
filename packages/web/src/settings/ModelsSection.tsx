@@ -57,7 +57,6 @@ export function ModelsSection({
 
   return (
     <section aria-label="Models" id="models" style={{ scrollMarginTop: 12 }}>
-      <div className="divider">Models</div>
       {ROLES.map(({ role, label, blurb }) => (
         <ModelPicker
           key={role}

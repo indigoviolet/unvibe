@@ -227,10 +227,8 @@ export function VersionSection({
 
   return (
     <section aria-label="Version" id="version" style={{ scrollMarginTop: 12 }}>
-      {/* The header row keeps the toggle right-aligned even without the
-          title (settings tabs, issue #61, drop the section divider). */}
+      {/* No title here: the Settings tab names the section (#61). */}
       <div className="ver-head">
-        <div className="divider">Version</div>
         <label
           className="ver-toggle"
           htmlFor="version-picker-toggle"

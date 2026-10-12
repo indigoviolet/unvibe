@@ -69,7 +69,6 @@ export function LimitsSection({
 
   return (
     <section aria-label="Limits and budgets">
-      <div className="divider">Limits and budgets</div>
       <div className="card" style={{ padding: "8px 14px" }}>
         {FIELDS.map((f) => (
           <div className="setgrid" key={f.key}>

@@ -1,8 +1,10 @@
 /**
- * Per-review shared-context debug page (`/review/:id/debug`, issue #32,
- * PRD §9): the review's shared context as a rendered Markdown document —
- * base, log, contributions — with no formatting beyond Markdown rendering
- * and plain section headings.
+ * Per-review debug page (`/review/:id/debug`, issue #32): Jobs, Prompts
+ * and Shared context tabs (issue #60), one panel visible at a time. The
+ * selected tab lives in the `?tab=` query parameter so a reload or a
+ * pasted link lands on the same tab; every panel stays mounted behind
+ * `hidden` so the jobs live subscription and each block's open state
+ * survive a tab switch.
  *
  * Served by `GET /api/reviews/:id/shared-context` (three Markdown strings
  * rendered as-is through `MarkdownView`). Delete keeps working through the
@@ -15,9 +17,18 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { Contribution, SharedContextResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { TabPanel, Tabs, useQueryTab } from "../tabs/Tabs.js";
 import { ExpandedPrompts } from "./ExpandedPrompts.js";
 import { JobsSection } from "./JobsSection.js";
-import { MarkdownView } from "./MarkdownView.js";
+import { SharedContext } from "./SharedContext.js";
+
+const DEBUG_TABS = [
+  { id: "jobs", label: "Jobs" },
+  { id: "prompts", label: "Prompts" },
+  { id: "context", label: "Shared context" },
+] as const;
+
+const DEBUG_TAB_IDS: readonly string[] = DEBUG_TABS.map((t) => t.id);
 
 export function DebugPageRoute(): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +39,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
   const [doc, setDoc] = useState<SharedContextResponse | null>(null);
   const [items, setItems] = useState<Contribution[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useQueryTab(DEBUG_TAB_IDS, "jobs");
 
   const load = useCallback(async () => {
     setError(null);
@@ -67,7 +79,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
           Unvibe
         </Link>
         <div className="pr">
-          <b>Debug</b>
+          <h1>Debug</h1>
         </div>
         <Link className="tbtn" to={`/review/${reviewId}`}>
           Back to review
@@ -75,52 +87,22 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
       </header>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
-          <div className="eyebrow">Review debug</div>
-          <h1 className="title">Jobs, prompts and shared context</h1>
-          <p className="hint">
-            Per-review jobs, the expanded prompt text for this review, then the shared context from
-            PRD §9 that every agent conversation starts from: the base session, the append-only log,
-            and the contributions.
-          </p>
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load shared context: {error}
             </p>
           ) : null}
-          {!doc && !error ? <p className="hint">Loading shared context…</p> : null}
-          <JobsSection reviewId={reviewId} />
-          <ExpandedPrompts reviewId={reviewId} />
-          {doc ? (
-            <>
-              <section aria-label="Base">
-                <MarkdownView markdown={doc.base} />
-              </section>
-              <section aria-label="Log">
-                <MarkdownView markdown={doc.log} />
-              </section>
-              <section aria-label="Contributions">
-                <MarkdownView markdown={doc.contributions} />
-                {items !== null && items.length > 0 ? (
-                  <div>
-                    {items.map((c) => (
-                      <div className="frow" key={c.id} data-testid={`debug-delete-${c.id}`}>
-                        <code className="hint">{c.id}</code>
-                        <span className="sp" />
-                        <button
-                          className="x"
-                          type="button"
-                          aria-label={`Delete ${c.id}`}
-                          onClick={() => void remove(c.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </section>
-            </>
-          ) : null}
+          <Tabs label="Debug sections" tabs={DEBUG_TABS} active={tab} onSelect={setTab} idPrefix="debug" />
+          <TabPanel idPrefix="debug" id="jobs" active={tab === "jobs"}>
+            <JobsSection reviewId={reviewId} />
+          </TabPanel>
+          <TabPanel idPrefix="debug" id="prompts" active={tab === "prompts"}>
+            <ExpandedPrompts reviewId={reviewId} />
+          </TabPanel>
+          <TabPanel idPrefix="debug" id="context" active={tab === "context"}>
+            {!doc && !error ? <p className="hint">Loading shared context…</p> : null}
+            {doc ? <SharedContext doc={doc} items={items} onDelete={(id) => void remove(id)} /> : null}
+          </TabPanel>
         </div>
       </main>
     </div>
