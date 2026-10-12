@@ -229,6 +229,13 @@ needed (that deviation is closed, not added).
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
   `reuse.test.ts`).
+- Diagrams expand (#47) — met: every diagram block carries an Expand
+  control opening a full-window overlay (dialog, focus in/out, Esc/close,
+  page scroll locked) with wheel/pinch zoom, drag pan, +/− buttons and
+  reset-to-fit on a CSS transform (no new dependency, no CSP change);
+  citation hover/click work inside it and a drag never counts as a click
+  (`guide/DiagramOverlay.tsx`, `e2e/d2-diagram-overlay.spec.ts`,
+  `guide/DiagramOverlay.test.tsx`).
 - Undo (depth/examples/diagram, no redo, comments/expansions survive) —
   met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Mark read (grey + collapse), roll-up to page, muted links — met

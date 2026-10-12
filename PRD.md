@@ -100,6 +100,7 @@ Every card and every expansion card has the same controls:
   - + at the deepest level adds an "Underlying principle" block.
   - Depth versions are generated **on demand** and kept once made.
 - **Use examples** and **Add diagram:** insert example or diagram blocks after the paragraphs they relate to, never duplicating one already there.
+- **Diagrams** render inline in the card; **Expand** opens a diagram out of the column in a full-window view with wheel/pinch zoom, drag pan, +/− buttons and reset-to-fit. Esc or the close control shuts it and focus returns to Expand. Citation hover previews and click-to-reveal work the same expanded as inline.
 - **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and expansions attached to the card survive undo.
 - **Mark read:** greys the card and collapses it to its title row. Unmarking expands it.
 - **Read state rolls up:** a page is read when all of its cards are, and links to fully read pages show muted.
