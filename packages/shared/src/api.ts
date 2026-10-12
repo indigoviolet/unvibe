@@ -10,6 +10,7 @@ import type {
   Annotation,
   Card,
   Contribution,
+  DepthLevel,
   ExistingReviewComment,
   HunkState,
   Job,
@@ -361,6 +362,12 @@ export interface ActionResponse {
    * agent call. No job is created and no tokens are spent.
    */
   reused?: boolean;
+  /**
+   * Depth stepper result (issue #65): the card/expansion level after the
+   * action. Lets the client tell a stored-level switch (level changed:
+   * silent) from already-at-the-limit (level unchanged: toast).
+   */
+  level?: DepthLevel;
 }
 
 // --- diagrams (D2 decision addendum) ---------------------------------------

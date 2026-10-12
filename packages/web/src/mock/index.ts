@@ -261,10 +261,18 @@ function mockCardLevel(ref: MockCardRef): import("@unvibe/shared").DepthLevel {
 }
 
 /** Card controls in mock: depth/examples/diagram/undo through the patch path. */
-function mockCardControl(a: { kind: string; cardId: string; direction?: string }): { accepted: boolean; cardId: string; jobId?: string } {
+function mockCardControl(a: { kind: string; cardId: string; direction?: string }): {
+  accepted: boolean;
+  cardId: string;
+  jobId?: string;
+  /** Mirrors the service (issue #65): stored switches and at-the-limit repeats reuse. */
+  reused?: boolean;
+  /** Resulting level for depth actions (issue #65). */
+  level?: import("@unvibe/shared").DepthLevel;
+} {
   const ref = findMockCard(a.cardId);
   if (!ref) throw new Error(`unknown card ${a.cardId}`);
-  const ORDER = ["simple", "standard", "deep"];
+  const ORDER: import("@unvibe/shared").DepthLevel[] = ["simple", "standard", "deep"];
   if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
     const level = mockCardLevel(ref);
     const i = ORDER.indexOf(level);
@@ -285,9 +293,9 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
         }
         emitPages();
         emitAnnotations();
-        return { accepted: true, cardId: a.cardId };
+        return { accepted: true, cardId: a.cardId, level };
       }
-      return { accepted: true, cardId: a.cardId };
+      return { accepted: true, cardId: a.cardId, reused: true, level };
     }
     const from = level;
     const cur = [...blocks];
@@ -302,7 +310,7 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
     }
     emitPages();
     emitAnnotations();
-    return { accepted: true, cardId: a.cardId };
+    return { accepted: true, cardId: a.cardId, reused: true, level: next };
   }
   if (a.kind === "examples" || a.kind === "diagram") {
     const blocks = mockCardBlocks(ref);

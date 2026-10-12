@@ -396,6 +396,49 @@ describe("PRD §12 cross-request reuse (#10)", () => {
     }
   });
 
+  it("depth responses carry the resulting level (issue #65)", async () => {
+    const agents = fakeAgents();
+    const { app, ctx, reviewId } = await setupWithAgents(agents);
+    try {
+      const levelOf = (): string =>
+        ctx.reviews
+          .getSnapshot(reviewId)!
+          .pages.flatMap((p) => p.cards)
+          .find((c) => c.id === "central")!.level;
+      expect(levelOf()).toBe("standard");
+
+      // New agent call: jobId plus the level it will write.
+      const down = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "simpler" });
+      expect(down.status).toBe(200);
+      expect(down.json.jobId).toBeTruthy();
+      expect(down.json.level).toBe("simple");
+      await waitForJob(ctx, down.json.jobId as string);
+      expect(levelOf()).toBe("simple");
+
+      // Stored switch: reused, no job, level changed (standard was seed text).
+      const up = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "deeper" });
+      expect(up.status).toBe(200);
+      expect(up.json.reused).toBe(true);
+      expect(up.json.jobId).toBeUndefined();
+      expect(up.json.level).toBe("standard");
+      expect(levelOf()).toBe("standard");
+
+      // Already at the limit: reused, no job, level unchanged.
+      const toSimple = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "simpler" });
+      expect(toSimple.json.reused).toBe(true);
+      expect(toSimple.json.level).toBe("simple");
+      expect(levelOf()).toBe("simple");
+      const atLimit = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "simpler" });
+      expect(atLimit.status).toBe(200);
+      expect(atLimit.json.reused).toBe(true);
+      expect(atLimit.json.jobId).toBeUndefined();
+      expect(atLimit.json.level).toBe("simple");
+      expect(levelOf()).toBe("simple");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("new base version invalidates explain/ask/second-opinion", async () => {
     const agents = fakeAgents();
     const { app, ctx, reviewId } = await setupWithAgents(agents);

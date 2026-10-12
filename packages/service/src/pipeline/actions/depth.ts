@@ -9,7 +9,7 @@
  * - Works on page cards and expansion cards alike.
  * - Undo is a separate `undo` action (the stack is pushed here).
  */
-import type { Block, Job } from "@unvibe/shared";
+import type { Block, DepthLevel, Job } from "@unvibe/shared";
 import { JOB_PRIORITY } from "@unvibe/shared";
 import {
   cardPromptText,
@@ -37,7 +37,7 @@ export async function depthAction(
   ctx: ActionContext,
   cardId: string,
   direction: "simpler" | "deeper",
-): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean; level?: string }> {
+): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean; level?: DepthLevel }> {
   const { jobs, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const target = (() => {
@@ -103,7 +103,7 @@ async function depthViaAgent(
   cardId: string,
   target: "simple" | "standard" | "deep",
   addPrinciple = false,
-): Promise<{ cardId: string; jobId?: string; level?: string }> {
+): Promise<{ cardId: string; jobId?: string; level?: DepthLevel }> {
   const { pipeline, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const key = {
