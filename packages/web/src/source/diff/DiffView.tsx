@@ -701,7 +701,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
             name="diff-file"
             resetKey={`${reviewId}:${f.fileKey}`}
             fallback={({ reset }) => (
-              <div className="dfile">
+              <div className="dfile" id={`F-${f.fileKey}`}>
                 <InlineFallback message="Couldn't show this file: something went wrong" onRetry={reset} />
               </div>
             )}
