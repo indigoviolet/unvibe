@@ -30,7 +30,8 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 |---|---|---|
 | `install` | `npm install` across workspaces | — |
 | `op -- <cmd>` | Run `<cmd>` with the 1Password Environment secrets (hidden helper) | `.env`, else runs without secrets |
-| `build` | Build shared → service → web (tracked outputs: each `packages/*/dist` + entry files, so a missing `dist/` rebuilds) | — |
+| `build` | Build shared → service → web, via one task per package (`build:shared`, `build:service`, `build:web`, each with only its own `sources`/`outputs`, so a change under any package's `src` rebuilds that package even when another package's `dist` is newer — issue #64; a missing `dist/` still rebuilds) | — |
+| `build-freshness` | Scripted check for #64 (web change + shared rebuild must not skip; no change must skip; ~30 s, too slow for `check` — run it directly) | `build` |
 | `dev` | Service + Vite dev server together | `build` (auto) |
 | `dev:mock` | Web UI against the in-memory mock API, no service | — |
 | `lint` / `typecheck` / `test` | ESLint / tsc / vitest across workspaces | — |
