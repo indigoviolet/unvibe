@@ -50,4 +50,10 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 
   A subagent working for a supervisor reports back instead; the supervisor does this step.
 - The one push an agent may make is a preview build: `mise run preview:publish -- <branch> --push` force-pushes the orphan ref `preview/<slug>` and nothing else (the script refuses any other ref). Source branches stay local. See `DEVELOPMENT.md` (preview builds).
+- A supervisor asked to "spin off" an issue creates the worktree, starts an Implementer agent in it with a full brief, and labels the issue `in-progress`. An empty worktree is not a spin-off.
+- A supervisor owns every agent it started until that work is merged and cleaned up:
+  - Set a recurring check (a Paseo heartbeat, every 5 to 10 minutes) as soon as the first agent starts, without being asked. Unblock or replace agents that are stuck.
+  - When an agent reports, review the branch and run the gates, then publish its preview and comment on the issue.
+  - Once the owner approves the preview, merge, close the issue, archive the Paseo workspace, and remove the worktree and branch (or ask the agent to).
+- Durable guidance about how to work on this repo goes in this file, not in an agent's private memory.
 - When done, report: what was built, what was verified (commands + results), what is stubbed or missing, and anything in the PRD you deviated from.
