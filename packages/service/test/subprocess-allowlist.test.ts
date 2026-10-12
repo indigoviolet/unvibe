@@ -4,7 +4,9 @@
  * The service may spawn only `git`, `gh` (via the GITHUB_TOKEN-unset
  * wrapper), the login shell for PATH resolution, the agent adapters/CLIs,
  * and the platform helpers used by `unvibe setup` (`osacompile`,
- * `lsregister`, `xdg-mime`, `update-desktop-database`, `open`/`xdg-open`)
+ * `lsregister`, `xdg-mime`, `update-desktop-database`, `open`/`xdg-open`),
+ * the native folder-picker dialogs (`osascript` on macOS,
+ * `zenity`/`kdialog` on Linux, #26),
  * plus the service lifecycle itself (spawning its own CLI entry).
  * Every `CommandRunner`/`spawn`/`execFile` call site must resolve to that
  * list (extends the `gh-writes.test.ts` guard pattern). Each entry carries
@@ -40,6 +42,9 @@ const ALLOWED_LITERAL: { cmd: string; reason: string }[] = [
   { cmd: "update-desktop-database", reason: "unvibe setup on Linux (refreshes desktop entries)" },
   { cmd: "open", reason: "unvibe open on macOS (opens the app URL)" },
   { cmd: "xdg-open", reason: "unvibe open on Linux (opens the app URL)" },
+  { cmd: "osascript", reason: "native folder picker on macOS (choose folder; user cancel reported as cancelled, #26)" },
+  { cmd: "zenity", reason: "native folder picker on Linux (preferred dialog; falls back to kdialog, #26)" },
+  { cmd: "kdialog", reason: "native folder picker on Linux when zenity is missing (#26)" },
 ];
 
 const ALLOWED_RE = [

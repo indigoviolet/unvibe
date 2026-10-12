@@ -24,6 +24,7 @@ import type {
   JobResponse,
   JobsResponse,
   ModelsResponse,
+  PickFolderResponse,
   PromptsResponse,
   ReadinessResponse,
   RefreshResponse,
@@ -204,6 +205,8 @@ const realApi = {
   repos: (): Promise<ReposResponse> => get("/api/repos"),
   addRepo: (body: AddRepoRequest): Promise<ReposResponse> =>
     request("/api/repos", { method: "POST", body: JSON.stringify(body) }),
+  /** Ask the service to open a native folder dialog (#26). No request body. */
+  pickFolder: (): Promise<PickFolderResponse> => post("/api/repos/pick-folder"),
   repoChanges: (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> =>
     get(`/api/repos/${encodeURIComponent(id)}/changes${filter ? `?filter=${filter}` : ""}`),
 

@@ -170,13 +170,22 @@ UI); nothing below was edited by this pass.
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
   refresh banner counts).
-- Selections remembered — met (selector in `localStorage`,
+<- Selections remembered — met (selector in `localStorage`,
   `start.spec.ts` persistence round-trip; last-opened ordering in
   `reviews/list.ts`).
+- Native folder picker (#26) — met: `POST /api/repos/pick-folder`
+  (frontmost osascript dialog / zenity→kdialog with cancelled/unavailable
+  outcomes, `pick-folder.test.ts`) plus the `BrowseFolderButton`
+  (`BrowseFolderButton.test.tsx`), mounted in the Settings Repositories
+  section beside the path field: picking fills the input (the user still
+  clicks "Add by path"), the unavailable reason shows inline
+  (`RepositoriesSection.test.tsx`), and the text field stays as the
+  fallback.
 
 Conformance note: this matches PRD §4.2 ("For the selected repo: …")
 more closely than the previous all-repos Reviews list did — no PRD edit
 needed (that deviation is closed, not added).
+>>>>>>> main
 
 ### §4.3 Pages — all met
 

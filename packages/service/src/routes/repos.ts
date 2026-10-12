@@ -12,6 +12,7 @@ import type { FastifyInstance } from "fastify";
 import type {
   AddRepoRequest,
   ChangesFilter,
+  PickFolderResponse,
   Repo,
   ReposResponse,
   RepoChangesResponse,
@@ -21,10 +22,12 @@ import {
   detectCheckouts,
   isGitCheckout,
   newRepoId,
+  pickFolder,
   repoChanges,
   resolveRepoRoots,
 } from "../repos/index.js";
 import type { ServiceContext } from "./context.js";
+import type { RouteDeps } from "./deps.js";
 
 /** Stable id for a detected (not yet remembered) checkout. */
 export function detectedRepoId(localPath: string): string {
@@ -67,8 +70,16 @@ export const DEMO_REPO = {
   detected: true,
 } as const;
 
-/** GET /api/repos · POST /api/repos · GET /api/repos/:id/changes */
-export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): Promise<void> {
+/** GET /api/repos · POST /api/repos · POST /api/repos/pick-folder · GET /api/repos/:id/changes */
+export async function registerRepos(
+  app: FastifyInstance,
+  ctx: ServiceContext,
+  deps: RouteDeps = {},
+): Promise<void> {
+  // One dialog at a time per app: the pick awaits the user's action, so a
+  // second request while one is open gets 409 instead of stacking dialogs.
+  let pickInFlight = false;
+
   app.get("/api/repos", async () => {
     const repos = await listAllRepos(ctx);
     // Demo first so the start page shows it without tokens (M3).
@@ -107,6 +118,18 @@ export async function registerRepos(app: FastifyInstance, ctx: ServiceContext): 
     ctx.repos.touch(repo.id);
     const repos = await listAllRepos(ctx);
     return { repos: [{ ...DEMO_REPO }, ...repos] } satisfies ReposResponse;
+  });
+
+  app.post("/api/repos/pick-folder", async (_req, reply) => {
+    if (pickInFlight) {
+      return reply.code(409).send({ error: "a folder dialog is already open" });
+    }
+    pickInFlight = true;
+    try {
+      return (await pickFolder(ctx.runner, deps.pickFolder)) satisfies PickFolderResponse;
+    } finally {
+      pickInFlight = false;
+    }
   });
 
   app.get("/api/repos/:id/changes", async (req, reply) => {
