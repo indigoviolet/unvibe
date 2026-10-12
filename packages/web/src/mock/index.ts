@@ -359,6 +359,52 @@ async function awaitChangesRelease(): Promise<void> {
   }
 }
 
+/** Resolve once the `unvibe.mock.addRepoHold` key is gone (or soon anyway). */
+async function awaitAddRelease(): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    try {
+      if (!localStorage.getItem("unvibe.mock.addRepoHold")) return;
+    } catch {
+      return;
+    }
+    await wait(50);
+  }
+}
+
+/** Extra clone latency in mock mode (`unvibe.mock.addRepoDelayMs`, default 150). */
+function addRepoDelayMs(): number {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.addRepoDelayMs");
+    if (raw !== null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+  } catch {
+    // Fall through to the default.
+  }
+  return 150;
+}
+
+/** Forced add failure in mock mode (`unvibe.mock.addRepoFail` = error text). */
+function addRepoFailure(): string | null {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.addRepoFail");
+    return raw ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Stale-clone note in mock mode (`unvibe.mock.repoChangesFetchError` = note). */
+function changesFetchError(): string | null {
+  try {
+    const raw = localStorage.getItem("unvibe.mock.repoChangesFetchError");
+    return raw ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 let rev = 1;
 const hunkStates = seedHunkStates();
 let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
@@ -1019,32 +1065,39 @@ export const mockApi = {
 
   addRepo: async (body: AddRepoRequest): Promise<AddRepoResponse> => {
     // #27: mirror the service contract — path adds a local checkout, url
-    // adds a managed clone (no UI changes on this branch).
+    // clones a managed repo. Test hooks: `unvibe.mock.addRepoHold` holds
+    // the clone so specs can observe the busy state,
+    // `unvibe.mock.addRepoDelayMs` sets extra latency (default 150 ms),
+    // `unvibe.mock.addRepoFail` fails with that error text. Invalid URLs
+    // 400 like the service (the UI validates first with the same parser).
     const raw = body.url ?? body.path ?? "";
-    let repo: Repo;
     if (body.url) {
-      let owner = "mock";
-      let name = raw.split("/").filter(Boolean).pop() ?? raw;
-      let prNumber: number | undefined;
+      let parsed: { owner: string; name: string; prNumber?: number };
       try {
-        const parsed = parseGitHubRepoInput(raw);
-        owner = parsed.owner;
-        name = parsed.name;
-        prNumber = parsed.prNumber;
-      } catch {
-        // Keep the last-segment fallback so mock mode never 400s.
+        parsed = parseGitHubRepoInput(raw);
+      } catch (err) {
+        throw new Error(`POST /api/repos: 400 ${JSON.stringify({ error: (err as Error).message })}`);
       }
-      repo = {
-        id: `managed-${owner}-${name}`,
+      await awaitAddRelease();
+      await wait(addRepoDelayMs());
+      const forced = addRepoFailure();
+      if (forced) {
+        throw new Error(`POST /api/repos: 404 ${JSON.stringify({ error: forced })}`);
+      }
+      const { owner, name, prNumber } = parsed;
+      const repo: Repo = {
+        id: `managed-${owner.toLowerCase()}-${name.toLowerCase()}`,
         owner,
         name,
-        localPath: `/mock/data/repos/${owner}/${name}`,
+        localPath: `/mock/data/repos/${owner.toLowerCase()}/${name.toLowerCase()}`,
         lastOpened: Date.now(),
         managed: true,
       };
       try {
         const added = readJson<Repo[]>(ADDED_KEY, []);
-        localStorage.setItem(ADDED_KEY, JSON.stringify([repo, ...added]));
+        if (!added.some((r) => r.id === repo.id)) {
+          localStorage.setItem(ADDED_KEY, JSON.stringify([repo, ...added]));
+        }
       } catch {
         // Non-fatal.
       }
@@ -1053,7 +1106,7 @@ export const mockApi = {
       return out;
     }
     const name = raw.split("/").filter(Boolean).pop() ?? raw;
-    repo = {
+    const repo: Repo = {
       id: `local-${name}`,
       owner: "local",
       name,
@@ -1070,6 +1123,17 @@ export const mockApi = {
   },
 
   removeRepo: async (id: string): Promise<RemoveRepoResponse> => {
+    // #27: mirror the service — refuse while mock reviews reference the
+    // repo (the seed urllib3 repo has sessions, so removing it 409s).
+    const reviews = mockSummaries();
+    const n = reviews.filter((r) => r.repoId === id).length;
+    if (n > 0) {
+      const repo = getRepos().find((r) => r.id === id);
+      const label = repo ? `${repo.owner}/${repo.name}` : id;
+      throw new Error(
+        `DELETE /api/repos/${id}: 409 ${JSON.stringify({ error: `repo ${label} still has ${n} review${n === 1 ? "" : "s"} — delete ${n === 1 ? "it" : "them"} first, then remove the repo` })}`,
+      );
+    }
     try {
       const added = readJson<Repo[]>(ADDED_KEY, []);
       const found = added.find((r) => r.id === id);
@@ -1088,6 +1152,8 @@ export const mockApi = {
     // - `unvibe.mock.repoChangesFail`: JSON array of filters to reject
     //   (e.g. ["authoring","review-requested","recent"]), each with a
     //   service-shaped 500 carrying a mock gh error.
+    // - `unvibe.mock.repoChangesFetchError`: when present, every response
+    //   carries it as `fetchError` (stale managed clone, like the service).
     if (id !== "demo") await awaitChangesRelease();
     const failing = readChangesFailures();
     const key = filter ?? "all";
@@ -1169,15 +1235,21 @@ export const mockApi = {
     }
     switch (filter) {
       case "authoring":
-        return { changes: authoring };
+        return withFetchNote({ changes: authoring });
       case "review-requested":
-        return { changes: requested };
+        return withFetchNote({ changes: requested });
       case "branches":
-        return { changes: branches };
+        return withFetchNote({ changes: branches });
       case "recent":
-        return { changes: [...branches, ...previous] };
+        return withFetchNote({ changes: [...branches, ...previous] });
       default:
-        return { changes: [...authoring, ...requested, ...branches, ...previous] };
+        return withFetchNote({ changes: [...authoring, ...requested, ...branches, ...previous] });
+    }
+
+    /** Attach the stale-clone note when the `repoChangesFetchError` hook is set. */
+    function withFetchNote(res: RepoChangesResponse): RepoChangesResponse {
+      const note = changesFetchError();
+      return note ? { ...res, fetchError: note } : res;
     }
   },
 
