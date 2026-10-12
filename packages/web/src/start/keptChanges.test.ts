@@ -126,7 +126,7 @@ describe("keptChanges storage", () => {
     const now = Date.now();
     expect(keptStatusText(null, true, now)).toBeNull();
     expect(keptStatusText(now - 10_000, false, now)).toBe("Updated just now");
-    expect(keptStatusText(now - 3 * 60_000, true, now)).toBe("Updated 3 min ago · refreshing…");
-    expect(keptStatusText(now - 2 * 3600_000, false, now)).toBe("Updated 2 h ago");
+    expect(keptStatusText(now - 3 * 60_000, true, now)).toBe("Updated 3m ago · refreshing…");
+    expect(keptStatusText(now - 2 * 3600_000, false, now)).toBe("Updated 2h ago");
   });
 });

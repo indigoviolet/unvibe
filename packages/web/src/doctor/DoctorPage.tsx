@@ -100,7 +100,7 @@ export function DoctorPage(): React.JSX.Element {
   return (
     <div className="app">
       <header className="top">
-        <Link className="brand" to="/" title="Back to the start screen">
+        <Link className="brand" to="/" title="Back to the start page">
           Unvibe
         </Link>
         <div className="pr">
@@ -113,9 +113,7 @@ export function DoctorPage(): React.JSX.Element {
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 860 }}>
           <p className="hint">
-            Every candidate for each tool, which was chosen and why, shims and targets, full error text, shell and
-            PATH, and how the service was started. Same module as <code>unvibe doctor</code> — they cannot disagree
-            from the same environment.
+            What Unvibe found for each tool it needs, which copy it uses and why, the full error text, and the shell, PATH and start mode of the service. <code>unvibe doctor</code> in a terminal runs the same checks.
           </p>
           <div className="frow" style={{ gap: 8, marginBottom: 12 }}>
             <button className="btn ghost" type="button" onClick={() => void load()} disabled={loading}>

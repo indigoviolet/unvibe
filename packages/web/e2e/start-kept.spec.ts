@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 
 test("reload shows kept rows before the changes request completes, then updates", async ({ page }) => {
   // First load fetches and keeps the lists.
-  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.getByText("Your PRs")).toBeVisible();
   await expect(page.locator('[data-testid="kept-status"]')).toContainText(/^Updated /);
   await expect(page.getByText("Unfold obsolete folded response header values").first()).toBeVisible();
 
@@ -30,7 +30,7 @@ test("reload shows kept rows before the changes request completes, then updates"
 
   // Release: the fresh data lands and the sign settles (same line, no jump).
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
-  await expect(page.getByText("PRs you're authoring")).toBeVisible();
+  await expect(page.getByText("Your PRs")).toBeVisible();
   await expect(page.locator('[data-testid="kept-status"]')).toContainText(/^Updated /);
   await expect(page.locator('[data-testid="kept-status"]')).not.toContainText("refreshing");
   await expect(

@@ -77,15 +77,14 @@
   </head>
   <body>
     <h1>Unvibe isn't running</h1>
-    <p>The local Unvibe service stopped (it idles out after 10 minutes with no open window).</p>
+    <p>The Unvibe service on this machine has stopped. It stops by itself when no Unvibe window has been open for a while.</p>
     <p><a class="start" href="unvibe://start">Start Unvibe</a></p>
     <p id="status" role="status">Waiting for the service…</p>
-    <p><a id="open" href="/">Open Unvibe</a> (once it answers)</p>
+    <p><a id="open" href="/">Open Unvibe</a> (once the service is running)</p>
     <div id="notoken" hidden>
-      <b>No token saved in this app yet.</b>
+      <b>This browser isn't connected to Unvibe yet.</b>
       <p>
-        First launch? Run <code>unvibe open</code> in a terminal: it starts the service and
-        opens the app URL with the per-install token, which the app then keeps.
+        Run <code>unvibe open</code> in a terminal. It starts the service and opens Unvibe with your token.
       </p>
     </div>
     <script src="/start.js"></script>

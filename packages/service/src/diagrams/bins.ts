@@ -21,7 +21,7 @@ export const D2_ENV_OVERRIDE = "UNVIBE_D2_BIN";
 export const D2_INSTALL_HINTS = [
   "macOS (brew): `brew install d2`",
   "Linux/macOS (official script): `curl -fsSL https://d2lang.com/install.sh | sh -s --` (see https://d2lang.com/tour/install)",
-  "via mise: `mise use -g d2` (picks the gated version)",
+  "via mise: `mise use -g d2` (installs a supported version)",
 ].join("\n");
 
 export function d2InstallHint(): string {
@@ -29,7 +29,7 @@ export function d2InstallHint(): string {
 }
 
 export function d2UpdateHint(found: string): string {
-  return `d2 ${found} found; Unvibe needs ≥ ${D2_MIN} (the version the renderer was verified against). Update d2, then Re-check.`;
+  return `d2 ${found} found; Unvibe needs ≥ ${D2_MIN} (the oldest version Unvibe works with). Update d2, then Re-check.`;
 }
 
 export function d2MissingMessage(): string {

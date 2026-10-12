@@ -89,7 +89,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   repo behaves as before.
 
 ### 4.3 Pages
-- **Kinds:** the guided review (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
+- **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
   - a label, but only where it matters: **"Guided review"** on the root page, **"Agent finding · <confidence>"** on a finding page;
   - a **bookmark** icon (save or unsave the page);
@@ -215,7 +215,7 @@ Every card and every expansion card has the same controls:
 ### 4.14 Settings page
 - **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers.
 - **Prompts:** each template (Template view): the raw text with its variables marked. View-only to start. The per-review "Expanded for this review" view — the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart — lives on the debug page below.
-- **Limits and budgets:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
+- **Limits:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
 - **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
   - **Jobs:** running and queued jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider.
   - **Shared context** as a rendered Markdown document — the base session(s) with the current base pack, the append-only log (§9.3), and every contribution (§9.5) with the thread it came from — plus delete for any item. No formatting beyond Markdown rendering.
@@ -504,11 +504,11 @@ A new base is built when any of these happens:
 
 ## 14. App shell, install and security
 
-- **Service:** Node and TypeScript, listening on `127.0.0.1` only. It requires a **per-install token**: generated at setup, held by the UI, and checked on every HTTP and WebSocket request.
+- **Service:** Node and TypeScript, listening on `127.0.0.1` only. It requires a **token** (one per install): generated at setup, held by the UI, and checked on every HTTP and WebSocket request.
 - **UI:** a React (Vite) build served by the service, and **installable as a web app** from Chrome (localhost counts as secure). There are no browser extensions.
 - **Nothing starts at login.**
-  - `unvibe setup` writes a small helper app to `~/Applications`. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing, and it registers the `unvibe://` URL scheme.
-  - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The helper starts the service, and the page reloads.
+  - `unvibe setup` writes a small link-handler app to `~/Applications`. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing, and it registers the `unvibe://` URL scheme.
+  - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The link handler starts the service, and the page reloads.
   - The service exits after a period with no open window and no running jobs (default 10 minutes).
 - **Install:** `npm install -g github:<org>/unvibe#release`, then `unvibe setup`. Updates use the same install command. The agent CLIs (`claude`/`codex`) are the user's own installs (see `DEVELOPMENT.md` "Releases" and `docs/acceptance-audit.md` "Intentional deviations" item 1).
 - **macOS gotcha:** apps opened from Finder don't inherit the shell's `PATH`. On startup the service must read it from a login shell (`zsh -lc 'echo $PATH'`) so it can find `gh`, `git`, `claude`, `codex` and mise-installed tools.

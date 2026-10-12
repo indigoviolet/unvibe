@@ -159,10 +159,10 @@ describe("StartPage kept lists (#90)", () => {
 
     expect(await screen.findByTestId("repo-lists-loading")).toHaveTextContent("Loading acme/app…");
     expect(screen.queryByTestId("kept-status")).not.toBeInTheDocument();
-    expect(screen.queryByText("PRs you're authoring")).not.toBeInTheDocument();
+    expect(screen.queryByText("Your PRs")).not.toBeInTheDocument();
 
     gate.resolve({ changes: [] });
-    expect(await screen.findByText("PRs you're authoring")).toBeInTheDocument();
+    expect(await screen.findByText("Your PRs")).toBeInTheDocument();
   });
 
   it("ignores a slow previous repo's response after a quick switch", async () => {
@@ -182,7 +182,7 @@ describe("StartPage kept lists (#90)", () => {
     expect(await screen.findByTestId("repo-lists-loading")).toBeInTheDocument();
 
     // Switch before the first repo answers.
-    fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "r2" } });
+    fireEvent.change(screen.getByLabelText("Repo"), { target: { value: "r2" } });
     fastAuthoring.resolve({ changes: [pr(2, "R2 PR", "r2-branch")] });
     fastOther.resolve({ changes: [] });
     expect(await screen.findByText("R2 PR")).toBeInTheDocument();
@@ -236,7 +236,7 @@ describe("StartPage kept lists (#90)", () => {
 
     renderPage();
     // First load proceeds as today even with storage throwing.
-    expect(await screen.findByText("PRs you're authoring")).toBeInTheDocument();
+    expect(await screen.findByText("Your PRs")).toBeInTheDocument();
     expect(screen.getAllByText("feature-x").length).toBeGreaterThan(0);
   });
 

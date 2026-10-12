@@ -79,7 +79,7 @@ function MessageCitations({ citations }: { citations: Annotation["messages"][num
           data-refs={c.target}
           data-src={c.target}
           aria-label="Unverified source"
-          data-tip="This citation could not be checked, so it is shown as unverified."
+          data-tip="Unvibe couldn't confirm this points at the right code."
           onClick={() => revealSource(c.target)}
         >
           <Icon name="code" />
@@ -325,7 +325,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
             <i />
             <i />
           </span>
-          <span>{busy?.label ?? "Reading the diff and PR body…"}</span>
+          <span>{busy?.label ?? "Reading the diff and PR description…"}</span>
         </div>
       ) : null}
       {waiting ? (

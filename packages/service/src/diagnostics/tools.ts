@@ -387,8 +387,8 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
     if (runnable.length === 0) {
       chosen = null;
       const first = candidates[0];
-      chosenReason = `found ${candidates.length} candidate(s) but none runs (first: ${first.path}, exit ${first.exitCode}); see full error text`;
-      warnings.push(`All ${candidates.length} candidate(s) for ${spec.tool} fail to run — the first error names the problem; a later entry may work once the broken shim is fixed.`);
+      chosenReason = `found ${candidates.length} but none runs (first: ${first.path}, exit ${first.exitCode}); the error text is below`;
+      warnings.push(`None of the ${candidates.length} copies of ${spec.tool} on PATH runs. The first error below names the problem.`);
     } else if (spec.minVersion) {
       const good = runnable.find((c) => c.meetsMin !== false);
       if (good) {
@@ -397,8 +397,8 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
         chosenReason =
           skipped === 0
             ? `first on PATH runs (version ${good.version ?? "unknown"})`
-            : `candidate ${skipped + 1} of ${candidates.length} (${good.path}) is the first that runs and meets ≥ ${spec.minVersion}; skipped ${skipped} broken/too-old candidate(s)`;
-        if (skipped > 0) warnings.push(`Skipped ${skipped} broken or too-old ${spec.tool} candidate(s) before ${good.path}.`);
+            : `candidate ${skipped + 1} of ${candidates.length} (${good.path}) is the first that runs and meets ≥ ${spec.minVersion}; skipped ${skipped} broken or too old`;
+        if (skipped > 0) warnings.push(`Skipped ${skipped} broken or too-old ${spec.tool} before ${good.path}.`);
       } else {
         chosen = runnable[0].path;
         chosenReason = `newest runnable is ${runnable[0].version ?? "unknown"} at ${runnable[0].path}, need ≥ ${spec.minVersion}; update it`;
@@ -409,8 +409,8 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
       chosen = good.path;
       const skipped = candidates.indexOf(good);
       chosenReason =
-        skipped === 0 ? `first on PATH runs` : `candidate ${skipped + 1} of ${candidates.length} is the first that runs; skipped ${skipped} broken candidate(s)`;
-      if (skipped > 0) warnings.push(`Skipped ${skipped} broken ${spec.tool} candidate(s) before ${good.path}.`);
+        skipped === 0 ? `first on PATH runs` : `candidate ${skipped + 1} of ${candidates.length} is the first that runs; skipped ${skipped} broken`;
+      if (skipped > 0) warnings.push(`Skipped ${skipped} broken ${spec.tool} before ${good.path}.`);
     }
   }
 

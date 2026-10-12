@@ -93,7 +93,7 @@ test.describe("real service", () => {
     // Repos are added in Settings; the start page follows the selector.
     // Wait for the repo state to settle: the selector or the empty state.
     await expect(
-      page.locator('select[aria-label="Repository"], [data-testid="no-repos"]').first(),
+      page.locator('select[aria-label="Repo"], [data-testid="no-repos"]').first(),
     ).toBeVisible();
     if (await page.locator('[data-testid="no-repos"]').isVisible()) {
       await expect(page.locator('[data-testid="no-repos"]')).toBeVisible();
@@ -102,12 +102,12 @@ test.describe("real service", () => {
       await page.getByLabel("Add a repo by path").fill(repoDir);
       await page.getByRole("button", { name: "Add by path" }).click();
       await expect(page.locator('[data-testid^="repo-"]')).toContainText(path.basename(repoDir));
-      await page.getByRole("link", { name: "Back to start" }).click();
+      await page.getByRole("link", { name: "Back to start page" }).click();
       await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     }
     // The start page follows the selected repo: select the added checkout,
     // then open a review of the scratch branch.
-    await page.getByLabel("Repository").selectOption({ label: `local/${path.basename(repoDir)}` });
+    await page.getByLabel("Repo").selectOption({ label: `local/${path.basename(repoDir)}` });
     const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
     await expect(feature).toBeVisible({ timeout: 30_000 });
     await feature.click();
@@ -184,8 +184,8 @@ test.describe("real service", () => {
       await expect(section.locator('[data-testid^="repo-"]', { hasText: base }).first()).toBeVisible();
       const row = section.locator('[data-testid^="repo-"]', { hasText: base }).first();
       await row.getByRole("button", { name: `Remove local/${base}` }).click();
-      await expect(row).toContainText("Forget this repo? ");
-      await expect(row).toContainText("stays untouched on disk.");
+      await expect(row).toContainText("Remove this repo from the list? ");
+      await expect(row).toContainText("is not touched.");
       await row.getByRole("button", { name: "Remove", exact: true }).click();
       await expect(row).toHaveCount(0);
       const listed = (await curlJson(svc.origin, svc.token, "GET", "/api/repos")) as {

@@ -22,6 +22,7 @@ import {
   followupKey,
   updateKey,
 } from "./inflight.js";
+import { NO_AGENT_COPY } from "./expansions/expansionUtils.js";
 
 function optimistic(fn: (snap: ReviewSnapshot) => ReviewSnapshot): void {
   const { snapshot, setSnapshot } = useReview.getState();
@@ -91,7 +92,7 @@ export function scrollToBlock(
 
 function notAvailable(res: ActionResponse): boolean {
   if (!res.accepted) {
-    toast("That action needs the service — open this review against the real service to generate.");
+    toast("Not available with mock data");
     return true;
   }
   return false;
@@ -306,9 +307,9 @@ export async function performAction(
     if (opts?.toast !== false) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/no agent configured/i.test(msg)) {
-        toast("No agent configured — set up Claude or Codex in Settings → Models to generate.");
+        toast(NO_AGENT_COPY);
       } else {
-        toast(`Action failed: ${friendlyError(err)}`);
+        toast(`Couldn't do that: ${friendlyError(err)}`);
       }
     }
     await resync(reviewId);
@@ -342,9 +343,9 @@ export async function performAction(
   // stored content is already visible.
   if (res.reused) {
     if (action.kind === "depth") {
-      toast("Already at the deepest level — nothing more to add.");
+      toast("Already at the deepest level");
     } else if (action.kind === "examples" || action.kind === "diagram") {
-      toast("Nothing more to add to this card.");
+      toast("Nothing more to add to this card");
     }
   }
   if (beforeRevision !== undefined && res.jobId && target) {
@@ -358,7 +359,7 @@ export async function performAction(
       if (moved) return;
       const job = useReview.getState().snapshot?.jobs.find((j) => j.id === jobId);
       if (job?.state === "done" && currentRevision(cardId) === beforeRevision) {
-        toast("Nothing more to add to this card.");
+        toast("Nothing more to add to this card");
       }
     });
   }
@@ -442,6 +443,6 @@ export function performUpdate(reviewId: string): void {
     })
     .catch((err: unknown) => {
       if (mine()) useReview.getState().clearInflight(key);
-      toast(`Update failed: ${friendlyError(err)}`);
+      toast(`Couldn't update: ${friendlyError(err)}`);
     });
 }

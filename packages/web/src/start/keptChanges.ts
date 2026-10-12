@@ -261,15 +261,16 @@ export function __resetKeptForTests(): void {
 }
 
 function ageWord(ms: number): string {
+  // Same relative style as the start page's own ages ("2m ago", #45).
   if (ms < 60_000) return "just now";
-  if (ms < 3600_000) return `${Math.floor(ms / 60_000)} min ago`;
-  if (ms < 86400_000) return `${Math.floor(ms / 3600_000)} h ago`;
-  if (ms < 86400_000 * 30) return `${Math.floor(ms / 86400_000)} d ago`;
+  if (ms < 3600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86400_000) return `${Math.floor(ms / 3600_000)}h ago`;
+  if (ms < 86400_000 * 30) return `${Math.floor(ms / 86400_000)}d ago`;
   return "a while ago";
 }
 
 /**
- * Short plain status line for the kept lists ("Updated 3 min ago ·
+ * Short plain status line for the kept lists ("Updated 3m ago ·
  * refreshing…"). Sentence case, no jargon. Null when there is nothing kept
  * to describe.
  */

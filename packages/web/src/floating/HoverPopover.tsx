@@ -98,7 +98,7 @@ function previewExpansion(expansion: Annotation | undefined): string {
     ? `<div class="xprev">${first}</div>`
     : working
       ? `<span class="hint">${esc(working)}</span>`
-      : `<span class="hint">Explanation is filling…</span>`;
+      : `<span class="hint">Writing explanation…</span>`;
   return `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`;
 }
 
@@ -168,7 +168,7 @@ export function HoverPopover() {
             ? `${pagePreview(page)}<span class="hint">Click to open</span>`
             : `<b>${esc(found.anchor.quotedText)}</b><span class="hint">Click to open</span>`;
         } else {
-          content = previewExpansion(found) + `<span class="hint">Click to expand in place</span>`;
+          content = previewExpansion(found) + `<span class="hint">Click to open here</span>`;
         }
       }
     } else if (anchor.matches("a.cx[data-node], a.cx[data-link]")) {

@@ -91,7 +91,7 @@ export function useDiffExpansionBindings(
       if (!found || found.anchor.host.kind !== "diff-line") return;
       if (found.type === "expansion" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
-          toast(`Couldn't expand: ${friendlyError(err)}`);
+          toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
       }
       window.setTimeout(() => {

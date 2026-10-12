@@ -184,14 +184,14 @@ export class AcpAgentRunner implements AgentRunner {
         _meta: meta,
       });
     } catch (e) {
-      throw new Error(`acp ${provider} session/new failed: ${errorMessage(e)}`, { cause: e });
+      throw new Error(`couldn't start a ${provider} session: ${errorMessage(e)}`, { cause: e });
     }
     const r = res as {
       sessionId: string;
       modes?: { currentModeId: string };
       configOptions?: unknown[];
     };
-    if (!r?.sessionId) throw new Error(`acp ${provider} session/new returned no sessionId`);
+    if (!r?.sessionId) throw new Error(`${provider} did not start a session`);
     const rec: AcpSessionRecord = {
       acpSessionId: r.sessionId,
       provider,
@@ -211,7 +211,7 @@ export class AcpAgentRunner implements AgentRunner {
         rec.model = opts.model;
       } catch (e) {
         // Unknown model: surface non-retryably; the session is still usable.
-        throw new Error(`acp ${provider} set model ${JSON.stringify(opts.model)} failed: ${errorMessage(e)}`, {
+        throw new Error(`couldn't select the ${provider} model ${JSON.stringify(opts.model)}: ${errorMessage(e)}`, {
           cause: e,
         });
       }
@@ -316,10 +316,10 @@ export class AcpAgentRunner implements AgentRunner {
     try {
       res = await caller.request("session/fork", params);
     } catch (e) {
-      throw new Error(`acp ${parent.provider} session/fork failed: ${errorMessage(e)}`, { cause: e });
+      throw new Error(`couldn't continue the ${parent.provider} session: ${errorMessage(e)}`, { cause: e });
     }
     const r = res as { sessionId: string };
-    if (!r?.sessionId) throw new Error(`acp ${parent.provider} session/fork returned no sessionId`);
+    if (!r?.sessionId) throw new Error(`${parent.provider} did not continue the session`);
     const rec: AcpSessionRecord = {
       acpSessionId: r.sessionId,
       provider: parent.provider,
@@ -377,7 +377,7 @@ export class AcpAgentRunner implements AgentRunner {
         mcpServers: toAcpMcpServers(known.mcpServers),
       });
     } catch (e) {
-      throw new Error(`acp ${known.provider} session/load failed: ${errorMessage(e)}`, { cause: e });
+      throw new Error(`couldn't reopen the ${known.provider} session: ${errorMessage(e)}`, { cause: e });
     }
     // Load replays history as `session/update` notifications; drain the
     // replay before the next prompt so stale chunks never leak into it.
@@ -410,7 +410,7 @@ export class AcpAgentRunner implements AgentRunner {
     try {
       caller = await this.ensureCaller(rec.provider);
     } catch (e) {
-      yield { type: "error", message: `acp ${rec.provider} not connected: ${errorMessage(e)}`, retryable: true };
+      yield { type: "error", message: `${rec.provider} is not connected: ${errorMessage(e)}`, retryable: true };
       return;
     }
 
