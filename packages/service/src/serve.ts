@@ -17,7 +17,31 @@ import { isSwitchPending } from "./update/index.js";
 import { isAcpRunner } from "./agent/factory.js";
 import { dbFilePath } from "./store/index.js";
 import { migrate, openDatabase } from "./store/index.js";
-import { initSentry } from "./telemetry/sentry.js";
+import { initSentry, type ErrorReporter } from "./telemetry/sentry.js";
+
+export interface ServeShutdownDeps {
+  sentry: ErrorReporter | null;
+  disposeAgents: () => void | Promise<void>;
+  shutdownJobs: () => void;
+  closeApp: () => void | Promise<void>;
+  closeDb: () => void;
+}
+
+/**
+ * Register the clean-shutdown hooks (PRD §14 idle exit). Hooks run
+ * latest-registered first, so this registers in reverse of the effective
+ * teardown order: agent subprocesses and jobs first, then the HTTP server,
+ * then the DB, with the Sentry flush last so errors from teardown itself
+ * still get reported.
+ */
+export function registerShutdownHooks(shutdown: ShutdownHooks, deps: ServeShutdownDeps): void {
+  const { sentry } = deps;
+  if (sentry) shutdown.onShutdown(() => sentry.close());
+  shutdown.onShutdown(() => deps.closeDb());
+  shutdown.onShutdown(() => deps.closeApp());
+  shutdown.onShutdown(() => deps.shutdownJobs());
+  shutdown.onShutdown(() => deps.disposeAgents());
+}
 
 export async function serve(): Promise<void> {
   // Dev-only error reporting (issue #29): on only with SENTRY_DSN_SERVICE.
@@ -36,9 +60,6 @@ export async function serve(): Promise<void> {
   migrate(db);
 
   const shutdown = new ShutdownHooks();
-  // Registered first so it runs last (hooks run in reverse): errors from the
-  // other hooks still get flushed.
-  if (sentry) shutdown.onShutdown(() => sentry.close());
   // buildApp (via createApp) is the single composition root: agent runner
   // defaults to ACP (real subprocesses), replay only with UNVIBE_AGENT.
   // The lifecycle closure reads through this holder (assigned after
@@ -76,21 +97,28 @@ export async function serve(): Promise<void> {
   });
   holder.ctx = created.ctx;
 
-  // Clean shutdown (PRD §14 idle exit): agent subprocesses and jobs first,
-  // then the HTTP server, then the DB.
-  shutdown.onShutdown(async () => {
-    const agents = created.ctx.agents;
-    if (isAcpRunner(agents)) {
-      try {
-        await agents.dispose();
-      } catch {
-        // best-effort: subprocesses die with the process
+  // Clean shutdown (PRD §14 idle exit): effective order is agent
+  // subprocesses and jobs first, then the HTTP server, then the DB last
+  // (jobs writing during shutdown must still find an open database), with
+  // the Sentry flush after everything that might report errors. Hooks run
+  // latest-registered first, so registerShutdownHooks registers them in
+  // reverse (Sentry first, so it still runs last).
+  registerShutdownHooks(shutdown, {
+    sentry,
+    disposeAgents: async () => {
+      const agents = created.ctx.agents;
+      if (isAcpRunner(agents)) {
+        try {
+          await agents.dispose();
+        } catch {
+          // best-effort: subprocesses die with the process
+        }
       }
-    }
+    },
+    shutdownJobs: () => created.ctx.jobs.shutdown(),
+    closeApp: () => created.app.close(),
+    closeDb: () => db.close(),
   });
-  shutdown.onShutdown(() => created.ctx.jobs.shutdown());
-  shutdown.onShutdown(() => created.app.close());
-  shutdown.onShutdown(() => db.close());
 
   // Foreground lock: lets `unvibe stop`/`status` find us. Only our own PID
   // may remove it (a newer daemon must not lose its lock to our exit).
