@@ -81,7 +81,12 @@ test("Ctrl+wheel zooms but a plain wheel scrolls the page instead", async ({ pag
   const scrolledTo = await page.evaluate(() => document.querySelector("#page")?.scrollTop ?? 0);
   expect(scrolledTo).toBeGreaterThan(scrolledFrom);
   // With Ctrl held the same gesture zooms around the pointer instead
-  // (re-aim: the scroll above moved the diagram).
+  // (re-aim: the scroll above moved the diagram; re-center it first so
+  // the two-bar header cannot cover the aim point — main-rc).
+  await page.evaluate(() => {
+    document.querySelector("#C-g-flow #B-b1")?.scrollIntoView({ block: "center" });
+  });
+  await page.waitForTimeout(400);
   const box2 = await svg.boundingBox();
   if (!box2) throw new Error("diagram svg has no box");
   await page.keyboard.down("Control");
