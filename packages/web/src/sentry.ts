@@ -20,3 +20,21 @@ export function initSentry(): void {
       });
   }
 }
+
+/**
+ * Report a caught render error (issue #101). Same path as `initSentry`:
+ * the import lives inside the DSN check so builds (DSN `""`) drop the
+ * whole block and the SDK never enters the bundle. Never throws:
+ * callers are error paths that must keep their own behaviour.
+ */
+export function reportWebError(error: unknown, extra?: Record<string, unknown>): void {
+  if (__SENTRY_DSN__) {
+    void import("@sentry/react")
+      .then((Sentry) => {
+        Sentry.captureException(error, extra ? { extra } : undefined);
+      })
+      .catch(() => {
+        // reporting is best-effort
+      });
+  }
+}
