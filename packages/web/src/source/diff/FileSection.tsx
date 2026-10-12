@@ -18,6 +18,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, HunkLine, ReviewFile } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
+import { escapeHtml } from "../../components/escapeHtml.js";
 import {
   fileStats,
   groupHunks,
@@ -27,6 +28,7 @@ import {
   type SplitRow,
 } from "./diffLogic.js";
 import { slotKey, type LineSlots } from "./lineSlots.js";
+import { codeLineHtml } from "./highlight/codeHtml.js";
 import { useFileHighlight } from "./highlight/useFileHighlight.js";
 import type { LineTokens } from "./highlight/tokenize.js";
 import "./highlight/highlight.css";
@@ -143,29 +145,17 @@ function inHighlight(highlight: LineRange | null, n: number | undefined): boolea
 }
 
 /**
- * Token spans for one code line (issue #23).
- * Null segs render today's plain text (unknown language, caps, failure).
- * Plain runs stay spanless so the DOM (and copy-paste) carries no
- * artefacts; only colours change, so there is no layout shift.
+ * Code-cell content as an opaque HTML string (issue #101).
+ *
+ * The span carries `dangerouslySetInnerHTML` and never React children, so
+ * the cell's text nodes are anonymous: anchor marks may wrap, split and
+ * merge them freely, and React only ever swaps the whole string (plain →
+ * token spans on upgrade, new text on patches). Null segs render today's
+ * plain text; plain runs stay spanless so the DOM (and copy-paste) carries
+ * no artefacts; only colours change, so there is no layout shift.
  */
-function CodeSegs({ text, segs }: { text: string; segs: LineTokens | null }): ReactNode {
-  if (segs === null) return <>{text}</>;
-  return (
-    <>
-      {segs.map((s, i) =>
-        s.cls === null && !s.bold && !s.italic ? (
-          <Fragment key={i}>{s.text}</Fragment>
-        ) : (
-          <span
-            key={i}
-            className={[s.cls, s.bold ? "shk-b" : "", s.italic ? "shk-i" : ""].filter(Boolean).join(" ") || undefined}
-          >
-            {s.text}
-          </span>
-        ),
-      )}
-    </>
-  );
+function codeCellHtml(prefix: string, text: string, segs: LineTokens | null): string {
+  return escapeHtml(prefix) + codeLineHtml(text, segs);
 }
 
 /** The `#`-comment fallback only applies to unhighlighted (plain) rows. */
@@ -198,10 +188,12 @@ function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineCl
                 {n ?? ""}
               </td>
               <td className="c">
-                <span className={plainCommentClass(r.text, segs)}>
-                  {(r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ") + ""}
-                  <CodeSegs text={r.text} segs={segs} />
-                </span>
+                <span
+                  className={plainCommentClass(r.text, segs)}
+                  dangerouslySetInnerHTML={{
+                    __html: codeCellHtml(r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ", r.text, segs),
+                  }}
+                />
               </td>
             </tr>
             {n !== undefined && slots[slotKey(fileKey, n)] != null ? (
@@ -249,9 +241,10 @@ function SplitRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClic
           {num ?? ""}
         </td>
         <td className={`c ${cls}`}>
-          <span className={plainCommentClass(line.text, segs)}>
-            <CodeSegs text={line.text} segs={segs} />
-          </span>
+          <span
+            className={plainCommentClass(line.text, segs)}
+            dangerouslySetInnerHTML={{ __html: codeCellHtml("", line.text, segs) }}
+          />
         </td>
       </>
     );
