@@ -32,10 +32,12 @@ export function ReviewBar({
 }): React.JSX.Element {
   const { short, title, prUrl } = useReviewIdentity(reviewId);
   // #92: the Debug page needs a finished open (its reads refuse earlier
-  // states), so the icon waits until the review is ready.
+  // states), so the icon waits until the review is ready. One snapshot
+  // subscription (never behind a short-circuit) so the hook order is
+  // stable across the loading → ready transition.
+  const snapshot = useReview((s) => s.snapshot);
   const ingestReady =
-    (useReview((s) => s.snapshot?.ingest?.status) ?? "ready") === "ready" &&
-    (useReview((s) => s.snapshot?.version?.n) ?? 0) >= 1;
+    (snapshot?.ingest?.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">

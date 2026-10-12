@@ -111,6 +111,14 @@ describe("ReviewBar", () => {
     expect(screen.getByRole("button", { name: "Guide" })).toBeInTheDocument();
     expect(document.getElementById("toggleRight")).toHaveTextContent("Source");
     expect(document.querySelector("#submitSlot")).toBeNull();
+    // The open finishing (loading → ready) must not break the hook order:
+    // the Debug icon appears without throwing.
+    const { act } = await import("@testing-library/react");
+    const ready = await api.review("demo");
+    await act(async () => {
+      useReview.getState().setSnapshot({ ...ready, review: { ...ready.review, id: "opening-1" } });
+    });
+    expect(screen.getByRole("link", { name: "Debug" })).toHaveAttribute("href", "/review/opening-1/debug");
   });
 
   it("toggles call their handlers", async () => {
