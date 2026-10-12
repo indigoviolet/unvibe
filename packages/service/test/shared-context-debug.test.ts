@@ -127,6 +127,24 @@ describe("GET /api/reviews/:id/shared-context", () => {
       await app.close();
     }
   });
+
+  it("debug base pack renders pinned code in L1b (#37)", async () => {
+    const { app, ctx, reviewId } = await setupReview(new FakeCommandRunner());
+    try {
+      await ctx.reviews.mutate(reviewId, (draft) => {
+        draft.pinnedCode = [
+          { path: "a.py", start: 1, end: 2, sha: "a".repeat(40), text: "PIN-PROBE-37 y = 2", language: "python" },
+        ];
+      });
+      const res = await app.inject({ method: "GET", url: `/api/reviews/${reviewId}/shared-context`, headers: auth });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { base: string };
+      expect(body.base).toContain("PIN-PROBE-37");
+      expect(body.base).toContain("code:a.py:1-2@");
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe("debug markdown builders", () => {
