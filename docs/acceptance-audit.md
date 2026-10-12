@@ -382,7 +382,10 @@ needed (that deviation is closed, not added).
 
 - Model pickers per role with provider models — met
   (`settings.spec.ts` “model pickers list provider models”, `routes/settings.ts`,
-  `GET /api/models` ran 200).
+  `GET /api/models` ran 200). Switching a role's provider only browses that
+  provider's list and saves nothing; choosing a model saves provider + model
+  together, with no false “no longer offered” alert mid-browse (issue #87;
+  `ModelsSection.test.tsx`).
 - Model display names (#21) — met: `GET /api/models` carries `name` +
   `description` from the adapters; pickers show display name beside the id
   with description as secondary text (Claude + Codex); readiness, Doctor,
@@ -662,10 +665,15 @@ needed (that deviation is closed, not added).
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
-- Preview builds, step 1 (issue #36) — implemented, not a PRD requirement:
-  `mise run preview:publish [-- <branch>] [--push]` builds a branch into a
-  local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
-  guard, `unvibe` provenance field in the generated package.json);
+- Preview builds, step 1 (issues #36, #41) — implemented, not a PRD requirement:
+  `mise run preview:publish [-- <branch>] [--push] [--as-is] [--all] [--prune]`
+  builds local `main` merged with the branch in a throwaway detached
+  worktree (no worktree needed; `--as-is` builds the branch as it stands)
+  into a local orphan `preview/<slug>` ref (merge conflicts fail clearly
+  with nothing published; dirty-tree refusal for in-place `--as-is`
+  builds; preview-only push guard, `unvibe` provenance field in the
+  generated package.json now naming both sides
+  `main@<sha> + <branch>@<sha>`);
   `unvibe update --list` / `unvibe update <channel>`
   lists channels via `gh` (GITHUB_TOKEN unset) — per-ref version, source
   commit/branch and build time read without cloning
