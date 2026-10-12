@@ -152,6 +152,7 @@ describe("submit", () => {
       });
       expect(res.statusCode).toBe(409);
       expect((res.json() as { error: string }).error).toMatch(/new commits/i);
+      expect(res.json()).toMatchObject({ code: "head-moved", reason: "head moved" });
       expect(runner.calls).toHaveLength(1);
     } finally {
       await app.close();

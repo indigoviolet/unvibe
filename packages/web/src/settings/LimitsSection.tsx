@@ -8,7 +8,7 @@ import { useState } from "react";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 
-interface Field {
+export interface Field {
   key: keyof Settings;
   label: string;
   hint: string;
@@ -86,7 +86,7 @@ export function LimitsSection({
                 .filter((m) => m.startsWith(String(f.key)) || m.startsWith(f.label))
                 .map((m) => (
                   <span className="err" role="alert" key={m}>
-                    {m}
+                    {labelError(f, m)}
                   </span>
                 ))}
             </div>
@@ -108,6 +108,20 @@ export function LimitsSection({
       </div>
     </section>
   );
+}
+
+/**
+ * Validation errors from the service start with the internal key
+ * ("sessionsPerProvider must be …", issue #86 finding 11): show the
+ * field's label instead, keeping the rest of the message. Messages that
+ * already start with the label (client-side checks) pass through.
+ */
+export function labelError(f: Field, message: string): string {
+  const key = String(f.key);
+  if (message.startsWith(key)) {
+    return `${f.label}: ${message.slice(key.length).replace(/^[\s:]+/, "")}`;
+  }
+  return message;
 }
 
 /** `PUT /api/settings` 400s carry `{ errors: string[] }` inside the message. */

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, friendlyError } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
+import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
@@ -54,6 +55,20 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
 
   const pageId = pageIdFromSplat(splat);
   const pageKey = pageId ?? "root";
+  // Guide error-state retry (issue #86, finding 14): re-enqueue the
+  // unfinished pipeline stages, then converge on the fresh snapshot.
+  const [retrying, setRetrying] = useState(false);
+  const retryGuide = (): void => {
+    setRetrying(true);
+    api
+      .resume(reviewId)
+      .then(() => api.review(reviewId))
+      .then((snap) => setSnapshot(snap))
+      .catch((err: unknown) => {
+        toast(`Couldn't retry the guide: ${friendlyError(err)}`);
+      })
+      .finally(() => setRetrying(false));
+  };
 
   // Reader state (M4): per-page scroll position restored on back/forward.
   // Saved continuously on scroll; restored after the new page renders. The
@@ -193,6 +208,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
             <>
               <h1 className="title">Couldn't build the guide</h1>
               <p className="hint">{empty.detail}</p>
+              <p>
+                <button className="btn" type="button" disabled={retrying} onClick={retryGuide}>
+                  {retrying ? "Retrying…" : "Retry"}
+                </button>
+              </p>
             </>
           ) : (
             <>

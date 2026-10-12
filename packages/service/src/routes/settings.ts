@@ -5,8 +5,8 @@
  *   live defaults computed from what each adapter offers (`listModels` via
  *   `selectDefaultModels`); with no live adapter the static defaults stand.
  *   A second opinion with no Codex available comes back unset
- *   (`{ provider: "codex", model: "" }`); the UI explains a second provider
- *   is needed.
+ *   (`{ provider: "codex", model: "" }`); the UI explains a different
+ *   model from main is needed.
  * - `PUT /api/settings` — partial update; 400 with `{ errors }` when
  *   invalid (including a model id the adapter does not offer), otherwise
  *   the full updated settings.

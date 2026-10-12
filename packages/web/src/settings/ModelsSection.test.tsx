@@ -261,7 +261,11 @@ describe("ModelsSection provider switch", () => {
     render(<ModelsSection settings={unset} onSaved={onSaved} />);
 
     await waitFor(() => expect(modelSelect("secondOpinion")).toHaveValue(""));
-    expect(screen.getByTestId("model-secondOpinion-unset")).toBeInTheDocument();
+    // Unset copy names the enforced rule (finding 19): a different model
+    // from main, not a second provider.
+    expect(screen.getByTestId("model-secondOpinion-unset")).toHaveTextContent(
+      "need a different model from main",
+    );
 
     fireEvent.change(provSelect("secondOpinion"), { target: { value: "claude" } });
     await screen.findByText("Pick a claude model…");

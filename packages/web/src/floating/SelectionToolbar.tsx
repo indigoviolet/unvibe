@@ -24,7 +24,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { ActionAnchor } from "@unvibe/shared";
-import { friendlyError } from "../api/client.js";
+import { apiErrorCode, friendlyError } from "../api/client.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
@@ -252,7 +252,7 @@ export function SelectionToolbar() {
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/no agent configured/i.test(msg)) {
+        if (apiErrorCode(err) === "no-agent" || /no agent configured/i.test(msg)) {
           toast(NO_AGENT_COPY);
         } else {
           toast(`Couldn't explain: ${friendlyError(err)}`);

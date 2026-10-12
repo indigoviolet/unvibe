@@ -216,6 +216,9 @@ export async function runSubmit(
       status: 409,
       body: {
         error: `the PR has new commits since this review was loaded (${snapshot.version.headSha.slice(0, 7)} → ${view.headRefOid.slice(0, 7)}) — refresh the review, then submit`,
+        // Machine code for the Submit panel (issue #86, finding 10);
+        // `reason` stays for older clients.
+        code: "head-moved",
         reason: "head moved",
         reviewedCommit: snapshot.version.headSha,
         currentHead: view.headRefOid,

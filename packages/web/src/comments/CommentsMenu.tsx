@@ -26,6 +26,7 @@ import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { revealSource } from "../source/reveal.js";
 import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
+import { descriptionPaneName } from "../source/description/paneName.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
 import { threadPostText } from "./threads.js";
 
@@ -91,7 +92,7 @@ export function whereLabel(snapshot: ReviewSnapshot, thread: Annotation): string
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
     return file?.path ?? host.fileKey;
   }
-  if (host.kind === "description") return "PR description";
+  if (host.kind === "description") return descriptionPaneName(snapshot);
   for (const page of snapshot.pages) {
     for (const card of page.cards) {
       for (const block of card.blocks) {

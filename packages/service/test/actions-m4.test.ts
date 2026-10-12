@@ -1001,6 +1001,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const depth = await postAction(app, id, { kind: "depth", cardId: "g-design", direction: "simpler" });
       expect(depth.status).toBe(500);
       expect(String(depth.json.error)).toContain("no agent configured");
+      expect(depth.json.code).toBe("no-agent");
       expect(
         ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-design")!.level,
       ).toBe("standard");
@@ -1008,6 +1009,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const examples = await postAction(app, id, { kind: "examples", cardId: "central" });
       expect(examples.status).toBe(500);
       expect(String(examples.json.error)).toContain("no agent configured");
+      expect(examples.json.code).toBe("no-agent");
 
       // Retry rebuilds and fails the same fast way (error state persists,
       // nothing stuck working; still 200 — the error lives on the thread).

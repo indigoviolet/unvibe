@@ -1,6 +1,11 @@
 /**
  * Source-pane error boundary (issue #101): a throw in the tab body shows a
  * pane-sized notice while the tab bar stays usable.
+ *
+ * main-rc reconciliation: the seed is a PR review (prNumber set) so the
+ * description tab keeps its "PR description" name under finding-22 naming
+ * (issue #86); the "Commits" name for branch reviews is covered by
+ * SourcePane.tabs.test.tsx.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -22,7 +27,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", prNumber: 7, versions: [], currentVersion: 1, createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],

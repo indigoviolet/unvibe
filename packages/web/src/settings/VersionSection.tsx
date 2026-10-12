@@ -535,7 +535,8 @@ function BlockedPanel({
       <span className="warnline">
         {blocked.activeJobs} running job{blocked.activeJobs === 1 ? "" : "s"} — switching stops{" "}
         {blocked.activeJobs === 1 ? "it" : "them"}. Stopped jobs show as interrupted; resume or retry them
-        from the review afterwards. On a different version they stay with this version&apos;s data.
+        from the review afterwards. Interrupted jobs stay with this channel&apos;s data — switch back to
+        resume or retry them.
       </span>
       {blocked.jobs.length > 0 ? (
         <span className="hint" data-testid="update-blocked-jobs">

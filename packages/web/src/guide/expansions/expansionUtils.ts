@@ -91,7 +91,11 @@ export function expansionPreviewHtml(a: Annotation): string | null {
   return null;
 }
 
-/** No-agent message shared by expansion/card error states. */
+/**
+ * No-agent message shared by expansion/card error states. Stored errors
+ * carry no code, so this stays a text match: the text fallback for
+ * finding 10 (HTTP failures check `apiErrorCode` first at their site).
+ */
 export function isNoAgentMessage(message: string | null | undefined): boolean {
   if (!message) return false;
   return /no agent configured/i.test(message);

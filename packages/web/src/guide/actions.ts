@@ -12,7 +12,7 @@
  * `jobId`). `deduplicated` answers follow the existing job.
  */
 import type { ActionResponse, DepthLevel, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
-import { api, friendlyError } from "../api/client.js";
+import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { INFLIGHT_TTL_MS, inflightExpired, useReview, type InFlightKind } from "../state/store.js";
 import {
@@ -324,7 +324,8 @@ export async function performAction(
     if (target && mine()) useReview.getState().clearInflight(target.targetId);
     if (opts?.toast !== false) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/no agent configured/i.test(msg)) {
+      // Code first (finding 10); stored errors without one fall back to text.
+      if (apiErrorCode(err) === "no-agent" || /no agent configured/i.test(msg)) {
         toast(NO_AGENT_COPY);
       } else {
         toast(`Couldn't do that: ${friendlyError(err)}`);

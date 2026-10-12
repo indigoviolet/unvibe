@@ -9,7 +9,7 @@
 import { useMemo } from "react";
 import type { Page } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
-import { friendlyError } from "../api/client.js";
+import { apiErrorCode, friendlyError } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
@@ -132,7 +132,7 @@ export function openLinkTarget(
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/no agent configured/i.test(msg)) {
+        if (apiErrorCode(err) === "no-agent" || /no agent configured/i.test(msg)) {
           toast(NO_AGENT_COPY);
         } else {
           toast(`Couldn't open the concept page: ${friendlyError(err)}`);

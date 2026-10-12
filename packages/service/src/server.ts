@@ -20,6 +20,7 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { AgentRunner } from "@unvibe/shared";
 import { hasValidToken } from "./auth.js";
+import { errorCodeFor, errorCodeOf } from "./errors.js";
 import { CONTENT_SECURITY_POLICY } from "./security/csp.js";
 import { hostCheckAllows } from "./security/host.js";
 import { resolveBuildInfo } from "./update/index.js";
@@ -227,6 +228,32 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   app.addHook("onError", async (req, _reply, err) => {
     if (err.statusCode !== undefined && err.statusCode < 500) return;
     reportError(err, { method: req.method, route: req.routeOptions.url });
+  });
+
+  // Route error handler (issue #86, finding 2): an exception thrown
+  // inside a route answers the app's usual error body (`{ error:
+  // <message> }` + finding-10 `code`) instead of Fastify's default
+  // (`{ statusCode, error: "Internal Server Error", message }`, whose
+  // `error` field is what `friendlyError` prints — dropping the real
+  // message). An explicit status on the error is kept; anything else is
+  // a 500. The stack is logged server-side and never sent: only the
+  // message's first line goes out, so a stack trace can never leak to
+  // the client.
+  app.setErrorHandler((err, req, reply) => {
+    const fault = err as Error & { statusCode?: unknown };
+    const status =
+      typeof fault.statusCode === "number" && fault.statusCode >= 400 && fault.statusCode < 600
+        ? fault.statusCode
+        : 500;
+    if (status >= 500) {
+      console.error(`route fault ${req.method} ${req.url}: ${fault.stack ?? fault.message}`);
+    }
+    const firstLine = (fault.message ?? "").split("\n", 1)[0].trim();
+    const message = firstLine !== "" ? firstLine : "something went wrong";
+    const code = errorCodeOf(fault) ?? errorCodeFor(status, message);
+    void reply
+      .code(status)
+      .send(code === undefined ? { error: message } : { error: message, code });
   });
 
   // HTTP activity counts toward "open window", except health probes: the

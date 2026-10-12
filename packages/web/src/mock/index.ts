@@ -32,6 +32,7 @@ import type {
   RefreshResponse,
   RemoveRepoResponse,
   ResetDataResponse,
+  ResumeReviewResponse,
   Repo,
   RepoChange,
   RepoChangesResponse,
@@ -1885,6 +1886,11 @@ export const mockApi = {
     trackMockJob(jobId, "update-pass");
     window.setTimeout(() => settleMockJob(jobId), 800);
     return { jobId, toVersion: isStaleReview(id) ? 2 : 1 };
+  },
+
+  resume: async (): Promise<ResumeReviewResponse> => {
+    await wait(50);
+    return { resumed: false, jobIds: [], pendingStages: [] };
   },
 
   action: async (_id: string, a: ReviewAction): Promise<ActionResponse> => {
