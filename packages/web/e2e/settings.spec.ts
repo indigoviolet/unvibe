@@ -9,7 +9,7 @@
 import { expect, test } from "./network-guard.js";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/settings?review=demo");
+  await page.goto("/settings");
   await expect(page.getByText("Models, prompts, limits")).toBeVisible();
 });
 
@@ -25,7 +25,7 @@ test("model pickers list provider models and warn on same-model second opinion",
       JSON.stringify({ main: { provider: "custom", model: "custom-1" } }),
     );
   });
-  await page.goto("/settings?review=demo");
+  await page.goto("/settings");
   await expect(page.locator('[data-testid="model-main"]').getByText(/adapter not installed or not logged in/)).toBeVisible();
 
   // Second opinion on the same model as main warns (PRD §4.10).
@@ -36,20 +36,14 @@ test("model pickers list provider models and warn on same-model second opinion",
   await expect(page.getByText(/same model as main/)).toBeVisible();
 });
 
-test("prompts show template variables and layered expansions", async ({ page }) => {
+test("prompts show template variables (expanded text lives on the debug page)", async ({ page }) => {
   const card = page.locator('[data-testid="prompt-reader"]');
   await card.getByRole("button", { name: "Expand reader" }).click();
   // Template view: {{variables}} marked.
   await expect(card.getByText("role: user · tier: main", { exact: false })).toBeVisible();
   await expect(card.locator("mark.tm").first()).toContainText("{{source}}");
-  // Expanded view: layers collapsed by default, cached part set apart.
-  await card.getByRole("button", { name: "Expanded for this review" }).click();
-  await expect(card.getByText(/total · .* cached/)).toBeVisible();
-  const l1 = card.locator('details.lay[data-layer="L1"]');
-  await expect(l1).toBeVisible();
-  await expect(l1).toContainText("cached");
-  await l1.locator("summary").click();
-  await expect(l1).toContainText("PR #5020");
+  // No per-review expansion here any more.
+  await expect(card.getByRole("button", { name: "Expanded for this review" })).toHaveCount(0);
 });
 
 test("limits persist across reload", async ({ page }) => {
@@ -76,11 +70,14 @@ test("tips popover opens from the review top bar", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Usage tips" })).toContainText("Settings");
 });
 
-test("settings links carry the review context", async ({ page }) => {
+test("settings link is plain; the review context lives on the debug page", async ({ page }) => {
   await page.goto("/review/demo");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\?review=demo/);
-  await expect(page.getByRole("link", { name: "Back to review" })).toHaveAttribute("href", "/review/demo");
+  await expect(page).toHaveURL("/settings");
+  await expect(page.getByRole("link", { name: "Back to start" })).toHaveAttribute("href", "/");
+  // Browser back returns to the review (Settings pushes a history entry).
+  await page.goBack();
+  await expect(page).toHaveURL("/review/demo");
 });
 
 test("stale review shows banner counts, range-diff and stale hunks", async ({ page }) => {

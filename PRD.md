@@ -206,9 +206,7 @@ Every card and every expansion card has the same controls:
 
 ### 4.14 Settings page
 - **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers.
-- **Prompts:** each template, in two views:
-  - **Template:** the raw text with its variables marked;
-  - **Expanded for this review:** the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart. View-only to start.
+- **Prompts:** each template (Template view): the raw text with its variables marked. View-only to start. The per-review "Expanded for this review" view — the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart — lives on the debug page below.
 - **Limits and budgets:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
 - **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
   - **Jobs:** running and queued jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider.
@@ -570,7 +568,7 @@ WS   /api/events?review=:id              job progress, streamed text, state patc
 | M3 | Interaction | Explain, Ask and Note on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Expansions close into links; Open as page. Mark read. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
-| M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompts (template and expanded) and limits; the per-review debug page with jobs and usage. |
+| M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |
 
 ## 18. Testing and evaluation
 

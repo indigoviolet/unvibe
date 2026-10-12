@@ -10,7 +10,7 @@ test("top bar links to the debug page, which shows base, log and contributions",
   await page.goto("/review/demo");
   await page.getByRole("link", { name: "Debug", exact: true }).click();
   await expect(page).toHaveURL("/review/demo/debug");
-  await expect(page.getByRole("heading", { name: "Jobs and shared context" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Jobs, prompts and shared context" })).toBeVisible();
 
   const base = page.locator('section[aria-label="Base"]');
   await expect(base).toContainText("v1|guide-mock|mock|mock-main");
@@ -47,6 +47,19 @@ test("jobs show state, tokens, cache rate, prompt link and cancel", async ({ pag
   await expect(queued).toContainText("cancelled");
 
   await expect(page.locator('[data-testid="jobs-totals"]')).toContainText("Totals:");
+});
+
+test("prompts show the expanded text for this review", async ({ page }) => {
+  await page.goto("/review/demo/debug");
+  const card = page.locator('section[aria-label="Prompts"]').locator('[data-testid="prompt-reader"]');
+  await card.getByRole("button", { name: "Expand reader" }).click();
+  // Expanded view: layers collapsed by default, cached part set apart.
+  await expect(card.getByText(/total · .* cached/)).toBeVisible();
+  const l1 = card.locator('details.lay[data-layer="L1"]');
+  await expect(l1).toBeVisible();
+  await expect(l1).toContainText("cached");
+  await l1.locator("summary").click();
+  await expect(l1).toContainText("PR #5020");
 });
 
 test("delete on the debug page removes the contribution", async ({ page }) => {

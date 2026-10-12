@@ -1,14 +1,11 @@
 /**
- * Settings page (`/settings`, PRD §4.14): models, prompts (template +
- * expanded), limits and budgets.
- *
- * Reachable from the top bar and the start page; also openable in the
- * context of a review (`/settings?review=:id`), which gives "Expanded for
- * this review" a subject. Jobs and shared context live on the per-review
+ * Settings page (`/settings`, PRD §4.14): models, prompt templates, limits
+ * and budgets. App-level only: nothing here is review-scoped. Jobs, the
+ * per-review prompt expansions and shared context live on the per-review
  * debug page (`/review/:id/debug`, issue #32), not here.
  */
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
@@ -18,8 +15,6 @@ import { PromptsSection } from "./PromptsSection.js";
 import "./settings.css";
 
 export function SettingsPage(): React.JSX.Element {
-  const [params] = useSearchParams();
-  const reviewId = params.get("review");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,8 +49,6 @@ export function SettingsPage(): React.JSX.Element {
     };
   }, []);
 
-  const back = reviewId ? `/review/${reviewId}` : "/";
-
   return (
     <div className="app">
       <header className="top">
@@ -65,8 +58,8 @@ export function SettingsPage(): React.JSX.Element {
         <div className="pr">
           <b>Settings</b>
         </div>
-        <Link className="tbtn" to={back}>
-          {reviewId ? "Back to review" : "Back to start"}
+        <Link className="tbtn" to="/">
+          Back to start
         </Link>
       </header>
       <main className="col" style={{ padding: 24 }}>
@@ -83,7 +76,7 @@ export function SettingsPage(): React.JSX.Element {
             <>
               <ModelsSection settings={settings} onSaved={setSettings} />
               <EnvironmentSection />
-              <PromptsSection reviewId={reviewId} />
+              <PromptsSection />
               <LimitsSection settings={settings} onSaved={setSettings} />
             </>
           ) : null}
