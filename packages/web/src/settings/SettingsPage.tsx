@@ -16,6 +16,7 @@ import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
 import { PromptsSection } from "./PromptsSection.js";
 import { RepositoriesSection } from "./RepositoriesSection.js";
+import { Toast } from "../floating/Toast.js";
 import "./settings.css";
 
 export function SettingsPage(): React.JSX.Element {
@@ -55,6 +56,7 @@ export function SettingsPage(): React.JSX.Element {
 
   return (
     <div className="app">
+      <Toast />
       <header className="top">
         <Link className="brand" to="/" title="Back to the start screen">
           Unvibe
