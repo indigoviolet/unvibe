@@ -458,7 +458,7 @@ needed (that deviation is closed, not added).
 
 - Chevron/Delete/×/check placement + AI/user initials + teal/amber — met
   (walk screenshot; prototype CSS class names kept).
-- Only “Guided review” + “Agent finding” labels — met (walk).
+- Only “Guide” + “Agent finding” labels — met (walk).
 - Comments/expansions share header layout — met (`ThreadView` shared).
 - `hidden` stays hidden — met (`styles/prototype.css:25`
   `[hidden]{display:none!important}` — the two prototype bugs' fix,
@@ -987,7 +987,9 @@ environment check names are Main/Small/Second-opinion model; Reload
 environment + Limits tab + plain Limits labels), then the copy guard.
 Skipped entries (with reasons) and the commit hashes are in the
 implementer's report on the issue; glossary item 5 ("Guided review"
-default title) is deliberately not done and needs the owner's decision.
+default title) was deliberately not done pending the owner's decision —
+decided 2026-10-12 and renamed to "Guide" under #102 (no data migration:
+stored "Guided review" still counts as the default).
 Small companion code changes the list calls for: shared stage→label map
 (`web/src/guide/stageLabels.ts`, used by the start page and the guide
 empty state, with `stageLabels.test.ts`); one `NO_AGENT_COPY` constant;
