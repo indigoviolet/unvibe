@@ -787,9 +787,9 @@ function readMockReadiness(): ReadinessResponse {
     checks: [
       { id: "git", label: "git", status: "ok", summary: "git found", fix: "", settingsAnchor: "#environment" },
       { id: "gh", label: "gh (GitHub CLI)", status: "ok", summary: "gh logged in as you", fix: "", settingsAnchor: "#environment" },
-      { id: "agent:main", label: "Agent · main", status: "ok", summary: "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
-      { id: "agent:small", label: "Agent · small", status: "ok", summary: "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
-      { id: "agent:secondOpinion", label: "Agent · second opinion", status: "ok", summary: "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:main", label: "Main model", status: "ok", summary: "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:small", label: "Small model", status: "ok", summary: "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:secondOpinion", label: "Second-opinion model", status: "ok", summary: "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
       { id: "agents-distinct", label: "Second opinion independence", status: "ok", summary: "Second opinion differs from main", fix: "", settingsAnchor: "#models" },
     ],
     generatedAt: Date.now(),
@@ -1044,7 +1044,7 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
         ? { kind: "inline", path: file.path, line: host.line, side: "RIGHT" }
         : { kind: "general", reason: `unknown file ${host.fileKey}` };
     } else {
-      location = { kind: "general", reason: host.kind === "block" ? "guide comment" : "description comment" };
+      location = { kind: "general", reason: host.kind === "block" ? "Not tied to a line of the diff, so it posts as a general PR comment." : "A comment on the PR description posts as a general PR comment." };
     }
     return { threadId: thread.id, location, text: mockPostText(thread) };
   });
@@ -1161,6 +1161,9 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     version: "0.0.1",
     commit: null,
     sourceBranch: null,
+    sourceCommit: null,
+    baseBranch: null,
+    baseCommit: null,
     builtAt: new Date(NOW - 3 * 86400_000).toISOString(),
     current: false,
   },
@@ -1170,6 +1173,9 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     version: "0.0.1-rc.1",
     commit: "abc1234def5678",
     sourceBranch: null,
+    sourceCommit: null,
+    baseBranch: null,
+    baseCommit: null,
     builtAt: new Date(NOW - 86400_000).toISOString(),
     current: false,
   },
@@ -1179,6 +1185,9 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     version: "0.0.1-preview.feat-x.abc1234",
     commit: "abc1234def5678",
     sourceBranch: "feat/x",
+    sourceCommit: "abc1234def5678",
+    baseBranch: "main",
+    baseCommit: "0011223344556677",
     builtAt: new Date(NOW - 3600_000).toISOString(),
     current: false,
   },
@@ -1188,6 +1197,9 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     version: "0.0.1-preview.fix-y.9f8e7d6",
     commit: "9f8e7d6c5b4a3",
     sourceBranch: "fix/y",
+    sourceCommit: null,
+    baseBranch: null,
+    baseCommit: null,
     builtAt: new Date(NOW - 7200_000).toISOString(),
     current: false,
   },
@@ -1232,6 +1244,9 @@ function mockUpdateBuild(): UpdateBuildInfo | null {
   return {
     version: found.version,
     sourceBranch: found.sourceBranch,
+    sourceCommit: found.sourceCommit,
+    baseBranch: found.baseBranch,
+    baseCommit: found.baseCommit,
     commit: found.commit,
     builtAt: found.builtAt,
   };
@@ -1856,8 +1871,8 @@ export const mockApi = {
         messages: [],
         post: false,
         note: false,
-        working: "Thinking…",
-        expansion: { blocks: [], level: "standard", read: false, collapsed: false, revision: 1, undoStack: [], working: "Thinking…" },
+        working: "Writing answer…",
+        expansion: { blocks: [], level: "standard", read: false, collapsed: false, revision: 1, undoStack: [], working: "Writing answer…" },
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
       trackMockJob(jobId, "ask", { cardId, threadId: id });
@@ -2226,7 +2241,7 @@ export const mockApi = {
     const models = catalog[provider];
     if (!models) {
       throw new Error(
-        `GET /api/models?provider=${provider}: 404 {"error":"no models for provider \\"${provider}\\": adapter not installed or not logged in"}`,
+        `GET /api/models?provider=${provider}: 404 {"error":"couldn't list ${provider} models — check that its CLI is installed and logged in"}`,
       );
     }
     return { provider, models };
@@ -2343,7 +2358,7 @@ export const mockApi = {
   updateChannels: async (): Promise<{ channels: UpdateChannel[] }> => {
     await wait(80);
     if (getMockSettings().versionPickerEnabled !== true) {
-      throw new Error('GET /api/update/channels: 404 {"error":"version picker is disabled"}');
+      throw new Error('GET /api/update/channels: 404 {"error":"channel switching is turned off (turn it on in Settings → Version)"}');
     }
     return { channels: mockUpdateChannels() };
   },
@@ -2351,7 +2366,7 @@ export const mockApi = {
   updateSwitch: async (ref: string, force?: boolean): Promise<UpdateSwitchResponse> => {
     await wait(80);
     if (getMockSettings().versionPickerEnabled !== true) {
-      throw new Error('POST /api/update/switch: 404 {"error":"version picker is disabled"}');
+      throw new Error('POST /api/update/switch: 404 {"error":"channel switching is turned off (turn it on in Settings → Version)"}');
     }
     const target = MOCK_UPDATE_CHANNELS.find((c) => c.ref === ref);
     if (!target) {

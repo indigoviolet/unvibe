@@ -162,7 +162,7 @@ export function GuideThreadHooks() {
         return;
       }
       api.updateComment(reviewId, id, { open: !thread.open }).catch((err: unknown) => {
-        toast(`Couldn't open the comment: ${err instanceof Error ? err.message : String(err)}`);
+        toast(`Couldn't open the comment: ${friendlyError(err)}`);
       });
       if (!thread.open) {
         window.setTimeout(() => {

@@ -125,10 +125,10 @@ export async function collectDiagnostics(opts: CollectOptions = {}): Promise<Dia
   else {
     if (path.onlyInInherited.length > 0 && path.onlyInProbed.length > 0)
       warnings.push(
-        `PATH differs from the interactive shell: ${path.onlyInProbed.length} dir(s) only in the shell (${path.onlyInProbed.slice(0, 3).map((d) => redactHome(d, home)).join(", ")}${path.onlyInProbed.length > 3 ? "…" : ""}) and ${path.onlyInInherited.length} only inherited.`,
+        `PATH differs from the interactive shell: ${path.onlyInProbed.length} only in the shell (${path.onlyInProbed.slice(0, 3).map((d) => redactHome(d, home)).join(", ")}${path.onlyInProbed.length > 3 ? "…" : ""}) and ${path.onlyInInherited.length} only inherited.`,
       );
     else if (path.onlyInProbed.length > 0)
-      warnings.push(`Interactive shell adds ${path.onlyInProbed.length} dir(s) missing from the inherited PATH — GUI-started processes would miss those tools without the probe.`);
+      warnings.push(`Your interactive shell adds ${path.onlyInProbed.length} PATH ${path.onlyInProbed.length === 1 ? "entry" : "entries"} that the service did not inherit. Unvibe reads them from the shell, so tools installed there are still found.`);
   }
   for (const t of tools) warnings.push(...t.warnings);
 

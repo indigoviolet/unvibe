@@ -29,11 +29,11 @@ import { Toast } from "../floating/Toast.js";
 import "./settings.css";
 
 const SETTING_TABS = [
-  { id: "repositories", label: "Repositories" },
+  { id: "repositories", label: "Repos" },
   { id: "models", label: "Models" },
   { id: "environment", label: "Environment" },
   { id: "prompts", label: "Prompts" },
-  { id: "limits", label: "Limits and budgets" },
+  { id: "limits", label: "Limits" },
   { id: "version", label: "Version" },
   { id: "data", label: "Data" },
 ] as const;
@@ -88,7 +88,7 @@ export function SettingsPage(): React.JSX.Element {
     <div className="app">
       <Toast />
       <header className="top">
-        <Link className="brand" to="/" title="Back to the start screen">
+        <Link className="brand" to="/" title="Back to the start page">
           Unvibe
         </Link>
         <div className="pr">
@@ -96,7 +96,7 @@ export function SettingsPage(): React.JSX.Element {
           <PreviewBuildBadge />
         </div>
         <Link className="tbtn" to="/">
-          Back to start
+          Back to start page
         </Link>
       </header>
       <main className="col" style={{ padding: 24 }}>

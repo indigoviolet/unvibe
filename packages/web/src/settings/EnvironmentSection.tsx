@@ -57,8 +57,7 @@ export function EnvironmentSection(): React.JSX.Element {
   return (
     <section aria-label="Environment" id="environment" style={{ scrollMarginTop: 12 }}>
       <p className="hint">
-        git, gh, d2 and the configured agent CLIs — the same checks as the front-screen callouts.{" "}
-        <Link to="/doctor">Doctor page</Link> shows every candidate, full error text, PATH and service identity.
+        The tools Unvibe needs: git, gh, d2 and the agent CLIs.
       </p>
       {error ? (
         <p className="err" role="alert">
@@ -107,12 +106,12 @@ export function EnvironmentSection(): React.JSX.Element {
               disabled={reloading}
               data-testid="reload-everything"
             >
-              {reloading ? "Reloading…" : "Reload everything"}
+              {reloading ? "Reloading…" : "Reload environment"}
             </button>
             <Link className="tbtn" to="/doctor">
               Doctor page
             </Link>
-            {report.cached ? <span className="hint">Cached · Re-check for a fresh probe.</span> : null}
+            {report.cached ? <span className="hint">Checked earlier. Re-check to run the checks again.</span> : null}
           </div>
           {reloadError ? (
             <p className="err" role="alert" data-testid="reload-error">
@@ -121,14 +120,13 @@ export function EnvironmentSection(): React.JSX.Element {
           ) : null}
           {reloadResult ? (
             <div className="card" style={{ padding: "6px 12px" }} data-testid="reload-result">
-              <b>Reloaded without restarting the service</b>
+              <b>Reloaded</b>
               <div style={{ fontSize: 13 }}>Changed: {reloadResult.changed.join("; ")}</div>
               {reloadResult.detail.map((d, i) => (
                 <div key={i} className="hint">
                   {d}
                 </div>
               ))}
-              <div className="hint">In-flight jobs fail as retryable with a clear message and retry (see Jobs).</div>
             </div>
           ) : null}
         </div>

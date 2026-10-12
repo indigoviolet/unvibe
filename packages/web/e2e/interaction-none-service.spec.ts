@@ -134,7 +134,7 @@ test.describe("no-agent state (UNVIBE_AGENT=none)", () => {
       await page.locator('#selbar [data-act="explain"]').click();
       const exp = page.locator('#C-central [data-expansion]').first();
       await expect(exp).toBeVisible({ timeout: 15_000 });
-      await expect(exp).toContainText(/No agent configured/i, { timeout: 30_000 });
+      await expect(exp).toContainText(/agent is turned off/i, { timeout: 30_000 });
     } else {
       // Diff-anchored explain via keyboard selection on the first code cell.
       // Fail-fast with no agent: the expansion shows the no-agent error
@@ -146,7 +146,7 @@ test.describe("no-agent state (UNVIBE_AGENT=none)", () => {
       await page.locator('#selbar [data-act="explain"]').click();
       const exp = page.locator("#right [data-expansion]").first();
       await expect(exp).toBeVisible({ timeout: 15_000 });
-      await expect(exp).toContainText(/No agent configured/i, { timeout: 30_000 });
+      await expect(exp).toContainText(/agent is turned off/i, { timeout: 30_000 });
     }
 
     // Read/collapse-adjacent non-agent controls still work: toggle the

@@ -462,8 +462,8 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
               {changedSinceReviewed ? <span className="prtag">changed since reviewed</span> : null}
             </span>
             {summaryPending && !busy ? (
-              <span className="hint" data-tip="The update pass regenerates this summary">
-                summary pending regeneration
+              <span className="hint" data-tip="Update rewrites this summary">
+                summary out of date
               </span>
             ) : null}
             {busy ? (

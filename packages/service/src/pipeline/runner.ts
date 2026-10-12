@@ -795,7 +795,7 @@ export class Pipeline {
     // Malformed / non-object trailers are job-visible errors (reply-format
     // §10); a missing block is fine (many on-demand replies carry none).
     if (!split.ok && (split.error.kind === "malformed" || split.error.kind === "not-object")) {
-      throw new Error(`trailing JSON ${split.error.kind}: ${split.error.message}`);
+      throw new Error(`the agent's reply was not in the expected format (${split.error.kind}: ${split.error.message})`);
     }
     const body = split.body;
     const cards = parseCards(body);

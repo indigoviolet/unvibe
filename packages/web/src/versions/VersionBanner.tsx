@@ -111,7 +111,7 @@ export function VersionBanner({
         setPhase({ name: "idle" });
         return;
       }
-      setPhase({ name: "failed", message: job.error ?? `update ${job.state}` });
+      setPhase({ name: "failed", message: job.error ?? `The update didn't finish (${job.state}). Try again.` });
     };
     void poll();
   };
@@ -156,7 +156,7 @@ export function VersionBanner({
 
 function updateError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (/501/.test(msg)) return "Update isn't available in this build yet.";
+  if (/501/.test(msg)) return "Update isn't available in this build";
   if (/409/.test(msg)) return "Already up to date";
   return `Couldn't start the update: ${friendlyError(err)}`;
 }

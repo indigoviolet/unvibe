@@ -386,7 +386,10 @@ needed (that deviation is closed, not added).
 
 - Model pickers per role with provider models — met
   (`settings.spec.ts` “model pickers list provider models”, `routes/settings.ts`,
-  `GET /api/models` ran 200).
+  `GET /api/models` ran 200). Switching a role's provider only browses that
+  provider's list and saves nothing; choosing a model saves provider + model
+  together, with no false “no longer offered” alert mid-browse (issue #87;
+  `ModelsSection.test.tsx`).
 - Model display names (#21) — met: `GET /api/models` carries `name` +
   `description` from the adapters; pickers show display name beside the id
   with description as secondary text (Claude + Codex); readiness, Doctor,
@@ -657,10 +660,15 @@ needed (that deviation is closed, not added).
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
-- Preview builds, step 1 (issue #36) — implemented, not a PRD requirement:
-  `mise run preview:publish [-- <branch>] [--push]` builds a branch into a
-  local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
-  guard, `unvibe` provenance field in the generated package.json);
+- Preview builds, step 1 (issues #36, #41) — implemented, not a PRD requirement:
+  `mise run preview:publish [-- <branch>] [--push] [--as-is] [--all] [--prune]`
+  builds local `main` merged with the branch in a throwaway detached
+  worktree (no worktree needed; `--as-is` builds the branch as it stands)
+  into a local orphan `preview/<slug>` ref (merge conflicts fail clearly
+  with nothing published; dirty-tree refusal for in-place `--as-is`
+  builds; preview-only push guard, `unvibe` provenance field in the
+  generated package.json now naming both sides
+  `main@<sha> + <branch>@<sha>`);
   `unvibe update --list` / `unvibe update <channel>`
   lists channels via `gh` (GITHUB_TOKEN unset) — per-ref version, source
   commit/branch and build time read without cloning
@@ -934,6 +942,42 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
   for unknown repos and shows `fetchError` once. Covered by mock-mode
   Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
   spec for invalid input and path-checkout remove.
+
+### User-facing copy (#45, branch `fix/45-user-facing-copy`, applied)
+
+The numbered change list (365 entries: web 1–219, CLI/service 220–365)
+is applied as written, one commit per area in list order, then the four
+flagged renames as four own commits (Settings tab Repositories → Repos;
+Version rows are channels with Installed replacing Current version;
+environment check names are Main/Small/Second-opinion model; Reload
+environment + Limits tab + plain Limits labels), then the copy guard.
+Skipped entries (with reasons) and the commit hashes are in the
+implementer's report on the issue; glossary item 5 ("Guided review"
+default title) is deliberately not done and needs the owner's decision.
+Small companion code changes the list calls for: shared stage→label map
+(`web/src/guide/stageLabels.ts`, used by the start page and the guide
+empty state, with `stageLabels.test.ts`); one `NO_AGENT_COPY` constant;
+`friendlyError` where raw transport strings were printed (D2Diagram,
+GuideThreads, SubmitPanel conflict/error states); label-based limit
+error matching (`LimitsSection.tsx`); exported `ROLE_LABEL` for the
+readiness fallback label; dispatcher 501 match follows the new text;
+`UPDATE_USAGE` reuses `DB_RULE`; the Doctor pointer prints once after
+the list (`formatDoctor`). Behaviour-neutral: `SubmitPanel.tsx` still
+detects the conflict with `/head moved|refresh/`, the web still matches
+`/no agent configured/`, the dispatcher still maps unknown-review (404),
+shape (400) and 501 texts to statuses. Guard:
+`web/src/copy-guard.test.ts` (TypeScript compiler API over literals,
+template text and JSX text/attributes; scope, patterns and allowlist
+format as proposed) passes with 3 allowlist entries (Icon.tsx SVG path
+data; client.ts `/contributions` route paths; store.ts `snapshot` event
+discriminator) and includes the second jargon list. PRD.md (§4.3 page
+kind, §4.14 tab name, §14 token/link-handler wording) and
+`prototype.html` (For-PR empty state) updated where they quoted a
+changed string. Evidence: `mise run check` green (service 651, shared
+105, web 234 unit tests), `mise run --force build` + `mise run test:e2e`
+green; `unvibe --help` output in the issue report.
+Open: the four flagged renames await owner confirmation (each reverts
+independently); non-copy findings from the list are not fixed.
 
 ### Switching reviews in one tab (#70)
 

@@ -175,7 +175,7 @@ describe("performAction in-flight funnel", () => {
           // Done event lands with no content patch (repeat adds nothing).
           useReview.getState().applyEvent({ type: "job", job: doneJob() });
           await vi.advanceTimersByTimeAsync(3000);
-          expect(toastSpy).toHaveBeenCalledWith("Nothing more to add to this card.");
+          expect(toastSpy).toHaveBeenCalledWith("Nothing more to add to this card");
         } finally {
           actionSpy.mockRestore();
           toastSpy.mockRestore();
@@ -212,7 +212,7 @@ describe("performAction in-flight funnel", () => {
             ops: [{ op: "replace", path: "/pages", value: nextPages }],
           });
           await vi.advanceTimersByTimeAsync(5000);
-          expect(toastSpy).not.toHaveBeenCalledWith("Nothing more to add to this card.");
+          expect(toastSpy).not.toHaveBeenCalledWith("Nothing more to add to this card");
         } finally {
           actionSpy.mockRestore();
           toastSpy.mockRestore();

@@ -19,6 +19,7 @@ import {
   pageIdForLinkTarget,
   pagePreview,
 } from "./guideUtils.js";
+import { NO_AGENT_COPY } from "./expansions/expansionUtils.js";
 
 interface Props {
   html: string;
@@ -101,7 +102,7 @@ export function openLinkTarget(
       requestGuideBlock(cardId, blockId ?? "");
       return;
     }
-    toast("That card isn't in this review.");
+    toast("That card isn't in this review");
     return;
   }
   if (target.startsWith("concept:")) {
@@ -113,7 +114,7 @@ export function openLinkTarget(
     const slug = target.slice("concept:".length);
     const reviewId = useReview.getState().snapshot?.review.id;
     if (!reviewId) {
-      toast("The review hasn't loaded yet.");
+      toast("The review is still loading");
       return;
     }
     const stubId = `c-${slug}`;
@@ -127,21 +128,21 @@ export function openLinkTarget(
     void performAction(reviewId, { kind: "concept", slug }, { toast: false })
       .then((res) => {
         if (res.accepted && res.pageId) onOpenPage(res.pageId);
-        else if (!res.accepted) toast("Needs the service to write this concept page.");
+        else if (!res.accepted) toast("Not available with mock data");
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (/no agent configured/i.test(msg)) {
-          toast("No agent configured — set up Claude or Codex in Settings → Models to write concept pages.");
+          toast(NO_AGENT_COPY);
         } else {
-          toast(`Couldn't open the concept: ${friendlyError(err)}`);
+          toast(`Couldn't open the concept page: ${friendlyError(err)}`);
         }
       });
     // Optimistic navigation so the working state shows immediately.
     onOpenPage(stubId);
     return;
   }
-  toast("That link can't be opened yet.");
+  toast("That link can't be opened");
 }
 
 /** Preview HTML for a dotted-link target (page title + first paragraph). */
@@ -164,7 +165,7 @@ export function previewLinkTarget(target: string, pages: Page[] | undefined): st
   }
   if (target.startsWith("concept:")) {
     const slug = target.slice("concept:".length).replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    return `<b>${slug}</b><span class="hint">Concept candidate · the page is written when first opened</span>`;
+    return `<b>${slug}</b><span class="hint">Concept · the page is written when you open it</span>`;
   }
   return null;
 }

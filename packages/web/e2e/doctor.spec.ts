@@ -29,6 +29,6 @@ test("model pickers show display name beside the id with description", async ({ 
 test("reload everything reports in mock mode", async ({ page }) => {
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Environment" }).click();
-  await page.getByRole("button", { name: "Reload everything" }).click();
+  await page.getByRole("button", { name: "Reload environment" }).click();
   await expect(page.getByTestId("reload-result")).toBeVisible({ timeout: 10000 });
 });

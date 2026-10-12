@@ -218,7 +218,7 @@ describe("emptyGuideState (issue #44)", () => {
     });
     expect(emptyGuideState({ stages: { reader: "error" } }, [])).toEqual({
       kind: "error",
-      detail: "The reader stage failed.",
+      detail: "Something went wrong while reading the change.",
     });
   });
 

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { PROMPT_TEMPLATE_NAMES } from "@unvibe/shared";
+import { PROMPT_TEMPLATE_NAMES, type Contribution } from "@unvibe/shared";
 import Fastify from "fastify";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expandAll, registerPrompts, toPromptSnapshot, type ExpandedPrompt } from "../src/routes/prompts.js";
+import { formatContributionLines } from "../src/sharedctx/contributions.js";
 import { buildBasePack } from "../src/context/index.js";
 import { FakeCommandRunner } from "../src/exec/index.js";
 import { loadTemplatesDirSync } from "../src/prompts/index.js";
@@ -106,6 +107,31 @@ describe("GET /api/prompts", () => {
     const a = expandAll(lib, fixtureSnapshot());
     const b = expandAll(lib, fixtureSnapshot());
     expect(a.map((e) => e.expanded)).toEqual(b.map((e) => e.expanded));
+  });
+
+  it("consolidate preview uses the shared contribution formatter, not JSON (issue #80)", () => {
+    const contributions: Contribution[] = [
+      {
+        id: "ct_1",
+        sourceSession: "s1",
+        items: [{ kind: "fact", text: "Reads the original message", citations: [] }],
+        status: "pending",
+      },
+      {
+        id: "ct_2",
+        sourceSession: "s1",
+        items: [{ kind: "correction", text: "Fix the fold", citations: [] }],
+        replaces: "ct_0",
+        status: "merged",
+      },
+    ];
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const preview = expandAll(lib, { ...fixtureSnapshot(), contributions }).find((e) => e.name === "consolidate")!;
+    // Identical to what the real consolidate call sends.
+    expect(preview.expanded).toContain(formatContributionLines(contributions));
+    expect(preview.expanded).toContain("- ct_1 [pending] replaces=-: [fact] Reads the original message");
+    expect(preview.expanded).toContain("- ct_2 [merged] replaces=ct_0: [correction] Fix the fold");
+    expect(preview.expanded).not.toContain('"items"');
   });
 });
 
