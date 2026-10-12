@@ -229,3 +229,18 @@ export function applyConsolidation(
   const droppedIds = verdict.dropped.map((d) => d.id).filter((id) => existing.some((c) => c.id === id));
   return { merged, droppedIds };
 }
+
+/**
+ * One contribution as the consolidate model sees it (issue #80): the same
+ * line the real call (`SharedContextService`, base rebuilds) sends and the
+ * Debug → Prompts preview renders, so the preview never shows text the
+ * model never receives.
+ */
+export function formatContributionLine(c: Pick<Contribution, "id" | "status" | "replaces" | "items">): string {
+  return `- ${c.id} [${c.status}] replaces=${c.replaces ?? "-"}: ${c.items.map((i) => `[${i.kind}] ${i.text}`).join(" / ")}`;
+}
+
+/** Every contribution for the consolidate call, one per line. */
+export function formatContributionLines(cs: Pick<Contribution, "id" | "status" | "replaces" | "items">[]): string {
+  return cs.map(formatContributionLine).join("\n");
+}
