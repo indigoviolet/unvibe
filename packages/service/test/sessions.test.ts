@@ -315,4 +315,50 @@ describe("invalidate and restore", () => {
     const convAgain = await mgr2.ensureConversation(conv.session.id);
     expect(convAgain.id).toBe(conv.session.id);
   });
+
+  it("a base rebuilt after a restart is fresh and holds the new MCP URL (#68)", async () => {
+    const db = openDatabase(":memory:");
+    const store = new SessionStore(db);
+    const scripts: Script[] = [
+      { match: "BASE PACK", events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end" }] },
+    ];
+    const oldUrl = [{ name: "unvibe", url: "http://127.0.0.1:1/api/mcp/old" }];
+    const newUrl = [{ name: "unvibe", url: "http://127.0.0.1:1/api/mcp/new" }];
+    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", mcpServers: oldUrl, pack: basePack() };
+    const mgr1 = new SessionManager({ runner: new StubRunner(scripts), store });
+    const first = await mgr1.getBase(opts);
+    expect(first.fresh).toBe(true);
+
+    // New process: the agent runner no longer knows the old session.
+    const runner2 = new StubRunner(scripts, { failLoad: true });
+    const mgr2 = new SessionManager({ runner: runner2, store });
+    mgr2.restore();
+    const again = await mgr2.getBase({ ...opts, mcpServers: newUrl });
+    // The caller revokes its MCP secret unless the base is fresh.
+    expect(again.fresh).toBe(true);
+    expect(runner2.starts.map((s) => s.mcpServers)).toEqual([newUrl]);
+    // A reused live base is not fresh.
+    expect((await mgr2.getBase(opts)).fresh).toBe(false);
+  });
+
+  it("a conversation reopened after a restart never rebuilds the base with the old MCP URL (#68)", async () => {
+    const db = openDatabase(":memory:");
+    const store = new SessionStore(db);
+    const scripts: Script[] = [
+      { match: "BASE PACK", events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end" }] },
+      { match: "hello", events: [{ type: "text", delta: "hi" }, { type: "done", stopReason: "end" }] },
+    ];
+    const oldUrl = [{ name: "unvibe", url: "http://127.0.0.1:1/api/mcp/old" }];
+    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", mcpServers: oldUrl, pack: basePack() };
+    const mgr1 = new SessionManager({ runner: new StubRunner(scripts), store });
+    const base = await mgr1.getBase(opts);
+    const conv = await mgr1.forkConversation(base.key, "hello");
+
+    const runner2 = new StubRunner(scripts, { failLoad: true });
+    const mgr2 = new SessionManager({ runner: runner2, store });
+    mgr2.restore();
+    // The caller falls back to a new fork through getBase (replyAction).
+    await expect(mgr2.ensureConversation(conv.session.id)).rejects.toThrow(/getBase/);
+    expect(runner2.starts).toEqual([]);
+  });
 });

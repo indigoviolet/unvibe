@@ -7,9 +7,11 @@
  * new session.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ReviewSnapshot } from "@unvibe/shared";
+import type { McpServerConfig, ReviewSnapshot, Session } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
+import { MCP_ROUTE_PREFIX } from "../src/mcp/routes.js";
 import { createApp } from "../src/server.js";
+import { openDatabase } from "../src/store/db.js";
 
 const authed = { authorization: "Bearer tok" };
 const BASE_PACK = "Read the base context below";
@@ -23,8 +25,19 @@ async function waitFor(check: () => boolean, timeoutMs = 10000, intervalMs = 20)
   }
 }
 
-function agents(): FakeAgentRunner {
-  return new FakeAgentRunner([
+/** Fake runner that records the MCP servers each started session was given. */
+class RecordingAgents extends FakeAgentRunner {
+  readonly mcpBySession = new Map<string, McpServerConfig[]>();
+
+  override async start(opts: Parameters<FakeAgentRunner["start"]>[0]): Promise<Session> {
+    const session = await super.start(opts);
+    this.mcpBySession.set(session.id, opts.mcpServers);
+    return session;
+  }
+}
+
+function agents(): RecordingAgents {
+  return new RecordingAgents([
     { match: BASE_PACK, events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end_turn" }] },
     { match: "", events: [{ type: "done", stopReason: "end_turn" }] },
   ]);
@@ -78,6 +91,61 @@ describe("base sessions are per review", () => {
       expect(ctx.sessions.baseKeys().every((k) => !k.startsWith(`${first}|`))).toBe(true);
     } finally {
       await app.close();
+    }
+  });
+
+  it("after a restart the rebuilt base holds an MCP URL the registry accepts (#68)", async () => {
+    type App = Awaited<ReturnType<typeof createApp>>;
+    /** Explain on a diff line (needs the base), then wait for the queue to drain. */
+    async function explain({ app, ctx }: App, id: string): Promise<void> {
+      const file = ctx.reviews.getSnapshot(id)!.files[0]!;
+      const line = file.hunks[0]!.lines.find((l) => l.kind === "add")!;
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${id}/actions`,
+        headers: authed,
+        payload: {
+          kind: "explain",
+          quote: line.text,
+          anchor: { where: "diff-line", fileKey: file.fileKey, line: line.newLine },
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      await waitFor(() => ctx.jobs.activeCount() === 0);
+    }
+
+    const db = openDatabase(":memory:");
+    const runner1 = agents();
+    const first = await createApp("tok", { agents: runner1, db });
+    let id: string;
+    let keys: string[];
+    try {
+      id = await createDemo(first.app);
+      await waitFor(() => baseSessions(runner1).length >= 1 && first.ctx.jobs.activeCount() === 0);
+      // Settle: the base for the review's final guide revision exists.
+      await explain(first, id);
+      await explain(first, id);
+      keys = first.ctx.sessions.baseKeys();
+    } finally {
+      await first.app.close();
+    }
+
+    // New process over the same store: new registry, and an agent runner
+    // that no longer knows the old base session.
+    const runner2 = agents();
+    const second = await createApp("tok", { agents: runner2, db });
+    try {
+      await explain(second, id);
+      // Same base key as before the restart: the closed base was rebuilt.
+      expect(second.ctx.sessions.baseKeys()).toEqual(keys);
+      const base = baseSessions(runner2);
+      expect(base.length).toBe(1);
+      const url = runner2.mcpBySession.get(base[0]!)?.[0]?.url ?? "";
+      const secret = url.slice(url.indexOf(MCP_ROUTE_PREFIX) + MCP_ROUTE_PREFIX.length);
+      expect(secret).not.toBe("");
+      expect(second.ctx.mcp.hasSession(secret)).toBe(true);
+    } finally {
+      await second.app.close();
     }
   });
 });
