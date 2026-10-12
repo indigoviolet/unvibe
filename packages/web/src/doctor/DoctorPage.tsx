@@ -100,7 +100,7 @@ export function DoctorPage(): React.JSX.Element {
   return (
     <div className="app">
       <header className="top">
-        <Link className="brand" to="/" title="Back to the start screen">
+        <Link className="brand" to="/" title="Back to the start page">
           Unvibe
         </Link>
         <div className="pr">
