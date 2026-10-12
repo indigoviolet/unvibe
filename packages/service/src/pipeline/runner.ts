@@ -28,7 +28,8 @@ import type {
 import { canonicalizeTarget, JOB_PRIORITY, parseCards, parseCardsPartial, parseId, splitReply } from "@unvibe/shared";
 import { RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
-import type { McpRegistry } from "../mcp/index.js";
+import { McpRegistry } from "../mcp/index.js";
+import { readCodeSlice } from "../mcp/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildDiffSection, buildSourceBlurb } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
@@ -105,6 +106,56 @@ function throwIfMcpRefusal(text: string): void {
   if (MCP_REFUSAL_RE.test(text)) {
     throw new RetryableError("codex MCP refusal flake (no tool attempt); retrying");
   }
+}
+
+/**
+ * Fence-tag language for a pinned path. No shared helper exists (pin
+ * producers are the only excerpt source that derives it), so the map
+ * lives with the single producer below.
+ */
+const EXTENSION_LANGUAGE: Record<string, string> = {
+  py: "python",
+  ts: "typescript",
+  tsx: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  json: "json",
+  md: "markdown",
+  markdown: "markdown",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml",
+  sh: "bash",
+  bash: "bash",
+  rb: "ruby",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  kt: "kotlin",
+  swift: "swift",
+  php: "php",
+  c: "c",
+  h: "c",
+  cc: "cpp",
+  cpp: "cpp",
+  cxx: "cpp",
+  hpp: "cpp",
+  cs: "csharp",
+  css: "css",
+  html: "html",
+  htm: "html",
+  xml: "xml",
+  sql: "sql",
+};
+
+function languageForPath(relPath: string): string | undefined {
+  const dot = relPath.lastIndexOf(".");
+  if (dot < 0) return undefined;
+  return EXTENSION_LANGUAGE[relPath.slice(dot + 1).toLowerCase()];
 }
 
 function aliasesForReview(snapshot: ReviewSnapshot, fixturesDir?: string): Record<string, string> {
@@ -1657,21 +1708,55 @@ export class Pipeline {
     return hits.length > 0 ? hits.slice(0, 5).join("\n") : "(mentioned in the guide)";
   }
 
+  /**
+   * Persist the reader's `pin_context` pins (PRD §9.1 L1b) with their
+   * excerpt text resolved at the version head — via the same `git show`
+   * source the `get_code` tool serves (`readCodeSlice`, through the
+   * injectable command runner). Best-effort per pin: an unresolvable pin
+   * is still stored (location + `needsRepining`) so the reader's intent
+   * stays visible, and L1b renders it honestly instead of an empty fence.
+   * Never throws: one bad pin must not fail the reader stage.
+   */
   private async persistPins(reviewId: string): Promise<void> {
     const pins = this.opts.mcp.listPins(reviewId);
     if (pins.length === 0) return;
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) return;
+    const headSha = snapshot.version.headSha;
+    const cwd = this.worktreeOf(reviewId);
+    // Resolve text before the snapshot mutate below (recipes are sync).
+    const resolved: { path: string; start: number; end: number; text: string | null }[] = [];
+    for (const pin of pins) {
+      const [rawStart, rawEnd] = pin.lines.split("-").map(Number);
+      const start = rawStart;
+      const end = rawEnd ?? rawStart;
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) continue;
+      let text: string | null = null;
+      try {
+        McpRegistry.checkPathInRepo(cwd, pin.path);
+        const slice = await readCodeSlice(this.opts.commands, cwd, headSha, pin.path, start, end);
+        if ("text" in slice) text = slice.text;
+      } catch {
+        text = null;
+      }
+      resolved.push({ path: pin.path, start, end, text });
+    }
+    if (resolved.length === 0) return;
     await this.opts.reviews.mutate(reviewId, (draft) => {
       const existing = new Set((draft.pinnedCode ?? []).map((p) => `${p.path}:${p.start}-${p.end}`));
-      for (const pin of pins) {
-        const key = `${pin.path}:${pin.lines}`;
+      for (const r of resolved) {
+        const key = `${r.path}:${r.start}-${r.end}`;
         if (existing.has(key)) continue;
-        const [s, e] = pin.lines.split("-").map(Number);
+        existing.add(key);
+        const language = languageForPath(r.path);
         (draft.pinnedCode ??= []).push({
-          path: pin.path,
-          start: s,
-          end: e ?? s,
-          sha: draft.version.headSha,
-          text: "",
+          path: r.path,
+          start: r.start,
+          end: r.end,
+          sha: headSha,
+          text: r.text ?? "",
+          ...(language !== undefined ? { language } : {}),
+          ...(r.text === null ? { needsRepining: true as const } : {}),
         });
       }
     });
