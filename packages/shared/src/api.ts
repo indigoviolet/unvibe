@@ -26,6 +26,12 @@ import type {
 export interface HealthResponse {
   ok: boolean;
   version: string;
+  /**
+   * Running build's identity for the version picker (issue #36, step 2).
+   * Null/absent when the build carries no preview metadata (plain release
+   * / dev / unwired installs).
+   */
+  build?: UpdateBuildInfo | null;
 }
 
 /**
@@ -527,6 +533,14 @@ export interface Settings {
   cacheLifetimeMs: number;
   /** Service exits after this many idle minutes (PRD §14; 0 = never). */
   idleExitMinutes: number;
+  /**
+   * Version picker (issue #36, step 2): list installable update channels
+   * and switch builds from Settings → Version. Off by default; listing
+   * shells out through `gh` under the user's own login, so it stays
+   * opt-in. Optional for backwards compatibility (older clients omit it);
+   * the service defaults to false.
+   */
+  versionPickerEnabled?: boolean;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
@@ -760,6 +774,93 @@ export interface SharedContextBaseStats {
   cacheHitRate?: number;
   /** Epoch ms the base was last used (cache-expiry tracking, PRD §9.4). */
   lastUsedAt: number;
+}
+
+// --- update channels (issue #36, step 2: version picker) -----------------
+
+/**
+ * One installable build: `release`, `release-rc`, or a `preview/<slug>`
+ * published from an in-flight branch. Served by
+ * `GET /api/update/channels`; `current` marks the installed one.
+ */
+export interface UpdateChannel {
+  /** "release" | "release-rc" | "preview/<slug>". */
+  ref: string;
+  kind: "release" | "release-rc" | "preview";
+  /** e.g. "0.0.1-preview.feat-x.abc1234"; null when unknown. */
+  version: string | null;
+  /** Source commit sha; null when unknown. */
+  commit: string | null;
+  /** e.g. "feat/x"; null for release builds. */
+  sourceBranch: string | null;
+  /** ISO build time; null when unknown. */
+  builtAt: string | null;
+  current: boolean;
+}
+
+/**
+ * The running build's identity, exposed where the web app already gets
+ * the service version (`GET /api/health` → `build`, `GET
+ * /api/update/status` → `build`). Null when the build carries no preview
+ * metadata (plain release / dev / unwired installs).
+ */
+export interface UpdateBuildInfo {
+  version: string;
+  sourceBranch: string | null;
+  commit: string | null;
+  builtAt: string | null;
+}
+
+/** `GET /api/update/channels[?refresh=1]` — cached briefly server-side. */
+export interface UpdateChannelsResponse {
+  channels: UpdateChannel[];
+}
+
+/** `POST /api/update/switch` — restart onto another channel's build. */
+export interface UpdateSwitchRequest {
+  ref: string;
+}
+
+/** 202 when the helper is spawned (the service then shuts down). */
+export interface UpdateSwitchResponse {
+  from: string;
+  to: string;
+}
+
+/** A switch the service committed to and is shutting down for. */
+export interface UpdatePendingSwitch {
+  from: string;
+  to: string;
+  /** ISO time the switch was committed. */
+  startedAt: string;
+}
+
+/**
+ * The helper's verdict, written to the data dir and surfaced on next
+ * start: `ok`, `rolled-back` (back on the old build + reason), or
+ * `failed` (even the rollback did not come up).
+ */
+export interface SwitchOutcome {
+  status: "ok" | "rolled-back" | "failed";
+  from: string;
+  to: string;
+  /** Why a rollback/failure happened; absent on clean `ok`. */
+  reason?: string;
+  /** Helper log file (in the data dir) with the full step trace. */
+  logPath?: string;
+  /** ISO time the outcome was recorded. */
+  finishedAt: string;
+}
+
+/**
+ * `GET /api/update/status` — always available (even with the picker
+ * gated off): gate state, running build, pending switch, last outcome.
+ */
+export interface UpdateStatusResponse {
+  enabled: boolean;
+  build: UpdateBuildInfo | null;
+  pending: UpdatePendingSwitch | null;
+  outcome: SwitchOutcome | null;
 }
 
 // --- WebSocket events ----------------------------------------------------
