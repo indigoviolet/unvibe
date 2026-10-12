@@ -7,7 +7,7 @@
  * - citation clicks still reveal at any zoom.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act, within, cleanup } from "@testing-library/react";
+import { render, fireEvent, waitFor, act, within, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { DiagramBlock } from "@unvibe/shared";
 import { clearD2SvgCache } from "./D2Diagram.js";
