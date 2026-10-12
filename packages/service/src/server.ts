@@ -133,7 +133,21 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
 
   const db = opts.db ?? openDatabase(":memory:");
   migrate(db);
+  // Owned temp data dir (issue #24): when the caller does not pass one,
+  // create it here and remove it on close so tests do not leak
+  // `unvibe-data-*` dirs. An explicit `dataDir` is never removed — the
+  // caller (production, or a per-run temp root) owns it.
+  const ownedDataDir = opts.dataDir === undefined;
   const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
+  if (ownedDataDir) {
+    app.addHook("onClose", async () => {
+      try {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+      } catch {
+        // Best effort: never fail close for cleanup.
+      }
+    });
+  }
 
   // Unified composition root (M3): builds jobs/settings/sessions/mcp/
   // pipeline with recovery. Explicit overrides (tests) win over defaults
