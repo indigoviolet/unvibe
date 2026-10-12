@@ -10,8 +10,8 @@
  *   any re-render elsewhere (local state keyed by thread id, debounced
  *   through `PATCH …/comments/:id` `reply`); Discard removes a new empty
  *   thread and clears the box on an existing one; Cmd/Ctrl+Enter sends.
- * - Ask threads show the agent as working until its reply arrives through
- *   a patch (plus the streamed tail while it flows); Note threads never
+ * - Ask threads show a plain working indicator until the reply arrives
+ *   through a patch (fixed label, never streamed text); Note threads never
  *   do. A failed reply shows the error with a Retry button (the `retry`
  *   action rebuilds on the same thread). Agent-suggested first messages
  *   render as "Agent · suggested comment" and start unmarked for the PR.
@@ -24,6 +24,8 @@ import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
+import { performAction } from "../guide/actions.js";
+import { busyForThread } from "../guide/inflight.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { isAskWorking, markAskSent, useAskWorkingTick } from "./askState.js";
@@ -114,16 +116,18 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   const isNew = messages.length === 0;
   const last = messages[messages.length - 1];
   const awaitingReply = !thread.note && messages.length > 0 && last?.who === "you";
-  // The server marks the thread working while its job runs; the 60 s
-  // client window stays as a fallback so a lost patch never spins forever,
-  // then yields to a muted waiting note. Streamed deltas arrive on the WS
-  // (keyed by thread id) and show as progress until the reply patch lands;
-  // a failed turn sets `thread.error` with a Retry button instead.
-  const streams = useReview((s) => s.streams);
-  const streamTail = streams[thread.id];
+  // The in-flight entry shows the moment the user sends (before the
+  // request returns); the server's working flag and the live job take over
+  // once they arrive. The 60 s client window stays as a fallback so a lost
+  // patch never spins forever, then yields to a muted waiting note. The
+  // label is always fixed — never streamed text. A failed turn sets
+  // `thread.error` with a Retry button instead.
+  const jobs = snapshot?.jobs ?? [];
+  const inflight = useReview((s) => s.inflight);
+  const busy = busyForThread(inflight, jobs, thread.id);
   const serverWorking = thread.working !== undefined && thread.working !== null && thread.working !== "";
   // A failed turn shows the error + Retry instead of any spinner.
-  const working = awaitingReply && !thread.error && (serverWorking || isAskWorking(thread.id));
+  const working = awaitingReply && !thread.error && (!!busy || serverWorking || isAskWorking(thread.id));
   const waiting = awaitingReply && !working && !thread.error;
   useAskWorkingTick(thread.id, working);
   const posted = thread.postedAt !== undefined;
@@ -192,9 +196,11 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
     setSending(true);
     const ask = !thread.note;
     // Ask threads answer through the agent (`reply` action appends the
-    // message and fills the reply); notes stay user-only.
+    // message and fills the reply); notes stay user-only. The reply path
+    // sets its in-flight entry synchronously so the working state shows
+    // on click, before the request returns.
     const send = ask
-      ? api.action(reviewId, { kind: "reply", threadId: thread.id, message: text })
+      ? performAction(reviewId, { kind: "reply", threadId: thread.id, message: text }, { toast: false })
       : api.replyComment(reviewId, thread.id, { text });
     send
       .then(() => {
@@ -210,8 +216,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   const onRetry = (): void => {
     if (sending) return;
     setSending(true);
-    api
-      .action(reviewId, { kind: "retry", threadId: thread.id })
+    performAction(reviewId, { kind: "retry", threadId: thread.id }, { toast: false })
       .then(() => {
         markAskSent(thread.id);
       })
@@ -318,8 +323,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
             <i />
             <i />
           </span>
-          <span>{thread.working && thread.working !== "Reading…" ? thread.working : "Reading the diff and PR body…"}</span>
-          {streamTail ? <span className="stream">{streamTail.slice(-160)}</span> : null}
+          <span>{busy?.label ?? "Reading the diff and PR body…"}</span>
         </div>
       ) : null}
       {waiting ? (
@@ -330,7 +334,13 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
       {thread.error && !readOnly ? (
         <div className="perr" role="alert">
           <span>Couldn't get an answer: {friendlyError(thread.error)}</span>
-          <button className="btn" type="button" data-retry={thread.id} onClick={onRetry}>
+          <button
+            className="btn"
+            type="button"
+            data-retry={thread.id}
+            disabled={sending || working}
+            onClick={onRetry}
+          >
             Retry
           </button>
         </div>

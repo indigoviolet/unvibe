@@ -5,13 +5,15 @@
  * anything reaches the server: Discard removes it locally (no request).
  * Notes save through `POST …/comments` and stay quiet; Ask sends the
  * `ask` action (thread + agent reply in one round trip) and the thread
- * then shows the agent as working until its reply arrives through a
- * patch (or an error with a Retry button when the turn fails).
+ * then shows a plain working state until its reply arrives through a
+ * patch (or an error with a Retry button when the turn fails). While the
+ * request is in flight the composer itself shows the Ask as running.
  */
 import { useState } from "react";
 import type { ActionAnchor } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
+import { performAction } from "../guide/actions.js";
 import { markAskSent } from "./askState.js";
 
 interface Props {
@@ -33,8 +35,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
     if (!value || sending) return;
     setSending(true);
     if (!note) {
-      api
-        .action(reviewId, { kind: "ask", anchor, quote, message: value })
+      performAction(reviewId, { kind: "ask", anchor, quote, message: value }, { toast: false })
         .then((res) => {
           const id = res.threadId ?? res.annotationId;
           if (!id) throw new Error("ask returned no thread");
@@ -59,10 +60,20 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
   };
 
   return (
-    <div className="ithread" data-pending-thread="true">
+    <div className="ithread" data-pending-thread="true" aria-busy={sending && !note ? true : undefined}>
       <div className="thd">
         <span className="mq">{quote ? `“${quote}”` : "New comment"}</span>
       </div>
+      {sending && !note ? (
+        <div className="working" role="status">
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span>Asking…</span>
+        </div>
+      ) : null}
       <div className="composer">
         <textarea
           rows={3}

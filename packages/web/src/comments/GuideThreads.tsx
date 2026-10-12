@@ -19,9 +19,11 @@
 import { useEffect, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
 import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { onOpenBlockThread } from "../guide/annotations.js";
+import { inflightForBlock, inflightLabel } from "../guide/inflight.js";
 import { useReview } from "../state/store.js";
 import { clearMarks, highlightAnchorInRoot, withPreservedSelection } from "./anchor.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
@@ -191,6 +193,7 @@ interface BlockProps {
 
 export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   const annotations = useReview((s) => s.snapshot?.annotations);
+  const inflight = useReview((s) => s.inflight);
   const readOnly = useIsReadOnlyVersion();
   const [pending, setPending] = useState<NewThreadRequest | null>(null);
 
@@ -214,12 +217,19 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
       a.open,
   );
 
-  if (!pending && threads.length === 0) return null;
+  // An explain started from a selection on this block shows a
+  // placeholder where the expansion will land (issue #46). Ask turns keep
+  // their composer as the placeholder, so they are skipped here.
+  const incoming = !readOnly ? inflightForBlock(inflight, cardId, blockId) : undefined;
+  const placeholder = incoming?.kind === "explain" ? incoming : undefined;
+
+  if (!pending && threads.length === 0 && !placeholder) return null;
   return (
     <>
       {threads.map((t) => (
         <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
       ))}
+      {placeholder ? <WorkingPlaceholder label={inflightLabel(placeholder.kind)} /> : null}
       {pending && !readOnly ? (
         <NewThreadComposer
               key="pending"

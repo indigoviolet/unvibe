@@ -14,6 +14,7 @@ import { useReview } from "../state/store.js";
 import { resolveBlockCitations, resolveCitation } from "./citations.js";
 import { DiagramView } from "./DiagramView.js";
 import { depthText, isPageRead } from "./guideUtils.js";
+import { followupKey, inflightLabel } from "./inflight.js";
 import { BlockMarkers } from "./Markers.js";
 import { handleHtmlLinkClick, RichText } from "./RichText.js";
 
@@ -27,6 +28,8 @@ interface Props extends BlockCallbacks {
   level: DepthLevel;
   threads: Annotation[];
   lookupPage?: (pageId: string) => Page | undefined;
+  /** Owning card (or expansion) id: follow-up chips read in-flight state. */
+  cardId: string;
 }
 
 function Paragraph({
@@ -102,8 +105,9 @@ function onHtmlClick(
   handleHtmlLinkClick(e, pages, onOpenPage);
 }
 
-export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFollowUp }: Props) {
+export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPage, onFollowUp }: Props) {
   const snapshot = useReview((s) => s.snapshot);
+  const inflight = useReview((s) => s.inflight);
   const pages = snapshot?.pages;
   const citations =
     "citations" in block && Array.isArray(block.citations) ? block.citations : [];
@@ -255,15 +259,48 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     }
     case "follow-up": {
       if (!block.items.length) return null;
+      const busyIndex = block.items.findIndex((_, i) => inflight[followupKey(cardId, block.id, i)]);
       return (
-        <div className="follow">
-          <span className="k">Follow up:</span>
-          {block.items.map((item, i) => (
-            <button key={i} type="button" data-follow={block.id} data-i={i} onClick={() => onFollowUp(block.id, i)}>
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="follow">
+            <span className="k">Follow up:</span>
+            {block.items.map((item, i) => {
+              const busy = i === busyIndex;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  data-follow={block.id}
+                  data-i={i}
+                  disabled={busyIndex >= 0}
+                  aria-busy={busy || undefined}
+                  aria-label={busy ? "Working…" : undefined}
+                  onClick={() => onFollowUp(block.id, i)}
+                >
+                  {busy ? (
+                    <span className="dots" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  ) : (
+                    item.label
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {busyIndex >= 0 ? (
+            <div className="working" role="status">
+              <span className="dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              <span>{inflightLabel("followup")}</span>
+            </div>
+          ) : null}
+        </>
       );
     }
     default:

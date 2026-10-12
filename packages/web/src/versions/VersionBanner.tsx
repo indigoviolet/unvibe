@@ -10,7 +10,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Job, VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
-import { formatCacheRate, formatTokens, versionCountsText } from "./versionUtils.js";
+import { updateKey } from "../guide/inflight.js";
+import { useReview } from "../state/store.js";
+import { versionCountsText } from "./versionUtils.js";
 
 export interface BannerCounts {
   fromVersion: number;
@@ -70,16 +72,22 @@ export function VersionBanner({
   }, [counts.toVersion, counts.rangeDiff]);
 
   const startUpdate = async (): Promise<void> => {
+    // Disabled + busy from this synchronous state set, before the request.
     setPhase({ name: "updating", jobId: "", job: null });
+    const key = updateKey(reviewId);
+    useReview.getState().beginInflight(key, "update");
     let jobId: string;
     try {
       const res = await api.update(reviewId);
       jobId = res.jobId;
+      useReview.getState().attachInflightJob(key, jobId);
     } catch (err) {
+      useReview.getState().clearInflight(key);
       setPhase({ name: "failed", message: updateError(err) });
       return;
     }
     setPhase({ name: "updating", jobId, job: null });
+    const finish = (): void => useReview.getState().clearInflight(key);
     const poll = async (): Promise<void> => {
       let job: Job;
       try {
@@ -93,6 +101,7 @@ export function VersionBanner({
         timer.current = window.setTimeout(() => void poll(), 1000);
         return;
       }
+      finish();
       if (job.state === "done") {
         onUpdated();
         setPhase({ name: "idle" });
@@ -104,7 +113,6 @@ export function VersionBanner({
   };
 
   const updating = phase.name === "updating" ? phase : null;
-  const job = updating?.job ?? null;
 
   return (
     <div className="dbar" data-testid="stale-banner" role="status">
@@ -125,11 +133,13 @@ export function VersionBanner({
       ) : null}
       {phase.name === "failed" ? <span className="hint">{phase.message}</span> : null}
       {updating ? (
-        <span className="hint" data-testid="update-progress" aria-live="polite">
-          Updating…{job ? ` ${job.state}${job.progress ? ` · ${job.progress}` : ""}` : ""}
-          {job?.usage
-            ? ` · ${formatTokens(job.usage.inputTokens)} in (${formatCacheRate(job.cacheHitRate)} cached)`
-            : ""}
+        <span className="hint" data-testid="update-progress" aria-live="polite" role="status">
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>{" "}
+          Updating…
         </span>
       ) : (
         <button className="x" type="button" onClick={() => void startUpdate()}>

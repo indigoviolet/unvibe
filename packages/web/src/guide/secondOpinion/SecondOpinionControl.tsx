@@ -4,10 +4,10 @@
  * One icon button in the card control row (icons with tooltips): clicking
  * it runs the default mode for that kind of card (blind for findings,
  * check-this-claim for cards). A caret beside it opens a small menu to
- * run the other mode instead. While the job runs the card shows the
- * standard working state (via streams + `jobForCard`). When no distinct
- * second-opinion model is configured, the action explains that and links
- * to Settings.
+ * run the other mode instead. While the second opinion runs, the control
+ * shows dots and the card shows the standard working state with a fixed
+ * label. When no distinct second-opinion model is configured, the action
+ * explains that and links to Settings.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -20,6 +20,10 @@ interface Props {
   reviewId: string;
   card: Card;
   page: Page | undefined;
+  /** The card has an agent action running: conflict controls go disabled. */
+  disabled?: boolean;
+  /** This control's second opinion is the running action: show dots. */
+  busy?: boolean;
 }
 
 function defaultMode(page: Page | undefined): SecondOpinionMode {
@@ -30,7 +34,7 @@ function modeHint(mode: SecondOpinionMode): string {
   return mode === "blind" ? "Only the topic and the cited code" : "The claim plus the cited code";
 }
 
-export function SecondOpinionControl({ reviewId, card, page }: Props): React.JSX.Element {
+export function SecondOpinionControl({ reviewId, card, page, disabled, busy }: Props): React.JSX.Element {
   const def = defaultMode(page);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -104,11 +108,21 @@ export function SecondOpinionControl({ reviewId, card, page }: Props): React.JSX
       <button
         className="ib"
         type="button"
-        data-tip={`Second opinion (${defLabel})`}
-        aria-label={`Second opinion (${defLabel})`}
+        data-tip={busy ? "Working…" : `Second opinion (${defLabel})`}
+        aria-label={busy ? "Working…" : `Second opinion (${defLabel})`}
+        aria-busy={busy || undefined}
+        disabled={disabled || busy}
         onClick={() => run(def)}
       >
-        <Icon name="spark" />
+        {busy ? (
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        ) : (
+          <Icon name="spark" />
+        )}
       </button>
       <button
         ref={caretRef}
@@ -118,6 +132,7 @@ export function SecondOpinionControl({ reviewId, card, page }: Props): React.JSX
         aria-label="Choose a second-opinion mode"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
+        disabled={disabled}
         onClick={() => setMenuOpen((v) => !v)}
       >
         <Icon name="down" />

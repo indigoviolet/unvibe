@@ -8,11 +8,11 @@
  */
 import { useMemo } from "react";
 import type { Page } from "@unvibe/shared";
-import { api, friendlyError } from "../api/client.js";
+import { friendlyError } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
-import { requestGuideBlock } from "./actions.js";
+import { performAction, requestGuideBlock } from "./actions.js";
 import {
   cardPreview,
   markKnownLinks,
@@ -122,8 +122,9 @@ export function openLinkTarget(
     if (pages?.some((p) => p.id === stubId)) {
       onOpenPage(stubId);
     }
-    void api
-      .action(reviewId, { kind: "concept", slug })
+    // The in-flight entry is set synchronously so the stub page shows its
+    // working state immediately, before the request returns.
+    void performAction(reviewId, { kind: "concept", slug }, { toast: false })
       .then((res) => {
         if (res.accepted && res.pageId) onOpenPage(res.pageId);
         else if (!res.accepted) toast("Needs the service to write this concept page.");
