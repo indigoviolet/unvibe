@@ -11,6 +11,7 @@ import {
   clearKeptLists,
   getKeptLists,
   getKeptViewer,
+  initialKept,
   keptStatusText,
   pruneKeptLists,
   setKeptLists,
@@ -105,6 +106,20 @@ describe("keptChanges storage", () => {
     expect(getKeptViewer()).toBeNull();
     setKeptViewer("you");
     expect(getKeptViewer()).toBe("you");
+  });
+
+  it("reads the initial repo's entry once and never throws", () => {
+    localStorage.setItem("unvibe.start.repoId", "r1");
+    setKeptLists("r1", ENTRY);
+    const found = initialKept("unvibe.start.repoId");
+    expect(found.repoId).toBe("r1");
+    expect(found.kept?.authoring[0].prNumber).toBe(99);
+
+    localStorage.setItem("unvibe.start.repoId", "demo");
+    expect(initialKept("unvibe.start.repoId")).toEqual({ repoId: null, kept: null });
+
+    localStorage.removeItem("unvibe.start.repoId");
+    expect(initialKept("unvibe.start.repoId")).toEqual({ repoId: null, kept: null });
   });
 
   it("describes the kept age in short plain words", () => {

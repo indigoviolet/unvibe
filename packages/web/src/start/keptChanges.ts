@@ -154,6 +154,22 @@ export function getKeptLists(repoId: string): KeptLists | null {
 }
 
 /**
+ * Kept entry for the initially selected repo, read once. Never throws:
+ * `localStorage` may be unavailable and the entry may be missing or
+ * malformed. `repoKey` is the storage key holding the selected repo id
+ * (the demo pseudo-repo never has a kept entry).
+ */
+export function initialKept(repoKey: string): { repoId: string | null; kept: KeptLists | null } {
+  try {
+    const saved = localStorage.getItem(repoKey);
+    if (!saved || saved === "demo") return { repoId: null, kept: null };
+    return { repoId: saved, kept: getKeptLists(saved) };
+  } catch {
+    return { repoId: null, kept: null };
+  }
+}
+
+/**
  * Remember a fetch result, stamped with the client-side fetch time.
  * Only call with at least one successful filter (callers keep the old rows
  * for failed filters before calling).

@@ -20,21 +20,21 @@
  *   `POST /api/repos`, selects the new repo and opens the PR; cancel
  *   leaves the input as typed. Both sides parse with the shared
  *   `parseGitHubRepoInput`, so the page and the service always agree.
-  *   The PR input never waits on the lists. List loads are tracked per
-  *   selection (loading / loaded / failed): switching repos shows the kept
-  *   rows for the new repo at once when storage holds them (#90) and
-  *   refreshes underneath, otherwise clears the old lists synchronously so
-  *   stale data can never render; a nonce guarantees
-  *   the clear is always paired with a fresh load (even re-selecting the
-  *   current repo, which still fires `change`), and a 30 s timeout bounds
-  *   the loading state so it can never stick forever. A total failure
-  *   shows an inline error with a Retry button (kept rows stay rendered
-  *   underneath on a background refresh); a single failed filter
-  *   shows its error in that section while the others still render
-  *   (the service already degrades gh/git failures to empty per source).
-  *   A managed clone that could not be refreshed reports the service's
-  *   `fetchError` note once above the lists. Managed clones read
-  *   "owner/name (cloned)" in the selector.
+ *   The PR input never waits on the lists. List loads are tracked per
+ *   selection (loading / loaded / failed): switching repos clears the old
+ *   lists synchronously so stale data can never render, a nonce guarantees
+ *   the clear is always paired with a fresh load (even re-selecting the
+ *   current repo, which still fires `change`), and a 30 s timeout bounds
+ *   the loading state so it can never stick forever. When storage holds
+ *   the new repo's last successful fetch (#90), those kept rows show at
+ *   once and the fresh fetch only refreshes underneath. A total failure
+ *   shows an inline error with a Retry button (a background refresh keeps
+ *   the kept rows rendered underneath); a single failed filter
+ *   shows its error in that section while the others still render
+ *   (the service already degrades gh/git failures to empty per source).
+ *   A managed clone that could not be refreshed reports the service's
+ *   `fetchError` note once above the lists. Managed clones read
+ *   "owner/name (cloned)" in the selector.
  * - Sessions whose repo is in neither the remembered nor the detected
  *   list (a checkout that went away, or repos failing to load) are not
  *   dropped: they render in a labelled group at the end of Reviews with
@@ -66,6 +66,7 @@ import {
   clearAllKeptLists,
   getKeptLists,
   getKeptViewer,
+  initialKept,
   keptStatusText,
   pruneKeptLists,
   setKeptLists,
@@ -202,48 +203,19 @@ export function StartPage(): React.JSX.Element {
       return null;
     }
   });
-  const [authoring, setAuthoring] = useState<RepoChange[]>(() => {
-    try {
-      const saved = localStorage.getItem(REPO_KEY);
-      const kept = saved && saved !== "demo" ? getKeptLists(saved) : null;
-      return kept?.authoring ?? [];
-    } catch {
-      return [];
-    }
-  });
-  const [requested, setRequested] = useState<RepoChange[]>(() => {
-    try {
-      const saved = localStorage.getItem(REPO_KEY);
-      const kept = saved && saved !== "demo" ? getKeptLists(saved) : null;
-      return kept?.requested ?? [];
-    } catch {
-      return [];
-    }
-  });
-  const [branches, setBranches] = useState<RepoChange[]>(() => {
-    try {
-      const saved = localStorage.getItem(REPO_KEY);
-      const kept = saved && saved !== "demo" ? getKeptLists(saved) : null;
-      return kept?.branches ?? [];
-    } catch {
-      return [];
-    }
-  });
+  // Kept rows (#90) for the initially selected repo, read once: the list
+  // states below all initialise from this one value.
+  const [initial] = useState(() => initialKept(REPO_KEY));
+  const [authoring, setAuthoring] = useState<RepoChange[]>(initial.kept?.authoring ?? []);
+  const [requested, setRequested] = useState<RepoChange[]>(initial.kept?.requested ?? []);
+  const [branches, setBranches] = useState<RepoChange[]>(initial.kept?.branches ?? []);
   const [listErrors, setListErrors] = useState<ListErrors>(EMPTY_ERRORS);
   // The repo the PR/branch lists below were loaded for (null = none yet or
   // cleared). The render gates on this so a newly selected repo never shows
   // the previous repo's data. With kept lists (#90) this starts as the
   // selected repo when a kept entry exists, so the kept rows render on the
   // first paint and the fetch only refreshes underneath.
-  const [listsFor, setListsFor] = useState<string | null>(() => {
-    try {
-      const saved = localStorage.getItem(REPO_KEY);
-      if (saved && saved !== "demo" && getKeptLists(saved)) return saved;
-      return null;
-    } catch {
-      return null;
-    }
-  });
+  const [listsFor, setListsFor] = useState<string | null>(initial.kept ? initial.repoId : null);
   // Whole-load failure (every filter rejected, or the load timed out):
   // inline message + Retry.
   const [listsError, setListsError] = useState<string | null>(null);
@@ -276,27 +248,11 @@ export function StartPage(): React.JSX.Element {
   const [cloningPr, setCloningPr] = useState<string | null>(null);
   // Stale-clone note from the lists (`fetchError` on RepoChangesResponse):
   // the three calls all carry it, so the first one wins and shows once.
-  const [fetchNote, setFetchNote] = useState<string | null>(() => {
-    try {
-      const saved = localStorage.getItem(REPO_KEY);
-      const kept = saved && saved !== "demo" ? getKeptLists(saved) : null;
-      return kept?.fetchNote ?? null;
-    } catch {
-      return null;
-    }
-  });
+  const [fetchNote, setFetchNote] = useState<string | null>(initial.kept?.fetchNote ?? null);
   // Kept lists (#90): when the shown rows came from storage, their fetch
   // time drives the quiet "Updated …" line. `refreshing` is true while a
   // background refresh is in flight on top of kept rows.
-  const [keptFetchedAt, setKeptFetchedAt] = useState<number | null>(() => {
-    try {
-      const saved = localStorage.getItem(REPO_KEY);
-      const kept = saved && saved !== "demo" ? getKeptLists(saved) : null;
-      return kept?.fetchedAt ?? null;
-    } catch {
-      return null;
-    }
-  });
+  const [keptFetchedAt, setKeptFetchedAt] = useState<number | null>(initial.kept?.fetchedAt ?? null);
   const [refreshing, setRefreshing] = useState(false);
 
   // Readiness (fills in after render; never blocks).
