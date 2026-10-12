@@ -92,14 +92,19 @@ export async function installSetup(
     rmrf(appPath);
     fs.mkdirSync(path.join(paths.homeDir, "Applications"), { recursive: true });
     const src = appleScriptSource(paths.nodePath, paths.cliPath);
-    const srcFile = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-setup-")),
-      "UnvibeHelper.applescript",
-    );
+    // Owned temp dir (issue #24): the running service leaked one
+    // `unvibe-setup-*` dir per macOS setup. Remove it once osacompile
+    // has read the source, even on failure.
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-setup-"));
+    const srcFile = path.join(tmpBase, "UnvibeHelper.applescript");
     fs.writeFileSync(srcFile, src);
-    const compiled = await runner.run("osacompile", ["-o", appPath, srcFile]);
-    if (compiled.code !== 0) {
-      throw new Error(`osacompile failed: ${compiled.stderr.trim() || compiled.stdout.trim()}`);
+    try {
+      const compiled = await runner.run("osacompile", ["-o", appPath, srcFile]);
+      if (compiled.code !== 0) {
+        throw new Error(`osacompile failed: ${compiled.stderr.trim() || compiled.stdout.trim()}`);
+      }
+    } finally {
+      rmrf(tmpBase);
     }
     const plistPath = path.join(appPath, "Contents", "Info.plist");
     const patched = patchInfoPlist(fs.readFileSync(plistPath, "utf8"));

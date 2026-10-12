@@ -309,21 +309,16 @@ channel/ref, source branch, commit and build time from its package.json
 (`readInstalledBuild`). `gh` runs with `GITHUB_TOKEN` unset through the
 injectable command runner, like everything else.
 
-Database rule (migrations are forward-only and numbered, so one
-channel's migrated DB is wrong for another): each channel keeps its own
-copy under `<dataDir>/channel-backups/<slot>/` (`unvibe.db` plus
-`-wal`/`-shm` when present; legacy `unvibe.sqlite*` too). Switching
-backs up the old channel first, then restores the new channel's copy
-when one exists. A new preview never inherits another preview's
-database: with no copy of its own it starts from the release copy
-(`release-rc` fallback), and the switch stops before installing when
-neither exists unless `--keep-data` is given; leaving
-`release`/`release-rc` (or a source checkout) with no copy keeps the
-live database. Backups are never deleted. `--keep-data` keeps the live
-database instead of restoring (e.g. to carry data across channels
-deliberately).
+Database rule: there is one database and a switch never swaps it. Switching
+keeps your database and backs it up first to
+`<dataDir>/channel-backups/<channel>/` (`unvibe.db` plus `-wal`/`-shm`
+when present; legacy `unvibe.sqlite*` too). A newer build may upgrade the
+database; if an older build then cannot open it, copy the backup back.
+Backups are never deleted. Rollback reinstalls the previous build and
+restores the backup taken at the start of the switch, so the old build
+never opens a database the new build may have migrated.
 
-Only the database files are per-channel. The rest of the data dir —
+Only the database files are backed up. The rest of the data dir —
 `token`, per-review folders (`reviews/<owner>/<repo>/<id>/`),
 `worktrees/<review-id>/`, diagram cache — is shared across channels, so
 after a restore there can be leftover review folders and worktrees with
@@ -364,10 +359,10 @@ Updater throws joined lines and streams them to the switch log.
 How it works:
 
 - Gate: `versionPickerEnabled` in settings (off by default). When off, `GET /api/update/channels` and `POST /api/update/switch` answer 404 and Settings shows only the toggle; `GET /api/update/status` always works (gate state, running build, pending switch, last outcome).
-- Listing is cached 30 s server-side with one shared in-flight call (`?refresh=1` bypasses); a switch is refused with 409 while jobs run, a submit is in flight, or another switch is pending.
+- Listing is cached 30 s server-side with one shared in-flight call (`?refresh=1` bypasses); a switch is refused with 409 while a submit is in flight or another switch is pending. Running jobs refuse with a structured 409 (`code: "jobs-running"` + count + first 5 blocking jobs); `POST /api/update/switch { ref, force: true }` skips only that refusal — the shutdown path stops the jobs and their count rides the pending switch into the outcome (`interruptedJobs`), so the UI names it after the reload. `force` never bypasses the submit lease, a pending switch, the gate, or the installed-build check. Stopped jobs show as interrupted (resume or retry them from the review; on a different channel they stay with that channel's data).
 - `from` is the installed channel read locally from the installed package (`readInstalledBuild` on `process.argv[1]`): a preview ref can be deleted from the remote while installed, and a rollback to "unknown" cannot work. Source checkouts (and pre-field installs without an inferable channel) get 409 + an installed-only message — listing still works there. The install's own version seeds the rollback health wait (`fromVersion`).
-- Same channel, same published commit: 200 `{unchanged: true}`, nothing done. A moved commit reinstalls through the same flow (`from === to`, no DB swap); the current row shows "newer build available" with an Update action. A same-channel rollback is one reinstall attempt (the previous build of that ref is no longer published); on failure the outcome is `failed` with the recovery command — never loops.
-- Switch = commit + detached helper + restart: the service validates, writes `<dataDir>/update/pending.json`, copies the self-contained `dist/update-helper.js` bundle (`build:helper` in `packages/service/package.json`; node builtins only, enforced by `test/update-helper-bundle.test.ts` on the esbuild metafile; shipped in the release tree by `scripts/release.mjs` and asserted by `scripts/global-install-check.mjs`) into `<dataDir>/update/`, spawns the copy detached, replies 202, then shuts down through the normal shutdown path (idle exit is suppressed while a switch is pending). The helper waits for the service PID to exit (never kills it — aborts with outcome `failed` instead), calls `switchTo` via the seam (DB plan first, backup, prefix-pinned install, landing verification, restore/seed — the installed build is identified from the service entry path in the helper args, never the helper copy's location), restarts the installed entry (`start --foreground` on the same port + data dir), and polls `/api/health` for the target version (the rollback waits for the previous build's version instead of burning the full timeout). Install failure or an unhealthy build rolls back to the previous ref; the outcome (`ok` / `rolled-back` / `failed` + reason + log path) lands in `<dataDir>/update/outcome.json` and is surfaced by `GET /api/update/status`. Before a second start — and before the rollback install — the helper stops the generation it started itself (SIGTERM + bounded wait + exit/lock confirmation; the only PIDs it ever signals are its own children), and it trusts only health samples from the generation holding the data-dir lock, so a live-but-wrong build can never satisfy the check while another generation crashes on the held port. `failed` outcomes carry the recovery path (`npm install -g github:indigoviolet/unvibe#release`, then `unvibe start`).
+- Same channel, same published commit: 200 `{unchanged: true}`, nothing done. A moved commit reinstalls through the same flow (`from === to`); the current row shows "newer build available" with an Update action. A same-channel rollback is one reinstall attempt (the previous build of that ref is no longer published); on failure the outcome is `failed` with the recovery command — never loops.
+- Switch = commit + detached helper + restart: the service validates, writes `<dataDir>/update/pending.json`, copies the self-contained `dist/update-helper.js` bundle (`build:helper` in `packages/service/package.json`; node builtins only, enforced by `test/update-helper-bundle.test.ts` on the esbuild metafile; shipped in the release tree by `scripts/release.mjs` and asserted by `scripts/global-install-check.mjs`) into `<dataDir>/update/`, spawns the copy detached, replies 202, then shuts down through the bounded shutdown path (`lifecycle/service-shutdown.ts`, issue #30: abort jobs → dispose agents → close MCP sessions + WebSocket clients → force-close leftover sockets + close HTTP → close DB last; every step bounded at 4 s, whole run on a 10 s deadline, then the process exits no matter what — a stuck shutdown can never leave a live process with a closed DB; idle exit is suppressed while a switch is pending). The helper waits for the service PID to exit (never kills it — 30 s, comfortably past the shutdown deadline; on timeout aborts with outcome `failed` naming `unvibe stop` + retry as the recovery, install untouched, live service keeps serving), calls `switchTo` via the seam (backup, prefix-pinned install, landing verification — the live database stays in place and the new build opens it; the installed build is identified from the service entry path in the helper args, never the helper copy's location), restarts the installed entry (`start --foreground` on the same port + data dir), and polls `/api/health` for the target version (the rollback waits for the previous build's version instead of burning the full timeout). Install failure or an unhealthy build rolls back to the previous ref (reinstall + restore of the pre-switch backup, so the old build never opens a database the new build may have migrated); the outcome (`ok` / `rolled-back` / `failed` + reason + log path) lands in `<dataDir>/update/outcome.json` and is surfaced by `GET /api/update/status`. Before a second start — and before the rollback install — the helper stops the generation it started itself (SIGTERM + bounded wait + exit/lock confirmation; the only PIDs it ever signals are its own children), and it trusts only health samples from the generation holding the data-dir lock, so a live-but-wrong build can never satisfy the check while another generation crashes on the held port. `failed` outcomes carry the recovery path (`npm install -g github:indigoviolet/unvibe#release`, then `unvibe start`).
 - The running build's identity rides on `GET /api/health` (`build`: version, source branch, commit, build time; null when the install carries no channel record). One source: the installed package.json (`unvibe` field) via `readInstalledBuild` — no second stamp. The fake backend reads the current fake channel.
 - Listing fetches per-ref metadata with a small concurrency cap (4). Privacy (§16): the service itself still contacts nothing but `127.0.0.1` — channel listing shells out through `gh` under the user's own login (like every other `gh` use), which is why the picker stays opt-in. The only new static-guard entries are the helper's loopback health probe (`update/helper-entry.ts`, same shape as `cli/lock.ts`) and the `npm` literal step 1 added for installs.
 
@@ -388,7 +383,7 @@ node scripts/release.mjs --version 0.0.1-preview.drill-a.aaaa1111 --branch previ
 git push $R/unvibe.git preview/drill-a
 node scripts/release.mjs --version 0.0.1-preview.drill-b.bbbb2222 --branch preview/drill-b --source-branch drill-b
 git push $R/unvibe.git preview/drill-b
-# channels file with both versions; install A; run it; seed channel-backups/release/ from the live DB; switch to B
+# channels file with both versions; install A; run it; switch to B (live DB carries over, A slot backed up)
 ```
 
 For a rollback drill, lie about the target version in the channels file (with a short `UNVIBE_UPDATE_HEALTH_TIMEOUT_MS`) — the helper installs fine, never sees the target, rolls back through a real reinstall. Kill only the PIDs you start, never by pattern or port sweep; delete the local `preview/drill-*` branches and tarballs afterwards.

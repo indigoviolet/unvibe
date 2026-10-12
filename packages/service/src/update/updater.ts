@@ -3,9 +3,9 @@
  *
  * - `RealUpdater`: the production backend — `listChannels` is step 1's
  *   `gh`-based listing, `switchTo` is the shared switch core
- *   (`update/switch.ts`: DB plan decided before install, backup,
- *   prefix-pinned install, landing verification, restore/seed). Call only
- *   with the service stopped (the detached helper owns that).
+ *   (`update/switch.ts`: backup, prefix-pinned install, landing
+ *   verification; the live database stays in place). Call only with the
+ *   service stopped (the detached helper owns that).
  * - `FakeUpdater`: test-only backend (unit tests, the
  *   `UNVIBE_UPDATER_BACKEND=fake` service, the detached helper's drills).
  *   Channel list comes from `<dataDir>/update/fake-channels.json` when
@@ -20,11 +20,20 @@ import { listChannels as listRealChannels, readInstalledBuild } from "./channels
 import { runSwitchCore } from "./switch.js";
 import { fakeChannelsPath, readCurrentRef, writeCurrentRef } from "./state.js";
 
+export interface SwitchToOptions {
+  /**
+   * Rollback only: after the install verifies, restore this channel's
+   * backup slot over the live files, so the old build never opens a
+   * database the new build may have migrated.
+   */
+  restoreBackupOf?: string;
+}
+
 export interface Updater {
   /** release, release-rc and every preview/* ref, with `current` set on the installed one. */
   listChannels(): Promise<UpdateChannel[]>;
-  /** Back up / restore the DB per the channel rule, then install the ref globally. Call only with the service stopped. */
-  switchTo(ref: string): Promise<{ from: string; to: string }>;
+  /** Back up the DB, then install the ref globally. Call only with the service stopped. */
+  switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }>;
 }
 
 export interface RealUpdaterOptions {
@@ -66,14 +75,14 @@ export class RealUpdater implements Updater {
     return listRealChannels(this.runner, installed);
   }
 
-  async switchTo(ref: string): Promise<{ from: string; to: string }> {
+  async switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }> {
     const result = await runSwitchCore({
       runner: this.runner,
       dataDir: this.dataDir,
       serviceScriptPath: this.serviceScriptPath,
       serviceVersion: this.serviceVersion,
       channel: ref,
-      keepData: false,
+      ...(opts?.restoreBackupOf ? { restoreBackupOf: opts.restoreBackupOf } : {}),
       log: this.log,
     });
     if (result.code === 2) throw new Error(`unknown update channel "${ref}"`);

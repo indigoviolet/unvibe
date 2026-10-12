@@ -139,6 +139,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 import { DiagramStatusError } from "./diagram.js";
+import { parseJobsBlocked, UpdateJobsBlockedError } from "./updateBlocked.js";
 
 /**
  * `409` from the diagram endpoint: the hash is known but has no SVG
@@ -148,6 +149,7 @@ import { DiagramStatusError } from "./diagram.js";
  * so the mock can import it without an import cycle).
  */
 export { DiagramStatusError };
+export { UpdateJobsBlockedError };
 
 /**
  * Same auth as `request`, but returns raw text: diagram SVGs are
@@ -283,8 +285,27 @@ const realApi = {
   updateStatus: (): Promise<UpdateStatusResponse> => get("/api/update/status"),
   updateChannels: (refresh?: boolean): Promise<UpdateChannelsResponse> =>
     get(`/api/update/channels${refresh ? "?refresh=1" : ""}`),
-  updateSwitch: (ref: string): Promise<UpdateSwitchResponse> =>
-    post("/api/update/switch", { ref } satisfies UpdateSwitchRequest),
+  /**
+   * Switch builds, throwing `UpdateJobsBlockedError` (typed, with the
+   * blocking jobs) when the service refuses for running jobs. Pass
+   * `force` to switch anyway — the shutdown path stops the jobs and the
+   * outcome records how many were interrupted.
+   */
+  updateSwitch: async (ref: string, force?: boolean): Promise<UpdateSwitchResponse> => {
+    const body: UpdateSwitchRequest = force ? { ref, force: true } : { ref };
+    try {
+      return await post<UpdateSwitchResponse>("/api/update/switch", body);
+    } catch (err) {
+      if (err instanceof Error) {
+        const m = err.message.match(/^POST \/api\/update\/switch: (\d{3}) ([\s\S]*)$/);
+        if (m) {
+          const blocked = parseJobsBlocked(Number(m[1]), m[2]);
+          if (blocked) throw blocked;
+        }
+      }
+      throw err;
+    }
+  },
 
   prompts: (reviewId?: string): Promise<PromptsResponse> =>
     get(`/api/prompts${reviewId ? `?review=${encodeURIComponent(reviewId)}` : ""}`),

@@ -327,6 +327,16 @@ describe("secret lifecycle", () => {
     expect(registry.revokeForReview("r1")).toBe(0);
   });
 
+  it("closeAll drops every live transport for shutdown (issue #30)", async () => {
+    const { registry } = makeRegistry();
+    registry.issueSession("r1", "s-1", "session");
+    registry.issueSession("r1", "s-2", "reader");
+    expect(registry.liveSecretCount()).toBe(2);
+    expect(await registry.closeAll()).toBe(2);
+    expect(registry.liveSecretCount()).toBe(0);
+    expect(await registry.closeAll()).toBe(0);
+  });
+
   it("revokeBySessionId drops superseded session labels", () => {
     const { registry } = makeRegistry();
     registry.issueSession("r1", "base-r1", "session");

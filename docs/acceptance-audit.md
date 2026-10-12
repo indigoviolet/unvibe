@@ -636,25 +636,26 @@ needed (that deviation is closed, not added).
   `mise run preview:publish [-- <branch>] [--push]` builds a branch into a
   local orphan `preview/<slug>` ref (dirty-tree refusal, preview-only push
   guard, `unvibe` provenance field in the generated package.json);
-  `unvibe update --list` / `unvibe update <channel> [--keep-data]`
+  `unvibe update --list` / `unvibe update <channel>`
   lists channels via `gh` (GITHUB_TOKEN unset) — per-ref version, source
   commit/branch and build time read without cloning
   (`.../contents/package.json?ref=…`), typed as `UpdateChannel`
   (mirrors the step-2 shared type; owned by that branch) — and installs
-  `github:indigoviolet/unvibe#<channel>` with per-channel database copies
-  under `channel-backups/` (never deleted; service must be stopped; no
-  restart logic — refusal points at `unvibe stop`). Same-channel updates
+  `github:indigoviolet/unvibe#<channel>`. Switching keeps your database
+  and backs it up first to `<dataDir>/channel-backups/<channel>/`
+  (never deleted; service must be stopped; no restart logic — refusal
+  points at `unvibe stop`). Same-channel updates
   compare installed vs published commits (no-op with the commit, else
-  reinstall in place with no database swap); `--list` flags a newer build
-  on the installed row. A new preview never inherits another preview's
-  database (seeds from the release copy, `release-rc` fallback, else the
-  switch stops before installing unless `--keep-data`). Pre-field
+  reinstall in place); `--list` flags a newer build
+  on the installed row. Pre-field
   installs map to their real channel from the version (source checkouts
   stay unknown). The install is pinned to this binary's npm prefix and
   verified at its package path — a landing elsewhere fails naming the
   path and `npm prefix -g`, swapping nothing. Plain modules are exactly
   `src/update/{channels,install,data-backup}.ts`, composed for the CLI in
-  `src/cli/update-flows.ts`. Only database files are per-channel; the
+  `src/cli/update-flows.ts`. A newer build may upgrade the database; if an
+  older build then cannot open it, copy the backup back. Only database
+  files are backed up; the
   rest of the data dir is shared, and leftover review folders are inert
   (DB-driven listing, random review ids, self-healing worktrees — see
   DEVELOPMENT.md).
@@ -835,42 +836,53 @@ asserted by `global-install-check` + a metafile containment test (node
 builtins only). Contract first in `packages/shared/src/api.ts`
 (`UpdateChannel`, `UpdateBuildInfo` on health + status,
 channels/switch/status shapes, `unchanged`). `GET /api/update/status`
-always works; channels + switch are gated off by default
-(`versionPickerEnabled`) with 404, refused with 409 while jobs run / a
-submit is in flight / a switch is pending / not running from an
-installed build, and sit behind the same token + loopback Host/Origin
-gates as every other route. `from` is the locally installed channel
-(never "unknown"); same channel + same commit is 200 `unchanged`, a
+ always works; channels + switch are gated off by default
+ (`versionPickerEnabled`) with 404, refused with 409 while a submit is in
+ flight / a switch is pending / not running from an installed build —
+ and with a structured 409 (`code: "jobs-running"` + count + blocking
+ jobs) while jobs run unless forced (`force: true` skips only that
+ refusal; the shutdown path stops the jobs and the outcome names the
+ interrupted count) — and sit behind the same token + loopback
+ Host/Origin gates as every other route. `from` is the locally installed channel
+ (never "unknown"); same channel + same commit is 200 `unchanged`, a
 moved commit reinstalls with an Update action on the current row (from
-=== to, no DB swap; rollback is one reinstall + health, then `failed`
+=== to; rollback is one reinstall + health, then `failed`
 with the recovery command — never loops). Switch = commit + detached
 self-contained helper (copied to the data dir so the npm swap cannot
 pull it) + restart on the same port; the helper stops its own previous
 generation (verified exited, lock released) before the rollback install
 and waits for the install target / rollback source versions
 respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
-log path, `failed` carries the `npm install -g ...#release` recovery) is
-surfaced by status. Web: Settings → Version (toggle, grouped channels,
-refresh, inline-confirm switch, restart wait with reload, rollback
-reason, update-available, installed-only notice, unchanged note) plus a
-quiet preview pill in the review/Settings/Start headers; the mock API
-covers the whole flow incl. simulated switch + rollback.
+ log path, `failed` carries the `npm install -g ...#release` recovery) is
+ surfaced by status. Shutdown is bounded and ordered (issue #30, fixed
+ on this branch: abort jobs → dispose agents → close MCP sessions +
+ WebSocket clients → force-close leftover sockets + close HTTP → DB last;
+ 4 s per step, 10 s deadline, then the process exits — the old hook order
+ closed the DB first and `app.close()` hung on deaf sockets/MCP streams
+ while agents were disposed last, failing real switches with `did not
+ exit within 30000ms`; the stuck-service outcome now names `unvibe stop`
+ + retry as the recovery). Web: Settings → Version (toggle, grouped channels,
+ refresh, inline-confirm switch, restart wait with reload, rollback
+ reason, update-available, installed-only notice, unchanged note) plus a
+ quiet preview pill in the review/Settings/Start headers; the mock API
+ covers the whole flow incl. simulated switch + rollback.
  Evidence: `test/update-helper.test.ts` (success, install/unhealthy
  rollback, failed rollback, stuck service, generation stop order,
  expected-version waits, stale-sample guard),
  `test/update-updater.test.ts` (fake semantics + injection, real backend
  selection/rejection, state files, build identity, lease check),
- `test/update-routes.test.ts` (gate, busy/lease/pending/installed
- refusals, same-channel unchanged/update, auth/host, commit path with
- entry-path identification), `test/update-helper-bundle.test.ts`
+  `test/update-routes.test.ts` (gate, structured jobs/lease/pending/
+  installed refusals, force path + non-bypass, same-channel
+  unchanged/update, auth/host, commit path with entry-path
+  identification), `test/update-helper-bundle.test.ts`
  (metafile containment), `versionFormat.test.ts` (+ newer-available),
  `e2e/update-picker.spec.ts` (4/4 mock-mode green, full `test:e2e` 113
  green). Real-install drill (no pushes): two local preview trees via
  `release.mjs` into a bare repo (HEAD set — npm dereferences it), install
- A into a temp prefix, run it, switch to B through the real helper +
- real npm (health flipped, slots `preview-drill-a` + `release` written),
- then a lying channels file forced a real-npm rollback to B
- (rolled-back + reason, lock held by the final generation). Privacy
+  A into a temp prefix, run it, switch to B through the real helper +
+  real npm (health flipped, live DB carried over, slot `preview-drill-a` written),
+  then a lying channels file forced a real-npm rollback to A
+  (rolled-back + reason, pre-switch backup restored, lock held by the final generation). Privacy
  (§16) unchanged: the service itself still contacts nothing but loopback;
  listing shells out through `gh` under the user's login (opt-in gate,
  concurrent per-ref fetch); the new static-guard entries are the
@@ -890,6 +902,59 @@ covers the whole flow incl. simulated switch + rollback.
   for unknown repos and shows `fetchError` once. Covered by mock-mode
   Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
   spec for invalid input and path-checkout remove.
+
+### Immediate action feedback (#46, complete)
+
+Every agent-starting control reacts on click, before the request
+returns: one client-side in-flight entry per target (zustand store,
+`web/src/state/store.ts` + `web/src/guide/inflight.ts`), set
+synchronously in the click handler through `performAction`
+(`web/src/guide/actions.ts`), handed to the snapshot job once the
+response attaches a `jobId`, cleared when the job settles, the request
+throws, or the answer needs no job (`accepted: false`, `reused`, no
+`jobId`; `deduplicated` follows the existing job). Entries survive
+snapshot resyncs, adopt jobs created after the snapshot was fetched
+(WS `job` upsert), reconcile at attach time when the fill beat the
+response, ignore stale generations (seq guard), and lapse via a 120 s
+TTL that applies only with no live job attached — a queued/running/
+backing-off job holds its entry indefinitely. The old
+revision-polling loop is replaced by a store-driven settle wait plus a
+quiescence window keeping the "Nothing more to add" toast without false
+positives (the done event can precede the revision-bumping patch).
+Covered kinds (verified against `pipeline/actions/`): depth, examples,
+diagram, generate, followup, explain, ask, reply, retry, second_opinion,
+concept, and the update pass. Local-only kinds (read, collapse,
+bookmark, note, promote, close, delete, undo) need nothing.
+UI: the clicked control shows dots with `aria-busy` and conflicting
+controls go disabled; rewrites (depth/examples/diagram) get an accent
+left border plus a pale wash with the text readable (the wash is what
+sets expansions apart from their resting accent border, statically too);
+new content gets a placeholder where it lands (pending card, explain
+slot, one dashed answer-shaped placeholder per follow-up, verdict spot,
+concept stub, thread). All processing states carry short fixed
+labels — no streamed agent text, thinking text, or `job.progress`
+anywhere in guide/comments (the debug Jobs view still shows progress as
+diagnostics). Mock mode reports real running→done snapshot jobs for
+every agent action so the same handover runs. Service jobs now carry
+`cardId` on the job itself (queue + persisted JSON column + recovery;
+#62 closed here), so a reload mid-rewrite matches the live job.
+ Evidence: `state/inflight.test.ts` (lifecycle incl. live-job TTL hold),
+ `guide/inflight.test.ts` (labels/keys/busy/answer detection),
+ `guide/actions.test.ts` (funnel incl. stale-response guard and insert
+ ordering), `service/test/jobs.test.ts` (card scope incl. persistence),
+ `CardView.test.tsx` (incl. reload-mid-rewrite) + `ThreadView.test.tsx` +
+ `GuideThreads.test.tsx` (component immediacy), new
+ `e2e/immediate-feedback.spec.ts` (mock-mode explain/follow-up/second
+ opinion), updated `ask-service.spec.ts` (streams never render), full
+ `test:e2e` green incl. the depth-principle + journey service specs
+ (which caught and verify the job-upsert handover fix). Screenshots in
+ the issue report (before/after for depth, examples, generate,
+ follow-up, explain; replay fills run sub-second, captured via CDP
+ bursts).
+ Open: `threadId` persistence has the same pre-existing gap as `cardId`
+ had (not carried through the jobs-store JSON column) — noticed, not
+ fixed. Hunk summarize busy never clears on success (#63, adjacent,
+ untracked here).
 
 ### Fixed in this branch (done, in `check`)
 

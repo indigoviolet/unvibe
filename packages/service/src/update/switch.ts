@@ -10,21 +10,21 @@
  * Order matters, and is the same for both callers:
  * 1. refuse while the service runs (backup needs a quiet store; npm must
  *    not replace code under a live process);
- * 2. decide the database plan BEFORE installing, so a missing seed stops
- *    the switch while the live database is intact;
- * 3. back up the old channel, install with a prefix pinned to this
- *    binary's own prefix, verify the install landed there;
- * 4. restore/seed/keep per the plan. Same channel never swaps databases
- *    (reinstall in place when the published commit differs; no-op when it
- *    matches), but the slot backup is still taken first.
+ * 2. back up the old channel, install with a prefix pinned to this
+ *    binary's own prefix, verify the install landed there. Same channel
+ *    reinstalls only when the published commit differs (or is unreadable;
+ *    no-op when it matches).
+ * 3. the live database stays in place and the new build opens it;
+ *    `restoreBackupOf` (rollback only) restores that channel's backup
+ *    over the live files after the install, so the old build never opens
+ *    a database the new build may have migrated.
  */
 import type { CommandRunner } from "../exec/index.js";
 import { isPidAlive, readLock } from "../cli/lock.js";
-import { DB_RULE, backupChannel, hasBackup, restoreChannel, seedFromSlot } from "./data-backup.js";
+import { DB_RULE, backupChannel, channelSlotDir, restoreChannel } from "./data-backup.js";
 import {
   fetchRefPackage,
   isChannelName,
-  isPreviewChannel,
   readInstalledBuild,
   shortCommit,
   type InstalledBuild,
@@ -42,7 +42,12 @@ export interface SwitchCoreRequest {
   serviceScriptPath: string | undefined;
   serviceVersion: string;
   channel: string;
-  keepData: boolean;
+  /**
+   * Rollback only: after the install verifies, restore this channel's
+   * backup slot over the live files. The helper passes the channel being
+   * rolled back to, so the old build reopens its pre-switch database.
+   */
+  restoreBackupOf?: string;
   /** Receives every output line as it is produced (console or switch log). */
   log: (line: string) => void;
 }
@@ -57,37 +62,7 @@ export interface SwitchCoreResult {
   installed: boolean;
 }
 
-type DbPlan =
-  | { kind: "keep" }
-  | { kind: "restore" }
-  | { kind: "seed"; from: string }
-  | { kind: "abort" };
-
-/**
- * Database plan for leaving `from` for `to` (decided before installing).
- * A new preview never inherits another preview's database: with no copy
- * of its own it starts from the release copy (release-rc fallback), and
- * the switch aborts when neither exists. Leaving release/release-rc (or a
- * source checkout, channel unknown) keeps the live database.
- */
-export function dbPlanForSwitch(
-  dataDir: string,
-  to: string,
-  from: string | null,
-  keepData: boolean,
-): DbPlan {
-  if (keepData) return { kind: "keep" };
-  if (hasBackup(dataDir, to)) return { kind: "restore" };
-  if (from === "release" || from === "release-rc" || from === null) return { kind: "keep" };
-  if (isPreviewChannel(from)) {
-    if (hasBackup(dataDir, "release")) return { kind: "seed", from: "release" };
-    if (hasBackup(dataDir, "release-rc")) return { kind: "seed", from: "release-rc" };
-    return { kind: "abort" };
-  }
-  return { kind: "keep" };
-}
-
-/** Install a channel: backup, npm install (verified), restore. Never runs live. */
+/** Install a channel: backup, npm install (verified), keep the live DB. Never runs live. */
 export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreResult> {
   const lines: string[] = [];
   const log = (line: string): void => {
@@ -110,10 +85,9 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
   }
   const lock = readLock(req.dataDir);
   if (lock && isPidAlive(lock.pid)) {
-    const flag = req.keepData ? " --keep-data" : "";
     log(`the service is running (pid ${lock.pid} on port ${lock.port}) — stop it first:`);
     log("  unvibe stop");
-    log(`  unvibe update ${req.channel}${flag}`);
+    log(`  unvibe update ${req.channel}`);
     log("  unvibe start");
     return done(1, readInstalledBuild(req.serviceScriptPath, req.serviceVersion));
   }
@@ -126,28 +100,12 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
     return runSameChannelReinstall(req, log, done, before, remote.commit);
   }
 
-  // Different channel: decide the database plan BEFORE installing, so a
-  // missing seed stops the switch while the live database is still intact.
-  const plan = dbPlanForSwitch(req.dataDir, req.channel, before.channel, req.keepData);
-  if (plan.kind === "abort") {
-    log(
-      `no database copy for ${req.channel}, and no release or release-rc copy to start it from — refusing to install (the live ${before.channel} database would carry over).`,
-    );
-    log(
-      `switch via release first, or pass --keep-data to keep the live database anyway: unvibe update ${req.channel} --keep-data`,
-    );
-    return done(1, before);
-  }
-
   log(`current: ${before.channel ?? "(unknown channel)"} ${before.version}`);
   const backup = backupChannel(req.dataDir, before.channel);
   if (backup.files.length > 0) {
     log(`backed up ${backup.files.join(", ")} to ${backup.dir}`);
   } else {
     log(`no database in ${req.dataDir} to back up (fresh machine?)`);
-  }
-  if (plan.kind === "seed") {
-    log(`no copy for ${req.channel} yet — will start it from the ${plan.from} copy after install`);
   }
   const prefix = installPrefixForPackage(before.packagePath);
   log(`installing ${installSpec(req.channel)}${prefix ? ` (prefix ${prefix})` : ""} ...`);
@@ -183,20 +141,15 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
     return done(1, before);
   }
   log(`installed ${req.channel} ${after.version} (was ${before.version})`);
-  if (plan.kind === "keep") {
-    if (req.keepData) {
-      log(
-        `--keep-data: keeping the live database (the ${before.channel ?? "previous"} copy stays in ${backup.dir})`,
-      );
+  if (req.restoreBackupOf) {
+    const restored = restoreChannel(req.dataDir, req.restoreBackupOf);
+    if (restored.files.length > 0) {
+      log(`restored the pre-switch backup from ${restored.dir} (${restored.files.join(", ")})`);
     } else {
-      log(`no backup for ${req.channel} yet — keeping the live database`);
+      log(`no pre-switch backup in ${restored.dir} to restore; the live database is unchanged`);
     }
-  } else if (plan.kind === "restore") {
-    const restored = restoreChannel(req.dataDir, req.channel);
-    log(`restored ${restored.files.join(", ")} from ${restored.dir}`);
   } else {
-    const seeded = seedFromSlot(req.dataDir, plan.from);
-    log(`started ${req.channel} from the ${plan.from} copy (${seeded.files.join(", ")})`);
+    log(`database left in place (backed up to ${backup.dir})`);
   }
   log(DB_RULE);
   return done(0, before, true);
@@ -205,8 +158,8 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
 /**
  * Same channel: reinstall only when the published commit differs (or is
  * unreadable) — the preview loop is publish, try, fix, publish, update.
- * Same data, so no backup/restore swap; the slot backup is still taken so
- * a bad build can be undone.
+ * The live database stays in place; the slot backup is still taken first
+ * so a bad build can be undone.
  */
 async function runSameChannelReinstall(
   req: SwitchCoreRequest,
@@ -224,7 +177,12 @@ async function runSameChannelReinstall(
       ? `reinstalling ${req.channel}: installed ${shortCommit(before.commit)} vs published ${shortCommit(remoteCommit)}`
       : `reinstalling ${req.channel}: could not read the published commit, reinstalling to be sure`,
   );
-  const backup = backupChannel(req.dataDir, before.channel);
+  // Rolling back a same-channel update: this slot already holds the
+  // pre-switch copy about to be restored, so it must not be overwritten.
+  const backup =
+    req.restoreBackupOf === before.channel
+      ? { dir: channelSlotDir(req.dataDir, before.channel), files: [] }
+      : backupChannel(req.dataDir, before.channel);
   if (backup.files.length > 0) {
     log(`backed up ${backup.files.join(", ")} to ${backup.dir}`);
   }
@@ -253,7 +211,16 @@ async function runSameChannelReinstall(
     return done(1, before);
   }
   log(`reinstalled ${req.channel} ${after.version} (was ${before.version})`);
-  log(`same channel: database left in place (backed up to ${backup.dir})`);
+  if (req.restoreBackupOf) {
+    const restored = restoreChannel(req.dataDir, req.restoreBackupOf);
+    if (restored.files.length > 0) {
+      log(`restored the pre-switch backup from ${restored.dir} (${restored.files.join(", ")})`);
+    } else {
+      log(`no pre-switch backup in ${restored.dir} to restore; the live database is unchanged`);
+    }
+  } else {
+    log(`database left in place (backed up to ${backup.dir})`);
+  }
   return done(0, before, true);
 }
 

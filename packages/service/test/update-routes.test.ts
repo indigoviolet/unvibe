@@ -290,7 +290,7 @@ describe("update switch", () => {
     }
   });
 
-  it("refuses while jobs run", async () => {
+  it("refuses while jobs run with a structured body (code + count + job list)", async () => {
     const jobs = new JobQueue();
     jobs.enqueue({
       kind: "reader",
@@ -304,11 +304,116 @@ describe("update switch", () => {
     try {
       const res = await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"));
       expect(res.statusCode).toBe(409);
-      expect((res.json() as { error: string }).error).toContain("job");
+      const body = res.json() as {
+        error: string;
+        code: string;
+        activeJobs: number;
+        jobs: { id: string; kind: string; reviewId?: string; state: string }[];
+      };
+      expect(body.error).toContain("job");
+      expect(body.code).toBe("jobs-running");
+      expect(body.activeJobs).toBe(1);
+      expect(body.jobs).toHaveLength(1);
+      expect(body.jobs[0]).toMatchObject({ kind: "reader", reviewId: "r", state: "running" });
       expect(readPendingSwitch(h.dataDir)).toBeNull();
       expect(h.spawned).toHaveLength(0);
     } finally {
       await h.close();
+    }
+  });
+
+  it("caps the blocking-job list at 5 with the full count", async () => {
+    const jobs = new JobQueue({ getConcurrencyCap: () => 10 });
+    for (let i = 0; i < 7; i += 1) {
+      jobs.enqueue({
+        kind: "reader",
+        provider: "claude",
+        model: "m",
+        reviewId: `r-${i}`,
+        priority: 1,
+        run: () => new Promise<never>(() => {}),
+      });
+    }
+    const h = await makeHarness({ gate: true, fakeUpdater: true, jobs });
+    try {
+      const res = await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"));
+      expect(res.statusCode).toBe(409);
+      const body = res.json() as { activeJobs: number; jobs: unknown[] };
+      expect(body.activeJobs).toBe(7);
+      expect(body.jobs).toHaveLength(5);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("force: true skips the jobs refusal and records the interrupted count", async () => {
+    const jobs = new JobQueue();
+    jobs.enqueue({
+      kind: "explain",
+      provider: "claude",
+      model: "m",
+      reviewId: "r",
+      priority: 1,
+      run: () => new Promise<never>(() => {}),
+    });
+    const h = await makeHarness({ gate: true, fakeUpdater: true, jobs });
+    try {
+      const res = await h.app.inject(auth("/api/update/switch", { ref: "preview/feat-x", force: true }, "POST"));
+      expect(res.statusCode).toBe(202);
+      expect(res.json()).toEqual({ from: "release", to: "preview/feat-x" });
+      expect(readPendingSwitch(h.dataDir)).toMatchObject({
+        from: "release",
+        to: "preview/feat-x",
+        interruptedJobs: 1,
+      });
+      expect(h.spawned).toHaveLength(1);
+      const args = JSON.parse(fs.readFileSync(h.spawned[0], "utf8")) as Record<string, unknown>;
+      expect(args["interruptedJobs"]).toBe(1);
+      expect(await waitFor(() => h.shutdownCalls() === 1, UPDATE_SHUTDOWN_DELAY_MS + 2500)).toBe(true);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("force does not bypass the submit lease, pending switch, gate, or installed check", async () => {
+    // Submit lease still refuses.
+    const leased = await makeHarness({ gate: true, fakeUpdater: true, withLease: true });
+    try {
+      const res = await leased.app.inject(auth("/api/update/switch", { ref: "release", force: true }, "POST"));
+      expect(res.statusCode).toBe(409);
+      expect((res.json() as { error: string }).error).toContain("submit");
+      expect(leased.spawned).toHaveLength(0);
+    } finally {
+      await leased.close();
+    }
+    // A pending switch still refuses.
+    const pending = await makeHarness({ gate: true, fakeUpdater: true, withPending: true });
+    try {
+      const res = await pending.app.inject(auth("/api/update/switch", { ref: "release", force: true }, "POST"));
+      expect(res.statusCode).toBe(409);
+      expect((res.json() as { error: string }).error).toContain("already in progress");
+      expect(pending.spawned).toHaveLength(0);
+    } finally {
+      await pending.close();
+    }
+    // Gate off still 404s.
+    const gated = await makeHarness({ fakeUpdater: true });
+    try {
+      expect(
+        (await gated.app.inject(auth("/api/update/switch", { ref: "release", force: true }, "POST"))).statusCode,
+      ).toBe(404);
+    } finally {
+      await gated.close();
+    }
+    // Not installed still refuses.
+    const checkout = await makeHarness({ gate: true, install: null });
+    try {
+      const res = await checkout.app.inject(auth("/api/update/switch", { ref: "release", force: true }, "POST"));
+      expect(res.statusCode).toBe(409);
+      expect((res.json() as { error: string }).error).toContain("installed build");
+      expect(checkout.spawned).toHaveLength(0);
+    } finally {
+      await checkout.close();
     }
   });
 

@@ -63,8 +63,6 @@ code { font-family: var(--mono); font-size: .86em; }
 .hint { font-size: 12px; color: var(--muted); }
 /* Thread agent failure (M4 ask/reply): warning-tinted box with a Retry button. */
 .perr { margin: 6px 0; padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font-size: 13px; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
-/* Streamed reply tail shown under the working indicator while it flows. */
-.working .stream { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn { border: 1px solid var(--ink); background: var(--ink); color: var(--surface); border-radius: 6px; padding: 3px 10px; font-size: 12.5px; font-weight: 500; }
 .btn.ghost { background: none; color: var(--ink); border-color: var(--line); }
 .mini { border: 0; background: none; color: var(--muted); font-size: 11.5px; padding: 2px 5px; border-radius: 4px; }
@@ -315,7 +313,21 @@ mark.anc.on { outline: 2px solid var(--note); }
 @keyframes blink { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
 .fresh { animation: rise .4s ease-out; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
-@media (prefers-reduced-motion: reduce) { .fresh, .dots i { animation: none; } }
+/* Card/expansion being rewritten by an agent action: the accent left border
+   plus a pale wash, while the existing text stays readable; the border
+   pulses gently. Expansions already carry the accent border at rest, so
+   the wash (and a wider border) is what sets their rewriting state apart
+   without relying on animation. */
+.card.rewriting {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  animation: rewrite-pulse 1.6s ease-in-out infinite;
+}
+.card.child.rewriting { border-left-width: 5px; }
+@keyframes rewrite-pulse { 0%, 100% { border-left-color: var(--accent); } 50% { border-left-color: var(--line); } }
+/* Placeholder where agent-started content will land: dashed like a pending card. */
+.card.child.placeholder { border-style: dashed; background: none; }
+@media (prefers-reduced-motion: reduce) { .fresh, .dots i, .card.rewriting { animation: none; } }
 .dg { overflow-x: auto; margin: 12px 0 4px; }
 .dg svg { display: block; min-width: 540px; width: 100%; height: auto; }
 /* D2 diagrams (service-rendered SVG, inlined): scale to the container width

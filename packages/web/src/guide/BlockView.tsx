@@ -9,11 +9,13 @@
  */
 import type { Annotation, Block, DepthLevel, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
+import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations, resolveCitation } from "./citations.js";
 import { DiagramView } from "./DiagramView.js";
-import { depthText, isPageRead } from "./guideUtils.js";
+import { anchorMatchesBlock, depthText, isPageRead } from "./guideUtils.js";
+import { followupKey, inflightLabel } from "./inflight.js";
 import { BlockMarkers } from "./Markers.js";
 import { handleHtmlLinkClick, RichText } from "./RichText.js";
 
@@ -27,6 +29,8 @@ interface Props extends BlockCallbacks {
   level: DepthLevel;
   threads: Annotation[];
   lookupPage?: (pageId: string) => Page | undefined;
+  /** Owning card (or expansion) id: follow-up chips read in-flight state. */
+  cardId: string;
 }
 
 function Paragraph({
@@ -102,8 +106,9 @@ function onHtmlClick(
   handleHtmlLinkClick(e, pages, onOpenPage);
 }
 
-export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFollowUp }: Props) {
+export function BlockView({ block, level, threads, lookupPage, cardId, onOpenPage, onFollowUp }: Props) {
   const snapshot = useReview((s) => s.snapshot);
+  const inflight = useReview((s) => s.inflight);
   const pages = snapshot?.pages;
   const citations =
     "citations" in block && Array.isArray(block.citations) ? block.citations : [];
@@ -255,15 +260,50 @@ export function BlockView({ block, level, threads, lookupPage, onOpenPage, onFol
     }
     case "follow-up": {
       if (!block.items.length) return null;
+      const busyIndex = block.items.findIndex((_, i) => inflight[followupKey(cardId, block.id, i)]);
+      // Once the answer expansion renders under this block it carries the
+      // working state itself; until then a single placeholder shaped like
+      // the answer card holds its place, so the two never stack.
+      const answerArrived = (snapshot?.annotations ?? []).some(
+        (a) =>
+          a.type === "expansion" &&
+          a.open &&
+          a.anchor.host.kind === "block" &&
+          anchorMatchesBlock(a.anchor.host.blockId, cardId, block.id),
+      );
+      const waiting = busyIndex >= 0 && !answerArrived;
       return (
-        <div className="follow">
-          <span className="k">Follow up:</span>
-          {block.items.map((item, i) => (
-            <button key={i} type="button" data-follow={block.id} data-i={i} onClick={() => onFollowUp(block.id, i)}>
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="follow">
+            <span className="k">Follow up:</span>
+            {block.items.map((item, i) => {
+              const busy = i === busyIndex;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  data-follow={block.id}
+                  data-i={i}
+                  disabled={busyIndex >= 0}
+                  aria-busy={busy || undefined}
+                  aria-label={busy ? "Working…" : undefined}
+                  onClick={() => onFollowUp(block.id, i)}
+                >
+                  {busy ? (
+                    <span className="dots" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  ) : (
+                    item.label
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {waiting ? <WorkingPlaceholder label={inflightLabel("followup")} /> : null}
+        </>
       );
     }
     default:

@@ -25,6 +25,99 @@ import type { Job, ReviewEvent, ReviewSnapshot, StatePatchOp } from "@unvibe/sha
 
 type PatchEvent = Extract<ReviewEvent, { type: "patch" }>;
 
+/**
+ * One agent action started from a click, shown immediately (issue #46).
+ * Set synchronously in the click handler — before the request is sent —
+ * and handed over to the real snapshot job once it appears, so the UI
+ * reacts on click instead of waiting for the first WS event.
+ */
+export type InFlightKind =
+  | "depth"
+  | "examples"
+  | "diagram"
+  | "generate"
+  | "followup"
+  | "explain"
+  | "ask"
+  | "reply"
+  | "retry"
+  | "second_opinion"
+  | "concept"
+  | "update";
+
+export interface InFlightAction {
+  kind: InFlightKind;
+  /** Card id, annotation/thread id, anchor key, or `update:<reviewId>`. */
+  targetId: string;
+  /** Attached once the action response arrives (the job to follow). */
+  jobId?: string;
+  /** Card/expansion revision at click time (insert kinds). */
+  revision?: number;
+  startedAt: number;
+  /**
+   * Monotonic generation: a stale response (an earlier click whose answer
+   * arrives after a newer click re-began the same key) must never clear
+   * or reattach the newer entry.
+   */
+  seq: number;
+}
+
+let inflightSeq = 0;
+
+/**
+ * Safety cap so an in-flight entry can never spin forever (a lost job
+ * event, a mock answer with no snapshot job). The cap only applies while
+ * no live job is attached: an entry following a queued/running/
+ * backing-off job stays until that job is terminal, however long the
+ * queue takes.
+ */
+export const INFLIGHT_TTL_MS = 120_000;
+
+export function isLiveJobState(state: Job["state"]): boolean {
+  return state === "queued" || state === "running" || state === "backing-off";
+}
+
+export function isTerminalJobState(state: Job["state"]): boolean {
+  return state === "done" || state === "error" || state === "cancelled";
+}
+
+/**
+ * Whether an entry lapses: older than the TTL *and* with no live job
+ * (no `jobId` yet, or a `jobId` the snapshot does not know). A live
+ * attached job holds the entry past the TTL; its terminal state reaps it.
+ */
+export function inflightExpired(
+  entry: InFlightAction,
+  jobs: Job[],
+  now: number,
+): boolean {
+  if (now - entry.startedAt <= INFLIGHT_TTL_MS) return false;
+  if (!entry.jobId) return true;
+  const job = jobs.find((j) => j.id === entry.jobId);
+  if (!job) return true;
+  return !isLiveJobState(job.state);
+}
+
+/** Drop in-flight entries whose job settled or whose wait lapsed. */
+function reapInflight(
+  jobs: Job[],
+  inflight: Record<string, InFlightAction>,
+  now: number,
+): Record<string, InFlightAction> {
+  const byId = new Map(jobs.map((j) => [j.id, j]));
+  let changed = false;
+  const next: Record<string, InFlightAction> = {};
+  for (const [key, entry] of Object.entries(inflight)) {
+    const job = entry.jobId ? byId.get(entry.jobId) : undefined;
+    if ((job && isTerminalJobState(job.state)) || inflightExpired(entry, jobs, now)) {
+      changed = true;
+      continue;
+    }
+    next[key] = entry;
+  }
+  return changed ? next : inflight;
+}
+
 /** Cap on queued out-of-order patches (a gap refetch converges instead). */
 const MAX_PENDING = 200;
 
@@ -32,12 +125,12 @@ interface ReviewState {
   snapshot: ReviewSnapshot | null;
   connected: boolean;
   /**
-   * Streamed text per card or thread (`text` events carry `cardId` and/or
-   * `threadId`). Cards show the tail as progress while their job runs;
-   * threads show it under the working indicator; patches/snapshots
-   * materialize the content and clear the streams.
+   * Agent actions started from a click and not yet settled (issue #46).
+   * Keyed by target (card/annotation/thread id, anchor key, or
+   * `update:<reviewId>`). Survives snapshot resyncs; entries clear when
+   * their job settles, the request fails, or the TTL lapses.
    */
-  streams: Record<string, string>;
+  inflight: Record<string, InFlightAction>;
   /** Out-of-order patches waiting for their `baseRev`. */
   pending: PatchEvent[];
   /**
@@ -49,6 +142,13 @@ interface ReviewState {
   setConnected: (connected: boolean) => void;
   applyEvent: (event: ReviewEvent) => void;
   updateJob: (job: Job) => void;
+  /** Set synchronously in the click handler, before the request is sent. */
+  beginInflight: (targetId: string, kind: InFlightKind, opts?: { revision?: number }) => void;
+  /** Attach the response's job id so the entry follows the real job. */
+  attachInflightJob: (targetId: string, jobId: string) => void;
+  /** Move an entry to its server id (anchor key → annotation/thread id). */
+  retargetInflight: (fromId: string, toId: string) => void;
+  clearInflight: (targetId: string) => void;
   clear: () => void;
 }
 
@@ -154,20 +254,22 @@ function queuePatch(pending: PatchEvent[], event: PatchEvent): PatchEvent[] {
   return next.length > MAX_PENDING ? next.slice(next.length - MAX_PENDING) : next;
 }
 
-export const useReview = create<ReviewState>()((set) => ({
+export const useReview = create<ReviewState>()((set, get) => ({
   snapshot: null,
   connected: false,
-  streams: {},
+  inflight: {},
   pending: [],
   resyncSeq: 0,
   setSnapshot: (snapshot) =>
     set((s) => {
       // A stale fetch must never clobber newer WS state. Equal revs are
       // accepted (live job lists merge into the snapshot without a bump).
+      // In-flight entries survive resyncs; only settled jobs reap them.
       if (s.snapshot && snapshot.rev < s.snapshot.rev) return s;
       const drained = drainPending(snapshot, s.pending);
       return {
         snapshot: drained.snapshot,
+        inflight: reapInflight(drained.snapshot.jobs, s.inflight, Date.now()),
         pending: drained.pending,
         resyncSeq: drained.gap ? s.resyncSeq + 1 : s.resyncSeq,
       };
@@ -182,7 +284,7 @@ export const useReview = create<ReviewState>()((set) => ({
           const drained = drainPending(snapshot, s.pending);
           return {
             snapshot: drained.snapshot,
-            streams: {},
+            inflight: reapInflight(drained.snapshot.jobs, s.inflight, Date.now()),
             pending: drained.pending,
             resyncSeq: drained.gap ? s.resyncSeq + 1 : s.resyncSeq,
           };
@@ -202,7 +304,7 @@ export const useReview = create<ReviewState>()((set) => ({
             const drained = drainPending(applied, s.pending);
             return {
               snapshot: drained.snapshot,
-              streams: {},
+              inflight: reapInflight(drained.snapshot.jobs, s.inflight, Date.now()),
               pending: drained.pending,
               resyncSeq: drained.gap ? s.resyncSeq + 1 : s.resyncSeq,
             };
@@ -212,24 +314,101 @@ export const useReview = create<ReviewState>()((set) => ({
         }
         case "job": {
           if (!s.snapshot) return s;
-          const jobs = s.snapshot.jobs.map((j) => (j.id === event.job.id ? event.job : j));
-          return { snapshot: { ...s.snapshot, jobs } };
+          // Upsert: jobs created after the snapshot was fetched (every
+          // user-started action) join the list here, so in-flight entries
+          // can hand over to them and reap when they settle. Without this
+          // the event would drop and the entry would stick until its TTL.
+          const known = s.snapshot.jobs.some((j) => j.id === event.job.id);
+          const jobs = known
+            ? s.snapshot.jobs.map((j) => (j.id === event.job.id ? event.job : j))
+            : [...s.snapshot.jobs, event.job];
+          return {
+            snapshot: { ...s.snapshot, jobs },
+            inflight: reapInflight(jobs, s.inflight, Date.now()),
+          };
         }
-        case "text": {
-          const key = event.threadId ?? event.cardId;
-          if (!key) return s;
-          const prev = s.streams[key] ?? "";
-          return { streams: { ...s.streams, [key]: (prev + event.delta).slice(-4000) } };
-        }
+        case "text":
+          // Agent stream deltas are never shown (issue #46): the processing
+          // state is a plain indicator with a fixed label. Content arrives
+          // through patches; the events themselves stay for the service.
+          return s;
         default:
           return s; // error handled by streaming views later
       }
     }),
   updateJob: (job) =>
-    set((s) =>
-      s.snapshot
-        ? { snapshot: { ...s.snapshot, jobs: s.snapshot.jobs.map((j) => (j.id === job.id ? job : j)) } }
-        : s,
-    ),
-  clear: () => set({ snapshot: null, streams: {}, pending: [], resyncSeq: 0 }),
+    set((s) => {
+      if (!s.snapshot) return s;
+      const known = s.snapshot.jobs.some((j) => j.id === job.id);
+      const jobs = known
+        ? s.snapshot.jobs.map((j) => (j.id === job.id ? job : j))
+        : [...s.snapshot.jobs, job];
+      return {
+        snapshot: { ...s.snapshot, jobs },
+        inflight: reapInflight(jobs, s.inflight, Date.now()),
+      };
+    }),
+  beginInflight: (targetId, kind, opts) => {
+    const startedAt = Date.now();
+    const seq = ++inflightSeq;
+    const entry: InFlightAction = {
+      kind,
+      targetId,
+      ...(opts?.revision !== undefined ? { revision: opts.revision } : {}),
+      startedAt,
+      seq,
+    };
+    set((s) => ({ inflight: { ...s.inflight, [targetId]: entry } }));
+    // Backstop for entries nobody waits on: re-armed while a live job is
+    // attached, so a long queue never drops the indicator mid-rewrite.
+    const arm = (): void => {
+      window.setTimeout(() => {
+        if (get().inflight[targetId]?.seq !== seq) return;
+        const st = get();
+        if (!inflightExpired(st.inflight[targetId], st.snapshot?.jobs ?? [], Date.now())) {
+          arm();
+          return;
+        }
+        set((s) => {
+          if (s.inflight[targetId]?.seq !== seq) return s;
+          const next = { ...s.inflight };
+          delete next[targetId];
+          return { inflight: next };
+        });
+      }, INFLIGHT_TTL_MS + 50);
+    };
+    arm();
+  },
+  attachInflightJob: (targetId, jobId) =>
+    set((s) => {
+      const cur = s.inflight[targetId];
+      if (!cur) return s;
+      // The job can finish before the response is processed (fast or
+      // replayed fills): attaching to an already-terminal job would stick
+      // until the TTL, so reconcile immediately instead.
+      const job = s.snapshot?.jobs.find((j) => j.id === jobId);
+      if (job && isTerminalJobState(job.state)) {
+        const next = { ...s.inflight };
+        delete next[targetId];
+        return { inflight: next };
+      }
+      return { inflight: { ...s.inflight, [targetId]: { ...cur, jobId } } };
+    }),
+  retargetInflight: (fromId, toId) =>
+    set((s) => {
+      const cur = s.inflight[fromId];
+      if (!cur || fromId === toId) return s;
+      const next = { ...s.inflight };
+      delete next[fromId];
+      next[toId] = { ...cur, targetId: toId };
+      return { inflight: next };
+    }),
+  clearInflight: (targetId) =>
+    set((s) => {
+      if (!s.inflight[targetId]) return s;
+      const next = { ...s.inflight };
+      delete next[targetId];
+      return { inflight: next };
+    }),
+  clear: () => set({ snapshot: null, inflight: {}, pending: [], resyncSeq: 0 }),
 }));

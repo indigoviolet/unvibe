@@ -373,6 +373,44 @@ describe("usage, prompts and events", () => {
   });
 });
 
+describe("card scope (#62)", () => {
+  it("carries cardId on the job: enqueue return, get, listByReview and job events", async () => {
+    const { queue, events } = makeQueue();
+    const job = queue.enqueue(spec({ cardId: "c-central", run: async () => {} }));
+    expect(job.cardId).toBe("c-central");
+    expect(queue.get(job.id)?.cardId).toBe("c-central");
+    expect(queue.listByReview("r1").find((j) => j.id === job.id)?.cardId).toBe("c-central");
+    await queue.drain();
+    const seen = events.filter((e) => e.type === "job" && e.job.id === job.id);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const e of seen) {
+      if (e.type === "job") expect(e.job.cardId).toBe("c-central");
+    }
+    // Jobs without a card carry no cardId key at all.
+    const plain = queue.enqueue(spec({ run: async () => {} }));
+    await queue.drain();
+    expect("cardId" in queue.get(plain.id)!).toBe(false);
+  });
+
+  it("persists cardId across save and restart recovery", async () => {
+    const db = makeDb();
+    seedReview(db, "r1");
+    const store = new JobStore(db);
+    const q1 = new JobQueue({ clock: new ManualClock(), persist: store });
+    const gate = deferred();
+    const running = q1.enqueue(
+      spec({ reviewId: "r1", cardId: "c-central", run: () => gate.promise.then(() => {}) }),
+    );
+    await flush();
+    expect(store.get(running.id)?.cardId).toBe("c-central");
+
+    const q2 = new JobQueue({ clock: new ManualClock(), persist: store });
+    const { interrupted } = q2.recover(store.listOpen());
+    expect(interrupted[0].cardId).toBe("c-central");
+    gate.resolve();
+  });
+});
+
 describe("persistence and restart recovery", () => {
   it("persists jobs so the view survives; open jobs come back interrupted, never blocking re-enqueue", async () => {
     const db = makeDb();

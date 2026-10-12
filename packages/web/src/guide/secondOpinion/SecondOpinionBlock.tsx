@@ -9,6 +9,7 @@
  */
 import type { Annotation, Card, Page, SecondOpinionResult } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
+import { useReview } from "../../state/store.js";
 import { BlockView } from "../BlockView.js";
 import { performAction } from "../actions.js";
 
@@ -30,6 +31,9 @@ function verdictLabel(v: SecondOpinionResult["verdict"]): string {
 export function SecondOpinionBlock({ reviewId, card, result, lookupPage, onOpenPage, onFollowUp }: Props): React.JSX.Element {
   const threads: Annotation[] = [];
   const dis = result.verdict === "disagrees";
+  // A re-run starts an agent session for the same card: disable while one
+  // is already in flight so it cannot be double-clicked.
+  const cardBusy = !!useReview((s) => s.inflight[card.id]);
   return (
     <section
       className={`so${dis ? " so-dis" : ""}`}
@@ -50,10 +54,12 @@ export function SecondOpinionBlock({ reviewId, card, result, lookupPage, onOpenP
           className="mini"
           type="button"
           data-tip="Re-run second opinion"
-          aria-label={`Re-run second opinion (${result.mode})`}
+          aria-label={cardBusy ? "Working…" : `Re-run second opinion (${result.mode})`}
+          aria-busy={cardBusy || undefined}
+          disabled={cardBusy}
           onClick={() => void performAction(reviewId, { kind: "second_opinion", cardId: card.id, mode: result.mode })}
         >
-          Re-run
+          {cardBusy ? "Working…" : "Re-run"}
         </button>
         <button
           className="ib"
@@ -78,6 +84,7 @@ export function SecondOpinionBlock({ reviewId, card, result, lookupPage, onOpenP
             level="standard"
             threads={threads}
             lookupPage={lookupPage}
+            cardId={card.id}
             onOpenPage={onOpenPage}
             onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
           />

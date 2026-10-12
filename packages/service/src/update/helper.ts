@@ -6,12 +6,15 @@
  *
  * 1. wait for the service PID to exit (never kill — abort instead);
  * 2. `switchTo(to)` via the `Updater` seam (step 1 backs up the DB and
- *    installs `github:indigoviolet/unvibe#<ref>` globally);
+ *    installs `github:indigoviolet/unvibe#<ref>` globally; the live
+ *    database stays in place and the new build opens it);
  * 3. start the service again on the same port + data dir;
  * 4. poll `/api/health` until it reports the target version;
- * 5. on install failure or an unhealthy new build: `switchTo(from)`,
- *    restart that, and record `rolled-back` (+ reason); when the rollback
- *    itself fails, record `failed`.
+ * 5. on install failure or an unhealthy new build: `switchTo(from, {
+ *    restoreBackupOf: from })` (reinstall + restore the pre-switch
+ *    backup, so the old build never opens a database the new build may
+ *    have migrated), restart that, and record `rolled-back` (+ reason);
+ *    when the rollback itself fails, record `failed`.
  *
  * Every step is injected through `HelperDeps` (clock, exit wait, Updater,
  * spawn, health probe, outcome record) so unit tests drive the whole
@@ -21,6 +24,8 @@
  * copies to the data dir and spawns detached).
  */
 import type { SwitchOutcome } from "@unvibe/shared";
+import type { SwitchToOptions } from "./updater.js";
+import { channelSlotDir } from "./data-backup.js";
 
 export interface SwitchPlan {
   from: string;
@@ -39,6 +44,13 @@ export interface SwitchPlan {
   /** Bound for stopping the helper's own previous generation before a later start. */
   stopWaitMs: number;
   logPath: string;
+  /**
+   * Jobs the service stopped via its normal shutdown path on a forced
+   * switch (#36 follow-up: `force: true` on `POST /api/update/switch`).
+   * Copied onto every outcome so the UI can name the count after the
+   * reload. Absent on unforced switches.
+   */
+  interruptedJobs?: number;
 }
 
 /** Recovery path when the app cannot come back on its own (docs + failure outcomes). */
@@ -77,7 +89,7 @@ export interface HelperArgs extends SwitchPlan {
 
 export interface HelperDeps {
   waitForExit(pid: number, timeoutMs: number): Promise<boolean>;
-  switchTo(ref: string): Promise<{ from: string; to: string }>;
+  switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }>;
   /** Spawn a service generation; resolves its pid. */
   startService(): Promise<number>;
   /**
@@ -116,8 +128,12 @@ export function describeHealth(health: ObservedHealth): string {
 }
 
 export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise<SwitchOutcome> {
-  const finish = (outcome: Omit<SwitchOutcome, "finishedAt">): SwitchOutcome => {
-    const full: SwitchOutcome = { ...outcome, finishedAt: deps.nowIso() };
+  const finish = (outcome: Omit<SwitchOutcome, "finishedAt" | "interruptedJobs">): SwitchOutcome => {
+    const full: SwitchOutcome = {
+      ...outcome,
+      ...(plan.interruptedJobs !== undefined ? { interruptedJobs: plan.interruptedJobs } : {}),
+      finishedAt: deps.nowIso(),
+    };
     deps.log(`outcome: ${full.status} ${full.from} -> ${full.to}${full.reason ? ` (${full.reason})` : ""}`);
     deps.clearPending();
     deps.recordOutcome(full);
@@ -171,10 +187,9 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
   const rollback = async (reason: string): Promise<SwitchOutcome> => {
     deps.log(`rolling back to ${plan.from}: ${reason}`);
     // Stop the unhealthy generation BEFORE the rollback install: npm must
-    // not replace files under a live service, the DB files must not be
-    // swapped under an open handle, and the switch core refuses while a
-    // service holds the lock. Only generations the helper itself started
-    // are ever stopped — never the told-about service PID.
+    // not replace files under a live service, and the switch core refuses
+    // while a service holds the lock. Only generations the helper itself
+    // started are ever stopped — never the told-about service PID.
     if (activePid !== null) {
       deps.log(`stopping unhealthy generation (pid ${activePid}) before rolling back`);
       await deps.stopService(activePid);
@@ -187,14 +202,20 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
       }
       activePid = null;
     }
+    const backupDir = channelSlotDir(plan.dataDir, plan.from);
     try {
-      await deps.switchTo(plan.from);
+      // Reinstall the old build AND restore the backup taken at the start
+      // of this switch, so the old build never opens a database the new
+      // build may have migrated.
+      await deps.switchTo(plan.from, { restoreBackupOf: plan.from });
     } catch (err) {
       return finish({
         status: "failed",
         from: plan.from,
         to: plan.to,
-        reason: `${reason}; rollback to ${plan.from} also failed: ${(err as Error).message}. ${RECOVER_BY_HAND}`,
+        reason:
+          `${reason}; rollback to ${plan.from} also failed: ${(err as Error).message}. ` +
+          `The pre-switch database backup is in ${backupDir}. ${RECOVER_BY_HAND}`,
         logPath: plan.logPath,
       });
     }
@@ -221,13 +242,21 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
 
   const exited = await deps.waitForExit(plan.servicePid, plan.exitWaitMs);
   if (!exited) {
+    // The service bounds its own shutdown well inside the exit wait
+    // (`SHUTDOWN_DEADLINE_MS` in `lifecycle/service-shutdown.ts`), so a
+    // timeout here means the process is stuck beyond its shutdown path —
+    // typically wedged connections. The install is untouched and the live
+    // service keeps serving (pending was cleared); SIGKILL it into line.
+    // The helper never kills the told-about PID itself.
     return finish({
       status: "failed",
       from: plan.from,
       to: plan.to,
       reason:
-        `service (pid ${plan.servicePid}) did not exit within ${plan.exitWaitMs}ms; ` +
-        `the install was left untouched — stop the service and retry`,
+        `service (pid ${plan.servicePid}) did not exit within ${plan.exitWaitMs}ms — ` +
+        `it is likely stuck shutting down with open connections; the install was left untouched ` +
+        `and the live service keeps serving. Recover with \`unvibe stop\`, then retry the switch ` +
+        `(or \`unvibe update ${plan.to}\` with the service stopped)`,
       logPath: plan.logPath,
     });
   }

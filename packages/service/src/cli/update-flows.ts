@@ -11,25 +11,20 @@ import {
   listChannels,
   readInstalledBuild,
 } from "../update/channels.js";
-import { dbPlanForSwitch, runSwitchCore } from "../update/switch.js";
-
-/** Kept here so existing imports keep working; owned by `update/switch.ts`. */
-export { dbPlanForSwitch };
+import { runSwitchCore } from "../update/switch.js";
 
 export const UPDATE_USAGE = [
   "unvibe update — switch the installed build between channels (issue #36)",
   "",
   "Usage: unvibe update --list",
-  "       unvibe update <channel> [--keep-data]",
+  "       unvibe update <channel>",
   "",
   "  --list       list release, release-rc and preview/* channels, marking the installed one",
   "  <channel>    install github:indigoviolet/unvibe#<channel> globally with npm",
-  "  --keep-data  keep the live database instead of restoring the target channel's copy",
   "",
-  "Each channel keeps its own database copy under <dataDir>/channel-backups/: " +
-    "switching restores the target's copy when one exists, and a new preview never " +
-    "inherits another preview's database (it starts from the release copy, or the " +
-    "switch stops first — --keep-data keeps the live database instead).",
+  "Switching keeps your database and backs it up first to " +
+    "<dataDir>/channel-backups/<channel>/. A newer build may upgrade the database; " +
+    "if an older build then cannot open it, copy the backup back.",
   "Stop the service first (`unvibe stop`), then `unvibe start` afterwards.",
 ].join("\n");
 
@@ -43,10 +38,6 @@ export interface UpdateDeps {
 export interface UpdateOutcome {
   code: number;
   lines: string[];
-}
-
-export interface UpdateChannelOptions {
-  keepData: boolean;
 }
 
 /** List channels via `gh`, marking the installed one. */
@@ -72,12 +63,8 @@ export async function runUpdateListFlow(deps: UpdateDeps): Promise<UpdateOutcome
   }
 }
 
-/** Install a channel: backup, npm install (verified), restore. Never runs live. */
-export async function runUpdateChannelFlow(
-  deps: UpdateDeps,
-  channel: string,
-  opts: UpdateChannelOptions,
-): Promise<UpdateOutcome> {
+/** Install a channel: backup, npm install (verified), keep the live DB. Never runs live. */
+export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): Promise<UpdateOutcome> {
   if (!isChannelName(channel)) {
     return {
       code: 2,
@@ -93,7 +80,6 @@ export async function runUpdateChannelFlow(
     serviceScriptPath: deps.cliScriptPath,
     serviceVersion: deps.serviceVersion,
     channel,
-    keepData: opts.keepData,
     log: () => {},
   });
   if (result.code === 2) {

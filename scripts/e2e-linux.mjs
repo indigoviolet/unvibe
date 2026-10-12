@@ -15,9 +15,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRunRoot, onExit, removeDir } from "./tmp-guard.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = path.join(ROOT, "packages", "service", "dist", "index.js");
@@ -30,8 +30,14 @@ const args = process.argv.slice(2);
 const portIdx = args.indexOf("--port");
 const PORT = portIdx >= 0 ? Number(args[portIdx + 1]) : 4591;
 
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-e2e-home-"));
-const DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-e2e-data-"));
+// Per-run temp root (issue #24): HOME + DATA live under one fresh dir,
+// removed by exact path on success, failure and interruption. Never
+// globs the system temp dir (other suites share it).
+const RUN = createRunRoot();
+const HOME = path.join(RUN, "home");
+const DATA = path.join(RUN, "data");
+fs.mkdirSync(HOME, { recursive: true });
+fs.mkdirSync(DATA, { recursive: true });
 const ENV = {
   ...process.env,
   HOME,
@@ -39,6 +45,20 @@ const ENV = {
   UNVIBE_PORT: String(PORT),
   UNVIBE_IDLE_MS: "3000",
 };
+// Interruption net: stop only our own daemon (via its lock file under our
+// DATA), then remove only our own root. Never kills by pattern or port.
+let cleaned = false;
+function cleanup() {
+  if (cleaned) return;
+  cleaned = true;
+  try {
+    spawnSync(process.execPath, [CLI, "stop"], { env: ENV, timeout: 30_000 });
+  } catch {
+    // best effort
+  }
+  removeDir(RUN);
+}
+onExit(cleanup);
 
 let failures = 0;
 function assert(cond, msg) {
@@ -167,6 +187,8 @@ assert(uninstall.code === 0 && !fs.existsSync(desktop), "uninstall removes the h
 
 if (failures > 0) {
   console.error(`${failures} assertion(s) failed`);
+  cleanup();
   process.exit(1);
 }
+cleanup();
 console.log(`e2e-linux: all green (via ${via})`);

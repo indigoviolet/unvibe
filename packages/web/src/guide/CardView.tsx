@@ -6,8 +6,10 @@
  * with blind/check switch, Mark read) wired to
  * `POST /api/reviews/:id/actions`; read greys and collapses; stale cards
  * show the cited-hunks count with an Update button; "Go deeper"
- * placeholder cards with Generate showing job progress; working dots
- * whenever a job runs for the card or streamed text arrives for it.
+ * placeholder cards with Generate showing a plain working state. Every
+ * agent-starting control sets an in-flight entry on click (dots on the
+ * clicked control, conflicting controls disabled, rewrite border or
+ * placeholder); the entry hands over to the snapshot job once it appears.
  * Expansions render under their block via `ExpansionCard` (open ones in
  * place; closed ones as dotted-link highlights with a hidden fallback
  * stub); promoted links render as page-link stubs. Corrections show as
@@ -17,16 +19,16 @@ import type { Annotation, Card, DepthLevel, Page } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { Icon } from "../components/Icon.js";
-import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
-import { performAction, performUpdate } from "./actions.js";
+import { performAction, performInsertAction, performUpdate } from "./actions.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { ExpansionCard } from "./expansions/ExpansionCard.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
-import { cardPreview, jobForCard } from "./guideUtils.js";
+import { cardPreview } from "./guideUtils.js";
+import { busyForCard, updateKey } from "./inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
 
 const DEPTH_ORDER: DepthLevel[] = ["simple", "standard", "deep"];
@@ -45,29 +47,45 @@ function ControlButton({
   onClick,
   disabled,
   pressed,
+  busy,
 }: {
   icon: "down" | "right" | "check" | "bulb" | "diagram" | "undo";
   label: string;
   onClick: () => void;
   disabled?: boolean;
   pressed?: boolean;
+  /** This control's action is running: dots in place of the icon. */
+  busy?: boolean;
 }) {
   return (
     <button
       className="ib"
       type="button"
-      data-tip={label}
-      aria-label={label}
+      data-tip={busy ? "Working…" : label}
+      aria-label={busy ? "Working…" : label}
       aria-pressed={pressed}
-      disabled={disabled}
+      aria-busy={busy || undefined}
+      disabled={disabled || busy}
       onClick={onClick}
     >
-      <Icon name={icon} />
+      {busy ? (
+        <span className="dots" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
+      ) : (
+        <Icon name={icon} />
+      )}
     </button>
   );
 }
 
-function Working({ text }: { text: string }) {
+/**
+ * Plain processing indicator: dots plus a short fixed label. Never
+ * streamed agent text, thinking text, or progress strings (issue #46).
+ */
+export function Working({ text }: { text: string }) {
   return (
     <div className="working" role="status">
       <span className="dots" aria-hidden="true">
@@ -86,70 +104,22 @@ function runCardAction(reviewId: string, action: Parameters<typeof performAction
   void performAction(reviewId, action).catch(() => {});
 }
 
-/**
- * Examples/diagrams insert blocks after the paragraphs they relate to and
- * never duplicate one already there: when the service adds nothing, tell
- * the user instead of leaving them wondering. The fill is async (jobId),
- * so watch the card revision until that job settles; an unchanged revision
- * means nothing was added.
- */
-function runInsertAction(
-  reviewId: string,
-  cardId: string,
-  kind: "examples" | "diagram",
-  getRevision: () => number | undefined,
-): void {
-  const before = getRevision();
-  void performAction(reviewId, { kind, cardId } as Parameters<typeof performAction>[1])
-    .then((res) => {
-      if (!res.jobId || before === undefined) return;
-      const jobId = res.jobId;
-      const timer = window.setInterval(() => {
-        const snap = useReview.getState().snapshot;
-        const job = snap?.jobs.find((j) => j.id === jobId);
-        if (!job || job.state === "running" || job.state === "queued" || job.state === "backing-off") return;
-        window.clearInterval(timer);
-        if (job.state === "done") {
-          const after = getRevision();
-          if (after !== undefined && after === before) {
-            toast("Nothing more to add to this card.");
-          }
-        }
-      }, 500);
-      // Safety: stop watching after 2 minutes.
-      window.setTimeout(() => window.clearInterval(timer), 120_000);
-    })
-    .catch(() => {});
-}
 
-/** Current revision of a page card (for nothing-to-add detection). */
-function currentRevision(reviewId: string, cardId: string): number | undefined {
-  void reviewId;
-  const snap = useReview.getState().snapshot;
-  for (const p of snap?.pages ?? []) {
-    const card = p.cards.find((c) => c.id === cardId);
-    if (card) return card.revision;
-  }
-  const ann = snap?.annotations.find((a) => a.id === cardId);
-  if (ann?.type === "expansion" && ann.expansion) return ann.expansion.revision;
-  return undefined;
-}
 
 export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const jobs = snapshot?.jobs ?? [];
   const annotations = snapshot?.annotations ?? [];
-  const streams = useReview((s) => s.streams);
+  const inflight = useReview((s) => s.inflight);
   const contributions = snapshot?.contributions ?? [];
-  const job = jobForCard(jobs, card.id);
-  const streamText = streams[card.id];
-  const progress = job?.progress ?? (streamText ? streamText.slice(-160) : undefined);
+  const busy = busyForCard(inflight, jobs, card.id);
+  const busyKind = busy?.kind;
 
   if (card.pending) {
     return (
-      <section className="card pend" id={`C-${card.id}`}>
-        {job || streamText ? (
-          <Working text={progress ?? "Working…"} />
+      <section className="card pend" id={`C-${card.id}`} aria-busy={busy ? true : undefined}>
+        {busy ? (
+          <Working text={busy.label} />
         ) : (
           <>
             <div className="pl">{card.pending.label}</div>
@@ -186,6 +156,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           level={card.level}
           threads={threadsFor(block.id)}
           lookupPage={lookupPage}
+          cardId={card.id}
           onOpenPage={onOpenPage}
           onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
         />
@@ -262,8 +233,20 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     );
   }
 
+  // While an agent action runs for this card, the conflicting controls go
+  // disabled and the clicked one shows dots in place of its icon.
+  const controlsBusy = busy !== null;
+  const depthBusy = busyKind === "depth";
+  const examplesBusy = busyKind === "examples";
+  const diagramBusy = busyKind === "diagram";
+  const secondOpinionBusy = busyKind === "second_opinion";
+
   return (
-    <section className={`card${card.read ? " read" : ""}`} id={`C-${card.id}`}>
+    <section
+      className={`card${card.read ? " read" : ""}${busy?.rewriting ? " rewriting" : ""}`}
+      id={`C-${card.id}`}
+      aria-busy={busy ? true : undefined}
+    >
       <div className="chead">
         <ControlButton
           icon="down"
@@ -280,18 +263,24 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             {card.staleChangedHunks ?? 0} cited{" "}
             {(card.staleChangedHunks ?? 0) === 1 ? "hunk" : "hunks"} changed
           </span>
-          <button className="x" type="button" onClick={() => performUpdate(reviewId)}>
-            Update
+          <button
+            className="x"
+            type="button"
+            disabled={!!inflight[updateKey(reviewId)]}
+            aria-busy={inflight[updateKey(reviewId)] ? true : undefined}
+            onClick={() => performUpdate(reviewId)}
+          >
+            {inflight[updateKey(reviewId)] ? "Updating…" : "Update"}
           </button>
         </div>
       ) : null}
       <div className="ctl">
-        <span className="depth" role="group" aria-label="Depth">
+        <span className="depth" role="group" aria-label="Depth" aria-busy={depthBusy || undefined}>
           <button
             type="button"
             data-tip="Simpler"
-            aria-label="Simpler"
-            disabled={depthIndex <= 0}
+            aria-label={depthBusy ? "Working…" : "Simpler"}
+            disabled={depthIndex <= 0 || controlsBusy}
             onClick={() =>
               runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
             }
@@ -307,36 +296,51 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           </span>
           <button
             type="button"
-            data-tip="Deeper"
-            aria-label="Deeper"
+            data-tip={depthBusy ? "Working…" : "Deeper"}
+            aria-label={depthBusy ? "Working…" : "Deeper"}
+            disabled={controlsBusy}
             onClick={() =>
               runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
             }
           >
-            +
+            {depthBusy ? (
+              <span className="dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            ) : (
+              "+"
+            )}
           </button>
         </span>
         <ControlButton
           icon="bulb"
           label="Use examples"
-          onClick={() =>
-            runInsertAction(reviewId, card.id, "examples", () => currentRevision(reviewId, card.id))
-          }
+          busy={examplesBusy}
+          disabled={controlsBusy}
+          onClick={() => performInsertAction(reviewId, card.id, "examples")}
         />
         <ControlButton
           icon="diagram"
           label="Add diagram"
-          onClick={() =>
-            runInsertAction(reviewId, card.id, "diagram", () => currentRevision(reviewId, card.id))
-          }
+          busy={diagramBusy}
+          disabled={controlsBusy}
+          onClick={() => performInsertAction(reviewId, card.id, "diagram")}
         />
         <ControlButton
           icon="undo"
           label="Undo"
-          disabled={card.undoStack.length === 0}
+          disabled={card.undoStack.length === 0 || controlsBusy}
           onClick={() => runCardAction(reviewId, { kind: "undo", cardId: card.id })}
         />
-        <SecondOpinionControl reviewId={reviewId} card={card} page={lookupPage(card.pageId)} />
+        <SecondOpinionControl
+          reviewId={reviewId}
+          card={card}
+          page={lookupPage(card.pageId)}
+          disabled={controlsBusy}
+          busy={secondOpinionBusy}
+        />
         <span className="sp" />
         <ControlButton
           icon="check"
@@ -347,7 +351,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           }
         />
       </div>
-      {job || streamText ? <Working text={progress ?? "Working…"} /> : null}
+      {busy ? <Working text={busy.label} /> : null}
       {blocks}
       <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />
       {(card.secondOpinions ?? []).map((so) => (

@@ -15,7 +15,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
+import { diffAnchorForExplainKey, inflightLabel } from "../guide/inflight.js";
 import { slotKey, type LineSlots } from "../source/diff/lineSlots.js";
 import { useReview } from "../state/store.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
@@ -38,6 +40,7 @@ export function useDiffCommentBindings(reviewId: string): {
   onLineClick: (fileKey: string, line: number) => void;
 } {
   const annotations = useReview((s) => s.snapshot?.annotations);
+  const inflight = useReview((s) => s.inflight);
   const readOnly = useIsReadOnlyVersion();
   const [pending, setPending] = useState<Pending | null>(null);
 
@@ -134,8 +137,21 @@ export function useDiffCommentBindings(reviewId: string): {
         />
       );
     }
+    // Explains started from a diff selection show a placeholder under the
+    // line until the expansion lands (issue #46). Ask turns keep their
+    // composer; retargeted entries vanish from the anchor key, so an
+    // arrived expansion never doubles with its placeholder.
+    if (!readOnly) {
+      for (const [key, entry] of Object.entries(inflight)) {
+        const anchor = diffAnchorForExplainKey(key);
+        if (!anchor) continue;
+        const slot = slotKey(anchor.fileKey, anchor.line);
+        if (slots[slot]) continue;
+        slots[slot] = <WorkingPlaceholder key={`inflight-${key}`} label={inflightLabel(entry.kind)} />;
+      }
+    }
     return slots;
-  }, [byLine, pending, reviewId, readOnly]);
+  }, [byLine, pending, reviewId, readOnly, inflight]);
 
   const commentedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 
