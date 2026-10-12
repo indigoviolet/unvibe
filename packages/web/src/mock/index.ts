@@ -2353,8 +2353,8 @@ export const mockApi = {
             to: ref,
             reason:
               fail === "install"
-                ? `Mock install of ${ref} failed (simulated); restored ${from}`
-                : `Mock build of ${ref} never reported ${target.version ?? "a version"} (simulated); restored ${from}`,
+                ? `Mock install of ${ref} failed (simulated); restored the pre-switch backup`
+                : `Mock build of ${ref} never reported ${target.version ?? "a version"} (simulated); restored the pre-switch backup`,
             finishedAt: at,
           },
         });
