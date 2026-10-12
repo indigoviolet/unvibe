@@ -1069,3 +1069,41 @@ items noticed while passing through (not verified, listed only):
    report.
 7. **Diagrams**: D2 decision already noted (§13); PRD text itself still
    contradicts (§13/§19.4) — fixed in #18, not here.
+
+## Addendum: #91 / #92 / #93 (branch `fix/91-92-93-open-pr`)
+
+- **#93 (ingest, §15, §11.1):** PR merge-base is computed against
+  `origin/<base>` first, bare `<base>` second through the shared helper
+  `resolvePrMergeBase` (`ingest/source.ts`, reused by
+  `versions/refresh.ts`); PR heads are fetched via
+  `refs/pull/<n>/head` with a branch-name fallback. All git/gh access
+  assumes the `origin` remote (as do detection and managed clones); a
+  checkout whose GitHub remote has another name is not handled.
+  Errors name the missing piece (base ref vs head commit) plus git stderr.
+  Evidence: `test/ingest/pr-merge-base.test.ts` (stacked base, fork fetch,
+  default branch, both refresh paths, both error texts).
+- **#91 (start page, §4.2):** PR rows show `#N` when `branch` is unset
+  (`gh search prs` has no head-branch field) — never `#N · undefined`.
+  `RepoChange.branch` was already optional; no `gh` change. Evidence:
+  `StartPage.test.tsx` (`changeHead`), `changes-pr-branch.test.ts`, and one
+  branch-less PR row in the web mock.
+- **#92 (async open, §4.2, §7, §11, §14.1):** `POST /api/reviews` creates
+  the row + a loading snapshot (`ingest: {status, step, error}`; placeholder
+  version n: 0, empty files) and answers 202 before any fetch; the ingest
+  runs after the response, steps the snapshot (fetching → reading diff),
+  then fills it to ready in one mutate (one WS patch) and starts the
+  pipeline (demo stays 201 sync). The web navigates at once, shows the step
+  until the patch lands (PR title/number/author rode the create request),
+  lists loading/failed rows in Previous reviews (reopenable), and shows a
+  failed page with the error + Retry (removable; never a normal empty
+  review). Restart resumes loading ingests or marks them failed (the loading
+  snapshot is the durable marker, like the submit lease — no new table; not
+  via the agent job queue, which fits provider/model/prompt work, not
+  git/gh + DB writes). Same PR/branch while loading reuses the review
+  (repo + PR/branch dedupe in the service). Loading/failed refuse Explain,
+  comments, Submit, refresh, update, hunks, description, prompts and debug
+  with 409. Old rows (no `ingest`) load as ready. Evidence:
+  `test/reviews-async.test.ts` (202-before-ingest, loading→ready patch,
+  failed + retry + remove, restart, dedupe, pipeline-after-ingest, old-row
+  ready), `GuideLoading.test.tsx`, `e2e/open-review.spec.ts` (mock loading
+  → guide, failing → Retry).
