@@ -169,6 +169,9 @@ export async function runAskFill(
     // Persistent conversation: follow-up turns resume from this turn's
     // cursor (the wire advances it only on success).
     conversationKey: threadId,
+    // Issue #50: the thread shows the selection and the question; body
+    // lines that merely repeat them are dropped when parsed.
+    echoCandidates: [anchor.quotedText, message],
     replay,
     onJob: (job: Job) => {
       capture.onJob(job);
@@ -430,7 +433,11 @@ async function replyOnSession(
         try {
           const text = await collect(attempt === 0 ? prompt : repairPromptText());
           throwIfMcpRefusalLocal(text);
-          const parsed = parseAndValidateLocal(ctx, reviewId, text);
+          // Issue #50: the thread shows the selection and the question.
+          const parsed = parseAndValidateLocal(ctx, reviewId, text, [
+            thread.anchor.quotedText,
+            lastUser?.text ?? "",
+          ]);
           if (parsed.validation.needsRepairTurn && attempt === 0) continue;
           jobCtx.reportUsage(usage);
           await recordUsageLocal(ctx, reviewId, usage);
@@ -548,6 +555,7 @@ function parseAndValidateLocal(
   ctx: ActionContext,
   reviewId: string,
   text: string,
+  echoCandidates: string[] = [],
 ): { cards: ParsedCard[]; validation: ReturnType<typeof validateReply> } {
   // Lightweight mirror of the pipeline's parse+validate (the shared seam
   // owns the full version; this path only runs for same-session turns).
@@ -556,7 +564,8 @@ function parseAndValidateLocal(
     throw new Error(`trailing JSON ${split.error.kind}: ${split.error.message}`);
   }
   const body = split.ok ? split.body : (split as { body: string }).body;
-  const cards = parseCards(body);
+  // Issue #50: same echo strip as `runInFork` (selection, question).
+  const cards = parseCards(body, { echoCandidates });
   const snapshot = ctx.reviews.getSnapshot(reviewId)!;
   const lookup = lookupWithAliases(snapshot, ctx.fixturesDir);
   const blocks = cards.flatMap((c) => c.blocks);
