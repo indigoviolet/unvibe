@@ -38,4 +38,5 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 - Spikes, evaluations and experiments never go to `main`. They live on a pushed branch named `spike/<topic>` (harness, screenshots and write-up together) and are linked from their issue. Only work that is adopted gets merged.
 - Never develop in the main checkout. It stays on `main` with a clean tree. Before the first edit, create a git worktree on a new branch (a Paseo worktree workspace, whose setup in `paseo.json` copies `.env` and installs) and do all edits, installs, builds and commits there. This holds for small changes too.
 - Commit in small logical commits on your branch; do not push, do not merge, do not touch other worktrees.
+- The one push an agent may make is a preview build: `mise run preview:publish -- <branch> --push` force-pushes the orphan ref `preview/<slug>` and nothing else (the script refuses any other ref). Source branches stay local. See `DEVELOPMENT.md` (preview builds).
 - When done, report: what was built, what was verified (commands + results), what is stubbed or missing, and anything in the PRD you deviated from.
