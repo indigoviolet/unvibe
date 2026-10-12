@@ -177,6 +177,7 @@ export async function registerDiagnostics(
           runner: full.runner,
           agents: full.agents,
           settings: full.settings,
+          models: full.models ?? null,
         },
         { force: true },
       );

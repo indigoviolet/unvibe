@@ -8,6 +8,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Card, Page } from "@unvibe/shared";
+import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle } from "@unvibe/shared";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { Icon } from "../components/Icon.js";
 import { isLiveJobState, useReview } from "../state/store.js";
@@ -48,6 +49,11 @@ function RecheckStatus({ page }: { page: Page }) {
       {recheckNote ? <span>{recheckNote}</span> : null}
     </div>
   );
+}
+
+/** Display form of a page title: the default (current or legacy stored) shows as "Guide". */
+function displayTitle(title: string): string {
+  return isDefaultGuideTitle(title) ? DEFAULT_GUIDE_TITLE : title;
 }
 
 export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard }: Props) {
@@ -133,11 +139,11 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
         <nav className="crumbs" aria-label="Trail">
           {trail.map((p, i) =>
             i === trail.length - 1 ? (
-              <span key={p.id}>{p.title}</span>
+              <span key={p.id}>{displayTitle(p.title)}</span>
             ) : (
               <span key={p.id}>
                 <button type="button" onClick={() => onOpenPage(p.id === "root" ? null : p.id)}>
-                  {p.title}
+                  {displayTitle(p.title)}
                 </button>
                 <span> › </span>
               </span>
@@ -161,7 +167,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           <Icon name="bookmark" />
         </button>
       </div>
-      <h1 className="title">{page.title}</h1>
+      <h1 className="title">{displayTitle(page.title)}</h1>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />
       {conceptWorking ? (

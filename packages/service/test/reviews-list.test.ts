@@ -292,4 +292,62 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
       await app.close();
     }
   });
+
+  it("legacy and new default root titles both fall back to the branch (#102)", async () => {
+    const dir = await makeRepo();
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const added = await app.inject({
+        method: "POST",
+        url: "/api/repos",
+        headers: authed,
+        payload: { path: dir },
+      });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+
+      async function makeReviewWithRoot(branch: string, rootTitle: string): Promise<string> {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId, branch },
+        });
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        // Simulate stored state: no PR title on the row, chosen root title in the snapshot.
+        ctx.db.prepare("UPDATE reviews SET data = ? WHERE id = ?").run(JSON.stringify({ title: "" }), id);
+        const snap = ctx.reviews.getSnapshot(id);
+        expect(snap).not.toBeNull();
+        // Fresh reviews have no root page until the reader runs; add one like the runner does.
+        const existing = snap!.pages.find((p) => p.id === "root");
+        if (existing) {
+          existing.title = rootTitle;
+        } else {
+          snap!.pages.unshift({ id: "root", kind: "root", title: rootTitle, saved: false, cards: [] });
+        }
+        ctx.reviews.putSnapshot(id, snap!);
+        return id;
+      }
+
+      const legacy = await makeReviewWithRoot("feature", "Guided review");
+      const current = await makeReviewWithRoot("main", "Guide");
+      await git(dir, "checkout", "-b", "feature3");
+      const real = await makeReviewWithRoot("feature3", "Unfold obsolete folded response headers");
+
+      const list = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
+      expect(list.statusCode).toBe(200);
+      const reviews = (list.json() as ReviewsListResponse).reviews;
+      // Both default forms mean "no real title": fall back to the branch.
+      expect(reviews.find((r) => r.id === legacy)?.title).toBe("feature");
+      expect(reviews.find((r) => r.id === current)?.title).toBe("main");
+      // A real root title is shown unchanged.
+      expect(reviews.find((r) => r.id === real)?.title).toBe("Unfold obsolete folded response headers");
+      // Stored values are untouched: no migration rewrote the legacy row.
+      expect(ctx.reviews.getSnapshot(legacy)?.pages.find((p) => p.id === "root")?.title).toBe(
+        "Guided review",
+      );
+    } finally {
+      await app.close();
+    }
+  });
 });

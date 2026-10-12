@@ -213,12 +213,9 @@ export async function registerReviews(
         ctx.reviews.putSnapshot(reviewId, snapshot);
       });
       if (pipeline) {
-        try {
-          pipeline.startReview(reviewId);
-        } catch (err) {
-          // Pipeline trigger never fails creation; the stage records the error.
-          void err;
-        }
+        // Pipeline trigger never fails creation; the stage records the error.
+        // Fire-and-forget: startReview resolves live model defaults first.
+        void pipeline.startReview(reviewId).catch(() => {});
       }
       return reply.code(201).send(snapshot);
     }
@@ -275,11 +272,9 @@ export async function registerReviews(
     });
     ctx.repos.touch(repo.id);
     if (pipeline && autoPipeline) {
-      try {
-        pipeline.startReview(reviewId);
-      } catch {
-        // never fail creation
-      }
+      // Never fail creation; fire-and-forget (startReview resolves live
+      // model defaults first).
+      void pipeline.startReview(reviewId).catch(() => {});
     }
     return reply.code(201).send(snapshot);
   });

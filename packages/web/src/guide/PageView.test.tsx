@@ -1,8 +1,11 @@
 /**
+ * Default guide title display (issue #102): a root page whose stored title
+ * is the legacy "Guided review" shows "Guide", like a new review does.
+ *
  * Card error boundaries (issue #101): a component that throws inside one
  * card shows that card's fallback and leaves the other cards rendered.
- * The throw below is a real `CardView` render failure (missing blocks),
- * not a mock.
+ * The throw below is a real `CardView` render failure (missing
+ * follow-up items), not a mock.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -12,7 +15,38 @@ import type { Card, Page, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { PageView } from "./PageView.js";
 
-const REVIEW_ID = "page-boundary-test";
+const REVIEW_ID = "page-test";
+
+function seedSnapshot(page: Page): void {
+  useReview.getState().clear();
+  useReview.getState().setSnapshot({
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    files: [],
+    pages: [page],
+    annotations: [],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+  } as unknown as ReviewSnapshot);
+}
+
+function show(page: Page): void {
+  seedSnapshot(page);
+  render(
+    <MemoryRouter>
+      <PageView
+        reviewId={REVIEW_ID}
+        page={page}
+        lookupPage={(id) => (id === "root" ? page : undefined)}
+        onOpenPage={() => {}}
+        onJumpToCard={() => {}}
+      />
+    </MemoryRouter>,
+  );
+}
 
 function card(id: string, title: string): Card {
   return {
@@ -28,29 +62,6 @@ function card(id: string, title: string): Card {
   } as unknown as Card;
 }
 
-function seedSnapshot(cards: Card[]): void {
-  useReview.getState().clear();
-  const page = {
-    id: "root",
-    kind: "root",
-    title: "Root",
-    saved: false,
-    cards,
-  } as unknown as Page;
-  useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
-    version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
-    files: [],
-    pages: [page],
-    annotations: [],
-    hunkStates: [],
-    jobs: [],
-    contributions: [],
-    logTail: [],
-    rev: 1,
-  } as unknown as ReviewSnapshot);
-}
-
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -59,6 +70,31 @@ afterEach(() => {
   cleanup();
   useReview.getState().clear();
   vi.restoreAllMocks();
+});
+
+describe("default guide title display", () => {
+  test("legacy stored 'Guided review' shows as 'Guide'", () => {
+    show({ id: "root", kind: "root", title: "Guided review", saved: false, cards: [] } as Page);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guide");
+  });
+
+  test("new stored 'Guide' shows as 'Guide'", () => {
+    show({ id: "root", kind: "root", title: "Guide", saved: false, cards: [] } as Page);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guide");
+  });
+
+  test("a real title is shown unchanged", () => {
+    show({
+      id: "root",
+      kind: "root",
+      title: "Unfold obsolete folded response headers",
+      saved: false,
+      cards: [],
+    } as Page);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Unfold obsolete folded response headers",
+    );
+  });
 });
 
 describe("PageView card boundaries", () => {
@@ -71,20 +107,13 @@ describe("PageView card boundaries", () => {
       blocks: [{ type: "follow-up", id: "b-c2", items: undefined }],
     } as unknown as Card;
     const good3 = card("c3", "Third card");
-    seedSnapshot([good1, bad, good3]);
-    const page = useReview.getState().snapshot?.pages[0];
-    if (!page) throw new Error("snapshot missing");
-    render(
-      <MemoryRouter>
-        <PageView
-          reviewId={REVIEW_ID}
-          page={page}
-          lookupPage={() => undefined}
-          onOpenPage={() => {}}
-          onJumpToCard={() => {}}
-        />
-      </MemoryRouter>,
-    );
+    show({
+      id: "root",
+      kind: "root",
+      title: "Root",
+      saved: false,
+      cards: [good1, bad, good3],
+    } as unknown as Page);
     // The good cards render as before (once in Contents, once as the
     // card itself)…
     expect(screen.getAllByText("First card")).toHaveLength(2);
