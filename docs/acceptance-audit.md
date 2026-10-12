@@ -114,6 +114,14 @@ UI); nothing below was edited by this pass.
 
 - Repo picker with recents + local checkout detection — met
   (`routes/repos.ts`, `e2e/start.spec.ts` "prior sessions list").
+- Add by GitHub URL (#27, service-complete; web wiring deferred) — met at
+  the contract/service level, not yet in the UI: `POST /api/repos` accepts
+  a URL / `owner/name` / PR URL (shared `repos.ts` parsing + table tests),
+  clones blobless into `<dataDir>/repos/<owner>/<name>` via `gh repo clone`
+  (`GITHUB_TOKEN` unset), remembers the repo marked `managed`, reuses it on
+  repeat adds, and refuses/degrades distinctly (404/403/gh-login/502). The
+  start-page input + paste-PR-offers-to-add step waits for #31 to land (the
+  Add-by-path UI is moving to Settings there); see the open list.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
@@ -531,7 +539,9 @@ UI); nothing below was edited by this pass.
 
 ### §14.1 Endpoints — all met (ran)
 
-`GET/POST /api/repos` ✓, `GET /api/repos/:id/changes` ✓,
+`GET/POST /api/repos` ✓, `DELETE /api/repos/:id` ✓ (new, #27: forgets the
+row; deletes the clone directory for managed repos only, guarded to
+`<dataDir>/repos`, refused while reviews exist), `GET /api/repos/:id/changes` ✓,
 `POST /api/reviews` ✓, `GET /api/reviews/:id` (+`?version=n`) ✓,
 `POST …/refresh` ✓, `POST …/update` ✓, `POST …/actions` ✓,
 `PATCH …/hunks/:hash` ✓, `POST …/hunks/:hash/summarize` ✓,
@@ -560,7 +570,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Description round-trip (unedited paragraphs byte-identical) — met
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
-  `gh-writes.test.ts`, doctor/readiness share the wrapper).
+  `gh-writes.test.ts`, doctor/readiness share the wrapper). Managed-clone
+  refresh (#27) is `git fetch origin` on managed checkouts only, before
+  changes listings and review ingest/refresh (best effort, 30 s freshness +
+  in-flight sharing; failures degrade to stale data with a `fetchError`
+  note). User checkouts are never fetched implicitly.
 - Live GitHub submit — met (audit-10, ran 2026-10-11):
   `mise run test:live:submit` green against sandbox draft PR
   `indigoviolet/lvu#2` (fresh temp clone, never `~/dev/lvu`, never merged,
@@ -667,8 +681,29 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
    demo ships pre-rendered SVGs so it needs nothing.
 10. Acronym: second-opinion `workspace-write` (not `read-only`) for Codex
     (`read-only` refuses MCP calls) — `docs/acp-runner.md` quirks 6–7.
+11. Managed clones (#27): the PRD assumes reviews open on existing local
+    checkouts (§4.2 "finds local checkouts", §14 storage). Unvibe now also
+    clones repos itself (`gh repo clone -- --filter=blob:none` into
+    `<dataDir>/repos/<owner>/<name>`, migration 005 `repos.managed`) and
+    keeps those checkouts fresh with `git fetch`; reviews of a managed
+    clone work exactly like reviews of a user checkout (a worktree per
+    review, no separate ingest path). The user never edits the managed
+    checkout, so fetching is safe; removing the repo deletes the clone
+    (managed only), and only while it has no reviews.
 
 ## Open list
+
+### In flight on this branch: managed clones (#27, service-done, web deferred)
+
+- Service + contract + stubbed tests are green (`shared/test/repos.test.ts`
+  44, `service/test/repos-url.test.ts` 24): add-by-URL, blobless clone,
+  fetch-before-list/ingest/refresh, guarded remove.
+- Web wiring is deliberately deferred until #31 merges (Add-by-path is
+  moving to Settings there; this branch must not touch `StartPage.tsx` or a
+  Repositories section): the start-page URL input and the
+  paste-PR-URL-offers-to-add-then-opens-PR step are still open. The client
+  typing (`addRepo` → `AddRepoResponse`, new `removeRepo`) and the mock
+  mirror are already in place for that step.
 
 ### Fixed in this branch (done, in `check`)
 

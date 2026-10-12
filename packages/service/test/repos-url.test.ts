@@ -655,7 +655,7 @@ describe("managed path guards", () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-outside-"));
     fs.writeFileSync(path.join(outside, "keep.txt"), "precious");
     const repos = {
-      get: (_id: string): Repo | null => ({
+      get: (): Repo | null => ({
         id: "rp_x",
         owner: "acme",
         name: "app",
@@ -663,8 +663,8 @@ describe("managed path guards", () => {
         lastOpened: 0,
         managed: true,
       }),
-      remove: (_id: string) => true,
-      countReviews: (_id: string) => 0,
+      remove: () => true,
+      countReviews: () => 0,
     };
     expect(() => removeRepo(root, repos, "rp_x")).toThrow(/refusing to delete/);
     expect(fs.existsSync(path.join(outside, "keep.txt"))).toBe(true);
