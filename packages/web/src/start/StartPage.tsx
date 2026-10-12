@@ -809,7 +809,13 @@ export function StartPage(): React.JSX.Element {
                     opening={opening}
                     empty="Nothing found."
                     onOpen={(c, i) =>
-                      openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                      openReview(changeKey(c, i), {
+                        repoId: selectedId,
+                        pr: c.prNumber,
+                        branch: c.branch,
+                        title: c.title,
+                        ...(c.author ? { author: c.author } : {}),
+                      })
                     }
                   />
                   <ChangeSection
@@ -820,7 +826,13 @@ export function StartPage(): React.JSX.Element {
                     opening={opening}
                     empty="Nothing waiting."
                     onOpen={(c, i) =>
-                      openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                      openReview(changeKey(c, i), {
+                        repoId: selectedId,
+                        pr: c.prNumber,
+                        branch: c.branch,
+                        title: c.title,
+                        ...(c.author ? { author: c.author } : {}),
+                      })
                     }
                   />
                   <ChangeSection
@@ -842,7 +854,7 @@ export function StartPage(): React.JSX.Element {
   );
 }
 
-function SessionRow({
+export function SessionRow({
   s,
   opening,
   deleting,
@@ -876,14 +888,26 @@ function SessionRow({
         </span>
         <span className="cx2">{s.title}</span>
         <span className="hint">
-          {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-          {s.pendingComments > 0 ? ` · ${s.pendingComments} pending` : ""}
-          {" · "}
-          {guideLabel(s)}
+          {s.ingestStatus === "loading" ? (
+            <>Loading{s.ingestStep ? ` · ${s.ingestStep}` : ""}…</>
+          ) : s.ingestStatus === "failed" ? (
+            <>Couldn&apos;t open{s.ingestError ? ` · ${s.ingestError}` : ""}</>
+          ) : (
+            <>
+              {s.reviewedHunks}/{s.totalHunks} hunks reviewed
+              {s.pendingComments > 0 ? ` · ${s.pendingComments} pending` : ""}
+              {" · "}
+              {guideLabel(s)}
+            </>
+          )}
         </span>
       </button>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-        {s.stale ? <span className="prtag">new commits · Update</span> : null}
+        {s.ingestStatus === "loading" ? <span className="prtag">loading</span> : null}
+        {s.ingestStatus === "failed" ? <span className="prtag">failed to open</span> : null}
+        {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" ? (
+          <span className="prtag">new commits · Update</span>
+        ) : null}
         {confirmDelete === s.id ? (
           <>
             <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>

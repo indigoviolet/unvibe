@@ -1237,6 +1237,58 @@ function mockUpdateBuild(): UpdateBuildInfo | null {
   };
 }
 
+/** #92: loading snapshot for a mock loading list entry. */
+function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
+  const now = Date.now();
+  return {
+    review: {
+      id: entry.id,
+      repoId: entry.repoId,
+      branch: entry.branch,
+      ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
+      versions: [],
+      currentVersion: 0,
+      createdAt: entry.createdAt,
+    },
+    version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+    files: [],
+    pages: [],
+    annotations: [],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+    ingest: { status: "loading", step: entry.ingestStep ?? "fetching" },
+  };
+}
+
+/** #92: failed snapshot for a mock failed list entry. */
+function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot {
+  const now = Date.now();
+  return {
+    review: {
+      id: entry.id,
+      repoId: entry.repoId,
+      branch: entry.branch,
+      ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
+      versions: [],
+      currentVersion: 0,
+      createdAt: entry.createdAt,
+    },
+    version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+    files: [],
+    pages: [],
+    annotations: [],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+    ingest: { status: "failed", error },
+  };
+}
+
 export const mockApi = {
   health: async () => {
     if (mockUpdateDown) throw new Error("mock service restarting");
@@ -1444,9 +1496,157 @@ export const mockApi = {
   },
 
   createReview: async (body: CreateReviewRequest): Promise<ReviewSnapshot> => {
-    void body;
+    // #92 hooks for Playwright (mock mode):
+    // - `unvibe.mock.createReviewHold`: return a loading snapshot that stays
+    //   loading until the key is removed (then `review()` serves ready).
+    // - `unvibe.mock.createReviewFail`: return a failed snapshot with that
+    //   error text (retry succeeds once the key is removed).
+    let hold = false;
+    let fail: string | null = null;
+    try {
+      hold = localStorage.getItem("unvibe.mock.createReviewHold") !== null;
+      fail = localStorage.getItem("unvibe.mock.createReviewFail");
+      if (fail === "") fail = null;
+    } catch {
+      // Ignore.
+    }
+    if (fail) {
+      const id = `mock-failed-${Date.now().toString(36)}`;
+      const title =
+        typeof body.title === "string" && body.title.trim() !== ""
+          ? body.title
+          : body.pr !== undefined
+            ? `PR #${body.pr}`
+            : (body.branch ?? "review");
+      const branch = body.branch ?? (body.pr !== undefined ? `pr-${body.pr}` : "branch");
+      mockReviewList.unshift({
+        id,
+        repoId: body.repoId,
+        repoOwner: "mock",
+        repoName: "mock",
+        title,
+        branch,
+        ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+        createdAt: Date.now(),
+        lastOpened: Date.now(),
+        versionCount: 0,
+        currentVersion: 0,
+        stale: false,
+        totalHunks: 0,
+        reviewedHunks: 0,
+        pendingComments: 0,
+        guideStatus: "idle",
+        ingestStatus: "failed",
+        ingestError: fail,
+      });
+      const now = Date.now();
+      return {
+        review: {
+          id,
+          repoId: body.repoId,
+          branch,
+          ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+          versions: [],
+          currentVersion: 0,
+          createdAt: now,
+        },
+        version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+        files: [],
+        pages: [],
+        annotations: [],
+        hunkStates: [],
+        jobs: [],
+        contributions: [],
+        logTail: [],
+        rev: 1,
+        ingest: { status: "failed", error: fail },
+      };
+    }
+    if (hold) {
+      const id = `mock-loading-${Date.now().toString(36)}`;
+      const title =
+        typeof body.title === "string" && body.title.trim() !== ""
+          ? body.title
+          : body.pr !== undefined
+            ? `PR #${body.pr}`
+            : (body.branch ?? "review");
+      const branch = body.branch ?? (body.pr !== undefined ? `pr-${body.pr}` : "branch");
+      const step = "fetching";
+      mockReviewList.unshift({
+        id,
+        repoId: body.repoId,
+        repoOwner: "mock",
+        repoName: "mock",
+        title,
+        branch,
+        ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+        createdAt: Date.now(),
+        lastOpened: Date.now(),
+        versionCount: 0,
+        currentVersion: 0,
+        stale: false,
+        totalHunks: 0,
+        reviewedHunks: 0,
+        pendingComments: 0,
+        guideStatus: "idle",
+        ingestStatus: "loading",
+        ingestStep: step,
+      });
+      const now = Date.now();
+      return {
+        review: {
+          id,
+          repoId: body.repoId,
+          branch,
+          ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+          versions: [],
+          currentVersion: 0,
+          createdAt: now,
+        },
+        version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+        files: [],
+        pages: [],
+        annotations: [],
+        hunkStates: [],
+        jobs: [],
+        contributions: [],
+        logTail: [],
+        rev: 1,
+        ingest: { status: "loading", step },
+      };
+    }
     await wait(150);
     return currentSnapshot("demo");
+  },
+
+  retryReview: async (id: string): Promise<ReviewSnapshot> => {
+    await wait(100);
+    let fail: string | null = null;
+    try {
+      fail = localStorage.getItem("unvibe.mock.createReviewFail");
+      if (fail === "") fail = null;
+    } catch {
+      // Ignore.
+    }
+    const entry = mockReviewList.find((r) => r.id === id);
+    if (!entry) throw new Error(`POST /api/reviews/${id}/retry: 404 {"error":"unknown review"}`);
+    if (entry.ingestStatus === "loading") {
+      // Already running — return the loading snapshot.
+      return mockLoadingSnapshot(entry);
+    }
+    if (fail) {
+      entry.ingestStatus = "failed";
+      entry.ingestError = fail;
+      delete entry.ingestStep;
+      return mockFailedSnapshot(entry, fail);
+    }
+    delete entry.ingestStatus;
+    delete entry.ingestStep;
+    delete entry.ingestError;
+    entry.versionCount = 1;
+    entry.currentVersion = 1;
+    entry.guideStatus = "ready";
+    return currentSnapshot(id);
   },
 
   reviews: async (): Promise<ReviewsListResponse> => {
@@ -1485,6 +1685,99 @@ export const mockApi = {
 
   review: async (id: string, version?: number): Promise<ReviewSnapshot> => {
     await wait(50);
+    // #92: mock loading/failed reviews — stateless by id prefix + hooks so
+    // the status survives SPA navigation even if the list entry is gone.
+    try {
+      if (id.startsWith("mock-loading-")) {
+        const hold = localStorage.getItem("unvibe.mock.createReviewHold") !== null;
+        const entry = mockReviewList.find((r) => r.id === id);
+        if (hold) {
+          if (entry) return mockLoadingSnapshot(entry);
+          const now = Date.now();
+          return {
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+            files: [],
+            pages: [],
+            annotations: [],
+            hunkStates: [],
+            jobs: [],
+            contributions: [],
+            logTail: [],
+            rev: 1,
+            ingest: { status: "loading", step: "fetching" },
+          };
+        }
+        if (entry) {
+          delete entry.ingestStatus;
+          delete entry.ingestStep;
+          entry.versionCount = 1;
+          entry.currentVersion = 1;
+          entry.guideStatus = "ready";
+        }
+        return currentSnapshot(id, version);
+      }
+      if (id.startsWith("mock-failed-")) {
+        const fail = localStorage.getItem("unvibe.mock.createReviewFail");
+        const entry = mockReviewList.find((r) => r.id === id);
+        if (fail) {
+          if (entry) return mockFailedSnapshot(entry, fail);
+          const now = Date.now();
+          return {
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+            files: [],
+            pages: [],
+            annotations: [],
+            hunkStates: [],
+            jobs: [],
+            contributions: [],
+            logTail: [],
+            rev: 1,
+            ingest: { status: "failed", error: fail },
+          };
+        }
+        if (entry) {
+          delete entry.ingestStatus;
+          delete entry.ingestError;
+          entry.versionCount = 1;
+          entry.currentVersion = 1;
+          entry.guideStatus = "ready";
+        }
+        return currentSnapshot(id, version);
+      }
+    } catch {
+      // Fall through to the list lookup below.
+    }
+    // #92: mock loading/failed reviews (created via the hold/fail hooks).
+    const entry = mockReviewList.find((r) => r.id === id);
+    if (entry?.ingestStatus === "loading") {
+      let hold = false;
+      try {
+        hold = localStorage.getItem("unvibe.mock.createReviewHold") !== null;
+      } catch {
+        // Ignore.
+      }
+      if (hold) return mockLoadingSnapshot(entry);
+      // Hold released: the ingest lands — flip to ready like the service.
+      delete entry.ingestStatus;
+      delete entry.ingestStep;
+      entry.versionCount = 1;
+      entry.currentVersion = 1;
+      entry.guideStatus = "ready";
+      return currentSnapshot(id, version);
+    }
+    if (entry?.ingestStatus === "failed") {
+      let fail: string | null = null;
+      try {
+        fail = localStorage.getItem("unvibe.mock.createReviewFail");
+        if (fail === "") fail = null;
+      } catch {
+        // Ignore.
+      }
+      const error = fail ?? entry.ingestError ?? "mock ingest failed";
+      return mockFailedSnapshot(entry, error);
+    }
     if (isStaleReview(id) && version !== undefined && version !== 1 && version !== 2) {
       throw new Error(`GET /api/reviews/${id}?version=${version}: 404 {"error":"unknown version ${version}"}`);
     }

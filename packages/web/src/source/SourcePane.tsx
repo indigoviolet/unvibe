@@ -27,6 +27,7 @@ interface Props {
 
 export function SourcePane({ reviewId, tab, onTab }: Props) {
   const navigate = useNavigate();
+  const ingestStatus = useReview((s) => s.snapshot?.ingest?.status ?? "ready");
   const pages = useReview((s) => s.snapshot?.pages);
   const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
     pages?.find((p) => p.id === id);
@@ -53,6 +54,18 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
     window.addEventListener(REVEAL_EVENT, onReveal);
     return () => window.removeEventListener(REVEAL_EVENT, onReveal);
   }, [onTab]);
+
+  // #92: no diff/description/comments while loading or failed (service also
+  // 409s). After all hooks so the hook order never changes.
+  if (ingestStatus === "loading" || ingestStatus === "failed") {
+    return (
+      <div className="doc">
+        <p className="hint">
+          {ingestStatus === "loading" ? "The diff appears here once the review opens." : "No diff — the review failed to open."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <>
