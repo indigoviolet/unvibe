@@ -34,7 +34,7 @@ const ROLES: Role[] = ["main", "small", "secondOpinion"];
  * it so they agree with `GET /api/settings`.
  */
 export async function effectiveSettings(deps: RouteDeps): Promise<Settings> {
-  if (!deps.settings) throw new Error("settings store not wired");
+  if (!deps.settings) throw new Error("settings are unavailable");
   return resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
 }
 
