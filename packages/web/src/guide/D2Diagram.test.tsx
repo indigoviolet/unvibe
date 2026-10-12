@@ -305,8 +305,7 @@ describe("D2Diagram legibleText (#16)", () => {
   });
 });
 
-describe("D2Diagram ok/bad classes (#16)", () => {
-  // D2 passes unknown classes through on the shape group; the app's
+describe("D2Diagram ok/bad classes (#16)", () => {  // D2 passes unknown classes through on the shape group; the app's
   // stylesheet paints `.ok`/`.bad` in the guide palette (no `classes:`
   // stanza needed, and those stay rejected by the service pre-check).
   const CLASSED =
@@ -319,5 +318,25 @@ describe("D2Diagram ok/bad classes (#16)", () => {
     await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
     expect(document.querySelector(".dg-svg svg .ok rect")).not.toBeNull();
     expect(document.querySelector(".dg-svg svg .bad rect")).not.toBeNull();
+  });
+});
+
+describe("D2Diagram multi-line labels (#16)", () => {
+  // The service sanitiser once stripped tspan x/dy and maskUnits,
+  // collapsing every line onto one baseline. The web adopt pass keeps
+  // them; this pins that half of the contract.
+  const LINES =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 140">` +
+    `<defs><mask id="m1" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="140">` +
+    `<rect x="0" y="0" width="300" height="140" fill="white"/></mask></defs>` +
+    `<text x="60" y="40"><tspan x="60" dy="0">first line</tspan><tspan x="60" dy="18.5">second line</tspan></text>` +
+    `<path d="M 0 70 H 300" mask="url(#m1)"/></svg>`;
+
+  it("keeps tspan positioning and mask geometry through adoption", async () => {
+    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => LINES} />);
+    await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
+    const tspans = [...document.querySelectorAll(".dg-svg svg tspan")];
+    expect(tspans.map((t) => t.getAttribute("dy"))).toEqual(["0", "18.5"]);
+    expect(document.querySelector(".dg-svg svg mask")?.getAttribute("maskUnits")).toBe("userSpaceOnUse");
   });
 });

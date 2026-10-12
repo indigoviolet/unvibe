@@ -187,6 +187,27 @@ describe("svg sanitiser", () => {
     expect(out).not.toContain("<a");
     expect(out).toContain("t");
   });
+
+  it("keeps multi-line tspan positioning and edge-label masks (#16)", () => {
+    // Realistic raw d2 output: multi-line shape labels position lines via
+    // tspan x/dy, and edge labels clear the line behind them via a mask.
+    const raw =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 140">` +
+      `<defs><mask id="m1" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="140">` +
+      `<rect x="0" y="0" width="300" height="140" fill="white"/>` +
+      `<rect x="100" y="60" width="80" height="20" fill="black"/></mask></defs>` +
+      `<text x="60" y="40"><tspan x="60" dy="0">first line</tspan><tspan x="60" dy="18.5">second line</tspan></text>` +
+      `<path d="M 0 70 H 300" mask="url(#m1)" stroke="#000"/></svg>`;
+    const out = postProcessSvg(raw, new Map(), "abc123");
+    // Line offsets survive: without dy every line lands on one baseline.
+    expect(out).toContain('dy="0"');
+    expect(out).toContain('dy="18.5"');
+    // Mask geometry survives: without maskUnits the cutout misplaces and
+    // the edge line strikes through its label.
+    expect(out).toContain('maskUnits="userSpaceOnUse"');
+    expect(out).toContain('id="d2-abc123-m1"');
+    expect(out).toContain('mask="url(#d2-abc123-m1)"');
+  });
 });
 
 // --- finalize branches (fake binary) ----------------------------------------
@@ -329,8 +350,7 @@ describe("finalize branches (fake binary)", () => {
 // --- cache (disk + fixture seed) --------------------------------------------
 
 describe("diagram cache", () => {
-  it("puts, gets, and seeds from fixtures without d2", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-"));
+  it("puts, gets, and seeds from fixtures without d2", () => {    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-"));
     try {
       const cache = new DiagramCache({ dataDir: tmp, fixturesDir });
       cache.put("h1", "light", "<svg>one</svg>");
@@ -343,6 +363,28 @@ describe("diagram cache", () => {
       const svg = cache.get(hash, "light");
       expect(svg).toContain("<svg");
       expect(svg).toContain("data-refs=");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("versions disk filenames and sweeps legacy unversioned renders (#16)", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-"));
+    try {
+      const dir = path.join(tmp, "diagrams");
+      fs.mkdirSync(dir, { recursive: true });
+      // A render cached by an older post-processor (pre-version layout).
+      fs.writeFileSync(path.join(dir, "deadbeefdeadbeef.light.svg"), "<svg>stale</svg>");
+      const cache = new DiagramCache({ dataDir: tmp });
+      // Legacy bytes are gone, never served…
+      expect(fs.existsSync(path.join(dir, "deadbeefdeadbeef.light.svg"))).toBe(false);
+      expect(cache.get("deadbeefdeadbeef", "light")).toBeNull();
+      // …and fresh puts land under the versioned name.
+      cache.put("deadbeefdeadbeef", "light", "<svg>fresh</svg>");
+      expect(cache.get("deadbeefdeadbeef", "light")).toBe("<svg>fresh</svg>");
+      const files = fs.readdirSync(dir);
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatch(/^deadbeefdeadbeef\.v\d+\.light\.svg$/);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
