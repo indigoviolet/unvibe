@@ -162,7 +162,7 @@ export type DepthLevel = "simple" | "standard" | "deep";
 export interface Card {
   id: string;
   pageId: string;
-  /** Null for untitled cards (collapsed view shows first line). */
+  /** Null when the reply carried no title; the UI shows the shared fallback (`content/titles.ts`, issue #49). */
   title: string | null;
   level: DepthLevel;
   read: boolean;
