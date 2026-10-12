@@ -314,8 +314,16 @@ mark.anc.on { outline: 2px solid var(--note); }
 .fresh { animation: rise .4s ease-out; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 /* Card/expansion being rewritten by an agent action: the accent left border
-   stays while the existing text stays readable; the border pulses gently. */
-.card.rewriting { border-left: 3px solid var(--accent); animation: rewrite-pulse 1.6s ease-in-out infinite; }
+   plus a pale wash, while the existing text stays readable; the border
+   pulses gently. Expansions already carry the accent border at rest, so
+   the wash (and a wider border) is what sets their rewriting state apart
+   without relying on animation. */
+.card.rewriting {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  animation: rewrite-pulse 1.6s ease-in-out infinite;
+}
+.card.child.rewriting { border-left-width: 5px; }
 @keyframes rewrite-pulse { 0%, 100% { border-left-color: var(--accent); } 50% { border-left-color: var(--line); } }
 /* Placeholder where agent-started content will land: dashed like a pending card. */
 .card.child.placeholder { border-style: dashed; background: none; }
