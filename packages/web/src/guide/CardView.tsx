@@ -11,9 +11,10 @@
  * clicked control, conflicting controls disabled, rewrite border or
  * placeholder); the entry hands over to the snapshot job once it appears.
  * Expansions render under their block via `ExpansionCard` (open ones in
- * place; closed ones as dotted-link highlights with a hidden fallback
- * stub); promoted links render as page-link stubs. Corrections show as
- * suggestions on the target card with Accept/Dismiss.
+ * place; closed ones as dotted-link highlights with a footnote chip on the
+ * citations line when the quote is gone); promoted links render as page-link
+ * footnote chips. Corrections show as suggestions on the target card with
+ * Accept/Dismiss.
  */
 import type { Annotation, Card, DepthLevel, Page } from "@unvibe/shared";
 import { Fragment } from "react";
@@ -145,8 +146,10 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const blocks = card.blocks.map((block) => {
     const exps = expansionsForBlock(annotations, card.id, block.id);
     const open = exps.filter(isOpenExpansion);
-    const closed = exps.filter(isClosedExpansion);
-    const links = exps.filter(isPromotedLink);
+    // Closed expansions + promoted links whose quote is gone become footnote
+    // chips on the paragraph's citations line (via BlockView → BlockMarkers);
+    // the highlight passes reveal them when the mark lands nowhere.
+    const footnotes = exps.filter((e) => isClosedExpansion(e) || isPromotedLink(e));
     return (
       // Fragment (not a div): prototype.css child selectors (`.card.read > …`)
       // depend on blocks being direct children of the section.
@@ -155,6 +158,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           block={block}
           level={card.level}
           threads={threadsFor(block.id)}
+          footnotes={footnotes}
           lookupPage={lookupPage}
           cardId={card.id}
           onOpenPage={onOpenPage}
@@ -170,33 +174,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             onOpenPage={onOpenPage}
             onFollowUp={onFollowUp}
           />
-        ))}
-        {closed.map((e) => (
-          <div key={e.id} className="linkstub" data-fallback={e.id} hidden>
-            ↳{" "}
-            <button
-              type="button"
-              onClick={() =>
-                runCardAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: false })
-              }
-            >
-              {e.anchor.quotedText || "Show explanation"}
-            </button>
-            <span className="hint">click the dotted link to expand</span>
-          </div>
-        ))}
-        {links.map((e) => (
-          <div key={e.id} className="linkstub" data-fallback={e.id} hidden>
-            ↳{" "}
-            <button
-              type="button"
-              data-node={e.promotedToPage ?? ""}
-              onClick={() => e.promotedToPage && onOpenPage(e.promotedToPage)}
-            >
-              {e.anchor.quotedText || "Opened as its own page"}
-            </button>
-            <span className="hint">opened as its own page</span>
-          </div>
         ))}
       </Fragment>
     );

@@ -7,10 +7,11 @@
  * - `GuideThreadHooks`: mounted once (in `ReviewRoute`, no guide edits).
  *   Highlights every block-anchored thread quote inside `#page`
  *   (`mark.anc[data-thr]`, reusable anchor-highlighting), prunes
- *   highlighted threads out of the end-of-block comment markers (so the
- *   marker counts only threads with no highlighted anchor text, falling
- *   back to the marker when the anchor text is gone), toggles threads
- *   from mark clicks, and outlines anchors while hovering open threads.
+ *   highlighted threads out of the end-of-block comment markers, toggles
+ *   threads from mark clicks, outlines anchors while hovering open threads,
+ *   and reveals footnote chips (`[data-tfallback]`, issue #72) for quoted
+ *   threads whose highlight landed nowhere (the bare bubble marker now
+ *   holds only threads that never had a quote).
  * - `GuideBlockThreads`: rendered per block (one additive line in
  *   `CardView`). Shows open threads under their block plus the pending
  *   composer the selection toolbar requests. Guide threads start closed;
@@ -97,7 +98,9 @@ export function GuideThreadHooks() {
     // One frame: let the guide's own render commit first.
     const timer = window.setTimeout(() => {
       withPreservedSelection(page, () => {
-        clearMarks(page, "mark.anc[data-thr]");
+        // Footnote chips (issue #72) are marks too but live in `.lo`;
+        // keep them (toggled via [data-tfallback] below).
+        clearMarks(page, "mark.anc[data-thr]:not(.fnote)");
         for (const thread of threads) {
           const host = thread.anchor.host;
           if (host.kind !== "block") continue;
@@ -115,6 +118,16 @@ export function GuideThreadHooks() {
           if (done) highlighted.add(thread.id);
         }
         pruneMarkers(page, highlighted);
+        // Footnote chips (issue #72): quoted threads whose highlight landed
+        // nowhere show their chip; highlighted ones hide it again (level
+        // switch / undo). Mirrors ExpansionHighlights' [data-fallback]
+        // toggle, on a separate attribute so the two passes never clash.
+        for (const el of page.querySelectorAll("[data-tfallback]")) {
+          const id = (el as HTMLElement).dataset.tfallback ?? "";
+          if (!id) continue;
+          if (highlighted.has(id)) (el as HTMLElement).hidden = true;
+          else (el as HTMLElement).hidden = false;
+        }
       });
     }, 0);
     return () => window.clearTimeout(timer);

@@ -10,7 +10,8 @@
  * - plain working state with a fixed label while an action runs for the
  *   expansion (in-flight entry, then the job); error state with Retry;
  *   "no agent configured" state;
- * - anchor-stale shows a collapsed card instead;
+ * - open cards stay in place when the anchor phrase is footnoted (issue
+ *   #72); the header adds a muted "from an earlier wording" hint;
  * - marking read closes the same way Close does;
  * - typed text elsewhere survives: this component holds no input state and
  *   preserves React keys, so reply-box drafts are untouched.
@@ -186,29 +187,6 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       });
   };
 
-  const onExpand = (): void => {
-    void api.updateComment(reviewId, expansion.id, { open: true }).catch((err: unknown) => {
-      toast(`Couldn't expand: ${friendlyError(err)}`);
-    });
-  };
-
-  // Anchor-stale fallback: a collapsed card instead of in-place content.
-  if (stale) {
-    return (
-      <section className="card child collapsed" id={`B-${expansion.id}`} data-expansion={expansion.id}>
-        <div className="exp-h">
-          <ControlButton icon="right" label="Expand" onClick={onExpand} />
-          {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
-          <span className="hint">Anchor text not found</span>
-          <span className="sp" />
-          <ControlButton icon="open" label="Open as page" onClick={onPromote} />
-          <ControlButton icon="trash" label="Delete" onClick={onDelete} />
-          <ControlButton icon="x" label="Close" onClick={onClose} />
-        </div>
-      </section>
-    );
-  }
-
   if (body.collapsed) {
     return (
       <section
@@ -219,6 +197,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         <div className="exp-h">
           <ControlButton icon="right" label="Expand" onClick={() => run({ kind: "collapse", cardId: expansion.id, collapsed: false })} />
           {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
+          {stale ? <span className="hint">from an earlier wording</span> : null}
           <span className="sp" />
           <ControlButton icon="open" label="Open as page" onClick={onPromote} />
           <ControlButton icon="trash" label="Delete" onClick={onDelete} />
@@ -251,6 +230,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     >
       <div className="exp-h">
         {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
+        {stale ? <span className="hint">from an earlier wording</span> : null}
         <span className="sp" />
         <ControlButton icon="open" label="Open as page" onClick={onPromote} />
         <ControlButton icon="trash" label="Delete" onClick={onDelete} />

@@ -283,16 +283,28 @@ export function mergeDepthText(current: Block[], reply: Block[], level: DepthLev
 /**
  * After a depth rewrite, check every annotation anchored on this card's
  * blocks: when the anchor quote is no longer a substring of the host
- * block text, the annotation stays attached but carries `anchorStale`
- * so the UI shows the collapsed-card fallback (PRD §4.7).
+ * block's *currently shown* text, the annotation stays attached but
+ * carries `anchorStale` so the UI shows the footnote chip (PRD §4.7).
+ *
+ * Paragraphs store per-level text; the renderer shows `depthText`
+ * (`simple ?? standard`, `deep ?? standard` — see
+ * `packages/web/src/guide/guideUtils.ts`). Checking every level joined
+ * would count a quote that only exists in a hidden level as found, so
+ * check the card's current level with the same fallback.
  */
+function visibleParagraphText(text: { simple?: string; standard: string; deep?: string }, level: DepthLevel): string {
+  if (level === "simple") return text.simple ?? text.standard;
+  if (level === "deep") return text.deep ?? text.standard;
+  return text.standard;
+}
+
 export function markStaleAnchors(draft: WritableDraft<ReviewSnapshot>, cardId: string): string[] {
   const stale: string[] = [];
   const hostText = new Map<string, string>();
-  const collect = (blocks: Block[] | undefined): void => {
+  const collect = (blocks: Block[] | undefined, level: DepthLevel): void => {
     for (const b of blocks ?? []) {
       if (b.type === "paragraph") {
-        hostText.set(b.id, Object.values(b.text).join("\n"));
+        hostText.set(b.id, visibleParagraphText(b.text, level));
       } else if (b.type === "aside") {
         hostText.set(b.id, JSON.stringify(b.inner).slice(0, 4000));
       } else {
@@ -302,11 +314,11 @@ export function markStaleAnchors(draft: WritableDraft<ReviewSnapshot>, cardId: s
   };
   for (const page of draft.pages ?? []) {
     for (const card of page.cards ?? []) {
-      if (card.id === cardId) collect(card.blocks as Block[]);
+      if (card.id === cardId) collect(card.blocks as Block[], card.level);
     }
   }
   const exp = (draft.annotations as unknown as Annotation[]).find((a) => a.id === cardId);
-  if (exp?.type === "expansion" && exp.expansion) collect(exp.expansion.blocks);
+  if (exp?.type === "expansion" && exp.expansion) collect(exp.expansion.blocks, exp.expansion.level);
   for (const ann of (draft.annotations ?? []) as unknown as Annotation[]) {
     const host = ann.anchor?.host;
     if (!host || host.kind !== "block") continue;

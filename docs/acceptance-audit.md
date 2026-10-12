@@ -255,8 +255,10 @@ needed (that deviation is closed, not added).
 - Unverified citations dimmed + tooltip — met (`validate/validate.ts`
   `unverified` flag, snapshot tests; live pipeline: 0 unverified of
   37+14 — `docs/live-pipeline-results.md`).
-- Comment marker (bubble + count, only unanchored) — met
-  (`guide/Markers.test.tsx`).
+- Comment marker (bubble + count, only never-quoted) + footnote chips
+  sharing the citations line (issue #72) — met (`guide/Markers.test.tsx`
+  quoted-vs-unquoted + footnote chips; `e2e/anchor-footnotes-service.spec.ts`
+  chip on the citations row).
 - Hover timing (~0.2 s), close on scroll/Escape/blur/resize/pointer-leave,
   hover-ignore-until-move — met (`e2e/guide.spec.ts` popover timing +
   close cases, `floating/Tooltip/Toast.test.tsx`).
@@ -276,8 +278,13 @@ needed (that deviation is closed, not added).
   `ask-service.spec.ts` “explain runs”).
 - Close → dotted link (preview/expand); read closes the same way — met
   (`actions/close.ts`, `promote.ts`).
-- Anchor lost → collapsed card — met (`explain.ts` anchor fallback,
-  `actions-m4.test.ts`).
+- Anchor lost → footnote chip on the citations line, open cards stay with
+  a "from an earlier wording" hint (issue #72, replaces the collapsed-card
+  fallback) — met (`interaction/cards.ts` visible-level `markStaleAnchors`
+  + `cards-stale.test.ts`; `guide/Markers.test.tsx`,
+  `guide/CardView.test.tsx` footnote chips;
+  `e2e/anchor-footnotes-service.spec.ts` closed → deep → chip → open →
+  back → highlight).
 - Open as page moves content, anchor becomes link — met
   (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
 

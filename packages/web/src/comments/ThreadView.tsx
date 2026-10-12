@@ -244,10 +244,12 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
     });
   };
 
+  const footnoted = !!thread.anchorStale;
   return (
     <div className="ithread" id={thread.id} data-thread={thread.id}>
       <div className="thd">
         <span className="mq">{headerLabel(file, thread)}</span>
+        {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {isNew ? null : (
           <button
             className="ib pr"
