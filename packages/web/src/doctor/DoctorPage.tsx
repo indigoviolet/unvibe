@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { DiagnosticsResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 
 function redactForCopy(text: string): string {
   // Token redaction (defense in depth; the API never sends the token) +
@@ -99,17 +100,9 @@ export function DoctorPage(): React.JSX.Element {
 
   return (
     <div className="app">
-      <header className="top">
-        <Link className="brand" to="/" title="Back to the start screen">
-          Unvibe
-        </Link>
-        <Link className="tbtn" to="/settings?tab=environment">
-          Settings
-        </Link>
-        <div className="pr">
-          <h1>Doctor</h1>
-        </div>
-      </header>
+      <ScreenTopBar
+        crumbs={[{ label: "Settings", to: "/settings?tab=environment" }, { label: "Doctor" }]}
+      />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 860 }}>
           <p className="hint">

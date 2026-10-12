@@ -58,7 +58,7 @@ import type {
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Toast, toast } from "../floating/Toast.js";
-import { PreviewBuildBadge } from "../shell/PreviewBuildBadge.js";
+import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 
 const REPO_KEY = "unvibe.start.repoId";
 
@@ -566,56 +566,43 @@ export function StartPage(): React.JSX.Element {
   return (
     <div className="app">
       <Toast />
-      <header className="top">
-        <div className="pr">
-          <Link className="brand" to="/">
-            Unvibe
-          </Link>
-          <Link className="tbtn" to="/settings">
-            Settings
-          </Link>
-          {realRepos.length > 0 && selectedId ? (
-            <select
-              aria-label="Repository"
-              className="tbtn"
-              value={selectedId}
-              title={selected?.localPath ?? ""}
-              onChange={(e) => selectRepo(e.target.value)}
-            >
-              {remembered.length > 0 ? (
-                <optgroup label="Repos">
-                  {remembered.map((r) => (
-                    <option key={r.id} value={r.id} title={r.localPath}>
-                      {r.owner}/{r.name}
-                      {r.managed ? " (cloned)" : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-              {detected.length > 0 ? (
-                <optgroup label="Detected checkouts">
-                  {detected.map((r) => (
-                    <option key={r.id} value={r.id} title={r.localPath}>
-                      {r.owner}/{r.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-          ) : null}
-          {allReady ? (
-            <span className="hint" data-testid="readiness-ready">
-              Ready · gh + agents ok
-            </span>
-          ) : null}
-          <PreviewBuildBadge />
-        </div>
-      </header>
+      <ScreenTopBar showBadge />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
+          {realRepos.length > 0 && selectedId ? (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
+              <select
+                aria-label="Repository"
+                className="tbtn"
+                value={selectedId}
+                title={selected?.localPath ?? ""}
+                onChange={(e) => selectRepo(e.target.value)}
+              >
+                {remembered.length > 0 ? (
+                  <optgroup label="Repos">
+                    {remembered.map((r) => (
+                      <option key={r.id} value={r.id} title={r.localPath}>
+                        {r.owner}/{r.name}
+                        {r.managed ? " (cloned)" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {detected.length > 0 ? (
+                  <optgroup label="Detected checkouts">
+                    {detected.map((r) => (
+                      <option key={r.id} value={r.id} title={r.localPath}>
+                        {r.owner}/{r.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+            </div>
+          ) : null}
           {/* Readiness callouts: one compact row per problem, each linking
               to the relevant Settings section. Nothing when all is well
-              (apart from the small ready indicator above). */}
+              (apart from the quiet ready line at the bottom of the page). */}
           {problems.length > 0 ? (
             <div aria-label="Environment problems" style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
               {problems.map((c) => (
@@ -836,6 +823,11 @@ export function StartPage(): React.JSX.Element {
               )}
             </>
           )}
+          {allReady ? (
+            <p className="hint" data-testid="readiness-ready" style={{ marginTop: 24 }}>
+              Ready · gh + agents ok
+            </p>
+          ) : null}
         </div>
       </main>
     </div>

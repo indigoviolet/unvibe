@@ -1,5 +1,5 @@
 /**
- * Source pane: `PR description` / `Diff` tabs plus the Comments menu slot.
+ * Source pane: `PR description` / `Diff` tabs.
  * Diff and description bodies live in their own directories for parallel owners.
  *
  * `revealSource` (see `source/diff/revealSource.ts` + `source/reveal.ts`)
@@ -8,7 +8,6 @@
  */
 import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
 import { performFollowUp } from "../guide/actions.js";
 import { useDiffExpansionBindings } from "../guide/expansions/DiffExpansions.js";
@@ -76,8 +75,6 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
           >
             Diff
           </button>
-          <span className="sp" />
-          <CommentsMenu reviewId={reviewId} />
         </div>
       </div>
       {tab === "desc" ? (

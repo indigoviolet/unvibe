@@ -6,14 +6,17 @@
  * - handle: pointer drag + ArrowLeft/ArrowRight (±40px),
  *   clamped to [320, innerWidth - 420];
  * - default width max(400, min(820, w * 0.42)) until the user changes it.
+ *
+ * The review bar's `[ Guide | Source ]` selector sits above both panes:
+ * Source toggles the source pane as the old `Source` button did; Guide is
+ * selected whenever the guide pane is visible (always, until issue #83
+ * lets it toggle too).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { pendingCount } from "../comments/threads.js";
 import { GuidePage } from "../guide/GuidePage.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { SourcePane } from "../source/SourcePane.js";
 import { WIDEN_EVENT } from "../source/diff/DiffView.js";
-import { useReview } from "../state/store.js";
 import { TopBar } from "./TopBar.js";
 
 const DOCK_WIDTH = 900;
@@ -42,7 +45,6 @@ export function AppShell({ reviewId }: { reviewId: string }) {
 
   const open = sourceOpen ?? window.innerWidth >= DOCK_WIDTH;
   const docked = window.innerWidth >= DOCK_WIDTH && open;
-  const pending = pendingCount(useReview((s) => s.snapshot));
 
   // Re-render on resize so dock/overlay follows the window.
   const [, setTick] = useState(0);
@@ -107,11 +109,12 @@ export function AppShell({ reviewId }: { reviewId: string }) {
   const rightClass = "col" + (docked ? "" : open ? " overlay" : " hide");
 
   return (
-    <div className="app">
+    <div className="app with-reviewbar">
       <TopBar
         reviewId={reviewId}
-        pendingCount={pending}
+        guideOpen
         sourceOpen={open}
+        onToggleGuide={() => setSourceOpen(false)}
         onToggleSource={() => setSourceOpen(!open)}
       />
       <div

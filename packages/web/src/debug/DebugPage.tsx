@@ -14,9 +14,11 @@
  * so the document itself stays pure Markdown.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import type { Contribution, SharedContextResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { ScreenTopBar } from "../shell/ScreenTopBar.js";
+import { useReviewIdentity } from "../shell/reviewIdentity.js";
 import { TabPanel, Tabs, useQueryTab } from "../tabs/Tabs.js";
 import { ExpandedPrompts } from "./ExpandedPrompts.js";
 import { JobsSection } from "./JobsSection.js";
@@ -40,6 +42,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
   const [items, setItems] = useState<Contribution[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useQueryTab(DEBUG_TAB_IDS, "jobs");
+  const { short } = useReviewIdentity(reviewId);
 
   const load = useCallback(async () => {
     setError(null);
@@ -74,17 +77,9 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
 
   return (
     <div className="app">
-      <header className="top">
-        <Link className="brand" to="/" title="Back to the start screen">
-          Unvibe
-        </Link>
-        <div className="pr">
-          <h1>Debug</h1>
-        </div>
-        <Link className="tbtn" to={`/review/${reviewId}`}>
-          Back to review
-        </Link>
-      </header>
+      <ScreenTopBar
+        crumbs={[{ label: short, to: `/review/${encodeURIComponent(reviewId)}` }, { label: "Debug" }]}
+      />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
           {error ? (

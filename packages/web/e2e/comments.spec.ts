@@ -146,14 +146,14 @@ test("For PR drafts live in the Comments menu and persist", async ({ page }) => 
   await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
 
   // The Comments menu lists it with a For-PR count; the draft is editable.
-  await page.locator('#right [data-cm=""]').click();
+  await page.locator('#reviewbar [data-cm=""]').click();
   await page.locator('.cmenu [data-cmf="pr"]').click();
   const draft = page.locator(".cmenu textarea[id^='ob-']").first();
   await expect(draft).toBeVisible();
   await draft.fill("Ship it? (edited draft)");
   // The draft survives an unrelated re-render (close + reopen the menu).
   await page.keyboard.press("Escape");
-  await page.locator('#right [data-cm=""]').click();
+  await page.locator('#reviewbar [data-cm=""]').click();
   await page.locator('.cmenu [data-cmf="pr"]').click();
   await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Ship it? (edited draft)");
   // Jump back to the thread in the diff.
@@ -189,14 +189,14 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
 
 test("existing GitHub comments render read-only under their own heading", async ({ page }) => {
   await gotoReview(page);
-  await page.locator('#right [data-cm=""]').click();
+  await page.locator('#reviewbar [data-cm=""]').click();
   await expect(page.locator(".cmenu")).toContainText("Already on GitHub");
   await expect(page.locator(".cmenu")).toContainText("Already on GitHub: consider covering bare LF");
 });
 
 test("comments dropdown is wide enough for tabs, paths and previews", async ({ page }) => {
   await gotoReview(page);
-  await page.locator('#right [data-cm=""]').click();
+  await page.locator('#reviewbar [data-cm=""]').click();
   const panel = page.locator(".cmenu");
   await expect(panel).toBeVisible();
   // Sensible min-width so content doesn't collapse to the button width.
@@ -219,7 +219,7 @@ test("comments dropdown stays inside the viewport in a narrow window", async ({ 
     await page.locator("#toggleRight").click();
   }
   await expect(page.locator("#right")).toBeVisible();
-  await page.locator('#right [data-cm=""]').click();
+  await page.locator('#reviewbar [data-cm=""]').click();
   const panel = page.locator(".cmenu");
   await expect(panel).toBeVisible();
   const box = await panel.boundingBox();
