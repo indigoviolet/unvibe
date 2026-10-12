@@ -631,6 +631,18 @@ needed (that deviation is closed, not added).
 - Four MCP tools + reader-only `pin_context` — met (`mcp/tools.ts`,
   `registry.ts:190` refusal; `mcp.test.ts`: surface per role, pin
   attribution, traversal refusal — ran).
+- `desc:` IDs from the review tools — met (#96): `resolve` returns
+  `desc:` candidates when the query matches description text, under the
+  same second-opinion restriction as `search` (description allowed, cards
+  hidden — shared `isRestrictedRole`/`matchDescription` in `registry.ts`);
+  one source of paragraph IDs (`parseDescriptionParagraphs` in
+  `ingest/description.ts` reads the IDs ingest wrote into the stored
+  HTML) used by MCP search/resolve, the citation validator
+  (`pipeline/lookup.ts`), second-opinion excerpts, and comment-anchor
+  text (`comments/threads.ts`, `interaction/l4.ts` — list paragraphs no
+  longer truncate at the first `</li>`). Pending description edits are
+  read (`pendingHtml ?? html`); stored HTML predating stable IDs falls
+  back to positional per-block numbering (`desc-ids.test.ts` — ran).
 - Validation (existence, ranges, anchor substring, hidden concept
   candidates) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair

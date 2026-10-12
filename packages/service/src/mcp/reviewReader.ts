@@ -12,6 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { renderMarkdown } from "@unvibe/shared";
+import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
 import type { McpReviewData, ReviewReader } from "./read.js";
 
@@ -68,11 +69,10 @@ export class StoreReviewReader implements ReviewReader {
         text: it.text,
       })),
     );
-    // Description paragraphs: re-derive ids from stored HTML headings?
-    // The validator's snapshot lookup uses descTexts supplied by the
-    // pipeline; for MCP search we expose the whole description as one item
-    // per paragraph id found in the HTML (`id="..."` or fallback d-pN).
-    const description = descItems(snap.description?.html ?? "");
+    // Description paragraphs: IDs come from the stored HTML via the
+    // single source (`parseDescriptionParagraphs`, issue #96), so MCP
+    // search/resolve hand out exactly the IDs ingest assigned.
+    const description = parseDescriptionParagraphs(currentDescriptionHtml(snap.description));
     return {
       reviewId,
       headSha: snap.version.headSha,
@@ -93,12 +93,4 @@ export class StoreReviewReader implements ReviewReader {
     }
     return null;
   }
-}
-
-function descItems(html: string): { id: string; text: string }[] {
-  if (!html) return [];
-  // Split on paragraph boundaries; ids are stable (`desc:<id>` tokens
-  // resolve via the pipeline's descTexts, not here).
-  const paras = html.split(/<\/(?:p|li|h\d)>/i).map((s) => plainText(s)).filter(Boolean);
-  return paras.map((text, i) => ({ id: `d-p${i + 1}`, text }));
 }

@@ -10,6 +10,7 @@
 import { parseId, type ReviewSnapshot } from "@unvibe/shared";
 import type { CodeExcerpt } from "../context/index.js";
 import type { CommandRunner } from "../exec/index.js";
+import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 
 export interface ExcerptDeps {
   snapshot: ReviewSnapshot;
@@ -38,16 +39,6 @@ function formatHunkExcerpt(
     else rows.push(`n${newNo ?? "?"} ${l.kind === "add" ? "+" : " "} ${l.text}`);
   }
   return [`h:${fileKey}:${contentHash}`, `file: ${path}`, header, ...rows].join("\n");
-}
-
-function descTextOf(html: string, paragraphId: string): string | null {
-  if (!html) return null;
-  const re = new RegExp(`id="${paragraphId}"[^>]*>([\\s\\S]*?)<\\/`, "i");
-  const m = html.match(re);
-  if (m) {
-    return m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null;
-  }
-  return null;
 }
 
 /**
@@ -96,18 +87,14 @@ export async function buildExcerptMap(deps: ExcerptDeps): Promise<CodeExcerpt[]>
   }
 
   // Description paragraphs (already in L1, but explicit excerpts help the
-  // check-mode claim that cites `desc:` IDs).
-  if (snapshot.description?.html) {
-    const html = snapshot.description.html;
-    const ids = new Set<string>();
-    for (const m of html.matchAll(/id="([^"]+)"/g)) ids.add(m[1]);
-    for (const id of ids) {
-      const text = descTextOf(html, id);
-      if (text) {
-        const rev = snapshot.description.rev;
-        out.push({ id: `desc:${id}`, text });
-        if (rev) out.push({ id: `desc:${id}@${rev}`, text });
-      }
+  // check-mode claim that cites `desc:` IDs). IDs and text come from the
+  // single source (issue #96), so they agree with ingest and the validator.
+  const descHtml = currentDescriptionHtml(snapshot.description);
+  if (descHtml) {
+    const rev = snapshot.description!.rev;
+    for (const p of parseDescriptionParagraphs(descHtml)) {
+      out.push({ id: `desc:${p.id}`, text: p.text });
+      if (rev) out.push({ id: `desc:${p.id}@${rev}`, text: p.text });
     }
   }
 
