@@ -227,7 +227,9 @@ Markdown-line fallback never stores JSON-looking text (starts with `{` /
 an ellipsis, model-provided summaries are kept whole, and a reply with no
 usable summary stores none (the hunk keeps its Summarize action). A stored
 summary that looks like JSON is treated as missing on reuse, so the next
-on-demand summarize regenerates or clears it. Other reply kinds still
+on-demand summarize regenerates or clears it, and the diff pane reads it
+as absent meanwhile (Summarize action instead of the JSON text; the stored
+row itself is untouched). Other reply kinds still
 require the fenced trailer (§10 strictness is unchanged).
 
 ## 10. The trailing JSON block
