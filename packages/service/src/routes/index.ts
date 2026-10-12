@@ -35,7 +35,7 @@ export async function registerRoutes(
     dataDir?: string;
     fixturesDir?: string;
   };
-  await registerRepos(app, ctx);
+  await registerRepos(app, ctx, deps);
   await registerReadiness(app, ctx, deps);
   await registerReviews(app, ctx, deps);
   await registerDiagrams(app, ctx, deps);

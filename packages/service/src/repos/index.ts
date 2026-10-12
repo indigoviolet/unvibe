@@ -10,3 +10,4 @@ export {
   type DetectedCheckout,
 } from "./detect.js";
 export { repoChanges, type ChangesDeps } from "./changes.js";
+export { pickFolder, type PickFolderOptions } from "./pick-folder.js";
