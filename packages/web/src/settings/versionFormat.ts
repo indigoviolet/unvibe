@@ -54,6 +54,17 @@ export function isNewerAvailable(row: UpdateChannel, build: UpdateBuildInfo | nu
   return row.current && !!build?.commit && !!row.commit && build.commit !== row.commit;
 }
 
+/**
+ * One blocked job as a quiet line ("explain · demo · running —
+ * Streaming answer…"). The service caps the list; the panel adds
+ * "+N more" from the full count.
+ */
+export function blockedJobLine(job: import("@unvibe/shared").UpdateBlockedJob): string {
+  const where = job.reviewId ? ` · ${job.reviewId}` : "";
+  const what = job.label ? ` — ${job.label}` : "";
+  return `${job.kind}${where} · ${job.state}${what}`;
+}
+
 /** One-line identity for the running build ("on 0.0.1" / "on 0.0.1-preview… (feat/x · abc1234)"). */
 export function buildLine(build: UpdateBuildInfo | null | undefined, fallbackVersion: string): string {
   if (!build) return `on ${fallbackVersion}`;
@@ -67,9 +78,14 @@ export function buildLine(build: UpdateBuildInfo | null | undefined, fallbackVer
 export function outcomeLine(outcome: SwitchOutcome): string {
   const when = timeAgoIso(outcome.finishedAt);
   const suffix = when ? ` · ${when}` : "";
-  if (outcome.status === "ok") return `Switched to ${outcome.to}${suffix}`;
+  // Forced switch (#36 follow-up): name the jobs the shutdown path stopped.
+  const stopped =
+    outcome.interruptedJobs !== undefined && outcome.interruptedJobs > 0
+      ? ` · ${outcome.interruptedJobs} job${outcome.interruptedJobs === 1 ? "" : "s"} interrupted`
+      : "";
+  if (outcome.status === "ok") return `Switched to ${outcome.to}${stopped}${suffix}`;
   if (outcome.status === "rolled-back") {
-    return `Rolled back to ${outcome.from}${outcome.reason ? ` — ${outcome.reason}` : ""}${suffix}`;
+    return `Rolled back to ${outcome.from}${outcome.reason ? ` — ${outcome.reason}` : ""}${stopped}${suffix}`;
   }
-  return `Switch failed${outcome.reason ? ` — ${outcome.reason}` : ""}${suffix}`;
+  return `Switch failed${outcome.reason ? ` — ${outcome.reason}` : ""}${stopped}${suffix}`;
 }

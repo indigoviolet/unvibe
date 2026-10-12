@@ -1,6 +1,14 @@
 /** Version-picker display helpers: grouping, short shas, relative times, outcome copy. */
 import { describe, expect, it } from "vitest";
-import { buildLine, groupChannels, isNewerAvailable, outcomeLine, shortCommit, timeAgoIso } from "./versionFormat.js";
+import {
+  blockedJobLine,
+  buildLine,
+  groupChannels,
+  isNewerAvailable,
+  outcomeLine,
+  shortCommit,
+  timeAgoIso,
+} from "./versionFormat.js";
 import type { UpdateChannel } from "@unvibe/shared";
 
 const NOW = Date.parse("2026-10-12T12:00:00.000Z");
@@ -71,5 +79,43 @@ describe("versionFormat", () => {
     expect(
       outcomeLine({ status: "ok", from: "release", to: "preview/a", finishedAt: new Date(NOW - 1000).toISOString() }),
     ).toContain("Switched to preview/a");
+  });
+
+  it("names the interrupted count of a forced switch", () => {
+    expect(
+      outcomeLine({
+        status: "ok",
+        from: "release",
+        to: "preview/a",
+        interruptedJobs: 2,
+        finishedAt: new Date(NOW - 1000).toISOString(),
+      }),
+    ).toContain("Switched to preview/a · 2 jobs interrupted");
+    expect(
+      outcomeLine({
+        status: "ok",
+        from: "release",
+        to: "preview/a",
+        interruptedJobs: 1,
+        finishedAt: new Date(NOW - 1000).toISOString(),
+      }),
+    ).toContain("1 job interrupted");
+    expect(
+      outcomeLine({
+        status: "rolled-back",
+        from: "release",
+        to: "preview/a",
+        reason: "boom",
+        interruptedJobs: 3,
+        finishedAt: new Date(NOW - 60_000).toISOString(),
+      }),
+    ).toContain("3 jobs interrupted");
+  });
+
+  it("renders one blocked job as a quiet line", () => {
+    expect(
+      blockedJobLine({ id: "j1", kind: "explain", reviewId: "demo", state: "running", label: "Streaming answer…" }),
+    ).toBe("explain · demo · running — Streaming answer…");
+    expect(blockedJobLine({ id: "j2", kind: "reader", state: "queued" })).toBe("reader · queued");
   });
 });

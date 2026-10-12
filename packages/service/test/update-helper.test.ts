@@ -156,6 +156,24 @@ describe("runSwitchFlow", () => {
     expect(deps.outcomes).toHaveLength(1);
   });
 
+  it("forced switch carries the interrupted count onto every outcome", async () => {
+    const okDeps = makeDeps({ health: [HEALTHY] });
+    const ok = await runSwitchFlow({ ...PLAN, interruptedJobs: 2 }, okDeps);
+    expect(ok.status).toBe("ok");
+    expect(ok.interruptedJobs).toBe(2);
+
+    const backDeps = makeDeps({ switchThrows: ["preview/feat-x"], health: [OLD_HEALTHY] });
+    const back = await runSwitchFlow({ ...PLAN, interruptedJobs: 2 }, backDeps);
+    expect(back.status).toBe("rolled-back");
+    expect(back.interruptedJobs).toBe(2);
+  });
+
+  it("unforced switch leaves the interrupted count absent", async () => {
+    const deps = makeDeps({ health: [HEALTHY] });
+    const out = await runSwitchFlow(PLAN, deps);
+    expect(out.interruptedJobs).toBeUndefined();
+  });
+
   it("install failure rolls back to the previous ref", async () => {
     const deps = makeDeps({ switchThrows: ["preview/feat-x"], health: [OLD_HEALTHY] });
     const out = await runSwitchFlow(PLAN, deps);
@@ -221,6 +239,11 @@ describe("runSwitchFlow", () => {
     expect(out.status).toBe("failed");
     expect(out.reason).toContain("did not exit within 1000ms");
     expect(out.reason).toContain("install was left untouched");
+    // The failure names the likely cause and the exact recovery: the live
+    // service keeps serving (pending was cleared, nothing half-applied).
+    expect(out.reason).toContain("stuck shutting down");
+    expect(out.reason).toContain("unvibe stop");
+    expect(out.reason).toContain(`unvibe update ${PLAN.to}`);
     expect(deps.switches).toEqual([]);
     expect(deps.starts).toBe(0);
     // The live service surfaces the failure via status.

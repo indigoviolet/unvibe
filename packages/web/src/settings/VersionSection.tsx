@@ -13,13 +13,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Settings,
+  UpdateBlockedJob,
   UpdateBuildInfo,
   UpdateChannel,
   UpdateStatusResponse,
 } from "@unvibe/shared";
-import { api, friendlyError } from "../api/client.js";
+import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { putErrors } from "./LimitsSection.js";
-import { buildLine, groupChannels, isNewerAvailable, outcomeLine, shortCommit, timeAgoIso } from "./versionFormat.js";
+import { blockedJobLine, buildLine, groupChannels, isNewerAvailable, outcomeLine, shortCommit, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
 const SWITCH_POLL_MS = 1000;
@@ -39,6 +40,17 @@ export function VersionSection({
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRef, setConfirmRef] = useState<string | null>(null);
+  /**
+   * Running-jobs refusal for one row (#36 follow-up): the inline panel
+   * names the blocking jobs with a "Switch anyway" action (re-posts with
+   * `force: true`) instead of a bare error. Replaces the generic confirm
+   * for that row so the user is not asked twice for the same thing.
+   */
+  const [blocked, setBlocked] = useState<{
+    ref: string;
+    activeJobs: number;
+    jobs: UpdateBlockedJob[];
+  } | null>(null);
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [doneNote, setDoneNote] = useState<string | null>(null);
@@ -171,16 +183,17 @@ export function VersionSection({
   );
 
   const commitSwitch = useCallback(
-    async (ref: string) => {
+    async (ref: string, force = false) => {
       const target = channels?.find((c) => c.ref === ref)?.version ?? null;
       const fromVersion = status?.build?.version ?? healthVersion;
       const startedAt = new Date().toISOString();
       setConfirmRef(null);
+      setBlocked(null);
       setSwitchError(null);
       setDoneNote(null);
       setSwitchingTo(ref);
       try {
-        const res = await api.updateSwitch(ref);
+        const res = await api.updateSwitch(ref, force ? true : undefined);
         if (res.unchanged) {
           if (!cancelled.current) {
             setSwitchingTo(null);
@@ -192,7 +205,11 @@ export function VersionSection({
       } catch (err) {
         if (!cancelled.current) {
           setSwitchingTo(null);
-          setSwitchError(friendlyError(err));
+          if (err instanceof UpdateJobsBlockedError) {
+            setBlocked({ ref, activeJobs: err.activeJobs, jobs: err.jobs });
+          } else {
+            setSwitchError(friendlyError(err));
+          }
         }
         return;
       }
@@ -247,10 +264,18 @@ export function VersionSection({
               groups={groups}
               build={status?.build ?? null}
               confirmRef={confirmRef}
+              blocked={blocked}
               switchingTo={switchingTo}
-              onSwitch={(ref) => setConfirmRef(ref)}
-              onCancel={() => setConfirmRef(null)}
+              onSwitch={(ref) => {
+                setBlocked(null);
+                setConfirmRef(ref);
+              }}
+              onCancel={() => {
+                setConfirmRef(null);
+                setBlocked(null);
+              }}
               onConfirm={(ref) => void commitSwitch(ref)}
+              onForceConfirm={(ref) => void commitSwitch(ref, true)}
               onRefresh={() => void loadChannels(true)}
               refreshing={refreshing}
             />
@@ -306,20 +331,24 @@ function ChannelGroups({
   groups,
   build,
   confirmRef,
+  blocked,
   switchingTo,
   onSwitch,
   onCancel,
   onConfirm,
+  onForceConfirm,
   onRefresh,
   refreshing,
 }: {
   groups: ReturnType<typeof groupChannels>;
   build: UpdateBuildInfo | null;
   confirmRef: string | null;
+  blocked: { ref: string; activeJobs: number; jobs: UpdateBlockedJob[] } | null;
   switchingTo: string | null;
   onSwitch: (ref: string) => void;
   onCancel: () => void;
   onConfirm: (ref: string) => void;
+  onForceConfirm: (ref: string) => void;
   onRefresh: () => void;
   refreshing: boolean;
 }): React.JSX.Element {
@@ -352,7 +381,9 @@ function ChannelGroups({
                   <>
                     <span className="st" data-testid="update-current">current</span>
                     {newerAvailable && build && !switchingTo ? (
-                      confirmRef === c.ref ? (
+                      blocked?.ref === c.ref ? (
+                        <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
+                      ) : confirmRef === c.ref ? (
                         <span className="frow" style={{ gap: 6, alignItems: "center" }}>
                           <span className="warnline">The service restarts; data is backed up before the switch.</span>
                           <button className="btn" type="button" onClick={() => onConfirm(c.ref)}>
@@ -377,6 +408,8 @@ function ChannelGroups({
                   </>
                 ) : switchingTo ? (
                   <span className="hint">…</span>
+                ) : blocked?.ref === c.ref ? (
+                  <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
                 ) : confirmRef === c.ref ? (
                   <span className="frow" style={{ gap: 6, alignItems: "center" }}>
                     <span className="warnline">The service restarts; data is backed up before the switch.</span>
@@ -404,5 +437,49 @@ function ChannelGroups({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Running-jobs refusal for one row (#36 follow-up): which jobs (up to the
+ * service cap, "+N more"), what switching does to them, and "Switch
+ * anyway" (re-posts with `force: true`) + Cancel. Reuses the row's
+ * quiet classes; visually it sits where the generic confirm would.
+ */
+function BlockedPanel({
+  blocked,
+  onForceConfirm,
+  onCancel,
+}: {
+  blocked: { ref: string; activeJobs: number; jobs: UpdateBlockedJob[] };
+  onForceConfirm: (ref: string) => void;
+  onCancel: () => void;
+}): React.JSX.Element {
+  const more = blocked.activeJobs - blocked.jobs.length;
+  return (
+    <span
+      className="frow"
+      style={{ gap: 6, alignItems: "center", flexBasis: "100%" }}
+      data-testid="update-blocked"
+      data-ref={blocked.ref}
+    >
+      <span className="warnline">
+        {blocked.activeJobs} running job{blocked.activeJobs === 1 ? "" : "s"} — switching stops{" "}
+        {blocked.activeJobs === 1 ? "it" : "them"}. Stopped jobs show as interrupted; resume or retry them
+        from the review afterwards. On a different channel they stay with this channel&apos;s data.
+      </span>
+      {blocked.jobs.length > 0 ? (
+        <span className="hint" data-testid="update-blocked-jobs">
+          {blocked.jobs.map((j) => blockedJobLine(j)).join(" · ")}
+          {more > 0 ? ` · +${more} more` : ""}
+        </span>
+      ) : null}
+      <button className="btn" type="button" onClick={() => onForceConfirm(blocked.ref)}>
+        Switch anyway
+      </button>
+      <button className="btn ghost" type="button" onClick={onCancel}>
+        Cancel
+      </button>
+    </span>
   );
 }

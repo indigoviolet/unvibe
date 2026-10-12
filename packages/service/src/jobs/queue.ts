@@ -200,6 +200,24 @@ export class JobQueue {
     return n;
   }
 
+  /**
+   * The same non-terminal set `activeCount` counts, oldest first, capped
+   * at `limit`. The version-picker switch route reports these so the UI
+   * can name what's running instead of refusing with a bare count
+   * (issue #36 follow-up: switch with running jobs).
+   */
+  listActive(limit = 5): Job[] {
+    const ordered = [...this.entries.values()].sort((a, b) => a.seq - b.seq);
+    const out: Job[] = [];
+    for (const e of ordered) {
+      if (e.run === undefined) continue;
+      if (isTerminal(e.job.state)) continue;
+      out.push(copy(e.job));
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
   // -- priority -------------------------------------------------------
 
   /** Raise (or lower) a job's priority; takes effect while queued. */
