@@ -1,10 +1,12 @@
 /**
  * Settings page + versions banner behaviour tests against mock mode
- * (PRD §4.14, §8): repositories (list + add by path), model pickers with
- * adapter errors and the same-model warning, prompt template view, limits
- * persistence, Tips popover, and the stale-review banner with range-diff
- * + version switching. (Jobs, prompt expansions and shared context live
- * on the per-review debug page now: `debug.spec.ts`.)
+ * (PRD §4.14, §8): repositories (list + add by path, add by URL with busy
+ * and error states, managed marks, remove with confirm copy and the 409
+ * refusal), model pickers with adapter errors and the same-model warning,
+ * prompt template view, limits persistence, Tips popover, and the
+ * stale-review banner with range-diff + version switching. (Jobs, prompt
+ * expansions and shared context live on the per-review debug page now:
+ * `debug.spec.ts`.)
  */
 import { expect, test } from "./network-guard.js";
 
@@ -33,6 +35,96 @@ test("repositories section lists remembered repos and adds by path", async ({ pa
 test("repositories section is reachable at #repositories", async ({ page }) => {
   await page.goto("/settings#repositories");
   await expect(page.locator('[data-testid="repositories-section"]')).toBeVisible();
+});
+
+test("repositories add by URL clones with a busy state and marks the clone", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await section.getByLabel("Add a repo by URL").fill("https://github.com/acme/app");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  const added = section.locator('[data-testid="repo-managed-acme-app"]');
+  await expect(added).toContainText("acme/app");
+  await expect(added).toContainText("Cloned by Unvibe");
+  await expect(added).toContainText("/mock/data/repos/acme/app");
+});
+
+test("repositories add by URL shows the clone busy state and disables the control", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.addRepoHold", "1");
+  });
+  await page.goto("/settings");
+  const section = page.locator('[data-testid="repositories-section"]');
+  await expect(section).toBeVisible();
+  await section.getByLabel("Add a repo by URL").fill("acme/app");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  // While the synchronous clone runs: named busy state, control disabled,
+  // and no second add can fire.
+  const busy = section.getByRole("button", { name: /Cloning acme\/app/ });
+  await expect(busy).toBeVisible();
+  await expect(busy).toBeDisabled();
+  await expect(section.getByLabel("Add a repo by URL")).toBeDisabled();
+  await expect(section.locator('[data-testid="repo-managed-acme-app"]')).toHaveCount(0);
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.addRepoHold"));
+  await expect(section.locator('[data-testid="repo-managed-acme-app"]')).toContainText("Cloned by Unvibe");
+});
+
+test("repositories add by URL rejects invalid input inline without a request", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await section.getByLabel("Add a repo by URL").fill("not a repo!!!");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  await expect(section.getByText(/not a GitHub repo URL or owner\/name/)).toBeVisible();
+  // No request fired: no toast, no row, control still usable.
+  await expect(page.locator("#toast")).toBeHidden();
+  await expect(section.getByRole("button", { name: "Clone and add" })).toBeEnabled();
+});
+
+test("repositories add by URL surfaces the service error", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("unvibe.mock.addRepoFail", "repository not found: acme/app (check the spelling)");
+  });
+  await page.goto("/settings");
+  const section = page.locator('[data-testid="repositories-section"]');
+  await expect(section).toBeVisible();
+  await section.getByLabel("Add a repo by URL").fill("acme/app");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  await expect(page.locator("#toast")).toContainText("repository not found: acme/app");
+  await expect(section.locator('[data-testid="repo-managed-acme-app"]')).toHaveCount(0);
+});
+
+test("repositories remove deletes a managed clone with clear confirm copy", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await section.getByLabel("Add a repo by URL").fill("acme/app");
+  await section.getByRole("button", { name: "Clone and add" }).click();
+  const row = section.locator('[data-testid="repo-managed-acme-app"]');
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Remove acme/app" }).click();
+  await expect(row).toContainText("Delete the clone at /mock/data/repos/acme/app from this machine?");
+  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(row).toHaveCount(0);
+});
+
+test("repositories remove only forgets a path checkout", async ({ page }) => {
+  const section = page.locator('[data-testid="repositories-section"]');
+  await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
+  await section.getByRole("button", { name: "Add by path" }).click();
+  const row = section.locator('[data-testid="repo-local-fake-checkout"]');
+  await expect(row).toBeVisible();
+  await expect(row).not.toContainText("Cloned by Unvibe");
+  await row.getByRole("button", { name: "Remove local/fake-checkout" }).click();
+  await expect(row).toContainText("Forget this repo? /tmp/fake-checkout stays untouched on disk.");
+  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(row).toHaveCount(0);
+});
+
+test("repositories remove is refused while reviews exist", async ({ page }) => {
+  // The seed urllib3 repo has mock sessions: removing it 409s as is.
+  const section = page.locator('[data-testid="repositories-section"]');
+  const row = section.locator('[data-testid="repo-urllib3"]');
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Remove urllib3/urllib3" }).click();
+  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(page.locator("#toast")).toContainText("still has 2 reviews");
+  // The row survives the refusal.
+  await expect(row).toBeVisible();
 });
 
 test("model pickers list provider models and warn on same-model second opinion", async ({ page }) => {
