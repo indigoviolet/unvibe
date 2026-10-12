@@ -353,37 +353,45 @@ Installing from the default branch is unsupported: it is the source tree, not an
 
 ### Preview builds + version picker (#36)
 
-Two branches, merged together:
-
-- **Step 1** (`feat/preview-builds`): `mise run preview:publish <branch>` (release tree per branch on orphan ref `preview/<slug>`, version `0.0.1-preview.<slug>.<shortsha>`), the `unvibe update` CLI, and the real backend in `packages/service/src/update/` (`channels.ts`, `install.ts`, `data-backup.ts`).
-- **Step 2** (`feat/version-picker`, this branch): the seam step 1 implements (`src/update/updater.ts`: `listChannels` / `switchTo`), the in-app picker, and the switch machinery. The real backend is a placeholder that fails with "not wired" until the merge.
+Every in-flight branch is publishable as an installable build (step 1:
+`mise run preview:publish`, the `unvibe update` CLI, `channels.ts` /
+`install.ts` / `data-backup.ts`), and the installed app switches between
+them from Settings → Version (step 2: the `Updater` seam, the picker, the
+switch machinery). One switch core (`update/switch.ts`) serves both the
+CLI and the in-app `Updater` — the CLI keeps line-by-line output, the
+Updater throws joined lines and streams them to the switch log.
 
 How it works:
 
 - Gate: `versionPickerEnabled` in settings (off by default). When off, `GET /api/update/channels` and `POST /api/update/switch` answer 404 and Settings shows only the toggle; `GET /api/update/status` always works (gate state, running build, pending switch, last outcome).
 - Listing is cached 30 s server-side with one shared in-flight call (`?refresh=1` bypasses); a switch is refused with 409 while jobs run, a submit is in flight, or another switch is pending.
-- Switch = commit + detached helper + restart: the service validates, writes `<dataDir>/update/pending.json`, copies the self-contained `dist/update-helper.js` bundle (`build:helper` in `packages/service/package.json`; node builtins only) into `<dataDir>/update/`, spawns the copy detached, replies 202, then shuts down through the normal shutdown path (idle exit is suppressed while a switch is pending). The helper waits for the service PID to exit (never kills it — aborts with outcome `failed` instead), calls `switchTo` via the seam, restarts the installed entry (`start --foreground` on the same port + data dir), and polls `/api/health` for the target version. Install failure or an unhealthy build rolls back to the previous ref; the outcome (`ok` / `rolled-back` / `failed` + reason + log path) lands in `<dataDir>/update/outcome.json` and is surfaced by `GET /api/update/status`. Before a second start the helper stops the generation it started itself (SIGTERM + bounded wait — the only PIDs it ever signals are its own children), and it trusts only health samples from the generation holding the data-dir lock, so a live-but-wrong build can never satisfy the check while a rollback generation crashes on the held port.
-- The running build's identity rides on `GET /api/health` (`build`: version, source branch, commit, build time; null when the build carries no preview metadata). Real builds read an optional `dist/build-info.json` stamped at publish time; the fake backend reads the current fake channel.
-- Privacy (§16): the service still contacts nothing but `127.0.0.1` itself — channel listing shells out through `gh` under the user's own login (like every other `gh` use), which is why the picker stays opt-in. The only new entries in the static guards are the helper's loopback health probe (`update/helper-entry.ts`, same shape as `cli/lock.ts`) and the helper-bundle build; step 1's `gh`/`npm` calls ride the existing subprocess shapes.
+- `from` is the installed channel read locally from the installed package (`readInstalledBuild` on `process.argv[1]`): a preview ref can be deleted from the remote while installed, and a rollback to "unknown" cannot work. Source checkouts (and pre-field installs without an inferable channel) get 409 + an installed-only message — listing still works there. The install's own version seeds the rollback health wait (`fromVersion`).
+- Same channel, same published commit: 200 `{unchanged: true}`, nothing done. A moved commit reinstalls through the same flow (`from === to`, no DB swap); the current row shows "newer build available" with an Update action. A same-channel rollback is one reinstall attempt (the previous build of that ref is no longer published); on failure the outcome is `failed` with the recovery command — never loops.
+- Switch = commit + detached helper + restart: the service validates, writes `<dataDir>/update/pending.json`, copies the self-contained `dist/update-helper.js` bundle (`build:helper` in `packages/service/package.json`; node builtins only, enforced by `test/update-helper-bundle.test.ts` on the esbuild metafile; shipped in the release tree by `scripts/release.mjs` and asserted by `scripts/global-install-check.mjs`) into `<dataDir>/update/`, spawns the copy detached, replies 202, then shuts down through the normal shutdown path (idle exit is suppressed while a switch is pending). The helper waits for the service PID to exit (never kills it — aborts with outcome `failed` instead), calls `switchTo` via the seam (DB plan first, backup, prefix-pinned install, landing verification, restore/seed — the installed build is identified from the service entry path in the helper args, never the helper copy's location), restarts the installed entry (`start --foreground` on the same port + data dir), and polls `/api/health` for the target version (the rollback waits for the previous build's version instead of burning the full timeout). Install failure or an unhealthy build rolls back to the previous ref; the outcome (`ok` / `rolled-back` / `failed` + reason + log path) lands in `<dataDir>/update/outcome.json` and is surfaced by `GET /api/update/status`. Before a second start — and before the rollback install — the helper stops the generation it started itself (SIGTERM + bounded wait + exit/lock confirmation; the only PIDs it ever signals are its own children), and it trusts only health samples from the generation holding the data-dir lock, so a live-but-wrong build can never satisfy the check while another generation crashes on the held port. `failed` outcomes carry the recovery path (`npm install -g github:indigoviolet/unvibe#release`, then `unvibe start`).
+- The running build's identity rides on `GET /api/health` (`build`: version, source branch, commit, build time; null when the install carries no channel record). One source: the installed package.json (`unvibe` field) via `readInstalledBuild` — no second stamp. The fake backend reads the current fake channel.
+- Listing fetches per-ref metadata with a small concurrency cap (4). Privacy (§16): the service itself still contacts nothing but `127.0.0.1` — channel listing shells out through `gh` under the user's own login (like every other `gh` use), which is why the picker stays opt-in. The only new static-guard entries are the helper's loopback health probe (`update/helper-entry.ts`, same shape as `cli/lock.ts`) and the `npm` literal step 1 added for installs.
 
-Drill a real switch through the real helper (fake backend, temp port + data dir, never 4517 or the real data dir):
+Test-only update overrides (env-only, so the UI can never trigger them — for drills that must not touch GitHub):
+
+- `UNVIBE_UPDATER_BACKEND=fake` — the fake backend (channels from `<dataDir>/update/fake-channels.json`, installed ref in `current-ref`; never touches npm/network).
+- `UNVIBE_UPDATE_CHANNELS_FILE` — real backend, but the channel list comes from a JSON file instead of `gh` (per-ref `fetchRefPackage` still calls `gh` and degrades to nulls offline).
+- `UNVIBE_UPDATE_INSTALL_SOURCE` — real backend, but the npm remote (e.g. `git+file:///tmp/unvibe.git`) instead of `github:indigoviolet/unvibe`; the `#<channel>` suffix is unchanged.
+- `UNVIBE_UPDATE_FAKE_FAIL=install|health:<ref>`, `UNVIBE_UPDATE_*_MS` timeouts — fake failure injection + helper timeouts.
+
+Drill a real switch through the real helper with real npm (temp prefix + port + data dir; never 4517, never the real data dir, never the real global prefix; nothing is pushed anywhere):
 
 ```sh
 mise run build
-export UNVIBE_PORT=4521 UNVIBE_DATA_DIR=$(mktemp -d)/data UNVIBE_AGENT=none UNVIBE_UPDATER_BACKEND=fake
-mkdir -p $UNVIBE_DATA_DIR/update
-cat > $UNVIBE_DATA_DIR/update/fake-channels.json <<'EOF'
-[
-  {"ref": "release", "version": "0.0.1"},
-  {"ref": "preview/drill", "version": "0.0.1-preview.drill.abc1234", "sourceBranch": "drill", "commit": "abc1234def"}
-]
-EOF
-node packages/service/dist/index.js &  # record the PID; enable the gate + POST /api/update/switch
+R=$(mktemp -d)/realdrill; mkdir -p $R; git init --bare -q $R/unvibe.git
+git --git-dir=$R/unvibe.git symbolic-ref HEAD refs/heads/preview/drill-a  # npm dereferences HEAD; real hosts always have one
+node scripts/release.mjs --version 0.0.1-preview.drill-a.aaaa1111 --branch preview/drill-a --source-branch drill-a
+git push $R/unvibe.git preview/drill-a
+node scripts/release.mjs --version 0.0.1-preview.drill-b.bbbb2222 --branch preview/drill-b --source-branch drill-b
+git push $R/unvibe.git preview/drill-b
+# channels file with both versions; install A; run it; seed channel-backups/release/ from the live DB; switch to B
 ```
 
-For a rollback drill, add `UNVIBE_UPDATE_FAKE_FAIL=health:preview/drill` (or `install:preview/drill`) to the same setup. Kill only the PIDs you started, never by pattern or port sweep.
-
-Merge wiring (step 1 + step 2): `scripts/release.mjs` must also ship `packages/service/dist/update-helper.js` (one `copy(...)` line next to the other `dist/` copies) and stamp `packages/service/dist/build-info.json` (`{version, sourceBranch, commit, builtAt}`) into the release tree, or the installed build can list channels but can never switch to them.
+For a rollback drill, lie about the target version in the channels file (with a short `UNVIBE_UPDATE_HEALTH_TIMEOUT_MS`) — the helper installs fine, never sees the target, rolls back through a real reinstall. Kill only the PIDs you start, never by pattern or port sweep; delete the local `preview/drill-*` branches and tarballs afterwards.
 
 ## Conventions
 

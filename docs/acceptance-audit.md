@@ -712,39 +712,58 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 ### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
 
 In-app switching between `release`, `release-rc` and `preview/*` builds,
- coded against the `Updater` seam step 1 implements (`listChannels` /
- `switchTo` in `packages/service/src/update/updater.ts`); the real backend
- is a placeholder that fails with "not wired" (routes answer 501).
- Contract first in `packages/shared/src/api.ts` (`UpdateChannel`,
- `UpdateBuildInfo` on health + status, channels/switch/status shapes).
- `GET /api/update/status` always works; channels + switch are gated off by
- default (`versionPickerEnabled`) with 404, refused with 409 while jobs
- run / a submit is in flight / a switch is pending, and sit behind the
- same token + loopback Host/Origin gates as every other route. Switch =
- commit + detached self-contained helper (`dist/update-helper.js`, copied
- to the data dir so the npm swap cannot pull it) + restart on the same
- port; install failure or an unhealthy build rolls back; the outcome
- (`ok` / `rolled-back` / `failed` + reason + log path) is surfaced by
- status. Web: Settings → Version (toggle, grouped channels, refresh,
- inline-confirm switch, restart wait with reload, rollback reason) plus a
- quiet preview pill in the review/Settings/Start headers; the mock API
- covers the whole flow incl. simulated switch + rollback.
- Evidence: `test/update-helper.test.ts` (state machine: success, install
- failure → rollback, unhealthy → rollback, rollback failing, stuck
- service), `test/update-updater.test.ts` (fake semantics + injection +
- state files + build identity + lease check), `test/update-routes.test.ts`
- (gate, busy/lease/pending refusals, auth/host, commit path),
- `versionFormat.test.ts`, `e2e/update-picker.spec.ts` (4/4 mock-mode
- green). Privacy (§16) unchanged: the service itself still contacts
- nothing but loopback; listing shells out through `gh` under the user's
- login (opt-in gate); the only new static-guard entries are the helper's
- loopback health probe and bundle shape.
- Open: the real Updater wiring (step 1, merged separately); merge must
- teach `scripts/release.mjs` to ship `dist/update-helper.js` and stamp
- `dist/build-info.json` (see DEVELOPMENT.md); helper restart on macOS
- still needs the human pass in `docs/macos-testing.md` (see #6); live
- switch/rollback drill against the built service recorded in the step-2
- report.
+merged with step 1: one shared switch core (`update/switch.ts`) serves
+the `unvibe update` CLI and the in-app `RealUpdater` (step-1 flow logic
+moved, CLI keeps its output; step-1's 49 `update.test.ts` tests pass
+unchanged via wrappers). One `UpdateChannel` type (shared); build
+identity from the installed package.json (`readInstalledBuild`, no
+second stamp); `dist/update-helper.js` shipped in the release tree and
+asserted by `global-install-check` + a metafile containment test (node
+builtins only). Contract first in `packages/shared/src/api.ts`
+(`UpdateChannel`, `UpdateBuildInfo` on health + status,
+channels/switch/status shapes, `unchanged`). `GET /api/update/status`
+always works; channels + switch are gated off by default
+(`versionPickerEnabled`) with 404, refused with 409 while jobs run / a
+submit is in flight / a switch is pending / not running from an
+installed build, and sit behind the same token + loopback Host/Origin
+gates as every other route. `from` is the locally installed channel
+(never "unknown"); same channel + same commit is 200 `unchanged`, a
+moved commit reinstalls with an Update action on the current row (from
+=== to, no DB swap; rollback is one reinstall + health, then `failed`
+with the recovery command — never loops). Switch = commit + detached
+self-contained helper (copied to the data dir so the npm swap cannot
+pull it) + restart on the same port; the helper stops its own previous
+generation (verified exited, lock released) before the rollback install
+and waits for the install target / rollback source versions
+respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
+log path, `failed` carries the `npm install -g ...#release` recovery) is
+surfaced by status. Web: Settings → Version (toggle, grouped channels,
+refresh, inline-confirm switch, restart wait with reload, rollback
+reason, update-available, installed-only notice, unchanged note) plus a
+quiet preview pill in the review/Settings/Start headers; the mock API
+covers the whole flow incl. simulated switch + rollback.
+ Evidence: `test/update-helper.test.ts` (success, install/unhealthy
+ rollback, failed rollback, stuck service, generation stop order,
+ expected-version waits, stale-sample guard),
+ `test/update-updater.test.ts` (fake semantics + injection, real backend
+ selection/rejection, state files, build identity, lease check),
+ `test/update-routes.test.ts` (gate, busy/lease/pending/installed
+ refusals, same-channel unchanged/update, auth/host, commit path with
+ entry-path identification), `test/update-helper-bundle.test.ts`
+ (metafile containment), `versionFormat.test.ts` (+ newer-available),
+ `e2e/update-picker.spec.ts` (4/4 mock-mode green, full `test:e2e` 113
+ green). Real-install drill (no pushes): two local preview trees via
+ `release.mjs` into a bare repo (HEAD set — npm dereferences it), install
+ A into a temp prefix, run it, switch to B through the real helper +
+ real npm (health flipped, slots `preview-drill-a` + `release` written),
+ then a lying channels file forced a real-npm rollback to B
+ (rolled-back + reason, lock held by the final generation). Privacy
+ (§16) unchanged: the service itself still contacts nothing but loopback;
+ listing shells out through `gh` under the user's login (opt-in gate,
+ concurrent per-ref fetch); the new static-guard entries are the
+ helper's loopback health probe, the `npm` literal, and the bundle shape.
+ Open: helper restart on macOS still needs the human pass in
+ `docs/macos-testing.md` (see #6).
 
 ### Fixed in this branch (done, in `check`)
 

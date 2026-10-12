@@ -39,18 +39,23 @@ service aborts the switch with outcome `failed` and the install
 untouched), calls `switchTo` through the `Updater` seam (step 1: per-
 channel DB backup/restore, then global `npm install` of the ref),
 restarts the installed entry (`start --foreground`, same port + data
-dir), and polls `/api/health` until it reports the target version. An
-install failure or an unhealthy build switches back to the previous
-ref and restarts that — stopping the helper's own previous generation
-first and trusting only health samples from the generation holding the
-data-dir lock, so builds never stack on the port; the outcome (`ok` /
-`rolled-back` / `failed` +
+dir), and polls `/api/health` until it reports the target version (the
+rollback waits for the previous build's version). An install failure or
+an unhealthy build switches back to the previous ref and restarts that
+— stopping the helper's own previous generation first (verified exited,
+lock released, before the rollback install) and trusting only health
+samples from the generation holding the data-dir lock, so builds never
+stack on the port; the outcome (`ok` / `rolled-back` / `failed` +
 reason + log path) is written to `<dataDir>/update/outcome.json` and
 surfaced by `GET /api/update/status`. The Settings → Version page waits
 out the restart, reloads on the new version, and shows the rollback
-reason in place. The `Updater` seam (`listChannels` / `switchTo`) is what
-step 1 implements; until then the placeholder fails with "not wired" and
-the fake backend (`UNVIBE_UPDATER_BACKEND=fake`) drives tests and drills.
+reason in place; the current row flags a newer published build with an
+Update action (same flow, `from === to`, no DB swap). The `Updater` seam
+(`listChannels` / `switchTo`) fronts one shared switch core
+(`update/switch.ts`) used by both the `unvibe update` CLI and the
+in-app picker; the fake backend (`UNVIBE_UPDATER_BACKEND=fake`) drives
+unit tests, and test-only file/remote overrides drive real-npm drills
+without touching GitHub (see DEVELOPMENT.md).
 
 ## Ideas a newcomer must hold
 
