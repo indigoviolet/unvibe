@@ -39,7 +39,8 @@ import type { InstalledBuild, UpdateChannel } from "../src/update/channels.js";
 import { installPrefixForPackage, installRef, installSpec } from "../src/update/install.js";
 
 function tmpDir(prefix: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  // realpath: macOS's tmpdir is a symlink (/var -> /private/var) and the code under test resolves it.
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 }
 
 /** Fake install tree: <dir>/package.json + a CLI script path inside it. */
