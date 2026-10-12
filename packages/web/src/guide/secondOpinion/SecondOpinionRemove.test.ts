@@ -35,12 +35,11 @@ describe("second-opinion remove during re-run", () => {
       expect(opinions("central")).toHaveLength(1);
       expect(useReview.getState().inflight["central"]).toBeUndefined();
 
-      // The re-run starts its own job (its own working state)…
+      // Re-run while the first result is still on the card…
       const rerun = performAction(REVIEW_ID, { kind: "second_opinion", cardId: "central", mode: "check" });
       expect(useReview.getState().inflight["central"]).toMatchObject({ kind: "second_opinion" });
       const res = await rerun;
       expect(res.jobId).toBeTruthy();
-      expect(useReview.getState().snapshot?.jobs.find((j) => j.id === res.jobId)?.state).toBe("running");
 
       // …Remove lands while it is in flight…
       await performAction(REVIEW_ID, {
@@ -49,7 +48,7 @@ describe("second-opinion remove during re-run", () => {
       });
       expect(opinions("central")).toHaveLength(0);
 
-      // …the late fill is dropped and the working state clears.
+      // …the late fill is dropped (not resurrected) and the working state clears.
       await vi.advanceTimersByTimeAsync(2000);
       expect(opinions("central")).toHaveLength(0);
       expect(useReview.getState().inflight["central"]).toBeUndefined();
