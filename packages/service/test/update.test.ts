@@ -1,16 +1,21 @@
 /**
- * `unvibe update` (issue #36, step 1): channel listing parsing (incl.
- * per-ref metadata without cloning), the install command built for a
- * channel, and the DB backup/restore rules against a temp data dir. No
- * network, no real gh/git/npm: `gh` and `npm` go through the injectable
- * command runner (faked here).
+ * `unvibe update` (issue #36, step 1 + review fixes): channel listing
+ * parsing (incl. per-ref metadata without cloning), the install command
+ * built for a channel, same-channel reinstalls, preview seeding, channel
+ * inference, prefix pinning, and the DB backup/restore rules against a
+ * temp data dir. No network, no real gh/git/npm: `gh` and `npm` go through
+ * the injectable command runner (faked here).
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeLock } from "../src/cli/lock.js";
-import { runUpdateChannelFlow, runUpdateListFlow } from "../src/cli/update-flows.js";
+import {
+  dbPlanForSwitch,
+  runUpdateChannelFlow,
+  runUpdateListFlow,
+} from "../src/cli/update-flows.js";
 import type { CommandRunner, RunOptions, RunResult } from "../src/exec/runner.js";
 import { FakeCommandRunner } from "../src/exec/runner.js";
 import {
@@ -18,30 +23,44 @@ import {
   channelSlotDir,
   hasBackup,
   restoreChannel,
+  seedFromSlot,
 } from "../src/update/data-backup.js";
 import {
   channelKind,
   decodeRefPackage,
   formatChannelList,
+  inferChannelFromVersion,
   isChannelName,
   listChannels,
   parseChannelList,
   readInstalledBuild,
+  shortCommit,
 } from "../src/update/channels.js";
-import { installRef, installSpec } from "../src/update/install.js";
+import type { InstalledBuild, UpdateChannel } from "../src/update/channels.js";
+import { installPrefixForPackage, installRef, installSpec } from "../src/update/install.js";
 
 function tmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-/** Fake install tree: <root>/package.json + a CLI script path inside it. */
-function makeInstall(root: string, pkg: unknown): { scriptPath: string; packagePath: string } {
-  const packagePath = path.join(root, "package.json");
-  fs.mkdirSync(path.join(root, "packages", "service", "dist"), { recursive: true });
+/** Fake install tree: <dir>/package.json + a CLI script path inside it. */
+function makeInstall(dir: string, pkg: unknown): { scriptPath: string; packagePath: string } {
+  const packagePath = path.join(dir, "package.json");
+  fs.mkdirSync(path.join(dir, "packages", "service", "dist"), { recursive: true });
   fs.writeFileSync(packagePath, JSON.stringify(pkg));
-  const scriptPath = path.join(root, "packages", "service", "dist", "index.js");
+  const scriptPath = path.join(dir, "packages", "service", "dist", "index.js");
   fs.writeFileSync(scriptPath, "");
   return { scriptPath, packagePath };
+}
+
+/** npm-layout install: <root>/lib/node_modules/unvibe/{package.json,...}. */
+function makePrefixedInstall(
+  root: string,
+  pkg: unknown,
+): { scriptPath: string; packagePath: string; prefix: string } {
+  const prefix = path.join(root, "prefix");
+  const made = makeInstall(path.join(prefix, "lib", "node_modules", "unvibe"), pkg);
+  return { ...made, prefix };
 }
 
 /** `gh api .../contents/package.json` response body for a package. */
@@ -50,6 +69,10 @@ function contentsStdout(pkg: unknown): string {
     content: Buffer.from(JSON.stringify(pkg)).toString("base64"),
     encoding: "base64",
   });
+}
+
+function installed(channel: string | null, version = "0.0.1"): InstalledBuild {
+  return { version, channel, sourceBranch: null, commit: null, builtAt: null, packagePath: null };
 }
 
 describe("channel names + install specs", () => {
@@ -87,11 +110,43 @@ describe("channel names + install specs", () => {
     await expect(installRef(runner, "main")).rejects.toThrow();
   });
 
+  it("pins --prefix when asked", async () => {
+    const runner = new FakeCommandRunner();
+    runner.enqueue({ cmd: "npm", stdout: "", stderr: "", code: 0 });
+    await installRef(runner, "release", { prefix: "/p" });
+    expect(runner.calls[0].opts.args).toEqual(["install", "-g", "github:indigoviolet/unvibe#release", "--prefix", "/p"]);
+  });
+
+  it("derives --prefix from npm-layout package paths only", () => {
+    const prefix = path.join("tmp", "prefix");
+    const lib = [prefix, "lib", "node_modules", "unvibe", "package.json"].join(path.sep);
+    expect(installPrefixForPackage(lib)).toBe(prefix);
+    expect(installPrefixForPackage(path.join("repo", "package.json"))).toBeNull();
+    expect(installPrefixForPackage(path.join("x", "node_modules", "unvibe", "package.json"))).toBeNull();
+    expect(installPrefixForPackage(null)).toBeNull();
+  });
+
   it("parses gh branch output into sorted, deduped channels", () => {
     const out = parseChannelList(
       ["release", "main", "preview/b", "release-rc", "preview/a", "preview/b", "", "  "].join("\n"),
     );
     expect(out).toEqual(["release", "release-rc", "preview/a", "preview/b"]);
+  });
+});
+
+describe("inferChannelFromVersion", () => {
+  it("maps hand-installed versions to their channels", () => {
+    expect(inferChannelFromVersion("0.0.1")).toBe("release");
+    expect(inferChannelFromVersion("0.0.1-rc.2")).toBe("release-rc");
+    expect(inferChannelFromVersion("0.0.1-preview.feat-x.abc1234")).toBe("preview/feat-x");
+    expect(inferChannelFromVersion("0.0.1-preview.a.b")).toBe("preview/a");
+    expect(inferChannelFromVersion("nope")).toBeNull();
+    expect(inferChannelFromVersion("0.0.1-foo.2")).toBeNull();
+  });
+
+  it("shortens commits for display", () => {
+    expect(shortCommit("abc1234full")).toBe("abc1234");
+    expect(shortCommit(null)).toBe("(unknown)");
   });
 });
 
@@ -150,14 +205,7 @@ describe("per-ref metadata without cloning", () => {
       stderr: "",
       code: 0,
     });
-    const channels = await listChannels(runner, {
-      version: "0.0.1",
-      channel: "release",
-      sourceBranch: null,
-      commit: null,
-      builtAt: null,
-      packagePath: null,
-    });
+    const channels = await listChannels(runner, installed("release"));
     expect(channels).toEqual([
       {
         ref: "release",
@@ -201,14 +249,7 @@ describe("per-ref metadata without cloning", () => {
       stderr: "not found",
       code: 1,
     });
-    const channels = await listChannels(runner, {
-      version: "0",
-      channel: null,
-      sourceBranch: null,
-      commit: null,
-      builtAt: null,
-      packagePath: null,
-    });
+    const channels = await listChannels(runner, installed(null, "0"));
     expect(channels).toEqual([
       {
         ref: "release",
@@ -225,39 +266,53 @@ describe("per-ref metadata without cloning", () => {
   it("throws when the branch list itself fails", async () => {
     const runner = new FakeCommandRunner();
     runner.enqueue({ cmd: "gh", stdout: "", stderr: "auth failed", code: 1 });
-    await expect(
-      listChannels(runner, {
-        version: "0",
-        channel: null,
-        sourceBranch: null,
-        commit: null,
-        builtAt: null,
-        packagePath: null,
-      }),
-    ).rejects.toThrow(/gh exited 1/);
+    await expect(listChannels(runner, installed(null, "0"))).rejects.toThrow(/gh exited 1/);
   });
 
-  it("formats the list with versions and provenance", () => {
-    const lines = formatChannelList(
-      [
-        { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: true },
-        { ref: "preview/feat-x", kind: "preview", version: "0.0.1-preview.feat-x.abc1234", commit: "abc1234full", sourceBranch: "feat/x", builtAt: "2026-10-12T00:50:12.402Z", current: false },
-        { ref: "preview/gone", kind: "preview", version: null, commit: null, sourceBranch: null, builtAt: null, current: false },
-      ],
-      { version: "0.0.1", channel: "release", sourceBranch: null, commit: null, builtAt: null, packagePath: null },
+  it("formats the list with versions, provenance and newer-build notes", () => {
+    const rows: UpdateChannel[] = [
+      { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, current: false },
+      { ref: "preview/feat-x", kind: "preview", version: "0.0.1-preview.feat-x.abc1234", commit: "abc1234full", sourceBranch: "feat/x", builtAt: "2026-10-12T00:50:12.402Z", current: true },
+      { ref: "preview/gone", kind: "preview", version: null, commit: null, sourceBranch: null, builtAt: null, current: false },
+    ];
+    const lines = formatChannelList(rows, {
+      ...installed("preview/feat-x", "0.0.1-preview.feat-x.older"),
+      commit: "older1234full",
+    });
+    expect(lines).toContain(
+      "* preview/feat-x (installed, 0.0.1-preview.feat-x.older) — newer build available (installed older12 vs abc1234, built 2026-10-12)",
     );
-    expect(lines).toContain("* release (installed, 0.0.1)");
-    expect(lines).toContain("  preview/feat-x (0.0.1-preview.feat-x.abc1234)");
-    expect(lines).toContain("    from feat/x @ abc1234, built 2026-10-12");
+    expect(lines).toContain("  release (0.0.1)");
     expect(lines).toContain("  preview/gone (metadata unavailable)");
     expect(lines[lines.length - 1]).toMatch(/unvibe update <channel>/);
+  });
+
+  it("notes a newer build on the current row with both commits and the build time", () => {
+    const rows: UpdateChannel[] = [
+      { ref: "preview/feat-x", kind: "preview", version: "0.0.1-preview.feat-x.abc1234", commit: "abc1234full", sourceBranch: "feat/x", builtAt: "2026-10-12T00:50:12.402Z", current: true },
+    ];
+    const lines = formatChannelList(rows, { ...installed("preview/feat-x", "0.0.1-preview.feat-x.older"), commit: "older1234full" });
+    expect(lines).toContain(
+      "* preview/feat-x (installed, 0.0.1-preview.feat-x.older) — newer build available (installed older12 vs abc1234, built 2026-10-12)",
+    );
+  });
+
+  it("stays quiet on the current row when commits match or are unknown", () => {
+    const row = (commit: string | null): UpdateChannel[] => [
+      { ref: "release", kind: "release", version: "0.0.1", commit, sourceBranch: null, builtAt: null, current: true },
+    ];
+    expect(formatChannelList(row("same1234"), { ...installed("release"), commit: "same1234" })).toContain(
+      "* release (installed, 0.0.1)",
+    );
+    const quiet = formatChannelList(row(null), installed("release"));
+    expect(quiet.some((l) => l.includes("newer build"))).toBe(false);
   });
 });
 
 describe("readInstalledBuild", () => {
   it("reads version + channel + provenance from the installed package.json", () => {
     const root = tmpDir("unvibe-installed-");
-    const { scriptPath, packagePath } = makeInstall(root, {
+    const { scriptPath, packagePath } = makeInstall(path.join(root, "pkg"), {
       name: "unvibe",
       version: "0.0.1-preview.feat-x.abc1234",
       unvibe: {
@@ -278,14 +333,38 @@ describe("readInstalledBuild", () => {
     });
   });
 
+  it("infers the channel from the version for hand installs predating the field", () => {
+    const old = makeInstall(tmpDir("unvibe-installed-old-"), { name: "unvibe", version: "0.0.1" });
+    expect(readInstalledBuild(old.scriptPath, "fallback").channel).toBe("release");
+    const rc = makeInstall(tmpDir("unvibe-installed-rc-"), { name: "unvibe", version: "0.0.1-rc.2" });
+    expect(readInstalledBuild(rc.scriptPath, "fallback").channel).toBe("release-rc");
+    const prev = makeInstall(tmpDir("unvibe-installed-prev-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.abc1234",
+    });
+    expect(readInstalledBuild(prev.scriptPath, "fallback").channel).toBe("preview/feat-x");
+    const weird = makeInstall(tmpDir("unvibe-installed-weird-"), { name: "unvibe", version: "0.0.2-foo" });
+    expect(readInstalledBuild(weird.scriptPath, "fallback").channel).toBeNull();
+  });
+
+  it("keeps source checkouts unknown even with a release-like version", () => {
+    const src = makeInstall(tmpDir("unvibe-source-"), {
+      name: "unvibe",
+      version: "0.0.1",
+      private: true,
+    });
+    const got = readInstalledBuild(src.scriptPath, "fallback");
+    expect(got.channel).toBeNull();
+    expect(got.version).toBe("0.0.1");
+  });
+
   it("resolves the global bin symlink to the installed package", () => {
     const root = tmpDir("unvibe-installed-link-");
-    const { scriptPath } = makeInstall(root, {
+    const { scriptPath } = makeInstall(path.join(root, "pkg"), {
       name: "unvibe",
       version: "0.0.1-preview.feat-x.abc1234",
       unvibe: { channel: "preview/feat-x" },
     });
-    // <prefix>/bin/unvibe -> ../lib/node_modules/unvibe/.../index.js, as npm lays it out.
     const binDir = path.join(root, "prefix", "bin");
     fs.mkdirSync(binDir, { recursive: true });
     const link = path.join(binDir, "unvibe");
@@ -295,20 +374,16 @@ describe("readInstalledBuild", () => {
     expect(got.version).toBe("0.0.1-preview.feat-x.abc1234");
   });
 
-  it("falls back cleanly without metadata, garbage, or package", () => {
-    const root = tmpDir("unvibe-installed-old-");
-    const plain = makeInstall(root, { name: "unvibe", version: "0.0.1" });
-    const got = readInstalledBuild(plain.scriptPath, "fallback");
-    expect(got.channel).toBeNull();
-    expect(got.version).toBe("0.0.1");
-    expect(got.commit).toBeNull();
-
+  it("falls back cleanly with garbage or no package", () => {
     const garbage = makeInstall(tmpDir("unvibe-installed-garbage-"), {
       name: "unvibe",
       version: "0.0.1",
       unvibe: { channel: "main" },
     });
-    expect(readInstalledBuild(garbage.scriptPath, "fallback").channel).toBeNull();
+    // "main" is not a channel, and 0.0.1 infers release — but an explicit
+    // (invalid) field wins over inference only when valid, so this falls
+    // back to the version inference.
+    expect(readInstalledBuild(garbage.scriptPath, "fallback").channel).toBe("release");
 
     expect(readInstalledBuild(undefined, "fallback")).toEqual({
       version: "fallback",
@@ -352,19 +427,28 @@ describe("per-channel DB backup/restore", () => {
     const dataDir = tmpDir("unvibe-restore-");
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
     backupChannel(dataDir, "release");
-    // Simulate life on a preview: live files diverge, preview slot exists.
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-db");
     fs.writeFileSync(path.join(dataDir, "unvibe.db-wal"), "stale-wal");
     backupChannel(dataDir, "preview/feat-x");
-    // Switch back: stale wal must not shadow the restored main file.
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-db-2");
     fs.writeFileSync(path.join(dataDir, "unvibe.db-wal"), "stale-wal-2");
     const restored = restoreChannel(dataDir, "release");
     expect(restored.files).toEqual(["unvibe.db"]);
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
     expect(fs.existsSync(path.join(dataDir, "unvibe.db-wal"))).toBe(false);
-    // The preview slot survived the restore.
     expect(hasBackup(dataDir, "preview/feat-x")).toBe(true);
+  });
+
+  it("seeds a channel from another channel's slot", () => {
+    const dataDir = tmpDir("unvibe-seed-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
+    backupChannel(dataDir, "release");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
+    const seeded = seedFromSlot(dataDir, "release");
+    expect(seeded.files).toEqual(["unvibe.db"]);
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
+    // The target gains no slot of its own from seeding.
+    expect(hasBackup(dataDir, "preview/b")).toBe(false);
   });
 
   it("handles the legacy unvibe.sqlite name when present", () => {
@@ -383,20 +467,75 @@ describe("per-channel DB backup/restore", () => {
   });
 });
 
-/** Runner that simulates a real `npm install -g` by rewriting package.json. */
-class ReinstallRunner implements CommandRunner {
+describe("dbPlanForSwitch", () => {
+  function planned(dataDir: string, to: string, from: string | null, keepData: boolean): string {
+    const plan = dbPlanForSwitch(dataDir, to, from, keepData);
+    return plan.kind === "seed" ? `seed:${plan.from}` : plan.kind;
+  }
+
+  it("--keep-data always keeps", () => {
+    const dataDir = tmpDir("unvibe-plan-keep-");
+    expect(planned(dataDir, "preview/b", "preview/a", true)).toBe("keep");
+  });
+
+  it("restores the target copy when one exists", () => {
+    const dataDir = tmpDir("unvibe-plan-restore-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "x");
+    backupChannel(dataDir, "preview/b");
+    expect(planned(dataDir, "preview/b", "preview/a", false)).toBe("restore");
+  });
+
+  it("leaving release, release-rc or a source checkout keeps the live DB", () => {
+    const dataDir = tmpDir("unvibe-plan-rel-");
+    expect(planned(dataDir, "preview/b", "release", false)).toBe("keep");
+    expect(planned(dataDir, "preview/b", "release-rc", false)).toBe("keep");
+    expect(planned(dataDir, "preview/b", null, false)).toBe("keep");
+  });
+
+  it("leaving a preview seeds from release, else release-rc, else aborts", () => {
+    const seeded = tmpDir("unvibe-plan-seed-");
+    fs.writeFileSync(path.join(seeded, "unvibe.db"), "x");
+    backupChannel(seeded, "release");
+    backupChannel(seeded, "preview/a");
+    expect(planned(seeded, "preview/b", "preview/a", false)).toBe("seed:release");
+
+    const rcOnly = tmpDir("unvibe-plan-rconly-");
+    fs.writeFileSync(path.join(rcOnly, "unvibe.db"), "x");
+    backupChannel(rcOnly, "release-rc");
+    expect(planned(rcOnly, "preview/b", "preview/a", false)).toBe("seed:release-rc");
+
+    expect(planned(tmpDir("unvibe-plan-abort-"), "preview/b", "preview/a", false)).toBe("abort");
+  });
+});
+
+/**
+ * Serves gh contents for canned ref packages, rewrites package.json on
+ * `npm install` (null = install lands elsewhere), answers `npm prefix -g`.
+ */
+class SwitchRunner implements CommandRunner {
   readonly calls: { cmd: string; opts: RunOptions }[] = [];
   constructor(
     private packagePath: string,
-    private nextPkg: unknown,
+    private nextPkg: unknown | null,
+    private refPkgs: Record<string, unknown> = {},
+    private prefixOut = "/fake/prefix",
   ) {}
   async run(cmd: string, opts: RunOptions): Promise<RunResult> {
     this.calls.push({ cmd, opts });
-    if (cmd === "npm") {
-      fs.writeFileSync(this.packagePath, JSON.stringify(this.nextPkg));
+    if (cmd === "npm" && opts.args[0] === "install") {
+      if (this.nextPkg !== null) fs.writeFileSync(this.packagePath, JSON.stringify(this.nextPkg));
       return { stdout: "added 1 package", stderr: "", code: 0 };
     }
-    throw new Error(`unexpected command: ${cmd}`);
+    if (cmd === "npm" && opts.args[0] === "prefix") {
+      return { stdout: `${this.prefixOut}\n`, stderr: "", code: 0 };
+    }
+    if (cmd === "gh") {
+      const m = /contents\/package\.json\?ref=(.+)$/.exec(opts.args[1] ?? "");
+      const pkg = m ? this.refPkgs[m[1]] : undefined;
+      if (pkg === undefined) return { stdout: "", stderr: "not found", code: 1 };
+      return { stdout: contentsStdout(pkg), stderr: "", code: 0 };
+    }
+    throw new Error(`unexpected command: ${cmd} ${opts.args.join(" ")}`);
   }
 }
 
@@ -445,7 +584,39 @@ describe("runUpdateListFlow", () => {
     expect(out.lines).toContain("* release (installed, 0.0.1)");
     expect(out.lines).toContain("  release-rc (0.0.1-rc.2)");
     expect(out.lines).toContain("  preview/feat-x (0.0.1-preview.feat-x.abc1234)");
+    expect(out.lines).toContain("    from feat/x @ abc1234, built 2026-10-12");
     expect(out.lines.some((l) => l.includes("main"))).toBe(false);
+  });
+
+  it("flags a newer build on the installed row", async () => {
+    const { scriptPath } = makeInstall(tmpDir("unvibe-list-newer-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.older",
+      unvibe: { channel: "preview/feat-x", commit: "older1234full" },
+    });
+    const runner = new FakeCommandRunner();
+    runner.enqueue({
+      cmd: "gh",
+      args: ["api", "repos/indigoviolet/unvibe/branches", "--paginate", "-q", ".[].name"],
+      stdout: "preview/feat-x",
+      stderr: "",
+      code: 0,
+    });
+    enqueueContents(runner, "preview/feat-x", {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.abc1234",
+      unvibe: { channel: "preview/feat-x", commit: "abc1234full", sourceBranch: "feat/x", builtAt: "2026-10-12" },
+    });
+    const out = await runUpdateListFlow({
+      runner,
+      dataDir: tmpDir("unvibe-list-newer-data-"),
+      cliScriptPath: scriptPath,
+      serviceVersion: "0",
+    });
+    expect(out.code).toBe(0);
+    expect(
+      out.lines.some((l) => l.includes("newer build available (installed older12 vs abc1234, built 2026-10-12)")),
+    ).toBe(true);
   });
 
   it("reports gh failures with a fix hint", async () => {
@@ -488,55 +659,127 @@ describe("runUpdateChannelFlow", () => {
     expect(runner.calls).toHaveLength(0);
   });
 
-  it("is a no-op when already on the channel", async () => {
+  it("is a no-op with the commit when installed and published commits match", async () => {
     const { scriptPath } = makeInstall(tmpDir("unvibe-same-"), {
       name: "unvibe",
-      version: "0.0.1",
-      unvibe: { channel: "release" },
+      version: "0.0.1-preview.feat-x.abc1234",
+      unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
     });
-    const runner = new FakeCommandRunner();
+    const runner = new SwitchRunner("unused", null, {
+      "preview/feat-x": {
+        name: "unvibe",
+        version: "0.0.1-preview.feat-x.abc1234",
+        unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+      },
+    });
     const out = await runUpdateChannelFlow(
-      { runner, dataDir: tmpDir("unvibe-same-data-"), cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
-      "release",
+      { runner, dataDir: tmpDir("unvibe-same-data-"), cliScriptPath: scriptPath, serviceVersion: "0" },
+      "preview/feat-x",
       { keepData: false },
     );
     expect(out.code).toBe(0);
-    expect(out.lines[0]).toMatch(/already on release/);
-    expect(runner.calls).toHaveLength(0);
+    expect(out.lines).toEqual(["already on preview/feat-x (0.0.1-preview.feat-x.abc1234, abc1234) — nothing to do."]);
+    expect(runner.calls).toHaveLength(1); // the gh contents read only
+  });
+
+  it("reinstalls the same channel when commits differ, without swapping databases", async () => {
+    const dataDir = tmpDir("unvibe-reinstall-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-db");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-reinstall-installed-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.older",
+      unvibe: { channel: "preview/feat-x", commit: "older1234full" },
+    });
+    const runner = new SwitchRunner(
+      packagePath,
+      {
+        name: "unvibe",
+        version: "0.0.1-preview.feat-x.abc1234",
+        unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+      },
+      {
+        "preview/feat-x": {
+          name: "unvibe",
+          version: "0.0.1-preview.feat-x.abc1234",
+          unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+        },
+      },
+    );
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      "preview/feat-x",
+      { keepData: false },
+    );
+    expect(out.code).toBe(0);
+    expect(out.lines.some((l) => l.includes("reinstalling preview/feat-x: installed older12 vs published abc1234"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("same channel: database left in place"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("DB rule:"))).toBe(false);
+    // Backed up first, live database untouched, no restore attempted.
+    expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/feat-x"), "unvibe.db"), "utf8")).toBe("preview-db");
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-db");
+    expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
+  });
+
+  it("reinstalls the same channel when the published commit is unreadable", async () => {
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-reinstall-blind-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.older",
+      unvibe: { channel: "preview/feat-x", commit: "older1234full" },
+    });
+    const runner = new SwitchRunner(packagePath, {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.abc1234",
+      unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+    }); // no refPkgs: gh 404s
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir: tmpDir("unvibe-reinstall-blind-data-"), cliScriptPath: scriptPath, serviceVersion: "0" },
+      "preview/feat-x",
+      { keepData: false },
+    );
+    expect(out.code).toBe(0);
+    expect(out.lines.some((l) => l.includes("could not read the published commit"))).toBe(true);
+    expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
   });
 
   it("backs up, installs the channel spec, restores the target copy, reports versions", async () => {
     const dataDir = tmpDir("unvibe-switch-");
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
-    const root = tmpDir("unvibe-switch-installed-");
-    const { scriptPath, packagePath } = makeInstall(root, {
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-switch-installed-"), {
       name: "unvibe",
       version: "0.0.1",
       unvibe: { channel: "release" },
     });
-    // A backup left from a previous visit to the preview.
     const slot = channelSlotDir(dataDir, "preview/feat-x");
     fs.mkdirSync(slot, { recursive: true });
     fs.writeFileSync(path.join(slot, "unvibe.db"), "preview-db");
 
-    const runner = new ReinstallRunner(packagePath, {
-      name: "unvibe",
-      version: "0.0.1-preview.feat-x.abc1234",
-      unvibe: { channel: "preview/feat-x", commit: "abc1234", builtAt: "2026-10-12", sourceBranch: "feat/x", sourceVersion: "0.0.1" },
-    });
+    const runner = new SwitchRunner(
+      packagePath,
+      {
+        name: "unvibe",
+        version: "0.0.1-preview.feat-x.abc1234",
+        unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+      },
+      {
+        "preview/feat-x": {
+          name: "unvibe",
+          version: "0.0.1-preview.feat-x.abc1234",
+          unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+        },
+      },
+    );
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
       "preview/feat-x",
       { keepData: false },
     );
     expect(out.code).toBe(0);
-    // The install command is the literal global install for the channel.
-    expect(runner.calls).toHaveLength(1);
-    expect(runner.calls[0]).toEqual({
-      cmd: "npm",
-      opts: { args: ["install", "-g", "github:indigoviolet/unvibe#preview/feat-x"] },
-    });
-    // Old channel backed up, target channel restored, versions reported.
+    expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
+    expect(runner.calls.find((c) => c.cmd === "npm")?.opts.args).toEqual([
+      "install",
+      "-g",
+      "github:indigoviolet/unvibe#preview/feat-x",
+    ]);
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "release"), "unvibe.db"), "utf8")).toBe("release-db");
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-db");
     expect(out.lines.some((l) => l.includes("0.0.1-preview.feat-x.abc1234") && l.includes("(was 0.0.1)"))).toBe(true);
@@ -545,11 +788,157 @@ describe("runUpdateChannelFlow", () => {
     expect(out.lines.some((l) => l.includes("unvibe start"))).toBe(true);
   });
 
+  it("pins --prefix to this binary's own prefix", async () => {
+    const dataDir = tmpDir("unvibe-pin-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
+    const { scriptPath, packagePath, prefix } = makePrefixedInstall(tmpDir("unvibe-pin-installed-"), {
+      name: "unvibe",
+      version: "0.0.1",
+      unvibe: { channel: "release" },
+    });
+    const runner = new SwitchRunner(
+      packagePath,
+      { name: "unvibe", version: "0.0.1-rc.2", unvibe: { channel: "release-rc" } },
+      { "release-rc": { name: "unvibe", version: "0.0.1-rc.2" } },
+    );
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
+      "release-rc",
+      { keepData: false },
+    );
+    expect(out.code).toBe(0);
+    expect(runner.calls.find((c) => c.cmd === "npm")?.opts.args).toEqual([
+      "install",
+      "-g",
+      "github:indigoviolet/unvibe#release-rc",
+      "--prefix",
+      prefix,
+    ]);
+    expect(out.lines.some((l) => l.includes(`prefix ${prefix}`))).toBe(true);
+  });
+
+  it("fails naming the path and npm prefix when the install lands elsewhere", async () => {
+    const dataDir = tmpDir("unvibe-elsewhere-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-elsewhere-installed-"), {
+      name: "unvibe",
+      version: "0.0.1",
+      unvibe: { channel: "release" },
+    });
+    const slot = channelSlotDir(dataDir, "preview/feat-x");
+    fs.mkdirSync(slot, { recursive: true });
+    fs.writeFileSync(path.join(slot, "unvibe.db"), "preview-db");
+    // npm "succeeds" but our package is untouched: it went to another prefix.
+    const runner = new SwitchRunner(
+      packagePath,
+      null,
+      {
+        "preview/feat-x": {
+          name: "unvibe",
+          version: "0.0.1-preview.feat-x.abc1234",
+          unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+        },
+      },
+      "/other/prefix",
+    );
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
+      "preview/feat-x",
+      { keepData: false },
+    );
+    expect(out.code).toBe(1);
+    expect(out.lines.some((l) => l.includes(packagePath) && l.includes("npm installed elsewhere"))).toBe(true);
+    expect(out.lines.some((l) => l.includes("npm prefix -g: /other/prefix"))).toBe(true);
+    // No database swap on a miss: live DB and target slot both untouched.
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
+    expect(fs.readFileSync(path.join(slot, "unvibe.db"), "utf8")).toBe("preview-db");
+    expect(hasBackup(dataDir, "release")).toBe(true);
+  });
+
+  it("seeds a new preview from the release copy instead of inheriting another preview's DB", async () => {
+    const dataDir = tmpDir("unvibe-seedflow-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-seedflow-installed-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.a.1111111",
+      unvibe: { channel: "preview/a", commit: "1111111full" },
+    });
+    // preview/a was backed up when last left; release has its own copy.
+    backupChannel(dataDir, "preview/a");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
+    backupChannel(dataDir, "release");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
+
+    const runner = new SwitchRunner(
+      packagePath,
+      { name: "unvibe", version: "0.0.1-preview.b.2222222", unvibe: { channel: "preview/b", commit: "2222222full" } },
+      {
+        "preview/b": {
+          name: "unvibe",
+          version: "0.0.1-preview.b.2222222",
+          unvibe: { channel: "preview/b", commit: "2222222full" },
+        },
+      },
+    );
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      "preview/b",
+      { keepData: false },
+    );
+    expect(out.code).toBe(0);
+    // preview/a's backup kept, live DB is the release seed, b gains no slot yet.
+    expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/a"), "unvibe.db"), "utf8")).toBe("preview-a-db");
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
+    expect(hasBackup(dataDir, "preview/b")).toBe(false);
+    expect(out.lines.some((l) => l.includes("started preview/b from the release copy"))).toBe(true);
+  });
+
+  it("aborts before installing when a new preview has no seed and no backup", async () => {
+    const dataDir = tmpDir("unvibe-noseed-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-noseed-installed-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.a.1111111",
+      unvibe: { channel: "preview/a", commit: "1111111full" },
+    });
+    const runner = new SwitchRunner(packagePath, null, {});
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      "preview/b",
+      { keepData: false },
+    );
+    expect(out.code).toBe(1);
+    expect(out.lines.some((l) => l.includes("--keep-data"))).toBe(true);
+    expect(runner.calls.filter((c) => c.cmd === "npm")).toHaveLength(0);
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-a-db");
+  });
+
+  it("--keep-data overrides the missing-seed abort", async () => {
+    const dataDir = tmpDir("unvibe-seedkeep-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "preview-a-db");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-seedkeep-installed-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.a.1111111",
+      unvibe: { channel: "preview/a", commit: "1111111full" },
+    });
+    const runner = new SwitchRunner(
+      packagePath,
+      { name: "unvibe", version: "0.0.1-preview.b.2222222", unvibe: { channel: "preview/b", commit: "2222222full" } },
+      {},
+    );
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      "preview/b",
+      { keepData: true },
+    );
+    expect(out.code).toBe(0);
+    expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-a-db");
+  });
+
   it("--keep-data skips the restore but still backs up", async () => {
     const dataDir = tmpDir("unvibe-keep-");
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
-    const root = tmpDir("unvibe-keep-installed-");
-    const { scriptPath, packagePath } = makeInstall(root, {
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-keep-installed-"), {
       name: "unvibe",
       version: "0.0.1",
       unvibe: { channel: "release" },
@@ -558,11 +947,21 @@ describe("runUpdateChannelFlow", () => {
     fs.mkdirSync(slot, { recursive: true });
     fs.writeFileSync(path.join(slot, "unvibe.db"), "preview-db");
 
-    const runner = new ReinstallRunner(packagePath, {
-      name: "unvibe",
-      version: "0.0.1-preview.feat-x.abc1234",
-      unvibe: { channel: "preview/feat-x" },
-    });
+    const runner = new SwitchRunner(
+      packagePath,
+      {
+        name: "unvibe",
+        version: "0.0.1-preview.feat-x.abc1234",
+        unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+      },
+      {
+        "preview/feat-x": {
+          name: "unvibe",
+          version: "0.0.1-preview.feat-x.abc1234",
+          unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+        },
+      },
+    );
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
       "preview/feat-x",
@@ -573,20 +972,29 @@ describe("runUpdateChannelFlow", () => {
     expect(out.lines.some((l) => l.includes("--keep-data"))).toBe(true);
   });
 
-  it("keeps the live database when the target has no backup yet", async () => {
+  it("keeps the live database when leaving release for a target with no backup", async () => {
     const dataDir = tmpDir("unvibe-nobackup-");
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
-    const root = tmpDir("unvibe-nobackup-installed-");
-    const { scriptPath, packagePath } = makeInstall(root, {
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-nobackup-installed-"), {
       name: "unvibe",
       version: "0.0.1",
       unvibe: { channel: "release" },
     });
-    const runner = new ReinstallRunner(packagePath, {
-      name: "unvibe",
-      version: "0.0.1-preview.other.abc1234",
-      unvibe: { channel: "preview/other" },
-    });
+    const runner = new SwitchRunner(
+      packagePath,
+      {
+        name: "unvibe",
+        version: "0.0.1-preview.other.abc1234",
+        unvibe: { channel: "preview/other", commit: "abc1234full" },
+      },
+      {
+        "preview/other": {
+          name: "unvibe",
+          version: "0.0.1-preview.other.abc1234",
+          unvibe: { channel: "preview/other", commit: "abc1234full" },
+        },
+      },
+    );
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
       "preview/other",
@@ -606,6 +1014,13 @@ describe("runUpdateChannelFlow", () => {
       unvibe: { channel: "release" },
     });
     const runner = new FakeCommandRunner();
+    runner.enqueue({
+      cmd: "gh",
+      args: ["api", "repos/indigoviolet/unvibe/contents/package.json?ref=preview/feat-x"],
+      stdout: contentsStdout({ name: "unvibe", version: "0.0.1-preview.feat-x.abc1234" }),
+      stderr: "",
+      code: 0,
+    });
     runner.enqueue({ cmd: "npm", stdout: "", stderr: "network down", code: 1 });
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },

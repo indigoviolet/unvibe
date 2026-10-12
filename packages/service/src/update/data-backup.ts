@@ -88,11 +88,12 @@ export function hasBackup(dataDir: string, channel: string): boolean {
 }
 
 /**
- * Restore a channel's slot over the live data dir. Removes the live
- * database files first (never the slot), then copies the slot back.
+ * Copy a slot's files over the live data dir: remove the live database
+ * files first (a stale `-wal` must never shadow the copied main file),
+ * then copy the slot back. Never touches other slots.
  */
-export function restoreChannel(dataDir: string, channel: string): BackupResult {
-  const dir = channelSlotDir(dataDir, channel);
+export function seedFromSlot(dataDir: string, sourceChannel: string): BackupResult {
+  const dir = channelSlotDir(dataDir, sourceChannel);
   for (const name of dbFileNames(dataDir)) {
     try {
       fs.rmSync(path.join(dataDir, name), { force: true });
@@ -111,11 +112,20 @@ export function restoreChannel(dataDir: string, channel: string): BackupResult {
 }
 
 /**
+ * Restore a channel's own slot over the live data dir.
+ */
+export function restoreChannel(dataDir: string, channel: string): BackupResult {
+  return seedFromSlot(dataDir, channel);
+}
+
+/**
  * The rule, stated in `unvibe update` output after every switch so the
  * behaviour is never surprising.
  */
 export const DB_RULE =
   "DB rule: each channel keeps its own copy under channel-backups/ (migrations are " +
-  "forward-only, so one channel's migrated database is wrong for another). Switching backs " +
-  "up the old channel first, then restores the new channel's copy when one exists; " +
+  "forward-only, so one channel's migrated database is wrong for another) — switching backs " +
+  "up the old channel first, then restores the new channel's copy when one exists. " +
+  "A new preview never inherits another preview's database: it starts from the release " +
+  "copy (release-rc fallback), or the switch stops before installing unless --keep-data; " +
   "backups are never deleted.";

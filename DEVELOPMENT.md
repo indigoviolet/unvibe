@@ -279,7 +279,19 @@ unvibe start
 
 `update` refuses while the service runs (the backup needs a quiet store,
 and npm must not replace code under a live process) and reports the
-version before and after. Channel logic lives in plain
+version before and after. Updating to the already-installed channel is a
+no-op only when the installed and published commits match — otherwise it
+reinstalls in place (same database, still backed up first), which is the
+normal publish → try → fix → publish → update loop; `--list` flags a
+newer build on the installed row with both short shas and the build
+time. Installs that predate the `unvibe` package field map to their real
+channel from the version (`X.Y.Z` → `release`, `-rc.N` → `release-rc`,
+`-preview.<slug>.<sha>` → `preview/<slug>`); source checkouts stay
+unknown. The install is pinned with `npm --prefix` to the prefix this
+binary came from (derived from its own package path; npm defaults apply
+when the layout is unrecognised) and verified afterwards — a landing
+elsewhere fails loudly with the path checked and `npm prefix -g`, swapping
+no database. Channel logic lives in plain
 `packages/service/src/update/` — exactly `channels.ts` (listing, incl.
 the `UpdateChannel` shape: ref, kind, version, commit, source branch,
 build time, current), `install.ts` (global npm install of a ref) and
@@ -299,9 +311,27 @@ channel's migrated DB is wrong for another): each channel keeps its own
 copy under `<dataDir>/channel-backups/<slot>/` (`unvibe.db` plus
 `-wal`/`-shm` when present; legacy `unvibe.sqlite*` too). Switching
 backs up the old channel first, then restores the new channel's copy
-when one exists, otherwise keeps the live database. Backups are never
-deleted. `--keep-data` keeps the live database instead of restoring
-(e.g. to carry data across channels deliberately).
+when one exists. A new preview never inherits another preview's
+database: with no copy of its own it starts from the release copy
+(`release-rc` fallback), and the switch stops before installing when
+neither exists unless `--keep-data` is given; leaving
+`release`/`release-rc` (or a source checkout) with no copy keeps the
+live database. Backups are never deleted. `--keep-data` keeps the live
+database instead of restoring (e.g. to carry data across channels
+deliberately).
+
+Only the database files are per-channel. The rest of the data dir —
+`token`, per-review folders (`reviews/<owner>/<repo>/<id>/`),
+`worktrees/<review-id>/`, diagram cache — is shared across channels, so
+after a restore there can be leftover review folders and worktrees with
+no row in the restored database. That state is inert: the front screen
+lists reviews from the database (never from the filesystem), review ids
+are random per open (`rv_<12hex>`, so a restored database never
+addresses another channel's folders), and opening a review reuses a
+leftover worktree only when it already points at the wanted head commit,
+otherwise removing and re-adding it. Nothing there breaks `unvibe
+start`; it just costs disk until the owning channel's copy (which still
+references those reviews) is restored or the folders are removed by hand.
 
 No new environment variables.
 

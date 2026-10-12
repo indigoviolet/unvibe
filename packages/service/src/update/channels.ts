@@ -112,6 +112,8 @@ export function findInstalledPackagePath(scriptPath: string): string | null {
 
 interface ReleasePackageJson {
   version?: unknown;
+  /** Absent in source checkouts, which carry `"private": true` instead. */
+  private?: unknown;
   unvibe?: {
     channel?: unknown;
     sourceBranch?: unknown;
@@ -122,6 +124,27 @@ interface ReleasePackageJson {
 
 function asStringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** Seven-char commit for display, or `(unknown)` when absent. */
+export function shortCommit(commit: string | null): string {
+  return commit ? commit.slice(0, 7) : "(unknown)";
+}
+
+/**
+ * Channel for a hand-installed build that predates the `unvibe` field:
+ * `X.Y.Z` -> `release`, `X.Y.Z-rc.N` -> `release-rc`,
+ * `X.Y.Z-preview.<slug>.<sha>` -> `preview/<slug>`. Anything else -> null.
+ */
+export function inferChannelFromVersion(version: string): string | null {
+  if (/^\d+\.\d+\.\d+$/.test(version)) return "release";
+  if (/^\d+\.\d+\.\d+-rc\.\d+$/.test(version)) return "release-rc";
+  const m = /^\d+\.\d+\.\d+-preview\.([A-Za-z0-9._-]+)\.[A-Za-z0-9-]+$/.exec(version);
+  if (m) {
+    const channel = `preview/${m[1]}`;
+    return isChannelName(channel) ? channel : null;
+  }
+  return null;
 }
 
 /**
@@ -149,8 +172,15 @@ export function readInstalledBuild(
     const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8")) as ReleasePackageJson;
     const version = typeof pkg.version === "string" ? pkg.version : fallbackVersion;
     const rawChannel = pkg.unvibe?.channel;
-    const channel =
+    let channel =
       typeof rawChannel === "string" && isChannelName(rawChannel) ? rawChannel : null;
+    if (channel === null && pkg.private !== true && typeof pkg.version === "string") {
+      // Hand-installed build from before the `unvibe` field: infer the real
+      // channel from the version so its database backs up into (and
+      // restores from) the right slot. Source checkouts (`private: true`)
+      // stay unknown — they are not a channel.
+      channel = inferChannelFromVersion(pkg.version);
+    }
     return {
       version,
       channel,
@@ -245,7 +275,11 @@ export async function listChannels(
 export function formatChannelList(channels: UpdateChannel[], installed: InstalledBuild): string[] {
   const lines = ["Available channels:"];
   for (const c of channels) {
-    const head = `${c.current ? "* " : "  "}${c.ref}${c.current ? ` (installed, ${installed.version})` : c.version ? ` (${c.version})` : " (metadata unavailable)"}`;
+    let head = `${c.current ? "* " : "  "}${c.ref}${c.current ? ` (installed, ${installed.version})` : c.version ? ` (${c.version})` : " (metadata unavailable)"}`;
+    if (c.current && c.commit && c.commit !== installed.commit) {
+      const built = c.builtAt ? `, built ${c.builtAt.slice(0, 10)}` : "";
+      head += ` — newer build available (installed ${shortCommit(installed.commit)} vs ${c.commit.slice(0, 7)}${built})`;
+    }
     lines.push(head);
     if (!c.current && (c.sourceBranch || c.commit || c.builtAt)) {
       const at = c.commit ? ` @ ${c.commit.slice(0, 7)}` : "";
