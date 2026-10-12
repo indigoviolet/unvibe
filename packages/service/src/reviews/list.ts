@@ -8,6 +8,7 @@
  * endpoint stays fast for dozens of sessions (no gh/git calls here).
  */
 import type { Job, ReviewSummary, ReviewSnapshot } from "@unvibe/shared";
+import { isDefaultGuideTitle } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 
 export interface ListReviewsDeps {
@@ -42,7 +43,7 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 function titleFor(dataTitle: string, snapshot: ReviewSnapshot | null, branch: string): string {
   if (dataTitle.trim() !== "") return dataTitle;
   const root = snapshot?.pages?.find((p) => p.id === "root")?.title;
-  if (root && root.trim() !== "" && root !== "Guided review") return root;
+  if (root && root.trim() !== "" && !isDefaultGuideTitle(root)) return root;
   return branch;
 }
 

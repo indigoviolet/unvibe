@@ -91,7 +91,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ### 4.3 Pages
 - **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
-  - a label, but only where it matters: **"Guided review"** on the root page, **"Agent finding · <confidence>"** on a finding page;
+  - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page;
   - a **bookmark** icon (save or unsave the page);
   - the title.
 - **Trail:** a breadcrumb back to the root, on every page except the root.
@@ -233,7 +233,7 @@ Every card and every expansion card has the same controls:
 | Read / reviewed | Check in a circle | Right end of card controls; hunk and file headers |
 | Agent content vs the user's | "AI" or the user's initials on each message; teal for the agent, amber for the user's comments | Threads, hunk cards |
 
-- The only type labels are "Guided review" and "Agent finding".
+- The only type labels are "Guide" and "Agent finding".
 - Comments and expansions use the same header layout.
 - An element hidden with the `hidden` attribute must stay hidden even if its own style sets `display`. Two prototype bugs came from this.
 

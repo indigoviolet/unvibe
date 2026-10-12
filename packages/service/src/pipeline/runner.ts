@@ -27,7 +27,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, JOB_PRIORITY, looksLikeJson, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, looksLikeJson, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
@@ -1150,7 +1150,7 @@ export class Pipeline {
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
-        root = { id: "root", kind: "root", title: "Guided review", saved: false, cards: [] };
+        root = { id: "root", kind: "root", title: DEFAULT_GUIDE_TITLE, saved: false, cards: [] };
         draft.pages.unshift(root);
       }
       const existing = root.cards.find((c) => c.id === provisionalId);
@@ -1187,7 +1187,7 @@ export class Pipeline {
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
-        root = { id: "root", kind: "root", title: "Guided review", saved: false, cards: [] };
+        root = { id: "root", kind: "root", title: DEFAULT_GUIDE_TITLE, saved: false, cards: [] };
         draft.pages.unshift(root);
       }
       for (const c of applied.cards) {
