@@ -370,7 +370,12 @@ needed (that deviation is closed, not added).
   run with reason, click reveals; one-line never hidden; cited never
   hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
   `runner.ts:1383`, `diff.spec.ts` “hide uninteresting collapses runs”,
-  live runs: “hide violations: none”).
+  live runs: “hide violations: none”). Hunk replies tolerate format slips
+  (issue #99): bare/unfenced `{"hunk": …}` still yields summary +
+  `hiddenReason` (`shared/src/content/hunk.ts`, one helper for both call
+  sites); JSON-looking text is never stored, long fallbacks cut on a word
+  boundary, and a stored JSON-looking summary is treated as missing on
+  reuse (regenerated or cleared on the next summarize).
 - Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
   (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
