@@ -2,9 +2,11 @@
  * Managed clones (#27): repos Unvibe cloned itself into its own storage.
  *
  * - Layout: `<dataDir>/repos/<owner>/<name>` (beside the managed worktrees,
- *   never inside a user directory). Owner/name come from the shared URL
- *   parser, whose grammar makes them safe as path segments and as command
- *   arguments; `managedRepoDir` re-checks depth as defence in depth.
+ *   never inside a user directory), with lowercase-canonical segments so
+ *   every spelling of a repo maps to one directory and one row. Owner/name
+ *   come from the shared URL parser, whose grammar makes them safe as path
+ *   segments and as command arguments; `managedRepoDir` re-checks depth as
+ *   defence in depth.
  * - Clone: `gh repo clone <owner>/<name> <dir> -- --filter=blob:none`
  *   (blobless, not shallow: ingest needs the commit graph back to the merge
  *   base). `GITHUB_TOKEN` stays unset via the `runGh` wrapper (PRD §15) so
@@ -51,7 +53,11 @@ export function managedRepoDir(dataDir: string, owner: string, name: string): st
   if (!owner || !name || owner.includes("/") || owner.includes(path.sep) || name.includes("/") || name.includes(path.sep)) {
     throw new Error(`refusing unsafe managed path for "${owner}/${name}"`);
   }
-  return path.join(managedReposRoot(dataDir), owner, name);
+  // Canonical lowercase segments: `Acme/App` and `acme/app` are the same
+  // GitHub repo (and the same directory on case-insensitive filesystems),
+  // so every spelling maps to one directory and one row. The row keeps the
+  // first add's display casing; only the directory is canonical.
+  return path.join(managedReposRoot(dataDir), owner.toLowerCase(), name.toLowerCase());
 }
 
 /** True when `child` resolves inside `parent` (both resolved first). */
@@ -63,13 +69,51 @@ export function isPathInside(parent: string, child: string): boolean {
 /**
  * Throw unless `localPath` is a repo directory inside `<dataDir>/repos`
  * (at least `<owner>/<name>` deep, so the root itself can never qualify).
+ * Symlinks are resolved, not just normalised: a symlinked owner directory
+ * (or repo dir) would pass a lexical check while `rm` acts on the link
+ * target, so any symlink on the path below the managed root refuses.
  * The remove path calls this before any `rm`.
  */
 export function assertManagedPath(dataDir: string, localPath: string): string {
   const resolved = path.resolve(localPath);
-  const rel = path.relative(path.resolve(managedReposRoot(dataDir)), resolved);
+  const root = path.resolve(managedReposRoot(dataDir));
+  const rel = path.relative(root, resolved);
   if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel) || rel.split(path.sep).length < 2) {
     throw new Error(`refusing to delete outside managed clones: ${localPath}`);
+  }
+  // The managed root itself must be a real directory inside the data dir
+  // (not a symlink elsewhere); then every existing component below it must
+  // not be a symlink either. Missing components (fresh adds) have nothing
+  // to resolve, so only existing ones are checked.
+  let rootReal: string | null = null;
+  try {
+    rootReal = fs.realpathSync(root);
+  } catch {
+    rootReal = null;
+  }
+  if (rootReal !== null) {
+    let dataReal: string | null = null;
+    try {
+      dataReal = fs.realpathSync(path.resolve(dataDir));
+    } catch {
+      dataReal = null;
+    }
+    if (dataReal === null || rootReal !== path.join(dataReal, "repos")) {
+      throw new Error(`refusing to delete: ${root} is not a real directory inside the data dir`);
+    }
+    let acc = rootReal;
+    for (const seg of rel.split(path.sep)) {
+      acc = path.join(acc, seg);
+      let st: fs.Stats;
+      try {
+        st = fs.lstatSync(acc);
+      } catch {
+        break;
+      }
+      if (st.isSymbolicLink()) {
+        throw new Error(`refusing to delete through a symlink: ${acc}`);
+      }
+    }
   }
   return resolved;
 }
@@ -252,7 +296,17 @@ export async function ensureManagedClone(
     const argv = cloneArgv(owner, name, tmp);
     let res: RunResult;
     try {
-      res = await runGh(deps.runner, argv, { args: argv, cwd: ownerDir });
+      // No terminal in the service: disable prompting (a missing login
+      // must fail fast into the mapped 409, never hang). `runGh` keeps
+      // GITHUB_TOKEN unset underneath (PRD §15).
+      // The clone itself stays unbounded: blobless keeps it short, and a
+      // killed clone is safe (temp + rename), while a timeout would fail
+      // slow-but-healthy clones of large repos.
+      res = await runGh(deps.runner, argv, {
+        args: argv,
+        cwd: ownerDir,
+        env: { GIT_TERMINAL_PROMPT: "0", GH_PROMPT_DISABLED: "1" },
+      });
     } catch (err) {
       rmDir(tmp);
       throw new CloneError(`clone failed for ${owner}/${name}: ${(err as Error).message.slice(0, 200)}`, 502);
@@ -284,7 +338,7 @@ export async function ensureManagedClone(
 // --- add (check → clone → remember, atomic per path) --------------------
 
 export interface AddDeps extends CloneDeps {
-  repos: Pick<RepoStore, "getByPath" | "upsert">;
+  repos: Pick<RepoStore, "getByPath" | "getManagedAnyCase" | "upsert">;
 }
 
 /**
@@ -319,6 +373,17 @@ export async function addManagedRepo(
       }
       return { repo: existing, reused: true };
     }
+    // A managed row under another spelling (pre-canonicalisation rows, or
+    // a concurrent add that normalised differently): reuse it when its
+    // checkout is the expected clone, so one directory never gains a
+    // second row.
+    const priorSpelling = deps.repos.getManagedAnyCase(owner, name);
+    if (
+      priorSpelling &&
+      (await cloneTargetState(deps.runner, priorSpelling.localPath, owner, name)) === "expected"
+    ) {
+      return { repo: priorSpelling, reused: true };
+    }
     await ensureManagedClone(deps, owner, name);
     // Re-check after the clone: the winner of a lost rename race (or an
     // outside actor) may have remembered the row meanwhile.
@@ -341,19 +406,32 @@ export async function addManagedRepo(
 /** Freshness window: listings arriving together share one fetch. */
 export const MANAGED_FETCH_FRESH_MS = 30_000;
 
+/**
+ * Failure back-off (shorter than the success window): a failed fetch keeps
+ * reporting its note without re-spawning git, then retries. Without this,
+ * an offline start page would either hammer `git fetch` or go silent.
+ */
+export const MANAGED_FETCH_FAIL_BACKOFF_MS = 10_000;
+
+/** Bound for a background freshness fetch: expiry degrades to the note. */
+export const MANAGED_FETCH_TIMEOUT_MS = 60_000;
+
 interface FetchEntry {
   at: number;
   inflight: Promise<string | null> | null;
+  /** Last outcome: null after a successful fetch, the note after a failed one. */
+  note: string | null;
 }
 
 const fetchState = new Map<string, FetchEntry>();
 
 /**
  * `git fetch origin` on a managed clone, best effort. Returns null when the
- * fetch ran (or was fresh/in-flight and shared), or a human note when it
+ * fetch ran cleanly (or was fresh and shared), or a human note when it
  * failed — the caller degrades to stale data with that note instead of
- * failing. Never throws; never touches user checkouts (the route only calls
- * this for `managed` repos).
+ * failing. Callers joining an in-flight fetch share its outcome, note
+ * included. Never throws; never touches user checkouts (the route only
+ * calls this for `managed` repos).
  */
 export async function refreshManagedCheckout(
   runner: CommandRunner,
@@ -363,21 +441,22 @@ export async function refreshManagedCheckout(
   if (repo.managed !== true) return null;
   const entry = fetchState.get(repo.id);
   if (entry) {
-    if (entry.inflight) {
-      try {
-        await entry.inflight;
-        return null;
-      } catch {
-        return fetchNote();
-      }
-    }
-    if (now - entry.at < MANAGED_FETCH_FRESH_MS) return null;
+    if (entry.inflight) return entry.inflight;
+    const age = now - entry.at;
+    if (entry.note === null && age < MANAGED_FETCH_FRESH_MS) return null;
+    if (entry.note !== null && age < MANAGED_FETCH_FAIL_BACKOFF_MS) return entry.note;
   }
-  const current: FetchEntry = { at: now, inflight: null };
+  const current: FetchEntry = { at: now, inflight: null, note: null };
   fetchState.set(repo.id, current);
   current.inflight = (async (): Promise<string | null> => {
     try {
-      const res = await runner.run("git", { args: ["fetch", "origin"], cwd: repo.localPath });
+      const res = await runner.run("git", {
+        args: ["fetch", "origin"],
+        cwd: repo.localPath,
+        timeoutMs: MANAGED_FETCH_TIMEOUT_MS,
+        // No terminal in the service: never block on a credential prompt.
+        env: { GIT_TERMINAL_PROMPT: "0" },
+      });
       if (res.code !== 0) return fetchNote();
       return null;
     } catch {
@@ -387,6 +466,7 @@ export async function refreshManagedCheckout(
   try {
     const note = await current.inflight;
     current.at = Date.now();
+    current.note = note;
     return note;
   } finally {
     current.inflight = null;
@@ -407,9 +487,11 @@ export interface RemovableRepos {
 }
 
 /**
- * Forget a repo. Refuses (409) while reviews reference it — silently
- * orphaning their worktrees is not acceptable. Deletes the clone directory
- * only for managed repos, guarded to inside `<dataDir>/repos`.
+ * Forget a repo. Refuses (409) while reviews reference it — for managed
+ * clones AND user checkouts alike, since orphaned reviews would 404 on
+ * refresh/submit. Deletes the clone directory only for managed repos,
+ * guarded to inside `<dataDir>/repos`, and only forgets the row once the
+ * directory is gone.
  */
 export function removeRepo(
   dataDir: string,
@@ -420,20 +502,47 @@ export function removeRepo(
   if (!repo) {
     throw new CloneError("unknown repo", 404);
   }
-  if (repo.managed === true) {
-    const n = repos.countReviews(id);
-    if (n > 0) {
-      throw new CloneError(
-        `repo ${repo.owner}/${repo.name} still has ${n} review${n === 1 ? "" : "s"} — delete ${n === 1 ? "it" : "them"} first, then remove the repo`,
-        409,
-      );
-    }
-    const resolved = assertManagedPath(dataDir, repo.localPath);
-    rmDir(resolved);
-    repos.remove(id);
-    return { removedClone: true };
+  const label = `${repo.owner}/${repo.name}`;
+  let reviewCount: number;
+  try {
+    reviewCount = repos.countReviews(id);
+  } catch (err) {
+    // Fail closed: a query error must never read as "no reviews" on a
+    // destructive path.
+    throw new CloneError(
+      `cannot verify whether ${label} has reviews (${(err as Error).message}): refusing to remove it`,
+      500,
+    );
   }
-  // User checkout: forget the row, never touch the disk.
+  if (reviewCount > 0) {
+    throw new CloneError(
+      `repo ${label} still has ${reviewCount} review${reviewCount === 1 ? "" : "s"} — delete ${reviewCount === 1 ? "it" : "them"} first, then remove the repo`,
+      409,
+    );
+  }
+  if (repo.managed !== true) {
+    // User checkout: forget the row, never touch the disk.
+    repos.remove(id);
+    return { removedClone: false };
+  }
+  const resolved = assertManagedPath(dataDir, repo.localPath);
+  const existed = fs.existsSync(resolved);
+  if (existed) removeDirStrict(resolved, `managed clone of ${label}`);
   repos.remove(id);
-  return { removedClone: false };
+  return { removedClone: existed };
+}
+
+/**
+ * Delete a directory, surfacing failures. The remove path keeps the DB row
+ * when this throws, so a half-deleted clone is retried, never forgotten.
+ */
+function removeDirStrict(dir: string, what: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (err) {
+    throw new CloneError(
+      `could not delete ${what} at ${dir} (${(err as Error).message}): the repo was kept — fix the filesystem and try again`,
+      500,
+    );
+  }
 }

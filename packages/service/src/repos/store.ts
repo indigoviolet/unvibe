@@ -71,16 +71,31 @@ export class RepoStore {
     return row ? rowToRepo(row) : null;
   }
 
-  /** How many reviews belong to a repo (remove refuses while > 0). */
+  /**
+   * Managed row for owner/name in any casing. The managed directory is
+   * lowercase-canonical, but rows written before canonicalisation (or
+   * remembered under another spelling) may differ in case only — match
+   * them so every spelling reuses one row.
+   */
+  getManagedAnyCase(owner: string, name: string): Repo | null {
+    const row = this.db
+      .prepare(
+        `SELECT ${REPO_COLS} FROM repos WHERE owner COLLATE NOCASE = ? AND name COLLATE NOCASE = ? AND managed = 1`,
+      )
+      .get(owner, name) as Parameters<typeof rowToRepo>[0] | undefined;
+    return row ? rowToRepo(row) : null;
+  }
+
+  /**
+   * How many reviews belong to a repo (remove refuses while > 0). Throws
+   * on query errors: callers on destructive paths must fail closed, never
+   * read an error as "no reviews".
+   */
   countReviews(repoId: string): number {
-    try {
-      const row = this.db
-        .prepare("SELECT COUNT(*) AS n FROM reviews WHERE repo_id = ?")
-        .get(repoId) as { n: number } | undefined;
-      return row?.n ?? 0;
-    } catch {
-      return 0;
-    }
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM reviews WHERE repo_id = ?")
+      .get(repoId) as { n: number } | undefined;
+    return row?.n ?? 0;
   }
 
   /** Forget a repo (the row only; clone deletion is the caller's job). */
