@@ -94,6 +94,15 @@ function findBlockIn(
       if (block.id === blockId || block.id === short) {
         return { cardId: ann.id, pageId: "", cardTitle: ann.anchor.quotedText, block };
       }
+      // Aside inner blocks, like page cards above (#116: citations and
+      // anchors address them the same way in both hosts).
+      if (block.type === "aside") {
+        for (const inner of block.inner) {
+          if (inner.id === blockId || inner.id === short) {
+            return { cardId: ann.id, pageId: "", cardTitle: ann.anchor.quotedText, block: inner };
+          }
+        }
+      }
     }
   }
   return null;
@@ -138,6 +147,13 @@ export function cardTextFor(snapshot: ReviewSnapshot, anchor: Annotation["anchor
           return `### ${head} [[card:${card.id}]]\n\n${body}`;
         }
       }
+    }
+    // Explanations are cards too (#116): render the whole host expansion
+    // so a nested turn sees structure, not just one block.
+    const hostExp = (snapshot.annotations ?? []).find((a) => a.id === found.cardId);
+    if (hostExp?.type === "expansion" && hostExp.expansion) {
+      const body = hostExp.expansion.blocks.map((b) => blockPlainText(b)).join("\n\n");
+      return `### ${hostExp.anchor.quotedText} [[ann:${hostExp.id}]]\n\n${body}`;
     }
     return blockPlainText(found.block);
   }

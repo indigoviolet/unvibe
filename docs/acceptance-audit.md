@@ -229,7 +229,10 @@ needed (that deviation is closed, not added).
 
 - Kinds (root/concept/finding/opened-expansion), root+finding labels only
   — met (walk shows “GUIDED REVIEW”; `reply-format.md` §7 finding refs).
-- Header (label, bookmark, title) — met (`guide.spec.ts`).
+- Header (label only where it matters, bookmark right-aligned on the
+  title line — #118, deliberately off-prototype; no empty label row) —
+  met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header cases,
+  `guide.spec.ts` finding-label + saved-bookmark cases).
 - Trail breadcrumb off-root — met (`guide.spec.ts` “pages navigate”).
 - Contents box (cards jump + linked pages, read muted, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
@@ -340,7 +343,16 @@ needed (that deviation is closed, not added).
 - Snap to words, trim, highlight matches — met (`e2e/comments.spec.ts`
   “selection snaps to whole words”).
 - Toolbar Explain / Ask… / Note; no examples/diagrams there; appears only
-  on selection-finish — met (`comments.spec.ts`).
+  on selection-finish — met (`comments.spec.ts`). Inside an explanation
+  the same toolbar appears (#116); inside second-opinion reasoning and
+  thread replies it does not (neither is an anchor host —
+  `SelectionToolbar.test.tsx`).
+- Selections inside an explanation anchor to the expansion's block
+  (`<expansion>#<block>`) for all three actions; the nested explanation,
+  thread or note renders under that block, nests to any depth by the same
+  mechanism, and survives reload with its highlight
+  (`actions-expansion-nesting.test.ts`, `ExpansionNesting.test.tsx`,
+  `e2e/expansion-nesting-service.spec.ts`).
 
 ### §4.7 Explanations — all met
 
@@ -368,6 +380,11 @@ needed (that deviation is closed, not added).
   `guide/inflight.test.ts` anchor-entry cases). First and later Explains
   take the same code path; the first only looks different because agent
   session setup stretches the patch-before-response window.
+- Explanations nest (#116): an Explain on text inside an explanation
+  anchors to the expansion's block and renders under it, to any depth;
+  Ask/Note there behave the same. Citations to expansion blocks validate
+  (`card:<expansion>#<block>`). Closed nested explanations and stale
+  anchors use the same footnote chips as card-level ones.
 
 ### §4.8 Comments — all met
 

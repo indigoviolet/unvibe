@@ -61,6 +61,10 @@ function elementOf(node: Node | null): HTMLElement | null {
  * reuse (Explain cards resolve the same hosts).
  */
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
+  // Second-opinion reasoning is attached content, not a host (#116): its
+  // blocks live on the result, not on any card or expansion, so the
+  // service has no block to anchor to. No toolbar there.
+  if (el.closest("[data-so]")) return null;
   const top = el.closest("#page [data-top], #right [data-top]");
   if (top) {
     const id = (top as HTMLElement).dataset.top ?? "";

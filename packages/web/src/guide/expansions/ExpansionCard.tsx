@@ -18,15 +18,19 @@
  */
 import type { Annotation, Page } from "@unvibe/shared";
 import { Fragment } from "react";
+import { GuideBlockThreads } from "../../comments/GuideThreads.js";
 import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
 import { api, friendlyError } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
 import { performAction, performInsertAction } from "../actions.js";
+import { blockThreads } from "../annotations.js";
 import { BlockView } from "../BlockView.js";
 import { busyForExpansion, inflightLabel, isFollowupAnswer } from "../inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
 import { isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
+import { expansionsForBlock } from "./ExpansionHighlights.js";
+import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansionUtils.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
 type Depth = (typeof DEPTH_ORDER)[number];
@@ -102,11 +106,19 @@ interface Props {
   lookupPage: (pageId: string) => Page | undefined;
   onOpenPage: (pageId: string) => void;
   onFollowUp: (cardId: string, blockId: string, index: number) => void;
+  /**
+   * Ancestor expansion ids (#116, cycle guard). Annotations form a DAG —
+   * a child always points at an already-stored host, so a cycle cannot be
+   * created — but corrupt data must not recurse forever. A nested card
+   * whose id is already above it renders nothing.
+   */
+  ancestorIds?: string[];
 }
 
 /** Full expansion card: header + standard controls + blocks. */
-export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onFollowUp }: Props) {
+export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onFollowUp, ancestorIds }: Props) {
   const snapshot = useReview((s) => s.snapshot);
+  const annotations = snapshot?.annotations ?? [];
   const inflight = useReview((s) => s.inflight);
   const jobs = snapshot?.jobs ?? [];
   const body = expansion.expansion;
@@ -341,19 +353,48 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         </div>
       ) : null}
       <div className="exp-b">
-        {body.blocks.map((block) => (
-          <Fragment key={block.id}>
-            <BlockView
-              block={block}
-              level={body.level}
-              threads={[]}
-              lookupPage={lookupPage}
-              cardId={expansion.id}
-              onOpenPage={onOpenPage}
-              onFollowUp={(blockId, index) => onFollowUp(expansion.id, blockId, index)}
-            />
-          </Fragment>
-        ))}
+        {body.blocks.map((block) => {
+          // Annotations on text inside this expansion (#116) render under
+          // their block exactly like page-card annotations do: threads
+          // (open ones plus the pending Ask/Note composer) via
+          // GuideBlockThreads, open explanations as nested cards. Closed
+          // explanations and promoted links become footnote chips on the
+          // citations line through BlockView. Recursion nests to any
+          // depth by the same mechanism (one annotation per level).
+          const threads = blockThreads(annotations, expansion.id, block.id);
+          const exps = expansionsForBlock(annotations, expansion.id, block.id);
+          const open = exps.filter(isOpenExpansion);
+          const footnotes = exps.filter((e) => isClosedExpansion(e) || isPromotedLink(e));
+          const below = [...(ancestorIds ?? []), expansion.id];
+          return (
+            <Fragment key={block.id}>
+              <BlockView
+                block={block}
+                level={body.level}
+                threads={threads}
+                footnotes={footnotes}
+                lookupPage={lookupPage}
+                cardId={expansion.id}
+                onOpenPage={onOpenPage}
+                onFollowUp={(blockId, index) => onFollowUp(expansion.id, blockId, index)}
+              />
+              <GuideBlockThreads reviewId={reviewId} cardId={expansion.id} blockId={block.id} />
+              {open
+                .filter((e) => !below.includes(e.id))
+                .map((e) => (
+                  <ExpansionCard
+                    key={e.id}
+                    reviewId={reviewId}
+                    expansion={e}
+                    lookupPage={lookupPage}
+                    onOpenPage={onOpenPage}
+                    onFollowUp={onFollowUp}
+                    ancestorIds={below}
+                  />
+                ))}
+            </Fragment>
+          );
+        })}
       </div>
       {(secondOpinions).map((so) => (
         <SecondOpinionBlock
