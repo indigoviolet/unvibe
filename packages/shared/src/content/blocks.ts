@@ -92,3 +92,64 @@ export function findDiagramBySource(snapshot: BlockSnapshot, source: string): Di
   }
   return null;
 }
+
+/**
+ * Suffix for the second, third, … occurrence of a repeated block ID.
+ * First occurrence keeps its ID, so anchors made before a duplicate
+ * existed keep pointing at the same block.
+ */
+function nextSuffixedId(used: Set<string>, base: string): string {
+  let n = 2;
+  let id = `${base}-c${n}`;
+  while (used.has(id)) {
+    n += 1;
+    id = `${base}-c${n}`;
+  }
+  return id;
+}
+
+/**
+ * An ID based on `base` that no top-level block in `blocks` uses (#116).
+ * Returns `base` itself when it is free, else `base-c2`, `base-c3`, ….
+ */
+export function freshBlockId(blocks: Block[], base: string): string {
+  const used = new Set(blocks.map((b) => b.id));
+  if (!used.has(base)) return base;
+  return nextSuffixedId(used, base);
+}
+
+/**
+ * Make top-level block IDs unique within one stored body (#116).
+ *
+ * `parseCards` numbers blocks `b1, b2, …` per card, so flattening a
+ * multi-card reply (`cards.flatMap((c) => c.blocks)`) into one body — an
+ * explanation, a follow-up answer, second-opinion reasoning — repeats
+ * IDs. Two blocks sharing an ID match one anchor, and the annotation
+ * renders under both. Run once when the body is first stored: the first
+ * occurrence keeps its ID, later ones take `-c2`, `-c3`, … (aside inner
+ * IDs, `<parent>-bN`, move with their renamed parent). Rewrites preserve
+ * IDs, so anchors hosted on a block still find it afterwards; a rewrite
+ * that removes the block takes the existing stale-anchor footnote path.
+ */
+export function dedupeBlockIds(blocks: Block[]): Block[] {
+  const used = new Set<string>();
+  return blocks.map((b) => {
+    if (!used.has(b.id)) {
+      used.add(b.id);
+      return b;
+    }
+    const id = nextSuffixedId(used, b.id);
+    used.add(id);
+    if (b.type === "aside") {
+      const prefix = `${b.id}-`;
+      return {
+        ...b,
+        id,
+        inner: b.inner.map((ib) =>
+          ib.id.startsWith(prefix) ? { ...ib, id: `${id}-${ib.id.slice(prefix.length)}` } : ib,
+        ),
+      };
+    }
+    return { ...b, id };
+  });
+}

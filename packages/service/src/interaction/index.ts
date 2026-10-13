@@ -34,6 +34,7 @@ export {
   hasPrinciple,
   mergeDepthText,
   markStaleAnchors,
+  withFreshAsideId,
   type CardTarget,
 } from "./cards.js";
 export {

@@ -4,7 +4,8 @@
  * Threads themselves are a later milestone (comments agent). Until then:
  * - `blockThreads(annotations, cardId, blockId)` returns the thread
  *   annotations anchored on the block. Anchors store `cardId#blockId`
- *   (service form) or a bare block id (prototype form); both match.
+ *   (service form, exact owner + block match — #116); the legacy
+ *   prototype bare block ID form no longer matches.
  * - `onOpenBlockThread` is the seam the threads milestone plugs into.
  */
 import { useMemo } from "react";
