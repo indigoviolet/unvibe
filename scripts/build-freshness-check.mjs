@@ -29,7 +29,11 @@ const SKIP = "sources up-to-date, skipping";
 
 function run(cmd, args, timeoutMs = 600_000) {
   const r = spawnSync(cmd, args, { cwd: ROOT, encoding: "utf8", timeout: timeoutMs });
-  return { status: r.status ?? 1, out: (r.stdout ?? "") + (r.stderr ?? "") };
+  // mise colours the `[task]` prefix on CI runners even without a TTY;
+  // strip the escape codes so the SKIP match sees plain text.
+  // eslint-disable-next-line no-control-regex
+  const out = ((r.stdout ?? "") + (r.stderr ?? "")).replace(/\u001b\[[0-9;]*m/g, "");
+  return { status: r.status ?? 1, out };
 }
 
 let failures = 0;
