@@ -6,11 +6,11 @@
 import { expect, test } from "./network-guard.js";
 
 test("opening a PR navigates at once to a loading page, then the guide appears", async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem("unvibe.mock.createReviewHold", "1");
-  });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // Arm the hold once, after load. An init script would run again on the
+  // reload below and re-arm it, racing the release (flaky about 1 run in 20).
+  await page.evaluate(() => localStorage.setItem("unvibe.mock.createReviewHold", "1"));
   // Open a PR by number (mock createReview returns loading while held).
   await page.getByLabel("Open a PR by URL or number").fill("5020");
   await page.getByRole("button", { name: "Open PR" }).click();
