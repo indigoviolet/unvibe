@@ -1,6 +1,6 @@
 /**
  * The reader job retries once when its review tools fail to connect (issue
- * #146). On `main` only fork jobs (`runInFork`) retried on a fresh session
+ * #146, plus the repair-prompt record from #124). On `main` only fork jobs (`runInFork`) retried on a fresh session
  * after a turn observably hit a dead review-MCP connection
  * (`DegradedConnError`); the reader had no attempt loop, so the same failure
  * there failed the guide outright.
@@ -149,7 +149,7 @@ function rootCardIds(ctx: { reviews: { getSnapshot(id: string): ReviewSnapshot |
   return (ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards ?? []).map((c) => c.id);
 }
 
-describe("reader retry (#146)", () => {
+describe("reader retry (#146) + repair record (#124)", () => {
   it("a dead connection on the first attempt retries once on a fresh session and builds one guide", { timeout: 90000 }, async () => {
     const { agents, mcp } = hittingRunner([CHATTER_WITH_CARD, MINIMAL_READER]);
     const { app, ctx, id } = await openReview(agents, mcp);
@@ -201,6 +201,52 @@ describe("reader retry (#146)", () => {
       await waitFor(() => rootCardIds(ctx, id).length > 0, 60000);
       expect(rootCardIds(ctx, id).sort()).toEqual(["central", "problem"]);
       expect(agents.readerPrompts()).toHaveLength(3);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a citation repair turn is kept on the job's stored prompt (#124)", { timeout: 90000 }, async () => {
+    // The repair prompt names the failed citations, so the Debug page shows
+    // what failed (prompt wording, an ID shape, or the validator).
+    const badReader = `## The problem
+
+Body cites [[diff:nope:1-2]] and [[diff:nope:3-4]].
+
+## The central change
+
+The central paragraph.
+
+\`\`\`json
+{"cardIds": ["problem", "central"]}
+\`\`\`
+`;
+    const agents = new FakeAgentRunner([
+      { match: "Some citations in your previous reply", events: textEvents(MINIMAL_READER) },
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(badReader) },
+    ]);
+    const { app, ctx } = await createApp("tok", { agents });
+    try {
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId: "demo" },
+      } as never);
+      expect(created.statusCode).toBe(201);
+      const id = (created.json() as ReviewSnapshot).review.id;
+      // The repair turn ran and the guide landed.
+      await waitFor(() => rootCardIds(ctx, id).length > 0, 60000);
+      expect(agents.prompts.filter((p) => p.text.includes("# Reader task"))).toHaveLength(1);
+      expect(agents.prompts.some((p) => p.text.includes("Some citations in your previous reply"))).toBe(true);
+      const jobId = readerJobOf(ctx, id);
+      await waitForJob(ctx, jobId);
+      expect(ctx.jobs.get(jobId)?.state).toBe("done");
+      const snapshot = ctx.jobs.get(jobId)?.promptSnapshot ?? "";
+      expect(snapshot).toContain("--- repair turn ---");
+      expect(snapshot).toContain("diff:nope:1-2");
+      expect(snapshot).toContain("diff:nope:3-4");
     } finally {
       await app.close();
     }

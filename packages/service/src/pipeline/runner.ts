@@ -1394,12 +1394,16 @@ export class Pipeline {
                   .join("\n") +
                 anchorProblem +
                 `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
+              // #124: the repair prompt names the failed citations, so keep
+              // it on the job's stored prompt — the Debug page then shows
+              // what failed (prompt wording, an ID shape, or the validator).
+              ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
               const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
                 ctx.reportText(d),
               );
               usage.inputTokens += repair.usage.inputTokens;
-                  usage.cachedReadTokens += repair.usage.cachedReadTokens;
-                  usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
+              usage.cachedReadTokens += repair.usage.cachedReadTokens;
+              usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
               usage.outputTokens += repair.usage.outputTokens;
               ctx.reportUsage(repair.usage);
               throwIfMcpRefusal(repair.text);
