@@ -85,7 +85,10 @@ export async function registerFileSlices(app: FastifyInstance, ctx: ServiceConte
       const total = slice.totalLines ?? 0;
       return reply
         .code(400)
-        .send({ error: `lines ${start}-${end} are outside ${relPath} (${total} lines)` });
+        // `totalLines` rides along so the caller learns the file end
+        // without a second read (the diff expander hides its edge
+        // controls once the range proves past the end).
+        .send({ error: `lines ${start}-${end} are outside ${relPath} (${total} lines)`, totalLines: total });
     }
     const body: FileSliceResponse = {
       path: relPath,

@@ -534,6 +534,16 @@ export interface FileSliceResponse {
   lines: string[];
 }
 
+/**
+ * Past-the-end `GET …/file` answers 400 with the file end attached, so
+ * the caller learns it without a second read:
+ * `{ error, totalLines }`.
+ */
+export interface FileSliceRangeError {
+  error: string;
+  totalLines: number;
+}
+
 // --- hunks ---------------------------------------------------------------
 
 export interface UpdateHunkRequest {
