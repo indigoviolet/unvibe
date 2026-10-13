@@ -31,7 +31,9 @@ test("a PR row with a review shows a marker and opens that review (#149)", async
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // The authoring row for PR #5020 already has a review (the demo session).
-  const row = page.locator(".ci", { has: page.getByRole("link", { name: "Open PR #5020 on GitHub" }) });
+  const row = page
+    .getByTestId("pr-block")
+    .locator(".ci", { has: page.getByRole("link", { name: "Open PR #5020 on GitHub" }) });
   await expect(row.locator(".prtag", { hasText: "review" })).toBeVisible();
   // Clicking the row's title opens the existing review, not a new one.
   await row.getByRole("button", { name: "Unfold obsolete folded response header values" }).click();

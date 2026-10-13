@@ -1708,6 +1708,40 @@ items noticed while passing through (not verified, listed only):
   `StartPage.requested.test.tsx` (authoring sort, one control below
   Reviews, filtered-empty with Show all, branch ages, Reviews ignores the
   window), `e2e/start-lists.spec.ts`.
+- **#148 (start page, §4.2):** the PR and branch lists the filter governs
+  are one delineated block ("PRs and branches": bordered container with a
+  heading row) whose boundary matches exactly what the filter covers;
+  Reviews and the PR opener stay outside it. The recency selector sits at
+  the block's top right, compact (the window alone with an accessible
+  label). The last-fetch time is a refresh icon in the same row — the
+  same load the Retry button triggers — spinning while fetching (still
+  under reduced motion) with the time in its tooltip, so no text line
+  ever shifts the layout. Filtered-empty states with Show all keep
+  working inside the block. Evidence: `e2e/start-block.spec.ts` (block
+  boundary, compact filter, refresh click → spinning → settled tooltip,
+  filtered-empty way back), `StartPage.kept.test.tsx` (tooltip states),
+  `docs/screenshots/148-wide-light.png`,
+  `docs/screenshots/148-wide-dark.png`,
+  `docs/screenshots/148-narrow-light.png`,
+  `docs/screenshots/148-narrow-dark.png` (looked at).
+- **#149 (start page + reviews, §4.2):** one review per PR and one per
+  branch in a repo. `POST /api/reviews` reuses the existing review for
+  the same source (repo + PR number, or repo + branch) whether loading,
+  failed or ready — answering 200 with `reused: true` (new
+  `CreateReviewResponse` contract) instead of creating a second review —
+  and opening it counts as opening (front-screen order). A PR review and
+  a branch review of the same branch are different sources. Stored
+  duplicates resolve to the most recently active review; two concurrent
+  creates for one source share a single insert (per-key in-flight slot
+  over the #92 pending map). New commits still surface through the
+  existing review's refresh ("new commits"), never a fork. PR/branch
+  list rows that already have a review carry its id (service
+  `repoChanges` + mock alike) and show a small "review" marker ("new
+  commits" alongside when stale); clicking the row opens that review
+  directly. Evidence: `test/reviews-async.test.ts` (ready-PR reuse,
+  branch reuse, PR-vs-branch distinct, concurrent creates → one row),
+  `test/changes-pr-branch.test.ts` (row markers, PR review does not
+  mark its branch), `e2e/open-review.spec.ts` (marker + direct open).
 - **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
   in the quiet meta style with the diff add/delete colours, omitted when
   unknown; thousands separators, "1 file" singular. Evidence:

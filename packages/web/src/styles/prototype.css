@@ -327,6 +327,23 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
 .divider { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 30px 0 4px; }
 /* Start page (#95): quiet label for the review-request sub-groups under a divider. */
 .subhead { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 10px 0 2px; }
+/* Start page (#148): the PR + branch lists the recency filter governs are
+   one delineated block, with the filter and the refresh icon in its
+   heading row. The heading row is fixed-height with a fixed-size icon
+   button, and the spin is a transform on the icon only, so nothing in the
+   block shifts while fetching. */
+.prblock { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 2px 14px 12px; margin-top: 18px; }
+.prblock .divider { margin-top: 14px; }
+.prblock-head { display: flex; align-items: center; gap: 8px; min-height: 30px; margin-top: 6px; }
+.prblock-title { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prblock-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.prblock-tools select.tbtn { font-size: 12px; padding: 2px 6px; max-width: 160px; }
+.spin { display: inline-grid; place-items: center; animation: prspin 1s linear infinite; }
+@keyframes prspin { to { transform: rotate(360deg); } }
+/* Reduced motion: the refresh icon stays still while fetching (the tooltip
+   still names the state). The working-dots / job-pill rule below is owned
+   by #144 and untouched. */
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 20px; margin: 14px 0; position: relative; }
 .chead { display: flex; align-items: center; gap: 4px; margin-left: -10px; }
 .chead h2.ct { font-family: var(--serif); font-size: 21px; font-weight: 600; margin: 0; text-wrap: balance; flex: 1; min-width: 0; }

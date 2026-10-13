@@ -75,19 +75,31 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 ### 4.2 Start page
 - A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
-- For the selected repo:
+- For the selected repo, the PR and branch lists form one delineated
+  block ("PRs and branches") whose boundary matches exactly what the
+  recency filter covers:
   - **PRs you're authoring:** `gh pr list --author @me`, newest first;
   - **PRs waiting on your review:** `gh pr list --search "review-requested:@me"`
     split into **requested of you** (direct, `user-review-requested:@me`) and
     **requested of your team** (the rest, with team names), each newest
     first;
-  - one remembered recency filter (1d, 3d, 1w, 2w, All) below Reviews
-    applies to every list below it by last update: every PR list and
-    **recent branches** (local and remote, by last commit date, newest
-    first with the commit age on each row); a list the filter empties
-    names its window with a way back to All;
-  - **reviews you've opened before**, with their unread and stale state ("new commits · Update"),
-    ordered by recent activity, unfiltered by the recency filter.
+  - **recent branches** (local and remote, by last commit date, newest
+    first with the commit age on each row);
+  - one remembered recency filter (1d, 3d, 1w, 2w, All) at the block's
+    top right applies to every list in the block by last update; a list
+    the filter empties names its window with a way back to All;
+  - a refresh icon beside the filter re-fetches the lists (spinning
+    while fetching, still under reduced motion), with the last-fetch
+    time in its tooltip instead of a text line.
+- Opening a PR or branch that already has a review opens that review:
+  one review per PR and one per branch in a repo (a PR review and a
+  branch review of the same branch are different). Rows that already
+  have a review say so, and clicking one opens it rather than starting
+  a new review. When the source has new commits, the existing review
+  opens with the refresh it already offers ("new commits · Update").
+- **reviews you've opened before**, with their unread and stale state ("new commits · Update"),
+  ordered by recent activity, unfiltered by the recency filter, outside
+  the block.
 - PR rows show the head branch, a relative update time and the diff size
   (lines added and removed, files changed); where a row names a GitHub PR,
   its number links to the PR page (new tab) without opening the review.

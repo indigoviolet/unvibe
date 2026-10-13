@@ -83,21 +83,21 @@ describe("StartPage kept lists (#90)", () => {
 
     renderPage();
 
-    // Kept rows render at once: no loading state, quiet refresh sign on.
+    // Kept rows render at once: no loading state, refresh icon spinning.
     expect(await screen.findByText("Kept PR")).toBeInTheDocument();
     expect(screen.queryByTestId("repo-lists-loading")).not.toBeInTheDocument();
-    expect(screen.getByTestId("kept-status")).toHaveTextContent(/refreshing/);
+    expect(screen.getByTestId("lists-refresh")).toHaveAttribute("title", expect.stringMatching(/refreshing/));
+    expect(screen.getByTestId("lists-refresh").querySelector(".spin")).not.toBeNull();
 
     gates.authoring.resolve({ changes: [pr(100, "Fresh PR", "fresh-branch")] });
     gates.requested.resolve({ changes: [] });
     gates.recent.resolve({ changes: [branch("fresh-branch")] });
 
-    // Fresh data replaces the kept rows; the sign settles to the age.
+    // Fresh data replaces the kept rows; the refresh tooltip settles to the age.
     expect(await screen.findByText("Fresh PR")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Kept PR")).not.toBeInTheDocument());
-    await waitFor(() =>
-      expect(screen.getByTestId("kept-status")).toHaveTextContent(/^Updated just now$/),
-    );
+    await waitFor(() => expect(screen.getByTestId("lists-refresh")).toHaveAttribute("title", "Updated just now"));
+    expect(screen.getByTestId("lists-refresh").querySelector(".spin")).toBeNull();
   });
 
   it("keeps the old lists on a failed background refresh and shows the error note", async () => {
@@ -158,7 +158,7 @@ describe("StartPage kept lists (#90)", () => {
     renderPage();
 
     expect(await screen.findByTestId("repo-lists-loading")).toHaveTextContent("Loading acme/app…");
-    expect(screen.queryByTestId("kept-status")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lists-refresh")).not.toBeInTheDocument();
     expect(screen.queryByText("Your PRs")).not.toBeInTheDocument();
 
     gate.resolve({ changes: [] });
