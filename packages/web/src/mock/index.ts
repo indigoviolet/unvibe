@@ -2258,7 +2258,10 @@ export const mockApi = {
         if (!found) throw new Error(`unknown comment ${annotationId}`);
         // Conversation reply: a new turn (reply) or a refill in place (retry).
         if (found.type === "conversation") {
+          const lastTurn = (found.turns ?? [])[(found.turns ?? []).length - 1];
           if (a.kind === "reply") {
+            // Mirrors the service: a failed turn must be retried explicitly.
+            if (lastTurn?.error) throw new Error(`conversation ${found.id} has a failed turn; retry it first`);
             const turnId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
             (found.turns ?? []).push({
               id: turnId,
@@ -2442,6 +2445,8 @@ export const mockApi = {
       // A suggestion on a conversation card is the next turn in the same
       // conversation (the item stays, like reply-box text).
       if (ref?.kind === "answer") {
+        const lastAnswerTurn = (ref.annotation.turns ?? [])[(ref.annotation.turns ?? []).length - 1];
+        if (lastAnswerTurn?.error) throw new Error(`conversation ${ref.annotation.id} has a failed turn; retry it first`);
         const holderBlocks = mockCardBlocks(ref);
         const fblock = holderBlocks.find((b) => b.id === blockId && b.type === "follow-up") as
           | { id: string; items: { label: string; ask?: string }[] }
