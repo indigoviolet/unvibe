@@ -1,8 +1,7 @@
 /**
- * `note` action (PRD §4.8): starts a thread with no agent reply.
+ * `note` action (PRD §4.8): starts a comment with no agent reply.
  *
- * Delegates to `createNoteThread` (comments/threads.ts); notes start no
- * agent reply today.
+ * Delegates to `createNoteThread` (comments/threads.ts).
  */
 import { createNoteThread } from "../../comments/threads.js";
 import { getSnapshotOrThrow, normalizeBlockAnchor, type ActionContext } from "./common.js";
@@ -17,7 +16,7 @@ export interface NoteRequest {
 export async function noteAction(
   ctx: ActionContext,
   req: NoteRequest,
-): Promise<{ threadId: string }> {
+): Promise<{ annotationId: string }> {
   const { reviews, reviewId } = ctx;
   if (req.quote === undefined) throw new Error("quote is required");
   const before = getSnapshotOrThrow(reviews, reviewId);
@@ -28,5 +27,5 @@ export async function noteAction(
     quote: req.quote,
     ...(req.text !== undefined ? { text: req.text } : {}),
   });
-  return { threadId: id };
+  return { annotationId: id };
 }

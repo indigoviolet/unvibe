@@ -81,7 +81,7 @@ test("running jobs refuse the switch; switch anyway forces it with a count", asy
   await expect(panel).toContainText("show as interrupted");
   await expect(panel).toContainText("stay with this channel");
   await expect(panel).toContainText("switch back to resume or retry them");
-  await expect(page.getByTestId("update-blocked-jobs")).toContainText("explain · demo · running");
+  await expect(page.getByTestId("update-blocked-jobs")).toContainText("ask · demo · running");
   await expect(page.getByTestId("update-blocked-jobs")).toContainText("backing-off");
   await panel.getByRole("button", { name: "Switch anyway" }).click();
   await expect(page.getByTestId("update-switching")).toBeVisible();

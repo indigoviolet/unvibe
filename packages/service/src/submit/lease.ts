@@ -184,7 +184,7 @@ export async function markLeasePosted(
   if (snapshot) {
     const leasedById = new Map(lease.comments.map((c) => [c.threadId, c.body]));
     for (const a of snapshot.annotations) {
-      if (a.type !== "thread" || !a.post || a.postedAt) continue;
+      if (a.type !== "comment" || !a.post || a.postedAt) continue;
       const want = leasedById.get(a.id);
       if (want === undefined) continue;
       try {
@@ -198,7 +198,7 @@ export async function markLeasePosted(
   }
   await reviews.mutate(reviewId, (draft) => {
     for (const a of draft.annotations) {
-      if (a.type !== "thread" || !a.post || a.postedAt) continue;
+      if (a.type !== "comment" || !a.post || a.postedAt) continue;
       if (!matchIds.has(a.id)) continue;
       a.postedAt = at;
       if (url) a.postedUrl = url;

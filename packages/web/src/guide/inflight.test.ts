@@ -7,12 +7,11 @@ import type { Job } from "@unvibe/shared";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import {
   anchorBlockType,
-  anchorEntryForExpansion,
+  anchorEntryForConversation,
   askKey,
   blockIdsMatch,
   busyForCard,
-  busyForExpansion,
-  busyForThread,
+  busyForConversation,
   conceptKey,
   diffAnchorForExplainKey,
   explainKey,
@@ -94,7 +93,6 @@ describe("inflight labels", () => {
 describe("busy resolution", () => {
   test("no entry and no job means not busy", () => {
     expect(busyForCard({}, [], "c1")).toBeNull();
-    expect(busyForThread({}, [], "t1")).toBeNull();
   });
 
   test("the in-flight entry wins over the job", () => {
@@ -115,12 +113,8 @@ describe("busy resolution", () => {
     expect(liveJobForTarget([job({ cardId: "c1", state: "cancelled" })], "c1")).toBeUndefined();
   });
 
-  test("jobs match by card or thread id", () => {
-    expect(liveJobForTarget([job({ threadId: "t1" })], "t1")?.id).toBe("job-1");
-    expect(busyForThread({}, [job({ threadId: "t1", kind: "ask" })], "t1")).toMatchObject({
-      label: "Asking…",
-      rewriting: false,
-    });
+  test("jobs match by card or annotation id", () => {
+    expect(liveJobForTarget([job({ annotationId: "t1" })], "t1")?.id).toBe("job-1");
   });
 });
 
@@ -164,7 +158,7 @@ describe("entry keys", () => {
   test("answer expansions are detected by their anchor block", () => {
     const answer = {
       id: "ann_ans",
-      type: "expansion",
+      type: "conversation",
       anchor: { host: { kind: "block", blockId: "b-f" }, quotedText: "Why?" },
     } as unknown as Annotation;
     const snap = {
@@ -185,10 +179,10 @@ describe("entry keys", () => {
     expect(isFollowupAnswer(snap, thread)).toBe(false);
   });
 
-  test("busyForExpansion prefers the anchor entry and labels answers", () => {
+  test("busyForConversation prefers the anchor entry and labels answers", () => {
     const answer = {
       id: "ann_ans",
-      type: "expansion",
+      type: "conversation",
       anchor: { host: { kind: "block", blockId: "b-f" }, quotedText: "Why?" },
     } as unknown as Annotation;
     const snap = {
@@ -197,17 +191,17 @@ describe("entry keys", () => {
     } as unknown as ReviewSnapshot;
     // Chip key still set (answer rendered before the response retargets).
     const chip = { "followup:c1:b-f:0": entry("followup", "followup:c1:b-f:0") };
-    expect(busyForExpansion(chip, [], snap, answer)).toMatchObject({ label: "Writing answer…" });
+    expect(busyForConversation(chip, [], snap, answer)).toMatchObject({ label: "Writing answer…" });
     // Direct entry wins with its own label.
     const direct = { ann_ans: entry("retry", "ann_ans") };
-    expect(busyForExpansion(direct, [], snap, answer)).toMatchObject({ label: "Retrying…" });
+    expect(busyForConversation(direct, [], snap, answer)).toMatchObject({ label: "Retrying…" });
     // Job-derived ask fill on an answer reads as its answer…
-    const jobs = [job({ kind: "ask", threadId: "ann_ans" })];
-    expect(busyForExpansion({}, jobs, snap, answer)).toMatchObject({ label: "Writing answer…" });
+    const jobs = [job({ kind: "ask", annotationId: "ann_ans" })];
+    expect(busyForConversation({}, jobs, snap, answer)).toMatchObject({ label: "Writing answer…" });
     // …but not on ordinary expansions.
     const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Annotation;
-    expect(busyForExpansion({}, jobs, snap, plain)).toMatchObject({ label: "Asking…" });
-    expect(busyForExpansion({}, [], snap, plain)).toBeNull();
+    expect(busyForConversation({}, jobs, snap, plain)).toMatchObject({ label: "Asking…" });
+    expect(busyForConversation({}, [], snap, plain)).toBeNull();
   });
 
   test("diff anchors parse back out of explain keys", () => {
@@ -236,23 +230,23 @@ describe("entry keys", () => {
   test("an explain entry stands in for its not-yet-retargeted expansion (#97)", () => {
     const expansion = {
       id: "ann_x",
-      type: "expansion",
+      type: "conversation",
       anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "Some text." },
     } as unknown as Annotation;
     // Bare and qualified spellings both match.
     expect(
-      anchorEntryForExpansion({ "explain:block:b1": entry("explain", "explain:block:b1") }, expansion)?.kind,
+      anchorEntryForConversation({ "explain:block:b1": entry("explain", "explain:block:b1") }, expansion)?.kind,
     ).toBe("explain");
     expect(
-      anchorEntryForExpansion({ "explain:block:c1#b1": entry("explain", "explain:block:c1#b1") }, expansion)?.kind,
+      anchorEntryForConversation({ "explain:block:c1#b1": entry("explain", "explain:block:c1#b1") }, expansion)?.kind,
     ).toBe("explain");
     // Other blocks, other kinds, and threads never match.
-    expect(anchorEntryForExpansion({ "explain:block:b2": entry("explain", "explain:block:b2") }, expansion)).toBeUndefined();
-    expect(anchorEntryForExpansion({ "ask:block:b1": entry("ask", "ask:block:b1") }, expansion)).toBeUndefined();
-    expect(anchorEntryForExpansion({}, expansion)).toBeUndefined();
+    expect(anchorEntryForConversation({ "explain:block:b2": entry("explain", "explain:block:b2") }, expansion)).toBeUndefined();
+    expect(anchorEntryForConversation({ "ask:block:b1": entry("ask", "ask:block:b1") }, expansion)).toBeUndefined();
+    expect(anchorEntryForConversation({}, expansion)).toBeUndefined();
     const thread = { ...expansion, type: "thread" } as unknown as Annotation;
     expect(
-      anchorEntryForExpansion({ "explain:block:b1": entry("explain", "explain:block:b1") }, thread),
+      anchorEntryForConversation({ "explain:block:b1": entry("explain", "explain:block:b1") }, thread),
     ).toBeUndefined();
     // Description and diff anchors match exactly.
     const desc = {
@@ -260,33 +254,33 @@ describe("entry keys", () => {
       anchor: { host: { kind: "description", paragraphId: "p1" }, quotedText: "q" },
     } as unknown as Annotation;
     expect(
-      anchorEntryForExpansion({ "explain:desc:p1": entry("explain", "explain:desc:p1") }, desc)?.kind,
+      anchorEntryForConversation({ "explain:desc:p1": entry("explain", "explain:desc:p1") }, desc)?.kind,
     ).toBe("explain");
-    expect(anchorEntryForExpansion({ "explain:desc:p2": entry("explain", "explain:desc:p2") }, desc)).toBeUndefined();
+    expect(anchorEntryForConversation({ "explain:desc:p2": entry("explain", "explain:desc:p2") }, desc)).toBeUndefined();
     const diff = {
       ...expansion,
       anchor: { host: { kind: "diff-line", fileKey: "a.py", line: 7 }, quotedText: "q" },
     } as unknown as Annotation;
     expect(
-      anchorEntryForExpansion({ "explain:diff:a.py:7": entry("explain", "explain:diff:a.py:7") }, diff)?.kind,
+      anchorEntryForConversation({ "explain:diff:a.py:7": entry("explain", "explain:diff:a.py:7") }, diff)?.kind,
     ).toBe("explain");
-    expect(anchorEntryForExpansion({ "explain:diff:a.py:8": entry("explain", "explain:diff:a.py:8") }, diff)).toBeUndefined();
+    expect(anchorEntryForConversation({ "explain:diff:a.py:8": entry("explain", "explain:diff:a.py:8") }, diff)).toBeUndefined();
   });
 
-  test("busyForExpansion falls back to the anchor entry with the Explain label (#97)", () => {
+  test("busyForConversation falls back to the anchor entry with the Explain label (#97)", () => {
     const expansion = {
       id: "ann_x",
-      type: "expansion",
+      type: "conversation",
       anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "Some text." },
     } as unknown as Annotation;
     const snap = { pages: [], annotations: [] } as unknown as ReviewSnapshot;
     const inflight = { "explain:block:b1": entry("explain", "explain:block:b1") };
-    expect(busyForExpansion(inflight, [], snap, expansion)).toMatchObject({
+    expect(busyForConversation(inflight, [], snap, expansion)).toMatchObject({
       label: "Writing explanation…",
       rewriting: false,
     });
     // A direct entry still wins.
     const direct = { ann_x: entry("retry", "ann_x") };
-    expect(busyForExpansion(direct, [], snap, expansion)).toMatchObject({ label: "Retrying…" });
+    expect(busyForConversation(direct, [], snap, expansion)).toMatchObject({ label: "Retrying…" });
   });
 });

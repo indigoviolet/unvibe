@@ -1,14 +1,13 @@
 /**
- * New-thread composer (comments owner).
+ * Pending composer (comments owner).
  *
- * The pending box the selection toolbar and diff line clicks open *before*
+ * The box the selection toolbar and diff line clicks open *before*
  * anything reaches the server: Discard removes it locally (no request).
- * Comments save through `POST …/comments` (for the PR by default) and stay
- * quiet; Ask sends the `ask` action (thread + agent reply in one round
- * trip) and the thread then shows a plain working state until its reply
- * arrives through a patch (or an error with a Retry button when the turn
- * fails). While the request is in flight the composer itself shows the Ask
- * as running.
+ * A comment saves through `POST …/comments` (for the PR by default) and
+ * stays quiet; Ask sends the `ask` action, which creates the usual
+ * conversation card in place — the card then shows a plain working state
+ * until its first answer arrives through a patch. While the request is in
+ * flight the composer itself shows the Ask as running.
  */
 import { useRef, useState } from "react";
 import type { ActionAnchor, Annotation } from "@unvibe/shared";
@@ -16,38 +15,38 @@ import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { performAction } from "../guide/actions.js";
 import { useReview } from "../state/store.js";
-import { markAskSent } from "./askState.js";
 
 interface Props {
   reviewId: string;
   anchor: ActionAnchor;
   quote: string;
-  /** True = Comment (no agent reply); false = Ask. */
-  note: boolean;
+  /** Comment (no agent reply) or Ask (usual conversation card). */
+  kind: "comment" | "ask";
   /** Prefilled text (issue #135: a Comment from an agent answer quotes the selection). */
   initialText?: string;
   onDiscard: () => void;
   onCreated: (id: string) => void;
 }
 
-export function NewThreadComposer({ reviewId, anchor, quote, note, initialText, onDiscard, onCreated }: Props) {
+export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, onDiscard, onCreated }: Props) {
   const [text, setText] = useState(initialText ?? "");
   const [sending, setSending] = useState(false);
-  // Set once the question/note is sent: thread ids already here, so only
-  // a thread created after the send hides the composer.
+  // Set once the question/comment is sent: annotation ids already here, so
+  // only one created after the send hides the composer.
   const [sent, setSent] = useState(false);
   const knownRef = useRef<ReadonlySet<string> | null>(null);
   const annotations = useReview((s) => s.snapshot?.annotations);
+  const ask = kind === "ask";
 
-  // The service creates the thread at once: it lands by patch before the
-  // ask/note response returns (issue #97). Hide the composer as soon as
-  // its thread exists, so the question never shows twice; the thread
-  // carries the working state. The component stays mounted (typed text
-  // preserved) until the response settles it through onCreated.
+  // The service creates the annotation at once: it lands by patch before
+  // the ask/comment response returns (issue #97). Hide the composer as
+  // soon as its annotation exists, so the question never shows twice; the
+  // card carries the working state. The component stays mounted (typed
+  // text preserved) until the response settles it through onCreated.
   if (sent) {
     const known = knownRef.current ?? new Set<string>();
     const created = (annotations ?? []).some(
-      (a) => a.type === "thread" && a.open && !known.has(a.id) && threadAnchorMatches(anchor, a),
+      (a) => a.open && !known.has(a.id) && threadAnchorMatches(anchor, a),
     );
     if (created) return null;
   }
@@ -57,17 +56,16 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, initialText, 
     if (!value || sending) return;
     knownRef.current = new Set(
       (useReview.getState().snapshot?.annotations ?? [])
-        .filter((a) => a.type === "thread" && threadAnchorMatches(anchor, a))
+        .filter((a) => threadAnchorMatches(anchor, a))
         .map((a) => a.id),
     );
     setSent(true);
     setSending(true);
-    if (!note) {
+    if (ask) {
       performAction(reviewId, { kind: "ask", anchor, quote, message: value }, { toast: false })
         .then((res) => {
-          const id = res.threadId ?? res.annotationId;
-          if (!id) throw new Error("the service didn't create the comment — try again");
-          markAskSent(id);
+          const id = res.annotationId;
+          if (!id) throw new Error("the service didn't create the card — try again");
           onCreated(id);
         })
         .catch((err: unknown) => {
@@ -77,7 +75,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, initialText, 
       return;
     }
     api
-      .createComment(reviewId, { anchor, quote, note, text: value })
+      .createComment(reviewId, { anchor, quote, text: value })
       .then((res) => {
         onCreated(res.id);
       })
@@ -88,11 +86,11 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, initialText, 
   };
 
   return (
-    <div className="ithread" data-pending-thread="true" aria-busy={sending && !note ? true : undefined}>
+    <div className="ithread" data-pending-thread="true" aria-busy={sending && ask ? true : undefined}>
       <div className="thd">
         <span className="mq">{quote ? `“${quote}”` : "New comment"}</span>
       </div>
-      {sending && !note ? (
+      {sending && ask ? (
         <div className="working" role="status">
           <span className="dots" aria-hidden="true">
             <i />
@@ -106,7 +104,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, initialText, 
         <textarea
           rows={3}
           autoFocus
-          placeholder={note ? "Write a comment…" : "Ask the agent…"}
+          placeholder={ask ? "Ask the agent…" : "Write a comment…"}
           aria-label="New comment"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -122,7 +120,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, initialText, 
             Discard
           </button>
           <button className="btn" type="button" disabled={sending || text.trim() === ""} onClick={send}>
-            {note ? "Save" : "Ask"}
+            {ask ? "Ask" : "Save"}
           </button>
         </div>
       </div>
@@ -131,8 +129,8 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, initialText, 
 }
 
 /**
- * Same-anchor check for a composer and a thread (issue #97): the composer
- * anchor names the thread host exactly or by its bare block id (a
+ * Same-anchor check for a composer and an annotation (issue #97): the
+ * composer anchor names the host exactly or by its bare block id (a
  * selection carries the bare id while the service qualifies it
  * `card#block`). A differently-qualified anchor never matches, so
  * composers on same-named blocks of other cards stay independent.

@@ -1,24 +1,29 @@
 /**
- * Expansion card (M4 interaction; PRD §4.7 + §4.4 + §4.10 + §4.15).
+ * Conversation card (issue #136; PRD §4.7 + §4.4 + §4.10 + §4.15).
+ *
+ * One card for Explain and Ask: the card holds a list of turns, each
+ * answer rendered as its own unit with the standard card controls (depth
+ * stepper, Use examples, Add diagram, Undo, Second opinion) acting on
+ * that answer, plus a reply box at the bottom answered in the same
+ * conversation. The card itself is never submitted to GitHub and carries
+ * the teal Explain look, so it stays easy to tell apart from Comments.
  *
  * Ported behaviour from `prototype.html` (not code):
  * - header: quoted text, then Open as page, Delete, Close; chevron first
  *   when collapsed, × always last;
- * - below that the standard card controls (depth stepper with three dots,
- *   Use examples, Add diagram, Undo, Second opinion, Mark read) acting on
- *   the expansion (cardId = annotation id);
- * - plain working state with a fixed label while an action runs for the
- *   expansion (in-flight entry, then the job); error state with Retry;
+ * - plain working state with a fixed label while a turn fills
+ *   (in-flight entry, then the job); error state with Retry;
  *   "no agent configured" state;
  * - open cards stay in place when the anchor phrase is footnoted (issue
  *   #72); the header adds a muted "from an earlier wording" hint;
- * - marking read closes the same way Close does;
- * - typed text elsewhere survives: this component holds no input state and
- *   preserves React keys, so reply-box drafts are untouched.
+ * - typed text elsewhere survives: this component holds no input state
+ *   outside the reply box, and preserves React keys, so other drafts are
+ *   untouched.
  */
-import type { Annotation, Page } from "@unvibe/shared";
+import type { Annotation, Page, Turn } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../../comments/GuideThreads.js";
+import { ReplyBox } from "../../comments/ReplyBox.js";
 import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
 import { api, friendlyError } from "../../api/client.js";
@@ -27,9 +32,9 @@ import { performAction, performInsertAction } from "../actions.js";
 import { blockThreads } from "../annotations.js";
 import { BlockView } from "../BlockView.js";
 import { DepthControl } from "../DepthControl.js";
-import { busyForExpansion, inflightLabel, isFollowupAnswer } from "../inflight.js";
+import { busyForCard, busyForConversation, inflightLabel, isFollowupAnswer, type BusyState } from "../inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
-import { isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
+import { conversationTurns, isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
 import { expansionsForBlock } from "./ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansionUtils.js";
 
@@ -44,7 +49,7 @@ function ControlButton({
   pressed,
   busy,
 }: {
-  icon: "down" | "right" | "check" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open";
+  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open";
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -93,12 +98,8 @@ function Working({ text }: { text: string }) {
   );
 }
 
-function actionErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 function isNoAgentError(err: unknown): boolean {
-  return isNoAgentMessage(actionErrorMessage(err));
+  return isNoAgentMessage(err instanceof Error ? err.message : String(err));
 }
 
 interface Props {
@@ -108,7 +109,7 @@ interface Props {
   onOpenPage: (pageId: string) => void;
   onFollowUp: (cardId: string, blockId: string, index: number) => void;
   /**
-   * Ancestor expansion ids (#116, cycle guard). Annotations form a DAG —
+   * Ancestor card ids (#116, cycle guard). Annotations form a DAG —
    * a child always points at an already-stored host, so a cycle cannot be
    * created — but corrupt data must not recurse forever. A nested card
    * whose id is already above it renders nothing.
@@ -116,39 +117,51 @@ interface Props {
   ancestorIds?: string[];
 }
 
-/** Full expansion card: header + standard controls + blocks. */
-export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onFollowUp, ancestorIds }: Props) {
+/** One answer with its own controls, blocks and second opinions. */
+function AnswerView({
+  reviewId,
+  card,
+  turn,
+  isFirst,
+  isLatest,
+  cardBusy,
+  lookupPage,
+  onOpenPage,
+  onFollowUp,
+  ancestorIds,
+}: {
+  reviewId: string;
+  card: Annotation;
+  turn: Turn;
+  isFirst: boolean;
+  isLatest: boolean;
+  /** Card-level busy (fills address the card; rewrites address the answer). */
+  cardBusy: BusyState | null;
+  lookupPage: (pageId: string) => Page | undefined;
+  onOpenPage: (pageId: string) => void;
+  onFollowUp: (cardId: string, blockId: string, index: number) => void;
+  ancestorIds: string[];
+}) {
   const snapshot = useReview((s) => s.snapshot);
   const annotations = snapshot?.annotations ?? [];
   const inflight = useReview((s) => s.inflight);
   const jobs = snapshot?.jobs ?? [];
-  const body = expansion.expansion;
-  if (expansion.type !== "expansion" || !body) return null;
 
-  const stale = isAnchorStale(expansion);
-  const busy = busyForExpansion(inflight, jobs, snapshot, expansion);
-  // The service marks the annotation working while its fill runs; that
-  // flag (and retry's, before its response lands) is a busy signal too,
-  // but the label stays fixed — never the server's text. Without an entry
-  // or job, an empty working expansion is still its action (issue #97):
-  // an Explain, or the follow-up answer — never the generic fallback.
-  const serverWorking =
-    (expansion.working ?? body.working ?? "") !== "" && (expansion.working ?? body.working) !== null;
-  const showWorking = !!busy || serverWorking;
-  const hasContent = body.blocks.length > 0;
+  const direct = busyForCard(inflight, jobs, turn.id);
+  const serverWorking = (turn.working ?? "") !== "" && turn.working !== null;
+  // A fill addresses the card (thread id), so its busy lands here only
+  // when this turn carries the working flag (or, before any turn does,
+  // on the latest turn — issue #97).
+  const showWorking = !!direct || serverWorking || (!!cardBusy && isLatest && !hasWorkingTurn(card));
   const workingLabel =
-    busy?.label ??
-    (isFollowupAnswer(snapshot, expansion)
-      ? inflightLabel("followup")
-      : hasContent
-        ? "Working…"
-        : inflightLabel("explain"));
-  const errorText = expansion.error ?? body.error ?? null;
+    direct?.label ??
+    (serverWorking || (isLatest && !hasWorkingTurn(card)) ? (cardBusy?.label ?? fixedTurnLabel(snapshot, card, turn, isFirst)) : "Working…");
+  const errorText = turn.error ?? null;
   const noAgent = isNoAgentMessage(errorText);
 
-  const depthIndex = DEPTH_ORDER.indexOf(body.level as Depth);
+  const depthIndex = DEPTH_ORDER.indexOf(turn.level as Depth);
   const safeDepthIndex = depthIndex < 0 ? 1 : depthIndex;
-  const undoEnabled = (body.undoStack?.length ?? 0) > 0;
+  const undoEnabled = (turn.undoStack?.length ?? 0) > 0;
 
   const run = (action: Parameters<typeof performAction>[1]): void => {
     void performAction(reviewId, action).catch((err: unknown) => {
@@ -158,25 +171,174 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   };
 
   const onRetry = (): void => {
-    // Retry rebuilds the failed fill on the same annotation id (in-flight
-    // through `performAction` so the card shows it immediately). When the
-    // service has no retryable failure, fall back to re-explaining the
-    // same quote so the button still recovers.
-    void performAction(reviewId, { kind: "retry", threadId: expansion.id }, { toast: false }).catch((err: unknown) => {
-      if (isNoAgentError(err)) {
-        toast(NO_AGENT_COPY);
-        return;
-      }
-      void performAction(reviewId, {
-        kind: "explain",
-        quote: expansion.anchor.quotedText,
-        anchor: toActionAnchor(expansion),
-      }).catch((e2: unknown) => {
-        if (isNoAgentError(e2)) toast(NO_AGENT_COPY);
-        else toast(`Couldn't retry: ${friendlyError(e2)}`);
-      });
+    void performAction(reviewId, { kind: "retry", annotationId: card.id }).catch((err: unknown) => {
+      if (isNoAgentError(err)) toast(NO_AGENT_COPY);
+      else toast(`Couldn't retry: ${friendlyError(err)}`);
     });
   };
+
+  const secondOpinions = turn.secondOpinions ?? [];
+  const controlsBusy = direct !== null || (!!cardBusy && isLatest);
+  const busyKind = direct?.kind ?? (isLatest ? cardBusy?.kind : undefined);
+  const depthBusy = busyKind === "depth";
+  // Controls that need the text stay off until it arrives (issue #97).
+  const contentReady = turn.blocks.length > 0 && !controlsBusy;
+  // The latest answer shows its controls; earlier answers reveal them on
+  // hover or keyboard focus (cheap layout choice, easy to change).
+  const olderClass = isLatest ? "" : " ans-older";
+  // A later turn's question reads as its heading; the first turn's answer
+  // is headed by the card's quoted text, and a follow-up answer that only
+  // repeats the header quote needs no second heading.
+  const showQuestion = turn.question !== null && turn.question !== card.anchor.quotedText;
+
+  return (
+    <div className={`ans${olderClass}`} data-answer={turn.id}>
+      {showQuestion ? <div className="ans-q">{turn.question}</div> : null}
+      <div className="ctl">
+        <DepthControl
+          level={turn.level}
+          disabled={!contentReady}
+          depthBusy={depthBusy}
+          simplerAtLimit={safeDepthIndex <= 0}
+          onSimpler={() => run({ kind: "depth", cardId: turn.id, direction: "simpler" })}
+          onDeeper={() => run({ kind: "depth", cardId: turn.id, direction: "deeper" })}
+        />
+        <ControlButton
+          icon="bulb"
+          label="Use examples"
+          busy={busyKind === "examples"}
+          disabled={!contentReady}
+          onClick={() => performInsertAction(reviewId, turn.id, "examples")}
+        />
+        <ControlButton
+          icon="diagram"
+          label="Add diagram"
+          busy={busyKind === "diagram"}
+          disabled={!contentReady}
+          onClick={() => performInsertAction(reviewId, turn.id, "diagram")}
+        />
+        <ControlButton
+          icon="undo"
+          label="Undo"
+          disabled={!undoEnabled || controlsBusy}
+          onClick={() => run({ kind: "undo", cardId: turn.id })}
+        />
+        <AnswerSecondOpinion
+          reviewId={reviewId}
+          turnId={turn.id}
+          lookupPage={lookupPage}
+          disabled={!contentReady}
+          busy={busyKind === "second_opinion"}
+        />
+      </div>
+      {showWorking && !errorText ? <Working text={workingLabel} /> : null}
+      {noAgent ? (
+        <div className="perr" role="status">
+          <span>{NO_AGENT_COPY}</span>
+        </div>
+      ) : null}
+      {errorText && !noAgent ? (
+        <div className="perr" role="alert">
+          <span>Couldn't get an answer: {errorText}</span>
+          <button
+            className="btn"
+            type="button"
+            data-retry={turn.id}
+            disabled={controlsBusy}
+            aria-busy={controlsBusy ? true : undefined}
+            onClick={onRetry}
+          >
+            {controlsBusy ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      ) : null}
+      <div className="exp-b">
+        {turn.blocks.map((block) => {
+          // Annotations on text inside this answer render under their
+          // block exactly like page-card annotations do: threads (open
+          // ones plus the pending Ask/Comment composer) via
+          // GuideBlockThreads, open cards as nested cards. Closed cards
+          // and promoted links become footnote chips on the citations
+          // line through BlockView. Recursion nests to any depth by the
+          // same mechanism (one annotation per level).
+          const threads = blockThreads(annotations, turn.id, block.id);
+          const exps = expansionsForBlock(annotations, turn.id, block.id);
+          const open = exps.filter(isOpenExpansion);
+          const footnotes = exps.filter((e) => isClosedExpansion(e) || isPromotedLink(e));
+          const below = [...ancestorIds, card.id];
+          return (
+            <Fragment key={block.id}>
+              <BlockView
+                block={block}
+                level={turn.level}
+                threads={threads}
+                footnotes={footnotes}
+                lookupPage={lookupPage}
+                cardId={turn.id}
+                onOpenPage={onOpenPage}
+                onFollowUp={(blockId, index) => onFollowUp(turn.id, blockId, index)}
+              />
+              <GuideBlockThreads reviewId={reviewId} cardId={turn.id} blockId={block.id} />
+              {open
+                .filter((e) => !below.includes(e.id))
+                .map((e) => (
+                  <ExpansionCard
+                    key={e.id}
+                    reviewId={reviewId}
+                    expansion={e}
+                    lookupPage={lookupPage}
+                    onOpenPage={onOpenPage}
+                    onFollowUp={onFollowUp}
+                    ancestorIds={below}
+                  />
+                ))}
+            </Fragment>
+          );
+        })}
+      </div>
+      {(secondOpinions).map((so) => (
+        <SecondOpinionBlock
+          key={so.id}
+          reviewId={reviewId}
+          card={{ id: turn.id } as never}
+          result={so}
+          lookupPage={lookupPage}
+          onOpenPage={onOpenPage}
+          onFollowUp={(cardId, blockId, index) => onFollowUp(cardId, blockId, index)}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** True when any turn of the card carries the working flag. */
+function hasWorkingTurn(card: Annotation): boolean {
+  return conversationTurns(card).some((t) => (t.working ?? "") !== "" && t.working !== null);
+}
+
+/** Fixed working label for a turn (never streamed text, issue #46). */
+function fixedTurnLabel(
+  snapshot: import("@unvibe/shared").ReviewSnapshot | null | undefined,
+  card: Annotation,
+  turn: Turn,
+  isFirst: boolean,
+): string {
+  if (isFollowupAnswer(snapshot, card)) return inflightLabel("followup");
+  if ((turn.blocks?.length ?? 0) > 0) return "Working…";
+  if (turn.question === null) return inflightLabel("explain");
+  return isFirst ? inflightLabel("ask") : inflightLabel("reply");
+}
+
+/** Full conversation card: header + one answer view per turn + reply box. */
+export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onFollowUp, ancestorIds }: Props) {
+  const snapshot = useReview((s) => s.snapshot);
+  const inflight = useReview((s) => s.inflight);
+  const jobs = snapshot?.jobs ?? [];
+  const turns = conversationTurns(expansion);
+  if (expansion.type !== "conversation") return null;
+
+  const stale = isAnchorStale(expansion);
+  const cardBusy = busyForConversation(inflight, jobs, snapshot, expansion);
 
   const onPromote = (): void => {
     void api
@@ -203,55 +365,39 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     void api
       .action(reviewId, { kind: "close", annotationId: expansion.id })
       .catch(() => {
-        // Closed expansions fall back to the comment-patch path so the
+        // Closed cards fall back to the comment-patch path so the
         // dotted link still appears when the actions route is unavailable.
         void api.updateComment(reviewId, expansion.id, { open: false }).catch(() => {});
       });
   };
 
-  if (body.collapsed) {
+  if (expansion.collapsed) {
     return (
       <section
-        className={`card child collapsed${body.read ? " read" : ""}`}
+        className="card child collapsed"
         id={`B-${expansion.id}`}
         data-expansion={expansion.id}
       >
         <div className="exp-h">
-          <ControlButton icon="right" label="Expand" onClick={() => run({ kind: "collapse", cardId: expansion.id, collapsed: false })} />
+          <ControlButton icon="right" label="Expand" onClick={() => void performAction(reviewId, { kind: "collapse", cardId: expansion.id, collapsed: false }).catch(() => {})} />
           {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
           {stale ? <span className="hint">from an earlier wording</span> : null}
           <span className="sp" />
           <ControlButton icon="open" label="Open as page" onClick={onPromote} />
           <ControlButton icon="trash" label="Delete" onClick={onDelete} />
-          {body.read ? (
-            <ControlButton
-              icon="check"
-              label="Mark unread"
-              pressed
-              onClick={() => run({ kind: "read", cardId: expansion.id, read: false })}
-            />
-          ) : (
-            <ControlButton icon="x" label="Close" onClick={onClose} />
-          )}
+          <ControlButton icon="x" label="Close" onClick={onClose} />
         </div>
       </section>
     );
   }
 
-  const secondOpinions = body.secondOpinions ?? [];
-  const controlsBusy = busy !== null;
-  const busyKind = busy?.kind;
-  const depthBusy = busyKind === "depth";
-  // Controls that need the text stay off until it arrives (issue #97):
-  // an empty expansion offers only open/promote/delete/close/read.
-  const contentReady = hasContent && !controlsBusy;
-
+  const below = [...(ancestorIds ?? []), expansion.id];
   return (
     <section
-      className={`card child${body.read ? " read" : ""}${busy?.rewriting ? " rewriting" : ""}`}
+      className={`card child${cardBusy?.rewriting ? " rewriting" : ""}`}
       id={`B-${expansion.id}`}
       data-expansion={expansion.id}
-      aria-busy={busy ? true : undefined}
+      aria-busy={cardBusy ? true : undefined}
     >
       <div className="exp-h">
         {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
@@ -261,158 +407,59 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         <ControlButton icon="trash" label="Delete" onClick={onDelete} />
         <ControlButton icon="x" label="Close" onClick={onClose} />
       </div>
-      <div className="ctl">
-        <DepthControl
-          level={body.level}
-          disabled={!contentReady}
-          depthBusy={depthBusy}
-          simplerAtLimit={safeDepthIndex <= 0}
-          onSimpler={() => run({ kind: "depth", cardId: expansion.id, direction: "simpler" })}
-          onDeeper={() => run({ kind: "depth", cardId: expansion.id, direction: "deeper" })}
-        />
-        <ControlButton
-          icon="bulb"
-          label="Use examples"
-          busy={busyKind === "examples"}
-          disabled={!contentReady}
-          onClick={() => performInsertAction(reviewId, expansion.id, "examples")}
-        />
-        <ControlButton
-          icon="diagram"
-          label="Add diagram"
-          busy={busyKind === "diagram"}
-          disabled={!contentReady}
-          onClick={() => performInsertAction(reviewId, expansion.id, "diagram")}
-        />
-        <ControlButton
-          icon="undo"
-          label="Undo"
-          disabled={!undoEnabled || controlsBusy}
-          onClick={() => run({ kind: "undo", cardId: expansion.id })}
-        />
-        <ExpansionSecondOpinion
+      {turns.map((turn, i) => (
+        <AnswerView
+          key={turn.id}
           reviewId={reviewId}
-          expansion={expansion}
-          lookupPage={lookupPage}
-          disabled={!contentReady}
-          busy={busyKind === "second_opinion"}
-        />
-        <span className="sp" />
-        <ControlButton
-          icon="check"
-          label={body.read ? "Mark unread" : "Mark read"}
-          pressed={body.read}
-          onClick={() => run({ kind: "read", cardId: expansion.id, read: !body.read })}
-        />
-      </div>
-      {showWorking && !errorText ? <Working text={workingLabel} /> : null}
-      {noAgent ? (
-        <div className="perr" role="status">
-          <span>{NO_AGENT_COPY}</span>
-        </div>
-      ) : null}
-      {errorText && !noAgent ? (
-        <div className="perr" role="alert">
-          <span>Couldn't get an answer: {errorText}</span>
-          <button
-            className="btn"
-            type="button"
-            data-retry={expansion.id}
-            disabled={controlsBusy}
-            aria-busy={busy ? true : undefined}
-            onClick={onRetry}
-          >
-            {busy ? "Retrying…" : "Retry"}
-          </button>
-        </div>
-      ) : null}
-      <div className="exp-b">
-        {body.blocks.map((block) => {
-          // Annotations on text inside this expansion (#116) render under
-          // their block exactly like page-card annotations do: threads
-          // (open ones plus the pending Ask/Comment composer) via
-          // GuideBlockThreads, open explanations as nested cards. Closed
-          // explanations and promoted links become footnote chips on the
-          // citations line through BlockView. Recursion nests to any
-          // depth by the same mechanism (one annotation per level).
-          const threads = blockThreads(annotations, expansion.id, block.id);
-          const exps = expansionsForBlock(annotations, expansion.id, block.id);
-          const open = exps.filter(isOpenExpansion);
-          const footnotes = exps.filter((e) => isClosedExpansion(e) || isPromotedLink(e));
-          const below = [...(ancestorIds ?? []), expansion.id];
-          return (
-            <Fragment key={block.id}>
-              <BlockView
-                block={block}
-                level={body.level}
-                threads={threads}
-                footnotes={footnotes}
-                lookupPage={lookupPage}
-                cardId={expansion.id}
-                onOpenPage={onOpenPage}
-                onFollowUp={(blockId, index) => onFollowUp(expansion.id, blockId, index)}
-              />
-              <GuideBlockThreads reviewId={reviewId} cardId={expansion.id} blockId={block.id} />
-              {open
-                .filter((e) => !below.includes(e.id))
-                .map((e) => (
-                  <ExpansionCard
-                    key={e.id}
-                    reviewId={reviewId}
-                    expansion={e}
-                    lookupPage={lookupPage}
-                    onOpenPage={onOpenPage}
-                    onFollowUp={onFollowUp}
-                    ancestorIds={below}
-                  />
-                ))}
-            </Fragment>
-          );
-        })}
-      </div>
-      {(secondOpinions).map((so) => (
-        <SecondOpinionBlock
-          key={so.id}
-          reviewId={reviewId}
-          card={{ id: expansion.id } as never}
-          result={so}
+          card={expansion}
+          turn={turn}
+          isFirst={i === 0}
+          isLatest={i === turns.length - 1}
+          cardBusy={cardBusy}
           lookupPage={lookupPage}
           onOpenPage={onOpenPage}
-          onFollowUp={(cardId, blockId, index) => onFollowUp(cardId, blockId, index)}
+          onFollowUp={onFollowUp}
+          ancestorIds={below}
         />
       ))}
+      <ReplyBox
+        reviewId={reviewId}
+        annotationId={expansion.id}
+        serverReply={expansion.reply}
+        placeholder="Ask a follow-up…"
+        ariaLabel="Ask a follow-up"
+        sendLabel="Reply"
+        discardLabel="Discard"
+        onSend={(text) =>
+          performAction(reviewId, { kind: "reply", annotationId: expansion.id, message: text }, { toast: false })
+        }
+        onDiscard={() => api.updateComment(reviewId, expansion.id, { reply: null })}
+      />
     </section>
   );
 }
 
-function toActionAnchor(expansion: Annotation): import("@unvibe/shared").ActionAnchor {
-  const host = expansion.anchor.host;
-  if (host.kind === "block") return { where: "block", blockId: host.blockId };
-  if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
-  return { where: "diff-line", fileKey: host.fileKey, line: host.line };
-}
-
-function ExpansionSecondOpinion({
+function AnswerSecondOpinion({
   reviewId,
-  expansion,
+  turnId,
   lookupPage,
   disabled,
   busy,
 }: {
   reviewId: string;
-  expansion: Annotation;
+  turnId: string;
   lookupPage: (pageId: string) => Page | undefined;
   disabled?: boolean;
   busy?: boolean;
 }) {
-  // Expansions reuse the card control with the annotation id as cardId; the
-  // service resolves expansion targets (M4 fix) and stores the result on the
-  // expansion body so depth/undo leave it attached.
+  // Answers reuse the card control with the answer id as cardId; the
+  // service resolves answer targets and stores the result on the turn so
+  // depth/undo leave it attached.
   void lookupPage;
   return (
     <SecondOpinionControl
       reviewId={reviewId}
-      card={{ id: expansion.id } as never}
+      card={{ id: turnId } as never}
       page={undefined}
       disabled={disabled}
       busy={busy}

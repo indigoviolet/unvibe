@@ -56,7 +56,7 @@ function fakeAgents(): FakeAgentRunner {
     { match: "reply with exactly", events: textEvents("ready") },
     { match: "Read the review source", events: textEvents("ready") },
     { match: "Read the base context", events: textEvents("ready") },
-    { match: "# Explain", events: textEvents(EXPLAIN_REPLY) },
+    { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_REPLY) },
     { match: "# Ask", events: textEvents(ASK_REPLY) },
     { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
     { match: "# Examples", events: textEvents(EXAMPLES_REPLY) },
@@ -273,7 +273,8 @@ describe("PRD §12 cross-request reuse (#10)", () => {
         anchor: { where: "block", blockId: "b1" },
         message: msg,
       });
-      expect(same.json.threadId).toBe(first.json.threadId);
+      expect(same.json.annotationId).toBe(first.json.annotationId);
+      expect(same.json.turnId).toBe(first.json.turnId);
       expect(same.json.reused).toBe(true);
       expect(same.json.jobId).toBeUndefined();
       expect(agents.prompts.length).toBe(n);
@@ -284,7 +285,7 @@ describe("PRD §12 cross-request reuse (#10)", () => {
         anchor: { where: "block", blockId: "b1" },
         message: "A totally different question?",
       });
-      expect(different.json.threadId).not.toBe(first.json.threadId);
+      expect(different.json.annotationId).not.toBe(first.json.annotationId);
       expect(different.json.reused).toBeUndefined();
       expect(different.json.jobId).toBeTruthy();
     } finally {

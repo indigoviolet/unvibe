@@ -61,7 +61,7 @@ export function ExpansionHighlights() {
         );
         const highlighted = new Set<string>();
         for (const a of annotations ?? []) {
-          if (a.type !== "expansion" && a.type !== "link") continue;
+          if (a.type !== "conversation" && a.type !== "link") continue;
           if (isAnchorStale(a)) continue;
           if (!a.anchor.quotedText) continue;
           if (a.anchor.host.kind !== "block") continue;
@@ -115,7 +115,7 @@ export function ExpansionHighlights() {
       const reviewId = snap?.review.id;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!reviewId || !found) return;
-      if (found.type === "expansion" && !found.open) {
+      if (found.type === "conversation" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
@@ -162,7 +162,7 @@ function splitBlock(blockId: string): { cardId: string | null; block: string } {
   return { cardId: blockId.slice(0, hash), block: blockId.slice(hash + 1) };
 }
 
-/** Expansions anchored on a card + block (open ones render in place). */
+/** Conversation cards anchored on a card + block (open ones render in place). */
 export function expansionsForBlock(
   annotations: import("@unvibe/shared").Annotation[] | undefined,
   cardId: string,
@@ -171,7 +171,7 @@ export function expansionsForBlock(
   if (!annotations) return [];
   return annotations.filter(
     (a) =>
-      (a.type === "expansion" || a.type === "link") &&
+      (a.type === "conversation" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
   );

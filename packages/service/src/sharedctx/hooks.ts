@@ -49,8 +49,8 @@ export interface InteractionEvent {
   pageId?: string;
   /** Hunk content hash, for hunk-anchored events (e.g. settled threads). */
   hunkHash?: string;
-  /** Thread the event came from, when there is one. */
-  threadId?: string;
+  /** Annotation the event came from, when there is one. */
+  annotationId?: string;
   /** Session that produced the content, when there is one. */
   sessionId?: string;
   /** One-line summary or full text, depending on the kind. */

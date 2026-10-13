@@ -78,8 +78,8 @@ export interface EnqueueOptions {
    * the entry (for `text` events).
    */
   cardId?: string;
-  /** M4: annotation the streamed text belongs to (ask replies, expansions). */
-  threadId?: string;
+  /** Issue #136: annotation the streamed text belongs to (conversation fills). */
+  annotationId?: string;
   run: JobFn;
 }
 
@@ -101,7 +101,7 @@ interface Entry {
   run?: JobFn;
   reviewId: string;
   cardId?: string;
-  threadId?: string;
+  annotationId?: string;
   seq: number;
   abort?: AbortController;
 }
@@ -159,7 +159,7 @@ export class JobQueue {
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.promptSnapshot !== undefined ? { promptSnapshot: opts.promptSnapshot } : {}),
       ...(dedupeKey ? { dedupeKey } : {}),
-      ...(opts.threadId ? { threadId: opts.threadId } : {}),
+      ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
       ...(opts.cardId ? { cardId: opts.cardId } : {}),
     };
     const entry: Entry = {
@@ -167,7 +167,7 @@ export class JobQueue {
       run: opts.run,
       reviewId: opts.reviewId,
       cardId: opts.cardId,
-      ...(opts.threadId ? { threadId: opts.threadId } : {}),
+      ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
       seq: this.seq++,
     };
     this.entries.set(job.id, entry);
@@ -522,7 +522,7 @@ export class JobQueue {
           type: "text",
           jobId: job.id,
           ...(entry.cardId ? { cardId: entry.cardId } : {}),
-          ...(entry.threadId ? { threadId: entry.threadId } : {}),
+          ...(entry.annotationId ? { annotationId: entry.annotationId } : {}),
           delta,
         });
       },

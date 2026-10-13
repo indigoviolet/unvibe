@@ -170,7 +170,6 @@ describe("citedHunkHashes", () => {
             pageId: "p1",
             title: null,
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 1,
             undoStack: [],

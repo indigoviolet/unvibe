@@ -20,7 +20,7 @@ import type {
   SubmitCommentLocation,
 } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
-import { isCommentThread, threadPostText } from "./threads.js";
+import { threadPostText } from "./threads.js";
 import { findBlock } from "../interaction/l4.js";
 
 export interface LocatedComment {
@@ -261,21 +261,20 @@ export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Annotatio
 }
 
 /**
- * All Comment threads marked For PR (`post`) that have not been posted
- * yet, each with its location + exact text. Posted threads (`postedAt`)
- * are skipped so retries never double-post. Issue #135: Ask threads are
- * never submitted, even when an older review still carries `post` on one
- * (dev-only data; reset the review to clear it).
+ * All comments marked For PR (`post`) that have not been posted yet,
+ * each with its location + exact text. Posted comments (`postedAt`) are
+ * skipped so retries never double-post. Conversations are never
+ * submitted: only the reviewer's own comments go to the PR (#136).
  */
 export function locatePendingThreads(snapshot: ReviewSnapshot): LocatedComment[] {
   return (snapshot.annotations ?? [])
-    .filter((a) => a.type === "thread" && a.post && !a.postedAt && isCommentThread(a as Annotation))
+    .filter((a) => a.type === "comment" && a.post && !a.postedAt)
     .map((t) => locateThreadWithText(snapshot, t as Annotation));
 }
 
-/** Threads already posted (skipped on retry). */
+/** Comments already posted (skipped on retry). */
 export function postedThreadIds(snapshot: ReviewSnapshot): string[] {
   return (snapshot.annotations ?? [])
-    .filter((a) => a.type === "thread" && a.post && a.postedAt)
+    .filter((a) => a.type === "comment" && a.post && a.postedAt)
     .map((a) => a.id);
 }

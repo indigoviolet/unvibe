@@ -1,10 +1,10 @@
 /**
- * Explain, Ask and Note on text inside an explanation (#116).
+ * Explain, Ask and Note on text inside a conversation answer (#116, #136).
  *
  * With the replay runner over HTTP (`POST /api/reviews/:id/actions`):
- * the service accepts an expansion block as the host for all three
- * actions, stores the annotation against `<expansion>#<block>`, and
- * citation validation accepts `card:<expansion>#<block>` targets.
+ * the service accepts an answer block as the host for all three
+ * actions, stores the annotation against `<answer>#<block>`, and
+ * citation validation accepts `card:<answer>#<block>` targets.
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,8 +68,8 @@ async function postAction(
   return { status: res.statusCode, json: (res.json() ?? {}) as Record<string, unknown> };
 }
 
-describe("actions inside an expansion (#116)", () => {
-  it("explain, ask and note accept an expansion block as host", { timeout: 120000 }, async () => {
+describe("actions inside a conversation answer (#116, #136)", () => {
+  it("explain, ask and note accept an answer block as host", { timeout: 120000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
@@ -96,11 +96,13 @@ describe("actions inside an expansion (#116)", () => {
         await new Promise((r) => setTimeout(r, 500));
       }
       const pexp = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === parentId)!;
-      expect(pexp.expansion!.blocks.length).toBeGreaterThan(0);
-      const hostBlock = pexp.expansion!.blocks[0] as { id: string; text?: { standard: string } };
+      const parentTurnId = parent.json.turnId as string;
+      const parentTurn = (pexp.turns ?? []).find((t) => t.id === parentTurnId)!;
+      expect(parentTurn.blocks.length).toBeGreaterThan(0);
+      const hostBlock = parentTurn.blocks[0] as { id: string; text?: { standard: string } };
       const quote = (hostBlock.text?.standard ?? "").slice(0, 20).trim();
       expect(quote).not.toBe("");
-      const host = `${parentId}#${hostBlock.id}`;
+      const host = `${parentTurnId}#${hostBlock.id}`;
 
       // Nested explain on the expansion block fills like a card-level one.
       const nested = await postAction(app, id, {
@@ -119,11 +121,11 @@ describe("actions inside an expansion (#116)", () => {
         await new Promise((r) => setTimeout(r, 500));
       }
       const done = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === nestedId)!;
-      expect(done.type).toBe("expansion");
+      expect(done.type).toBe("conversation");
       expect(done.anchor.host).toMatchObject({ kind: "block", blockId: host });
-      expect(done.expansion!.blocks.length).toBeGreaterThan(0);
+      expect(done.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
 
-      // Ask on the same expansion block creates a working thread.
+      // Ask on the same answer block creates a nested conversation card.
       const ask = await postAction(app, id, {
         kind: "ask",
         quote,
@@ -131,8 +133,8 @@ describe("actions inside an expansion (#116)", () => {
         message: "What does this mean?",
       });
       expect(ask.status).toBe(200);
-      const threadId = ask.json.threadId as string;
-      expect(threadId).toMatch(/^ann_/);
+      const askId = ask.json.annotationId as string;
+      expect(askId).toMatch(/^ann_/);
       if (ask.json.jobId) {
         await waitFor(() =>
           ["done", "error", "cancelled"].includes(ctx.jobs.get(ask.json.jobId as string)?.state ?? ""),
@@ -140,12 +142,12 @@ describe("actions inside an expansion (#116)", () => {
       } else {
         await new Promise((r) => setTimeout(r, 500));
       }
-      const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
-      expect(thread.type).toBe("thread");
-      expect(thread.anchor.host).toMatchObject({ kind: "block", blockId: host });
-      expect(thread.messages.some((m) => m.who === "ai")).toBe(true);
+      const askCard = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === askId)!;
+      expect(askCard.type).toBe("conversation");
+      expect(askCard.anchor.host).toMatchObject({ kind: "block", blockId: host });
+      expect((askCard.turns?.[0]?.blocks.length ?? 0)).toBeGreaterThan(0);
 
-      // Note on the same expansion block stores a quiet thread.
+      // Note on the same answer block stores a quiet comment.
       const note = await postAction(app, id, {
         kind: "note",
         quote,
@@ -153,13 +155,13 @@ describe("actions inside an expansion (#116)", () => {
         text: "A reader note.",
       });
       expect(note.status).toBe(200);
-      const noteThread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (note.json.threadId as string))!;
-      expect(noteThread.note).toBe(true);
+      const noteThread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (note.json.annotationId as string))!;
+      expect(noteThread.type).toBe("comment");
       expect(noteThread.anchor.host).toMatchObject({ kind: "block", blockId: host });
 
-      // Citation validation accepts the expansion block as a card target.
+      // Citation validation accepts the answer block as a card target.
       const lookup = lookupForSnapshot(ctx.reviews.getSnapshot(id)!);
-      expect(validateTarget(`card:${parentId}#${hostBlock.id}`, lookup).status).toBe("valid");
+      expect(validateTarget(`card:${parentTurnId}#${hostBlock.id}`, lookup).status).toBe("valid");
     } finally {
       await app.close();
     }

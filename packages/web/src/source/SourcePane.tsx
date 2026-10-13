@@ -6,7 +6,7 @@
  * switches tabs from anywhere: this pane listens for its window event and
  * opens the description tab for `desc:` refs, the diff tab otherwise.
  */
-import { useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
@@ -44,10 +44,17 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
   };
   const diffComments = useDiffCommentBindings(reviewId);
   const diffExpansions = useDiffExpansionBindings(reviewId, lookupPage, onOpenPage, onFollowUp);
-  const lineSlots = useMemo(
-    () => ({ ...diffExpansions.lineSlots, ...diffComments.lineSlots }),
-    [diffExpansions.lineSlots, diffComments.lineSlots],
-  );
+  // A comment and a conversation card share a line's slot row: merge
+  // the content instead of letting one map overwrite the other (the
+  // card used to vanish when a comment landed on its line).
+  const lineSlots = useMemo(() => {
+    const merged: Record<string, React.ReactNode> = { ...diffExpansions.lineSlots };
+    for (const [key, node] of Object.entries(diffComments.lineSlots)) {
+      const prev = merged[key];
+      merged[key] = prev ? <Fragment key={key}>{prev}{node}</Fragment> : node;
+    }
+    return merged;
+  }, [diffExpansions.lineSlots, diffComments.lineSlots]);
   // Line-number icons mark comment threads only (expansions use the dotted
   // link); slot rows still render for both via `lineSlots`.
   const commentedLines = diffComments.commentedLines;

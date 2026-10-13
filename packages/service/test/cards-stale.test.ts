@@ -26,7 +26,6 @@ function snapshot(level: "simple" | "standard" | "deep"): ReviewSnapshot {
             pageId: "root",
             title: "Central",
             level,
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: [
@@ -48,7 +47,7 @@ function snapshot(level: "simple" | "standard" | "deep"): ReviewSnapshot {
     annotations: [
       {
         id: "ann1",
-        type: "expansion",
+        type: "conversation",
         anchor: {
           host: { kind: "block", blockId: "central#b-p" },
           quotedText: "fast path",

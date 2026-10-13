@@ -33,10 +33,10 @@ import { NewThreadComposer } from "./NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
 import { ThreadView } from "./ThreadView.js";
 
-function makeMark(threadId: string): HTMLElement {
+function makeMark(commentId: string): HTMLElement {
   const mark = document.createElement("mark");
   mark.className = "anc";
-  mark.dataset.thr = threadId;
+  mark.dataset.thr = commentId;
   return mark;
 }
 
@@ -47,18 +47,18 @@ export function GuideThreadHooks() {
   // Open-thread registration for the guide's comment markers.
   useEffect(
     () =>
-      onOpenBlockThread((threadId) => {
+      onOpenBlockThread((commentId) => {
         const reviewId = useReview.getState().snapshot?.review.id;
         if (!reviewId) return;
         if (isReadOnlyVersionNow()) {
           toast("Viewing an older version · read-only");
           return;
         }
-        api.updateComment(reviewId, threadId, { open: true }).catch((err: unknown) => {
+        api.updateComment(reviewId, commentId, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the comment: ${friendlyError(err)}`);
         });
         window.setTimeout(() => {
-          document.getElementById(threadId)?.scrollIntoView({ block: "nearest" });
+          document.getElementById(commentId)?.scrollIntoView({ block: "nearest" });
         }, 60);
       }),
     [],
@@ -78,7 +78,7 @@ export function GuideThreadHooks() {
     const page = document.getElementById("page");
     if (!page) return;
     const threads = (annotations ?? []).filter(
-      (a): a is Annotation => a.type === "thread" && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
+      (a): a is Annotation => a.type === "comment" && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
     );
     const highlighted = new Set<string>();
     // One frame: let the guide's own render commit first.
@@ -130,7 +130,7 @@ export function GuideThreadHooks() {
           const snap = useReview.getState().snapshot;
           const reviewId = snap?.review.id;
           const thread = snap?.annotations.find((a) => a.id === id);
-          if (!reviewId || !thread || thread.type !== "thread" || isReadOnlyVersionNow()) return;
+          if (!reviewId || !thread || thread.type !== "comment" || isReadOnlyVersionNow()) return;
           if (!thread.open) {
             api.updateComment(reviewId, id, { open: true }).catch(() => {});
           }
@@ -141,7 +141,7 @@ export function GuideThreadHooks() {
       const snap = useReview.getState().snapshot;
       const reviewId = snap?.review.id;
       const thread = snap?.annotations.find((a) => a.id === id);
-      if (!reviewId || !thread || thread.type !== "thread") return;
+      if (!reviewId || !thread || thread.type !== "comment") return;
       if (isReadOnlyVersionNow()) {
         toast("Viewing an older version · read-only");
         return;
@@ -212,7 +212,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
 
   const threads = (annotations ?? []).filter(
     (a): a is Annotation =>
-      a.type === "thread" &&
+      a.type === "comment" &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId) &&
       a.open,
@@ -221,12 +221,13 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   // An explain started from a selection on this block shows a
   // placeholder where the expansion will land (issue #46) — until the
   // expansion itself is in the snapshot (issue #97), so the two never
-  // stack. The card carries the working state from then on. Ask turns
-  // keep their composer as the placeholder, so they are skipped here.
+  // stack. The card carries the working state from then on. An Ask
+  // keeps its composer as the placeholder until the card lands, so ask
+  // entries are skipped here.
   const incoming = !readOnly ? inflightForBlock(inflight, cardId, blockId) : undefined;
   const arrived = (annotations ?? []).some(
     (a) =>
-      a.type === "expansion" &&
+      a.type === "conversation" &&
       a.open &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
@@ -246,14 +247,16 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
           reviewId={reviewId}
           anchor={pending.anchor}
           quote={pending.quote}
-          note={pending.note}
+          kind={pending.kind}
           initialText={pending.initialText}
           onDiscard={() => setPending(null)}
           onCreated={(id) => {
             setPending(null);
-            // New guide threads start closed on the service; open the one
-            // just created so the author sees the working state.
-            api.updateComment(reviewId, id, { open: true }).catch(() => {});
+            // New guide comments start closed on the service; open the one
+            // just created so the author sees it. Ask cards open in place.
+            if (pending.kind === "comment") {
+              api.updateComment(reviewId, id, { open: true }).catch(() => {});
+            }
             window.setTimeout(() => {
               document.getElementById(id)?.scrollIntoView({ block: "nearest" });
             }, 120);

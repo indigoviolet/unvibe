@@ -18,6 +18,7 @@ export {
 export {
   findCardTarget,
   findCardTargetInDraft,
+  conversationForAnswer,
   targetLevel,
   targetBlocks,
   targetRevision,
@@ -39,10 +40,12 @@ export {
 } from "./cards.js";
 export {
   findBlock,
+  findAnswer,
   hostBlockText,
   cardTextFor,
   nearbyAnnotationsText,
   threadTextFor,
+  turnsTextFor,
   l4Variables,
   cardPromptText,
 } from "./l4.js";

@@ -10,8 +10,8 @@
  * Agent-starting kinds (verified against
  * `packages/service/src/pipeline/actions/`): explain, ask, reply, retry,
  * depth, examples, diagram, generate, followup, concept, second_opinion,
- * plus the update pass (`POST …/update`). Local-only kinds — read,
- * collapse, bookmark, note, promote, close, delete, undo — need nothing.
+ * plus the update pass (`POST …/update`). Local-only kinds — collapse,
+ * bookmark, note, promote, close, delete, undo — need nothing.
  */
 import type { ActionAnchor, Annotation, Job, JobKind, ReviewSnapshot } from "@unvibe/shared";
 import { isLiveJobState, type InFlightAction, type InFlightKind } from "../state/store.js";
@@ -57,8 +57,6 @@ export function jobLabel(kind: JobKind): string {
       return inflightLabel("diagram");
     case "go-deeper":
       return inflightLabel("generate");
-    case "explain":
-      return inflightLabel("explain");
     case "ask":
       return inflightLabel("ask");
     case "concept":
@@ -82,14 +80,14 @@ export function isRewriteKind(kind: InFlightKind | JobKind): boolean {
   return kind === "depth" || kind === "examples" || kind === "diagram";
 }
 
-/** Live (queued/running/backing-off) job working on a card or thread. */
+/** Live (queued/running/backing-off) job working on a card or answer. */
 export function liveJobForTarget(
   jobs: Job[],
   targetId: string,
 ): Job | undefined {
   return jobs.find(
     (j) =>
-      (j.cardId === targetId || j.threadId === targetId) && isLiveJobState(j.state),
+      (j.cardId === targetId || j.annotationId === targetId) && isLiveJobState(j.state),
   );
 }
 
@@ -117,13 +115,12 @@ export function busyForCard(
 }
 
 /**
- * Busy state for an expansion card: the direct entry first, then a
+ * Busy state for a conversation card: the direct entry first, then a
  * follow-up chip entry addressing its anchor block (the answer renders
  * before the response retargets), then an anchor-keyed explain entry for
- * an expansion that landed before its response (issue #97), then the
- * live job.
+ * a card that landed before its response (issue #97), then the live job.
  */
-export function busyForExpansion(
+export function busyForConversation(
   inflight: Record<string, InFlightAction>,
   jobs: Job[],
   snapshot: ReviewSnapshot | null | undefined,
@@ -138,16 +135,16 @@ export function busyForExpansion(
     }
     return direct;
   }
-  if (expansion.type === "expansion") {
+  if (expansion.type === "conversation") {
     if (expansion.anchor.host.kind === "block") {
       const chip = followupEntryForAnchorBlock(inflight, expansion.anchor.host.blockId);
       if (chip) return { kind: chip.kind, label: inflightLabel(chip.kind), rewriting: false };
     }
-    // The service creates the expansion at once: its patch lands before
+    // The service creates the card at once: its patch lands before
     // the action response retargets the anchor-keyed entry. Carry the
     // Explain label meanwhile, so the card shows one indicator (never the
     // generic fallback) and its content controls stay off.
-    const anchorEntry = anchorEntryForExpansion(inflight, expansion);
+    const anchorEntry = anchorEntryForConversation(inflight, expansion);
     if (anchorEntry) {
       return { kind: anchorEntry.kind, label: inflightLabel(anchorEntry.kind), rewriting: false };
     }
@@ -156,17 +153,17 @@ export function busyForExpansion(
 }
 
 /**
- * Anchor-keyed explain entry standing in for an expansion that arrived
- * before its action response retargeted the entry (issue #97). Only
- * `explain` creates bare expansions; follow-up answers match through
+ * Anchor-keyed explain entry standing in for a conversation card that
+ * arrived before its action response retargeted the entry (issue #97).
+ * Only `explain` creates bare cards; follow-up answers match through
  * their chip key above, and every other kind addresses its target id
  * directly. A block entry names the host exactly or by its bare id.
  */
-export function anchorEntryForExpansion(
+export function anchorEntryForConversation(
   inflight: Record<string, InFlightAction>,
   expansion: Annotation,
 ): InFlightAction | undefined {
-  if (expansion.type !== "expansion") return undefined;
+  if (expansion.type !== "conversation") return undefined;
   const host = expansion.anchor.host;
   for (const [key, entry] of Object.entries(inflight)) {
     if (entry.kind !== "explain") continue;
@@ -197,23 +194,6 @@ function bareBlockId(id: string): string {
  */
 export function blockIdsMatch(entryBid: string, hostBlockId: string): boolean {
   return entryBid === hostBlockId || entryBid === bareBlockId(hostBlockId);
-}
-
-/** In-flight entry for a thread (reply/retry ask turns). */
-export function busyForThread(
-  inflight: Record<string, InFlightAction>,
-  jobs: Job[],
-  threadId: string,
-): BusyState | null {
-  const entry = inflight[threadId];
-  if (entry) {
-    return { kind: entry.kind, label: inflightLabel(entry.kind), rewriting: false };
-  }
-  const job = liveJobForTarget(jobs, threadId);
-  if (job) {
-    return { kind: job.kind, label: jobLabel(job.kind), rewriting: false };
-  }
-  return null;
 }
 
 // --- entry keys -----------------------------------------------------------
@@ -288,22 +268,24 @@ export function anchorBlockType(
     }
   }
   for (const a of snapshot?.annotations ?? []) {
-    if (owner !== null && a.id !== owner) continue;
-    const blocks = a.type === "expansion" ? (a.expansion?.blocks ?? []) : [];
-    for (const b of blocks as { id: string; type: string }[]) {
-      if (match(b.id)) return b.type;
+    if (a.type !== "conversation") continue;
+    for (const t of a.turns ?? []) {
+      if (owner !== null && a.id !== owner && t.id !== owner) continue;
+      for (const b of t.blocks as { id: string; type: string }[]) {
+        if (match(b.id)) return b.type;
+      }
     }
   }
   return undefined;
 }
 
-/** True when an expansion is a follow-up answer (anchored on a follow-up block). */
+/** True when a conversation card is a follow-up answer (anchored on a follow-up block). */
 export function isFollowupAnswer(
   snapshot: ReviewSnapshot | null | undefined,
   expansion: Annotation,
 ): boolean {
   const host = expansion.anchor.host;
-  if (expansion.type !== "expansion" || host.kind !== "block") return false;
+  if (expansion.type !== "conversation" || host.kind !== "block") return false;
   return anchorBlockType(snapshot, host.blockId) === "follow-up";
 }
 

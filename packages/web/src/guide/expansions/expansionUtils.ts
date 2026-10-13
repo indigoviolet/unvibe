@@ -1,12 +1,12 @@
 /**
- * Expansion helpers (M4 interaction; PRD §4.7).
+ * Conversation-card helpers (issue #136; PRD §4.7).
  *
  * Pure logic, no DOM/store — unit tested:
- * - closed vs open expansions, promoted links, anchor-stale fallback;
- * - expansion preview text (first paragraph HTML → plain text);
- * - grouping expansions by host for guide/description/diff slots.
+ * - closed vs open conversation cards, promoted links, anchor-stale fallback;
+ * - card preview text (first paragraph HTML → plain text);
+ * - grouping cards by host for guide/description/diff slots.
  */
-import type { Annotation, Block, DepthLevel } from "@unvibe/shared";
+import type { Annotation, Block, DepthLevel, Turn } from "@unvibe/shared";
 
 export interface ExpansionGroup {
   open: Annotation[];
@@ -14,29 +14,34 @@ export interface ExpansionGroup {
   links: Annotation[];
 }
 
-/** All expansion/link annotations (closed expansions stay as dotted links). */
+/** All conversation/link annotations (closed cards stay as dotted links). */
 export function isExpansionLike(a: Annotation): boolean {
-  return a.type === "expansion" || a.type === "link";
+  return a.type === "conversation" || a.type === "link";
 }
 
-/** Open expansions show the card in place. */
+/** Open conversation cards show the card in place. */
 export function isOpenExpansion(a: Annotation): boolean {
-  return a.type === "expansion" && a.open && !a.promotedToPage;
+  return a.type === "conversation" && a.open && !a.promotedToPage;
 }
 
-/** Closed expansions render as dotted-link marks on the anchor text. */
+/** Closed conversation cards render as dotted-link marks on the anchor text. */
 export function isClosedExpansion(a: Annotation): boolean {
-  return a.type === "expansion" && !a.open && !a.promotedToPage;
+  return a.type === "conversation" && !a.open && !a.promotedToPage;
 }
 
-/** Promoted expansions became a page link (type "link" or promotedToPage). */
+/** Promoted cards became a page link (type "link" or promotedToPage). */
 export function isPromotedLink(a: Annotation): boolean {
   return a.type === "link" || !!a.promotedToPage;
 }
 
 /** Anchor-stale fallback (PRD §4.7): show a collapsed card instead. */
 export function isAnchorStale(a: Annotation): boolean {
-  return !!a.anchorStale || !!a.expansion?.anchorStale;
+  return !!a.anchorStale;
+}
+
+/** Every turn of a conversation card, in order. */
+export function conversationTurns(a: Annotation): Turn[] {
+  return a.type === "conversation" ? (a.turns ?? []) : [];
 }
 
 function stripTags(s: string): string {
@@ -62,10 +67,11 @@ function blockPlainText(block: Block, level: DepthLevel): string {
   }
 }
 
-/** Plain-text preview of an expansion (first non-empty block). */
+/** Plain-text preview of a conversation card (first turn's first non-empty block). */
 export function expansionPreview(a: Annotation): string {
-  const blocks = a.expansion?.blocks ?? [];
-  const level = a.expansion?.level ?? "standard";
+  const first = conversationTurns(a)[0];
+  const blocks = first?.blocks ?? [];
+  const level = first?.level ?? "standard";
   for (const b of blocks) {
     const text = blockPlainText(b, level).replace(/\s+/g, " ").trim();
     if (text) return text.slice(0, 280);
@@ -73,10 +79,11 @@ export function expansionPreview(a: Annotation): string {
   return "";
 }
 
-/** First-paragraph HTML of an expansion, for hover previews. */
+/** First-paragraph HTML of a conversation card, for hover previews. */
 export function expansionPreviewHtml(a: Annotation): string | null {
-  const blocks = a.expansion?.blocks ?? [];
-  const level = a.expansion?.level ?? "standard";
+  const first = conversationTurns(a)[0];
+  const blocks = first?.blocks ?? [];
+  const level = first?.level ?? "standard";
   for (const b of blocks) {
     if (b.type === "paragraph") {
       const html =

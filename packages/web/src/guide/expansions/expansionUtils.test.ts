@@ -9,10 +9,22 @@ import {
   isPromotedLink,
 } from "./expansionUtils.js";
 
+function turn(over: Record<string, unknown> = {}): import("@unvibe/shared").Turn {
+  return {
+    id: "ans_1",
+    question: null,
+    blocks: [],
+    level: "standard",
+    revision: 1,
+    undoStack: [],
+    ...over,
+  } as import("@unvibe/shared").Turn;
+}
+
 function ann(over: Partial<Annotation>): Annotation {
   return {
     id: "a1",
-    type: "expansion",
+    type: "conversation",
     anchor: {
       host: { kind: "block", blockId: "b1" },
       quotedText: "q",
@@ -29,30 +41,26 @@ function ann(over: Partial<Annotation>): Annotation {
   } as Annotation;
 }
 
-describe("expansionUtils", () => {
-  it("classifies open/closed/promoted expansions", () => {
+describe("conversation card utils", () => {
+  it("classifies open/closed/promoted cards", () => {
     expect(isOpenExpansion(ann({ open: true }))).toBe(true);
     expect(isClosedExpansion(ann({ open: false }))).toBe(true);
     expect(isPromotedLink(ann({ type: "link" as never, promotedToPage: "p-1" }))).toBe(true);
     expect(isPromotedLink(ann({ open: false, promotedToPage: "p-1" }))).toBe(true);
   });
 
-  it("detects anchor-stale on either level", () => {
+  it("detects anchor-stale", () => {
     expect(isAnchorStale(ann({ anchorStale: true }))).toBe(true);
-    expect(isAnchorStale(ann({ expansion: { blocks: [], level: "standard", read: false, collapsed: false, revision: 1, undoStack: [], anchorStale: true } }))).toBe(true);
     expect(isAnchorStale(ann({}))).toBe(false);
   });
 
   it("previews the first paragraph", () => {
     const a = ann({
-      expansion: {
-        blocks: [{ type: "paragraph", id: "b1", text: { standard: "<code>x</code> hello world" }, citations: [] }],
-        level: "standard",
-        read: false,
-        collapsed: false,
-        revision: 1,
-        undoStack: [],
-      },
+      turns: [
+        turn({
+          blocks: [{ type: "paragraph", id: "b1", text: { standard: "<code>x</code> hello world" }, citations: [] }],
+        }),
+      ],
     });
     expect(expansionPreview(a)).toContain("hello world");
   });

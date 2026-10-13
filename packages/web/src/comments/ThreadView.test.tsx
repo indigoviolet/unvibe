@@ -1,8 +1,9 @@
 /**
- * Thread reply-box behaviour against the mock API (`VITE_MOCK=1`):
+ * Comment thread behaviour against the mock API (`VITE_MOCK=1`):
  * typed text survives unrelated WS patches, Discard clears the box on an
- * existing thread, Cmd/Ctrl+Enter sends, and a failed agent reply shows
- * the error with a Retry button wired to the `retry` action.
+ * existing comment (deletes a new one), Cmd/Ctrl+Enter sends through the
+ * comments route, and "Ask the agent about this" opens the usual Ask
+ * card on the comment's anchor, quoting the comment.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -17,7 +18,7 @@ const REVIEW_ID = "thread-test";
 function thread(over: Partial<Annotation> = {}): Annotation {
   return {
     id: "ann_thread_test",
-    type: "thread",
+    type: "comment",
     anchor: {
       host: { kind: "block", blockId: "central#b1" },
       quotedText: "optional",
@@ -29,7 +30,6 @@ function thread(over: Partial<Annotation> = {}): Annotation {
     open: true,
     messages: [{ who: "you", text: "First message" }],
     post: false,
-    note: true,
     ...over,
   };
 }
@@ -78,113 +78,91 @@ describe("ThreadView reply box", () => {
     expect(screen.getByLabelText("Reply")).toHaveValue("unsent draft");
   });
 
-  test("Discard clears the box on an existing thread", async () => {
+  test("Discard clears the box on an existing comment", async () => {
     const found = useReview.getState().snapshot?.annotations[0] as Annotation;
+    const updateSpy = vi.spyOn(api, "updateComment").mockResolvedValue({ ok: true });
     render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
-    const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
-    fireEvent.change(box, { target: { value: "to clear" } });
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(screen.getByLabelText("Reply")).toHaveValue("");
-  });
-
-  test("Discard stays disabled on an existing thread until there is a draft (issue #135)", async () => {
-    const found = useReview.getState().snapshot?.annotations[0] as Annotation;
-    render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
-    // Empty reply box: Discard does nothing, so it is not offered.
-    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Reply"), { target: { value: "hey" } });
-    expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
-  });
-
-  test("a new comment thread offers a comment placeholder, not an Ask one (issue #135)", async () => {
-    const fresh = thread({ messages: [], reply: "" });
-    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [fresh] });
-    render(<ThreadView reviewId={REVIEW_ID} thread={fresh} />);
-    expect(screen.getByLabelText("New comment")).toHaveAttribute("placeholder", "Write a comment…");
-  });
-
-  test("only comment threads carry the For-PR control (issue #135)", async () => {
-    const asking = thread({ note: false, messages: [{ who: "you", text: "Why?" }], post: false });
-    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [asking] });
-    const { unmount } = render(<ThreadView reviewId={REVIEW_ID} thread={asking} />);
-    expect(screen.queryByRole("button", { name: /Mark.*for the PR/ })).toBeNull();
-    unmount();
-    // A comment thread shows it…
-    const commenting = thread({ note: true, messages: [{ who: "you", text: "Nit" }], post: true });
-    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
-    const { unmount: unmount2 } = render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
-    expect(screen.getByRole("button", { name: /Marked for the PR/ })).toBeVisible();
-    unmount2();
-    // …and an Ask thread never does, whatever its stored mark.
-    const legacy = thread({ note: false, messages: [{ who: "you", text: "Old" }], post: true });
-    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [legacy] });
-    render(<ThreadView reviewId={REVIEW_ID} thread={legacy} />);
-    expect(screen.queryByRole("button", { name: /Mark.*for the PR/ })).toBeNull();
-  });
-
-  test("a failed reply shows the error with a Retry button wired to the retry action", async () => {
-    const failed = thread({
-      note: false,
-      messages: [{ who: "you", text: "Why?" }],
-      error: "rate limited",
-      working: null,
-    });
-    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [failed] });
-    const spy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, threadId: failed.id });
-    render(<ThreadView reviewId={REVIEW_ID} thread={failed} />);
     try {
-      expect(screen.getByRole("alert")).toHaveTextContent(/rate limited/);
-      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "retry", threadId: failed.id });
+      const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+      fireEvent.change(box, { target: { value: "to clear" } });
+      fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+      expect(updateSpy).toHaveBeenCalledWith(REVIEW_ID, found.id, { reply: null });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(screen.getByLabelText("Reply")).toHaveValue("");
     } finally {
-      spy.mockRestore();
+      updateSpy.mockRestore();
     }
   });
 
-  test("an ask reply sends through the reply action, not the comments route", async () => {
-    const asking = thread({ note: false, messages: [{ who: "you", text: "Why?" }] });
-    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [asking] });
-    const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, threadId: asking.id });
-    const replySpy = vi.spyOn(api, "replyComment");
-    render(<ThreadView reviewId={REVIEW_ID} thread={asking} />);
+  test("a reply sends through the comments route, never an agent action", async () => {
+    const commenting = thread({ messages: [{ who: "you", text: "Nit" }] });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
+    const actionSpy = vi.spyOn(api, "action");
+    const replySpy = vi.spyOn(api, "replyComment").mockResolvedValue({ ok: true });
+    render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
     try {
       const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
       fireEvent.change(box, { target: { value: "And then?" } });
       fireEvent.click(screen.getByRole("button", { name: "Reply" }));
-      expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
-        kind: "reply",
-        threadId: asking.id,
-        message: "And then?",
-      });
-      expect(replySpy).not.toHaveBeenCalled();
+      expect(replySpy).toHaveBeenCalledWith(REVIEW_ID, commenting.id, { text: "And then?" });
+      expect(actionSpy).not.toHaveBeenCalled();
     } finally {
       actionSpy.mockRestore();
       replySpy.mockRestore();
     }
   });
 
-  test("reply shows a plain working state immediately on send, with no streamed text", async () => {
-    const asking = thread({ note: false, messages: [{ who: "you", text: "Why?" }] });
-    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [asking] });
-    // Hold the request open: the immediate state must show before it returns.
-    let resolveAction!: (res: { accepted: boolean; threadId: string; jobId: string }) => void;
-    const actionSpy = vi.spyOn(api, "action").mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveAction = resolve as never;
-        }),
-    );
-    render(<ThreadView reviewId={REVIEW_ID} thread={asking} />);
+  test("a new comment offers Save and deletes on Discard", async () => {
+    const fresh = thread({ messages: [], reply: "" });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [fresh] });
+    const deleteSpy = vi.spyOn(api, "deleteComment").mockResolvedValue({ ok: true });
+    render(<ThreadView reviewId={REVIEW_ID} thread={fresh} />);
     try {
-      fireEvent.change(screen.getByLabelText("Reply"), { target: { value: "And then?" } });
-      fireEvent.click(screen.getByRole("button", { name: "Reply" }));
-      // Synchronous at click time, before the request returns.
-      expect(screen.getByRole("status")).toHaveTextContent("Writing reply…");
-      expect(document.querySelector(".working .stream")).toBeNull();
-      // Still showing while the request is in flight (no flicker gap).
-      resolveAction({ accepted: true, threadId: asking.id, jobId: "job-unseen" });
-      await Promise.resolve();
-      expect(screen.getByRole("status")).toHaveTextContent("Writing reply…");
+      expect(screen.getByLabelText("New comment")).toHaveAttribute("placeholder", "Write a comment…");
+      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+      expect(deleteSpy).toHaveBeenCalledWith(REVIEW_ID, fresh.id);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+  });
+
+  test("comments carry the For-PR control", async () => {
+    const commenting = thread({ messages: [{ who: "you", text: "Nit" }], post: true });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
+    render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
+    expect(screen.getByRole("button", { name: /Marked for the PR/ })).toBeVisible();
+  });
+});
+
+describe("ThreadView ask-about (issue #136)", () => {
+  test("asks the agent about the comment text on the comment anchor", async () => {
+    const commenting = thread({ messages: [{ who: "you", text: "Why is this so?" }] });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
+    const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
+    render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Ask the agent about this" }));
+      expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
+        kind: "ask",
+        quote: "Why is this so?",
+        anchor: { where: "block", blockId: "central#b1" },
+        message: "Why is this so?",
+      });
+    } finally {
+      actionSpy.mockRestore();
+    }
+  });
+
+  test("no ask-about without comment text", async () => {
+    const empty = thread({ messages: [] });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [empty] });
+    const actionSpy = vi.spyOn(api, "action");
+    render(<ThreadView reviewId={REVIEW_ID} thread={empty} />);
+    try {
+      // New (unsaved) comments offer no ask-about control.
+      expect(screen.queryByRole("button", { name: "Ask the agent about this" })).toBeNull();
+      expect(actionSpy).not.toHaveBeenCalled();
     } finally {
       actionSpy.mockRestore();
     }

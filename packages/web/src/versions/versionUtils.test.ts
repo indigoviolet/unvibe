@@ -19,7 +19,7 @@ import {
 function job(over: Partial<Job> = {}): Job {
   return {
     id: "j1",
-    kind: "explain",
+    kind: "ask",
     model: "m",
     priority: 10,
     state: "running",

@@ -1,11 +1,11 @@
 /**
- * Card targets + pure card mutations (M4).
+ * Card targets + pure card mutations (issue #136).
  *
- * A "card" for interaction purposes is either a `Page` card or an
- * expansion annotation's embedded card (`Annotation.expansion`). Every
- * helper below resolves both, so depth / examples / diagram / undo /
- * read / collapse work on expansions exactly like on cards (PRD §4.4,
- * §4.7). All mutations run inside `ReviewStore.mutate` in the action
+ * A "card" for interaction purposes is either a `Page` card or one answer
+ * (turn) of a conversation card (`Annotation.turns`, each with its own
+ * `ans_…` id). Every helper below resolves both, so depth / examples /
+ * diagram / undo / second opinion work on answers exactly like on cards
+ * (PRD §4.4). All mutations run inside `ReviewStore.mutate` in the action
  * modules; this file only builds the draft edits.
  */
 import type { WritableDraft } from "immer";
@@ -18,24 +18,25 @@ import type {
   DepthLevel,
   DiagramBlock,
   ReviewSnapshot,
+  Turn,
 } from "@unvibe/shared";
 import { freshBlockId } from "@unvibe/shared";
 
 export type CardTarget =
   | { kind: "page-card"; pageId: string; card: Card }
-  | { kind: "expansion"; annotation: Annotation };
+  | { kind: "answer"; annotation: Annotation; turn: Turn };
 
 const ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
-/** Find a page card or an expansion annotation by id. */
+/** Find a page card or a conversation answer by id. */
 export function findCardTarget(snapshot: ReviewSnapshot, cardId: string): CardTarget | null {
   for (const page of snapshot.pages ?? []) {
     const card = (page.cards ?? []).find((c) => c.id === cardId);
     if (card) return { kind: "page-card", pageId: page.id, card };
   }
-  const annotation = (snapshot.annotations ?? []).find((a) => a.id === cardId);
-  if (annotation?.type === "expansion" && annotation.expansion) {
-    return { kind: "expansion", annotation };
+  for (const annotation of snapshot.annotations ?? []) {
+    const turn = (annotation.turns ?? []).find((t) => t.id === cardId);
+    if (turn) return { kind: "answer", annotation, turn };
   }
   return null;
 }
@@ -49,24 +50,32 @@ export function findCardTargetInDraft(
     const card = (page.cards ?? []).find((c) => c.id === cardId);
     if (card) return { kind: "page-card", pageId: page.id, card: card as Card };
   }
-  const annotation = (draft.annotations ?? []).find((a) => a.id === cardId);
-  const ann = annotation as unknown as Annotation | undefined;
-  if (ann?.type === "expansion" && ann.expansion) {
-    return { kind: "expansion", annotation: ann };
+  for (const annotation of draft.annotations ?? []) {
+    const ann = annotation as unknown as Annotation;
+    const turn = (ann.turns ?? []).find((t) => t.id === cardId);
+    if (turn) return { kind: "answer", annotation: ann, turn: turn as Turn };
+  }
+  return null;
+}
+
+/** The conversation card holding an answer, or null. */
+export function conversationForAnswer(snapshot: ReviewSnapshot, answerId: string): Annotation | null {
+  for (const annotation of snapshot.annotations ?? []) {
+    if ((annotation.turns ?? []).some((t) => t.id === answerId)) return annotation;
   }
   return null;
 }
 
 export function targetLevel(target: CardTarget): DepthLevel {
-  return target.kind === "page-card" ? target.card.level : (target.annotation.expansion?.level ?? "standard");
+  return target.kind === "page-card" ? target.card.level : target.turn.level;
 }
 
 export function targetBlocks(target: CardTarget): Block[] {
-  return target.kind === "page-card" ? target.card.blocks : (target.annotation.expansion?.blocks ?? []);
+  return target.kind === "page-card" ? target.card.blocks : target.turn.blocks;
 }
 
 export function targetRevision(target: CardTarget): number {
-  return target.kind === "page-card" ? target.card.revision : (target.annotation.expansion?.revision ?? 1);
+  return target.kind === "page-card" ? target.card.revision : target.turn.revision;
 }
 
 /** Push the current blocks+level onto the undo stack (no redo, PRD §4.4). */
@@ -75,7 +84,7 @@ export function pushUndo(target: CardTarget, blocks: Block[], level: DepthLevel)
   if (target.kind === "page-card") {
     target.card.undoStack.push(entry);
   } else {
-    target.annotation.expansion!.undoStack.push(entry);
+    target.turn.undoStack.push(entry);
   }
 }
 
@@ -90,10 +99,9 @@ export function setTargetContent(target: CardTarget, blocks: Block[], level: Dep
     target.card.level = level;
     target.card.revision += 1;
   } else {
-    const exp = target.annotation.expansion!;
-    exp.blocks = blocks;
-    exp.level = level;
-    exp.revision += 1;
+    target.turn.blocks = blocks;
+    target.turn.level = level;
+    target.turn.revision += 1;
   }
 }
 
@@ -101,14 +109,13 @@ export function setTargetContent(target: CardTarget, blocks: Block[], level: Dep
  * Pop the undo stack: restore the last blocks+level, drop everything
  * after it (no redo, no history trail). Returns false when empty.
  *
- * Comments and expansions attached to the card survive undo: annotations
- * live outside cards (re-attached to their blocks by id, as the
- * prototype's `setContent` does), so restoring blocks never orphans
+ * Comments and nested cards attached to the card survive undo:
+ * annotations live outside cards (re-attached to their blocks by id, as
+ * the prototype's `setContent` does), so restoring blocks never orphans
  * them. Block ids are stable across rewrites, so anchors keep resolving.
  */
 export function applyUndo(target: CardTarget): boolean {
-  const stack =
-    target.kind === "page-card" ? target.card.undoStack : (target.annotation.expansion?.undoStack ?? []);
+  const stack = target.kind === "page-card" ? target.card.undoStack : target.turn.undoStack;
   const prev = stack.pop();
   if (!prev) return false;
   if (target.kind === "page-card") {
@@ -116,10 +123,9 @@ export function applyUndo(target: CardTarget): boolean {
     target.card.level = prev.level;
     target.card.revision += 1;
   } else {
-    const exp = target.annotation.expansion!;
-    exp.blocks = prev.blocks;
-    exp.level = prev.level;
-    exp.revision += 1;
+    target.turn.blocks = prev.blocks;
+    target.turn.level = prev.level;
+    target.turn.revision += 1;
   }
   return true;
 }
@@ -345,8 +351,11 @@ export function markStaleAnchors(draft: WritableDraft<ReviewSnapshot>, cardId: s
       if (card.id === cardId) collect(card.blocks as Block[], card.level);
     }
   }
-  const exp = (draft.annotations as unknown as Annotation[]).find((a) => a.id === cardId);
-  if (exp?.type === "expansion" && exp.expansion) collect(exp.expansion.blocks, exp.expansion.level);
+  for (const ann of draft.annotations as unknown as Annotation[]) {
+    for (const turn of ann.turns ?? []) {
+      if (turn.id === cardId) collect(turn.blocks, turn.level);
+    }
+  }
   for (const ann of (draft.annotations ?? []) as unknown as Annotation[]) {
     const host = ann.anchor?.host;
     if (!host || host.kind !== "block") continue;
@@ -358,11 +367,9 @@ export function markStaleAnchors(draft: WritableDraft<ReviewSnapshot>, cardId: s
     const found = quote !== "" && text.includes(quote);
     if (!found && !ann.anchorStale) {
       ann.anchorStale = true;
-      if (ann.type === "expansion" && ann.expansion) ann.expansion.anchorStale = true;
       stale.push(ann.id);
     } else if (found && ann.anchorStale) {
       delete ann.anchorStale;
-      if (ann.type === "expansion" && ann.expansion) delete ann.expansion.anchorStale;
     }
   }
   return stale;

@@ -3,7 +3,7 @@
  * `sharedctx/hooks.ts` kinds; the taxonomy there decides what enters the
  * append-only log and with what scope).
  *
- * - explain / follow-up answers (new expansion content) → `new-card`;
+ * - explain / follow-up answers (new conversation turns) → `new-card`;
  * - agent depth rewrites → `depth-rewrite` (card scope); instant cached
  *   switches → `depth-state` (UI state, never logged);
  * - examples / diagrams → `example-added` / `diagram-added` (card scope);
@@ -11,7 +11,7 @@
  *   L1) → `out-of-base-answer` in full; threads themselves settle later
  *   via `maybeSettleThread` (one line on close/idle);
  * - deleted items that had shared agent content → `item-deleted`;
- * - read / collapse / bookmark / undo / close → UI-state kinds (accepted,
+ * - collapse / bookmark / undo / close → UI-state kinds (accepted,
  *   never logged).
  */
 import { parseId, renderMarkdown, type Annotation, type Block, type ReviewSnapshot } from "@unvibe/shared";
@@ -23,9 +23,10 @@ export function oneLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-/** Rendered expansion content in full (for `new-card` entries, PRD §9.3). */
-export function expansionText(blocks: Block[], quote: string): string {
-  return `Explain "${oneLine(quote)}":\n\n${renderMarkdown(blocks).trim()}`;
+/** Rendered turn content in full (for `new-card` entries, PRD §9.3). */
+export function turnText(blocks: Block[], quote: string, question: string | null): string {
+  const head = question === null ? `Explain "${oneLine(quote)}"` : `Q: ${oneLine(question)}`;
+  return `${head}:\n\n${renderMarkdown(blocks).trim()}`;
 }
 
 /** Page-card id hosting a block anchor, when there is one. */
@@ -44,8 +45,12 @@ export function cardTitle(snapshot: ReviewSnapshot, cardId: string): string {
     if (card) return "untitled card";
   }
   const ann = snapshot.annotations.find((a) => a.id === cardId);
-  if (ann?.type === "expansion") {
+  if (ann?.type === "conversation") {
     return ann.anchor.quotedText.trim() !== "" ? ann.anchor.quotedText : "explanation";
+  }
+  for (const a of snapshot.annotations ?? []) {
+    const turn = (a.turns ?? []).find((t) => t.id === cardId);
+    if (turn) return turn.question ?? (a.anchor.quotedText.trim() !== "" ? a.anchor.quotedText : "explanation");
   }
   return "untitled card";
 }
@@ -64,6 +69,19 @@ export function storedCardTitle(snapshot: ReviewSnapshot, cardId: string): strin
 }
 
 /**
+ * Issue #50 / #136: echo-strip candidate for a conversation answer — its
+ * question, else the card's quoted text (shown in the card header, so a
+ * rewrite must not open by repeating it).
+ */
+export function answerEchoTitle(snapshot: ReviewSnapshot, cardId: string): string | undefined {
+  for (const a of snapshot.annotations ?? []) {
+    const turn = (a.turns ?? []).find((t) => t.id === cardId);
+    if (turn) return turn.question ?? (a.anchor.quotedText || undefined);
+  }
+  return undefined;
+}
+
+/**
  * True when any validated citation points at fetched code (`code:`).
  * The base pack inlines the diff, descriptions, pins and guide (L1/L1b/L2);
  * `code:` excerpts come from `get_code` fetches beyond it, so an answer
@@ -76,19 +94,22 @@ export function hasOutOfBaseCitations(tokens: { target: string; status: string }
   });
 }
 
-/** `new-card` for a filled explanation/follow-up expansion. */
-export function newCardForExpansion(
+/** `new-card` for a filled conversation turn. */
+export function newCardForTurn(
   reviewId: string,
   snapshot: ReviewSnapshot,
   annotation: Annotation,
+  turnId: string,
   sessionId?: string,
 ): InteractionEvent | null {
-  if (annotation.type !== "expansion" || !annotation.expansion) return null;
+  if (annotation.type !== "conversation") return null;
+  const turn = (annotation.turns ?? []).find((t) => t.id === turnId);
+  if (!turn) return null;
   const event: InteractionEvent = {
     kind: "new-card",
     reviewId,
-    text: expansionText(annotation.expansion.blocks, annotation.anchor.quotedText),
-    threadId: annotation.id,
+    text: turnText(turn.blocks, annotation.anchor.quotedText, turn.question),
+    annotationId: annotation.id,
   };
   const cardId = hostCardId(snapshot, annotation.anchor);
   if (cardId) event.cardId = cardId;
@@ -98,18 +119,18 @@ export function newCardForExpansion(
 
 /** True when an annotation holds shared agent content (deletion-worthy). */
 export function wasShared(annotation: Annotation): boolean {
-  if (annotation.type === "expansion") return (annotation.expansion?.blocks.length ?? 0) > 0;
-  if (annotation.type === "thread") return annotation.messages.some((m) => m.who === "ai");
+  if (annotation.type === "conversation") return (annotation.turns ?? []).some((t) => t.blocks.length > 0);
+  if (annotation.type === "comment") return annotation.messages.some((m) => m.who === "ai");
   return false;
 }
 
 /** `item-deleted` one-liner for a deleted shared item. */
 export function deletionFor(reviewId: string, annotation: Annotation): InteractionEvent {
-  const what = annotation.type === "expansion" ? "explanation" : annotation.type === "thread" ? "thread" : "annotation";
+  const what = annotation.type === "conversation" ? "explanation" : annotation.type === "comment" ? "comment" : "annotation";
   return {
     kind: "item-deleted",
     reviewId,
     text: `Deleted ${what} "${oneLine(annotation.anchor.quotedText)}"`,
-    threadId: annotation.id,
+    annotationId: annotation.id,
   };
 }

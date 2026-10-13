@@ -371,33 +371,56 @@ export class SessionManager {
     return Promise.all(firstMessages.map((m) => this.forkConversation(base.key, m)));
   }
 
+  /**
+   * Issue #136: register a conversation session forked outside
+   * `forkConversation` (the pipeline forks, then streams on the session
+   * itself). Registration is what makes the session tracked, persisted,
+   * idle-closed and reopenable — unregistered forks accumulate in the
+   * adapter process until it restarts (#143).
+   */
+  registerConversation(session: Session, baseKey: BaseKey | string, viaFork: boolean): void {
+    const keyString = typeof baseKey === "string" ? baseKey : baseKeyString(baseKey);
+    const base = this.bases.get(keyString);
+    const record: ConversationRecord = {
+      session,
+      baseKey: keyString,
+      viaFork,
+      lastSeenSeq: base?.logSeq ?? 0,
+      live: true,
+      lastUsedAt: this.clock.now(),
+    };
+    this.conversations.set(session.id, record);
+    this.persistConversation(record);
+  }
+
   /** Send one text turn on a conversation session; returns the reply. */
   async sendOnConversation(
     sessionId: string,
     text: string,
     opts: { signal?: AbortSignal } = {},
-  ): Promise<{ text: string; usage: TokenUsage }> {
+  ): Promise<{ text: string; usage: TokenUsage; rebuilt: boolean }> {
     const ensured = await this.ensureConversation(sessionId);
-    const out = await this.sendText(ensured, text, opts.signal);
-    const record = this.conversations.get(sessionId);
+    const out = await this.sendText(ensured.session, text, opts.signal);
+    const record = this.conversations.get(ensured.session.id) ?? this.conversations.get(sessionId);
     if (record) {
       record.lastUsedAt = this.clock.now();
       this.persistConversation(record);
     }
-    return out;
+    return { ...out, rebuilt: ensured.rebuilt };
   }
 
   /**
    * Reopen a conversation after an idle close or restart (`load`), or
    * rebuild it as a fresh fork of the current base when `load` fails.
-   * A rebuild loses conversation history past the base; the caller
-   * re-sends what it needs (it owns L4).
+   * A rebuild loses conversation history past the base and lands under a
+   * NEW session id; the caller stores the new id and re-sends what the
+   * agent needs (it owns L4) — see `rebuilt` and `session`.
    */
-  async ensureConversation(sessionId: string): Promise<Session> {
+  async ensureConversation(sessionId: string): Promise<{ session: Session; rebuilt: boolean }> {
     const record = this.conversations.get(sessionId);
     if (record?.live) {
       record.lastUsedAt = this.clock.now();
-      return record.session;
+      return { session: record.session, rebuilt: false };
     }
     if (record) {
       try {
@@ -405,7 +428,7 @@ export class SessionManager {
         record.live = true;
         record.lastUsedAt = this.clock.now();
         this.persistConversation(record);
-        return record.session;
+        return { session: record.session, rebuilt: false };
       } catch {
         await this.closeQuietly(record.session);
       }
@@ -422,12 +445,12 @@ export class SessionManager {
         this.conversations.delete(sessionId);
         this.conversations.set(rebuilt.id, record);
         this.persistConversation(record);
-        return rebuilt;
+        return { session: rebuilt, rebuilt: true };
       }
       record.live = false;
       throw new Error(`SessionManager: cannot reopen ${sessionId}: base ${record.baseKey} is gone`);
     }
-    return this.runner.load(sessionId);
+    return { session: await this.runner.load(sessionId), rebuilt: false };
   }
 
   async closeConversation(sessionId: string): Promise<void> {

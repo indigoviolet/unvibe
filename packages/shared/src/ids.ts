@@ -7,9 +7,9 @@
  * code:<path>:<line>[-<line>]@<sha>          any code at a commit
  * desc:<paragraph>@<rev>                     description paragraph
  * card:<cardId>[#<blockId>]                  guide content (cardId is a
- *                                            page-card id, or an expansion
- *                                            annotation id for content
- *                                            inside an explanation, #116)
+ *                                            page-card id, or an answer
+ *                                            `ans_…` id for content
+ *                                            inside a conversation, #136)
  * page:<pageId>                              a page
  * concept:<slug>                             a concept (may be a hidden candidate)
  * ann:<id>                                   an annotation

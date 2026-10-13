@@ -128,7 +128,7 @@ export interface RepairDiagramsOpts {
   /** Distinguishes repair jobs from first passes on the Debug page. */
   requestKind?: string;
   cardId?: string;
-  threadId?: string;
+  annotationId?: string;
   conversationKey?: string;
   echoCandidates?: string[];
 }
@@ -216,7 +216,7 @@ export async function repairDiagrams(
       baseVersion: baseVersionOf(live),
     },
     ...(opts.cardId ? { cardId: opts.cardId } : {}),
-    ...(opts.threadId ? { threadId: opts.threadId } : {}),
+    ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
     ...(opts.conversationKey ? { conversationKey: opts.conversationKey } : {}),
     ...((echoTitle ?? opts.echoCandidates) ? { echoCandidates: echoTitle ? [echoTitle] : opts.echoCandidates! } : {}),
     ...(isReplayRunner(pipeline.runner) ? { replay: { kind: "diagram" } } : {}),

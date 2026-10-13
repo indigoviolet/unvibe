@@ -19,7 +19,7 @@ async function gotoReview(page: Page): Promise<void> {
 
 
 
-test("selection snaps to whole words and Ask creates a working thread", async ({ page }) => {
+test("selection snaps to whole words and Ask creates a working card", async ({ page }) => {
   await gotoReview(page);
   // Partial selection inside "optional" snaps to the whole word.
   const quote = await selectText(page, "#C-central", "ptional", 0, 7);
@@ -30,13 +30,15 @@ test("selection snaps to whole words and Ask creates a working thread", async ({
   await expect(composer.locator(".mq")).toContainText("optional");
   await composer.locator("textarea").fill("What does optional mean here?");
   await composer.getByRole("button", { name: "Ask" }).click();
-  // The thread shows the agent as working until the canned reply lands.
-  const thread = page.locator("#C-central .ithread[data-thread]", {
+  // The card shows the agent as working until the canned answer lands.
+  const card = page.locator("#C-central [data-expansion]", {
     hasText: "What does optional mean here?",
   });
-  await expect(thread.locator(".working")).toBeVisible({ timeout: 3000 });
-  await expect(thread).toContainText("Mock answer", { timeout: 5000 });
-  await expect(thread.locator(".msg .av.ai")).toBeVisible();
+  await expect(card.locator(".working")).toBeVisible({ timeout: 3000 });
+  await expect(card).toContainText("Mock explanation", { timeout: 8000 });
+  // The question reads as the answer heading; the card never posts.
+  await expect(card.locator(".ans-q").first()).toContainText("What does optional mean here?");
+  await expect(card.getByRole("button", { name: "Mark for the PR" })).toHaveCount(0);
 });
 
 test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }) => {
@@ -136,6 +138,39 @@ test("diff line click starts a comment; close leaves an icon; reopen works", asy
   await expect(page.locator(`[id="L-${CONN}-91"] td.n.hc`)).toBeVisible();
   await page.locator(`[id="L-${CONN}-91"] td.n.new`).click();
   await expect(thread).toBeVisible();
+});
+
+test("an Ask card and a comment share one diff line", async ({ page }) => {
+  // Plain first paint (?nohl=1) keeps code text in whole nodes so the
+  // single-range selection helper works on diff code.
+  await page.goto("/review/demo?nohl=1");
+  await expect(page.locator("#page .doc h1.title")).toContainText(
+    "Unfold obsolete folded response headers",
+  );
+  const file = `[id="F-${CONN}"]`;
+  await selectText(page, `${file} table.diff`, "_OBSOLETE_FOLD_RE");
+  await page.locator('#selbar [data-act="ask"]').click();
+  const composer = page.locator(`${file} .ithread[data-pending-thread]`);
+  await expect(composer).toBeVisible({ timeout: 5000 });
+  await composer.locator("textarea").fill("Why here?");
+  await composer.getByRole("button", { name: "Ask" }).click();
+  const card = page.locator(`${file} [data-expansion]`, { hasText: "Why here?" });
+  await expect(card).toBeVisible({ timeout: 8000 });
+  await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 8000 });
+  await expect(card.getByPlaceholder("Ask a follow-up…")).toBeVisible();
+  // A Comment on the same selection: the teal card and the sand thread
+  // render side by side under the line — neither hides the other.
+  await selectText(page, `${file} table.diff`, "_OBSOLETE_FOLD_RE");
+  await page.locator('#selbar [data-act="note"]').click();
+  const noteComposer = page.locator(`${file} .ithread[data-pending-thread]`);
+  await expect(noteComposer).toBeVisible({ timeout: 5000 });
+  await noteComposer.locator("textarea").fill("A note here.");
+  await noteComposer.getByRole("button", { name: "Save" }).click();
+  const note = page.locator(`${file} .ithread[data-thread]`, { hasText: "A note here." });
+  await expect(note).toBeVisible({ timeout: 8000 });
+  await expect(card).toBeVisible();
+  await expect(card).toHaveClass(/card child/);
+  await expect(note).toHaveClass(/ithread/);
 });
 
 test("reply drafts survive unrelated re-renders; Discard clears", async ({ page }) => {

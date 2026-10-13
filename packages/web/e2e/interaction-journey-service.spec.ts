@@ -219,18 +219,19 @@ test.describe("reader journey over the real service (replay)", () => {
     await page.goBack();
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 15_000 });
 
-    // Ask on another block; the streamed answer carries citations; clicking
-    // one reveals the diff with a highlight.
+    // Ask on another block; the answer arrives as blocks with citations;
+    // clicking one reveals the diff with a highlight.
     await selectText(page, "#C-problem", "folded");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const thread = page.locator("#C-problem .ithread[data-thread]", { hasText: "What is line folding?" });
-    await expect(thread.first()).toBeVisible({ timeout: 30_000 });
-    await expect(thread.locator(".msg .av.ai").first()).toBeVisible({ timeout: 60_000 });
-    const marker = thread.locator(".msg .lk[data-refs]");
+    const card = page.locator("#C-problem .card.child[data-expansion]", { hasText: "What is line folding?" });
+    await expect(card.first()).toBeVisible({ timeout: 30_000 });
+    await expect(card.locator(".ans-q").first()).toContainText("What is line folding?", { timeout: 30_000 });
+    await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    const marker = card.locator(".lk[data-refs]");
     await expect(marker.first()).toBeVisible({ timeout: 30_000 });
     await marker.first().click();
     await expect(page.locator('#right [role="tab"][aria-selected="true"]')).toContainText("Diff", { timeout: 10_000 });
@@ -249,11 +250,11 @@ test.describe("reader journey over the real service (replay)", () => {
     await follow.click();
     await expect(page.locator("#page .follow", { hasText: label })).toHaveCount(0, { timeout: 30_000 });
 
-    // Mark cards read; Contents shows them read.
-    await page.locator("#C-central > .ctl").getByRole("button", { name: "Mark read" }).click();
-    await expect(page.locator("#C-central")).toHaveClass(/read/, { timeout: 10_000 });
+    // Collapse the card; Contents still lists it.
+    await page.locator("#C-central > .chead").getByRole("button", { name: "Collapse" }).click();
+    await expect(page.locator("#C-central")).toHaveClass(/collapsed/, { timeout: 10_000 });
     await expect(page.locator('nav.toc li [data-tocard="central"]')).toBeVisible();
     const item = page.locator("nav.toc li", { has: page.locator('[data-tocard="central"]') });
-    await expect(item).toHaveClass(/done/, { timeout: 10_000 });
+    await expect(item).toBeVisible({ timeout: 10_000 });
   });
 });

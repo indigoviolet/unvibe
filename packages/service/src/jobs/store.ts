@@ -21,7 +21,7 @@ interface JobData {
   attempts?: number;
   nextRetryAt?: number;
   cardId?: string;
-  threadId?: string;
+  annotationId?: string;
 }
 
 export interface JobPersistence {
@@ -62,7 +62,7 @@ function rowToJob(row: {
     ...(data.attempts !== undefined ? { attempts: data.attempts } : {}),
     ...(data.nextRetryAt !== undefined ? { nextRetryAt: data.nextRetryAt } : {}),
     ...(data.cardId !== undefined ? { cardId: data.cardId } : {}),
-    ...(data.threadId !== undefined ? { threadId: data.threadId } : {}),
+    ...(data.annotationId !== undefined ? { annotationId: data.annotationId } : {}),
   };
 }
 
@@ -80,7 +80,7 @@ export class JobStore implements JobPersistence {
       ...(job.attempts !== undefined ? { attempts: job.attempts } : {}),
       ...(job.nextRetryAt !== undefined ? { nextRetryAt: job.nextRetryAt } : {}),
       ...(job.cardId !== undefined ? { cardId: job.cardId } : {}),
-      ...(job.threadId !== undefined ? { threadId: job.threadId } : {}),
+      ...(job.annotationId !== undefined ? { annotationId: job.annotationId } : {}),
     };
     this.db
       .prepare(

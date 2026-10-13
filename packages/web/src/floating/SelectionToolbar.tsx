@@ -19,7 +19,7 @@
  * a pure-deletion diff row anchors to the nearest row with a new-side
  * line, as the prototype does.
  *
- * A Comment from a selection inside an agent answer (an expansion card,
+ * A Comment from a selection inside an agent answer (a conversation card,
  * issue #135) anchors where the card is anchored — not on the selected
  * block — and quotes the selection as a Markdown blockquote prefilled in
  * the composer, so it reads correctly once submitted to GitHub.
@@ -57,8 +57,8 @@ export const NEW_THREAD_EVENT = "unvibe:new-thread";
 export interface NewThreadRequest {
   anchor: ActionAnchor;
   quote: string;
-  /** True = Comment (no agent reply); false = Ask. */
-  note: boolean;
+  /** Comment (no agent reply) or Ask (usual conversation card). */
+  kind: "comment" | "ask";
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
 }
@@ -94,9 +94,20 @@ export function isRevealedElement(el: HTMLElement): boolean {
  */
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // Second-opinion reasoning is attached content, not a host (#116): its
-  // blocks live on the result, not on any card or expansion, so the
+  // blocks live on the result, not on any card or answer, so the
   // service has no block to anchor to. No toolbar there.
   if (el.closest("[data-so]")) return null;
+  // Issue #136: inside a conversation answer the owning unit is the
+  // answer, found from the answer wrapper's attribute — not from
+  // `section.card[id]`, which names the whole card.
+  const answer = el.closest("[data-answer]");
+  if (answer) {
+    const answerId = (answer as HTMLElement).dataset.answer ?? "";
+    const top = el.closest("[data-top]");
+    const blockId = (top as HTMLElement | null)?.dataset.top ?? "";
+    if (!answerId || !blockId) return null;
+    return { anchor: { where: "block", blockId: `${answerId}#${blockId}` } };
+  }
   const top = el.closest("#page [data-top], #right [data-top]");
   if (top) {
     const id = (top as HTMLElement).dataset.top ?? "";
@@ -108,7 +119,9 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
       return { anchor: { where: "description", paragraphId } };
     }
     // Block ids repeat across cards (`b1`, `b2`, … in each): qualify with
-    // the owning card, or expansion, so the anchor addresses one block.
+    // the owning card, or conversation card, so the anchor addresses one
+    // block. (Selections inside an answer return earlier, qualified with
+    // the answer id.)
     const owner = top.closest("section.card[id]")?.id ?? "";
     const cardId = /^[CB]-/.test(owner) ? owner.slice(2) : "";
     return { anchor: { where: "block", blockId: cardId && !id.includes("#") ? `${cardId}#${id}` : id } };
@@ -285,18 +298,21 @@ export function blockquoteQuote(quote: string): string {
 }
 
 /**
- * Card anchor behind a block anchor that sits inside an expansion (issue
- * #135): the owner part of `<expansion>#<block>` names the expansion
- * annotation, whose own anchor is where a Comment from its text belongs.
- * Null for page-card anchors and anything unresolvable.
+ * Card anchor behind a block anchor that sits inside a conversation
+ * answer (issue #135): the owner part of `<answer>#<block>` names the
+ * answer, whose card's own anchor is where a Comment from its text
+ * belongs. Null for page-card anchors and anything unresolvable.
  */
 export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   if (anchor.where !== "block") return null;
   const hash = anchor.blockId.indexOf("#");
   if (hash < 0) return null;
   const owner = anchor.blockId.slice(0, hash);
-  const found = useReview.getState().snapshot?.annotations.find((a) => a.id === owner);
-  if (!found || found.type !== "expansion") return null;
+  const annotations = useReview.getState().snapshot?.annotations ?? [];
+  const found =
+    annotations.find((a) => a.id === owner) ??
+    annotations.find((a) => (a.turns ?? []).some((t) => t.id === owner));
+  if (!found || found.type !== "conversation") return null;
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
@@ -482,20 +498,20 @@ export function SelectionToolbar() {
       });
   };
 
-  const onAskNote = (note: boolean): void => {
+  const onAskNote = (kind: "comment" | "ask"): void => {
     const current = pendingRef.current;
     if (!current) return;
     dismiss();
-    if (note && current.commentAnchor) {
+    if (kind === "comment" && current.commentAnchor) {
       requestNewThread({
         anchor: current.commentAnchor,
         quote: current.quote,
-        note,
+        kind,
         initialText: blockquoteQuote(current.quote),
       });
       return;
     }
-    requestNewThread({ anchor: current.anchor, quote: current.quote, note });
+    requestNewThread({ anchor: current.anchor, quote: current.quote, kind });
   };
 
   return (
@@ -504,11 +520,11 @@ export function SelectionToolbar() {
         Explain
       </button>
       <span className="sep" />
-      <button type="button" data-act="ask" onClick={() => onAskNote(false)}>
+      <button type="button" data-act="ask" onClick={() => onAskNote("ask")}>
         Ask…
       </button>
       {pending?.revealed ? null : (
-        <button type="button" data-act="note" onClick={() => onAskNote(true)}>
+        <button type="button" data-act="note" onClick={() => onAskNote("comment")}>
           Comment
         </button>
       )}

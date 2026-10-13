@@ -220,7 +220,8 @@ describe("idle close and reopen", () => {
     const { closed } = await mgr.sweepIdle(clock.now(), 5 * 60 * 1000);
     expect(new Set(closed)).toEqual(new Set([base.session.id, conv.session.id]));
     const reopened = await mgr.ensureConversation(conv.session.id);
-    expect(reopened.id).toBe(conv.session.id);
+    expect(reopened.session.id).toBe(conv.session.id);
+    expect(reopened.rebuilt).toBe(false);
     expect(runner.loads).toEqual([conv.session.id]);
     expect(runner.starts).toHaveLength(1); // no rebuild needed
   });
@@ -241,7 +242,8 @@ describe("idle close and reopen", () => {
     await clock.advance(10 * 60 * 1000);
     await mgr.sweepIdle(clock.now(), 5 * 60 * 1000);
     const rebuilt = await mgr.ensureConversation(conv.session.id);
-    expect(rebuilt.id).not.toBe(conv.session.id);
+    expect(rebuilt.session.id).not.toBe(conv.session.id);
+    expect(rebuilt.rebuilt).toBe(true);
     // Both the conversation and its closed base go through load first…
     expect(runner.loads).toEqual([conv.session.id, base.session.id]);
     // …then the base is rebuilt and the conversation re-forked from it.
@@ -313,7 +315,8 @@ describe("invalidate and restore", () => {
     expect(runner.starts.length).toBe(startsBefore); // reopened via load
     expect(runner.loads).toContain(base.session.id);
     const convAgain = await mgr2.ensureConversation(conv.session.id);
-    expect(convAgain.id).toBe(conv.session.id);
+    expect(convAgain.session.id).toBe(conv.session.id);
+    expect(convAgain.rebuilt).toBe(false);
   });
 
   it("a base rebuilt after a restart is fresh and holds the new MCP URL (#68)", async () => {

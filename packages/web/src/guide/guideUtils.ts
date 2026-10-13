@@ -1,7 +1,7 @@
 /**
- * Pure guide logic (web-guide owner): read roll-up, depth text selection,
- * preview text, link discovery, contents model, concept resolution, anchor
- * parsing. No DOM, no store — unit tested in `guideUtils.test.ts`.
+ * Pure guide logic (web-guide owner): depth text selection, preview text,
+ * link discovery, contents model, concept resolution, anchor parsing.
+ * No DOM, no store — unit tested in `guideUtils.test.ts`.
  *
  * Inline dotted links come in two historical spellings: the prototype's
  * `<a class="cx" data-node="…">` and the content parser's
@@ -13,21 +13,6 @@ import { displayCardTitle } from "@unvibe/shared";
 import { stagePhrase } from "./stageLabels.js";
 
 const stripTags = (s: string): string => s.replace(/<[^>]+>/g, " ");
-
-/** Cards that count toward read state (prototype `readable`). */
-export function readableCards(page: Page): Card[] {
-  return page.cards.filter((c) => !c.pending);
-}
-
-/** A page is read when it has cards and all of them are read (PRD §4.4). */
-export function isPageRead(page: Page): boolean {
-  const cards = readableCards(page);
-  return cards.length > 0 && cards.every((c) => c.read);
-}
-
-export function readCount(page: Page): number {
-  return readableCards(page).filter((c) => c.read).length;
-}
 
 /** The per-depth text for a paragraph at the card's level (PRD §4.4). */
 export function depthText(text: { simple?: string; standard: string; deep?: string }, level: DepthLevel): string {
@@ -165,13 +150,12 @@ export interface ContentsEntry {
   kind: "card" | "page";
   id: string;
   title: string;
-  read: boolean;
 }
 
 /**
  * Contents box model (PRD §4.3): this page's cards (click to jump,
- * expanding if needed) plus linked pages. Read items are muted.
- * Expansion-opened child pages list under linked pages (M4).
+ * expanding if needed) plus linked pages. Conversation-opened child
+ * pages list under linked pages.
  */
 export function contentsModel(
   page: Page,
@@ -186,7 +170,6 @@ export function contentsModel(
       // Issue #49: the real title, else the shared word-boundary
       // fallback — the same string the card header shows.
       title: c.title || c.pending?.label || displayCardTitle(null, c.blocks),
-      read: c.read,
     }));
   const linked = linkedPages(page, lookup);
   const opened = allPages ? expansionOpenedPages(page, allPages) : [];
@@ -201,30 +184,8 @@ export function contentsModel(
     kind: "page" as const,
     id: p.id,
     title: p.title,
-    read: isPageRead(p),
   }));
   return { cards, links };
-}
-
-/**
- * Mark links to fully read pages as known (prototype `knownCls`): adds the
- * `known` class to `a.cx` anchors whose page is read. Accepts `page:`,
- * `concept:` and legacy bare page ids.
- */
-export function markKnownLinks(html: string, pages: Page[]): string {
-  const byId = new Map(pages.map((p) => [p.id, p]));
-  const lookup = (id: string): Page | undefined => byId.get(id);
-  return html.replace(
-    /<a class="cx" data-(node|link)="([^"]+)">/g,
-    (m, attr: string, target: string) => {
-      const pageId = pageIdForLinkTarget(target, lookup) ?? (byId.has(target) ? target : null);
-      if (pageId) {
-        const p = byId.get(pageId);
-        if (p && isPageRead(p)) return `<a class="cx known" data-${attr}="${target}">`;
-      }
-      return m;
-    },
-  );
 }
 
 /**

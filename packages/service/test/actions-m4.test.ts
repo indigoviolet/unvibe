@@ -188,17 +188,17 @@ describe("M4 actions on the demo review (replay)", () => {
       // Immediately visible working state (or already filled: the replay
       // runner answers in milliseconds, so a fast poll may see it done).
       const working = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(working.type).toBe("expansion");
+      expect(working.type).toBe("conversation");
       expect(working.open).toBe(true);
-      expect(working.working === "Thinking…" || working.expansion!.blocks.length > 0).toBe(true);
+      expect(working.working === "Thinking…" || (working.turns?.[0]?.blocks.length ?? 0) > 0).toBe(true);
 
       await waitForJob(ctx, res.json.jobId as string);
       const done = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(done.expansion!.blocks.length).toBeGreaterThan(0);
+      expect(done.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
       expect(done.working).toBeNull();
-      expect(done.expansion!.revision).toBe(2);
+      expect(done.turns?.[0]?.revision).toBe(2);
       // Stored targets are canonical (real file keys, no aliases).
-      const targets = JSON.stringify(done.expansion!.blocks);
+      const targets = JSON.stringify(done.turns?.[0]?.blocks);
       expect(targets).not.toContain("diff:conn:");
       expect(targets).toContain("diff:");
       unsub();
@@ -209,7 +209,7 @@ describe("M4 actions on the demo review (replay)", () => {
     }
   });
 
-  it("ask: thread, cited reply, session remembered; reply reuses the session", { timeout: 90000 }, async () => {
+  it("ask: card, cited answer, session remembered; reply reuses the session", { timeout: 90000 }, async () => {
     const agents = replay();
     const { app, ctx } = await createApp("tok", { agents });
     try {
@@ -226,38 +226,45 @@ describe("M4 actions on the demo review (replay)", () => {
         message: "Does the fast path still catch a fold that uses a bare LF?",
       });
       expect(res.status).toBe(200);
-      const threadId = res.json.threadId as string;
-      expect(threadId).toMatch(/^ann_/);
+      const annotationId = res.json.annotationId as string;
+      expect(annotationId).toMatch(/^ann_/);
+      const turnId = res.json.turnId as string;
+      expect(turnId).toMatch(/^ans_/);
       await waitForJob(ctx, res.json.jobId as string);
 
-      const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
-      expect(thread.messages.length).toBe(2);
-      expect(thread.messages[0]).toMatchObject({ who: "you" });
-      expect(thread.messages[1].who).toBe("ai");
-      expect(thread.working).toBeNull();
-      expect(thread.error).toBeNull();
-      expect(thread.sessionId).toBeTruthy();
-      const sessionId = thread.sessionId!;
+      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      expect(card.type).toBe("conversation");
+      const first = (card.turns ?? [])[0]!;
+      expect(first.question).toBe("Does the fast path still catch a fold that uses a bare LF?");
+      expect(first.blocks.length).toBeGreaterThan(0);
+      expect(card.working).toBeNull();
+      expect(card.error).toBeNull();
+      expect(card.sessionId).toBeTruthy();
+      const sessionId = card.sessionId!;
       const promptsOnSession = agents.prompts.filter((p) => p.sessionId === sessionId).length;
       expect(promptsOnSession).toBe(1);
       const sessionsBefore = agents.sessions.size;
 
-      // Follow-up reply goes on the SAME conversation session.
-      const rep = await postAction(app, id, { kind: "reply", threadId, message: "What about ordering?" });
+      // Follow-up reply goes on the SAME conversation session, with the
+      // short prompt (no resend of the anchor, card and history).
+      const rep = await postAction(app, id, { kind: "reply", annotationId, message: "What about ordering?" });
       expect(rep.status).toBe(200);
       expect(rep.json.jobId).toBeTruthy();
       await waitForJob(ctx, rep.json.jobId as string);
-      const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
-      expect(after.messages.length).toBe(4);
-      expect(after.messages[3].who).toBe("ai");
+      const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      expect((after.turns ?? []).length).toBe(2);
+      expect(after.turns![1].blocks.length).toBeGreaterThan(0);
       expect(agents.sessions.size).toBe(sessionsBefore);
       expect(agents.prompts.filter((p) => p.sessionId === sessionId).length).toBe(promptsOnSession + 1);
+      const lastPrompt = agents.prompts.filter((p) => p.sessionId === sessionId).at(-1)!;
+      expect(lastPrompt.text).toContain("# Ask follow-up");
+      expect(lastPrompt.text).not.toContain("## Selected text");
     } finally {
       await app.close();
     }
   });
 
-  it("note creates a thread with no agent reply", { timeout: 30000 }, async () => {
+  it("note creates a comment with no agent reply", { timeout: 30000 }, async () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
       const id = await createDemoReview(app);
@@ -278,8 +285,8 @@ describe("M4 actions on the demo review (replay)", () => {
         });
         expect(res.status).toBe(200);
         expect(res.json.jobId).toBeUndefined();
-        const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.threadId as string))!;
-        expect(thread.note).toBe(true);
+        const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
+        expect(thread.type).toBe("comment");
         expect(thread.messages).toHaveLength(1);
         expect(events).toHaveLength(0);
       } finally {
@@ -395,8 +402,8 @@ describe("M4 actions on the demo review (replay)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const snap = ctx.reviews.getSnapshot(id)!;
       const answer = snap.annotations.find((a) => a.id === annotationId)!;
-      expect(answer.type).toBe("expansion");
-      expect(answer.expansion!.blocks.length).toBeGreaterThan(0);
+      expect(answer.type).toBe("conversation");
+      expect(answer.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
       const consumed = snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-flow")!.blocks.find(
         (b) => b.type === "follow-up",
       )!;
@@ -416,7 +423,7 @@ describe("M4 actions on the demo review (replay)", () => {
     }
   });
 
-  it("promote moves expansion content to a new page; read/collapse/bookmark/close/delete", { timeout: 120000 }, async () => {
+  it("promote moves conversation content to a new page; collapse/bookmark/close/delete", { timeout: 120000 }, async () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
       const id = await createDemoReview(app);
@@ -449,30 +456,15 @@ describe("M4 actions on the demo review (replay)", () => {
       expect(link.type).toBe("link");
       expect(link.promotedToPage).toBe(pageId);
 
-      // read greys + collapses; unmarking expands.
-      const read = await postAction(app, id, { kind: "read", cardId: "central", read: true });
-      expect(read.status).toBe(200);
-      const central = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!;
-      expect(central.read).toBe(true);
-      expect(central.collapsed).toBe(true);
-      await postAction(app, id, { kind: "read", cardId: "central", read: false });
-      expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.collapsed).toBe(
-        false,
-      );
-
       const collapsed = await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true });
       expect(collapsed.status).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.collapsed).toBe(
+        true,
+      );
 
       const bookmark = await postAction(app, id, { kind: "bookmark", pageId: "root", saved: true });
       expect(bookmark.status).toBe(200);
       expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.saved).toBe(true);
-
-      // Expansion read closes it.
-      const seed = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === "x-seed");
-      if (seed?.type === "expansion" && seed.expansion) {
-        await postAction(app, id, { kind: "read", cardId: "x-seed", read: true });
-        expect(ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === "x-seed")!.open).toBe(false);
-      }
 
       // close + delete on fresh note threads.
       const note = await postAction(app, id, {
@@ -481,7 +473,7 @@ describe("M4 actions on the demo review (replay)", () => {
         anchor: { where: "diff-line", fileKey: conn.fileKey, line: 80 },
         text: "to close",
       });
-      const noteId = note.json.threadId as string;
+      const noteId = note.json.annotationId as string;
       const closed = await postAction(app, id, { kind: "close", annotationId: noteId });
       expect(closed.status).toBe(200);
       expect(ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === noteId)!.open).toBe(false);
@@ -491,9 +483,9 @@ describe("M4 actions on the demo review (replay)", () => {
         quote: "y",
         anchor: { where: "diff-line", fileKey: conn.fileKey, line: 80 },
       });
-      const deleted = await postAction(app, id, { kind: "delete", targetId: note2.json.threadId as string });
+      const deleted = await postAction(app, id, { kind: "delete", targetId: note2.json.annotationId as string });
       expect(deleted.status).toBe(200);
-      expect(ctx.reviews.getSnapshot(id)!.annotations.some((a) => a.id === (note2.json.threadId as string))).toBe(false);
+      expect(ctx.reviews.getSnapshot(id)!.annotations.some((a) => a.id === (note2.json.annotationId as string))).toBe(false);
     } finally {
       await app.close();
     }
@@ -556,22 +548,22 @@ describe("M4 actions on the demo review (replay)", () => {
       });
       expect(ask.status).toBe(200);
       await waitForJob(ctx, ask.json.jobId as string);
-      const threadId = ask.json.threadId as string;
+      const threadId = ask.json.annotationId as string;
       const closed = await postAction(app, id, { kind: "close", annotationId: threadId });
       expect(closed.status).toBe(200);
       await waitFor(() =>
         myEntries().some(
           (e) =>
             e.kind === "thread-summary" &&
-            (e.payload as { threadId?: string }).threadId === threadId,
+            (e.payload as { annotationId?: string }).annotationId === threadId,
         ),
       );
       const summary = myEntries().find((e) => e.kind === "thread-summary")!;
       expect(summary.scope).toEqual({ scope: "global" });
 
-      // UI state never lands in the log: read adds nothing.
+      // UI state never lands in the log: collapse adds nothing.
       const countBefore = myEntries().length;
-      await postAction(app, id, { kind: "read", cardId: "central", read: true });
+      await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true });
       await new Promise((r) => setTimeout(r, 300));
       expect(myEntries()).toHaveLength(countBefore);
     } finally {
@@ -592,7 +584,7 @@ describe("M4 dedupe + cancel-on-close (gated replay)", () => {
       text: string,
       signal?: AbortSignal,
     ): AsyncIterable<AgentEvent> {
-      if (text.includes("# Explain")) {
+      if (text.includes("## The question\n\nExplain this.")) {
         await new Promise<void>((_resolve, reject) => {
           if (signal?.aborted) reject(new Error("aborted"));
           signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
@@ -657,7 +649,7 @@ describe("M4 failure paths (scripted fakes)", () => {
   });
 
   it("malformed reply leaves a visible error with a retry path", { timeout: 60000 }, async () => {
-    const agents = fakeWith([{ match: "# Explain", events: textEvents("Some text\n\n```json\n{not valid\n```\n") }]);
+    const agents = fakeWith([{ match: "## The question\n\nExplain this.", events: textEvents("Some text\n\n```json\n{not valid\n```\n") }]);
     const { app, ctx } = await createApp("tok", { agents });
     try {
       const id = await createDemoReview(app);
@@ -675,7 +667,7 @@ describe("M4 failure paths (scripted fakes)", () => {
       expect(failed.error).toMatch(/trailing JSON/);
 
       // Retry rebuilds on the same annotation (and fails the same way here).
-      const retry = await postAction(app, id, { kind: "retry", threadId: res.json.annotationId as string });
+      const retry = await postAction(app, id, { kind: "retry", annotationId: res.json.annotationId as string });
       expect(retry.status).toBe(200);
       expect(retry.json.jobId).not.toBe(res.json.jobId);
       await waitForJob(ctx, retry.json.jobId as string);
@@ -693,7 +685,7 @@ describe("M4 failure paths (scripted fakes)", () => {
         session: { id: string; provider: string; model: string },
         text: string,
       ): AsyncIterable<AgentEvent> {
-        if (text.includes("# Explain")) {
+        if (text.includes("## The question\n\nExplain this.")) {
           explainCalls += 1;
           // Fail the whole first job (4 internal attempts), then recover.
           if (explainCalls <= 4) {
@@ -732,12 +724,12 @@ describe("M4 failure paths (scripted fakes)", () => {
       expect(failed.working).toBeNull();
       expect(failed.error).toMatch(/rate limited/);
 
-      const retry = await postAction(app, id, { kind: "retry", threadId: res.json.annotationId as string });
+      const retry = await postAction(app, id, { kind: "retry", annotationId: res.json.annotationId as string });
       expect(retry.status).toBe(200);
       await waitForJob(ctx, retry.json.jobId as string);
       const recovered = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(recovered.error).toBeNull();
-      expect(recovered.expansion!.blocks.length).toBeGreaterThan(0);
+      expect(recovered.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
     } finally {
       await app.close();
     }
@@ -903,9 +895,8 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
         text: "none-mode note",
       });
       expect(note.status).toBe(200);
-      const noteId = note.json.threadId as string;
+      const noteId = note.json.annotationId as string;
 
-      expect((await postAction(app, id, { kind: "read", cardId: "central", read: true })).status).toBe(200);
       expect((await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true })).status).toBe(200);
       expect((await postAction(app, id, { kind: "bookmark", pageId: "root", saved: true })).status).toBe(200);
       // Cached depth switch needs no agent.
@@ -919,13 +910,13 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
         quote: "",
         anchor: { where: "diff-line", fileKey: diff.fileKey, line: diff.line },
       });
-      expect((await postAction(app, id, { kind: "delete", targetId: note2.json.threadId as string })).status).toBe(200);
+      expect((await postAction(app, id, { kind: "delete", targetId: note2.json.annotationId as string })).status).toBe(200);
 
       const snap = ctx.reviews.getSnapshot(id)!;
       expect(snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.level).toBe("standard");
       expect(snap.pages.find((p) => p.id === "root")!.saved).toBe(true);
       expect(snap.annotations.find((a) => a.id === noteId)!.open).toBe(false);
-      expect(snap.annotations.some((a) => a.id === (note2.json.threadId as string))).toBe(false);
+      expect(snap.annotations.some((a) => a.id === (note2.json.annotationId as string))).toBe(false);
       unsub();
 
       // Gapless rev chain from the clone…
@@ -974,10 +965,11 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       expect(ask.status).toBe(200);
       expect(ask.json.jobId).toBeUndefined();
       expect(askMs).toBeLessThan(8000);
-      const threadId = ask.json.threadId as string;
+      const threadId = ask.json.annotationId as string;
       await waitFor(() => {
         const t = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId);
-        return !!t && (t.error != null || t.messages.some((m) => m.who === "ai"));
+        const turn = t?.type === "conversation" ? (t.turns ?? [])[0] : undefined;
+        return !!t && (t.error != null || (turn?.blocks.length ?? 0) > 0);
       });
       const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
       expect(thread.working).toBeNull();
@@ -994,7 +986,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const expansionId = ex.json.annotationId as string;
       await waitFor(() => {
         const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === expansionId);
-        return !!a && (a.error != null || (a.expansion?.blocks.length ?? 0) > 0);
+        return !!a && (a.error != null || ((a.turns?.[0]?.blocks.length ?? 0) > 0));
       });
       const expansion = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === expansionId)!;
       expect(expansion.working).toBeNull();
@@ -1017,12 +1009,13 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
 
       // Retry rebuilds and fails the same fast way (error state persists,
       // nothing stuck working; still 200 — the error lives on the thread).
-      const retry = await postAction(app, id, { kind: "retry", threadId });
+      const retry = await postAction(app, id, { kind: "retry", annotationId: threadId });
       expect(retry.status).toBe(200);
       expect(retry.json.jobId).toBeUndefined();
       await waitFor(() => {
         const t = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId);
-        return !!t?.error && t.working === null;
+        const turn = t?.type === "conversation" ? (t.turns ?? [])[0] : undefined;
+        return !!t?.error && t.working === null && (turn?.error != null || (turn?.blocks.length ?? 0) > 0);
       });
       expect(
         ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!.error,
@@ -1060,7 +1053,6 @@ describe("M4 interaction pure logic", () => {
       pageId: "root",
       title: null,
       level: "standard",
-      read: false,
       collapsed: false,
       revision: 1,
       blocks: first.blocks,
@@ -1095,7 +1087,6 @@ describe("M4 interaction pure logic", () => {
       pageId: "root",
       title: "The central change",
       level: "standard",
-      read: false,
       collapsed: false,
       revision: 2,
       blocks: [para("b1", "Body one.", { simple: "Simple one." }), corr],

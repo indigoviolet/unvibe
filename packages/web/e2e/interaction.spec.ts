@@ -5,7 +5,7 @@
  * 1. explanations (working → fill → close → dotted link → preview →
  *    re-expand → open as page → back; delete);
  * 2. card controls (depth instant, examples/diagram + nothing-to-add, undo,
- *    read, collapse; drafts survive);
+ *    collapse; drafts survive);
  * 3. follow-ups + concept pages;
  * 4. corrections + shared-context indicator;
  * 5. second opinion on expansions;
@@ -126,7 +126,25 @@ test("1b. expansion delete removes the card", async ({ page }) => {
   await expect(page.locator('#C-central [data-expansion]').first()).toHaveCount(0);
 });
 
-test("2. card controls: depth, examples, diagram, undo, read, collapse; drafts survive", async ({
+test("1c. the reply box answers in the same conversation (issue #136)", async ({ page }) => {
+  await gotoReview(page);
+  await selectText(page, "#C-central", "fast path");
+  await page.locator('#selbar [data-act="explain"]').click();
+  const card = page.locator('#C-central [data-expansion]').first();
+  await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
+  // Reply in the card's own box; a second answer lands on the same card.
+  await card.getByPlaceholder("Ask a follow-up…").fill("What about ordering?");
+  await card.getByRole("button", { name: "Reply", exact: true }).click();
+  const answers = card.locator("[data-answer]");
+  await expect(answers).toHaveCount(2, { timeout: 8000 });
+  await expect(answers.nth(1)).toContainText("Mock explanation", { timeout: 8000 });
+  await expect(answers.nth(1).locator(".ans-q")).toContainText("What about ordering?");
+  // Per-answer controls address the answer: depth on the second answer.
+  await answers.nth(1).locator(".ctl").getByRole("button", { name: "Simpler" }).click();
+  await expect(answers.nth(1).locator(".prose").first()).toContainText("In short:", { timeout: 8000 });
+});
+
+test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive", async ({
   page,
 }) => {
   await gotoReview(page);
@@ -162,12 +180,6 @@ test("2. card controls: depth, examples, diagram, undo, read, collapse; drafts s
   await card.locator("> .ctl").getByRole("button", { name: "Undo" }).click();
   await expect(composer).toHaveValue("draft that must survive");
   await page.keyboard.press("Escape");
-  // Mark read greys + collapses; unmarking expands.
-  await card.locator("> .ctl").getByRole("button", { name: "Mark read" }).click();
-  await expect(card).toHaveClass(/read/);
-  await expect(card).toHaveClass(/collapsed/);
-  await card.getByRole("button", { name: "Mark unread" }).click();
-  await expect(card).not.toHaveClass(/read/);
   // Collapse chevron first, × last behaviour via the title row.
   await card.locator("> .chead").getByRole("button", { name: "Collapse" }).click();
   await expect(card).toHaveClass(/collapsed/);

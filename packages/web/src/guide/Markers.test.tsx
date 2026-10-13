@@ -63,7 +63,7 @@ describe("BlockMarkers", () => {
   it("renders the comment marker with a count", () => {
     const threads: Annotation[] = ["t1", "t2"].map((id) => ({
       id,
-      type: "thread",
+      type: "comment",
       anchor: {
         host: { kind: "block", blockId: "b" },
         quotedText: "",
@@ -75,7 +75,6 @@ describe("BlockMarkers", () => {
       open: false,
       messages: [],
       post: false,
-      note: false,
     }));
     render(<BlockMarkers citations={[]} threads={threads} blockId="b" />);
     const marker = screen.getByRole("button", { name: "2 comments" });
@@ -87,7 +86,7 @@ describe("BlockMarkers", () => {
     const threads: Annotation[] = [
       {
         id: "tq",
-        type: "thread",
+        type: "comment",
         anchor: {
           host: { kind: "block", blockId: "b" },
           quotedText: "Draw the Stereo vs mono-mix",
@@ -99,11 +98,10 @@ describe("BlockMarkers", () => {
         open: false,
         messages: [],
         post: false,
-        note: false,
       },
       {
         id: "tn",
-        type: "thread",
+        type: "comment",
         anchor: {
           host: { kind: "block", blockId: "b" },
           quotedText: "",
@@ -115,7 +113,6 @@ describe("BlockMarkers", () => {
         open: false,
         messages: [],
         post: false,
-        note: false,
       },
     ];
     const { container } = render(<BlockMarkers citations={[]} threads={threads} blockId="b" />);
@@ -134,7 +131,7 @@ describe("BlockMarkers", () => {
     const footnotes: Annotation[] = [
       {
         id: "e1",
-        type: "expansion",
+        type: "conversation",
         anchor: {
           host: { kind: "block", blockId: "b" },
           quotedText: "Draw the Stereo vs mono-mixdown with a very long quote for truncation",
@@ -146,7 +143,6 @@ describe("BlockMarkers", () => {
         open: false,
         messages: [],
         post: false,
-        note: false,
       },
       {
         id: "l1",
@@ -162,7 +158,6 @@ describe("BlockMarkers", () => {
         open: false,
         messages: [],
         post: false,
-        note: false,
         promotedToPage: "p1",
       },
     ];

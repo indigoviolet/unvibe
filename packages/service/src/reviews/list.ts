@@ -142,7 +142,7 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     const totalHunks = files.reduce((n, f) => n + (f.hunks?.length ?? 0), 0);
     const reviewedHunks = (snapshot?.hunkStates ?? []).filter((s) => s.reviewed).length;
     const pendingComments = (snapshot?.annotations ?? []).filter(
-      (a) => a.type === "thread" && (a as { post?: boolean }).post && !(a as { postedAt?: number }).postedAt,
+      (a) => a.type === "comment" && (a as { post?: boolean }).post && !(a as { postedAt?: number }).postedAt,
     ).length;
     const stale = snapshot?.versionStatus?.stale ?? false;
     const guide = guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);

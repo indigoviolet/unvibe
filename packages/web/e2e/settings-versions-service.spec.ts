@@ -164,14 +164,14 @@ test.describe("settings + versions on the real service", () => {
     await reader.getByRole("button", { name: "Expand reader" }).click();
     await expect(reader.locator("mark.tm").first()).toContainText("{{source}}");
     // The debug page expands them for the review. Forked templates
-    // (explain) serve L0–L3 from the warm base: cached.
+    // (ask) serve L0–L3 from the warm base: cached.
     await page.goto(`${svc.origin}/review/${reviewId}/debug?token=${svc.token}`);
     await page.getByRole("tab", { name: "Prompts" }).click();
-    const explain = page.locator('section[aria-label="Prompts"]').locator('[data-testid="prompt-explain"]');
-    await explain.getByRole("button", { name: "Expand explain" }).click();
-    await expect(explain.locator('details.lay[data-layer="L0"]')).toBeVisible();
-    await expect(explain.locator('details.lay[data-layer="L1"]')).toContainText("cached");
-    await expect(explain.locator('details.lay[data-layer="L4"]')).not.toContainText("cached");
+    const ask = page.locator('section[aria-label="Prompts"]').locator('[data-testid="prompt-ask"]');
+    await ask.getByRole("button", { name: "Expand ask" }).click();
+    await expect(ask.locator('details.lay[data-layer="L0"]')).toBeVisible();
+    await expect(ask.locator('details.lay[data-layer="L1"]')).toContainText("cached");
+    await expect(ask.locator('details.lay[data-layer="L4"]')).not.toContainText("cached");
     // Model pickers list the adapter's models.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Models" }).click();

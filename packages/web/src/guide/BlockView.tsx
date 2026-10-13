@@ -15,7 +15,7 @@ import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations, resolveCitation } from "./citations.js";
 import { DiagramView } from "./DiagramView.js";
-import { anchorMatchesBlock, depthText, isPageRead } from "./guideUtils.js";
+import { anchorMatchesBlock, depthText } from "./guideUtils.js";
 import { followupKey, inflightLabel } from "./inflight.js";
 import { BlockMarkers } from "./Markers.js";
 import { handleHtmlLinkClick, RichText } from "./RichText.js";
@@ -257,11 +257,10 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
       );
     case "finding-link": {
       const page = lookupPage?.(block.pageId);
-      const read = page ? isPageRead(page) : false;
       return (
         <div className="blk" id={id}>
           <button
-            className={`findref${read ? " read" : ""}`}
+            className="findref"
             type="button"
             data-node={block.pageId}
             onClick={() => onOpenPage(block.pageId)}
@@ -306,7 +305,7 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
       // the answer card holds its place, so the two never stack.
       const answerArrived = (snapshot?.annotations ?? []).some(
         (a) =>
-          a.type === "expansion" &&
+          a.type === "conversation" &&
           a.open &&
           a.anchor.host.kind === "block" &&
           anchorMatchesBlock(a.anchor.host.blockId, cardId, block.id),
