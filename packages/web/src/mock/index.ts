@@ -2700,9 +2700,9 @@ export const mockApi = {
       return { ok: true };
     }
     if (thread.type !== "thread") throw new Error("unknown comment");
-    // Mirrors the service PATCH guard (issue #135): only Comments can be
-    // marked for the PR. Unmarking stays allowed.
-    if (body.post === true && !thread.note && !thread.messages.some((m) => m.suggested)) {
+    // Mirrors the service PATCH guard (issue #135): `post` is not accepted
+    // on an Ask thread in either direction.
+    if (body.post !== undefined && !thread.note && !thread.messages.some((m) => m.suggested)) {
       throw new Error("ask threads are never posted to GitHub — write a comment instead");
     }
     if (body.post !== undefined) {

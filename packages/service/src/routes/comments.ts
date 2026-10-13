@@ -162,10 +162,10 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
     }
     const snapshot = reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
-    // Issue #135: only Comments are submitted, so only a comment thread
-    // can be marked for the PR. Unmarking stays allowed (it clears the
-    // mark an older review may still carry on an Ask thread).
-    if (post === true) {
+    // Issue #135: only Comments are submitted, so `post` is not accepted
+    // on an Ask thread in either direction. Stored data is dev-only and
+    // reset, so there is no legacy path for old marks.
+    if (post !== undefined) {
       const target = snapshot.annotations.find((a) => a.id === commentId);
       if (target && target.type === "thread" && !isCommentThread(target as Annotation)) {
         return reply.code(400).send({ error: "ask threads are never posted to GitHub — write a comment instead" });

@@ -247,10 +247,10 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   };
 
   const footnoted = !!thread.anchorStale;
-  // Issue #135: only Comments carry the For-PR control. An Ask thread from
-  // an older review may still carry the mark; it keeps the control so the
-  // mark can be cleared (unmarking hides it again).
-  const showPostControl = !isNew && (isCommentThread(thread) || thread.post);
+  // Issue #135: only Comments carry the For-PR control. Ask threads never
+  // show it, whatever their stored `post` value (dev-only data is reset,
+  // never migrated).
+  const showPostControl = !isNew && isCommentThread(thread);
   return (
     <div className="ithread" id={thread.id} data-thread={thread.id}>
       <div className="thd">

@@ -115,11 +115,11 @@ describe("ThreadView reply box", () => {
     const { unmount: unmount2 } = render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
     expect(screen.getByRole("button", { name: /Marked for the PR/ })).toBeVisible();
     unmount2();
-    // …and a marked Ask thread from an older review keeps it so the mark can be cleared.
+    // …and an Ask thread never does, whatever its stored mark.
     const legacy = thread({ note: false, messages: [{ who: "you", text: "Old" }], post: true });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [legacy] });
     render(<ThreadView reviewId={REVIEW_ID} thread={legacy} />);
-    expect(screen.getByRole("button", { name: /Marked for the PR/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Mark.*for the PR/ })).toBeNull();
   });
 
   test("a failed reply shows the error with a Retry button wired to the retry action", async () => {

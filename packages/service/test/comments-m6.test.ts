@@ -388,7 +388,7 @@ describe("comments for the PR (issue #135)", () => {
     }
   });
 
-  it("refuses to mark an Ask thread for the PR, but allows unmarking", async () => {
+  it("rejects post on an Ask thread in both directions", async () => {
     const runner = new FakeCommandRunner();
     const { app, ctx, reviewId } = await setupReview(runner);
     try {
@@ -397,24 +397,20 @@ describe("comments for the PR (issue #135)", () => {
         quote: "y",
         message: "why?",
       });
-      const refused = await app.inject({
+      const mark = await app.inject({
         method: "PATCH",
         url: `/api/reviews/${reviewId}/comments/${askId}`,
         headers: authed,
         payload: { post: true },
       });
-      expect(refused.statusCode).toBe(400);
-      await ctx.reviews.mutate(reviewId, (draft) => {
-        draft.annotations.find((a) => a.id === askId)!.post = true;
-      });
-      const cleared = await app.inject({
+      expect(mark.statusCode).toBe(400);
+      const unmark = await app.inject({
         method: "PATCH",
         url: `/api/reviews/${reviewId}/comments/${askId}`,
         headers: authed,
         payload: { post: false },
       });
-      expect(cleared.statusCode).toBe(200);
-      expect(ctx.reviews.getSnapshot(reviewId)?.annotations.find((a) => a.id === askId)?.post).toBe(false);
+      expect(unmark.statusCode).toBe(400);
     } finally {
       await app.close();
     }
