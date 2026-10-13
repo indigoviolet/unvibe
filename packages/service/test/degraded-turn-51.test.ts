@@ -85,9 +85,9 @@ async function runExplain(
   await waitFor(() => {
     const s = ctx.reviews.getSnapshot(id);
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
-      | { working: string | null; expansion?: { working: string | null } }
+      | { working: string | null; turns?: { working: string | null }[] }
       | undefined;
-    return a?.working == null && a?.expansion?.working == null;
+    return a?.working == null && (a?.turns ?? []).every((t) => t.working == null);
   }, 60000);
   return { annotationId, ...(jobId ? { jobId } : {}) };
 }
@@ -111,10 +111,10 @@ describe("degraded turns (#51)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/degraded/);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(ann.type).toBe("expansion");
+      expect(ann.type).toBe("conversation");
       // No card content survived: neither the stored fill (never applied)
       // nor streamed partials (cleared on degraded errors).
-      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
+      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
       expect(JSON.stringify(ctx.reviews.getSnapshot(id))).not.toContain("The host block is described here.");
     } finally {
       await app.close();
@@ -139,7 +139,7 @@ describe("degraded turns (#51)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       const snap = ctx.reviews.getSnapshot(id)!;
       const ann = snap.annotations.find((a) => a.id === annotationId)!;
-      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
+      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
       expect(JSON.stringify(snap)).not.toContain("failed to connect");
     } finally {
       await app.close();
@@ -165,7 +165,7 @@ describe("degraded turns (#51)", () => {
       const snap = ctx.reviews.getSnapshot(id)!;
       expect(JSON.stringify(snap)).not.toContain("command was refused");
       const ann = snap.annotations.find((a) => a.id === annotationId)!;
-      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
+      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
     } finally {
       await app.close();
     }
@@ -204,7 +204,7 @@ describe("degraded turns (#51)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+        ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -264,7 +264,7 @@ describe("card-only anchors (#51 validator)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+        ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -306,7 +306,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
       const { annotationId, jobId } = await runExplain(app, ctx, id);
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const blocks = (ann as unknown as { expansion: { blocks: { type: string }[] } }).expansion.blocks;
+      const blocks = ((ann.turns ?? [])[0]?.blocks ?? []);
       expect(blocks.length).toBeGreaterThan(0);
       expect(JSON.stringify(blocks)).toContain("MCP server exposes get_hunk");
     } finally {
@@ -326,7 +326,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+        ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -378,7 +378,7 @@ describe("connection-error retry (#51 review)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/could not look up|degraded/i);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
+      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
     } finally {
       await app.close();
     }
@@ -395,7 +395,7 @@ describe("connection-error retry (#51 review)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+        ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();

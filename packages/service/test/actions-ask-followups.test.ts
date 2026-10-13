@@ -3,7 +3,7 @@
  * even when the model ends its reply with a `### Follow-ups` section (or
  * another heading shape the parser turns into a `follow-up` block), the
  * thread HTML carries the answer only — no bare bullets, no leftover
- * heading. Cards and Explain expansions still keep their follow-up chips.
+ * heading. Cards and Explain answers still keep their follow-up chips.
  *
  * Over HTTP on the demo review with scripted fakes (no real agents, no
  * network).
@@ -229,7 +229,7 @@ describe("ask threads drop follow-up suggestions (issue #103)", () => {
       const threadId = res.json.threadId as string;
       await waitForJob(ctx, res.json.jobId as string);
 
-      const rep = await postAction(app, id, { kind: "reply", threadId, message: "What about ordering?" });
+      const rep = await postAction(app, id, { kind: "reply", annotationId: threadId, message: "What about ordering?" });
       expect(rep.status).toBe(200);
       await waitForJob(ctx, rep.json.jobId as string);
       const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
@@ -247,7 +247,7 @@ describe("ask threads drop follow-up suggestions (issue #103)", () => {
     }
   });
 
-  it("explain expansions still store their follow-up chips", { timeout: 90000 }, async () => {
+  it("explain answers still store their follow-up chips", { timeout: 90000 }, async () => {
     const reply = `An explanation with two follow-ups.
 
 ### Follow-ups
@@ -274,7 +274,9 @@ describe("ask threads drop follow-up suggestions (issue #103)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(ann.error).toBeNull();
-      const blocks = (ann as unknown as { expansion: { blocks: { type: string }[] } }).expansion.blocks;
+      const turnId = res.json.turnId as string;
+      const turn = (ann.turns ?? []).find((t) => t.id === turnId)!;
+      const blocks = turn.blocks;
       const follow = blocks.find((b) => b.type === "follow-up") as unknown as {
         items: { label: string; ask?: string }[];
       };

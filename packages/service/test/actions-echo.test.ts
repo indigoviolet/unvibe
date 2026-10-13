@@ -120,7 +120,8 @@ describe("echo stripping on actions (issue #50)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(ann.error).toBeNull();
-      const blocks = (ann as unknown as { expansion: { blocks: { type: string }[] } }).expansion.blocks;
+      const turnId = res.json.turnId as string;
+      const blocks = (ann.turns ?? []).find((t) => t.id === turnId)!.blocks;
       expect(blocks).toHaveLength(1);
     } finally {
       await app.close();

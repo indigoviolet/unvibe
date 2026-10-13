@@ -188,17 +188,17 @@ describe("M4 actions on the demo review (replay)", () => {
       // Immediately visible working state (or already filled: the replay
       // runner answers in milliseconds, so a fast poll may see it done).
       const working = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(working.type).toBe("expansion");
+      expect(working.type).toBe("conversation");
       expect(working.open).toBe(true);
-      expect(working.working === "Thinking…" || working.expansion!.blocks.length > 0).toBe(true);
+      expect(working.working === "Thinking…" || (working.turns?.[0]?.blocks.length ?? 0) > 0).toBe(true);
 
       await waitForJob(ctx, res.json.jobId as string);
       const done = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(done.expansion!.blocks.length).toBeGreaterThan(0);
+      expect(done.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
       expect(done.working).toBeNull();
-      expect(done.expansion!.revision).toBe(2);
+      expect(done.turns?.[0]?.revision).toBe(2);
       // Stored targets are canonical (real file keys, no aliases).
-      const targets = JSON.stringify(done.expansion!.blocks);
+      const targets = JSON.stringify(done.turns?.[0]?.blocks);
       expect(targets).not.toContain("diff:conn:");
       expect(targets).toContain("diff:");
       unsub();
@@ -243,7 +243,7 @@ describe("M4 actions on the demo review (replay)", () => {
       const sessionsBefore = agents.sessions.size;
 
       // Follow-up reply goes on the SAME conversation session.
-      const rep = await postAction(app, id, { kind: "reply", threadId, message: "What about ordering?" });
+      const rep = await postAction(app, id, { kind: "reply", annotationId: threadId, message: "What about ordering?" });
       expect(rep.status).toBe(200);
       expect(rep.json.jobId).toBeTruthy();
       await waitForJob(ctx, rep.json.jobId as string);
@@ -395,8 +395,8 @@ describe("M4 actions on the demo review (replay)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const snap = ctx.reviews.getSnapshot(id)!;
       const answer = snap.annotations.find((a) => a.id === annotationId)!;
-      expect(answer.type).toBe("expansion");
-      expect(answer.expansion!.blocks.length).toBeGreaterThan(0);
+      expect(answer.type).toBe("conversation");
+      expect(answer.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
       const consumed = snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-flow")!.blocks.find(
         (b) => b.type === "follow-up",
       )!;
@@ -416,7 +416,7 @@ describe("M4 actions on the demo review (replay)", () => {
     }
   });
 
-  it("promote moves expansion content to a new page; read/collapse/bookmark/close/delete", { timeout: 120000 }, async () => {
+  it("promote moves conversation content to a new page; collapse/bookmark/close/delete", { timeout: 120000 }, async () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
       const id = await createDemoReview(app);
@@ -449,30 +449,15 @@ describe("M4 actions on the demo review (replay)", () => {
       expect(link.type).toBe("link");
       expect(link.promotedToPage).toBe(pageId);
 
-      // read greys + collapses; unmarking expands.
-      const read = await postAction(app, id, { kind: "read", cardId: "central", read: true });
-      expect(read.status).toBe(200);
-      const central = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!;
-      expect(central.read).toBe(true);
-      expect(central.collapsed).toBe(true);
-      await postAction(app, id, { kind: "read", cardId: "central", read: false });
-      expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.collapsed).toBe(
-        false,
-      );
-
       const collapsed = await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true });
       expect(collapsed.status).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.collapsed).toBe(
+        true,
+      );
 
       const bookmark = await postAction(app, id, { kind: "bookmark", pageId: "root", saved: true });
       expect(bookmark.status).toBe(200);
       expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.saved).toBe(true);
-
-      // Expansion read closes it.
-      const seed = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === "x-seed");
-      if (seed?.type === "expansion" && seed.expansion) {
-        await postAction(app, id, { kind: "read", cardId: "x-seed", read: true });
-        expect(ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === "x-seed")!.open).toBe(false);
-      }
 
       // close + delete on fresh note threads.
       const note = await postAction(app, id, {
@@ -569,9 +554,9 @@ describe("M4 actions on the demo review (replay)", () => {
       const summary = myEntries().find((e) => e.kind === "thread-summary")!;
       expect(summary.scope).toEqual({ scope: "global" });
 
-      // UI state never lands in the log: read adds nothing.
+      // UI state never lands in the log: collapse adds nothing.
       const countBefore = myEntries().length;
-      await postAction(app, id, { kind: "read", cardId: "central", read: true });
+      await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true });
       await new Promise((r) => setTimeout(r, 300));
       expect(myEntries()).toHaveLength(countBefore);
     } finally {
@@ -675,7 +660,7 @@ describe("M4 failure paths (scripted fakes)", () => {
       expect(failed.error).toMatch(/trailing JSON/);
 
       // Retry rebuilds on the same annotation (and fails the same way here).
-      const retry = await postAction(app, id, { kind: "retry", threadId: res.json.annotationId as string });
+      const retry = await postAction(app, id, { kind: "retry", annotationId: res.json.annotationId as string });
       expect(retry.status).toBe(200);
       expect(retry.json.jobId).not.toBe(res.json.jobId);
       await waitForJob(ctx, retry.json.jobId as string);
@@ -732,12 +717,12 @@ describe("M4 failure paths (scripted fakes)", () => {
       expect(failed.working).toBeNull();
       expect(failed.error).toMatch(/rate limited/);
 
-      const retry = await postAction(app, id, { kind: "retry", threadId: res.json.annotationId as string });
+      const retry = await postAction(app, id, { kind: "retry", annotationId: res.json.annotationId as string });
       expect(retry.status).toBe(200);
       await waitForJob(ctx, retry.json.jobId as string);
       const recovered = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(recovered.error).toBeNull();
-      expect(recovered.expansion!.blocks.length).toBeGreaterThan(0);
+      expect(recovered.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
     } finally {
       await app.close();
     }
@@ -905,7 +890,6 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       expect(note.status).toBe(200);
       const noteId = note.json.threadId as string;
 
-      expect((await postAction(app, id, { kind: "read", cardId: "central", read: true })).status).toBe(200);
       expect((await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true })).status).toBe(200);
       expect((await postAction(app, id, { kind: "bookmark", pageId: "root", saved: true })).status).toBe(200);
       // Cached depth switch needs no agent.
@@ -994,7 +978,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const expansionId = ex.json.annotationId as string;
       await waitFor(() => {
         const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === expansionId);
-        return !!a && (a.error != null || (a.expansion?.blocks.length ?? 0) > 0);
+        return !!a && (a.error != null || ((a.turns?.[0]?.blocks.length ?? 0) > 0));
       });
       const expansion = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === expansionId)!;
       expect(expansion.working).toBeNull();
@@ -1017,7 +1001,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
 
       // Retry rebuilds and fails the same fast way (error state persists,
       // nothing stuck working; still 200 — the error lives on the thread).
-      const retry = await postAction(app, id, { kind: "retry", threadId });
+      const retry = await postAction(app, id, { kind: "retry", annotationId: threadId });
       expect(retry.status).toBe(200);
       expect(retry.json.jobId).toBeUndefined();
       await waitFor(() => {
@@ -1060,7 +1044,6 @@ describe("M4 interaction pure logic", () => {
       pageId: "root",
       title: null,
       level: "standard",
-      read: false,
       collapsed: false,
       revision: 1,
       blocks: first.blocks,
@@ -1095,7 +1078,6 @@ describe("M4 interaction pure logic", () => {
       pageId: "root",
       title: "The central change",
       level: "standard",
-      read: false,
       collapsed: false,
       revision: 2,
       blocks: [para("b1", "Body one.", { simple: "Simple one." }), corr],

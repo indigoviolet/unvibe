@@ -558,8 +558,8 @@ explain-demo-a -> explain-demo-b: hello
 \`\`\`
 `;
 
-describe("expansion diagrams (#71)", () => {
-  it("serves a diagram stored in an Explain expansion (not 404)", { timeout: 90000 }, async () => {
+describe("conversation answer diagrams (#71, #136)", () => {
+  it("serves a diagram stored in an Explain answer (not 404)", { timeout: 90000 }, async () => {
     const prev = process.env.UNVIBE_D2_BIN;
     process.env.UNVIBE_D2_BIN = "/nonexistent/d2-for-test";
     try {
@@ -594,12 +594,12 @@ describe("expansion diagrams (#71)", () => {
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -623,7 +623,7 @@ describe("expansion diagrams (#71)", () => {
     }
   });
 
-  it("serves a diagram nested in an aside inside an expansion", { timeout: 90000 }, async () => {
+  it("serves a diagram nested in an aside inside an answer", { timeout: 90000 }, async () => {
     const prev = process.env.UNVIBE_D2_BIN;
     process.env.UNVIBE_D2_BIN = "/nonexistent/d2-for-test";
     try {
@@ -671,11 +671,11 @@ aside-demo-a -> aside-demo-b: hi
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
-        const expansion = snap.annotations.find((a) => a.id === annotationId)!.expansion!;
-        const asideBlock = expansion.blocks.find((b) => b.type === "aside") as unknown as {
+        const turnBlocks = snap.annotations.find((a) => a.id === annotationId)!.turns![0]!.blocks;
+        const asideBlock = turnBlocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; render?: { hash: string } }[];
         };
         expect(asideBlock).toBeDefined();
@@ -748,12 +748,12 @@ broken-shape: "x" {link: "diff:nope:999999"}
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           render?: { hash: string; status: string };
         };
         expect(dg).toBeDefined();
@@ -793,7 +793,7 @@ function writeFailingD2(): { dir: string; bin: string } {
   return { dir, bin };
 }
 
-/** Wait until an Explain expansion's fill settled (final mutate cleared `working`). */
+/** Wait until an Explain answer's fill settled (final mutate cleared `working`). */
 function waitForExpansion(
   ctx: { reviews: { getSnapshot(id: string): ReviewSnapshot | null } },
   id: string,
@@ -803,9 +803,9 @@ function waitForExpansion(
   return waitFor(() => {
     const s = ctx.reviews.getSnapshot(id);
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
-      | { working: string | null; expansion?: { blocks: unknown[]; working: string | null } }
+      | { working: string | null; turns?: { blocks: unknown[]; working: string | null }[] }
       | undefined;
-    return (a?.expansion?.blocks.length ?? 0) > 0 && a?.working == null && a?.expansion?.working == null;
+    return ((a?.turns?.[0]?.blocks.length ?? 0) > 0) && a?.working == null && (a?.turns ?? []).every((t) => t.working == null);
   }, timeoutMs);
 }
 /** Explain reply carrying the owner's failing shape (inline `.class`). */
@@ -913,7 +913,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           render?: { hash: string; status: string };
         };
         expect(dg).toBeDefined();
@@ -980,7 +980,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -1045,7 +1045,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -1277,7 +1277,7 @@ describe("aside-nested diagrams (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const aside = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "aside") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; source?: string; render?: { status: string } }[];
         };
         expect(aside).toBeDefined();
@@ -1332,8 +1332,8 @@ describe("aside-nested diagrams (#130)", () => {
         await waitForExpansion(ctx, id, annotationId);
         expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
         const snap = ctx.reviews.getSnapshot(id)!;
-        const expansion = snap.annotations.find((a) => a.id === annotationId)!.expansion!;
-        const aside = expansion.blocks.find((b) => b.type === "aside") as unknown as {
+        const turnBlocks = snap.annotations.find((a) => a.id === annotationId)!.turns![0]!.blocks;
+        const aside = turnBlocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; render?: { status: string; error?: string } }[];
         };
         expect(aside).toBeDefined();
@@ -1341,7 +1341,7 @@ describe("aside-nested diagrams (#130)", () => {
         expect(dg.render?.status).toBe("error");
         expect(dg.render?.error).toMatch(/not valid D2/);
         // The prose is unaffected.
-        expect(JSON.stringify(expansion.blocks)).toContain("An explanation with an example.");
+        expect(JSON.stringify(turnBlocks)).toContain("An explanation with an example.");
       } finally {
         await app.close();
       }
