@@ -484,6 +484,15 @@ export interface Annotation {
    */
   promotedToPage?: string;
   /**
+   * Issue #152: when a conversation is opened as a page while a turn is
+   * still filling (or has failed), the turns stay on the link annotation
+   * as the fill's state owner and each moved turn maps to its page card.
+   * The fill keeps running and mirrors finished blocks onto the mapped
+   * card; the page resolves the working/error state through this mapping.
+   * Turns are dropped once every mapped turn has settled successfully.
+   */
+  promotedTurns?: { turnId: string; cardId: string }[];
+  /**
    * M5 (PRD §8): true when the anchored code changed and the quote could
    * not be re-found with confidence. The original snippet is kept in
    * `originalSnippet` and `successor` links to the best new-code guess.

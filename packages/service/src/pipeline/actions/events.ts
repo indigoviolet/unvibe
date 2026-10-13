@@ -102,7 +102,11 @@ export function newCardForTurn(
   turnId: string,
   sessionId?: string,
 ): InteractionEvent | null {
-  if (annotation.type !== "conversation") return null;
+  // Promoted links still holding turns log like conversations (issue
+  // #152): a turn that fills after the move is new shared knowledge.
+  if (annotation.type !== "conversation" && !(annotation.type === "link" && (annotation.turns?.length ?? 0) > 0)) {
+    return null;
+  }
   const turn = (annotation.turns ?? []).find((t) => t.id === turnId);
   if (!turn) return null;
   const event: InteractionEvent = {
@@ -120,6 +124,7 @@ export function newCardForTurn(
 /** True when an annotation holds shared agent content (deletion-worthy). */
 export function wasShared(annotation: Annotation): boolean {
   if (annotation.type === "conversation") return (annotation.turns ?? []).some((t) => t.blocks.length > 0);
+  if (annotation.type === "link") return (annotation.turns ?? []).some((t) => t.blocks.length > 0);
   if (annotation.type === "comment") return annotation.messages.some((m) => m.who === "ai");
   return false;
 }

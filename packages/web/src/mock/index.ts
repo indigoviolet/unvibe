@@ -457,6 +457,23 @@ async function awaitAddRelease(): Promise<void> {
   }
 }
 
+/**
+ * Resolve once the `unvibe.mock.turnFillHold` key is gone (or soon
+ * anyway). Holds conversation turn fills (ask/reply/retry answers) so
+ * mid-fill sequences — e.g. Open as page while the answer is still
+ * being written (issue #152) — are deterministic in tests.
+ */
+async function awaitTurnFillRelease(): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    try {
+      if (!localStorage.getItem("unvibe.mock.turnFillHold")) return;
+    } catch {
+      return;
+    }
+    await wait(50);
+  }
+}
+
 /** Extra clone latency in mock mode (`unvibe.mock.addRepoDelayMs`, default 150). */
 function addRepoDelayMs(): number {
   try {
@@ -1060,6 +1077,61 @@ function settleMockJob(jobId: string): void {
   if (!job || job.state === "done") return;
   job.state = "done";
   emitJobs();
+}
+
+/**
+ * Re-target a mock job at a page card (issue #152: like the service's
+ * queue retarget, the moved fill's job addresses its new card so the
+ * page shows the working state).
+ */
+function retargetMockJob(jobId: string, cardId: string): void {
+  const job = mockJobs.find((j) => j.id === jobId);
+  if (!job) return;
+  job.cardId = cardId;
+  emitJobs();
+}
+
+/**
+ * Mirror a promoted turn's content onto its page card (issue #152: the
+ * mock keeps the service's shape — turns stay on the link while
+ * unsettled, the page card is the visible copy).
+ */
+function mirrorMockPromotedTurn(tid: string, turnId: string): void {
+  const link = annotations.find((x) => x.id === tid);
+  if (!link || link.type !== "link") return;
+  const mapping = ((link as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns ?? []).find(
+    (m) => m.turnId === turnId,
+  );
+  if (!mapping) return;
+  const turn = (link.turns ?? []).find((t) => t.id === turnId);
+  if (!turn) return;
+  for (const p of mockPages) {
+    const card = p.cards.find((c) => c.id === mapping.cardId);
+    if (!card) continue;
+    card.blocks = JSON.parse(JSON.stringify(turn.blocks));
+    card.level = turn.level;
+    card.revision = turn.revision;
+    card.undoStack = JSON.parse(JSON.stringify(turn.undoStack));
+    if (turn.secondOpinions) card.secondOpinions = JSON.parse(JSON.stringify(turn.secondOpinions));
+    emitPages();
+    return;
+  }
+}
+
+/**
+ * Drop a promoted link's turns once every moved turn has settled
+ * (issue #152, mirrors the service: the page holds the content).
+ */
+function dropSettledMockPromotedTurns(tid: string): void {
+  const link = annotations.find((x) => x.id === tid);
+  if (!link || link.type !== "link" || (link.turns?.length ?? 0) === 0) return;
+  const unsettled = (link.turns ?? []).some(
+    (t) => ((t.working ?? "") !== "" && t.working !== null) || ((t.error ?? "") !== "" && t.error !== null) || t.jobId !== undefined,
+  );
+  if (unsettled) return;
+  delete (link as { turns?: unknown }).turns;
+  delete (link as { promotedTurns?: unknown }).promotedTurns;
+  emitAnnotations();
 }
 
 /**
@@ -2050,6 +2122,33 @@ export const mockApi = {
   },
 
   action: async (_id: string, a: ReviewAction): Promise<ActionResponse> => {
+    // Fill one conversation turn after a delay, like the service seam.
+    // Held while `unvibe.mock.turnFillHold` is set (issue #152), and
+    // mirrored onto the promoted page card when the turn moved (issue
+    // #152: Open as page mid-fill keeps filling the page).
+    const answerTurnLater = (tid: string, turnId: string, text: string, jobId: string): void => {
+      window.setTimeout(() => {
+        void (async () => {
+          await awaitTurnFillRelease();
+          settleMockJob(jobId);
+          const live = annotations.find((x) => x.id === tid);
+          const turn = live && (live.type === "conversation" || live.type === "link") ? (live.turns ?? []).find((t) => t.id === turnId) : undefined;
+          if (!live || !turn) return;
+          turn.blocks = mockExplainBlocks(text || live.anchor.quotedText) as never;
+          turn.revision += 1;
+          turn.working = null;
+          turn.error = null;
+          turn.jobId = undefined;
+          live.working = null;
+          live.error = null;
+          live.jobId = undefined;
+          delete live.reply;
+          mirrorMockPromotedTurn(tid, turnId);
+          dropSettledMockPromotedTurns(tid);
+          emitAnnotations();
+        })();
+      }, 700);
+    };
     // Second opinion (mock): canned verdicts through the patch path so
     // mock-mode e2e exercises the result block, disagreement styling and
     // the mode switch without a service. Blind → partly, check →
@@ -2191,25 +2290,6 @@ export const mockApi = {
     // delivery). Ask creates the card; reply adds a turn; retry refills
     // the last turn in place.
     if (a.kind === "ask" || a.kind === "reply" || a.kind === "retry") {
-      // Fill one conversation turn after a delay, like the service seam.
-      const answerTurnLater = (tid: string, turnId: string, text: string, jobId: string): void => {
-        window.setTimeout(() => {
-          settleMockJob(jobId);
-          const live = annotations.find((x) => x.id === tid);
-          const turn = live?.type === "conversation" ? (live.turns ?? []).find((t) => t.id === turnId) : undefined;
-          if (!live || !turn) return;
-          turn.blocks = mockExplainBlocks(text || live.anchor.quotedText) as never;
-          turn.revision += 1;
-          turn.working = null;
-          turn.error = null;
-          turn.jobId = undefined;
-          live.working = null;
-          live.error = null;
-          live.jobId = undefined;
-          delete live.reply;
-          emitAnnotations();
-        }, 700);
-      };
       const newTurnId = (): string =>
         `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       if (a.kind === "ask") {
@@ -2259,8 +2339,12 @@ export const mockApi = {
       }
       const annotationId = (a as { annotationId: string }).annotationId;
       const found = annotations.find((x) => x.id === annotationId);
-      if (!found || found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
+      // Retry also runs on promoted links still holding turns (issue #152);
+      // reply stays conversation-only (pages have no reply box).
+      const fillable = found && (found.type === "conversation" || (found.type === "link" && (found.turns?.length ?? 0) > 0));
+      if (!fillable || !found) throw new Error(`unknown conversation ${annotationId}`);
       if (a.kind === "reply") {
+        if (found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
         const lastTurn = (found.turns ?? [])[(found.turns ?? []).length - 1];
         // Mirrors the service: a failed turn must be retried explicitly.
         if (lastTurn?.error) throw new Error(`conversation ${found.id} has a failed turn; retry it first`);
@@ -2293,10 +2377,17 @@ export const mockApi = {
       found.error = null;
       last.working = "Thinking…";
       found.working = "Thinking…";
-      found.open = true;
+      if (found.type === "conversation") found.open = true;
       emitAnnotations();
       const retryJobId = `mock-retry-${found.id}`;
       trackMockJob(retryJobId, "ask", { annotationId: found.id });
+      // A retry on a promoted link refills the page (issue #152).
+      if (found.type === "link") {
+        const cardId = ((found as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns ?? []).find(
+          (m) => m.turnId === last.id,
+        )?.cardId;
+        if (cardId) retargetMockJob(retryJobId, cardId);
+      }
       answerTurnLater(found.id, last.id, last.question ?? found.anchor.quotedText, retryJobId);
       return { accepted: true, annotationId: found.id, turnId: last.id, jobId: retryJobId };
     }
@@ -2345,19 +2436,7 @@ export const mockApi = {
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
       trackMockJob(jobId, "ask", { annotationId: id });
-      window.setTimeout(() => {
-        settleMockJob(jobId);
-        const found = annotations.find((x) => x.id === id);
-        const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
-        if (!found || !turn) return;
-        turn.blocks = mockExplainBlocks(a.quote) as never;
-        turn.revision += 1;
-        turn.working = null;
-        turn.error = null;
-        found.working = null;
-        found.error = null;
-        emitAnnotations();
-      }, 700);
+      answerTurnLater(id, turnId, a.quote, jobId);
       return { accepted: true, annotationId: id, turnId, jobId };
     }
     if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
@@ -2530,10 +2609,14 @@ export const mockApi = {
       if (!found || found.type !== "conversation" || !found.turns) {
         throw new Error(`annotation ${annId} is not a conversation`);
       }
+      // Like the service (issue #152): no cancel — an unsettled turn
+      // keeps filling and mirrors onto its page card; second opinions
+      // move with the content.
       const quote = found.anchor.quotedText;
       const title = quote.length > 60 ? `${quote.slice(0, 58)}…` : quote || "(untitled)";
       const pageId = `p-mock-${Date.now().toString(36)}`;
       const stamp = Date.now().toString(36);
+      const cardIds = (found.turns as unknown[]).map((_, i) => `c-mock-${stamp}-${i}`);
       mockPages.push({
         id: pageId,
         kind: "opened-expansion",
@@ -2543,24 +2626,37 @@ export const mockApi = {
         cards: (found.turns as never[]).map((t, i) => {
           const turn = t as unknown as import("@unvibe/shared").Turn;
           return {
-            id: `c-mock-${stamp}-${i}`,
+            id: cardIds[i],
             pageId,
             title: i === 0 ? quote || null : (turn.question ?? null),
             level: turn.level,
             collapsed: false,
             revision: turn.revision,
             blocks: JSON.parse(JSON.stringify(turn.blocks)),
-            undoStack: [],
+            undoStack: JSON.parse(JSON.stringify(turn.undoStack)),
+            ...(turn.secondOpinions ? { secondOpinions: JSON.parse(JSON.stringify(turn.secondOpinions)) } : {}),
           };
         }),
       });
+      const unsettled = (found.turns as unknown as import("@unvibe/shared").Turn[]).some(
+        (t) => ((t.working ?? "") !== "" && t.working !== null) || ((t.error ?? "") !== "" && t.error !== null) || t.jobId !== undefined,
+      );
+      const fillingIndex = (found.turns as unknown as import("@unvibe/shared").Turn[]).findIndex((t) => t.jobId !== undefined);
+      const fillingJob = fillingIndex >= 0 ? (found.turns as unknown as import("@unvibe/shared").Turn[])[fillingIndex].jobId : undefined;
       found.type = "link" as never;
       found.open = false;
-      found.working = null;
-      found.error = null;
-      found.jobId = undefined;
+      if (unsettled) {
+        (found as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns = (
+          found.turns as unknown as import("@unvibe/shared").Turn[]
+        ).map((turn, i) => ({ turnId: turn.id, cardId: cardIds[i] }));
+      } else {
+        found.working = null;
+        found.error = null;
+        found.jobId = undefined;
+        delete (found as { turns?: unknown }).turns;
+      }
       (found as { promotedToPage?: string }).promotedToPage = pageId;
-      delete (found as { turns?: unknown }).turns;
+      if (fillingJob && fillingIndex >= 0) retargetMockJob(fillingJob, cardIds[fillingIndex]);
       emitPages();
       emitAnnotations();
       return { accepted: true, annotationId: annId, pageId };
@@ -2571,7 +2667,7 @@ export const mockApi = {
       if (!found) throw new Error(`unknown annotation ${annId}`);
       found.open = false;
       found.working = null;
-      if (found.type === "conversation") {
+      if (found.type === "conversation" || (found.type === "link" && (found.turns?.length ?? 0) > 0)) {
         for (const t of found.turns ?? []) t.working = null;
       }
       emitAnnotations();

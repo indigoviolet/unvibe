@@ -66,6 +66,37 @@ export function conversationForAnswer(snapshot: ReviewSnapshot, answerId: string
   return null;
 }
 
+/**
+ * Copy a promoted answer's current content onto its page card (issue
+ * #152). A conversation opened as a page mid-fill keeps its turns on the
+ * link annotation as the fill's state owner; the page card is the visible
+ * copy. Call after every turn mutation so the two never diverge. No-op
+ * when the answer is not a promoted turn, or its page card is gone.
+ */
+export function mirrorPromotedAnswer(
+  draft: WritableDraft<ReviewSnapshot>,
+  answerId: string,
+): void {
+  for (const annotation of draft.annotations as unknown as Annotation[]) {
+    const mapping = (annotation.promotedTurns ?? []).find((m) => m.turnId === answerId);
+    if (!mapping) continue;
+    const turn = (annotation.turns ?? []).find((t) => t.id === answerId);
+    if (!turn) continue;
+    for (const page of draft.pages ?? []) {
+      const card = (page.cards ?? []).find((c) => c.id === mapping.cardId);
+      if (!card) continue;
+      card.blocks = structuredCloneBlocks(turn.blocks);
+      card.level = turn.level;
+      card.revision = turn.revision;
+      card.undoStack = JSON.parse(JSON.stringify(turn.undoStack)) as Card["undoStack"];
+      card.secondOpinions = turn.secondOpinions
+        ? (JSON.parse(JSON.stringify(turn.secondOpinions)) as Card["secondOpinions"])
+        : undefined;
+      return;
+    }
+  }
+}
+
 export function targetLevel(target: CardTarget): DepthLevel {
   return target.kind === "page-card" ? target.card.level : target.turn.level;
 }
@@ -79,8 +110,7 @@ export function targetRevision(target: CardTarget): number {
 }
 
 /** Push the current blocks+level onto the undo stack (no redo, PRD §4.4). */
-export function pushUndo(target: CardTarget, blocks: Block[], level: DepthLevel): void {
-  const entry: CardSnapshot = { blocks: structuredCloneBlocks(blocks), level };
+export function pushUndo(target: CardTarget, blocks: Block[], level: DepthLevel): void {  const entry: CardSnapshot = { blocks: structuredCloneBlocks(blocks), level };
   if (target.kind === "page-card") {
     target.card.undoStack.push(entry);
   } else {

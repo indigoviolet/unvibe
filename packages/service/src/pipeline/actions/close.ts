@@ -11,7 +11,7 @@
 import type { Annotation } from "@unvibe/shared";
 import { recordInteraction } from "../../interaction/index.js";
 import { getSnapshotOrThrow, type ActionContext } from "./common.js";
-import { cancelConversationJob } from "./conversation.js";
+import { cancelConversationJob, holdsFillableTurns } from "./conversation.js";
 import { deletionFor, wasShared } from "./events.js";
 
 export async function closeAction(
@@ -22,7 +22,7 @@ export async function closeAction(
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
   if (!found) throw new Error(`unknown annotation ${annotationId}`);
-  if (found.type === "conversation") {
+  if (holdsFillableTurns(found)) {
     cancelConversationJob(ctx, snapshot, annotationId);
   }
 
@@ -31,7 +31,7 @@ export async function closeAction(
     if (!ann) throw new Error(`unknown annotation ${annotationId}`);
     ann.open = false;
     ann.working = null;
-    if (ann.type === "conversation") {
+    if (holdsFillableTurns(ann)) {
       for (const turn of ann.turns ?? []) turn.working = null;
     }
     // Closing keeps content for the dotted-link preview; a working job
@@ -60,7 +60,7 @@ export async function deleteAction(
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === targetId);
   if (!found) throw new Error(`unknown annotation ${targetId}`);
-  if (found.type === "conversation") {
+  if (holdsFillableTurns(found)) {
     cancelConversationJob(ctx, snapshot, targetId);
   }
   // The card's session belongs to the card: close it so it does not linger.

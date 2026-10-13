@@ -27,7 +27,7 @@ import { randomBytes } from "node:crypto";
 import type { ActionAnchor, Anchor, Annotation, Block, Job, Turn } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
-import { recordInteraction } from "../../interaction/index.js";
+import { mirrorPromotedAnswer, recordInteraction } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { DegradedTurnError } from "../../jobs/errors.js";
 import {
@@ -51,6 +51,30 @@ import { finalizeFresh, repairDiagrams } from "./diagram-finalize.js";
 /** Fresh answer id (`ans_<12 hex>`, assigned by the app). */
 export function newTurnId(): string {
   return `ans_${randomBytes(6).toString("hex")}`;
+}
+
+/**
+ * True when a turn still owns work: filling, failed, or job-attached
+ * (issue #152: promote keeps exactly these turns on the link).
+ */
+export function isTurnUnsettled(t: Turn): boolean {
+  return (
+    ((t.working ?? "") !== "" && t.working !== null) ||
+    ((t.error ?? "") !== "" && t.error !== null) ||
+    t.jobId !== undefined
+  );
+}
+
+/**
+ * Annotations that own fillable turns: conversations, plus promoted
+ * links still holding unsettled turns (issue #152: opened as a page
+ * mid-fill, the fill keeps running against the link's turns and mirrors
+ * onto the page cards).
+ */
+export function holdsFillableTurns(ann: Annotation | undefined): ann is Annotation {
+  if (!ann) return false;
+  if (ann.type === "conversation") return true;
+  return ann.type === "link" && (ann.turns?.length ?? 0) > 0;
 }
 
 /**
@@ -177,15 +201,17 @@ export async function runConversationTurn(
   }
 
   // Reset to the working state (retry clears a visible error here).
+  // Promoted links still holding turns fill the same way (issue #152).
   await reviews.mutate(reviewId, (draft) => {
     const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-    const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+    const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
     if (!found || !turn) return;
     found.working = opts.workingLabel;
     found.error = null;
-    found.open = true;
+    if (found.type === "conversation") found.open = true;
     turn.working = opts.workingLabel;
     turn.error = null;
+    mirrorPromotedAnswer(draft, turnId);
   });
 
   const latest = getSnapshotOrThrow(reviews, reviewId);
@@ -223,7 +249,7 @@ export async function runConversationTurn(
           const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
           if (found) {
             found.jobId = job.id;
-            const turn = found.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+            const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
             if (turn) turn.jobId = job.id;
           }
         })
@@ -238,9 +264,12 @@ export async function runConversationTurn(
       void reviews
         .mutate(reviewId, (draft) => {
           const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-          const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+          const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
           if (turn && !turn.error) {
             turn.blocks = blocks as Block[];
+            // Promoted mid-fill (issue #152): the page card is the
+            // visible copy, so every partial lands there too.
+            mirrorPromotedAnswer(draft, turnId);
           }
         })
         .catch(() => {});
@@ -298,9 +327,12 @@ export async function runConversationTurn(
       }
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-        const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+        const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
         if (!found || !turn) return;
-        if (!found.open && turn.blocks.length > 0) {
+        // Promoted links are "closed" by shape but the fill lands
+        // normally (issue #152): only real conversations take the
+        // closed-while-filling branch.
+        if (found.type === "conversation" && !found.open && turn.blocks.length > 0) {
           // Closed while filling: keep the content for the dotted-link preview.
           turn.blocks = stored;
           turn.revision += 1;
@@ -316,7 +348,14 @@ export async function runConversationTurn(
         found.working = null;
         found.error = null;
         found.jobId = undefined;
+        // Promoted mid-fill: the page card is the visible copy.
+        mirrorPromotedAnswer(draft, turnId);
       });
+      // A promoted turn that just settled may be the last one the link
+      // owns: with nothing left to fill or retry, the turns move off the
+      // link (the page holds the content) and the session closes, since
+      // pages have no reply box.
+      await dropSettledPromotedTurns(ctx, annotationId);
       // New turn content enters the log in full (PRD §9.3 `new-card`).
       // Awaited so tests observe the entry once the fill settles.
       try {
@@ -345,7 +384,7 @@ export async function runConversationTurn(
       const message = err instanceof Error ? err.message : String(err);
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-        const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+        const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
         if (!found || !turn) return;
         found.working = null;
         turn.working = null;
@@ -354,6 +393,9 @@ export async function runConversationTurn(
         // A degraded turn must leave no card behind: streamed partials
         // may already hold the chatter (#51).
         if (err instanceof DegradedTurnError) turn.blocks = [];
+        // A failed promoted turn stays retryable from the page: its
+        // (emptied) blocks still mirror (issue #152).
+        mirrorPromotedAnswer(draft, turnId);
       });
       // Failures produce no shared knowledge: visible error only, no log.
       return message;
@@ -376,11 +418,40 @@ export async function runConversationTurn(
 /** Cancel the job filling a conversation turn (used by close/delete). */
 export function cancelConversationJob(ctx: ActionContext, snapshot: { annotations: Annotation[] }, annotationId: string): void {
   const found = snapshot.annotations.find((a) => a.id === annotationId);
-  const turnJob =
-    found?.type === "conversation"
-      ? [...(found.turns ?? [])].reverse().find((t) => t.jobId)?.jobId
-      : undefined;
+  const turnJob = holdsFillableTurns(found)
+    ? [...(found.turns ?? [])].reverse().find((t) => t.jobId)?.jobId
+    : undefined;
   cancelAnnotationJob(ctx.jobs, ctx.reviewId, found?.jobId ?? turnJob);
+}
+
+/**
+ * Drop a promoted link's turns once every moved turn has settled
+ * successfully (issue #152): the page holds the content, the session
+ * closes since pages have no reply box. Failed turns stay for Retry.
+ */
+export async function dropSettledPromotedTurns(ctx: ActionContext, annotationId: string): Promise<void> {
+  const { reviews, reviewId } = ctx;
+  const snapshot = getSnapshotOrThrow(reviews, reviewId);
+  const found = snapshot.annotations.find((a) => a.id === annotationId);
+  if (!found || found.type !== "link" || (found.turns?.length ?? 0) === 0) return;
+  if ((found.turns ?? []).some(isTurnUnsettled)) return;
+  const sessionId = found.sessionId;
+  await reviews.mutate(reviewId, (draft) => {
+    const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+    if (!target || target.type !== "link") return;
+    if ((target.turns ?? []).some(isTurnUnsettled)) return;
+    delete target.turns;
+    delete target.promotedTurns;
+    delete target.sessionId;
+  });
+  // The card's session belongs to the card: close it so it does not linger.
+  if (sessionId && ctx.sessions) {
+    try {
+      await ctx.sessions.closeConversation(sessionId);
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 export interface ExplainRequest {
@@ -592,6 +663,8 @@ export async function replyAction(
  * turn). The queue's own retry can't re-trigger the completion applier,
  * so a rebuild (same anchor/message, same session when live) is the
  * correct retry; the visible error clears when the new attempt starts.
+ * Promoted links still holding turns retry the same way (issue #152):
+ * the refill mirrors onto the page card.
  */
 export async function retryAction(
   ctx: ActionContext,
@@ -600,7 +673,7 @@ export async function retryAction(
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
-  if (!found || found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
+  if (!holdsFillableTurns(found)) throw new Error(`unknown conversation ${annotationId}`);
   const turns = found.turns ?? [];
   const last = turns[turns.length - 1];
   if (!last) throw new Error(`conversation ${annotationId} has no turn to retry`);
@@ -621,5 +694,18 @@ export async function retryAction(
     cardLabel: firstTurn ? `Explain: ${found.anchor.quotedText}` : message,
     workingLabel: firstTurn ? "Thinking…" : "Writing reply…",
   });
+  if (res.jobId && found.type === "link") {
+    // Retry on a promoted link refills the page: the job moves to the
+    // mapped card with the content (issue #152).
+    const cardId = (found.promotedTurns ?? []).find((m) => m.turnId === last.id)?.cardId;
+    if (cardId) {
+      try {
+        ctx.jobs.retarget(res.jobId, cardId);
+      } catch {
+        // Unknown job or already settled: the page still resolves the
+        // working state through the promoted-turn mapping.
+      }
+    }
+  }
   return { annotationId, turnId: last.id, ...res };
 }

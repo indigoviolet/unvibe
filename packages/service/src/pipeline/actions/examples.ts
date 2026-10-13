@@ -9,6 +9,7 @@ import {
   findCardTargetInDraft,
   insertExamples,
   markStaleAnchors,
+  mirrorPromotedAnswer,
   pushUndo,
   recordInteraction,
   setTargetContent,
@@ -89,6 +90,7 @@ export async function examplesAction(
         pushUndo(t, [...current], from);
         setTargetContent(t, out.blocks, from);
         markStaleAnchors(draft, cardId);
+        mirrorPromotedAnswer(draft, cardId);
         added = out.added;
       });
       if (added > 0) {

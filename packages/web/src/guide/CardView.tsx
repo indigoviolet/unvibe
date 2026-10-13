@@ -16,11 +16,13 @@
  * footnote chips. Corrections show as suggestions on the target card with
  * Accept/Dismiss.
  */
-import type { Annotation, Card, DepthLevel, Page } from "@unvibe/shared";
+import type { Annotation, Card, DepthLevel, Page, Turn } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { Icon } from "../components/Icon.js";
+import { toast } from "../floating/Toast.js";
+import { friendlyError } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { performAction, performInsertAction, performUpdate } from "./actions.js";
 import { blockThreads } from "./annotations.js";
@@ -106,6 +108,28 @@ function runCardAction(reviewId: string, action: Parameters<typeof performAction
   void performAction(reviewId, action).catch(() => {});
 }
 
+/**
+ * Fill state for a page card moved mid-fill (issue #152): the link
+ * annotation that promoted this card keeps the unsettled turn as the
+ * fill's state owner. Returns the link id (for Retry) and the turn while
+ * it still carries a working flag or an error.
+ */
+function promotedFillFor(
+  annotations: Annotation[],
+  card: Card,
+): { linkId: string; turn: Turn } | null {
+  for (const a of annotations) {
+    if (a.type !== "link" || a.promotedToPage !== card.pageId) continue;
+    const mapping = (a.promotedTurns ?? []).find((m) => m.cardId === card.id);
+    if (!mapping) continue;
+    const turn = (a.turns ?? []).find((t) => t.id === mapping.turnId);
+    if (!turn) continue;
+    if ((turn.working ?? "") !== "" && turn.working !== null) return { linkId: a.id, turn };
+    if ((turn.error ?? "") !== "" && turn.error !== null) return { linkId: a.id, turn };
+  }
+  return null;
+}
+
 
 
 export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }: Props) {
@@ -116,6 +140,9 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const contributions = snapshot?.contributions ?? [];
   const busy = busyForCard(inflight, jobs, card.id);
   const busyKind = busy?.kind;
+  // A card moved mid-fill (issue #152) resolves its working/error state
+  // through the promoting link until its turn settles.
+  const promoted = !busy ? promotedFillFor(annotations, card) : null;
 
   if (card.pending) {
     // Issue #84: the title and the one-line description stay visible while
@@ -291,6 +318,24 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         />
       </div>
       {busy ? <Working text={busy.label} /> : null}
+      {!busy && promoted?.turn.working ? <Working text={promoted.turn.working} /> : null}
+      {!busy && promoted?.turn.error ? (
+        <div className="perr" role="alert">
+          <span>Couldn't get an answer: {promoted.turn.error}</span>
+          <button
+            className="btn"
+            type="button"
+            data-retry={promoted.turn.id}
+            onClick={() =>
+              performAction(reviewId, { kind: "retry", annotationId: promoted.linkId }).catch((err: unknown) => {
+                toast(`Couldn't retry: ${friendlyError(err)}`);
+              })
+            }
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       {blocks}
       <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />
       {(card.secondOpinions ?? []).map((so) => (

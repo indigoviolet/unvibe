@@ -244,6 +244,21 @@ export class JobQueue {
     return copy(entry.job);
   }
 
+  /**
+   * Re-target a job at a new card (issue #152: promote moves a
+   * conversation's fill to a page card while it runs, so the page shows
+   * the working state through the usual `cardId` match). The job keeps
+   * running; only its address changes.
+   */
+  retarget(id: string, cardId: string): Job {
+    const entry = this.required(id);
+    entry.job.cardId = cardId;
+    entry.cardId = cardId;
+    this.save(entry);
+    this.emit(entry);
+    return copy(entry.job);
+  }
+
   // -- cancellation ---------------------------------------------------
 
   /** Cancel a job: immediate while queued/backing-off, abort while running. */
