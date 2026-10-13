@@ -47,11 +47,11 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
 
   const exps = (annotations ?? []).filter(
     (a) =>
-      (a.type === "expansion" || a.type === "link") &&
+      (a.type === "conversation" || a.type === "link") &&
       a.anchor.host.kind === "description" &&
       a.anchor.host.paragraphId === paragraphId,
   );
-  const open = exps.filter((a) => a.type === "expansion" && a.open && !a.promotedToPage);
+  const open = exps.filter((a) => a.type === "conversation" && a.open && !a.promotedToPage);
 
   useEffect(() => {
     const root = document.querySelector("#right .desc");
@@ -105,7 +105,7 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
       const snap = useReview.getState().snapshot;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found) return;
-      if (found.type === "expansion" && !found.open) {
+      if (found.type === "conversation" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });

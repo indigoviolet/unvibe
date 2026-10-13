@@ -23,7 +23,6 @@ function card(over: Partial<Card> = {}): Card {
     pageId: "root",
     title: "Card",
     level: "standard",
-    read: false,
     collapsed: false,
     revision: 1,
     blocks: [],
@@ -48,10 +47,10 @@ function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Annotation[]
   } as unknown as ReviewSnapshot);
 }
 
-function answerExpansion(): Annotation {
+function answerCard(): Annotation {
   return {
     id: "ann_ans",
-    type: "expansion",
+    type: "conversation",
     anchor: {
       host: { kind: "block", blockId: "c1#b-f" },
       quotedText: "Why?",
@@ -64,16 +63,18 @@ function answerExpansion(): Annotation {
     messages: [],
     post: false,
     note: false,
-    working: "Thinking…",
-    expansion: {
-      blocks: [],
-      level: "standard",
-      read: false,
-      collapsed: false,
-      revision: 1,
-      undoStack: [],
-      working: "Thinking…",
-    },
+    working: "Writing answer…",
+    turns: [
+      {
+        id: "ans_1",
+        question: "Why?",
+        blocks: [],
+        level: "standard",
+        revision: 1,
+        undoStack: [],
+        working: "Writing answer…",
+      },
+    ],
   } as unknown as Annotation;
 }
 
@@ -313,7 +314,7 @@ describe("CardView immediate feedback", () => {
         { type: "follow-up", id: "b-f", items: [{ label: "Why?" }], citations: [] },
       ],
     });
-    seedSnapshot([withFollow], [], [answerExpansion()]);
+    seedSnapshot([withFollow], [], [answerCard()]);
     render(
       <CardView
         reviewId={REVIEW_ID}
@@ -353,9 +354,9 @@ describe("CardView immediate feedback", () => {
       expect(section?.className).toMatch(/rewriting/);
       expect(section?.getAttribute("aria-busy")).toBe("true");
       expect(screen.getByRole("status")).toHaveTextContent("Rewriting…");
-      // Conflicting controls go disabled; the local read toggle stays on.
+      // Conflicting controls go disabled; the local collapse toggle stays on.
       expect(screen.getByRole("button", { name: "Use examples" })).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Mark read" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Collapse" })).toBeEnabled();
     } finally {
       held.restore();
     }
@@ -442,7 +443,7 @@ describe("CardView titles (issue #49)", () => {
     });
     const closed: Annotation = {
       id: "ann_closed",
-      type: "expansion",
+      type: "conversation",
       anchor: {
         host: { kind: "block", blockId: "c1#b-p" },
         quotedText: "Draw the Stereo vs mono-mixdown with a very long quote",

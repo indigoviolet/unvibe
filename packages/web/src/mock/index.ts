@@ -256,31 +256,44 @@ function mockPrincipleAside(): import("@unvibe/shared").Block {
 
 type MockCardRef =
   | { kind: "page"; pageId: string; card: import("@unvibe/shared").Card }
-  | { kind: "expansion"; annotation: import("@unvibe/shared").Annotation };
+  | { kind: "answer"; annotation: import("@unvibe/shared").Annotation; turn: import("@unvibe/shared").Turn };
 
 function findMockCard(cardId: string): MockCardRef | null {
   for (const p of mockPages) {
     const card = p.cards.find((c) => c.id === cardId);
     if (card) return { kind: "page", pageId: p.id, card };
   }
-  const annotation = annotations.find((a) => a.id === cardId);
-  if (annotation?.type === "expansion" && annotation.expansion) {
-    return { kind: "expansion", annotation };
+  for (const annotation of annotations) {
+    const turn = (annotation.turns ?? []).find((t) => t.id === cardId);
+    if (turn) return { kind: "answer", annotation, turn };
   }
   return null;
 }
 
 function mockCardBlocks(ref: MockCardRef): import("@unvibe/shared").Block[] {
-  return (ref.kind === "page" ? ref.card.blocks : ref.annotation.expansion!.blocks) as import("@unvibe/shared").Block[];
+  return (ref.kind === "page" ? ref.card.blocks : ref.turn.blocks) as import("@unvibe/shared").Block[];
 }
 
 function mockCardLevel(ref: MockCardRef): import("@unvibe/shared").DepthLevel {
-  return (ref.kind === "page" ? ref.card.level : ref.annotation.expansion!.level) as import("@unvibe/shared").DepthLevel;
+  return (ref.kind === "page" ? ref.card.level : ref.turn.level) as import("@unvibe/shared").DepthLevel;
+}
+
+/** Push undo + set blocks/level + bump revision on a page card or answer. */
+function setMockCard(ref: MockCardRef, blocks: import("@unvibe/shared").Block[], level: import("@unvibe/shared").DepthLevel): void {
+  const cur = mockCardBlocks(ref);
+  const body = ref.kind === "page" ? ref.card : ref.turn;
+  (body.undoStack as { blocks: unknown; level: unknown }[]).push({
+    blocks: JSON.parse(JSON.stringify(cur)),
+    level: (body as { level: unknown }).level,
+  });
+  (body as { blocks: unknown }).blocks = blocks;
+  (body as { level: unknown }).level = level;
+  (body as { revision: number }).revision += 1;
 }
 
 /**
- * Qualify a block anchor the way the service stores it (#116):
- * `<owner>#<block>` with the page card or expansion holding the block
+ * Qualify a block anchor the way the service stores it (#116, #136):
+ * `<owner>#<block>` with the page card or answer holding the block
  * (aside inner blocks resolve like the service's `findBlock`). Unknown
  * blocks pass through. The web requires qualified hosts to attach an
  * annotation, so the mock must not store bare ones.
@@ -319,8 +332,11 @@ function findMockBlock(blockId: string): { ownerId: string; blockId: string } | 
       }
     }
     const ann = annotations.find((a) => a.id === owner);
-    if (ann?.type === "expansion" && ann.expansion) {
-      return scan(ann.expansion.blocks as never[], ann.id);
+    if (ann) {
+      for (const t of ann.turns ?? []) {
+        const m = scan(t.blocks as never[], t.id);
+        if (m) return m;
+      }
     }
     return null;
   }
@@ -331,9 +347,10 @@ function findMockBlock(blockId: string): { ownerId: string; blockId: string } | 
     }
   }
   for (const a of annotations) {
-    if (a.type !== "expansion" || !a.expansion) continue;
-    const m = scan(a.expansion.blocks as never[], a.id);
-    if (m) return m;
+    for (const t of a.turns ?? []) {
+      const m = scan(t.blocks as never[], t.id);
+      if (m) return m;
+    }
   }
   return null;
 }
@@ -375,32 +392,15 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
                     : ib,
                 ),
               };
-        if (ref.kind === "page") {
-          ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level });
-          ref.card.blocks = [...cur, stamped] as never;
-          ref.card.revision += 1;
-        } else {
-          ref.annotation.expansion!.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level });
-          ref.annotation.expansion!.blocks = [...cur, stamped] as never;
-          ref.annotation.expansion!.revision += 1;
-        }
+        setMockCard(ref, [...cur, stamped] as never, level as never);
         emitPages();
         emitAnnotations();
         return { accepted: true, cardId: a.cardId, level };
       }
       return { accepted: true, cardId: a.cardId, reused: true, level };
     }
-    const from = level;
     const cur = [...blocks];
-    if (ref.kind === "page") {
-      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: from as never });
-      ref.card.level = next as never;
-      ref.card.revision += 1;
-    } else {
-      ref.annotation.expansion!.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: from as never });
-      ref.annotation.expansion!.level = next as never;
-      ref.annotation.expansion!.revision += 1;
-    }
+    setMockCard(ref, cur as never, next as never);
     emitPages();
     emitAnnotations();
     return { accepted: true, cardId: a.cardId, reused: true, level: next };
@@ -435,33 +435,18 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
     // first paragraph when one exists, else append.
     const at = cur.findIndex((b) => b.type === "paragraph");
     const nextBlocks = at >= 0 ? [...cur.slice(0, at + 1), stamped, ...cur.slice(at + 1)] : [...cur, stamped];
-    if (ref.kind === "page") {
-      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: level as never });
-      ref.card.blocks = nextBlocks as never;
-      ref.card.revision += 1;
-    } else {
-      ref.annotation.expansion!.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: level as never });
-      ref.annotation.expansion!.blocks = nextBlocks as never;
-      ref.annotation.expansion!.revision += 1;
-    }
+    setMockCard(ref, nextBlocks as never, level as never);
     emitPages();
     emitAnnotations();
     return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "undo") {
-    if (ref.kind === "page") {
-      const prev = ref.card.undoStack.pop();
-      if (!prev) return { accepted: true, cardId: a.cardId };
-      ref.card.blocks = prev.blocks as never;
-      ref.card.level = prev.level as never;
-      ref.card.revision += 1;
-    } else {
-      const prev = ref.annotation.expansion!.undoStack.pop();
-      if (!prev) return { accepted: true, cardId: a.cardId };
-      ref.annotation.expansion!.blocks = prev.blocks as never;
-      ref.annotation.expansion!.level = prev.level as never;
-      ref.annotation.expansion!.revision += 1;
-    }
+    const body = ref.kind === "page" ? ref.card : ref.turn;
+    const prev = (body.undoStack as { blocks: unknown; level: unknown }[]).pop();
+    if (!prev) return { accepted: true, cardId: a.cardId };
+    (body as { blocks: unknown }).blocks = prev.blocks;
+    (body as { level: unknown }).level = prev.level;
+    (body as { revision: number }).revision += 1;
     emitPages();
     emitAnnotations();
     return { accepted: true, cardId: a.cardId };
@@ -2137,12 +2122,17 @@ export const mockApi = {
       const timer = window.setTimeout(() => {
         pendingSecondOpinions = pendingSecondOpinions.filter((p) => p.jobId !== jobId);
         settleMockJob(jobId);
-        // Expansions store the result on the expansion body (survives
-        // depth/undo); page cards store on the card.
-        const exp = annotations.find((x) => x.id === a.cardId && x.type === "expansion");
-        if (exp?.expansion) {
-          const rest = (exp.expansion.secondOpinions ?? []).filter((s) => (s as { mode: string }).mode !== a.mode);
-          exp.expansion.secondOpinions = [...rest, { ...result, cardId: exp.id } as never];
+        // Answers store the result on the turn (survives depth/undo);
+        // page cards store on the card.
+        let storedOnAnswer = false;
+        for (const ann of annotations) {
+          const turn = (ann.turns ?? []).find((t) => t.id === a.cardId);
+          if (!turn) continue;
+          const rest = (turn.secondOpinions ?? []).filter((s) => (s as { mode: string }).mode !== a.mode);
+          turn.secondOpinions = [...rest, { ...result, cardId: turn.id } as never];
+          storedOnAnswer = true;
+        }
+        if (storedOnAnswer) {
           emitAnnotations();
           return;
         }
@@ -2177,22 +2167,23 @@ export const mockApi = {
           const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
           cancelPendingSecondOpinions((p) => p.cardId === cardId && p.mode === mode);
         }
-        // Expansion results first (stored on the expansion body).
+        // Answer results first (stored on the turn).
         let removedExp = false;
         for (const ann of annotations) {
-          if (ann.type !== "expansion" || !ann.expansion) continue;
-          const before = ann.expansion.secondOpinions ?? [];
-          let after = before;
-          if (m[1].startsWith("so-")) {
-            after = before.filter((s) => (s as { id: string }).id !== m[1]);
-          } else {
-            const mm = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-            if (ann.id !== mm[1]) continue;
-            after = before.filter((s) => (s as { mode: string }).mode !== mm[2]);
-          }
-          if (after.length !== before.length) {
-            ann.expansion.secondOpinions = after as never;
-            removedExp = true;
+          for (const turn of ann.turns ?? []) {
+            const before = turn.secondOpinions ?? [];
+            let after = before;
+            if (m[1].startsWith("so-")) {
+              after = before.filter((s) => (s as { id: string }).id !== m[1]);
+            } else {
+              const mm = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
+              if (turn.id !== mm[1]) continue;
+              after = before.filter((s) => (s as { mode: string }).mode !== mm[2]);
+            }
+            if (after.length !== before.length) {
+              turn.secondOpinions = after as never;
+              removedExp = true;
+            }
           }
         }
         if (removedExp) {
@@ -2227,10 +2218,11 @@ export const mockApi = {
       }
       throw new Error(`DELETE actions ${target}: 404 {"error":"unknown annotation"}`);
     }
-    // Ask turns (M4): create/answer through the patch path like the
-    // service (working flag, delayed canned answer, patch delivery).
+    // Ask turns + conversation replies (mock): create/answer through the
+    // patch path like the service (working flag, delayed canned answer,
+    // patch delivery).
     if (a.kind === "ask" || a.kind === "reply" || a.kind === "retry") {
-      const answerLater = (tid: string, text: string, quote: string, jobId: string): void => {
+      const answerThreadLater = (tid: string, text: string, quote: string, jobId: string): void => {
         void wait(700).then(() => {
           settleMockJob(jobId);
           const target = annotations.find((x) => x.id === tid);
@@ -2241,37 +2233,73 @@ export const mockApi = {
           emitAnnotations();
         });
       };
-      if (a.kind === "reply" || a.kind === "retry") {
-        const threadId = a.threadId;
-        const thread = annotations.find((x) => x.id === threadId);
-        // Expansion retry refills the expansion in place (same id).
-        if (thread?.type === "expansion" && thread.expansion && a.kind === "retry") {
-          thread.error = null;
-          thread.expansion.error = null;
-          thread.working = "Thinking…";
-          thread.expansion.working = "Thinking…";
-          thread.open = true;
+      // Fill one conversation turn after a delay, like the service seam.
+      const answerTurnLater = (tid: string, turnId: string, text: string, jobId: string): void => {
+        window.setTimeout(() => {
+          settleMockJob(jobId);
+          const live = annotations.find((x) => x.id === tid);
+          const turn = live?.type === "conversation" ? (live.turns ?? []).find((t) => t.id === turnId) : undefined;
+          if (!live || !turn) return;
+          turn.blocks = mockExplainBlocks(text || live.anchor.quotedText) as never;
+          turn.revision += 1;
+          turn.working = null;
+          turn.error = null;
+          turn.jobId = undefined;
+          live.working = null;
+          live.error = null;
+          live.jobId = undefined;
+          delete live.reply;
           emitAnnotations();
-          const tid = thread.id;
-          const quote = thread.anchor.quotedText;
-          const retryJobId = `mock-retry-${thread.id}`;
-          trackMockJob(retryJobId, "ask", { cardId: thread.id, threadId: thread.id });
-          window.setTimeout(() => {
-            settleMockJob(retryJobId);
-            const live = annotations.find((x) => x.id === tid);
-            if (!live || live.type !== "expansion" || !live.expansion) return;
-            live.expansion.blocks = mockExplainBlocks(quote) as never;
-            live.expansion.revision += 1;
-            live.working = null;
-            live.expansion.working = null;
+        }, 700);
+      };
+      if (a.kind === "reply" || a.kind === "retry") {
+        const annotationId = (a as { annotationId: string }).annotationId;
+        const found = annotations.find((x) => x.id === annotationId);
+        if (!found) throw new Error(`unknown comment ${annotationId}`);
+        // Conversation reply: a new turn (reply) or a refill in place (retry).
+        if (found.type === "conversation") {
+          if (a.kind === "reply") {
+            const turnId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
+            (found.turns ?? []).push({
+              id: turnId,
+              question: (a as { message: string }).message,
+              blocks: [],
+              level: "standard",
+              revision: 1,
+              undoStack: [],
+              working: "Writing reply…",
+            } as never);
+            found.working = "Writing reply…";
+            found.error = null;
+            found.open = true;
+            delete found.reply;
             emitAnnotations();
-          }, 700);
-          return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: retryJobId };
+            const replyJobId = `mock-reply-${found.id}-${turnId}`;
+            trackMockJob(replyJobId, "ask", { threadId: found.id });
+            answerTurnLater(found.id, turnId, (a as { message: string }).message, replyJobId);
+            return { accepted: true, annotationId: found.id, turnId, jobId: replyJobId };
+          }
+          const turns = found.turns ?? [];
+          const last = turns[turns.length - 1];
+          if (!last || (!last.error && !found.error)) {
+            throw new Error(`conversation ${found.id} has no failed turn to retry`);
+          }
+          last.error = null;
+          found.error = null;
+          last.working = "Thinking…";
+          found.working = "Thinking…";
+          found.open = true;
+          emitAnnotations();
+          const retryJobId = `mock-retry-${found.id}`;
+          trackMockJob(retryJobId, "ask", { threadId: found.id });
+          answerTurnLater(found.id, last.id, last.question ?? found.anchor.quotedText, retryJobId);
+          return { accepted: true, annotationId: found.id, turnId: last.id, jobId: retryJobId };
         } else {
-          if (!thread || thread.type !== "thread") throw new Error(`unknown comment ${threadId}`);
+          const thread = found;
+          if (thread.type !== "thread") throw new Error(`unknown comment ${annotationId}`);
           if (a.kind === "retry" && !thread.error) throw new Error(`thread ${thread.id} has no failed reply to retry`);
           if (a.kind === "reply") {
-            thread.messages.push({ who: "you", text: a.message });
+            thread.messages.push({ who: "you", text: (a as { message: string }).message });
           }
           thread.error = null;
           thread.working = "Reading…";
@@ -2280,7 +2308,7 @@ export const mockApi = {
           const lastYou = [...thread.messages].reverse().find((m) => m.who === "you" && m.text);
           const threadJobId = `mock-${a.kind}-${thread.id}`;
           trackMockJob(threadJobId, "ask", { threadId: thread.id });
-          answerLater(thread.id, lastYou?.text ?? "", thread.anchor.quotedText, threadJobId);
+          answerThreadLater(thread.id, lastYou?.text ?? "", thread.anchor.quotedText, threadJobId);
           return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: threadJobId };
         }
       }
@@ -2313,7 +2341,7 @@ export const mockApi = {
         emitAnnotations();
         const askJobId = `mock-ask-${thread.id}`;
         trackMockJob(askJobId, "ask", { threadId: thread.id });
-        answerLater(thread.id, a.message, a.quote, askJobId);
+        answerThreadLater(thread.id, a.message, a.quote, askJobId);
         return { accepted: true, annotationId: thread.id, threadId: thread.id, jobId: askJobId };
       }
     }
@@ -2331,10 +2359,11 @@ export const mockApi = {
             ? { kind: "description", paragraphId: anchor.paragraphId }
             : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
+      const turnId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-explain-${id}`;
       annotations.push({
         id,
-        type: "expansion",
+        type: "conversation",
         anchor: {
           host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
           quotedText: a.quote,
@@ -2348,40 +2377,34 @@ export const mockApi = {
         post: false,
         note: false,
         working: "Thinking…",
-        expansion: {
-          blocks: [],
-          level: "standard",
-          read: false,
-          collapsed: false,
-          revision: 1,
-          undoStack: [],
-          working: "Thinking…",
-        },
+        turns: [
+          {
+            id: turnId,
+            question: null,
+            blocks: [],
+            level: "standard",
+            revision: 1,
+            undoStack: [],
+            working: "Thinking…",
+          },
+        ],
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
       trackMockJob(jobId, "explain", { threadId: id });
       window.setTimeout(() => {
         settleMockJob(jobId);
         const found = annotations.find((x) => x.id === id);
-        if (!found || found.type !== "expansion" || !found.expansion) return;
-        if (!found.open) {
-          // Closed while filling: keep content for the dotted-link preview.
-          found.expansion.blocks = mockExplainBlocks(a.quote) as never;
-          found.expansion.revision += 1;
-          found.working = null;
-          found.expansion.working = null;
-          emitAnnotations();
-          return;
-        }
-        found.expansion.blocks = mockExplainBlocks(a.quote) as never;
-        found.expansion.revision += 1;
+        const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+        if (!found || !turn) return;
+        turn.blocks = mockExplainBlocks(a.quote) as never;
+        turn.revision += 1;
+        turn.working = null;
+        turn.error = null;
         found.working = null;
-        found.expansion.working = null;
         found.error = null;
-        found.expansion.error = null;
         emitAnnotations();
       }, 700);
-      return { accepted: true, annotationId: id, jobId };
+      return { accepted: true, annotationId: id, turnId, jobId };
     }
     if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
       const res = mockCardControl(a as never);
@@ -2414,8 +2437,48 @@ export const mockApi = {
     }
     if (a.kind === "followup") {
       const { cardId, blockId, index } = a as { cardId: string; blockId: string; index: number };
-      // Page cards and expansions alike (mirrors the service's findFollowUp).
+      // Page cards and conversation answers alike (mirrors the service's findFollowUp).
       const ref = findMockCard(cardId);
+      // A suggestion on a conversation card is the next turn in the same
+      // conversation (the item stays, like reply-box text).
+      if (ref?.kind === "answer") {
+        const holderBlocks = mockCardBlocks(ref);
+        const fblock = holderBlocks.find((b) => b.id === blockId && b.type === "follow-up") as
+          | { id: string; items: { label: string; ask?: string }[] }
+          | undefined;
+        if (!fblock || !fblock.items[index]) throw new Error(`unknown follow-up ${index} on block ${blockId}`);
+        const item = fblock.items[index];
+        const message = item.ask ?? item.label;
+        const turnId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
+        (ref.annotation.turns ?? []).push({
+          id: turnId,
+          question: message,
+          blocks: [],
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+          working: "Writing answer…",
+        } as never);
+        ref.annotation.working = "Writing answer…";
+        ref.annotation.error = null;
+        ref.annotation.open = true;
+        emitAnnotations();
+        const answerJobId = `mock-followup-${ref.annotation.id}-${turnId}`;
+        trackMockJob(answerJobId, "ask", { threadId: ref.annotation.id });
+        const annId = ref.annotation.id;
+        window.setTimeout(() => {
+          settleMockJob(answerJobId);
+          const live = annotations.find((x) => x.id === annId);
+          const turn = live?.type === "conversation" ? (live.turns ?? []).find((t) => t.id === turnId) : undefined;
+          if (!live || !turn) return;
+          turn.blocks = mockExplainBlocks(message) as never;
+          turn.revision += 1;
+          turn.working = null;
+          live.working = null;
+          emitAnnotations();
+        }, 700);
+        return { accepted: true, annotationId: annId, turnId, cardId, jobId: answerJobId };
+      }
       const holderBlocks = ref ? mockCardBlocks(ref) : [];
       const block = holderBlocks.find((b) => b.id === blockId && b.type === "follow-up") as
         | { id: string; items: { label: string; ask?: string }[] }
@@ -2425,10 +2488,11 @@ export const mockApi = {
       block.items.splice(index, 1);
       emitPages();
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
+      const turnId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-followup-${id}`;
       annotations.push({
         id,
-        type: "expansion",
+        type: "conversation",
         anchor: {
           // Qualified like the service stores it (#116): a bare block ID
           // would match the same-numbered block of every card.
@@ -2444,21 +2508,24 @@ export const mockApi = {
         post: false,
         note: false,
         working: "Writing answer…",
-        expansion: { blocks: [], level: "standard", read: false, collapsed: false, revision: 1, undoStack: [], working: "Writing answer…" },
+        turns: [
+          { id: turnId, question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer…" },
+        ],
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
       trackMockJob(jobId, "ask", { cardId, threadId: id });
       window.setTimeout(() => {
         settleMockJob(jobId);
         const found = annotations.find((x) => x.id === id);
-        if (!found || found.type !== "expansion" || !found.expansion) return;
-        found.expansion.blocks = mockExplainBlocks(item.label) as never;
-        found.expansion.revision += 1;
+        const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+        if (!found || !turn) return;
+        turn.blocks = mockExplainBlocks(item.label) as never;
+        turn.revision += 1;
+        turn.working = null;
         found.working = null;
-        found.expansion.working = null;
         emitAnnotations();
       }, 700);
-      return { accepted: true, annotationId: id, cardId, jobId };
+      return { accepted: true, annotationId: id, turnId, cardId, jobId };
     }
     if (a.kind === "concept") {
       const slug = (a as { slug: string }).slug;
@@ -2472,7 +2539,7 @@ export const mockApi = {
           title: slug,
           saved: true,
           parent: "root",
-          cards: [{ id: `cc-${slug}`, pageId, title: null, level: "standard", read: false, collapsed: false, revision: 1, blocks: [], undoStack: [] }],
+          cards: [{ id: `cc-${slug}`, pageId, title: null, level: "standard", collapsed: false, revision: 1, blocks: [], undoStack: [] }],
         });
         emitPages();
         page = mockPages.find((p) => p.id === pageId)!;
@@ -2490,7 +2557,6 @@ export const mockApi = {
             pageId,
             title: null,
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 2,
             blocks: [
@@ -2506,18 +2572,32 @@ export const mockApi = {
     if (a.kind === "promote") {
       const annId = (a as { annotationId: string }).annotationId;
       const found = annotations.find((x) => x.id === annId);
-      if (!found || found.type !== "expansion" || !found.expansion) throw new Error(`annotation ${annId} is not an expansion`);
+      if (!found || found.type !== "conversation" || !found.turns) {
+        throw new Error(`annotation ${annId} is not a conversation`);
+      }
       const quote = found.anchor.quotedText;
       const title = quote.length > 60 ? `${quote.slice(0, 58)}…` : quote || "(untitled)";
       const pageId = `p-mock-${Date.now().toString(36)}`;
-      const cardId = `c-mock-${Date.now().toString(36)}`;
+      const stamp = Date.now().toString(36);
       mockPages.push({
         id: pageId,
         kind: "opened-expansion",
         title,
         saved: false,
         parent: "root",
-        cards: [{ id: cardId, pageId, title: null, level: found.expansion.level, read: false, collapsed: false, revision: 1, blocks: JSON.parse(JSON.stringify(found.expansion.blocks)), undoStack: [] }],
+        cards: (found.turns as never[]).map((t, i) => {
+          const turn = t as unknown as import("@unvibe/shared").Turn;
+          return {
+            id: `c-mock-${stamp}-${i}`,
+            pageId,
+            title: i === 0 ? quote || null : (turn.question ?? null),
+            level: turn.level,
+            collapsed: false,
+            revision: turn.revision,
+            blocks: JSON.parse(JSON.stringify(turn.blocks)),
+            undoStack: [],
+          };
+        }),
       });
       found.type = "link" as never;
       found.open = false;
@@ -2525,7 +2605,7 @@ export const mockApi = {
       found.error = null;
       found.jobId = undefined;
       (found as { promotedToPage?: string }).promotedToPage = pageId;
-      delete (found as { expansion?: unknown }).expansion;
+      delete (found as { turns?: unknown }).turns;
       emitPages();
       emitAnnotations();
       return { accepted: true, annotationId: annId, pageId };
@@ -2536,14 +2616,16 @@ export const mockApi = {
       if (!found) throw new Error(`unknown annotation ${annId}`);
       found.open = false;
       found.working = null;
-      if (found.type === "expansion" && found.expansion) found.expansion.working = null;
+      if (found.type === "conversation") {
+        for (const t of found.turns ?? []) t.working = null;
+      }
       emitAnnotations();
       return { accepted: true, annotationId: annId };
     }
     // Guide instant state (PRD §4.3/§4.4) applies locally through the patch
-    // path — page cards and expansion cards alike.
-    // (Expansion retries are handled in the ask/reply/retry branch above.)
-    if (a.kind !== "read" && a.kind !== "collapse" && a.kind !== "bookmark") {
+    // path — page cards and conversation cards alike.
+    // (Conversation retries are handled in the ask/reply/retry branch above.)
+    if (a.kind !== "collapse" && a.kind !== "bookmark") {
       return { accepted: false };
     }
     if (a.kind === "bookmark") {
@@ -2553,41 +2635,29 @@ export const mockApi = {
       emitPages();
       return { accepted: true };
     }
-    // read / collapse on page cards…
-    for (const p of mockPages) {
-      for (const c of p.cards) {
-        if (c.id !== (a as { cardId: string }).cardId) continue;
-        if (a.kind === "read") {
-          c.read = (a as { read: boolean }).read;
-          c.collapsed = (a as { read: boolean }).read ? true : false;
-        } else {
+    // Collapse on page cards…
+    if (a.kind === "collapse") {
+      for (const p of mockPages) {
+        for (const c of p.cards) {
+          if (c.id !== (a as { cardId: string }).cardId) continue;
           c.collapsed = (a as { collapsed: boolean }).collapsed;
+          emitPages();
+          return { accepted: true };
         }
-        emitPages();
-        return { accepted: true };
       }
-    }
-    // …and on expansion cards (marking read closes like Close does).
-    {
+      // …and on conversation cards (an answer id collapses its card).
       const ann = annotations.find((x) => x.id === (a as { cardId: string }).cardId);
-      if (ann?.type === "expansion" && ann.expansion) {
-        if (a.kind === "read") {
-          const read = (a as { read: boolean }).read;
-          ann.expansion.read = read;
-          if (read) {
-            ann.expansion.collapsed = true;
-            ann.open = false;
-            ann.working = null;
-            ann.expansion.working = null;
-          } else {
-            ann.expansion.collapsed = false;
-            ann.open = true;
-          }
-        } else {
-          ann.expansion.collapsed = (a as { collapsed: boolean }).collapsed;
-        }
+      if (ann?.type === "conversation") {
+        ann.collapsed = (a as { collapsed: boolean }).collapsed;
         emitAnnotations();
         return { accepted: true };
+      }
+      for (const other of annotations) {
+        if ((other.turns ?? []).some((t) => t.id === (a as { cardId: string }).cardId)) {
+          other.collapsed = (a as { collapsed: boolean }).collapsed;
+          emitAnnotations();
+          return { accepted: true };
+        }
       }
     }
     return { accepted: false };
@@ -2710,12 +2780,16 @@ export const mockApi = {
   updateComment: async (_id: string, commentId: string, body: import("@unvibe/shared").UpdateCommentRequest) => {
     const thread = annotations.find((a) => a.id === commentId);
     if (!thread) throw new Error("unknown comment");
-    // M4 service fix: `open` applies to expansions too (dotted-link click).
-    if (thread.type === "expansion") {
+    // Issue #136: `open` and the reply-box draft (`reply`) apply to
+    // conversation cards too (dotted-link click). Post/draft stay
+    // thread-only.
+    if (thread.type === "conversation") {
       if (body.open !== undefined) thread.open = body.open;
-      if (body.post !== undefined || body.draft !== undefined || body.reply !== undefined) {
+      if (body.post !== undefined || body.draft !== undefined) {
         throw new Error(`annotation ${commentId} is not a thread`);
       }
+      if (body.reply === null) delete thread.reply;
+      else if (body.reply !== undefined) thread.reply = body.reply;
       emitAnnotations();
       return { ok: true };
     }

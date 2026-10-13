@@ -134,7 +134,7 @@ describe("BlockMarkers", () => {
     const footnotes: Annotation[] = [
       {
         id: "e1",
-        type: "expansion",
+        type: "conversation",
         anchor: {
           host: { kind: "block", blockId: "b" },
           quotedText: "Draw the Stereo vs mono-mixdown with a very long quote for truncation",

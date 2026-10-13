@@ -39,7 +39,7 @@ export function useDiffExpansionBindings(
   const byLine = useMemo(() => {
     const map = new Map<string, Annotation[]>();
     for (const a of annotations ?? []) {
-      if (a.type !== "expansion" && a.type !== "link") continue;
+      if (a.type !== "conversation" && a.type !== "link") continue;
       if (a.anchor.host.kind !== "diff-line") continue;
       if (a.type === "link") continue; // promoted: navigates away, no slot
       const key = slotKey(a.anchor.host.fileKey, a.anchor.host.line);
@@ -98,7 +98,7 @@ export function useDiffExpansionBindings(
       const snap = useReview.getState().snapshot;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found || found.anchor.host.kind !== "diff-line") return;
-      if (found.type === "expansion" && !found.open) {
+      if (found.type === "conversation" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
@@ -114,7 +114,7 @@ export function useDiffExpansionBindings(
   const lineSlots = useMemo<LineSlots>(() => {
     const slots: LineSlots = {};
     for (const [key, exps] of byLine) {
-      const open = exps.filter((a) => a.type === "expansion" && a.open);
+      const open = exps.filter((a) => a.type === "conversation" && a.open);
       if (open.length === 0) continue;
       slots[key] = (
         <>

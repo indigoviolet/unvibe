@@ -77,11 +77,12 @@ function pagePreview(page: Page): string {
   return `<b>${esc(page.title)}</b>${html ? `<div class="xprev">${html}</div>` : ""}`;
 }
 
-/** Closed expansion preview: quoted text + first paragraph (PRD §4.7). */
+/** Closed conversation-card preview: quoted text + first paragraph (PRD §4.7). */
 function previewExpansion(expansion: Annotation | undefined): string {
   if (!expansion) return "";
-  const blocks = expansion.expansion?.blocks ?? [];
-  const level = expansion.expansion?.level ?? "standard";
+  const firstTurn = (expansion.turns ?? [])[0];
+  const blocks = firstTurn?.blocks ?? [];
+  const level = firstTurn?.level ?? "standard";
   let first = "";
   for (const b of blocks) {
     if (b.type === "paragraph") {
@@ -93,7 +94,7 @@ function previewExpansion(expansion: Annotation | undefined): string {
       }
     }
   }
-  const working = expansion.working ?? expansion.expansion?.working;
+  const working = expansion.working ?? firstTurn?.working;
   const body = first
     ? `<div class="xprev">${first}</div>`
     : working
@@ -161,7 +162,7 @@ export function HoverPopover() {
     } else if (ds.jump) {
       const id = ds.jump;
       const found = snap.annotations.find((a) => a.id === id);
-      if (found && (found.type === "expansion" || found.type === "link")) {
+      if (found && (found.type === "conversation" || found.type === "link")) {
         if (found.promotedToPage) {
           const page = lookup(found.promotedToPage);
           content = page

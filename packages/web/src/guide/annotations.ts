@@ -44,7 +44,7 @@ export function blockThreads(
   );
 }
 
-/** Open (in-place) expansion annotations anchored on a card + block. */
+/** Open (in-place) conversation annotations anchored on a card + block. */
 export function blockExpansions(
   annotations: Annotation[],
   cardId: string,
@@ -52,7 +52,7 @@ export function blockExpansions(
 ): Annotation[] {
   return annotations.filter(
     (a) =>
-      a.type === "expansion" &&
+      a.type === "conversation" &&
       a.open &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),

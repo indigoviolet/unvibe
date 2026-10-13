@@ -323,7 +323,6 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
 .toc .kd { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); width: 1.4em; flex: none; }
 .toc .rd { color: var(--ok); margin-left: auto; flex: none; }
 .toc .rd.new { color: var(--muted); font-size: 11px; }
-.toc .done .tt { color: var(--muted); }
 .divider { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 30px 0 4px; }
 /* Start page (#95): quiet label for the review-request sub-groups under a divider. */
 .subhead { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 10px 0 2px; }
@@ -333,12 +332,17 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
 .card.collapsed { padding-block: 8px; }
 .card.collapsed h2.ct { font-size: 18px; }
 .cprev { flex: 1; min-width: 0; margin: 0; font-family: var(--serif); font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card.read { background: var(--sunk); border-color: transparent; }
 /* A finding's own page carries the same warning accent as its card in the guide. */
 .doc.finding > .card { border-left: 3px solid var(--warn); }
-.card.read > :not(.ctl):not(.chead), .card.read .chead h2, .card.read .chead .cprev { opacity: .55; transition: opacity .2s; }
-.card.read:hover > :not(.ctl):not(.chead), .card.read:hover .chead h2 { opacity: .9; }
 .card.child { margin: 8px 0 14px 10px; border-left: 3px solid var(--accent); padding: 8px 14px; }
+/* One answer inside a conversation card: later answers keep a divider so
+   turns stay scannable, and their question reads as a muted heading. */
+.card.child .ans + .ans { border-top: 1px dashed var(--line); margin-top: 8px; padding-top: 8px; }
+.card.child .ans-q { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; }
+/* Earlier answers keep their controls out of the way until hovered or
+   focused (no layout shift: the row keeps its space). */
+.card.child .ans-older > .ctl { visibility: hidden; }
+.card.child .ans-older:hover > .ctl, .card.child .ans-older:focus-within > .ctl { visibility: visible; }
 .card.child.collapsed .exp-b, .card.child.collapsed .ctl { display: none; }
 .card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
 .card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
@@ -365,8 +369,6 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
 .card h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 2px; }
 a.cx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
 a.cx:hover { color: var(--accent); }
-a.cx.known { text-decoration-color: var(--line); }
-a.cx.known::after { content: " ✓"; font-size: .7em; color: var(--muted); }
 a.cx.pg { text-decoration-style: solid; color: var(--accent); }
 .src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 4px; padding: 0 4px; }
 .src:hover { text-decoration: underline; }
@@ -434,7 +436,6 @@ mark.anc.on { outline: 2px solid var(--note); }
 .clink:hover { color: var(--note); }
 .findref { display: grid; gap: 2px; width: 100%; text-align: left; border: 1px solid transparent; background: var(--warn-soft); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
 .findref:hover { border-color: var(--warn); }
-.findref.read { opacity: .55; }
 .findref .ftag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--warn); font-weight: 600; }
 .findref .ft { font-family: var(--serif); font-size: 17px; font-weight: 600; }
 .findref .fs { font-size: 13.5px; color: var(--muted); }

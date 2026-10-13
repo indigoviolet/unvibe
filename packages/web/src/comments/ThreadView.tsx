@@ -202,7 +202,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
     // sets its in-flight entry synchronously so the working state shows
     // on click, before the request returns.
     const send = ask
-      ? performAction(reviewId, { kind: "reply", threadId: thread.id, message: text }, { toast: false })
+      ? performAction(reviewId, { kind: "reply", annotationId: thread.id, message: text }, { toast: false })
       : api.replyComment(reviewId, thread.id, { text });
     send
       .then(() => {
@@ -218,7 +218,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   const onRetry = (): void => {
     if (sending) return;
     setSending(true);
-    performAction(reviewId, { kind: "retry", threadId: thread.id }, { toast: false })
+    performAction(reviewId, { kind: "retry", annotationId: thread.id }, { toast: false })
       .then(() => {
         markAskSent(thread.id);
       })

@@ -3,7 +3,7 @@
  * client (in-memory `mockApi` under `VITE_MOCK=1`, the real service
  * otherwise) as `POST /api/reviews/:id/actions`.
  *
- * Read / collapse / bookmark update the snapshot optimistically so the UI
+ * Collapse / bookmark update the snapshot optimistically so the UI
  * responds instantly; a failed request resyncs from the service and toasts.
  * Every action that starts an agent session sets an in-flight entry
  * synchronously at click time (issue #46), hands it over to the snapshot
@@ -114,13 +114,13 @@ function targetForAction(action: ReviewAction): { targetId: string; kind: InFlig
     case "ask":
       return { targetId: askKey(action.anchor), kind: "ask" };
     case "reply":
-      return { targetId: action.threadId, kind: "reply" };
+      return { targetId: action.annotationId, kind: "reply" };
     case "retry":
-      return { targetId: action.threadId, kind: "retry" };
+      return { targetId: action.annotationId, kind: "retry" };
     case "concept":
       return { targetId: conceptKey(action.slug), kind: "concept" };
     default:
-      // read, collapse, bookmark, note, promote, close, delete, undo:
+      // collapse, bookmark, note, promote, close, delete, undo:
       // purely local, no agent session.
       return null;
   }
@@ -142,27 +142,31 @@ function serverIdFor(action: ReviewAction, res: ActionResponse): string | null {
   }
 }
 
-/** Current level of a page card or expansion (depth toast baseline). */
+/** Current level of a page card or conversation answer (depth toast baseline). */
 function currentLevel(cardId: string): DepthLevel | undefined {
   const snap = useReview.getState().snapshot;
   for (const p of snap?.pages ?? []) {
     const card = p.cards.find((c) => c.id === cardId);
     if (card) return card.level;
   }
-  const ann = snap?.annotations.find((a) => a.id === cardId);
-  if (ann?.type === "expansion" && ann.expansion) return ann.expansion.level;
+  for (const a of snap?.annotations ?? []) {
+    const turn = (a.turns ?? []).find((t) => t.id === cardId);
+    if (turn) return turn.level;
+  }
   return undefined;
 }
 
-/** Current revision of a page card or expansion (insert toast baseline). */
+/** Current revision of a page card or conversation answer (insert toast baseline). */
 function currentRevision(cardId: string): number | undefined {
   const snap = useReview.getState().snapshot;
   for (const p of snap?.pages ?? []) {
     const card = p.cards.find((c) => c.id === cardId);
     if (card) return card.revision;
   }
-  const ann = snap?.annotations.find((a) => a.id === cardId);
-  if (ann?.type === "expansion" && ann.expansion) return ann.expansion.revision;
+  for (const a of snap?.annotations ?? []) {
+    const turn = (a.turns ?? []).find((t) => t.id === cardId);
+    if (turn) return turn.revision;
+  }
   return undefined;
 }
 
@@ -277,16 +281,13 @@ export async function performAction(
   action: ReviewAction,
   opts?: PerformOptions,
 ): Promise<ActionResponse> {
-  if (action.kind === "read" || action.kind === "collapse") {
+  if (action.kind === "collapse") {
     optimistic((snap) => ({
       ...snap,
       pages: snap.pages.map((p) => ({
         ...p,
         cards: p.cards.map((c) => {
           if (c.id !== action.cardId) return c;
-          if (action.kind === "read")
-            // Marking read greys + collapses; unmarking expands (PRD §4.4).
-            return { ...c, read: action.read, collapsed: action.read ? true : false };
           return { ...c, collapsed: action.collapsed };
         }),
       })),
@@ -347,10 +348,7 @@ export async function performAction(
       st.attachInflightJob(finalId, res.jobId);
     }
   }
-  if (
-    (action.kind === "read" || action.kind === "collapse" || action.kind === "bookmark") &&
-    !res.accepted
-  ) {
+  if ((action.kind === "collapse" || action.kind === "bookmark") && !res.accepted) {
     // Instant UI state (mock) or service rejection: converge on the server.
     await resync(reviewId);
     return res;
@@ -408,8 +406,10 @@ export function performInsertAction(
 
 /**
  * Follow-up chip click (PRD §4.3 "Go deeper"): clicking a suggestion adds
- * its answer (the `followup` action) and the suggestion disappears (the
- * service consumes the item when it creates the answer expansion).
+ * its answer (the `followup` action). On a page card the suggestion
+ * disappears (the service consumes the item when it creates the answer
+ * card); on a conversation card it is sent as the next turn in the same
+ * conversation and the suggestion stays.
  */
 export function performFollowUp(
   reviewId: string,
@@ -418,14 +418,14 @@ export function performFollowUp(
   index: number,
 ): void {
   const snap = useReview.getState().snapshot;
-  // Follow-ups may live on page cards or on expansion cards (cardId is an
-  // annotation id for the latter); fall back to a global block search when
-  // the addressed card does not carry the block (anchor drift).
+  // Follow-ups may live on page cards or on conversation answers (cardId
+  // is an answer id for the latter); fall back to a global block search
+  // when the addressed card does not carry the block (anchor drift).
   const allCards = [
     ...(snap?.pages.flatMap((p) => p.cards) ?? []),
     ...((snap?.annotations ?? [])
-      .filter((a) => a.type === "expansion" && a.expansion)
-      .map((a) => ({ id: a.id, blocks: a.expansion!.blocks })) as never[] as { id: string; blocks: { id: string; type: string }[] }[]),
+      .filter((a) => a.type === "conversation")
+      .flatMap((a) => (a.turns ?? []).map((t) => ({ id: t.id, blocks: t.blocks }))) as never[] as { id: string; blocks: { id: string; type: string }[] }[]),
   ];
   const card = allCards.find((c) => c.id === cardId) as
     | { blocks: { id: string; type: string; items?: { label: string }[] }[] }

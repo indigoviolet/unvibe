@@ -3,8 +3,8 @@
  *
  * Collapse chevron first (title row when collapsed); control row (depth
  * stepper with three dots, Use examples, Add diagram, Undo, Second opinion
- * with blind/check switch, Mark read) wired to
- * `POST /api/reviews/:id/actions`; read greys and collapses; stale cards
+ * with blind/check switch) wired to
+ * `POST /api/reviews/:id/actions`; stale cards
  * show the cited-hunks count with an Update button; "Go deeper"
  * placeholder cards with Generate showing a plain working state. Every
  * agent-starting control sets an in-flight entry on click (dots on the
@@ -51,7 +51,7 @@ function ControlButton({
   pressed,
   busy,
 }: {
-  icon: "down" | "right" | "check" | "bulb" | "diagram" | "undo";
+  icon: "down" | "right" | "bulb" | "diagram" | "undo";
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -157,8 +157,8 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     // the highlight passes reveal them when the mark lands nowhere.
     const footnotes = exps.filter((e) => isClosedExpansion(e) || isPromotedLink(e));
     return (
-      // Fragment (not a div): prototype.css child selectors (`.card.read > …`)
-      // depend on blocks being direct children of the section.
+      // Fragment (not a div): prototype.css child selectors depend on
+      // blocks being direct children of the section.
       <Fragment key={block.id}>
         <BlockView
           block={block}
@@ -191,7 +191,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     // body-prefix preview.
     const title = displayCardTitle(card.title, card.blocks);
     return (
-      <section className={`card collapsed${card.read ? " read" : ""}`} id={`C-${card.id}`}>
+      <section className="card collapsed" id={`C-${card.id}`}>
         <div className="chead">
           <ControlButton
             icon="right"
@@ -201,16 +201,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             }
           />
           {title ? <h2 className="ct">{title}</h2> : null}
-          {card.read ? (
-            <ControlButton
-              icon="check"
-              label="Mark unread"
-              pressed
-              onClick={() =>
-                runCardAction(reviewId, { kind: "read", cardId: card.id, read: false })
-              }
-            />
-          ) : null}
         </div>
       </section>
     );
@@ -228,7 +218,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
 
   return (
     <section
-      className={`card${card.read ? " read" : ""}${busy?.rewriting ? " rewriting" : ""}`}
+      className={`card${busy?.rewriting ? " rewriting" : ""}`}
       id={`C-${card.id}`}
       aria-busy={busy ? true : undefined}
     >
@@ -298,15 +288,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           page={lookupPage(card.pageId)}
           disabled={controlsBusy}
           busy={secondOpinionBusy}
-        />
-        <span className="sp" />
-        <ControlButton
-          icon="check"
-          label={card.read ? "Mark unread" : "Mark read"}
-          pressed={card.read}
-          onClick={() =>
-            runCardAction(reviewId, { kind: "read", cardId: card.id, read: !card.read })
-          }
         />
       </div>
       {busy ? <Working text={busy.label} /> : null}

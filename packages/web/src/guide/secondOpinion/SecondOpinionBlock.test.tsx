@@ -28,7 +28,6 @@ function card(): Card {
     pageId: "root",
     title: "Central",
     level: "standard",
-    read: false,
     collapsed: false,
     revision: 1,
     blocks: [],

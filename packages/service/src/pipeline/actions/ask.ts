@@ -20,7 +20,6 @@ import { JOB_PRIORITY, splitReply } from "@unvibe/shared";
 import { appendAgentReplyInDraft, buildAnchor, createThreadInDraft, newAnnotationId } from "../../comments/threads.js";
 import { recordInteraction, type InteractionEvent } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
-import { withReplayMark } from "../replayMark.js";
 import {
   anchorKey,
   baseVersionOf,
@@ -154,6 +153,29 @@ export async function runAskFill(
   const variables = await l4VariablesWithRevealed(ctx, latest, anchor, { thread: current, message });
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "ask" } : undefined;
+  // Issue #136: replies and retries continue on the thread's session when
+  // it is still live (same session-reuse the conversation cards get);
+  // a dead session falls back to a fresh fork below — the full thread
+  // history already rides the prompt, so nothing is lost.
+  let continueSessionId: string | undefined;
+  const sid = current.sessionId;
+  if (sid && ctx.sessions) {
+    try {
+      const ensured = await ctx.sessions.ensureConversation(sid);
+      if (ensured.rebuilt) {
+        await reviews.mutate(reviewId, (draft) => {
+          const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
+          if (target) target.sessionId = ensured.session.id;
+        });
+      }
+      continueSessionId = ensured.session.id;
+    } catch {
+      await reviews.mutate(reviewId, (draft) => {
+        const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
+        if (target) delete target.sessionId;
+      });
+    }
+  }
 
   const done = pipeline.runInFork({
     reviewId,
@@ -166,6 +188,7 @@ export async function runAskFill(
     // Persistent conversation: follow-up turns resume from this turn's
     // cursor (the wire advances it only on success).
     conversationKey: threadId,
+    ...(continueSessionId ? { continueSessionId } : {}),
     // Issue #50: the thread shows the selection and the question; body
     // lines that merely repeat them are dropped when parsed.
     echoCandidates: [anchor.quotedText, message],

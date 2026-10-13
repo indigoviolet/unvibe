@@ -208,7 +208,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
               <h3>On this page</h3>
               <ul>
                 {cards.map((entry) => (
-                  <li key={entry.id} className={entry.read ? "done" : ""}>
+                  <li key={entry.id}>
                     <button
                       type="button"
                       data-tocard={entry.id}
@@ -225,7 +225,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
                 <h3>Linked pages</h3>
                 <ul>
                   {links.map((entry) => (
-                    <li key={entry.id} className={entry.read ? "done" : ""}>
+                    <li key={entry.id}>
                       <button type="button" data-node={entry.id} onClick={() => onOpenPage(entry.id)}>
                         <span className="tt">{entry.title}</span>
                       </button>

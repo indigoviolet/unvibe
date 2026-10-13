@@ -6,7 +6,6 @@
  * Links to unknown concepts (hidden candidates) toast instead of
  * navigating; the page is written when first opened (later milestone).
  */
-import { useMemo } from "react";
 import type { Page } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
 import { apiErrorCode, friendlyError } from "../api/client.js";
@@ -14,11 +13,7 @@ import { revealSource } from "../source/reveal.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { performAction, requestGuideBlock } from "./actions.js";
-import {
-  markKnownLinks,
-  pageIdForLinkTarget,
-  pagePreview,
-} from "./guideUtils.js";
+import { pageIdForLinkTarget, pagePreview } from "./guideUtils.js";
 import { NO_AGENT_COPY } from "./expansions/expansionUtils.js";
 
 interface Props {
@@ -45,16 +40,12 @@ export function resolvePageLink(
 
 export function RichText({ html, className, top, onOpenPage }: Props) {
   const pages = useReview((s) => s.snapshot?.pages);
-  const processed = useMemo(
-    () => (pages ? markKnownLinks(html, pages) : html),
-    [html, pages],
-  );
 
   return (
     <span
       className={className}
       {...(top !== undefined ? { "data-top": top } : {})}
-      dangerouslySetInnerHTML={{ __html: processed }}
+      dangerouslySetInnerHTML={{ __html: html }}
       onClick={(e) => handleHtmlLinkClick(e, pages, onOpenPage)}
     />
   );

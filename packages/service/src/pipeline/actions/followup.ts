@@ -11,7 +11,7 @@
  *   stays, like a question typed in the reply box.
  */
 import type { WritableDraft } from "immer";
-import type { Annotation, Block, FollowUpBlock, ReviewSnapshot } from "@unvibe/shared";
+import type { Block, FollowUpBlock, ReviewSnapshot } from "@unvibe/shared";
 import {
   baseVersionOf,
   findActiveJob,

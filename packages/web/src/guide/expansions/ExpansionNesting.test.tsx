@@ -26,23 +26,36 @@ function expansion(
   blocks: unknown[],
   open = true,
 ): Annotation {
+  // Nested hosts name the parent card (`ann_parent#b1`); stored anchors
+  // name its answer (`ans_ann_parent#b1`, issue #136).
+  const storedHost = hostBlockId.replace(/^ann_([^#]+)#/, "ans_ann_$1#");
   return {
     id,
-    type: "expansion",
-    anchor: { host: { kind: "block", blockId: hostBlockId }, quotedText: quote, prefix: "", suffix: "", position: 0, version: 1 },
+    type: "conversation",
+    anchor: { host: { kind: "block", blockId: storedHost }, quotedText: quote, prefix: "", suffix: "", position: 0, version: 1 },
     open,
     messages: [],
     post: false,
     note: false,
-    expansion: { blocks, level: "standard", read: false, collapsed: false, revision: 2, undoStack: [] },
+    turns: [
+      {
+        id: `ans_${id}`,
+        question: null,
+        blocks,
+        level: "standard",
+        revision: 2,
+        undoStack: [],
+      },
+    ],
   } as unknown as Annotation;
 }
 
 function thread(id: string, hostBlockId: string, quote: string): Annotation {
+  const storedHost = hostBlockId.replace(/^ann_([^#]+)#/, "ans_ann_$1#");
   return {
     id,
     type: "thread",
-    anchor: { host: { kind: "block", blockId: hostBlockId }, quotedText: quote, prefix: "", suffix: "", position: 0, version: 1 },
+    anchor: { host: { kind: "block", blockId: storedHost }, quotedText: quote, prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
     messages: [{ who: "you", text: "What does this mean?" }],
     post: false,
@@ -72,7 +85,6 @@ function card(): Card {
     pageId: "root",
     title: "Card",
     level: "standard",
-    read: false,
     collapsed: false,
     revision: 1,
     blocks: [para("b1", "Card block one with selectable text.")],
@@ -156,7 +168,7 @@ describe("annotations inside an expansion (#116)", () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent(NEW_THREAD_EVENT, {
-          detail: { anchor: { where: "block", blockId: "ann_parent#b1" }, quote: "block one", note: false },
+          detail: { anchor: { where: "block", blockId: "ans_ann_parent#b1" }, quote: "block one", note: false },
         }),
       );
     });
