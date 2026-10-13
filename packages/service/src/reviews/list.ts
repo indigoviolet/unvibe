@@ -167,9 +167,9 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       pendingComments,
       guideStatus: guide.status,
       ...(guide.detail ? { guideDetail: guide.detail } : {}),
+      ingestStatus,
       ...(ingestStatus !== "ready"
         ? {
-            ingestStatus,
             ...(snapshot?.ingest?.step ? { ingestStep: snapshot.ingest.step } : {}),
             ...(snapshot?.ingest?.error ? { ingestError: snapshot.ingest.error } : {}),
           }

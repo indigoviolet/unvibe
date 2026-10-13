@@ -462,36 +462,4 @@ describe("POST /api/reviews async (#92)", () => {
     }
   });
 
-  it("an old stored review (no ingest field) loads as ready", async () => {
-    const dir = await makeRepo();
-    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
-    try {
-      process.env.UNVIBE_REPO_ROOTS = "";
-      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
-      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
-      const created = await app.inject({
-        method: "POST",
-        url: "/api/reviews",
-        headers: authed,
-        payload: { repoId, branch: "feature" },
-      });
-      const id = (created.json() as ReviewSnapshot).review.id;
-      const ready = await awaitStatus(app, id, "ready");
-      // Strip the ingest field to simulate a pre-#92 row.
-      const raw = ctx.db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(id) as {
-        snapshot: string;
-      };
-      const parsed = JSON.parse(raw.snapshot) as Record<string, unknown>;
-      delete parsed.ingest;
-      ctx.db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(parsed), id);
-      const got = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
-      expect(got.statusCode).toBe(200);
-      const snap = got.json() as ReviewSnapshot;
-      expect(snap.version.n).toBe(1);
-      expect(snap.ingest?.status ?? "ready").toBe("ready");
-      expect(ready.review.id).toBe(id);
-    } finally {
-      await app.close();
-    }
-  });
 });

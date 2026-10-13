@@ -11,7 +11,7 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from "@testing-libra
 import { MemoryRouter } from "react-router-dom";
 import type { DiagramBlock } from "@unvibe/shared";
 import { DiagramStatusError } from "../api/client.js";
-import { D2Diagram, clearD2SvgCache, d2SourceOf } from "./D2Diagram.js";
+import { D2Diagram, clearD2SvgCache } from "./D2Diagram.js";
 import { adoptD2Svg, sanitizeD2Svg, scopeDiagramCss, isAllowedHref } from "./d2sanitize.js";
 
 // jsdom has no matchMedia: pretend the OS prefers light.
@@ -149,13 +149,6 @@ describe("two-diagram isolation", () => {
     // No id is shared between the copies.
     const idsA = new Set([...a.querySelectorAll("[id]")].map((el) => el.id));
     for (const el of b.querySelectorAll("[id]")) expect(idsA.has(el.id)).toBe(false);
-  });
-});
-
-describe("d2SourceOf", () => {
-  it("prefers source and tolerates legacy blocks", () => {
-    expect(d2SourceOf(d2Block({ source: "x -> y" }))).toBe("x -> y");
-    expect(d2SourceOf({ type: "diagram", id: "b", source: "", citations: [], render: { hash: "", status: "error" } } as DiagramBlock)).toBe("");
   });
 });
 

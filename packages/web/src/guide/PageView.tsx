@@ -53,7 +53,7 @@ function RecheckStatus({ page }: { page: Page }) {
   );
 }
 
-/** Display form of a page title: the default (current or legacy stored) shows as "Guide". */
+/** Display form of a page title: the default shows as "Guide". */
 function displayTitle(title: string): string {
   return isDefaultGuideTitle(title) ? DEFAULT_GUIDE_TITLE : title;
 }

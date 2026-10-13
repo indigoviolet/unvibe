@@ -19,30 +19,13 @@ import net from "node:net";
 import { isHealthOk } from "./lock.js";
 import { collectDiagnostics, formatDiagnosticsText } from "../diagnostics/report.js";
 import type { DiagnosticsResponse } from "@unvibe/shared";
-import {
-  findOnPath as sharedFindOnPath,
-  ghAuthStatus as sharedGhAuth,
-  gitVersion as sharedGitVersion,
-} from "../readiness/checks.js";
+import { ghAuthStatus as sharedGhAuth, gitVersion as sharedGitVersion } from "../readiness/checks.js";
 import { RealCommandRunner } from "../exec/runner.js";
 
 export interface DoctorCheck {
   name: string;
   status: "ok" | "warn" | "fail";
   detail: string;
-}
-
-/** Minimal `command -v` (shared with readiness; re-exported for compat). */
-export function findOnPath(name: string, pathValue: string = process.env.PATH ?? ""): string | null {
-  return sharedFindOnPath(name, pathValue);
-}
-
-/**
- * `gh auth status` with GITHUB_TOKEN unset (PRD §15). Shared with
- * readiness (see `../readiness/checks.js`); kept here for compat.
- */
-export async function ghAuthStatus(): Promise<{ present: boolean; loggedIn: boolean; detail: string }> {
-  return sharedGhAuth(new RealCommandRunner());
 }
 
 export interface DoctorOptions {
@@ -160,7 +143,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
   const git = await sharedGitVersion(runner);
   checks.push({ name: "git", status: git ? "ok" : "fail", detail: git ?? "not on PATH" });
 
-  const gh = await ghAuthStatus();
+  const gh = await sharedGhAuth(runner);
   checks.push({
     name: "gh",
     status: !gh.present ? "fail" : gh.loggedIn ? "ok" : "warn",

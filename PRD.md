@@ -109,7 +109,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 Every card and every expansion card has the same controls:
 - **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Expansions show the quoted selection as their header instead and get no derived title.
 - **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row.
-- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles.
+- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles. While a depth change runs, both buttons keep their icons and are disabled (one shared control for cards and expansions).
   - Changing depth rewrites the card's paragraphs in place.
   - + at the deepest level adds an "Underlying principle" block.
   - Depth versions are generated **on demand** and kept once made.
@@ -139,8 +139,9 @@ Every card and every expansion card has the same controls:
 ### 4.6 Selecting text
 - Works in the guide, the PR description, and diff code.
 - A selection snaps to whole words, with leading and trailing spaces trimmed, and the highlight updates to match.
-- The toolbar offers **Explain**, **Ask…** and **Note**. Examples and diagrams come from the explanation card's own controls, not the toolbar.
+- The toolbar offers **Explain**, **Ask…**, **Comment** and **GitHub**. Examples and diagrams come from the explanation card's own controls, not the toolbar.
 - The toolbar appears only when the user finishes selecting text, never after clicking a control.
+- **GitHub** is a plain link out: on a diff selection it opens the selected lines in GitHub's file view at the review's commit (the head commit for added and unchanged lines, the base commit when the selection is only on removed lines). It starts no job and no thread, and is hidden where there is nothing unambiguous to open (prose, non-GitHub repos, the demo).
 
 ### 4.7 Explanations
 - **Explain** creates an expansion card right under the block the text came from: under the paragraph in the description, under the line in the diff. The selected text is highlighted.
@@ -150,11 +151,13 @@ Every card and every expansion card has the same controls:
 - **Open as page** moves the content to a new page titled with the quoted text, and the anchor text becomes a link to that page.
 
 ### 4.8 Comments
-- **Ask…** starts a thread, and the agent replies with citations. **Note** starts a thread with no agent reply.
-- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** (a send icon, filled when on), **Delete** and **Close**.
-- **Reply box:** always visible, with **Discard** and **Reply**.
+- **Ask…** starts a thread, and the agent replies with citations. **Comment** starts a thread with no agent reply. Only Ask sends text to the agent.
+- A **Comment** is for the PR by default and can be switched off to keep it local. An **Ask** thread is never for the PR and carries no For-PR control. Only comments are submitted to GitHub.
+- Selecting text inside an agent answer and choosing **Comment** opens a comment anchored where the card is anchored, with the selection quoted as a Markdown blockquote for the reviewer to write under.
+- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** on comments (a send icon, filled when on), **Delete** and **Close**.
+- **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent); a reply in an Ask thread goes to the agent.
   - Typed text survives anything else on the page re-rendering.
-  - Discard removes a new thread, and clears the box on an existing one.
+  - Discard removes a new thread, and clears the box on an existing one; on an existing thread it stays disabled until there is a draft.
 - **Where threads live:**
   - **Guide:** threads start closed. The anchor text is highlighted; hovering previews the thread, clicking opens it. Hovering an open thread outlines its anchor.
   - **Diff:** threads sit under their line and start open. Closing one leaves a comment icon on the line number, and clicking the number reopens it. Clicking any line number starts a comment.
@@ -184,13 +187,13 @@ Every card and every expansion card has the same controls:
 - **For a branch without a PR:** the tab shows the commit messages instead, read-only.
 
 ### 4.12 Submit review
-- **Nothing reaches GitHub until Submit review**, whether comments or a description edit.
+- **Nothing reaches GitHub until Submit review**, whether comments or a description edit. Only comments are submitted; Ask threads and explanations are never posted.
 - The top-bar button shows how many changes are pending. Its panel lists every comment marked for the PR (location and draft text) and the description change if there is one, with **Cancel** and **Submit as <user>**.
 - Submitting creates **one GitHub review** containing all the comments, and updates the description.
 - For a branch without a PR, Submit is disabled and says why.
 
 ### 4.13 Diff
-**Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**.
+**Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**. The toolbar stays pinned directly under the tab strip while the diff scrolls (opaque, one row; narrow panes scroll it sideways instead of wrapping). Revealing a cited line, a comment's jump-to-line, or a file jump from the Files list lands the target below the pinned rows.
 
 **Files panel** (it scrolls with the diff):
 - a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count) plus a **Reviewed** row; the button shows an active count whenever a non-default filter applies;
@@ -604,7 +607,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | **M0** | **ACP spike** (do this first) | In both `claude-agent-acp` and `codex-acp`: start a session with a system prompt plus an MCP server, send a ~30k-token pack, fork it twice, and confirm that (a) each fork answers questions about the pack, (b) usage shows cache reads on the forks, (c) a trailing JSON block parses reliably. Results written up. |
 | M1 | Service, ingest and diff | Start page lists repos, PRs and branches. Opening one ingests it. The diff pane has every §4.13 feature except agent summaries. Token-protected localhost service, installable web app, helper and idle exit. |
 | M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept candidates are hidden. Hunk pass summaries, and Hide uninteresting with reasons. |
-| M3 | Interaction | Explain, Ask and Note on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Expansions close into links; Open as page. Mark read. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
+| M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Expansions close into links; Open as page. Mark read. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
 | M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |

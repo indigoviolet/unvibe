@@ -455,6 +455,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       editable: false,
       restated,
     },
+    ingest: { status: "ready" },
     pages,
     annotations,
     hunkStates,

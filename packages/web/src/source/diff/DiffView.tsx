@@ -15,7 +15,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { looksLikeJson } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -40,8 +39,10 @@ import {
 } from "./diffLogic.js";
 import { useLineSlots, type LineSlots } from "./lineSlots.js";
 import {
+  observeDiffTabStrip,
   onRevealSource,
   parseDiffRef,
+  revealDiffElement,
   revealSource,
   takePendingReveal,
   type RevealTarget,
@@ -222,17 +223,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
     }
   }, []);
 
-  // #99: a stored summary holding the agent's raw JSON reads as absent,
-  // so the hunk shows its Summarize action instead of the JSON text. The
-  // stored row is untouched: the next summarize regenerates or clears it.
+  // Hunk states keyed by content hash for the file sections below.
   const states = useMemo(
-    () =>
-      new Map<string, HunkUiState>(
-        (snapshot?.hunkStates ?? []).map((s) => [
-          s.contentHash,
-          s.summary !== undefined && looksLikeJson(s.summary) ? { ...s, summary: undefined } : s,
-        ]),
-      ),
+    () => new Map<string, HunkUiState>((snapshot?.hunkStates ?? []).map((s) => [s.contentHash, s])),
     [snapshot],
   );
 
@@ -273,9 +266,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
 
   // Summarize is async (a job on the service, canned text in mock): the
   // button shows progress until the snapshot actually carries a summary.
-  // Read the raw rows here, not the #99-filtered `states`: a landed summary
-  // that looks like JSON still settles the request — the dots go away and
-  // the hunk re-offers Summarize instead of showing the JSON text.
+  // Read the snapshot rows directly: any landed summary settles the
+  // request, and the hunk offers Summarize again for unusable text.
   useEffect(() => {
     setBusy((prev) => {
       if (Object.keys(prev).length === 0) return prev;
@@ -372,9 +364,15 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
       }
     }
     el ??= document.getElementById(`F-${key}`);
-    // jsdom (unit tests) has no scrollIntoView; guard it.
-    el?.scrollIntoView?.({ block: "center" });
+    // The actions bar pins under the tab strip (#132): land the target
+    // below the pinned rows through the shared offset, not center-scroll.
+    // jsdom (unit tests) has no layout; the helper falls back there.
+    if (el) revealDiffElement(el);
   }, [highlight, fileHighlight]);
+
+  // #132: keep the actions bar's sticky `top` equal to the tab strip's live
+  // height (a ResizeObserver, never a scroll listener).
+  useEffect(() => observeDiffTabStrip(), []);
 
   useEffect(() => () => window.clearTimeout(hlTimer.current), []);
 
@@ -546,7 +544,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
           aria-expanded={prefs.filesOpen}
           data-tip={prefs.filesOpen ? "Hide file list" : "Show file list"}
           aria-label={prefs.filesOpen ? "Hide file list" : "Show file list"}
-          onClick={() => setPrefs((p) => ({ ...p, filesOpen: !p.filesOpen }))}
+          onClick={() => {
+            // Opening the list from a scrolled diff shows it at the top
+            // (prototype parity: `byId("right").scrollTop = 0`), so the
+            // panel and its dropdown open fully visible under the bar.
+            if (!prefs.filesOpen) document.getElementById("right")?.scrollTo(0, 0);
+            setPrefs((p) => ({ ...p, filesOpen: !p.filesOpen }));
+          }}
         >
           <Icon name={prefs.filesOpen ? "down" : "right"} />
           Files <span className="hint">{visible.length}/{snapshot.files.length}</span>
@@ -668,20 +672,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
                     file={row.file}
                     depth={row.depth}
                     reviewed={reviewedCount(row.file)}
-                    onJump={(key) => {
+                      onJump={(key) => {
                       setFileFold((prev) => ({ ...prev, [key]: false }));
                       setEagerFiles((prev) => new Set(prev).add(key));
                       setTimeout(() => {
                         const el = document.getElementById(`F-${key}`);
-                        const stick = document.querySelector("#right .rstick");
-                        if (!el) return;
-                        // Scroll within the pane, keeping the sticky toolbar visible.
-                        const pane = document.getElementById("right");
-                        if (pane && stick) {
-                          pane.scrollTop += el.getBoundingClientRect().top - stick.getBoundingClientRect().bottom;
-                        } else {
-                          el.scrollIntoView({ block: "start" });
-                        }
+                        // Land the file header below the pinned rows (#132).
+                        if (el) revealDiffElement(el);
                       }, 0);
                     }}
                   />

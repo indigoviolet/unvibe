@@ -107,14 +107,13 @@ export function pageIdForLinkTarget(
 
 /**
  * Resolve a `concept:<slug>` link to its page. Concept pages carry ids of
- * the form `c-<slug>` (see the replay snapshot builder); a page whose id
- * is the slug itself also matches.
+ * the form `c-<slug>`.
  */
 export function lookupConceptPage(
   lookup: (id: string) => Page | undefined,
   slug: string,
 ): Page | undefined {
-  return lookup(`c-${slug}`) ?? lookup(slug);
+  return lookup(`c-${slug}`);
 }
 
 /** Pages linked from a page's blocks (prototype `linkedPages`). */

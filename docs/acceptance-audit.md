@@ -261,7 +261,12 @@ needed (that deviation is closed, not added).
   (`actions-echo.test.ts`, `content-titles.test.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
-  `actions-m4.test.ts` “depth round-trips”).
+  `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
+  + and − keep their icons and are disabled, with no dots inside the
+  control, in both directions — one shared control for cards and
+  expansions (issue #129; the target-pip pulse was dropped as allowed —
+  `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
+  `depth-principle-service.spec.ts`).
 - Examples / Add diagram inserts, never duplicated — met
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
@@ -342,17 +347,27 @@ needed (that deviation is closed, not added).
 - Works in guide, description, diff code — met (`comments/selection.test.ts`).
 - Snap to words, trim, highlight matches — met (`e2e/comments.spec.ts`
   “selection snaps to whole words”).
-- Toolbar Explain / Ask… / Note; no examples/diagrams there; appears only
-  on selection-finish — met (`comments.spec.ts`). Inside an explanation
-  the same toolbar appears (#116); inside second-opinion reasoning and
-  thread replies it does not (neither is an anchor host —
-  `SelectionToolbar.test.tsx`).
+- Toolbar Explain / Ask… / Comment / GitHub; no examples/diagrams there;
+  appears only on selection-finish — met (`comments.spec.ts` “toolbar
+  Comment creates a quiet thread”, “GitHub action links diff lines”).
+  Inside an explanation the same toolbar appears (#116); inside
+  second-opinion reasoning and thread replies it does not (neither is an
+  anchor host — `SelectionToolbar.test.tsx`).
 - Selections inside an explanation anchor to the expansion's block
-  (`<expansion>#<block>`) for all three actions; the nested explanation,
-  thread or note renders under that block, nests to any depth by the same
-  mechanism, and survives reload with its highlight
+  (`<expansion>#<block>`) for Explain and Ask; a Comment there anchors
+  where the card is anchored and quotes the selection as a Markdown
+  blockquote prefilled in the composer (issue #135). The nested
+  explanation, thread or comment renders under its anchor, nests to any
+  depth by the same mechanism, and survives reload with its highlight
   (`actions-expansion-nesting.test.ts`, `ExpansionNesting.test.tsx`,
   `e2e/expansion-nesting-service.spec.ts`).
+- GitHub action (issue #134): a plain link out opening the selected diff
+  lines in GitHub's file view at the review's commit (head for
+  added/unchanged lines, base for removed-only selections; the viewed
+  version's commits). No job, no pending thread. Hidden for prose,
+  non-GitHub repos and the demo — met (shared `githubFileUrl` +
+  `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
+  `comments.spec.ts` “GitHub action links diff lines”).
 
 ### §4.7 Explanations — all met
 
@@ -391,17 +406,26 @@ needed (that deviation is closed, not added).
 
 ### §4.8 Comments — all met
 
-- Ask… (agent + citations) / Note (no reply) — met (`actions/ask.ts`,
-  `note.ts`, `comments-service.spec.ts` “create a note … survives reload”).
+- Ask… (agent + citations) / Comment (no reply, for the PR by default) —
+  met (`actions/ask.ts`, `note.ts`, `comments-service.spec.ts` “create a
+  comment … survives reload”; `comments-m6.test.ts` “comments for the PR”).
+  Only Ask sends text to the agent; clicking a diff line opens a Comment.
+  Only comments are submitted — Ask threads carry no For-PR control and
+  the submit path skips them (issue #135). A Comment from an agent answer
+  quotes the selection as a Markdown blockquote (replaces promote-to-PR;
+  “Open as page” is a different feature and stays).
 - Ask thread replies never show follow-up suggestions (issue #103) — met:
   the ask prompt no longer asks for them and `replyHtml` drops any
   `follow-up` block (plus a leftover heading or card title) on both the
   initial fill and reply turns, while cards and Explain expansions keep
   their chips (`actions-ask-followups.test.ts`).
-- Thread header (quote/`file:line`, Mark for PR filled when on, Delete,
-  Close) — met (`comments/threads.test.ts`, walk screenshot shows
-  “Agent · suggested comment” threads with Reply/Discard).
-- Reply box always visible, Discard/Reply, typed text survives rerender —
+- Thread header (quote/`file:line`, Mark for PR filled when on for
+  comments, Delete, Close) — met (`comments/threads.test.ts`,
+  `ThreadView.test.tsx` “only comment threads carry the For-PR control”,
+  walk screenshot shows “Agent · suggested comment” threads with
+  Reply/Discard).
+- Reply box always visible, Discard/Reply, typed text survives rerender;
+  Discard stays disabled on an existing thread until there is a draft —
   met (`comments/ThreadView.test.tsx`, `comments.spec.ts`).
 - Placement (guide closed + hover outline; diff under line + line-number
   reopen + click-number starts; description under paragraph) — met
@@ -462,7 +486,9 @@ needed (that deviation is closed, not added).
 
 ### §4.12 Submit review — all met
 
-- Nothing reaches GitHub until Submit — met (`gh-writes.test.ts`).
+- Nothing reaches GitHub until Submit — met (`gh-writes.test.ts`). Only
+  comments are submitted; Ask threads and explanations are never posted
+  (issue #135).
 - Button count, panel (locations + drafts, Cancel, Submit as \<user\>) —
   met (ui-walk opened the panel; `submit-m6.test.ts` preview).
 - One review + description update; branch-without-PR disabled with reason
@@ -478,6 +504,18 @@ needed (that deviation is closed, not added).
 
 - Toolbar (Files collapsed, Unified/Split, Hide uninteresting default on,
   Fold/Unfold all) — met (`e2e/diff.spec.ts`, walk shows all controls).
+  The bar stays pinned under the tab strip while the diff scrolls (issue
+  #132): `position: sticky` with `top` tracking the live strip height
+  through `--diffbar-top` (no copied constant), z-index 3 (below the strip
+  at 4, above diff content, below app overlays at 25+), opaque with a
+  hairline; one row at narrow widths (sideways scroll inside the bar, never
+  wrap); full pane width sideways (`left: 0`); reveals, comment jumps and
+  file jumps land below the pinned rows through one shared helper
+  (`revealDiffElement`/`ensureDiffVisible` over `diffPinnedHeight()` in
+  `source/diff/revealSource.ts`); opening Files scrolls the pane to top so
+  the panel + filter dropdown open fully visible — met
+  (`e2e/diff-sticky-bar.spec.ts` 6 tests; `docs/screenshots/132-*.png`).
+  File headers deliberately do not stick (out of scope).
 - Files panel (name filter + Filter dropdown with per-type counts and a
   Reviewed row, active count on the button, hunk progress, compacting tree
   + counts, click-scroll) — met (`diff.spec.ts` "file filter dropdown …",
@@ -497,16 +535,14 @@ needed (that deviation is closed, not added).
   live runs: “hide violations: none”). Hunk replies tolerate format slips
   (issue #99): bare/unfenced `{"hunk": …}` still yields summary +
   `hiddenReason` (`shared/src/content/hunk.ts`, one helper for both call
-  sites); JSON-looking text is never stored, long fallbacks cut on a word
-  boundary, and a stored JSON-looking summary is treated as missing on
-  reuse (regenerated or cleared on the next summarize) and reads as absent
-  in the diff pane (Summarize action, never the JSON text).
+  sites); JSON-looking text is never stored and long fallbacks cut on a
+  word boundary (the stored-row cleanup for pre-fix rows was removed
+  under #137 — a stored JSON-looking summary is now reused/shown as-is).
 - Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
   (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
-  The Summarize dots clear when the summary lands by patch — including a
-  landed JSON-looking summary, which still reads as absent with Summarize
-  re-offered (issue #63; `DiffView.tsx` raw-row effect,
-  `source/diff/summarizeBusy.test.tsx`).
+  The Summarize dots clear when the summary lands by patch — any landed
+  summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
+  effect, `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
   — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
 - Syntax highlighting (issue #23): plain rows first, token colours after
@@ -629,7 +665,8 @@ needed (that deviation is closed, not added).
 ## §7 Data model and IDs — all met
 
 - Entities per §7.1 table — met (`shared/src/entities.ts` 699 lines;
-  migrations 001–003 + sessions table; `store.test.ts`, `state.test.ts`).
+  single schema migration (001–005 collapsed under #137) + sessions table;
+  `store.test.ts`, `state.test.ts`).
 - ID grammar (§7.2 all nine forms) — met (`shared/src/ids.ts`,
   `links.ts`; `ids` unit tests).
 - App assigns IDs; agents never invent them — met: every token validated
@@ -897,7 +934,8 @@ needed (that deviation is closed, not added).
   (49), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
   still green. Note: the live database file is `unvibe.db`
   (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
-  and is corrected there — the backup covers both names when present.
+  and is corrected there. The legacy `unvibe.sqlite*` backup was removed
+  under #137 — only `unvibe.db*` is backed up and restored.
 
 ### §14.1 Endpoints — all met (ran)
 
@@ -1157,7 +1195,8 @@ Skipped entries (with reasons) and the commit hashes are in the
 implementer's report on the issue; glossary item 5 ("Guided review"
 default title) was deliberately not done pending the owner's decision —
 decided 2026-10-12 and renamed to "Guide" under #102 (no data migration:
-stored "Guided review" still counts as the default).
+stored "Guided review" still counts as the default; removed under #137 —
+only "Guide" counts, stored "Guided review" now reads as a real title).
 Small companion code changes the list calls for: shared stage→label map
 (`web/src/guide/stageLabels.ts`, used by the start page and the guide
 empty state, with `stageLabels.test.ts`); one `NO_AGENT_COPY` constant;

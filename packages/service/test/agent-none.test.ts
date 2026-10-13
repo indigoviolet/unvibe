@@ -21,6 +21,7 @@ function makeSnapshot(): ReviewSnapshot {
     contributions: [],
     logTail: [],
     rev: 1,
+    ingest: { status: "ready" },
   } as unknown as ReviewSnapshot;
 }
 

@@ -27,7 +27,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, looksLikeJson, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
@@ -727,11 +727,9 @@ export class Pipeline {
     // the same content hash returns it with no agent call. Hunk state is
     // keyed by content hash so it survives rebases (PRD §8); a deleted
     // summary (PATCH null) or changed content (new hash) is legitimately a
-    // new request. A stored summary that looks like the agent's raw JSON
-    // (#99) is treated as missing: the request below regenerates it (or
-    // clears it when the reply is unusable) instead of returning garbage.
+    // new request.
     const stored = snapshot.hunkStates.find((s) => s.contentHash === contentHash)?.summary;
-    if (stored && !looksLikeJson(stored)) return { reused: true, summary: stored };
+    if (stored) return { reused: true, summary: stored };
     const settings = await this.effectiveSettings();
     const hunkText = this.formatHunkForPrompt(snapshot, found.file.fileKey, found.hunk.contentHash);
     const prompt = withReplayMark(
@@ -779,9 +777,8 @@ export class Pipeline {
   /**
    * Store one hunk-pass result (#99), shared by `summarizeHunk` and the
    * hunk-pass stage (the two copied parse blocks). A missing summary stores
-   * nothing: it clears a stored bad summary but leaves a good one alone, so
-   * the hunk shows the Summarize action again instead of garbage.
-   * Guide-cited and one-line hunks are never hidden.
+   * nothing, so the hunk shows the Summarize action again instead of
+   * garbage. Guide-cited and one-line hunks are never hidden.
    */
   private async applyHunkSummary(reviewId: string, contentHash: string, result: HunkReplyResult): Promise<void> {
     let hiddenReason = result.hiddenReason;
@@ -797,8 +794,6 @@ export class Pipeline {
       }
       if (result.summary !== undefined) {
         state.summary = result.summary;
-      } else if (state.summary !== undefined && looksLikeJson(state.summary)) {
-        delete state.summary;
       }
       const fileHunk = draft.files.flatMap((f) => f.hunks).find((h) => h.contentHash === contentHash);
       if (fileHunk) {
