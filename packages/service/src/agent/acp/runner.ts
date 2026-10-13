@@ -135,6 +135,16 @@ export class AcpAgentRunner implements AgentRunner {
     return caller;
   }
 
+  /**
+   * #121: one place that builds the session-defining `_meta` (system prompt
+   * + tool lockdown for Claude, custom instructions for Codex). `session/new`,
+   * `session/resume` and `session/load` must all carry the same value so a
+   * new session, a resume and a load cannot drift apart again.
+   */
+  private sessionMeta(rec: Pick<AcpSessionRecord, "provider" | "systemPrompt" | "readOnly">): Record<string, unknown> {
+    return this.newSessionMeta(rec.provider, rec.systemPrompt, rec.readOnly);
+  }
+
   private newSessionMeta(provider: ProviderId, systemPrompt: string, readOnly: boolean): Record<string, unknown> {
     if (provider === "claude") {
       const meta: Record<string, unknown> = { systemPrompt };
@@ -353,6 +363,7 @@ export class AcpAgentRunner implements AgentRunner {
           sessionId: rec.acpSessionId,
           cwd: rec.cwd,
           mcpServers: toAcpMcpServers(rec.mcpServers),
+          _meta: this.sessionMeta(rec),
         });
       } catch {
         // ignored: prompt() will resume on demand
@@ -387,6 +398,7 @@ export class AcpAgentRunner implements AgentRunner {
         sessionId: known.acpSessionId,
         cwd: known.cwd,
         mcpServers: toAcpMcpServers(known.mcpServers),
+        _meta: this.sessionMeta(known),
       });
     } catch (e) {
       throw new Error(`couldn't reopen the ${known.provider} session: ${errorMessage(e)}`, { cause: e });
@@ -399,6 +411,9 @@ export class AcpAgentRunner implements AgentRunner {
     c.drain(known.acpSessionId);
     const rec: AcpSessionRecord = { ...known };
     this.live.set(rec.acpSessionId, rec);
+    if (rec.provider === "codex" && rec.readOnly) {
+      await this.applyCodexRestricted(rec);
+    }
     return { id: rec.acpSessionId, provider: rec.provider, model: rec.model };
   }
 
@@ -539,6 +554,7 @@ export class AcpAgentRunner implements AgentRunner {
             sessionId: rec.acpSessionId,
             cwd: rec.cwd,
             mcpServers: toAcpMcpServers(rec.mcpServers),
+            _meta: this.sessionMeta(rec),
           });
           yield { type: "error", message: `forked session needed resume; retry the prompt: ${msg}`, retryable: true };
           return;

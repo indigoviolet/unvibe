@@ -172,6 +172,98 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
+  it("#121: a fork denies shell/edits through the permission handler", async () => {
+    // Pre-fix safety question: the fork comes up without the read-only tool
+    // lockdown, so the model MAY attempt Bash/Edit. The deny-by-default
+    // handler must still reject those attempts on the fork's own session.
+    const state = createFakeState([
+      { match: "fork-shell", permissionProbe: { title: "Bash" }, chunks: [{ text: "denied" }] },
+      { match: "fork-edit", permissionProbe: { title: "Edit" }, chunks: [{ text: "denied" }] },
+      { match: "fork-write", permissionProbe: { title: "Write" }, chunks: [{ text: "denied" }] },
+      { match: "fork-web", permissionProbe: { title: "WebFetch" }, chunks: [{ text: "denied" }] },
+      { match: "fork-read", permissionProbe: { title: "Read" }, chunks: [{ text: "ok" }] },
+    ]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp/worktrees/rv_test",
+      systemPrompt: "unvibe-instructions",
+      mcpServers: [{ name: "test", url: "http://127.0.0.1:9/mcp" }],
+    });
+    const fork = await runner.fork(base);
+    // The fork works in the review's working copy.
+    expect(state.sessions.get(fork.id)?.cwd).toBe("/tmp/worktrees/rv_test");
+    await collect(runner, fork, "fork-shell attempt");
+    await collect(runner, fork, "fork-edit attempt");
+    await collect(runner, fork, "fork-write attempt");
+    await collect(runner, fork, "fork-web attempt");
+    await collect(runner, fork, "fork-read attempt");
+    const byTitle = new Map(state.permissionOutcomes.map((o) => [o.title, o]));
+    expect(byTitle.get("Bash")?.optionId).toBe("reject");
+    expect(byTitle.get("Edit")?.optionId).toBe("reject");
+    expect(byTitle.get("Write")?.optionId).toBe("reject");
+    expect(byTitle.get("WebFetch")?.optionId).toBe("reject");
+    expect(byTitle.get("Read")?.optionId).toBe("allow-once");
+    await runner.dispose();
+  });
+
+  it("#121: session/resume and session/load carry the same _meta as session/new", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "unvibe-instructions",
+      mcpServers: [{ name: "test", url: "http://127.0.0.1:9/mcp" }],
+    });
+    const newMeta = state.newMetas.get(base.id);
+    expect(newMeta).toMatchObject({
+      systemPrompt: "unvibe-instructions",
+      claudeCode: { options: { tools: ["Read", "Glob", "Grep"] } },
+    });
+    const fork = await runner.fork(base);
+    expect(state.resumeMetas.length).toBeGreaterThan(0);
+    for (const r of state.resumeMetas) {
+      expect(r.meta).toEqual(newMeta);
+    }
+    // The fork's tool set is the read-only one.
+    const forkResume = state.resumeMetas.find((r) => r.sessionId === fork.id)?.meta as {
+      claudeCode?: { options?: { tools?: string[] } };
+    };
+    expect(forkResume?.claudeCode?.options?.tools).toEqual(["Read", "Glob", "Grep"]);
+    await runner.close(base);
+    await runner.load(base.id);
+    expect(state.loadMetas.length).toBeGreaterThan(0);
+    for (const l of state.loadMetas) {
+      expect(l.meta).toEqual(newMeta);
+    }
+    await runner.dispose();
+  });
+
+  it("#121: codex resume carries the same custom instructions as new", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { codex: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "codex",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "codex-instructions",
+      mcpServers: [{ name: "test", url: "http://127.0.0.1:9/mcp" }],
+    });
+    const newMeta = state.newMetas.get(base.id);
+    expect(newMeta).toEqual({ jetbrains: { air: { version: 1, customInstructions: "codex-instructions" } } });
+    await runner.fork(base);
+    await runner.close(base);
+    await runner.load(base.id);
+    expect(state.loadMetas.length).toBeGreaterThan(0);
+    for (const l of state.loadMetas) {
+      expect(l.meta).toEqual(newMeta);
+    }
+    await runner.dispose();
+  });
+
   it("correlates empty-title approvals by toolCallId (Codex workspace-write)", async () => {
     const state = createFakeState([
       {

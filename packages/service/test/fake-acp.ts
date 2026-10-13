@@ -63,6 +63,12 @@ export interface FakeAgentState {
   /** When true, prompts on forked sessions fail until resume() is called. */
   forkNeedsResume: boolean;
   defaultUsage: NonNullable<FakeTurn["usage"]>;
+  /** session/new params `_meta` per session id (#121: forks must match base). */
+  newMetas: Map<string, unknown>;
+  /** session/resume params `_meta` per call (#121). */
+  resumeMetas: Array<{ sessionId: string; meta: unknown }>;
+  /** session/load params `_meta` per call (#121). */
+  loadMetas: Array<{ sessionId: string; meta: unknown }>;
 }
 
 export function createFakeState(turns: FakeTurn[] = []): FakeAgentState {
@@ -78,6 +84,9 @@ export function createFakeState(turns: FakeTurn[] = []): FakeAgentState {
     nextId: 1,
     forkNeedsResume: false,
     defaultUsage: { inputTokens: 5, cachedReadTokens: 100, cachedWriteTokens: 0, outputTokens: 10 },
+    newMetas: new Map(),
+    resumeMetas: [],
+    loadMetas: [],
   };
 }
 
@@ -107,6 +116,7 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
     .onRequest("session/new", async (ctx: any) => {
       const id = `fake-${state.nextId++}`;
       state.sessions.set(id, { cwd: ctx.params.cwd, resumed: true, closed: false });
+      state.newMetas.set(id, ctx.params._meta);
       return {
         sessionId: id,
         modes: { currentModeId: "default", availableModes: [{ id: "default", name: "Manual" }] },
@@ -158,6 +168,7 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
       if (!s) throw new acp.RequestError(-32603, "Session not found");
       s.resumed = true;
       state.resumeCalls.push(id);
+      state.resumeMetas.push({ sessionId: id, meta: ctx.params._meta });
       return {};
     })
     .onRequest("session/load", async (ctx: any) => {
@@ -166,6 +177,7 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
       if (!s) throw new acp.RequestError(-32603, "Session not found");
       s.closed = false;
       s.resumed = true;
+      state.loadMetas.push({ sessionId: id, meta: ctx.params._meta });
       // Replay history as updates (runner must drain before next prompt).
       await ctx.client.notify("session/update", {
         sessionId: id,
