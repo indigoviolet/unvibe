@@ -63,8 +63,9 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   { re: /\bdepth\b|simpler|\bdeeper\b/i, kind: "depth" },
   { re: /examples?/i, kind: "examples" },
   { re: /\bdiagram\b|\bd2\b/i, kind: "diagram" },
-  { re: /\bexplain\b/i, kind: "explain" },
+  // `ask` first: the merged first-turn prompt carries both words (#136).
   { re: /\bask\b|question|thread/i, kind: "ask" },
+  { re: /\bexplain\b/i, kind: "explain" },
   { re: /second opinion/i, kind: "second-opinion" },
 ];
 
