@@ -9,9 +9,10 @@
  *   (developer/base instructions); `_meta.systemPrompt` is silently ignored
  *   by codex-acp, so we never rely on it there. The string is passed
  *   byte-stable across sessions so prefix caching works.
- * - `fork` (+ `atMessage` via AIR fork meta where supported), with the
- *   Claude quirk that a forked session needs `session/resume` before its
- *   first prompt.
+ * - `fork` (+ `atMessage` via AIR fork meta where supported) carries the
+ *   same `mcpServers` + `_meta` as new/resume/load (#124: a Codex fork sent
+ *   without them may lack the review tools), with the Claude quirk that a
+ *   forked session needs `session/resume` before its first prompt.
  */
 import { tmpdir } from "node:os";
 import type {
@@ -325,22 +326,29 @@ export class AcpAgentRunner implements AgentRunner {
   async fork(session: Session, opts?: { atMessage?: string }): Promise<Session> {
     const parent = this.requireLive(session);
     const caller = await this.ensureCaller(parent.provider);
+    // #124: a fork carries the same session-defining fields as new/resume/
+    // load (one builder, `sessionMeta`). codex-acp builds the fork's config
+    // from `request.mcpServers ?? []`, so a fork sent without them may come
+    // up with no review tools at all (the probable #51 cause); the prompt
+    // cache is a prefix match, so the fields keep the fork on the base's
+    // prefix too.
     const params: Record<string, unknown> = {
       sessionId: parent.acpSessionId,
       cwd: parent.cwd,
+      mcpServers: toAcpMcpServers(parent.mcpServers),
+      _meta: this.sessionMeta(parent),
     };
     if (opts?.atMessage) {
       // AIR fork point (v1) where supported; plain latest-state fork otherwise.
       // Both adapters read `_meta.jetbrains.air.fork`; without it they fork
-      // latest state (the PRD's only requirement).
-      params._meta = {
-        jetbrains: {
-          air: {
-            version: 1,
-            fork: { version: 1, messageId: opts.atMessage },
-          },
-        },
-      };
+      // latest state (the PRD's only requirement). Merged into the session
+      // meta above (Codex instructions live under the same `air` key).
+      const meta = params._meta as Record<string, unknown>;
+      const jetbrains = { ...((meta.jetbrains as Record<string, unknown> | undefined) ?? {}) };
+      const air = { ...((jetbrains.air as Record<string, unknown> | undefined) ?? {}), version: 1 };
+      (air as Record<string, unknown>).fork = { version: 1, messageId: opts.atMessage };
+      jetbrains.air = air;
+      meta.jetbrains = jetbrains;
     }
     let res: unknown;
     try {
