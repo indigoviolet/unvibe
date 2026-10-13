@@ -1,5 +1,14 @@
 /**
- * Tiny migration runner + migration 001.
+ * Database schema (issue #137: collapsed, no backward compatibility).
+ *
+ * A single migration creates every table at its current shape (what the
+ * 001–005 series produced, with 005's `repos.managed` column defined
+ * inline instead of altered in). Fresh databases record version 5 in
+ * `schema_migrations` — the number the series ended at, so
+ * `currentVersion` keeps meaning "current" and databases already at 5
+ * are left alone. There is intentionally no upgrade path for older
+ * databases: stored data can be reset, so a stale data directory is
+ * deleted, never migrated.
  *
  * Tables cover the §7.1 entities. Nested shapes (blocks, anchors, messages,
  * items, payloads) are JSON columns; owners parse them with the shared types.
@@ -14,15 +23,16 @@ export interface Migration {
 
 export const MIGRATIONS: Migration[] = [
   {
-    version: 1,
-    name: "001-initial-schema",
+    version: 5,
+    name: "001-schema",
     up: `
       CREATE TABLE IF NOT EXISTS repos (
         id TEXT PRIMARY KEY,
         owner TEXT NOT NULL,
         name TEXT NOT NULL,
         local_path TEXT NOT NULL,
-        last_opened INTEGER NOT NULL DEFAULT 0
+        last_opened INTEGER NOT NULL DEFAULT 0,
+        managed INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS reviews (
         id TEXT PRIMARY KEY,
@@ -141,12 +151,6 @@ export const MIGRATIONS: Migration[] = [
         payload JSON NOT NULL DEFAULT '{}',
         PRIMARY KEY (review_id, seq)
       );
-    `,
-  },
-  {
-    version: 2,
-    name: "002-review-snapshots",
-    up: `
       -- Durable ReviewStore snapshots (M1 service): one row per review holding
       -- the full ReviewSnapshot JSON plus its monotonic rev. The row is the
       -- source of truth across restarts; WS patches carry baseRev/headRev.
@@ -159,12 +163,6 @@ export const MIGRATIONS: Migration[] = [
         snapshot JSON NOT NULL,
         updated_at INTEGER NOT NULL
       );
-    `,
-  },
-  {
-    version: 3,
-    name: "003-version-files",
-    up: `
       -- Per-version diff files (M5): older versions stay viewable via
       -- GET /api/reviews/:id?version=n. One row per (review, version)
       -- holding the ReviewFile[] JSON for that version's diff. The live
@@ -176,12 +174,6 @@ export const MIGRATIONS: Migration[] = [
         files_json JSON NOT NULL DEFAULT '[]',
         PRIMARY KEY (review_id, n)
       );
-    `,
-  },
-  {
-    version: 4,
-    name: "004-submit-leases",
-    up: `
       -- Submit in-flight leases (hardening): one row per review while a
       -- GitHub review POST is in flight. A crash between the POST and the
       -- local posted-mark would otherwise double-post on retry; the next
@@ -193,19 +185,6 @@ export const MIGRATIONS: Migration[] = [
         commit_id TEXT NOT NULL,
         payload JSON NOT NULL DEFAULT '{}'
       );
-    `,
-  },
-  {
-    version: 5,
-    name: "005-repos-managed",
-    up: `
-      -- Managed clones (#27): repos Unvibe cloned itself into
-      -- <dataDir>/repos/<owner>/<name>. 0 = the user's own checkout (never
-      -- fetched implicitly, never deleted); 1 = Unvibe's clone (refreshed
-      -- automatically, removed with the repo). ADD COLUMN with a default is
-      -- safe on existing databases: every remembered repo keeps behaving as
-      -- a user checkout.
-      ALTER TABLE repos ADD COLUMN managed INTEGER NOT NULL DEFAULT 0;
     `,
   },
 ];

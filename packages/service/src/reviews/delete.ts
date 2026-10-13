@@ -53,12 +53,7 @@ export function listReviewIds(db: DatabaseSync): string[] {
     ["reviews", "id"],
     ["review_snapshots", "review_id"],
   ] as const) {
-    if (!tableExists(db, table)) continue;
-    try {
-      for (const r of db.prepare(`SELECT ${column} AS id FROM ${table}`).all() as { id: string }[]) ids.add(r.id);
-    } catch {
-      // Ignore: an older test DB without the column.
-    }
+    for (const r of db.prepare(`SELECT ${column} AS id FROM ${table}`).all() as { id: string }[]) ids.add(r.id);
   }
   return [...ids];
 }
@@ -71,12 +66,7 @@ export function listReviewIds(db: DatabaseSync): string[] {
 export function deleteAllReviewRows(db: DatabaseSync): void {
   transaction(db, () => {
     for (const table of [...REVIEW_TABLES, "reviews"]) {
-      if (!tableExists(db, table)) continue;
-      try {
-        db.prepare(`DELETE FROM ${table}`).run();
-      } catch {
-        // Ignore per-table.
-      }
+      db.prepare(`DELETE FROM ${table}`).run();
     }
   });
 }
@@ -86,27 +76,13 @@ export async function deleteReviewLocal(
   reviewId: string,
 ): Promise<{ deleted: boolean; worktreeRemoved: boolean }> {
   const { db, runner, dataDir } = deps;
-  const row = (() => {
-    try {
-      return db
-        .prepare("SELECT id, repo_id AS repoId FROM reviews WHERE id = ?")
-        .get(reviewId) as { id: string; repoId: string } | undefined;
-    } catch {
-      return undefined;
-    }
-  })();
-  // Snapshot-only reviews (should not happen now that demo writes a row,
-  // but be tolerant): still delete snapshot + worktree.
-  const snapshotExists = (() => {
-    try {
-      const r = db
-        .prepare("SELECT review_id FROM review_snapshots WHERE review_id = ?")
-        .get(reviewId) as { review_id: string } | undefined;
-      return !!r;
-    } catch {
-      return false;
-    }
-  })();
+  const row = db
+    .prepare("SELECT id, repo_id AS repoId FROM reviews WHERE id = ?")
+    .get(reviewId) as { id: string; repoId: string } | undefined;
+  const snapshotRow = db
+    .prepare("SELECT review_id FROM review_snapshots WHERE review_id = ?")
+    .get(reviewId) as { review_id: string } | undefined;
+  const snapshotExists = !!snapshotRow;
   if (!row && !snapshotExists) return { deleted: false, worktreeRemoved: false };
 
   try {
@@ -116,15 +92,11 @@ export async function deleteReviewLocal(
   }
 
   const repoPath = (() => {
-    try {
-      if (!row) return null;
-      const r = db.prepare("SELECT local_path AS p FROM repos WHERE id = ?").get(row.repoId) as
-        | { p: string }
-        | undefined;
-      return r?.p ?? null;
-    } catch {
-      return null;
-    }
+    if (!row) return null;
+    const r = db.prepare("SELECT local_path AS p FROM repos WHERE id = ?").get(row.repoId) as
+      | { p: string }
+      | undefined;
+    return r?.p ?? null;
   })();
 
   const wt = path.join(dataDir, "worktrees", reviewId);
@@ -157,68 +129,22 @@ export async function deleteReviewLocal(
       // Ignore.
     }
   }
-  // Legacy per-review folders (`<dataDir>/reviews/<owner>/<repo>/<id>/`):
-  // remove any that end with the review id (bounded walk, one level).
-  try {
-    const reviewsRoot = path.join(dataDir, "reviews");
-    if (fs.existsSync(reviewsRoot)) {
-      // Owner/repo nesting is unknown here; do a shallow two-level scan
-      // and remove exact-id leaves. Cheap and never follows the checkout.
-      for (const owner of fs.readdirSync(reviewsRoot)) {
-        const ownerDir = path.join(reviewsRoot, owner);
-        let repos: string[] = [];
-        try {
-          repos = fs.readdirSync(ownerDir);
-        } catch {
-          continue;
-        }
-        for (const repo of repos) {
-          const candidate = path.join(ownerDir, repo, reviewId);
-          try {
-            if (fs.existsSync(candidate)) fs.rmSync(candidate, { recursive: true, force: true });
-          } catch {
-            // Ignore.
-          }
-        }
-      }
-    }
-  } catch {
-    // Ignore.
-  }
-
   transaction(db, () => {
     for (const table of REVIEW_TABLES) {
-      if (!tableExists(db, table)) continue;
-      try {
-        db.prepare(`DELETE FROM ${table} WHERE review_id = ?`).run(reviewId);
-      } catch {
-        // A missing column/table in an older test DB: skip.
+      db.prepare(`DELETE FROM ${table} WHERE review_id = ?`).run(reviewId);
+    }
+    // Sessions table is lazily created: it may legitimately not exist yet.
+    // Best effort; sessions also expire via idle close, so a miss is harmless.
+    if (tableExists(db, "sessions")) {
+      const rows = db.prepare("SELECT session_id, data FROM sessions").all() as {
+        session_id: string;
+        data: string;
+      }[];
+      for (const r of rows) {
+        if (r.data.includes(reviewId)) db.prepare("DELETE FROM sessions WHERE session_id = ?").run(r.session_id);
       }
     }
-    // Sessions whose persisted data references this review (best effort;
-    // sessions also expire via idle close, so a miss is harmless).
-    try {
-      if (tableExists(db, "sessions")) {
-        const rows = db.prepare("SELECT session_id, data FROM sessions").all() as {
-          session_id: string;
-          data: string;
-        }[];
-        for (const r of rows) {
-          try {
-            if (r.data.includes(reviewId)) db.prepare("DELETE FROM sessions WHERE session_id = ?").run(r.session_id);
-          } catch {
-            // Ignore per-row.
-          }
-        }
-      }
-    } catch {
-      // Ignore.
-    }
-    try {
-      db.prepare("DELETE FROM reviews WHERE id = ?").run(reviewId);
-    } catch {
-      // Ignore.
-    }
+    db.prepare("DELETE FROM reviews WHERE id = ?").run(reviewId);
   });
 
   return { deleted: true, worktreeRemoved };

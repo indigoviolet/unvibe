@@ -165,9 +165,9 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   // The PR title/number/author rode the create request (TopBar shows them
   // from the summary); here the step is what matters until the ingest lands
   // through patch events.
-  const ingestStatus = snapshot.ingest?.status ?? "ready";
+  const ingestStatus = snapshot.ingest.status;
   if (ingestStatus === "loading") {
-    const stepLabel = ingestStepLabel(snapshot.ingest?.step);
+    const stepLabel = ingestStepLabel(snapshot.ingest.step);
     const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
     return (
       <div className="doc" data-testid="review-loading">

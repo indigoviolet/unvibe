@@ -194,8 +194,7 @@ export interface CreateReviewRequest {
 /**
  * #92: ingest state for async open. A loading review's snapshot has no
  * `version`, `files` or `description` yet — callers must check `ingest`
- * first (absent = ready, for reviews stored before this change). Only a
- * step name, no progress protocol.
+ * first. Only a step name, no progress protocol.
  */
 export interface IngestStatus {
   status: "ready" | "loading" | "failed";
@@ -205,17 +204,16 @@ export interface IngestStatus {
   error?: string;
 }
 
-/** #92: ingest status of a snapshot (absent = ready, pre-#92 rows). */
+/** #92: ingest status of a snapshot. */
 export function ingestStatusOf(snap: Pick<ReviewSnapshot, "ingest"> | null | undefined): IngestStatus["status"] {
   return snap?.ingest?.status ?? "ready";
 }
 
-/** #92: true when the ingest has landed (absent status = ready for old rows). */
+/** #92: true when the ingest has landed. */
 export function isReadySnapshot(snap: ReviewSnapshot): boolean {
   if (ingestStatusOf(snap) !== "ready") return false;
-  // Placeholder versions (n: 0, from loading rows) are not ready even if an
-  // old caller stored them without a status.
-  return snap.version?.n >= 1;
+  // Placeholder versions (n: 0, from loading rows) are not ready.
+  return snap.version.n >= 1;
 }
 
 /**
@@ -235,15 +233,15 @@ export interface ReviewSnapshot {
   /**
    * #92: loading/failed reviews carry a placeholder (n: 0, empty SHAs) —
    * no real version yet. Present once the ingest lands. Callers must check
-   * `ingest` first (absent = ready, for pre-#92 rows).
+   * `ingest` first.
    */
   version: Version;
   /** #92: empty while loading/failed; present once ready. */
   files: ReviewFile[];
   /** PR description / commit messages; absent while loading and on pre-M1 snapshots. */
   description?: ReviewDescription;
-  /** #92: ingest state; absent (pre-#92 rows) means ready. */
-  ingest?: IngestStatus;
+  /** #92: ingest state. */
+  ingest: IngestStatus;
   pages: Page[];
   annotations: Annotation[];
   hunkStates: HunkState[];
@@ -315,11 +313,11 @@ export interface ReviewSummary {
   guideStatus: "ready" | "running" | "error" | "idle" | "disabled";
   guideDetail?: string;
   /**
-   * #92: ingest state for the front-screen row. Absent (pre-#92 rows and
-   * ready reviews) means ready. Loading/failed rows show their marker,
-   * reopen to the loading/failed page, and can be removed (failed: retry).
+   * #92: ingest state for the front-screen row. Loading/failed rows show
+   * their marker, reopen to the loading/failed page, and can be removed
+   * (failed: retry).
    */
-  ingestStatus?: "ready" | "loading" | "failed";
+  ingestStatus: "ready" | "loading" | "failed";
   /** #92: loading step ("fetching" | "reading diff") while ingestStatus is loading. */
   ingestStep?: string;
   /** #92: failure text while ingestStatus is failed. */
@@ -719,10 +717,9 @@ export interface Settings {
   rebuildAppendedTokens: number;
   /**
    * M5 shared context (PRD §9.3): log tokens accumulated before the batch
-   * is appended to the base session as a new turn. Optional for backwards
-   * compatibility (older clients omit it); the service defaults to 2000.
+   * is appended to the base session as a new turn.
    */
-  logBatchTokens?: number;
+  logBatchTokens: number;
   /** Provider cache lifetime in ms: idle sessions close after this (PRD §12). */
   cacheLifetimeMs: number;
   /** Service exits after this many idle minutes (PRD §14; 0 = never). */
@@ -731,10 +728,9 @@ export interface Settings {
    * Version picker (issue #36, step 2): list installable update channels
    * and switch builds from Settings → Version. Off by default; listing
    * shells out through `gh` under the user's own login, so it stays
-   * opt-in. Optional for backwards compatibility (older clients omit it);
-   * the service defaults to false.
+   * opt-in.
    */
-  versionPickerEnabled?: boolean;
+  versionPickerEnabled: boolean;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */

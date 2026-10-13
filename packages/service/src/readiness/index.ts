@@ -14,7 +14,7 @@
 import type { ReadinessResponse, Settings } from "@unvibe/shared";
 import type { AgentRunner } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
-import { resolveLoginShellPath } from "../exec/shell-path.js";
+import { probeEffectivePath } from "../diagnostics/path-probe.js";
 import { resolveEffectiveSettings } from "../settings/index.js";
 import type { ModelCatalog, SettingsSource } from "../settings/index.js";
 import {
@@ -58,8 +58,8 @@ export function clearReadinessCache(): void {
 
 async function loginPath(): Promise<string> {
   try {
-    const found = await resolveLoginShellPath({ timeoutMs: 5000 });
-    if (found) return found.merged;
+    const found = await probeEffectivePath({ timeoutMs: 5000 });
+    if (found) return found.effectivePath;
   } catch {
     // Fall through to inherited PATH.
   }

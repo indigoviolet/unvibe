@@ -21,6 +21,7 @@ function failedSnapshot(): ReviewSnapshot {
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],
+    ingest: { status: "ready" },
     annotations: [],
     hunkStates: [],
     jobs: [],

@@ -588,6 +588,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10000,
+  logBatchTokens: 2000,
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
   versionPickerEnabled: false,
@@ -841,6 +842,7 @@ function seedReviewList(): ReviewSummary[] {
       reviewedHunks: reviewed,
       pendingComments: 1,
       guideStatus: "ready",
+      ingestStatus: "ready",
     },
     {
       id: "r-old",
@@ -860,6 +862,7 @@ function seedReviewList(): ReviewSummary[] {
       pendingComments: 0,
       guideStatus: "running",
       guideDetail: "Running: critic",
+      ingestStatus: "ready",
     },
     ...readExtraSessions(),
   ];
@@ -987,6 +990,7 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     version: stale ? { ...MOCK_VERSION, n: viewing } : MOCK_VERSION,
     files: MOCK_FILES,
     description,
+    ingest: { status: "ready" },
     pages: reviewId === "demo" ? mockPages : MOCK_PAGES,
     annotations,
     hunkStates: stale && viewing === 2 ? staleHunkStates() : [...hunkStates.values()],
@@ -1867,9 +1871,9 @@ export const mockApi = {
       delete entry.ingestStep;
       return mockFailedSnapshot(entry, fail);
     }
-    delete entry.ingestStatus;
     delete entry.ingestStep;
     delete entry.ingestError;
+    entry.ingestStatus = "ready";
     entry.versionCount = 1;
     entry.currentVersion = 1;
     entry.guideStatus = "ready";
@@ -1969,7 +1973,7 @@ export const mockApi = {
           };
         }
         if (entry) {
-          delete entry.ingestStatus;
+          entry.ingestStatus = "ready";
           delete entry.ingestStep;
           entry.versionCount = 1;
           entry.currentVersion = 1;
@@ -1998,7 +2002,7 @@ export const mockApi = {
           };
         }
         if (entry) {
-          delete entry.ingestStatus;
+          entry.ingestStatus = "ready";
           delete entry.ingestError;
           entry.versionCount = 1;
           entry.currentVersion = 1;
@@ -2020,7 +2024,7 @@ export const mockApi = {
       }
       if (hold) return mockLoadingSnapshot(entry);
       // Hold released: the ingest lands — flip to ready like the service.
-      delete entry.ingestStatus;
+      entry.ingestStatus = "ready";
       delete entry.ingestStep;
       entry.versionCount = 1;
       entry.currentVersion = 1;

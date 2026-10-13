@@ -15,7 +15,7 @@ import type { FastifyInstance } from "fastify";
 import type { DiagnosticsResponse, ModelInfo } from "@unvibe/shared";
 import { collectDiagnostics } from "../diagnostics/report.js";
 import { clearShimResolutionCache } from "../exec/shim-resolve.js";
-import { applyLoginShellPath } from "../exec/shell-path.js";
+import { applyLoginShellPath } from "../diagnostics/path-probe.js";
 import { clearReadinessCache, getReadiness } from "../readiness/index.js";
 import { loadConfig } from "../config.js";
 import { readLock } from "../cli/lock.js";

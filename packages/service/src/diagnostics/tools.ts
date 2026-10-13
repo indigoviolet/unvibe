@@ -578,9 +578,4 @@ export async function diagnoseAllTools(opts: DiagnoseOptions): Promise<Diagnosti
   return out;
 }
 
-/** Backwards-compatible single-path resolution: first runnable that meets min. */
-export function pickChosenPath(diag: DiagnosticTool): string | null {
-  return diag.chosen;
-}
-
 export type { AgentProvider };

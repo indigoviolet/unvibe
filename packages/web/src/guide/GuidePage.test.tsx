@@ -28,6 +28,7 @@ function snapshot(): ReviewSnapshot {
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
+    ingest: { status: "ready" },
     pages: [{ id: "root", kind: "root", title: "Root", saved: false, cards: [] }],
     annotations: [],
     hunkStates: [],

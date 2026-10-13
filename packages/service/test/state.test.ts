@@ -66,6 +66,7 @@ function makeSnapshot(rev = 1): ReviewSnapshot {
     contributions: [],
     logTail: [],
     rev,
+    ingest: { status: "ready" },
   };
 }
 

@@ -230,6 +230,7 @@ describe("StartPage requested split and filter (#95)", () => {
       reviewedHunks: 0,
       pendingComments: 0,
       guideStatus: "ready",
+      ingestStatus: "ready",
     };
     vi.mocked(api.reviews).mockResolvedValue({
       reviews: [

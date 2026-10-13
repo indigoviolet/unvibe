@@ -383,7 +383,7 @@ injectable command runner, like everything else.
 Database rule: there is one database and a switch never swaps it. Switching
 keeps your database and backs it up first to
 `<dataDir>/channel-backups/<channel>/` (`unvibe.db` plus `-wal`/`-shm`
-when present; legacy `unvibe.sqlite*` too). A newer build may upgrade the
+when present). A newer build may upgrade the
 database; if an older build then cannot open it, copy the backup back.
 Backups are never deleted. Rollback reinstalls the previous build and
 restores the backup taken at the start of the switch, so the old build

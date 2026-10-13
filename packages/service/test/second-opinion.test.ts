@@ -396,6 +396,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
       version,
       files,
       description,
+      ingest: { status: "ready" },
       pages,
       annotations: [],
       hunkStates: [],
