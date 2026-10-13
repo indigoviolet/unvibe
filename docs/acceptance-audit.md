@@ -254,11 +254,19 @@ needed (that deviation is closed, not added).
   share one derived fallback — the first sentence or clause of the body,
   cut on a word boundary with an ellipsis (`shared/src/content/titles.ts`,
   `CardView.test.tsx`). Expansions keep their quoted-selection header
-  with no derived second title. Replies never repeat what the reader
-  already sees (shared "Reply hygiene" guidance in `instructions.md`;
-  the `explain` "quote it back" rule is removed), with a deterministic
-  exact-match strip of a leading echo line at parse time
-  (`actions-echo.test.ts`, `content-titles.test.ts`).
+   with no derived second title. Replies never repeat what the reader
+   already sees (shared "Reply hygiene" guidance in `instructions.md`;
+   the `explain` "quote it back" rule is removed), with a deterministic
+   exact-match strip of a leading echo line at parse time
+   (`actions-echo.test.ts`, `content-titles.test.ts`). Agent process
+   chatter never reaches the reader (#51): the body never mentions
+   tools, connections, refusals or what could not be looked up (prompt
+   rule); a turn that reports itself `degraded`, or narrates its tooling
+   while running without the review MCP server, fails its job instead of
+   storing a card — streamed partials cleared, reason in the job error
+   on the Debug page (`degraded-turn-51.test.ts`). A reply anchor that
+   names only the card gets one repair turn carrying the reason
+   (`validate.test.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”).
