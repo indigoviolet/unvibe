@@ -198,18 +198,18 @@ Every card and every expansion card has the same controls:
 - For a branch without a PR, Submit is disabled and says why.
 
 ### 4.13 Diff
-**Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**. The toolbar stays pinned directly under the tab strip while the diff scrolls (opaque, one row; narrow panes scroll it sideways instead of wrapping). Revealing a cited line, a comment's jump-to-line, or a file jump from the Files list lands the target below the pinned rows.
+**Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**. The toolbar stays pinned directly under the tab strip while the diff scrolls (opaque, one row; narrow panes scroll it sideways instead of wrapping). Below it pin the current file header and then the current hunk header, each replaced by the next file or hunk at its boundary. Revealing a cited line or a comment's jump-to-line lands the target below all four pinned rows; a file jump from the Files list lands the file header below the toolbar.
 
 **Files panel** (it scrolls with the diff):
 - a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count) plus a **Reviewed** row; the button shows an active count whenever a non-default filter applies;
 - a progress bar of hunks reviewed;
 - a folder tree that compacts single-child folders, with +/− counts and reviewed/total per file. Clicking a file scrolls to it.
 
-**File header:** collapse chevron, the path (with the file name always visible), +/− counts, the reviewed count, and a mark-file-reviewed toggle.
+**File header:** collapse chevron, the path (with the file name always visible), +/− counts, the reviewed count, and a mark-file-reviewed toggle. It stays pinned under the toolbar while its file scrolls.
 
 **Hunks**
 - **Hunks are git's own:** a run of changed lines plus up to 3 unchanged lines of context, with nearby runs merged.
-- **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover.
+- **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover. It stays pinned under the file header while its hunk scrolls.
 - **Actions:** a leading fold chevron, then Summarize (agent), Add or Edit note, and Mark reviewed.
 - **Hunk card:** the agent summary and the user's note, each with Delete. It exists regardless of folding. **Folding only hides code**, replacing it with "N changed lines folded · show".
 - **Mark reviewed** greys the hunk and folds its code.
@@ -222,10 +222,10 @@ Every card and every expansion card has the same controls:
 **Fold all and Unfold all:** Fold all summarizes and folds every hunk that isn't hidden. Unfold all shows all code and keeps the summaries.
 
 **Views**
-- **Unified:** long lines scroll sideways.
+- **Unified:** long lines scroll sideways (per hunk: each hunk's code scrolls independently, so its header can pin without sitting inside the scroller).
 - **Split:** always two equal halves with fixed line-number columns; long lines wrap inside their half. Choosing Split widens the pane if it's narrow.
 - **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
-- **Pinned rows:** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view.
+- **Pinned rows (sideways):** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.
 
 **New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
 

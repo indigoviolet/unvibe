@@ -279,9 +279,19 @@ describe("hostile code text (issue #101)", () => {
         // …with no smuggled cells inside it.
         expect(cell.querySelectorAll("td").length).toBe(0);
       }
-      // The row survived as one row: the `</td><td>` injected no rows
-      // (one hunk-header row plus one code row).
-      expect(section.querySelectorAll("tbody tr").length).toBe(2);
+      // The injected `</td><td>` smuggled in no rows or cells: the hunk's
+      // code table holds exactly the one code row (3 cells unified — old
+      // number, new number, code — 4 split, a pair with an empty left)…
+      const codeRows = section.querySelectorAll(".dhunk table.diff tbody tr");
+      expect(codeRows.length).toBe(1);
+      expect(codeRows[0].querySelectorAll("td").length).toBe(view === "split" ? 4 : 3);
+      // …the hunk header renders exactly once, outside any table…
+      const headers = section.querySelectorAll(".dhunk-h");
+      expect(headers.length).toBe(1);
+      expect(headers[0].closest("table")).toBeNull();
+      // …and no rows, cells or tables were injected anywhere in the section.
+      expect(section.querySelectorAll("tr").length).toBe(1);
+      expect(section.querySelectorAll("table").length).toBe(1);
       if (tokens) expect(section.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     }
   });
