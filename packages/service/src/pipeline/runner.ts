@@ -29,7 +29,7 @@ import type {
 } from "@unvibe/shared";
 import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
-import { RetryableError } from "../jobs/errors.js";
+import { DegradedTurnError, RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
@@ -115,6 +115,26 @@ async function collectStreaming(
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Tool-chatter patterns, issue #51 — see throwIfDegradedTurn. Literals
+ * never belong in reader prose (the review MCP server is internal-only;
+ * tool names never render); frames are ordinary words in a
+ * process-complaint shape, counted only with no MCP activity.
+ */
+const DEGRADED_LITERAL_RES = [/\bMCP\b/, /\b(get_hunk|get_code|search_review|pin_context)\b/];
+const DEGRADED_FRAME_RES = [
+  /\bi\s+(could\s*not|couldn'?t|tried\s+to|attempted\s+to|was\s+unable\s+to|wasn'?t\s+able\s+to)\b[^.]{0,120}\b(look|cite|connect|access|confirm|verify|fetch|retrieve)\b/i,
+  /\bgh\b/,
+  /command\s+was\s+refused|permission\s+(denied|refused)/i,
+  /failed\s+to\s+connect/i,
+  /resolve\s+returned\s+no\b/i,
+];
+
+/** Strip fenced and inline code: code may legitimately contain these words. */
+function stripCodeForChatter(body: string): string {
+  return body.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ");
 }
 
 /**
@@ -374,6 +394,7 @@ export class Pipeline {
             const forked = await this.forkFor(o.reviewId);
             ctx.setSessionId(forked.session.id);
             let buffer = "";
+            const mcpBefore = this.opts.mcp.activitySnapshot(o.reviewId);
             const { text, usage } = await collectStreaming(
               this.opts.runner,
               forked.session,
@@ -394,6 +415,9 @@ export class Pipeline {
             );
             throwIfMcpRefusal(text);
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
+            // A degraded first reply fails fast: no repair turn can fix
+            // chatter about the agent's own tooling (#51).
+            this.throwIfDegradedTurn(o.reviewId, mcpBefore, first.data, first.body);
             let finalText = text;
             let finalCards = first.cards;
             let finalData = first.data;
@@ -421,6 +445,7 @@ export class Pipeline {
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
+              this.throwIfDegradedTurn(o.reviewId, mcpBefore, second.data, second.body);
             }
             ctx.reportUsage(usage);
             await this.recordUsage(o.reviewId, usage);
@@ -931,6 +956,38 @@ export class Pipeline {
   }
 
   /**
+   * Fail a degraded turn instead of storing its reply (#51): the agent
+   * said it could not do what was asked (trailing `degraded` field), or
+   * the body narrates its own tooling while the turn ran without the
+   * review MCP server. Terminal, not retried: the reply is deterministic
+   * for the session, and a retry would likely reproduce it at full token
+   * cost — the reader retries explicitly on a fresh session instead. The
+   * message lands in the job error, shown on the Debug page.
+   */
+  private throwIfDegradedTurn(
+    reviewId: string,
+    before: { connected: number; toolCalls: number; unknownHits: number },
+    data: ReplyData | null,
+    body: string,
+  ): void {
+    const field = data?.degraded;
+    if (typeof field === "string" && field.trim() !== "") {
+      throw new DegradedTurnError(`agent reported a degraded turn: ${field.trim().slice(0, 300)}`);
+    }
+    const after = this.opts.mcp.activitySnapshot(reviewId);
+    const noActivity = after.toolCalls <= before.toolCalls && after.connected <= before.connected;
+    const connError = after.unknownHits > before.unknownHits;
+    const stripped = stripCodeForChatter(body);
+    const literal = DEGRADED_LITERAL_RES.find((re) => re.test(stripped));
+    if (literal) {
+      throw new DegradedTurnError(`agent reply mentions its own tooling (${literal.source}); tool chatter is never guide content`);
+    }
+    if ((noActivity || connError) && DEGRADED_FRAME_RES.some((re) => re.test(stripped))) {
+      throw new DegradedTurnError(`agent reply reports what it could not look up instead of answering`);
+    }
+  }
+
+  /**
    * ActionContext for diagram finalize/repair from fills that run inside
    * the pipeline itself (go-deeper, concept pages). finalizeFresh takes
    * an ActionContext; the pipeline owns every field it needs.
@@ -1246,6 +1303,11 @@ export class Pipeline {
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
+        // Card ids present before this turn: a degraded turn removes what
+        // it streamed, never older cards (#51).
+        const beforeIds = new Set(
+          (this.opts.reviews.getSnapshot(reviewId)?.pages.find((p) => p.id === "root")?.cards ?? []).map((c) => c.id),
+        );
         const session = await this.opts.runner.start({
           provider: settings.main.provider,
           model: settings.main.model,
@@ -1257,6 +1319,7 @@ export class Pipeline {
         try {
           let buffer = "";
           const streamed = new Set<number>();
+          const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
           const { text, usage } = await collectStreaming(
             this.opts.runner,
             session,
@@ -1291,10 +1354,12 @@ export class Pipeline {
           throwIfMcpRefusal(text);
           await this.recordUsage(reviewId, usage);
           // Issue #50: reader cards match their own `##` titles.
-          const { cards, data, validation } = this.parseAndValidate(reviewId, buffer, []);
+          const { cards, data, validation, body } = this.parseAndValidate(reviewId, buffer, []);
           let finalCards = cards;
           let finalData = data;
           let finalValidation = validation;
+          let finalBody = body;
+          this.throwIfDegradedTurn(reviewId, mcpBefore, data, body);
           if (validation.needsRepairTurn) {
             const repairPrompt =
               `Some citations in your previous reply could not be verified:\n` +
@@ -1317,7 +1382,9 @@ export class Pipeline {
             finalCards = second.cards;
             finalData = second.data;
             finalValidation = second.validation;
+            finalBody = second.body;
           }
+          this.throwIfDegradedTurn(reviewId, mcpBefore, finalData, finalBody);
           await this.applyReaderResult(reviewId, finalCards, finalData, finalValidation);
           // #122: the guide cards are already applied above; bookkeeping
           // joins the per-review chain (still awaited before the job ends).
@@ -1330,6 +1397,15 @@ export class Pipeline {
           this.warmBase(reviewId);
         } catch (err) {
           this.setStage(reviewId, "reader", "error", (err as Error).message);
+          if (err instanceof DegradedTurnError) {
+            // A degraded turn must leave no card behind: provisional cards
+            // streamed mid-turn may already hold the chatter (#51).
+            await this.opts.reviews.mutate(reviewId, (draft) => {
+              const root = draft.pages.find((p) => p.id === "root");
+              if (!root) return;
+              root.cards = root.cards.filter((c) => beforeIds.has(c.id));
+            }).catch(() => {});
+          }
           throw err;
         } finally {
           try {

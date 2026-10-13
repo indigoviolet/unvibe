@@ -7,7 +7,7 @@ export {
   type Clock,
   type RandomSource,
 } from "./clock.js";
-export { isAbortError, RetryableError } from "./errors.js";
+export { isAbortError, DegradedTurnError, RetryableError } from "./errors.js";
 export {
   DEFAULT_BACKOFF_BASE_MS,
   DEFAULT_BACKOFF_MAX_MS,
