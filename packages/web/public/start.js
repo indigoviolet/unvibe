@@ -12,7 +12,9 @@
     var fromUrl = params.get("token");
     if (fromUrl) {
       localStorage.setItem("unvibe_token", fromUrl);
-      document.cookie = "__unvibe_token=" + encodeURIComponent(fromUrl) + "; SameSite=Lax; path=/";
+      // Same literal as tokenCookie() in src/api/client.ts (Max-Age keeps
+      // the plain bookmark working across browser restarts); keep in step.
+      document.cookie = "__unvibe_token=" + encodeURIComponent(fromUrl) + "; Max-Age=31536000; SameSite=Lax; path=/";
       params.delete("token");
       var rest = params.toString();
       window.history.replaceState(null, "", window.location.pathname + (rest ? "?" + rest : ""));

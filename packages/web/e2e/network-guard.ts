@@ -18,7 +18,13 @@ function isLocalRequest(url: string): boolean {
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
   try {
     const u = new URL(url);
-    return u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "[::1]";
+    // unvibe.localhost (issue #108) resolves to loopback; it is local.
+    return (
+      u.hostname === "127.0.0.1" ||
+      u.hostname === "localhost" ||
+      u.hostname === "unvibe.localhost" ||
+      u.hostname === "[::1]"
+    );
   } catch {
     return true;
   }

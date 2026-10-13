@@ -3,7 +3,10 @@
 //   node scripts/e2e-linux.mjs [--port N]
 //
 // Uses a temporary HOME + data dir + port, outside the user's real setup:
-//  1. `unvibe setup` writes the .desktop handler (and nothing else).
+//  1. `unvibe setup --no-login` writes the .desktop handler (and nothing
+//     else). The start-at-login unit is skipped here on purpose: enabling
+//     it would touch the real login session; its contents and enable
+//     commands are covered by `setup.test.ts` with a fake HOME.
 //  2. Invoking the registered handler (xdg-open, else the desktop Exec
 //     line directly) starts the service; a second `start` reuses it.
 //  3. `unvibe status` reports running.
@@ -112,9 +115,11 @@ const lockPid = () => {
 };
 
 // 1. setup -----------------------------------------------------------------
-const setup = runCli(["setup"]);
+// --no-login keeps this hermetic: no real systemd enable/start.
+const setup = runCli(["setup", "--no-login"]);
 console.log(setup.out);
 assert(setup.code === 0, "setup exits 0");
+assert(setup.out.includes(`http://unvibe.localhost:${PORT}`), "setup prints the new URL");
 const desktop = path.join(HOME, ".local", "share", "applications", "unvibe-open.desktop");
 assert(fs.existsSync(desktop), "desktop handler written to temp HOME");
 const execLine = fs

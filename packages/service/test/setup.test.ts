@@ -8,6 +8,16 @@ import {
   patchInfoPlist,
 } from "../src/cli/setup/macos.js";
 import {
+  LAUNCHD_LABEL,
+  launchdPlistContent,
+  launchdPlistPath,
+  SYSTEMD_UNIT_NAME,
+  systemdEnv,
+  systemdQuote,
+  systemdUnitContent,
+  systemdUnitPath,
+} from "../src/cli/setup/login.js";
+import {
   desktopFileContent,
   desktopFilePath,
   DESKTOP_FILENAME,
@@ -114,33 +124,39 @@ function fakeHome(): string {
 }
 
 const PATHS = (home: string) => ({ homeDir: home, nodePath: "/usr/bin/node", cliPath: "/x/cli.js" });
+const OPTS = (home: string) => ({ port: 4517, dataDir: path.join(home, ".local", "share", "unvibe") });
 
 describe("setup orchestration", () => {
   it("mac install compiles, patches the plist, registers; rerun is idempotent", async () => {
     const home = fakeHome();
     const runner = stubRunner();
-    const first = await installSetup(PATHS(home), runner, "darwin");
+    const first = await installSetup(PATHS(home), runner, "darwin", OPTS(home));
     expect(first.join("\n")).toContain("Applications/Unvibe.app");
     const plist = fs.readFileSync(path.join(home, "Applications/Unvibe.app/Contents/Info.plist"), "utf8");
     expect(plist).toContain("<string>unvibe</string>");
     expect(runner.calls.some((c) => c.startsWith("osacompile"))).toBe(true);
     expect(runner.calls.some((c) => c.includes("lsregister -f"))).toBe(true);
+    // Start-at-login agent installed and enabled (#108).
+    expect(first.join("\n")).toContain("starts at login");
+    expect(runner.calls.some((c) => c.includes("launchctl bootstrap"))).toBe(true);
 
     const callsBefore = runner.calls.length;
-    const second = await installSetup(PATHS(home), runner, "darwin");
+    const second = await installSetup(PATHS(home), runner, "darwin", OPTS(home));
     expect(second.length).toBe(first.length);
     expect(runner.calls.length).toBeGreaterThan(callsBefore);
     // Same content: deterministic output.
     expect(fs.readFileSync(path.join(home, "Applications/Unvibe.app/Contents/Info.plist"), "utf8")).toBe(plist);
   });
 
-  it("mac uninstall removes the app; rerun is a no-op", async () => {
+  it("mac uninstall removes the app and the login agent; rerun is a no-op", async () => {
     const home = fakeHome();
     const runner = stubRunner();
-    await installSetup(PATHS(home), runner, "darwin");
+    await installSetup(PATHS(home), runner, "darwin", OPTS(home));
     const steps = await uninstallSetup(PATHS(home), runner, "darwin");
     expect(steps.join("\n")).toContain("removed");
     expect(fs.existsSync(path.join(home, "Applications/Unvibe.app"))).toBe(false);
+    expect(fs.existsSync(launchdPlistPath(home))).toBe(false);
+    expect(runner.calls.some((c) => c.includes(`launchctl bootout gui/`) && c.includes(LAUNCHD_LABEL))).toBe(true);
     const again = await uninstallSetup(PATHS(home), runner, "darwin");
     expect(again.join("\n")).toContain("nothing to remove");
   });
@@ -148,33 +164,29 @@ describe("setup orchestration", () => {
   it("linux install writes the desktop file and registers the MIME type", async () => {
     const home = fakeHome();
     const runner = stubRunner();
-    const steps = await installSetup(PATHS(home), runner, "linux");
+    const steps = await installSetup(PATHS(home), runner, "linux", OPTS(home));
     const file = desktopFilePath(home);
     expect(fs.existsSync(file)).toBe(true);
     expect(fs.readFileSync(file, "utf8")).toBe(desktopFileContent("/usr/bin/node", "/x/cli.js"));
     expect(runner.calls).toContain(`xdg-mime default ${DESKTOP_FILENAME} x-scheme-handler/unvibe`);
     expect(steps.join("\n")).toContain(file);
+    // Start-at-login unit installed and enabled (#108).
+    expect(steps.join("\n")).toContain("starts at login");
+    expect(runner.calls).toContain(`systemctl --user enable --now ${SYSTEMD_UNIT_NAME}`);
 
-    const again = await installSetup(PATHS(home), runner, "linux");
+    const again = await installSetup(PATHS(home), runner, "linux", OPTS(home));
     expect(again.length).toBe(steps.length);
 
     const removed = await uninstallSetup(PATHS(home), runner, "linux");
     expect(removed.join("\n")).toContain("removed");
     expect(fs.existsSync(file)).toBe(false);
+    expect(fs.existsSync(systemdUnitPath(home))).toBe(false);
   });
 
-  it("writes nothing outside its allow-listed roots (no login items)", async () => {
+  it("writes only its allow-listed roots: handler plus the login unit", async () => {
     for (const platform of ["darwin", "linux"] as const) {
       const home = fakeHome();
-      // Seed the login-item locations so we can tell setup didn't touch them.
-      const loginItemDirs = [
-        "Library/LaunchAgents",
-        ".config/autostart",
-        ".config/systemd/user",
-      ].map((d) => path.join(home, d));
-      for (const d of loginItemDirs) fs.mkdirSync(d, { recursive: true });
-
-      await installSetup(PATHS(home), stubRunner(), platform);
+      await installSetup(PATHS(home), stubRunner(), platform, OPTS(home));
 
       const seen: string[] = [];
       const walk = (dir: string): void => {
@@ -190,11 +202,37 @@ describe("setup orchestration", () => {
         const underAllowed = allowed.some((a) => f === a || f.startsWith(a + path.sep));
         expect(underAllowed, `${platform}: setup wrote unexpected file ${f}`).toBe(true);
       }
-      // And specifically: nothing unvibe-related in login-item locations.
-      for (const d of loginItemDirs) {
-        expect(fs.readdirSync(d), `${platform}: login-item dir ${d} touched`).toEqual([]);
-      }
+      // And specifically: the login unit is exactly where it belongs.
+      const loginFile = platform === "darwin" ? launchdPlistPath(home) : systemdUnitPath(home);
+      expect(fs.existsSync(loginFile), `${platform}: login unit written`).toBe(true);
     }
+  });
+
+  it("--no-login skips the login unit (handler only, as before #108)", async () => {
+    for (const platform of ["darwin", "linux"] as const) {
+      const home = fakeHome();
+      const runner = stubRunner();
+      const steps = await installSetup(PATHS(home), runner, platform, { ...OPTS(home), noLogin: true });
+      expect(steps.join("\n")).toContain("--no-login");
+      expect(fs.existsSync(platform === "darwin" ? launchdPlistPath(home) : systemdUnitPath(home))).toBe(false);
+      expect(runner.calls.some((c) => c.includes("launchctl bootstrap") || c.includes("systemctl --user enable"))).toBe(
+        false,
+      );
+    }
+  });
+
+  it("login enable failure still installs, with a warning naming the manual command", async () => {
+    const home = fakeHome();
+    const failing: SetupRunner = {
+      run: async (cmd: string) =>
+        cmd === "systemctl" || cmd === "launchctl"
+          ? { code: 1, stdout: "", stderr: "no session" }
+          : { code: 0, stdout: "", stderr: "" },
+    };
+    const steps = await installSetup(PATHS(home), failing, "linux", OPTS(home));
+    expect(fs.existsSync(systemdUnitPath(home))).toBe(true);
+    expect(steps.join("\n")).toContain("warning: login start not enabled");
+    expect(steps.join("\n")).toContain("systemctl --user enable --now");
   });
 
   it("osacompile failure surfaces a clear error", async () => {
@@ -202,6 +240,54 @@ describe("setup orchestration", () => {
     const failing: SetupRunner = {
       run: async () => ({ code: 1, stdout: "", stderr: "applescript error" }),
     };
-    await expect(installSetup(PATHS(home), failing, "darwin")).rejects.toThrow("osacompile failed");
+    await expect(installSetup(PATHS(home), failing, "darwin", OPTS(home))).rejects.toThrow("osacompile failed");
+  });
+});
+
+describe("start-at-login units (#108)", () => {
+  const UNIT = { nodePath: "/usr/bin/node", cliPath: "/x/cli.js", port: 4517, dataDir: "/home/u/.local/share/unvibe" };
+
+  it("launchd plist runs the CLI at load, kept alive, never idle-exits", () => {
+    expect(launchdPlistPath("/Users/test")).toBe("/Users/test/Library/LaunchAgents/com.unvibe.service.plist");
+    const content = launchdPlistContent(UNIT);
+    expect(content).toMatchSnapshot();
+    expect(content).toContain(`<string>${LAUNCHD_LABEL}</string>`);
+    expect(content).toContain("<string>start</string>");
+    expect(content).toContain("<string>--foreground</string>");
+    expect(content).toContain("<key>RunAtLoad</key>");
+    expect(content).toContain("<key>KeepAlive</key>");
+    expect(content).toContain("<string>4517</string>");
+    expect(content).toContain("<string>/home/u/.local/share/unvibe</string>");
+    expect(content).toContain("<key>UNVIBE_IDLE_MS</key>");
+    expect(content).toContain("<string>0</string>");
+    expect(content).not.toContain("GITHUB_TOKEN");
+  });
+
+  it("launchd plist escapes XML in paths", () => {
+    const content = launchdPlistContent({ ...UNIT, dataDir: "/home/u/a&b/<c>" });
+    expect(content).toContain("/home/u/a&amp;b/&lt;c&gt;");
+  });
+
+  it("systemd unit starts at login, restarts, never idle-exits", () => {
+    expect(systemdUnitPath("/home/u")).toBe("/home/u/.config/systemd/user/unvibe.service");
+    const content = systemdUnitContent(UNIT);
+    expect(content).toMatchSnapshot();
+    expect(content).toContain("ExecStart=/usr/bin/node /x/cli.js start --foreground");
+    expect(content).toContain("Environment=UNVIBE_PORT=4517");
+    expect(content).toContain("Environment=UNVIBE_DATA_DIR=/home/u/.local/share/unvibe");
+    expect(content).toContain("Environment=UNVIBE_IDLE_MS=0");
+    expect(content).toContain("WantedBy=default.target");
+    expect(content).toContain("Restart=on-failure");
+    expect(content).not.toContain("GITHUB_TOKEN");
+  });
+
+  it("systemd quoting handles spaces", () => {
+    expect(systemdQuote("/usr/bin/node")).toBe("/usr/bin/node");
+    expect(systemdQuote("/home/u/My Tools/node")).toBe('"/home/u/My Tools/node"');
+    expect(systemdEnv("UNVIBE_PORT", "4517")).toBe("Environment=UNVIBE_PORT=4517");
+    expect(systemdEnv("UNVIBE_DATA_DIR", "/home/u/My Data")).toBe('Environment="UNVIBE_DATA_DIR=/home/u/My Data"');
+    const content = systemdUnitContent({ ...UNIT, nodePath: "/home/u/My Tools/node", dataDir: "/home/u/My Data" });
+    expect(content).toContain('ExecStart="/home/u/My Tools/node" /x/cli.js start --foreground');
+    expect(content).toContain('Environment="UNVIBE_DATA_DIR=/home/u/My Data"');
   });
 });

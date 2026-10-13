@@ -4,7 +4,9 @@
  * core through a service route; nothing here restarts the service — a live
  * service is refused with a pointer to `unvibe stop`.
  */
+import os from "node:os";
 import type { CommandRunner } from "../exec/index.js";
+import { loadConfig } from "../config.js";
 import {
   formatChannelList,
   isChannelName,
@@ -13,6 +15,7 @@ import {
 } from "../update/channels.js";
 import { runSwitchCore } from "../update/switch.js";
 import { DB_RULE } from "../update/data-backup.js";
+import { refreshLoginUnitIfManaged } from "../update/service-manager.js";
 
 export const UPDATE_USAGE = [
   "unvibe update: install a different channel",
@@ -91,6 +94,22 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
     };
   }
   const lines = [...result.lines];
-  if (result.code === 0 && result.installed) lines.push("run `unvibe start` to launch the new build.");
+  if (result.code === 0 && result.installed) {
+    lines.push("run `unvibe start` to launch the new build.");
+    // The global install can move the installed files (and a Node upgrade
+    // moves the node binary): refresh the login unit with the fresh paths
+    // (Q2). The entry is renewed in place under the pinned prefix, so the
+    // running CLI's own path is the new one; the node is this process's.
+    const cliPath = deps.cliScriptPath;
+    if (cliPath) {
+      const refreshed = refreshLoginUnitIfManaged(os.homedir(), process.platform, {
+        nodePath: process.execPath,
+        cliPath,
+        port: loadConfig().port,
+        dataDir: deps.dataDir,
+      });
+      if (refreshed) lines.push("login start refreshed for the new build.");
+    }
+  }
   return { code: result.code, lines };
 }

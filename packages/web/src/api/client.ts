@@ -66,13 +66,28 @@ import { mockApi } from "../mock/index.js";
 
 const TOKEN_KEY = "unvibe_token";
 const TOKEN_COOKIE = "__unvibe_token";
+/**
+ * Cookie lifetime, one year (issue #108): the plain bookmark URL keeps
+ * working across browser restarts. Attributes stay as before otherwise —
+ * `SameSite=Lax; Path=/`, host-only (no `Domain`), no `Secure` (plain
+ * http). `HttpOnly` is impossible here: the cookie is mirrored from JS so
+ * static asset loads authenticate; the token's real carriers are
+ * `localStorage` (per origin) plus the `Authorization` header.
+ * `packages/web/public/start.js` carries the same literal for the offline
+ * page; keep the two in step.
+ */
+export const TOKEN_COOKIE_MAX_AGE = 31536000;
+
+export function tokenCookie(token: string): string {
+  return `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Max-Age=${TOKEN_COOKIE_MAX_AGE}; SameSite=Lax; path=/`;
+}
 
 export function initTokenFromUrl(): string | null {
   const params = new URLSearchParams(window.location.search);
   const fromUrl = params.get("token");
   if (fromUrl) {
     localStorage.setItem(TOKEN_KEY, fromUrl);
-    document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(fromUrl)}; SameSite=Lax; path=/`;
+    document.cookie = tokenCookie(fromUrl);
     // Strip the token from the address bar without reloading.
     params.delete("token");
     const rest = params.toString();

@@ -102,7 +102,15 @@ export async function serve(): Promise<void> {
   process.on("SIGINT", onSignal);
   process.on("exit", () => removeOwnLock(config.dataDir, me));
 
-  const url = await listen(created.app, config);
+  const url = await listen(created.app, config).catch((err: unknown) => {
+    // Bind conflict (or no loopback at all): plain-words message, no
+    // stack. The foreground lock above names a process about to exit, so
+    // remove it — otherwise the next start reads it as a stale lock,
+    // which is harmless but noisy.
+    console.error(err instanceof Error ? err.message : String(err));
+    removeOwnLock(config.dataDir, me);
+    process.exit(1);
+  });
   console.log(`Unvibe listening on ${url}/?token=${token}`);
 }
 

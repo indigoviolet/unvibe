@@ -75,7 +75,7 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
     proc.stdout?.on("data", (d: Buffer) => {
       log(d);
       out += d.toString();
-      const m = out.match(/Unvibe listening on (http:\/\/127\.0\.0\.1:\d+)\/\?token=(\S+)/);
+      const m = out.match(/Unvibe listening on (http:\/\/(?:unvibe\.localhost|127\.0\.0\.1):\d+)\/\?token=(\S+)/);
       if (m) {
         clearTimeout(timer);
         resolve({ origin: m[1], token: m[2] });

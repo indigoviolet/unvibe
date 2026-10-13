@@ -79,18 +79,33 @@ checkouts; job-list snapshot bloat; doctor port diagnosis; broken
   diagnostics (home+token redacted); Reload everything re-probes PATH,
   restarts adapters (in-flight fail as retryable, jobs retry), clears
   caches, re-checks d2, without restart.
-- **Nothing hosted publicly** — met. Fastify binds `127.0.0.1` only
-  (`server.ts:278`); static network guards (`network-guards.test.ts`,
+- **Nothing hosted publicly** — met. Fastify binds `127.0.0.1` plus a
+  `::1` companion on the same port (issue #108; answers however the
+  browser resolves `unvibe.localhost`, still loopback only, no host
+  setting); static network guards (`network-guards.test.ts`,
   `network-privacy.test.ts`, Playwright `network-privacy.spec.ts`,
   `network-guard.ts` fixture) fail the suite on any non-loopback contact.
 - **Nothing posted until Submit** — met. `gh-writes.test.ts` proves only
   `src/submit/**` + `routes/submit.ts` contain write-shaped `gh` calls;
   this branch adds the submit lease so even a crash cannot double-post
   (`submit/lease.ts`, `submit-m6.test.ts` “crash safety”).
-- **Nothing starts at login** — met. `e2e-linux.mjs` asserts setup writes
-  only the `.desktop` handler; `macos-testing.md` step 3 checks
-  `~/Library/LaunchAgents` is empty; idle exit (10 min default) shuts the
-  service down.
+- **Starts at login, stays local** (issue #108) — met. `setup` writes a
+  launchd agent (macOS) / systemd user unit (Linux) running
+  `start --foreground` with port + data dir baked in and
+  `UNVIBE_IDLE_MS=0`, so the login-started service never idle-exits; a
+  manually started service keeps the 10-minute idle exit. Follow-up:
+  while the unit is installed, `stop`/`start`/`open` go through the
+  service manager (crash-only restart: launchd `KeepAlive
+  SuccessfulExit:false`, systemd `Restart=on-failure` — a deliberate
+  stop stays down, updates can't race a restart); `status` says `starts
+  at login`; failed manager starts unload again (no crash-loop, no port
+  fight) and fall back to a direct spawn with a warning. Both update
+  paths refresh the unit with the just-installed paths; `doctor` warns
+  on stale baked paths; the login-shell PATH probe (headless-safe) is
+  how manager-started services find their tools. `managed-cli` +
+  `service-manager` tests pin the matrix with a stub runner + fake HOME
+  (`e2e-*.mjs` use `--no-login` to stay hermetic). macOS
+  enable + Safari still need a human (see `macos-testing.md`).
 - **New repos under the team org** — cannot verify here (process rule, no
   org access from this machine).
 
@@ -1045,13 +1060,19 @@ needed (that deviation is closed, not added).
 
 ## §14 Shell, install, security, storage — all met
 
-- Service on 127.0.0.1 + per-install token on every HTTP and WS route —
-  met (enumerated all 30 routes + WS: 401 unauth — ran; `server.ts:169`
-  gate; WS handshake 401 — ran).
-- Token never in URL after first load — met (`web/src/api/client.ts:55`
-  moves URL token to `localStorage` + `SameSite=Lax` cookie; ui-walk).
+- Service on loopback + per-install token on every HTTP and WS route —
+  met (enumerated all 30 routes + WS: 401 unauth — ran; `server.ts`
+  gate; WS handshake 401 — ran). Opens at `http://unvibe.localhost:4517`
+  (issue #108; the `127.0.0.1` URL is the same service).
+- Token never in URL after first load — met (`web/src/api/client.ts`
+  moves URL token to `localStorage` + persistent `SameSite=Lax` cookie
+  (`Max-Age` one year, issue #108); ui-walk).
 - Host/Origin checks (DNS-rebinding, cross-site WS) — met (new
   `security/host.ts`, 403 for evil Host/Origin — ran; `host.test.ts`).
+  Issue #108 accepts exactly `unvibe.localhost` more (no suffix match;
+  look-alikes, trailing dot, userinfo, hex IPv6 all 403 — ran, HTTP and
+  WS; the gate stays port-agnostic by decision: pinning 403s the app's
+  own loads on ephemeral binds).
 - MCP per-session secrets (unguessable 256-bit, scoped per review, expire
   with session/review, pin_context reader-only) — met (`mcp/registry.ts`
   + lifecycle fixes + `mcp.test.ts` “secret lifecycle” — ran).
@@ -1063,7 +1084,9 @@ needed (that deviation is closed, not added).
   (empirical lifecycle on a real repo — ran; `reviews/delete.ts`).
 - Nothing starts at login; idle exit (10 min, no window + no jobs) — met
   (`e2e-linux.mjs` idle-exit; empirical 8 s idle exit + stays up with
-  jobs — ran).
+  jobs — ran). Superseded by issue #108: the service now starts at login
+  (launchd/systemd, `UNVIBE_IDLE_MS=0` there so it never idle-exits);
+  manual starts keep the idle exit. See "Starts at login" above.
 - Install `npm install -g github:<org>/unvibe#release` + `unvibe setup` +
   same command updates — **met**: the `#release` ref serves a
   self-contained tree (built service + web, no build step, no lifecycle

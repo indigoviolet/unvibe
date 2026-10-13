@@ -22,7 +22,7 @@ This document is the hand-off for building it. It contains the product behaviour
 **Constraints that apply throughout**
 - **No new logins.** GitHub access goes through the user's existing `gh` login. Agents run through the user's existing Claude Code and Codex logins.- **Nothing is hosted on the public internet.** Everything runs on the user's machine, on localhost.
 - **Nothing is posted to GitHub until the user clicks Submit review** (§4.12).
-- **Nothing starts at login** (§14).
+- **The service starts at login** (§14) so the bookmark always answers; a manually started service still idle-exits.
 
 **Where to start.** Milestone M0 (§17) is a short spike that tests the riskiest assumption, ACP session forking, before anything else is built.
 
@@ -282,8 +282,9 @@ Every card and every expansion card has the same controls:
 ┌───────── Installed web app (Chrome "Install app", served from localhost) ─────────┐
 │  React UI: start page · guide · source pane · settings                            │
 └───────────────▲─────────────────────────────── HTTP + WebSocket (token) ──────────┘
-                │
+                 │
 ┌───────────────┴──────────────── Unvibe service (Node/TypeScript, localhost) ───────┐
+│  Opens at http://unvibe.localhost:4517 (bookmark; starts at login, §14)            │
 │  Review store (SQLite + files) · ingest (git/gh) · context builder · job queue    │
 │  Citation validator · MCP server (HTTP, shared by all sessions)                   │
 │  AgentRunner interface ──► ACP client ──► claude-agent-acp / codex-acp (stdio)    │
@@ -546,12 +547,14 @@ A new base is built when any of these happens:
 
 ## 14. App shell, install and security
 
-- **Service:** Node and TypeScript, listening on `127.0.0.1` only. It requires a **token** (one per install): generated at setup, held by the UI, and checked on every HTTP and WebSocket request.
-- **UI:** a React (Vite) build served by the service, and **installable as a web app** from Chrome (localhost counts as secure). There are no browser extensions.
-- **Nothing starts at login.**
-  - `unvibe setup` writes a small link-handler app to `~/Applications`. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing, and it registers the `unvibe://` URL scheme.
+- **Service:** Node and TypeScript, listening on loopback only (`127.0.0.1` plus a `::1` companion on the same port, so it answers however the browser resolves the name; never a routable address, and no setting can move it there). It requires a **token** (one per install): generated at setup, held by the UI, and checked on every HTTP and WebSocket request. The Host/Origin gate accepts exactly `127.0.0.1`, `localhost`, `unvibe.localhost`, `::1` and `::ffff:127.0.0.1` — never a suffix or substring; the check stays port-agnostic as before (pinning was tried and reverted: it 403s the app's own loads on ephemeral binds).
+- **UI:** a React (Vite) build served by the service at `http://unvibe.localhost:4517` (bookmarkable; the `127.0.0.1` URL is the same service), and **installable as a web app** from Chrome (localhost counts as secure). There are no browser extensions.
+- **The service starts at login.**
+  - `unvibe setup` writes a start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux) running `start --foreground` with the port and data dir baked in, plus the small link-handler app to `~/Applications` (macOS) or the desktop file (Linux) that registers the `unvibe://` URL scheme. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing.
+  - `setup` prints the link with the token once; after that a long-lived cookie (`Max-Age` one year, `SameSite=Lax`, host-only) carries it and the plain URL works as a bookmark. The old `127.0.0.1` URL keeps working because it is the same service; there are no redirects.
   - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The link handler starts the service, and the page reloads.
-  - The service exits after a period with no open window and no running jobs (default 10 minutes).
+  - A login-started service never idle-exits (`UNVIBE_IDLE_MS=0` in the unit). A manually started service exits after a period with no open window and no running jobs (default 10 minutes).
+  - While the unit is installed, `stop`/`start` (and `open`) go through the service manager; otherwise the CLI owns the process directly. The units restart on crash only (launchd `KeepAlive SuccessfulExit:false`, systemd `Restart=on-failure`), so a deliberate stop stays down and an update (`stop` → install → `start`, or the in-app switch) can never race a manager restart. Every update rewrites the unit with the just-installed paths; `doctor` warns when the baked paths go stale.
 - **Install:** `npm install -g github:<org>/unvibe#release`, then `unvibe setup`. Updates use the same install command. The agent CLIs (`claude`/`codex`) are the user's own installs (see `DEVELOPMENT.md` "Releases" and `docs/acceptance-audit.md` "Intentional deviations" item 1).
 - **macOS gotcha:** apps opened from Finder don't inherit the shell's `PATH`. On startup the service must read it from a login shell (`zsh -lc 'echo $PATH'`) so it can find `gh`, `git`, `claude`, `codex` and mise-installed tools.
 - **Storage:** `~/.local/share/unvibe/` holds a SQLite database plus a folder per review (`<owner>/<repo>/<review-id>/`) for the log and snapshots. Nothing is written into the user's checkout, apart from the worktree, which is created alongside it under a managed path.
@@ -612,7 +615,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | Rebase comparison | `git range-diff <old-base>..<old-head> <new-base>..<new-head>` |
 
 - **Description edits** are converted from the edited HTML back to Markdown before `gh pr edit`. Content outside edited paragraphs must round-trip unchanged.
-- **If `GITHUB_TOKEN` is set in the environment** without the needed scopes, it can override the `gh` keyring login. Run `gh` with `GITHUB_TOKEN` unset unless the user configures otherwise.
+- **If `GITHUB_TOKEN` is set in the environment** without the needed scopes, it can override the `gh` keyring login. Run `gh` with `GITHUB_TOKEN` unset unless the user configures otherwise. The start-at-login units (§14) bake in only `UNVIBE_PORT`, `UNVIBE_DATA_DIR` and `UNVIBE_IDLE_MS` — never the whole environment, so a stray `GITHUB_TOKEN` cannot leak into the login-started service.
 
 ---
 
