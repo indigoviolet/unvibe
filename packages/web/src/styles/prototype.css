@@ -67,6 +67,14 @@ code { font-family: var(--mono); font-size: .86em; }
 .rbar .rid .ib { flex: none; align-self: center; }
 .rbar .seg { flex: none; }
 .rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
+/* Live job count (issue #98): two numbers (running · queued) in the review
+   bar's right corner, after Submit so appearing never shifts the title or
+   the buttons. Nothing renders when no job is live, so it reserves no
+   space. The gradient drifts while anything runs; queued-only is quiet. */
+.jcount { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; white-space: nowrap; background: var(--surface); }
+.jcount:hover { border-color: var(--accent); color: var(--accent); }
+.jcount.live { background: linear-gradient(115deg, var(--accent-soft), var(--surface) 40%, var(--accent-soft)); background-size: 220% 100%; animation: jcount-drift 4s ease-in-out infinite alternate; }
+@keyframes jcount-drift { from { background-position: 0% 0; } to { background-position: 100% 0; } }
 /* A review shows two bars (top + review), so the grid needs three rows. */
 .app.with-reviewbar { grid-template-rows: auto auto minmax(0, 1fr); }
 /* The narrow-window overlay floats below both bars. */
@@ -370,8 +378,14 @@ mark.anc.on { outline: 2px solid var(--note); }
 .follow button:hover { background: var(--accent-soft); }
 .working { margin: 6px 0; padding: 10px 12px; border-radius: 8px; background: var(--sunk); font-size: 13px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
 .card.pend .working { grid-column: 1 / -1; margin: 0; }
-.dots { display: inline-flex; gap: 3px; } .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: blink 1s infinite; } .dots i:nth-child(2) { animation-delay: .15s } .dots i:nth-child(3) { animation-delay: .3s }
-@keyframes blink { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
+/* Working-indicator dots (issue #98): a sequential bounce-plus-pulse that
+   reads at a glance at 5px — each dot rises and flashes in turn, staggered
+   down the row. Every working state shares this one class (cards,
+   expansions, threads, hunk summaries, placeholders, the loading page), so
+   one rule animates them all. The depth stepper's `.pips` are a static
+   level display and stay still on purpose. */
+.dots { display: inline-flex; gap: 3px; } .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: .35; animation: dot-pulse 1s ease-in-out infinite; } .dots i:nth-child(2) { animation-delay: .15s } .dots i:nth-child(3) { animation-delay: .3s }
+@keyframes dot-pulse { 0%, 100% { opacity: .35; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-2.5px); } }
 .fresh { animation: rise .4s ease-out; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 /* Card/expansion being rewritten by an agent action: the accent left border
@@ -388,7 +402,7 @@ mark.anc.on { outline: 2px solid var(--note); }
 @keyframes rewrite-pulse { 0%, 100% { border-left-color: var(--accent); } 50% { border-left-color: var(--line); } }
 /* Placeholder where agent-started content will land: dashed like a pending card. */
 .card.child.placeholder { border-style: dashed; background: none; }
-@media (prefers-reduced-motion: reduce) { .fresh, .dots i, .card.rewriting { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .fresh, .dots i, .card.rewriting, .jcount.live { animation: none; } .dots i { opacity: 1; transform: none; } }
 .dg { margin: 12px 0 4px; }
 /* D2 diagrams (service-rendered SVG, inlined): the svg fills the block
    width up to its natural size (max-width, set per diagram), preserving

@@ -68,7 +68,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 ### 4.1 Layout
 - **Top bar (app-wide only):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge and Tips where they show, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button).
-- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action.
+- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action. While any of the review's jobs is running or queued, a small `running · queued` count sits in the right corner after Submit — a link to the Debug jobs list, with a slow gradient drift while anything runs. It renders nothing when no job is live.
 - **Guide** (left, main column): the current page.
 - **Source pane** (right): tabs for **PR description** and **Diff**. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
@@ -113,6 +113,7 @@ Every card and every expansion card has the same controls:
 - **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and expansions attached to the card survive undo.
 - **Mark read:** greys the card and collapses it to its title row. Unmarking expands it.
 - **Read state rolls up:** a page is read when all of its cards are, and links to fully read pages show muted.
+- **While the agent works:** the card (likewise threads, hunk summaries, placeholders and the loading states) shows a fixed plain label with three dots bouncing in sequence — never streamed agent text. Under the OS reduced-motion setting the dots stay still but solid.
 
 ### 4.5 Links and citations
 - **Dotted links** all behave the same way: hover shows a preview card, click acts.
