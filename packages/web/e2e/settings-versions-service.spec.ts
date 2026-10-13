@@ -158,8 +158,8 @@ test.describe("settings + versions on the real service", () => {
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
     await page.getByRole("tab", { name: "Prompts" }).click();
-    // All 18 PRD §13 templates, from the real prompts dir.
-    await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(18);
+    // All 17 PRD §13 templates, from the real prompts dir.
+    await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(17);
     const reader = page.locator('[data-testid="prompt-reader"]');
     await reader.getByRole("button", { name: "Expand reader" }).click();
     await expect(reader.locator("mark.tm").first()).toContainText("{{source}}");
