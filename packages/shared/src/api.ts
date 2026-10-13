@@ -422,6 +422,7 @@ export interface UpdateReviewResponse {
  */
 export type ReviewAction =
   | { kind: "explain"; quote: string; anchor: ActionAnchor }
+  /** Issue #136 slice 2: same request; creates a conversation card whose first question is the message. */
   | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string }
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string }
   /**
@@ -451,13 +452,12 @@ export type ReviewAction =
    */
   | { kind: "followup"; cardId: string; blockId: string; index: number }
   /**
-   * Issue #136: follow-up user message on a conversation card (added as a
-   * turn on the card's session) or on an Ask thread (slice 1: Ask still
-   * makes threads). Continues the card's conversation session
-   * (`Annotation.sessionId`) instead of forking again.
+   * Follow-up user message on a conversation card, added as a turn on
+   * the card's session (`Annotation.sessionId`) instead of forking
+   * again.
    */
   | { kind: "reply"; annotationId: string; message: string }
-  /** Issue #136: retry the last turn of a conversation card, or a failed Ask thread fill (slice 1). */
+  /** Retry the last turn of a conversation card. */
   | { kind: "retry"; annotationId: string }
   /**
    * M4: write a concept page on first open (`ensureConceptPage`). The
@@ -483,9 +483,7 @@ export interface ActionResponse {
   jobId?: string;
   /** M4: annotation created or targeted by the action (explain/ask/note/followup). */
   annotationId?: string;
-  /** M4: thread id (ask/reply/retry on threads, note). Same as annotationId for threads. */
-  threadId?: string;
-  /** Issue #136: turn created or targeted by the action (explain/reply/retry/followup on conversations). */
+  /** Issue #136: turn created or targeted by the action (explain/ask/reply/retry/followup). */
   turnId?: string;
   /** M4: page created or targeted (promote/concept/bookmark). */
   pageId?: string;
@@ -680,7 +678,7 @@ export interface ReviewUsageTotals {
 
 // --- comments ------------------------------------------------------------
 
-/** PATCH /api/reviews/:id/comments/:commentId (M6 extends M3 contract). */
+/** PATCH /api/reviews/:id/comments/:commentId (M6 extends M3 contract; comments only). */
 export interface UpdateCommentRequest {
   post?: boolean;
   /** Editable draft of the text to post; explicit null clears it. */
@@ -702,8 +700,6 @@ export interface CreateCommentRequest {
   suffix?: string;
   /** Best-effort position at creation (line/offset). */
   position?: number;
-  /** True = Note (no agent reply); false = user's first Ask message. */
-  note?: boolean;
   /** Initial user text (first message when present). */
   text?: string;
   /**
@@ -728,7 +724,6 @@ export interface ReplyCommentRequest {
 export interface ThreadMessage {
   who: "you" | "ai";
   text?: string;
-  html?: string;
   /** M6: agent-drafted suggested comment (first message, not for PR). */
   suggested?: boolean;
 }
@@ -1271,7 +1266,7 @@ export type StatePatchOp =
 
 export type ReviewEvent =
   | { type: "job"; job: Job }
-  | { type: "text"; jobId: string; cardId?: string; threadId?: string; delta: string }
+  | { type: "text"; jobId: string; cardId?: string; annotationId?: string; delta: string }
   | { type: "patch"; baseRev: number; headRev: number; ops: StatePatchOp[] }
   | { type: "snapshot"; snapshot: ReviewSnapshot }
   | { type: "error"; message: string; jobId?: string };

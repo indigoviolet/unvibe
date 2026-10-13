@@ -390,27 +390,22 @@ export type Block =
 
 /**
  * Issue #136: a conversation card (`"conversation"`) holds turns; a
- * comment thread (`"thread"`, user notes and — until slice 2 — Ask) holds
- * messages; `"link"` is an opened-as-page card.
+ * comment (`"comment"`, reviewer-written, the only thing submitted)
+ * holds messages; `"link"` is an opened-as-page card.
  */
-export type AnnotationType = "conversation" | "thread" | "link";
+export type AnnotationType = "conversation" | "comment" | "link";
 
+/**
+ * Issue #136 slice 2: one comment message. Comments never carry agent
+ * replies (those live on conversation turns as blocks); `ai` appears
+ * only for agent-drafted suggested comments not yet marked for the PR.
+ */
 export interface ChatMessage {
   who: "you" | "ai";
-  /** Plain text (user) or HTML (agent answer with link tokens rendered). */
+  /** Plain text. */
   text?: string;
-  html?: string;
   /** Agent-drafted suggested comment not yet marked for the PR. */
   suggested?: boolean;
-  /** M4: validated citations backing an agent reply (hover + jump-to-source). */
-  citations?: Citation[];
-  /**
-   * M4: streaming / error marker for an agent reply in flight. `working`
-   * carries the progress line while the job runs; `error` carries a
-   * retryable failure once it settles that way (never a spinner forever).
-   */
-  working?: string | null;
-  error?: string | null;
 }
 
 /**
@@ -434,22 +429,20 @@ export interface Turn extends ContentBody {
   jobId?: string;
 }
 
-/** A conversation card, comment thread, or opened-as-page link on an anchor. */
+/** A conversation card, comment, or opened-as-page link on an anchor. */
 export interface Annotation {
   id: string;
   type: AnnotationType;
   anchor: Anchor;
   /** Open in place vs closed back to its marker/link. */
   open: boolean;
-  /** Threads only: messages so far. */
+  /** Comments only: messages so far. */
   messages: ChatMessage[];
-  /** Threads only: include in the Submit review payload. */
+  /** Comments only: include in the Submit review payload. */
   post: boolean;
-  /** Threads only: editable draft of the text to post (For PR view). */
+  /** Comments only: editable draft of the text to post (For PR view). */
   draft?: string;
-  /** Threads only: a Note (no agent reply) vs Ask. */
-  note: boolean;
-  /** Unsent reply-box content (survives re-renders; threads and conversations). */
+  /** Unsent reply-box content (survives re-renders; comments and conversations). */
   reply?: string;
   /**
    * Issue #136: turns of a conversation card (type `"conversation"` only).
@@ -500,8 +493,8 @@ export interface Annotation {
   originalSnippet?: string;
   successor?: Anchor;
   /**
-   * M6: posted marker set by Submit after the thread reaches GitHub.
-   * Threads with `postedAt` set are never posted twice (double-submit
+   * M6: posted marker set by Submit after the comment reaches GitHub.
+   * Comments with `postedAt` set are never posted twice (double-submit
    * protection; retry after a partial failure skips them).
    */
   postedAt?: number;
@@ -620,7 +613,6 @@ export type JobKind =
   | "critic"
   | "hunk-pass"
   | "concept"
-  | "explain"
   | "ask"
   | "depth"
   | "examples"
@@ -666,11 +658,11 @@ export interface Job {
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
   cardId?: string;
   /**
-   * M4: annotation this job works on (explain fill, ask reply, follow-up
-   * answer), when annotation-scoped. Lets the UI match streamed `text`
-   * events to the thread/expansion while it fills.
+   * Issue #136: annotation this job works on (conversation fill,
+   * follow-up answer), when annotation-scoped. Lets the UI match
+   * streamed `text` events to the card while it fills.
    */
-  threadId?: string;
+  annotationId?: string;
   /** Latest human-readable progress line, shown on the card while running. */
   progress?: string;
   /**
