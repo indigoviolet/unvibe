@@ -1204,6 +1204,155 @@ describe("concept inline diagrams (#130)", () => {
   });
 });
 
+/** Explain reply with a broken diagram nested in an example aside. */
+const EXPLAIN_ASIDE_BROKEN = `An explanation with an example.
+
+::: example
+\`\`\`d2
+direction: right
+gone: "unmount cleanup" {.class: [bad]}
+start -> gone: finish
+\`\`\`
+:::
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+/** Fixed repair reply (top-level diagram splices into the nested slot). */
+const EXPLAIN_ASIDE_FIXED = `An explanation with a fixed diagram.
+
+\`\`\`d2
+direction: right
+gone: "unmount cleanup"
+gone.class: [bad]
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+describe("aside-nested diagrams (#130)", () => {
+  it("a bad nested diagram gets exactly one repair turn and lands drawn", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(EXPLAIN_ASIDE_FIXED) },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitForExpansion(ctx, id, annotationId);
+        // Exactly one repair turn, no loop.
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const aside = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .expansion!.blocks.find((b) => b.type === "aside") as unknown as {
+          inner: { type: string; source?: string; render?: { status: string } }[];
+        };
+        expect(aside).toBeDefined();
+        const dg = aside.inner.find((b) => b.type === "diagram")!;
+        expect(dg.render?.status).toBe("ok");
+        expect(dg.source).toContain("gone.class: [bad]");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("an unrepairable nested diagram keeps an error block and the prose", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents("Prose without a diagram.\n\n```json\n{}\n```\n") },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitForExpansion(ctx, id, annotationId);
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const expansion = snap.annotations.find((a) => a.id === annotationId)!.expansion!;
+        const aside = expansion.blocks.find((b) => b.type === "aside") as unknown as {
+          inner: { type: string; render?: { status: string; error?: string } }[];
+        };
+        expect(aside).toBeDefined();
+        const dg = aside.inner.find((b) => b.type === "diagram")!;
+        expect(dg.render?.status).toBe("error");
+        expect(dg.render?.error).toMatch(/not valid D2/);
+        // The prose is unaffected.
+        expect(JSON.stringify(expansion.blocks)).toContain("An explanation with an example.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // --- real binary (skipped without d2) ----------------------------------------
 function realD2Available(): boolean {
   // Synchronous gate only (async probe happens inside the test, which
