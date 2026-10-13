@@ -361,7 +361,8 @@ for (const mode of [
       });
     });
 
-    test("keyboard Enter on a cited shape reveals without changing the URL", async ({
+    // DISABLED(#119): SVG-link activation does not depend on the service or d2; covered by the d2-diagrams.spec.ts mock-mode test
+    test.skip("keyboard Enter on a cited shape reveals without changing the URL", async ({
       page,
     }) => {
       test.setTimeout(120_000);

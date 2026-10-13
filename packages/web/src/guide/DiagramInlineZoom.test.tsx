@@ -154,8 +154,16 @@ describe("inline pan and citations", () => {
       firePointer(viewport, "pointerup", { pointerId: 1, clientX: 160, clientY: 100 });
       fireEvent.click(anchor);
       expect(seen).toEqual([]);
-      fireEvent.click(anchor);
-      expect(seen).toEqual(["desc:d-p1"]);
+      // Own the reveal timers: flashParagraph schedules a 60 ms setTimeout
+      // that can otherwise fire after this file's jsdom environment is gone.
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(anchor);
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(seen).toEqual(["desc:d-p1"]);
+      } finally {
+        vi.useRealTimers();
+      }
     } finally {
       window.removeEventListener("unvibe:reveal-source", onReveal);
     }

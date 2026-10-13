@@ -10,6 +10,15 @@ async function collect(runner: AcpAgentRunner, session: { id: string; provider: 
   return out;
 }
 
+/** Wait until the fake transport has received the prompt (abort/crash can then land mid-flight). */
+async function waitForPromptCalls(state: { promptCalls: unknown[] }): Promise<void> {
+  const start = Date.now();
+  while (state.promptCalls.length === 0) {
+    if (Date.now() - start > 5000) throw new Error("timed out waiting for the prompt to start");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 describe("AcpAgentRunner over fake ACP agent", () => {
   it("maps text, tools, usage and done", async () => {
     const state = createFakeState([
@@ -25,7 +34,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
         stopReason: "end_turn",
       },
     ]);
-    const runner = new AcpAgentRunner({
+    const runner = new AcpAgentRunner({ settleMs: 0,
       factories: { claude: fakeTransportFactory(state), codex: fakeTransportFactory(state) },
     });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "sys", mcpServers: [] });
@@ -52,7 +61,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
         ],
       },
     ]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const events = await collect(runner, s, "bg please");
     const usage = events.find((e) => e.type === "usage");
@@ -63,7 +72,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
   it("fork resumes (Claude quirk) and supports atMessage", async () => {
     const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
     state.forkNeedsResume = true;
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const base = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     await collect(runner, base, "q base");
     const fork = await runner.fork(base, { atMessage: "msg-123" });
@@ -84,7 +93,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
   it("prompt on a stale fork surfaces retryable resume error, then succeeds", async () => {
     const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
     state.forkNeedsResume = true;
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const base = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const fork = await runner.fork(base);
     // Simulate a stale fork that missed its resume.
@@ -100,7 +109,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
 
   it("load after close drains replay history", async () => {
     const state = createFakeState([{ match: "q", chunks: [{ text: "fresh" }] }]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     await runner.close(s);
     const loaded = await runner.load(s.id);
@@ -114,14 +123,14 @@ describe("AcpAgentRunner over fake ACP agent", () => {
 
   it("cancel via AbortSignal ends with cancelled", async () => {
     const state = createFakeState([{ match: "long", chunks: [{ text: "never" }], delayMs: 2000 }]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const ctl = new AbortController();
     const seen: AgentEvent[] = [];
     const p = (async (): Promise<void> => {
       for await (const e of runner.prompt(s, "long story", ctl.signal)) seen.push(e);
     })();
-    await new Promise((r) => setTimeout(r, 100));
+    await waitForPromptCalls(state);
     ctl.abort();
     await p;
     expect(seen[seen.length - 1]).toEqual({ type: "done", stopReason: "cancelled" });
@@ -136,7 +145,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
       { match: "shell-probe", permissionProbe: { title: "Bash" }, chunks: [{ text: "denied" }] },
       { match: "edit-probe", permissionProbe: { title: "Edit" }, chunks: [{ text: "denied" }] },
     ]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({
       provider: "claude",
       model: "default",
@@ -176,7 +185,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
         chunks: [{ text: "no" }],
       },
     ]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({
       provider: "claude",
       model: "default",
@@ -197,7 +206,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
       { match: "limited", error: "rate limit exceeded, retry later" },
       { match: "authfail", error: "auth required: login expired" },
     ]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const r1 = await collect(runner, s, "limited please");
     expect(r1.find((e) => e.type === "error")).toMatchObject({ retryable: true });
@@ -208,7 +217,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
 
   it("crash drops the transport and the next use restarts (sessions survive)", async () => {
     const state = createFakeState([{ match: "q", chunks: [{ text: "alive" }] }]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     runner.simulateCrash("claude");
     // Next use restarts transparently against the same (persistent) store.
@@ -219,13 +228,13 @@ describe("AcpAgentRunner over fake ACP agent", () => {
 
   it("in-flight prompt fails retryably when the transport dies", async () => {
     const state = createFakeState([{ match: "long", chunks: [{ text: "x" }], delayMs: 2000 }]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const seen: AgentEvent[] = [];
     const p = (async (): Promise<void> => {
       for await (const e of runner.prompt(s, "long please")) seen.push(e);
     })();
-    await new Promise((r) => setTimeout(r, 100));
+    await waitForPromptCalls(state);
     runner.simulateCrash("claude");
     await p;
     const err = seen.find((e) => e.type === "error");
@@ -236,7 +245,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
 
   it("listModels returns the adapter catalog", async () => {
     const state = createFakeState([]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const models = await runner.listModels("claude");
     expect(models.map((m) => m.id)).toEqual(["default", "opus", "sonnet"]);
     await runner.dispose();
@@ -255,7 +264,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
         usage: { inputTokens: 2, cachedReadTokens: 10633, cachedWriteTokens: 9352, outputTokens: 14 },
       },
     ]);
-    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const first = await collect(runner, s, "turn-one please");
     expect(first.find((e) => e.type === "usage")).toEqual({
@@ -291,7 +300,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
       dispose: () => {},
       ...(provider === "claude" ? { adapterBin: "/shims/claude" } : {}),
     });
-    const runner = new AcpAgentRunner({ factories: { claude: factory, codex: factory } });
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: factory, codex: factory } });
     await expect(
       runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] }),
     ).rejects.toThrow(
@@ -311,7 +320,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
       },
       notify: async (): Promise<void> => {},
     };
-    const other = new AcpAgentRunner({
+    const other = new AcpAgentRunner({ settleMs: 0,
       factories: { claude: async () => ({ caller: otherCaller, onDeath: new Promise<void>(() => {}), dispose: () => {} }) },
     });
     await expect(

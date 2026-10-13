@@ -4,7 +4,8 @@ import { FakeCommandRunner } from "../src/exec/runner.js";
 import { runGh } from "../src/exec/gh.js";
 
 describe("FakeCommandRunner", () => {
-  it("replays scripted results and records calls", async () => {
+  // DISABLED(#119): tests the test double, not product code; every injecting test already fails if it breaks.
+  it.skip("replays scripted results and records calls", async () => {
     const runner = new FakeCommandRunner();
     runner.enqueue({ cmd: "git", args: ["rev-parse", "HEAD"], stdout: "abc\n", stderr: "", code: 0 });
     const res = await runner.run("git", { args: ["rev-parse", "HEAD"] });
@@ -12,7 +13,8 @@ describe("FakeCommandRunner", () => {
     expect(runner.calls).toHaveLength(1);
   });
 
-  it("throws on unexpected commands", async () => {
+  // DISABLED(#119): tests the test double, not product code; unmatched commands throwing is exercised implicitly.
+  it.skip("throws on unexpected commands", async () => {
     const runner = new FakeCommandRunner();
     await expect(runner.run("gh", { args: ["pr", "view"] })).rejects.toThrow(/unexpected command/);
   });

@@ -1,13 +1,16 @@
 /**
  * Reviews + hunks routes: validation, ingest → snapshot, refresh movement
- * reporting, hunk PATCH through ReviewStore, summarize stays 501.
+ * reporting, hunk PATCH through ReviewStore, summarize enqueues onto the
+ * injected agent runner (M3).
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ReviewSnapshot } from "@unvibe/shared";
+import { FakeAgentRunner } from "../src/agent/fake.js";
 import { RealCommandRunner } from "../src/exec/index.js";
+import { StaticModelCatalog } from "../src/settings/index.js";
 import { createApp } from "../src/server.js";
 
 const real = new RealCommandRunner();
@@ -60,7 +63,12 @@ describe("review routes", () => {
   });
 
   it("validates create payloads", async () => {
-    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+    const { app } = await createApp("tok", {
+      runner: real,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const noRepo = await app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: {} });
       expect(noRepo.statusCode).toBe(400);
@@ -87,7 +95,12 @@ describe("review routes", () => {
 
   it("creates a review + version 1 snapshot and serves it back", async () => {
     const dir = await makeRepo();
-    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+    const { app } = await createApp("tok", {
+      runner: real,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const added = await app.inject({
         method: "POST",
@@ -131,7 +144,12 @@ describe("review routes", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-roots-"));
     const dir = await makeRepo(root);
     process.env.UNVIBE_REPO_ROOTS = root;
-    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+    const { app } = await createApp("tok", {
+      runner: real,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const listed = await app.inject({ method: "GET", url: "/api/repos", headers: authed });
       const repos = (listed.json() as { repos: { id: string; localPath: string; detected?: boolean }[] }).repos;
@@ -171,7 +189,12 @@ describe("review routes", () => {
 
   it("refresh creates version n+1 on head movement (M5)", async () => {
     const dir = await makeRepo();
-    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+    const { app } = await createApp("tok", {
+      runner: real,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const added = await app.inject({
         method: "POST",
@@ -223,7 +246,15 @@ describe("hunk routes", () => {
 
   it("PATCH updates hunk state through ReviewStore; summarize enqueues (M3)", async () => {
     const dir = await makeRepo();
-    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    // Fake agents (issue #119): summarize must enqueue onto the fake, never
+    // a real adapter. `agents.prompts` proves the job ran on the fake.
+    const agents = new FakeAgentRunner();
+    const { app, ctx } = await createApp("tok", {
+      runner: real,
+      agents,
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const added = await app.inject({
         method: "POST",
@@ -323,6 +354,12 @@ describe("hunk routes", () => {
       });
       expect(summarize.statusCode).toBe(202);
       expect(typeof (summarize.json() as { jobId: string }).jobId).toBe("string");
+      // The enqueued job starts on the fake agent runner (no real prompt).
+      const start = Date.now();
+      while (agents.prompts.length === 0 && Date.now() - start < 10000) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(agents.prompts.length).toBeGreaterThan(0);
     } finally {
       await app.close();
     }

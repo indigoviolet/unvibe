@@ -225,8 +225,16 @@ describe("DiagramOverlay citations", () => {
       // click), so the reveal still fires.
       firePointer(viewport, "pointerdown", { pointerId: 1, clientX: 50, clientY: 50, buttons: 1 });
       firePointer(viewport, "pointerup", { pointerId: 1, clientX: 50, clientY: 50 });
-      fireEvent.click(anchor);
-      expect(seen).toEqual(["desc:d-p1"]);
+      // Own the reveal timers: flashParagraph schedules a 60 ms setTimeout
+      // that can otherwise fire after this file's jsdom environment is gone.
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(anchor);
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(seen).toEqual(["desc:d-p1"]);
+      } finally {
+        vi.useRealTimers();
+      }
     } finally {
       window.removeEventListener("unvibe:reveal-source", onReveal);
     }
@@ -248,9 +256,15 @@ describe("DiagramOverlay citations", () => {
       firePointer(viewport, "pointerup", { pointerId: 1, clientX: 140, clientY: 100 });
       fireEvent.click(anchor);
       expect(seen).toEqual([]);
-      // The next plain click reveals again.
-      fireEvent.click(anchor);
-      expect(seen).toEqual(["desc:d-p1"]);
+      // The next plain click reveals again (timers owned as above).
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(anchor);
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(seen).toEqual(["desc:d-p1"]);
+      } finally {
+        vi.useRealTimers();
+      }
     } finally {
       window.removeEventListener("unvibe:reveal-source", onReveal);
     }

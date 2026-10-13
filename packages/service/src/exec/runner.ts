@@ -101,3 +101,35 @@ export class FakeCommandRunner implements CommandRunner {
     return { stdout: found.stdout, stderr: found.stderr, code: found.code };
   }
 }
+
+/**
+ * Basenames that must never be spawned by the unit suite: the GitHub CLI
+ * and the agent CLIs. Tests reach GitHub only through the Submit path
+ * (always faked) and reach agents only through an injected `AgentRunner`.
+ */
+const TEST_BLOCKED_COMMANDS = new Set(["gh", "claude", "codex"]);
+
+/**
+ * Test backstop for the injectable command runner (issue #119): refuses
+ * the blocked commands loudly instead of spawning the developer's real
+ * tools, and delegates everything else (`git`, login shells, `d2`, …) to
+ * the wrapped runner. Used as the `buildApp` default under vitest so a
+ * test that forgets to inject a `FakeCommandRunner` fails with "inject a
+ * fake" instead of hitting the network. Explicitly injected runners
+ * (including `RealCommandRunner`) are never wrapped.
+ */
+export class TestCommandGuard implements CommandRunner {
+  constructor(private readonly inner: CommandRunner = new RealCommandRunner()) {}
+
+  async run(cmd: string, opts: RunOptions): Promise<RunResult> {
+    const base = cmd.split("/").pop() ?? cmd;
+    if (TEST_BLOCKED_COMMANDS.has(base)) {
+      throw new Error(
+        `TestCommandGuard: refusing to spawn real "${base}" in tests ` +
+          `(${cmd} ${opts.args.join(" ")}). Inject a FakeCommandRunner into ` +
+          `createApp/buildApp instead (issue #119).`,
+      );
+    }
+    return this.inner.run(cmd, opts);
+  }
+}

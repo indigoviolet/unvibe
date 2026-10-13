@@ -5,15 +5,25 @@
  * panes, restores the split width, and brings panes back on demand
  * (`REVEAL_EVENT` from the guide, `SHOW_GUIDE_EVENT` from the source).
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { resetMockState } from "../mock/index.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { SHOW_GUIDE_EVENT } from "./panes.js";
 import { AppShell } from "./AppShell.js";
 import { useReview } from "../state/store.js";
+
+// Stub the heavy panes (issue #119): every assertion below is on #page /
+// #right / .cols, which AppShell itself renders, and both window events are
+// handled in AppShell — the 4-file demo diff render is not under test here.
+vi.mock("../guide/GuidePage.js", () => ({
+  GuidePage: () => <div data-testid="guide-stub" />,
+}));
+vi.mock("../source/SourcePane.js", () => ({
+  SourcePane: () => <div data-testid="source-stub" />,
+}));
 
 const CONN = "src-urllib3-connection.py";
 
@@ -39,7 +49,7 @@ async function renderShell(): Promise<void> {
       <AppShell reviewId="demo" />
     </MemoryRouter>,
   );
-  await screen.findByText("connection.py", {}, { timeout: 5000 });
+  await screen.findByRole("button", { name: "Guide" }, { timeout: 5000 });
 }
 
 function guide(): HTMLElement {
@@ -55,7 +65,9 @@ function source(): HTMLElement {
 }
 
 function guideSeg(): HTMLElement {
-  return screen.getByRole("button", { name: "Guide" });
+  // Scoped to the review bar (issue #119): a document-wide role query
+  // walks the whole 4-file demo diff on every call (~150 ms each).
+  return within(document.getElementById("reviewbar")!).getByRole("button", { name: "Guide" });
 }
 
 function sourceSeg(): HTMLElement {

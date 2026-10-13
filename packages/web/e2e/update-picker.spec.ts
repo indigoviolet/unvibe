@@ -8,15 +8,9 @@
 import { expect, test } from "./network-guard.js";
 
 async function freshSettings(page: import("@playwright/test").Page): Promise<void> {
+  // Every test gets a fresh browser context, so localStorage starts empty:
+  // one load is enough, no clear + reload (issue #119).
   await page.goto("/settings");
-  await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
-  await page.evaluate(() => {
-    localStorage.removeItem("unvibe.mock.update");
-    localStorage.removeItem("unvibe.mock.update.fail");
-    localStorage.removeItem("unvibe.mock.update.blockJobs");
-    localStorage.removeItem("unvibe.mock.settings");
-  });
-  await page.reload();
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
   await page.getByRole("tab", { name: "Version" }).click();
   await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible();

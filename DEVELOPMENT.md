@@ -34,8 +34,14 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `build-freshness` | Scripted check for #64 (web change + shared rebuild must not skip; no change must skip; ~30 s, too slow for `check` — run it directly) | `build` |
 | `dev` | Service + Vite dev server together | `build` (auto) |
 | `dev:mock` | Web UI against the in-memory mock API, no service | — |
-| `lint` / `typecheck` / `test` | ESLint / tsc / vitest across workspaces | — |
-| `check` | `lint` + `typecheck` + `test`; must pass from a clean tree with no `dist/` | — |
+| `lint` / `typecheck` / `test:fast` | ESLint / tsc / fast vitest files | — |
+| `test:slow:unit` | Slow vitest files (`*.slow.test.*`: need a build) | `build` (auto) |
+| `test:slow` | Slow suite: `test:slow:unit`, then Playwright (`test:e2e`) | `build` (auto) + browsers (`mise run playwright-install`) |
+| `test` | Every automated test that needs no login (`test:fast`, then `test:slow`) | as above |
+| `typecheck:tests` | tsc over service `src` + `test` (non-blocking: 53 pre-existing errors, issue #119 follow-up) | — |
+| `check` | Fast suite: `lint` + `typecheck` in parallel, then `test:fast`; must pass from a clean tree with no `dist/` | — |
+| `gate` | Pre-merge gate: `check`, `build`, `test:slow`, `build-freshness`, shell e2e, `restart-resilience`, d2 seed check, `check-global-install`, one after another | everything (one full run at a time, see below) |
+| `restart-resilience` | SIGKILL mid-stage, restart, resume against the built service | `build` (auto) |
 | `start` | Run the built service | `build` (auto) |
 | `setup` / `doctor` | Build, then `unvibe setup` / `unvibe doctor` | — |
 | `fixture-snapshot` | Rebuild `fixtures/urllib3-5020/snapshot.json`; fails on unverified citations | — |
@@ -57,9 +63,11 @@ runs on `ubuntu-latest` for every branch push except `spike/**`, and on
 `macos-latest` only nightly against `main` and on manual dispatch
 (`gh workflow run ci`, both platforms; macOS minutes bill at 10x, and
 `release.yml` also covers macOS on every `v*` tag): `check` + `build` +
-`test:e2e`, then the shell end-to-end (`e2e` on Linux, `e2e:macos` on
+`build-freshness` + `test:slow` (slow vitest files, then Playwright),
+then the shell end-to-end (`e2e` on Linux, `e2e:macos` on
 macOS), `check-global-install` (both), and
-`node scripts/restart-resilience.mjs` (both). Diagrams render service-side
+`mise run restart-resilience` (both). `release.yml` runs `check`, builds
+the release, then `test:slow:unit` (the build-dependent guards). Diagrams render service-side
 with the `d2` binary (`d2 = "0.9.0"` in `mise.toml`; `mise install d2`
 fetches it via the aqua backend): unit tests pass without it, the
 real-binary vitest suites and the Playwright D2 specs skip visibly, and
@@ -132,18 +140,57 @@ How `packages/service/src/agent/factory.ts` picks the runner:
 
 ## Tests
 
+There are two suites (issue #119). The fast suite is `mise run check`
+(lint + typecheck + every vitest file not named `*.slow.test.*`): no
+build, no browser. The slow suite is `mise run test:slow` (build, then
+vitest `*.slow.test.*`, then all of `packages/web/e2e/`): everything
+that needs a `dist/` or a browser. `mise run test` is both;
+`mise run gate` is the pre-merge gate (both suites plus
+`build-freshness`, shell e2e, restart resilience, the d2 seed check and
+`check-global-install`, one after another).
+
+- **Slow by name (vitest):** `foo.slow.test.ts(x)` is slow; every other
+  `*.test.ts(x)` is fast. To slow a single test, move it into a sibling
+  `foo.slow.test.ts`. Slow files run after `mise run build` and FAIL
+  (never skip) when the build is missing or stale.
+- **Slow by location (Playwright):** everything under `packages/web/e2e/`
+  is slow. There is no fast Playwright subset.
+- **Disabled:** one test or group is `it.skip` / `test.skip` /
+  `describe.skip` with `// DISABLED(#119): <one-line reason>` on the line
+  directly above; a whole file is renamed `*.disabled.test.ts`
+  (`*.disabled.spec.ts` for Playwright) with the same comment as its
+  first line. Disabled tests still compile (excluded from every run, not
+  deleted). List them with `git grep -n "DISABLED(#"`. Never disable
+  anything behind a rule in `AGENTS.md` or a gate named here.
 - Unit: vitest per workspace (`packages/*/test`, `*.test.ts(x)` next to the code). Prompt rendering has golden files (`prompt-goldens.test.ts`).
 - Behaviour: Playwright specs in `packages/web/e2e/` run against mock mode and against the real built service in `replay` mode.
-- Shell: `scripts/e2e-linux.mjs` (setup/handler/reuse/idle/uninstall with a temp HOME, data dir and port) and `scripts/restart-resilience.mjs` (SIGKILL mid-stage, restart, resume).
+- Shell: `scripts/e2e-linux.mjs` (setup/handler/reuse/idle/uninstall with a temp HOME, data dir and port) and `scripts/restart-resilience.mjs` (SIGKILL mid-stage against the built service).
 - Live: `scripts/live-*.mjs` plus `UNVIBE_LIVE=1` suites. Gated by env, excluded from `check` by design.
+- Shared options live in `vitest.shared.ts` at the root (imported by all
+  three workspace configs): worker cap `min(8, cores-1)`, 1 GB heap cap
+  per worker, 10 s fast / 30 s slow per-test timeouts. Playwright is
+  capped at `min(4, cores/2)` workers with a 10-minute global timeout
+  (`packages/web/playwright.config.ts`). Overrides: `UNVIBE_TEST_WORKERS`
+  (vitest), `UNVIBE_E2E_WORKERS` (Playwright, e.g. `=8` when the machine
+  is known to be free), `UNVIBE_TEST_SUITE=fast|slow` (run one vitest
+  suite directly).
 
 Rules:
 
-- No real agents or GitHub outside `test:live:*`. Tests use the fake/replay `AgentRunner` and stub `gh`/`git` through the injectable command runner.
+- No real agents or GitHub outside `test:live:*`. Tests use the fake/replay `AgentRunner` and stub `gh`/`git` through the injectable command runner. Under vitest `buildApp` substitutes the fake runner, the static model catalog and a command guard (refuses real `gh`/`claude`/`codex`) when a test injects nothing; `test/no-real-spawn.test.ts` guards the substitution.
 - Run `gh` with `GITHUB_TOKEN` unset (it can override the keyring login).
 - Nothing is posted to GitHub except through `src/submit/` (crash-safe via in-flight leases in `src/submit/lease.ts`); `test/gh-writes.test.ts` enforces the boundary.
 - E2E scripts take a temp port/HOME/data dir so parallel checkouts do not clash.
-- While implementing, run targeted tests: the vitest files for what you changed (`npx vitest run <file>` in the package) and the specific Playwright spec (`mise run test:e2e -- <spec>`). The full gates (`check`, `build`, `test:e2e`, `e2e`) run once per branch with current `main` merged in, before merge or when the machine is free, one run at a time.
+- While implementing, run targeted tests — one thing at a time, never two
+  suites in parallel:
+  ```sh
+  cd packages/service && npx vitest run test/reviews.test.ts        # one file, 1 to 3 s
+  cd packages/web && VITE_MOCK=1 npx vitest run src/guide/CardView.test.tsx  # VITE_MOCK=1 is required: without it the mock API is real fetch
+  cd packages/web && npx playwright test e2e/comments.spec.ts       # one spec; *-service specs skip without a build, so `mise run build` first to exercise them
+  ```
+  (`mise run test:e2e -- e2e/<spec>` from the root narrows the same way
+  but rebuilds first.)
+- Which gate when: targeted tests after each change; `mise run check` before each commit and before reporting; `check` plus the Playwright specs for the touched flows before a preview (**not** the full gate); `mise run gate` once per branch with current `main` merged in, before merge or when the machine is free — one full run at a time across the machine (a plain task chain by owner decision, no lock script), never several at once.
 
 ## Environment variables
 
@@ -158,6 +205,9 @@ Rules:
 | `UNVIBE_REPO_ROOTS` | `~/src`, `~/dev`, … | `path.delimiter`-separated roots for checkout detection. |
 | `UNVIBE_PROMPTS_DIR` | repo `prompts/` | Override prompt templates (tests, debugging). |
 | `UNVIBE_LIVE` / `UNVIBE_LIVE_PROVIDERS` | — | `=1` enables live suites; providers `claude\|codex` (default both). |
+| `UNVIBE_TEST_SUITE` | both | `fast` / `slow`: run one vitest suite directly (`npm run test:fast` / `test:slow` set it). |
+| `UNVIBE_TEST_WORKERS` | `min(8, cores-1)` | Cap on vitest workers. |
+| `UNVIBE_E2E_WORKERS` | `min(4, cores/2)` | Cap on Playwright workers (`=8` when the machine is known to be free). |
 | `UNVIBE_UPDATER_BACKEND` | live (not wired) | `fake` selects the test-only update backend: channels from `<dataDir>/update/fake-channels.json` (else a built-in seed), installed ref in `<dataDir>/update/current-ref`. Never touches npm, git or the network. |
 | `UNVIBE_UPDATE_FAKE_FAIL` | — | Fake failure injection for switch drills: `install:<ref>` (install throws) or `health:<ref>` (install "succeeds" without advancing, so the new build never reports the target version). Test-only. |
 | `UNVIBE_UPDATE_EXIT_WAIT_MS` / `UNVIBE_UPDATE_HEALTH_TIMEOUT_MS` / `UNVIBE_UPDATE_POLL_MS` / `UNVIBE_UPDATE_STOP_WAIT_MS` | `30000` / `120000` / `500` / `10000` | Detached-helper timeout overrides. Test-only. |

@@ -28,7 +28,7 @@ async function selectText(page: Page, rootSelector: string, text: string): Promi
   await page.evaluate((rootSelector) => {
     document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
   }, rootSelector);
-  await page.waitForTimeout(350);
+  // No settle wait: the app has no smooth scrolling.
   const found = await page.evaluate(
     ({ rootSelector, text }) => {
       const root = document.querySelector(rootSelector);
@@ -173,7 +173,11 @@ test("2. card controls: depth, examples, diagram, undo, read, collapse; drafts s
   await expect(card.locator(".gen-aside").first()).toBeVisible({ timeout: 5000 });
   const asides = await card.locator(".gen-aside").count();
   await card.locator("> .ctl").getByRole("button", { name: "Use examples" }).click();
-  await page.waitForTimeout(600);
+  // The second click adds nothing — and toasts nothing either (the mock
+  // answers accepted with no job and no reused flag, so no toast fires).
+  // Negative wait: the duplicate path is fully synchronous in the mock,
+  // so 250 ms covers the React commit on any machine.
+  await page.waitForTimeout(250);
   expect(await card.locator(".gen-aside").count()).toBe(asides);
   // Add diagram inserts after the paragraphs it relates to.
   await card.locator("> .ctl").getByRole("button", { name: "Add diagram" }).click();
@@ -257,7 +261,10 @@ test("6. filling never scrolls the page on its own", async ({ page }) => {
   await page.waitForTimeout(200);
   const top = await scroller.evaluate((el) => el.scrollTop);
   await page.locator('#selbar [data-act="explain"]').click();
-  await page.waitForTimeout(2500);
+  // Wait for the mock fill (700 ms) before comparing: the point is the
+  // fill itself never scrolls the page.
+  const exp6 = page.locator("#C-central [data-expansion]").first();
+  await expect(exp6.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
   expect(await scroller.evaluate((el) => el.scrollTop)).toBe(top);
 });
 

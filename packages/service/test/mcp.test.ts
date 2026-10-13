@@ -298,7 +298,10 @@ describe("secret lifecycle", () => {
 
   it("revoked secrets stop working; revokeForReview kills a review's secrets", async () => {
     const { registry } = makeRegistry();
-    const base = await serve(registry);
+    const { app } = await createApp("test-token", { mcp: registry });
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+    live.push({ base, close: () => app.close() });
     const issued = registry.issueSession("r1", "s-rev", "session");
     const client = await connect(base, issued);
     try {
@@ -309,12 +312,15 @@ describe("secret lifecycle", () => {
     }
     registry.revokeSession(issued.secret);
     expect(registry.hasSession(issued.secret)).toBe(false);
-    const dead = await fetch(base + issued.path, {
+    // Via inject, not fetch: a raw fetch leaves a pooled keep-alive socket
+    // that holds app.close() until the server keep-alive timeout (~4 s).
+    const dead = await app.inject({
       method: "POST",
+      url: issued.path,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      payload: { jsonrpc: "2.0", id: 1, method: "ping" },
     });
-    expect(dead.status).toBe(404);
+    expect(dead.statusCode).toBe(404);
 
     const s1 = registry.issueSession("r1", "s-1", "session");
     const s2 = registry.issueSession("r1", "s-2", "reader");

@@ -15,7 +15,10 @@
     "lint": "eslint src test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node ./dist/index.js",
-    "fixture:snapshot": "npm run build && npx esbuild src/replay/build-snapshot.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/replay/build-snapshot.js --log-level=warning && node ./dist/replay/build-snapshot.js"
+    "fixture:snapshot": "npm run build && npx esbuild src/replay/build-snapshot.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/replay/build-snapshot.js --log-level=warning && node ./dist/replay/build-snapshot.js",
+    "test:fast": "UNVIBE_TEST_SUITE=fast vitest run --exclude test/acp-live.test.ts",
+    "test:slow": "UNVIBE_TEST_SUITE=slow vitest run",
+    "typecheck:tests": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.89.0",

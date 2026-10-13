@@ -84,26 +84,28 @@ test.describe("deepest-level principle over the real service (replay)", () => {
     for (let i = 0; i < 3; i++) {
       const principles = await principleLocator(card).count();
       if (principles > 0) break;
-      // Stop when the card reports deep via pips? Simpler: click Deeper,
-      // wait for any job to settle, then re-check. The normal step must NOT
-      // add a principle (service strips it), so looping is safe.
+      // The depth job settles on a new pip count (or overshoots into a
+      // principle): wait for that state change instead of a fixed sleep.
+      const pips = card.locator(".pips i.on");
+      const pipsBefore = await pips.count();
       await card.getByRole("button", { name: "Deeper" }).click();
-      await pageWait(2500);
+      await expect
+        .poll(
+          async () => ((await principleLocator(card).count()) > 0 ? -1 : await pips.count()),
+          { timeout: 60_000 },
+        )
+        .not.toBe(pipsBefore);
       // If a principle appeared we stepped past deep into principleOnly —
       // undo once and break so the caller drives + at deepest explicitly.
       if ((await principleLocator(card).count()) > 0) {
         await card.getByRole("button", { name: "Undo" }).click();
-        await pageWait(1500);
+        await expect(principleLocator(card)).toHaveCount(0, { timeout: 30_000 });
         break;
       }
       // Check whether further Deeper clicks still change depth: read pips?
       // Two clicks from standard always reach deep; break after two.
       if (i >= 1) break;
     }
-  }
-
-  async function pageWait(ms: number): Promise<void> {
-    await new Promise((r) => setTimeout(r, ms));
   }
 
   test("page card: + at deepest adds one principle; + again tells; undo removes", async ({ page }) => {
@@ -123,8 +125,6 @@ test.describe("deepest-level principle over the real service (replay)", () => {
     // + again → nothing more is added and the user is told.
     await card.getByRole("button", { name: "Deeper" }).click();
     await expect(principleLocator(card)).toHaveCount(1, { timeout: 10_000 });
-    await page.waitForTimeout(1500);
-    await expect(principleLocator(card)).toHaveCount(1);
     await expect(page.locator("#toast")).toContainText(/deepest|nothing more/i, { timeout: 10_000 });
 
     // Undo removes it.
@@ -170,7 +170,7 @@ test.describe("deepest-level principle over the real service (replay)", () => {
         const ann = cur.annotations.find((a) => a.id === annId);
         if (ann?.expansion && ann.expansion.blocks.length > 0) break;
         if (Date.now() > deadline) throw new Error("expansion did not fill in time");
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 100));
       }
     }
 
@@ -181,11 +181,18 @@ test.describe("deepest-level principle over the real service (replay)", () => {
 
     // Step the expansion to deep (normal steps add no principle).
     for (let i = 0; i < 2; i++) {
+      const expPips = exp.locator(".pips i.on");
+      const expPipsBefore = await expPips.count();
       await exp.getByRole("button", { name: "Deeper" }).click();
-      await page.waitForTimeout(2500);
+      await expect
+        .poll(
+          async () => ((await principleLocator(exp).count()) > 0 ? -1 : await expPips.count()),
+          { timeout: 60_000 },
+        )
+        .not.toBe(expPipsBefore);
       if ((await principleLocator(exp).count()) > 0) {
         await exp.getByRole("button", { name: "Undo" }).click();
-        await page.waitForTimeout(1500);
+        await expect(principleLocator(exp)).toHaveCount(0, { timeout: 30_000 });
         break;
       }
     }
@@ -196,7 +203,6 @@ test.describe("deepest-level principle over the real service (replay)", () => {
 
     await exp.getByRole("button", { name: "Deeper" }).click();
     await expect(principleLocator(exp)).toHaveCount(1, { timeout: 10_000 });
-    await page.waitForTimeout(1500);
     await expect(page.locator("#toast")).toContainText(/deepest|nothing more/i, { timeout: 10_000 });
 
     await exp.getByRole("button", { name: "Undo" }).click();

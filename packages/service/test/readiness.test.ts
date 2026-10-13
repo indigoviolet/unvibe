@@ -32,6 +32,25 @@ const settingsStore = (patch: Partial<Settings> = {}) => ({
   get: (): Settings => ({ ...DEFAULT_SETTINGS, ...patch }),
 });
 
+/**
+ * Scratch bin dir with stub claude/codex CLIs (issue #119): the agent
+ * probes resolve the binaries from `loginPathValue` and run `--version`
+ * through the injected fake runner, so no real tool is ever executed and
+ * no login state leaks in. The stubs themselves never run.
+ */
+async function makeStubBins(): Promise<{ dir: string; cleanup: () => void }> {
+  const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(tmpdir(), "unvibe-readiness-bins-"));
+  for (const name of ["claude", "codex"]) {
+    const bin = join(dir, name);
+    writeFileSync(bin, "#!/bin/sh\nexit 1\n");
+    chmodSync(bin, 0o755);
+  }
+  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
 describe("readiness checks", () => {
   beforeEach(() => {
     clearReadinessCache();
@@ -76,57 +95,87 @@ describe("readiness checks", () => {
     }
   });
 
-  // Spawns real `gh`/`git` subprocesses three times in sequence; the 5 s
-  // default is tight when workers compete for CPUs (shared box, CI).
-  it("agent roles report CLI missing / not logged in / model mismatch without prompts", { timeout: 60000 }, async () => {    const calls: string[] = [];
-    // Unknown provider → error (no prompt sent).
-    const rUnknown = await getReadiness(
-      {
-        runner: real,
-        agents: fakeAgents({ claude: ["a"] }, calls) as never,
-        settings: settingsStore({ main: { provider: "custom", model: "x" } }),
-        loginPathValue: process.env.PATH ?? "",
-        timeoutMs: 2000,
-      },
-      { force: true },
-    );
-    expect(rUnknown.checks.find((c) => c.id === "agent:main")!.status).toBe("error");
-    expect(calls).not.toContain("custom");
+  // Fully faked agent probes (issue #119): stub CLIs on a scratch PATH,
+  // `--version` answers from the fake runner, listModels from the fake
+  // agents. No real tool runs, no prompt is sent, exact assertions.
+  it("agent roles report CLI missing / not logged in / model mismatch without prompts", async () => {
+    const { dir, cleanup } = await makeStubBins();
+    try {
+      const calls: string[] = [];
+      const versions = (): FakeCommandRunner => {
+        const fake = new FakeCommandRunner();
+        // main + small both resolve to Claude, second opinion to Codex.
+        fake.enqueue({
+          cmd: `${dir}/claude`,
+          args: ["--version"],
+          stdout: "2.1.300",
+          stderr: "",
+          code: 0,
+        });
+        fake.enqueue({
+          cmd: `${dir}/claude`,
+          args: ["--version"],
+          stdout: "2.1.300",
+          stderr: "",
+          code: 0,
+        });
+        fake.enqueue({
+          cmd: `${dir}/codex`,
+          args: ["--version"],
+          stdout: "0.165.0",
+          stderr: "",
+          code: 0,
+        });
+        return fake;
+      };
 
-    // Not logged in → error mentioning login.
-    const rAuth = await getReadiness(
-      {
-        runner: real,
-        agents: fakeAgents(new Error("not logged in: run codex login"), calls) as never,
-        settings: settingsStore(),
-        loginPathValue: process.env.PATH ?? "",
-        timeoutMs: 2000,
-      },
-      { force: true },
-    );
-    const mainAuth = rAuth.checks.find((c) => c.id === "agent:main")!;
-    // CLI may be missing on this machine (error) or probe fails (error):
-    // either way no prompt was sent and the status is not ok.
-    expect(["error", "warning"]).toContain(mainAuth.status);
+      // Unknown provider → error (no prompt sent, listModels never called).
+      const rUnknown = await getReadiness(
+        {
+          runner: versions(),
+          agents: fakeAgents({ claude: ["a"] }, calls) as never,
+          settings: settingsStore({ main: { provider: "custom", model: "x" } }),
+          loginPathValue: dir,
+          timeoutMs: 2000,
+        },
+        { force: true },
+      );
+      const unknownMain = rUnknown.checks.find((c) => c.id === "agent:main")!;
+      expect(unknownMain.status).toBe("error");
+      expect(unknownMain.summary).toMatch(/unknown provider "custom"/i);
+      expect(calls).not.toContain("custom");
 
-    // Model not offered → warning (no prompt).
-    const rModel = await getReadiness(
-      {
-        runner: real,
-        agents: fakeAgents({ claude: ["other-model"], codex: ["gpt-x"] }) as never,
-        settings: settingsStore(),
-        loginPathValue: process.env.PATH ?? "",
-        timeoutMs: 2000,
-      },
-      { force: true },
-    );
-    const mainModel = rModel.checks.find((c) => c.id === "agent:main")!;
-    if (mainModel.status === "ok") {
-      // CLI missing on this box → error, not warning; accept either as long
-      // as listModels was the only agent call (no prompt).
-      expect(calls.length).toBeGreaterThanOrEqual(0);
-    } else {
-      expect(["warning", "error"]).toContain(mainModel.status);
+      // Not logged in → error mentioning login.
+      const rAuth = await getReadiness(
+        {
+          runner: versions(),
+          agents: fakeAgents(new Error("not logged in: run codex login"), calls) as never,
+          settings: settingsStore(),
+          loginPathValue: dir,
+          timeoutMs: 2000,
+        },
+        { force: true },
+      );
+      const mainAuth = rAuth.checks.find((c) => c.id === "agent:main")!;
+      expect(mainAuth.status).toBe("error");
+      expect(mainAuth.summary).toMatch(/not logged in/i);
+
+      // Model not offered → warning naming the model.
+      const rModel = await getReadiness(
+        {
+          runner: versions(),
+          agents: fakeAgents({ claude: ["other-model"], codex: ["gpt-x"] }) as never,
+          settings: settingsStore(),
+          loginPathValue: dir,
+          timeoutMs: 2000,
+        },
+        { force: true },
+      );
+      const mainModel = rModel.checks.find((c) => c.id === "agent:main")!;
+      expect(mainModel.status).toBe("warning");
+      expect(mainModel.summary).toMatch(/not offered/i);
+    } finally {
+      cleanup();
     }
   });
 
@@ -341,8 +390,26 @@ describe("readiness checks", () => {
     expect(forced.cached).toBe(false);
   });
 
-  it("GET /api/readiness is gated and forced re-check works", { timeout: 60000 }, async () => {
-    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+  it("GET /api/readiness is gated and forced re-check works", async () => {
+    // Fully faked (issue #119): stub PATH with no tools (gh/d2/agents all
+    // report "not installed", no spawn), git --version scripted, fake
+    // agents, static model catalog. No real subprocess beyond `git`.
+    clearReadinessCache();
+    const { dir, cleanup } = await makeStubBins();
+    const { rmSync } = await import("node:fs");
+    rmSync(`${dir}/claude`);
+    rmSync(`${dir}/codex`);
+    const runner = new FakeCommandRunner();
+    runner.enqueue({ cmd: "git", args: ["--version"], stdout: "git version 2.50.0", stderr: "", code: 0 });
+    runner.enqueue({ cmd: "git", args: ["--version"], stdout: "git version 2.50.0", stderr: "", code: 0 });
+    const { StaticModelCatalog } = await import("../src/settings/index.js");
+    const { app } = await createApp("tok", {
+      runner,
+      agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
+      models: new StaticModelCatalog(),
+      readiness: { loginPathValue: dir },
+      autoPipeline: false,
+    });
     try {
       const anon = await app.inject({ method: "GET", url: "/api/readiness" });
       expect(anon.statusCode).toBe(401);
@@ -366,8 +433,11 @@ describe("readiness checks", () => {
       });
       expect(forced.statusCode).toBe(200);
       expect((forced.json() as ReadinessResponse).cached).toBe(false);
+      // Nothing real was spawned: only the scripted `git --version` ran.
+      expect(runner.calls.map((c) => c.cmd)).toEqual(["git", "git"]);
     } finally {
       await app.close();
+      cleanup();
     }
   });
 });
