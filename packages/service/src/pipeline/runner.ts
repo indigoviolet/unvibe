@@ -47,7 +47,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
-import { criticApply, isDefaultReaderCardId, readerApply, readerCardId } from "./apply.js";
+import { criticApply, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
@@ -1020,11 +1020,15 @@ export class Pipeline {
 
   /**
    * Finalize inline diagrams for a fill that already holds its blocks
-   * (#130): pre-check + render, plus exactly one repair turn on the
+   * (#130, #145): pre-check + render, plus exactly one repair turn on the
    * fill's own session when needed. A failed repair keeps the
-   * error-status blocks; the prose is unaffected.
+   * error-status blocks; the prose is unaffected. One place decides "this
+   * block is a diagram that needs finalizing", used by every job kind:
+   * pipeline fills call this directly; second opinions call it through
+   * their deps' pipeline. Never touches the shared log (no ingestTurn),
+   * so second-opinion isolation holds.
    */
-  private async finalizeInlineBlocks(
+  async finalizeInlineBlocks(
     reviewId: string,
     session: Session,
     signal: AbortSignal | undefined,
@@ -1415,7 +1419,22 @@ export class Pipeline {
               finalBody = second.body;
             }
             this.throwIfDegradedTurn(reviewId, mcpBefore, finalData, finalBody);
-            await this.applyReaderResult(reviewId, finalCards, finalData, finalValidation);
+            // #145: diagrams the reader wrote inline in guide cards go
+            // through the same finalize + one repair turn as every other
+            // fill, on the reader's own session. Flattened so a bad
+            // diagram costs one shared repair turn, then split back.
+            const flat = finalCards.flatMap((c) => c.blocks);
+            const finalized = await this.finalizeInlineBlocks(
+              reviewId,
+              session,
+              ctx.signal,
+              `Guide: ${finalCards.map((c) => c.title ?? "(untitled)").join(" / ")}`,
+              "standard",
+              flat,
+              (u) => ctx.reportUsage(u),
+            );
+            const withDiagrams = splitFinalizedBlocks(finalCards, finalized);
+            await this.applyReaderResult(reviewId, withDiagrams, finalData, finalValidation);
             // #122: the guide cards are already applied above; bookkeeping
             // joins the per-review chain (still awaited before the job ends).
             await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: session.id, data: finalData }));

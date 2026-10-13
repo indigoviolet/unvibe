@@ -16,7 +16,9 @@ import { requestSecondOpinion, removeSecondOpinion } from "../../secondopinion/i
 
 function depsFromPipeline(pipeline: Pipeline): SecondOpinionDeps {
   const opts = (pipeline as unknown as { opts: SecondOpinionDeps }).opts;
-  return opts;
+  // #145: hand the pipeline itself through for inline diagram finalize
+  // (repair turn on the second-opinion session; shared log untouched).
+  return { ...opts, pipeline };
 }
 
 export async function secondOpinionAction(
