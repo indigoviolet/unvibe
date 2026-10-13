@@ -21,6 +21,7 @@ import type {
   ChangesFilter,
   Contribution,
   CreateReviewRequest,
+  CreateReviewResponse,
   HunkState,
   Job,
   ModelsResponse,
@@ -1237,6 +1238,37 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
 
 // --- mock client ---------------------------------------------------------
 
+/**
+ * #149: mirror the service dedupe — a PR review and a branch review of
+ * the same branch are different sources. The list is newest-first, so
+ * the first hit is the most recently active review.
+ */
+function findMockReview(repoId: string, pr: number | undefined, branch: string | undefined): ReviewSummary | null {
+  for (const entry of mockReviewList) {
+    if (entry.repoId !== repoId) continue;
+    if (pr !== undefined) {
+      if (entry.prNumber === pr) return entry;
+    } else if (entry.branch === branch && entry.prNumber === undefined) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+/** #149: mark PR/branch rows that already have a review (open, not start). */
+function markMockChanges(changes: RepoChange[], repoId: string): RepoChange[] {
+  return changes.map((c) => {
+    if (c.kind === "pr" && c.prNumber !== undefined) {
+      const m = findMockReview(repoId, c.prNumber, undefined);
+      if (m) return { ...c, reviewId: m.id, ...(m.stale ? { stale: true } : {}) };
+    } else if (c.kind === "branch" && c.branch) {
+      const m = findMockReview(repoId, undefined, c.branch);
+      if (m) return { ...c, reviewId: m.id, ...(m.stale ? { stale: true } : {}) };
+    }
+    return c;
+  });
+}
+
 function buildMockDiagnostics(): import("@unvibe/shared").DiagnosticsResponse {
   return {
     generatedAt: Date.now(),
@@ -1716,15 +1748,22 @@ export const mockApi = {
     }
     switch (filter) {
       case "authoring":
-        return withFetchNote({ changes: authoring });
+        return withFetchNote({ changes: markMockChanges(authoring, id) });
       case "review-requested":
-        return withFetchNote({ changes: requested });
+        return withFetchNote({ changes: markMockChanges(requested, id) });
       case "branches":
-        return withFetchNote({ changes: branches });
+        return withFetchNote({ changes: markMockChanges(branches, id) });
       case "recent":
-        return withFetchNote({ changes: [...branches, ...previous] });
+        return withFetchNote({ changes: [...markMockChanges(branches, id), ...previous] });
       default:
-        return withFetchNote({ changes: [...authoring, ...requested, ...branches, ...previous] });
+        return withFetchNote({
+          changes: [
+            ...markMockChanges(authoring, id),
+            ...markMockChanges(requested, id),
+            ...markMockChanges(branches, id),
+            ...previous,
+          ],
+        });
     }
 
     /** Attach the stale-clone note when the `repoChangesFetchError` hook is set. */
@@ -1734,7 +1773,7 @@ export const mockApi = {
     }
   },
 
-  createReview: async (body: CreateReviewRequest): Promise<ReviewSnapshot> => {
+  createReview: async (body: CreateReviewRequest): Promise<CreateReviewResponse> => {
     // #92 hooks for Playwright (mock mode):
     // - `unvibe.mock.createReviewHold`: return a loading snapshot that stays
     //   loading until the key is removed (then `review()` serves ready).
@@ -1748,6 +1787,16 @@ export const mockApi = {
       if (fail === "") fail = null;
     } catch {
       // Ignore.
+    }
+    // #149: reuse the existing review for the same source, like the service.
+    const existing = findMockReview(body.repoId, body.pr, body.branch);
+    if (existing) {
+      if (existing.ingestStatus === "loading") return { ...mockLoadingSnapshot(existing), reused: true };
+      if (existing.ingestStatus === "failed") {
+        return { ...mockFailedSnapshot(existing, existing.ingestError ?? "the review couldn't be opened"), reused: true };
+      }
+      existing.lastOpened = Date.now();
+      return { ...currentSnapshot(existing.id), reused: true };
     }
     if (fail) {
       const id = `mock-failed-${Date.now().toString(36)}`;

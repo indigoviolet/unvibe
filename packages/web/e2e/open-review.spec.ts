@@ -12,7 +12,9 @@ test("opening a PR navigates at once to a loading page, then the guide appears",
   // reload below and re-arm it, racing the release (flaky about 1 run in 20).
   await page.evaluate(() => localStorage.setItem("unvibe.mock.createReviewHold", "1"));
   // Open a PR by number (mock createReview returns loading while held).
-  await page.getByLabel("Open a PR by URL or number").fill("5020");
+  // #149 reuses the existing review for a known PR, so this uses a PR with
+  // no review yet.
+  await page.getByLabel("Open a PR by URL or number").fill("5099");
   await page.getByRole("button", { name: "Open PR" }).click();
   // Immediate navigation (POST answers 202 before the ingest).
   await expect(page).toHaveURL(/\/review\/mock-loading-/, { timeout: 15000 });
@@ -23,6 +25,19 @@ test("opening a PR navigates at once to a loading page, then the guide appears",
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.createReviewHold"));
   await page.reload();
   await expect(page.getByTestId("review-loading")).toBeHidden({ timeout: 15000 });
+});
+
+test("a PR row with a review shows a marker and opens that review (#149)", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  // The authoring row for PR #5020 already has a review (the demo session).
+  const row = page
+    .getByTestId("pr-block")
+    .locator(".ci", { has: page.getByRole("link", { name: "Open PR #5020 on GitHub" }) });
+  await expect(row.locator(".prtag", { hasText: "review" })).toBeVisible();
+  // Clicking the row's title opens the existing review, not a new one.
+  await row.getByRole("button", { name: "Unfold obsolete folded response header values" }).click();
+  await expect(page).toHaveURL(/\/review\/demo/, { timeout: 15000 });
 });
 
 test("a failing open shows the error with Retry", async ({ page }) => {
