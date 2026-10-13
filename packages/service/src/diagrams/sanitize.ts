@@ -45,7 +45,7 @@ function isCitationHref(href: string): boolean {
 }
 
 function bareOf(href: string): string {
-  const t = href.trim();
+  let t = href.trim();
   const pipe = t.indexOf("|");
   if (pipe >= 0) t = t.slice(0, pipe).trim();
   return t;
