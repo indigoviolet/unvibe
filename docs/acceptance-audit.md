@@ -18,7 +18,7 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §4.1 layout (4) | 4 | 0 | 0 | 0 |
 | §4.2 start page (5) | 5 | 0 | 0 | 0 |
 | §4.3 pages (7) | 7 | 0 | 0 | 0 |
-| §4.4 cards (6) | 6 | 0 | 0 | 0 |
+| §4.4 cards (5) | 5 | 0 | 0 | 0 |
 | §4.5 links/citations (8) | 8 | 0 | 0 | 0 |
 | §4.6 selecting text (4) | 4 | 0 | 0 | 0 |
 | §4.7 explanations (5) | 5 | 0 | 0 | 0 |
@@ -44,7 +44,7 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §16 non-functional (5) | 5 | 0 | 0 | 0 |
 | §17 M0–M6 done-when (7) | 7 | 0 | 0 | 0 |
 | §18 test kinds (4) | 4 | 0 | 0 | 0 |
-| **Total** | **214** | **0** | **0** | **1** |
+| **Total** | **213** | **0** | **0** | **1** |
 
 (Audit-10 correction: the prior total (204/2) was stale — the row values
 already summed to 208 met + 3 partly + 1 cannot-verify = 212 requirements.
@@ -54,6 +54,8 @@ partly + 1 cannot-verify = 212.)
 so the rows now sum to 212 met + 1 cannot-verify = 213.)
 (Issue #133 stage 2 adds two more §4.13 requirements — expand by unit,
 no file content — so the rows now sum to 214 met + 1 cannot-verify = 215.)
+(Issue #136 slice 1 removes the read state as a feature — one fewer §4.4
+requirement — so the rows now sum to 213 met + 1 cannot-verify = 214.)
 
 Fixed in this branch (was failing/missing before): stale-dist `check`
 failure; missing Host/Origin gate; MCP secrets never revoked; submit
@@ -244,7 +246,7 @@ needed (that deviation is closed, not added).
   met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header cases,
   `guide.spec.ts` finding-label + saved-bookmark cases).
 - Trail breadcrumb off-root — met (`guide.spec.ts` “pages navigate”).
-- Contents box (cards jump + linked pages, read muted, no other labels)
+- Contents box (cards jump + linked pages, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
   `guide.spec.ts` “renders cards, contents and generated go-deeper cards”).
   Card entries show the title (real or the shared #49 fallback), never a
@@ -256,15 +258,15 @@ needed (that deviation is closed, not added).
 - Bookmark + state exists (sharing deferred) — met (`Page.saved`,
   `reviews/list.ts` summaries).
 
-### §4.4 Cards — all met (audit-10)
+### §4.4 Cards — all met (audit-10; #136 slice 1)
 
 - Collapse chevron, title-row-only collapsed — met (`guide.spec.ts`).
   Every page card shows a title: the prompts require one for every card
   (issues #49/#50), and when the agent omits it the header and Contents
   share one derived fallback — the first sentence or clause of the body,
   cut on a word boundary with an ellipsis (`shared/src/content/titles.ts`,
-  `CardView.test.tsx`). Expansions keep their quoted-selection header
-   with no derived second title. Replies never repeat what the reader
+  `CardView.test.tsx`). Explanation cards keep their quoted-selection
+  header with no derived second title. Replies never repeat what the reader
    already sees (shared "Reply hygiene" guidance in `instructions.md`;
    the `explain` "quote it back" rule is removed), with a deterministic
    exact-match strip of a leading echo line at parse time
@@ -284,9 +286,9 @@ needed (that deviation is closed, not added).
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
   + and − keep their icons and are disabled, with no dots inside the
-  control, in both directions — one shared control for cards and
-  expansions (issue #129; the target-pip pulse was dropped as allowed —
-  `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
+  control, in both directions — one shared control for page cards and
+  conversation answers (issue #129; the target-pip pulse was dropped as
+  allowed — `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
   `depth-principle-service.spec.ts`).
 - Examples / Add diagram inserts, never duplicated — met
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
@@ -345,10 +347,13 @@ needed (that deviation is closed, not added).
   bytes. Not fixed in app code (overriding the family would break D2's
   tight box layout); shorter labels + inline/overlay zoom are the
   mitigations.
-- Undo (depth/examples/diagram, no redo, comments/expansions survive) —
-  met (`actions/undo.ts`, `actions-m4.test.ts`).
-- Mark read (grey + collapse), roll-up to page, muted links — met
-  (`guide-service.spec.ts` “card read action”).
+- Undo (depth/examples/diagram, no redo, comments/nested cards survive)
+  — met (`actions/undo.ts`, `actions-m4.test.ts`).
+- Read state removed as a feature (#136, owner decision): no Mark read
+  control and no stored read state on any card (guide or
+  conversation); the per-hunk reviewed tick and N/M progress stay.
+  (`entities.ts` has no `read`; `CardView.tsx` / `ExpansionCard.tsx`
+  render no read control; `guideUtils.test.ts` read suites deleted.)
 - “Underlying principle” block at deepest `+` — met (audit-10):
   `e2e/depth-principle-service.spec.ts` (real service, `UNVIBE_AGENT:
   "replay"`, shared harness, demo review) steps a page card to deep,
@@ -390,8 +395,8 @@ needed (that deviation is closed, not added).
   Inside an explanation the same toolbar appears (#116); inside
   second-opinion reasoning and thread replies it does not (neither is an
   anchor host — `SelectionToolbar.test.tsx`).
-- Selections inside an explanation anchor to the expansion's block
-  (`<expansion>#<block>`) for Explain and Ask; a Comment there anchors
+- Selections inside a conversation answer anchor to the answer's block
+  (`<answer>#<block>`, owner from the answer wrapper) for Explain and Ask; a Comment there anchors
   where the card is anchored and quotes the selection as a Markdown
   blockquote prefilled in the composer (issue #135). The nested
   explanation, thread or comment renders under its anchor, nests to any
@@ -406,13 +411,16 @@ needed (that deviation is closed, not added).
   `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
   `comments.spec.ts` “GitHub action links diff lines”).
 
-### §4.7 Explanations — all met
+### §4.7 Explanations — all met (#136 slice 1)
 
-- Expansion under source block, highlight; header (quote, Open as page,
-  Delete, Close) + card controls — met (`actions/explain.ts`,
-  `ask-service.spec.ts` “explain runs”).
-- Close → dotted link (preview/expand); read closes the same way — met
-  (`actions/close.ts`, `promote.ts`).
+- Conversation card under the source block, highlight; header (quote,
+  Open as page, Delete, Close) + one answer view per turn, each with the
+  card controls acting on that answer alone, plus a reply box answered in
+  the same conversation — met (`actions/explain.ts` + `conversation.ts`,
+  `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
+  `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
+- Close → dotted link (preview/expand) — met (`actions/close.ts`,
+  `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with
   a "from an earlier wording" hint (issue #72, replaces the collapsed-card
   fallback) — met (`interaction/cards.ts` visible-level `markStaleAnchors`
@@ -420,22 +428,30 @@ needed (that deviation is closed, not added).
   `guide/CardView.test.tsx` footnote chips;
   `e2e/anchor-footnotes-service.spec.ts` closed → deep → chip → open →
   back → highlight).
-- Open as page moves content, anchor becomes link — met
-  (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
+- Open as page moves content (one page card per answer, first titled
+  with the quote, later ones with their questions), anchor becomes link
+  — met (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
 - One box while working (issue #97) — met: the Explain placeholder gives
   way as soon as its expansion is in the snapshot (guide, description and
   diff alike), the card shows the fixed “Writing explanation…” label from
   the anchor-keyed entry instead of the “Working…” fallback, and
   content-needing controls (depth, examples, diagram, second opinion) stay
-  off until the text arrives (`guide/inflight.ts` `anchorEntryForExpansion`,
+  off until the text arrives (`guide/inflight.ts` `anchorEntryForConversation`,
   `ExpansionCard.tsx`, `comments/doubleIndicator.test.tsx` “Explain”,
   `guide/inflight.test.ts` anchor-entry cases). First and later Explains
   take the same code path; the first only looks different because agent
   session setup stretches the patch-before-response window.
-- Explanations nest (#116): an Explain on text inside an explanation
-  anchors to the expansion's block and renders under it, to any depth;
-  Ask/Note there behave the same. Citations to expansion blocks validate
-  (`card:<expansion>#<block>`). Closed nested explanations and stale
+- Follow-up suggestions stay on Explain answers; clicking one sends it as
+  the next turn in the same conversation (the item stays, like reply-box
+  text) — met (`actions/followup.ts` conversation branch,
+  `ConversationCard.test.tsx` suggestion case). On guide cards a click
+  still consumes the item and opens a new conversation card.
+- The card is never submitted to GitHub and carries no For-PR control —
+  met (no `post` on conversations; submit posts threads only).
+- Explanations nest (#116, #136): an Explain on text inside an answer
+  anchors to the answer's block and renders under it, to any depth;
+  Ask/Note there behave the same. Citations to answer blocks validate
+  (`card:<answer>#<block>`). Closed nested cards and stale
   anchors use the same footnote chips as card-level ones. Block IDs are
   unique within each stored body (multi-card replies dedupe to `-c2`…,
   inserts take fresh IDs; matching is exact on owner + block), so one
@@ -483,9 +499,9 @@ needed (that deviation is closed, not added).
 
 ### §4.9 Findings — all met
 
-- Separate pages, orange guide card with confidence + “Open →”, dims when
-  read — met (walk shows finding-linked content; `pipeline/apply.ts`
-  criticApply).
+- Separate pages, orange guide card with confidence + “Open →” — met
+  (walk shows finding-linked content; `pipeline/apply.ts`
+  criticApply). (The read-dim is gone with the read state, #136.)
 - Finding page label + rust-border Evidence/Assessment cards — met
   (`reply-format.md`, demo snapshot has `f-lf`/`f-perf` with 2 cards each —
   ran).
@@ -728,10 +744,12 @@ needed (that deviation is closed, not added).
 
 ### §4.15 Conventions — all met
 
-- Chevron/Delete/×/check placement + AI/user initials + teal/amber — met
-  (walk screenshot; prototype CSS class names kept).
+- Chevron/Delete/× placement + AI/user initials + teal/amber — met
+  (walk screenshot; prototype CSS class names kept). The card check
+  (Mark read) is gone with the read state (#136); the hunk reviewed
+  tick keeps its check.
 - Only “Guide” + “Agent finding” labels — met (walk).
-- Comments/expansions share header layout — met (`ThreadView` shared).
+- Comments/explanation cards share header layout — met (`ThreadView` shared).
 - `hidden` stays hidden — met (`styles/prototype.css:25`
   `[hidden]{display:none!important}` — the two prototype bugs' fix,
   present).
@@ -773,7 +791,11 @@ needed (that deviation is closed, not added).
 
 ## §7 Data model and IDs — all met
 
-- Entities per §7.1 table — met (`shared/src/entities.ts` 699 lines;
+- Entities per §7.1 table — met (`shared/src/entities.ts`;
+  #136 slice 1: `ContentBody` (page card or answer), `Turn`
+  (`ans_…` + question + answer blocks), `Annotation` type
+  `conversation` with turns + one session id; `ExpansionState` and
+  `Card.read` removed;
   single schema migration (001–005 collapsed under #137) + sessions table;
   `store.test.ts`, `state.test.ts`).
 - ID grammar (§7.2 all nine forms) — met (`shared/src/ids.ts`,

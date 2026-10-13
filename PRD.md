@@ -86,7 +86,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
     **recent branches** (local and remote, by last commit date, newest
     first with the commit age on each row); a list the filter empties
     names its window with a way back to All;
-  - **reviews you've opened before**, with their unread and stale state ("new commits · Update"),
+  - **reviews you've opened before**, with their stale state ("new commits · Update"),
     ordered by recent activity, unfiltered by the recency filter.
 - PR rows show the head branch, a relative update time and the diff size
   (lines added and removed, files changed); where a row names a GitHub PR,
@@ -101,34 +101,32 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   repo behaves as before.
 
 ### 4.3 Pages
-- **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
+- **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an explanation card. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
   - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page (no label row at all on pages with no label);
   - the title, with the **bookmark** icon (save or unsave the page) on the title line, right-aligned.
 - **Trail:** a breadcrumb back to the root, on every page except the root.
-- **Contents:** a collapsible box listing this page's cards (click to jump, expanding the card if needed) and the pages it links to. Read items are muted. There are no other status labels.
+- **Contents:** a collapsible box listing this page's cards (click to jump, expanding the card if needed) and the pages it links to. There are no other status labels.
 - **Go deeper:** the root page ends with placeholder cards for the directions the agent picked for this change. **Generate** shows progress and fills the card. A generated card may end with follow-up suggestions; clicking one adds its answer.
 - **Saving:** pages are scoped to the repo. Saving is deferred (§2), but the bookmark and its state must exist.
 
 ### 4.4 Cards
-Every card and every expansion card has the same controls:
-- **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Expansions show the quoted selection as their header instead and get no derived title.
+Every page card has the same controls. Explanation cards (§4.7) carry the same controls per answer:
+- **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Explanation cards show the quoted selection as their header instead and get no derived title.
 - **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row.
-- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles. While a depth change runs, both buttons keep their icons and are disabled (one shared control for cards and expansions).
+- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles. While a depth change runs, both buttons keep their icons and are disabled (one shared control for page cards and answers).
   - Changing depth rewrites the card's paragraphs in place.
   - + at the deepest level adds an "Underlying principle" block.
   - Depth versions are generated **on demand** and kept once made.
 - **Use examples** and **Add diagram:** insert example or diagram blocks after the paragraphs they relate to, never duplicating one already there.
 - **Diagrams** render inline in the card at fit: the whole diagram visible, no scrollbars, never above natural size. +/−/Reset zoom in place (trackpad pinch and Ctrl/Cmd+wheel zoom; a plain wheel scrolls the page), drag pans once zoomed. When the guide pane has spare room the block breaks out past the text column, centered, up to the usable width; caption and citations stay column-aligned. **Expand** opens the same diagram out of the column in a full-window view with the same zoom/pan plus reset-to-fit. Esc or the close control shuts it and focus returns to Expand. Citation hover previews and click-to-reveal work the same expanded, inline, and zoomed. Diagrams wear the guide palette in both themes, with `myid.class: [ok]` / `[bad]` on its own line for good/bad states. A diagram that did not render shows its source with a plain "Couldn't draw this diagram." note and a retry — no zoom, Reset or Expand controls, no compiler output (the raw reason is on the Debug page).
-- **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and expansions attached to the card survive undo.
-- **Mark read:** greys the card and collapses it to its title row. Unmarking expands it.
-- **Read state rolls up:** a page is read when all of its cards are, and links to fully read pages show muted.
+- **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and nested cards attached to the card survive undo.
 - **While the agent works:** the card (likewise threads, hunk summaries, placeholders and the loading states) shows a fixed plain label with three dots bouncing in sequence — never streamed agent text. Under the OS reduced-motion setting the dots stay still but solid.
 
 ### 4.5 Links and citations
 - **Dotted links** all behave the same way: hover shows a preview card, click acts.
   - A link to a page previews its title and first paragraph; click opens the page.
-  - A collapsed expansion previews its content; click expands it in place.
+  - A collapsed explanation card previews its content; click expands it in place.
 - **Citations:** a small `<>` marker at the end of a block, with a count if there's more than one.
   - Hover previews the cited lines.
   - Click opens the source pane at that spot and highlights it. If needed it unfolds or shows hidden hunks, and clears file filters.
@@ -149,11 +147,13 @@ Every card and every expansion card has the same controls:
 - **GitHub** is a plain link out: on a diff selection it opens the selected lines in GitHub's file view at the review's commit (the head commit for added and unchanged lines, the base commit when the selection is only on removed lines). It starts no job and no thread, and is hidden where there is nothing unambiguous to open (prose, non-GitHub repos, the demo).
 
 ### 4.7 Explanations
-- **Explain** creates an expansion card right under the block the text came from: under the paragraph in the description, under the line in the diff. The selected text is highlighted.
-- **Header:** the quoted text, then **Open as page**, **Delete** and **Close**. Below that, the standard card controls.
-- **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click expands it. Marking an expansion read closes it the same way.
+- **Explain** creates an explanation card right under the block the text came from: under the paragraph in the description, under the line in the diff. The selected text is highlighted.
+- **Header:** the quoted text, then **Open as page**, **Delete** and **Close**. Below that, one answer view per turn: each answer carries the standard card controls acting on that answer alone (the latest answer shows them; earlier answers reveal them on hover or focus), and a reply box at the bottom answers in the same conversation.
+- **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click expands it.
 - **If the anchor text can't be found** (for example after a depth rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
-- **Open as page** moves the content to a new page titled with the quoted text, and the anchor text becomes a link to that page.
+- **Open as page** moves the content to a new page titled with the quoted text — one card per answer, the first titled with the quoted text and later ones with their questions — and the anchor text becomes a link to that page.
+- **Follow-up suggestions** stay on Explain answers; clicking one sends it as the next turn in the same conversation.
+- The card is never submitted to GitHub; it carries no For-PR control.
 
 ### 4.8 Comments
 - **Ask…** starts a thread, and the agent replies with citations. **Comment** starts a thread with no agent reply. Only Ask sends text to the agent.
@@ -174,7 +174,7 @@ Every card and every expansion card has the same controls:
 
 ### 4.9 Agent findings
 - Findings are the agent's own judgements about the change: mismatches, risks, questionable choices. They are **separate pages**, never sentences mixed into the restatement.
-- **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →". It dims once the finding page is read.
+- **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →".
 - **The finding page:** carries the same label, and its cards have a rust left border. Typical cards are Evidence (each piece cited) and Assessment.
 - **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card.
 
@@ -233,7 +233,7 @@ Every card and every expansion card has the same controls:
 - **Unified:** long lines scroll sideways (per hunk: each hunk's code scrolls independently, so its header can pin without sitting inside the scroller).
 - **Split:** always two equal halves with fixed line-number columns; long lines wrap inside their half. Choosing Split widens the pane if it's narrow.
 - **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
-- **Pinned rows (sideways):** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.
+- **Pinned rows (sideways):** hunk headers, hunk cards, line comments and explanation cards are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.
 
 **New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
 
@@ -254,11 +254,11 @@ Every card and every expansion card has the same controls:
 | Close, leaving the anchor link or marker | × | Always last on the right |
 | Delete | Trash | Right side, just before × |
 | Item actions | Icons with tooltips | Right side, before Delete |
-| Read / reviewed | Check in a circle | Right end of card controls; hunk and file headers |
+| Reviewed | Check in a circle | Hunk and file headers |
 | Agent content vs the user's | "AI" or the user's initials on each message; teal for the agent, amber for the user's comments | Threads, hunk cards |
 
 - The only type labels are "Guide" and "Agent finding".
-- Comments and expansions use the same header layout.
+- Comments and explanation cards use the same header layout.
 - An element hidden with the `hidden` attribute must stay hidden even if its own style sets `display`. Two prototype bugs came from this.
 
 ---
@@ -328,9 +328,9 @@ type AgentEvent =
 | File / Hunk | file key, path, category, hunk **content hash**, header, line ranges, `hidden_reason` |
 | HunkState | content hash → folded, reviewed, summary, note (carried across versions by hash) |
 | Page | id, kind (root, concept, finding, opened-expansion), title, saved, parent, cards[] |
-| Card | id, page, title, level, read, collapsed, revision, blocks[], undo stack |
+| Card | id, page, title, level, collapsed, revision, blocks[], undo stack, second opinions |
 | Block | id, type (paragraph, list, table, code, diagram, finding link, follow-up, aside), text per depth level, citations |
-| Annotation | id, type (expansion, thread, link), anchor, open/closed, plus for threads: messages, `post`, draft, note flag |
+| Annotation | id, type (conversation, thread, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for threads: messages, `post`, draft, note flag |
 | Anchor | host (block ID, description paragraph, or diff line), quoted text, prefix/suffix, position at creation, version |
 | Contribution | id, source session, items (fact, correction, open question, reader note), citations, replaces, status |
 | Job | id, kind, model, priority, state, session ID, prompt snapshot, usage, error |
@@ -408,7 +408,7 @@ The aim: every conversation starts mostly from cache, and rarely needs a tool ca
 
 ### 9.3 The append-only log and change lists
 - **What enters the log:**
-  - **never:** read, collapse, depth, open/close and "mark for PR" state;
+  - **never:** collapse, depth, open/close and "mark for PR" state;
   - **only for conversations anchored on that card:** examples, diagrams and depth rewrites;
   - **one line, once a thread settles:** a summary of the thread;
   - **in full:** new cards and findings, and answers that cited something outside the base;
@@ -620,7 +620,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | **M0** | **ACP spike** (do this first) | In both `claude-agent-acp` and `codex-acp`: start a session with a system prompt plus an MCP server, send a ~30k-token pack, fork it twice, and confirm that (a) each fork answers questions about the pack, (b) usage shows cache reads on the forks, (c) a trailing JSON block parses reliably. Results written up. |
 | M1 | Service, ingest and diff | Start page lists repos, PRs and branches. Opening one ingests it. The diff pane has every §4.13 feature except agent summaries. Token-protected localhost service, installable web app, helper and idle exit. |
 | M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept candidates are hidden. Hunk pass summaries, and Hide uninteresting with reasons. |
-| M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Expansions close into links; Open as page. Mark read. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
+| M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Explanation cards close into links; Open as page. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
 | M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |
