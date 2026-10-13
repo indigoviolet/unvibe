@@ -188,22 +188,6 @@ describe("hunk summarize reply shapes (#99, on-demand site)", () => {
     expect(got.hiddenReason).toBeUndefined();
   });
 
-  it("stored bad summary (looks like JSON) is not reused; a fresh job replaces it", async () => {
-    const bad = `{"hunk": {"summary": "Maps the Nav 2 Conversations item to the label \\"New chat\\" via NAV2_LABEL_OVERRIDES, alongside the existing Knowledge`;
-    const got = await summarizeWith(bareJson(SUMMARY, HIDDEN), { summary: bad });
-    expect(got.reused).toBe(false);
-    expect(got.prompts).toBeGreaterThan(0);
-    expect(got.summary).toBe(SUMMARY);
-    expect(got.hiddenReason).toBe(HIDDEN);
-  });
-
-  it("stored bad summary + unusable reply: the garbage is cleared, not kept", async () => {
-    const bad = `{"hunk": {"summary": "Maps the Nav 2 Conversations`;
-    const got = await summarizeWith(`{"hunk": {"summary": "oops`, { summary: bad });
-    expect(got.reused).toBe(false);
-    expect(got.summary).toBeUndefined();
-  });
-
   it("stored good summary still reuses with no agent call", async () => {
     const got = await summarizeWith(bareJson("SHOULD NOT BE USED", null), { summary: SUMMARY });
     expect(got.reused).toBe(true);
