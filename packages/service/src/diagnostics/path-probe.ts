@@ -192,3 +192,18 @@ export async function probeEffectivePath(
     onlyInInherited,
   };
 }
+
+/**
+ * Apply the login-shell PATH to this process (before anything spawns
+ * git/gh/agent adapters). Returns the detail, or null when nothing
+ * changed. Never throws.
+ */
+export async function applyLoginShellPath(
+  opts: { shell?: string; timeoutMs?: number } = {},
+): Promise<{ before: string; after: string; shell: string } | null> {
+  const before = process.env.PATH ?? "";
+  const found = await probeEffectivePath(opts);
+  if (!found || found.effectivePath === before) return null;
+  process.env.PATH = found.effectivePath;
+  return { before, after: found.effectivePath, shell: found.shell };
+}

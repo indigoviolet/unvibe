@@ -10,7 +10,7 @@ import type { FastifyInstance } from "fastify";
 import { loadOrCreateToken } from "./auth.js";
 import { removeOwnLock, writeLock } from "./cli/lock.js";
 import { loadConfig } from "./config.js";
-import { applyLoginShellPath } from "./exec/index.js";
+import { applyLoginShellPath } from "./diagnostics/path-probe.js";
 import { shutdownService, type ServiceShutdownReport, type ServiceShutdownSteps } from "./lifecycle/index.js";
 import { createApp, listen } from "./server.js";
 import { makeDefaultSpawnHelper } from "./routes/update.js";

@@ -2,7 +2,7 @@
  * One adapter subprocess per provider, started lazily, multiplexing sessions.
  *
  * - The user's installed `claude`/`codex` CLIs are found on the PATH
- *   resolved from a login shell (`exec/shell-path.ts`), never hard-coded
+ *   resolved from a login shell (`diagnostics/path-probe.ts`), never hard-coded
  *   install paths, and each adapter is pointed at them through the mechanism
  *   it really supports (see `exec/agent-bins.ts`): `CLAUDE_CODE_EXECUTABLE`
  *   for claude-agent-acp (→ SDK `pathToClaudeCodeExecutable`), `CODEX_PATH`
@@ -22,7 +22,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import { resolvePathFromLoginShell } from "../../exec/shell-path.js";
+import { probeEffectivePath } from "../../diagnostics/path-probe.js";
 import { agentBinEnv, resolveAgentBin } from "../../exec/agent-bins.js";
 import { miseIgnoreEnv } from "../../exec/shim-resolve.js";
 import { loadConfig } from "../../config.js";
@@ -56,7 +56,8 @@ let cachedLoginPath: string | null = null;
 async function loginPathEnv(): Promise<string> {
   if (cachedLoginPath === null) {
     try {
-      cachedLoginPath = await resolvePathFromLoginShell();
+      const found = await probeEffectivePath();
+      cachedLoginPath = found ? found.effectivePath : (process.env.PATH ?? "");
     } catch {
       cachedLoginPath = process.env.PATH ?? "";
     }
