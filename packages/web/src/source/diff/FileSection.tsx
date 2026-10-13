@@ -34,6 +34,14 @@ import { slotKey, type LineSlots } from "./lineSlots.js";
 import { codeLineHtml } from "./highlight/codeHtml.js";
 import { useFileHighlight } from "./highlight/useFileHighlight.js";
 import type { LineTokens } from "./highlight/tokenize.js";
+import {
+  ExpandEdge,
+  ExpandGap,
+  RevealedRows,
+  useFileExpansion,
+  useRevealedTokens,
+} from "./FileExpansion.js";
+import { maxLineDigits } from "./expandLines.js";
 import "./highlight/highlight.css";
 
 export type DiffViewMode = "unified" | "split";
@@ -83,6 +91,18 @@ interface SectionProps {
   commentedLines: ReadonlySet<string>;
   highlight: LineRange | null;
   fileHighlighted: boolean;
+  /** Review id for file slices (issue #133: diff expansion). */
+  reviewId: string;
+  /** Head commit: the side expanded for every file but deleted ones. */
+  headCommit: string;
+  /** Base commit: the side expanded for deleted files. */
+  baseCommit: string;
+  /**
+   * False when the review has no readable file content (issue #133:
+   * the service answers `no-content`, e.g. the demo). Expansion and
+   * unit controls hide instead of showing load errors.
+   */
+  contentAvailable: boolean;
   /** Brief copy for hidden rows, keyed `fileKey:index` (mock fixture). */
   briefs: Readonly<Record<string, string>> | null;
   /**
@@ -406,7 +426,23 @@ function HiddenRow({
   );
 }
 
-function HunkBlock(props: SectionProps & { index: number }): ReactNode {
+function HunkBlock(
+  props: SectionProps & {
+    index: number;
+    /** Rows above the hunk's own code rows (issue #133: expand controls + revealed context). */
+    beforeRows?: ReactNode;
+    /** Rows below the hunk's own code rows (issue #133). */
+    afterRows?: ReactNode;
+    /** Unit name for the header (`· in <name>`), once a unit level expanded (issue #133). */
+    unitName?: string | null;
+    /** True when the shown unit came from the heuristic fallback. */
+    unitApprox?: boolean;
+    /** Next unit step, null when done or unavailable. */
+    unitNext?: { label: string; tip: string } | null;
+    unitPending?: boolean;
+    onUnitExpand?: () => void;
+  },
+): ReactNode {
   const { file, index } = props;
   const h = file.hunks[index];
   const st = props.states.get(h.contentHash);
@@ -421,6 +457,7 @@ function HunkBlock(props: SectionProps & { index: number }): ReactNode {
   const busy = !!props.busy[h.contentHash];
   const k = `${file.fileKey}:${index}`;
   const fn = h.context?.match(/(?:def|class)\s+(\w+)/)?.[1];
+  const inName = props.unitName ?? fn ?? null;
   const rowProps: RowProps = {
     fileKey: file.fileKey,
     hunk: h,
@@ -450,7 +487,13 @@ function HunkBlock(props: SectionProps & { index: number }): ReactNode {
             Hunk {index + 1} of {file.hunks.length}
           </b>{" "}
           · lines {h.newStart}–{h.newEnd}
-          {fn ? ` · in ${fn}` : ""} ·{" "}
+          {inName ? ` · in ${inName}` : ""}
+          {props.unitApprox && props.unitName ? (
+            <span className="hint" data-tip="Approximate unit: guessed without a grammar">
+              {" ~"}
+            </span>
+          ) : null}{" "}
+          ·{" "}
           <span className="st">
             <span className="a">+{h.added}</span> <span className="d">−{h.removed}</span>
           </span>
@@ -480,6 +523,18 @@ function HunkBlock(props: SectionProps & { index: number }): ReactNode {
             <Icon name="spark" />
           </button>
         )}
+        {props.unitNext ? (
+          <button
+            className="ib"
+            type="button"
+            data-tip={props.unitNext.tip}
+            aria-label={props.unitNext.tip}
+            disabled={props.unitPending}
+            onClick={props.onUnitExpand}
+          >
+            <Icon name="code" />
+          </button>
+        ) : null}
         <button
           className="ib"
           type="button"
@@ -533,7 +588,11 @@ function HunkBlock(props: SectionProps & { index: number }): ReactNode {
                 <col />
               </colgroup>
             ) : null}
-            <tbody>{props.view === "unified" ? <UnifiedRows {...rowProps} /> : <SplitRows {...rowProps} />}</tbody>
+            <tbody>
+              {props.beforeRows}
+              {props.view === "unified" ? <UnifiedRows {...rowProps} /> : <SplitRows {...rowProps} />}
+              {props.afterRows}
+            </tbody>
           </table>
         </div>
       )}
@@ -549,10 +608,24 @@ export function FileSection(props: SectionProps): ReactNode {
   const base = file.path.split("/").pop()!;
   const dir = file.path.slice(0, Math.max(0, file.path.length - base.length));
   const done = props.reviewed === file.hunks.length;
+  // Expand-by-lines state (issue #133): revealed context around hunks.
+  // Binary files never expand (no text to show); reviews without file
+  // content hide every expansion control instead of failing per hunk.
+  const canExpand = props.contentAvailable && !file.isBinary;
+  const expansion = useFileExpansion(file, {
+    reviewId: props.reviewId,
+    headCommit: props.headCommit,
+    baseCommit: props.baseCommit,
+    disabled: !canExpand,
+  });
+  const revealedTokens = useRevealedTokens(file.path, expansion.lines, visible && !props.folded && !file.isBinary);
   // Widest line number in the file, in digits (see `--lnw` on `.dfile`).
+  // Revealed lines can carry more digits than the hunks (a 4-digit file
+  // with 3-digit hunks), so they widen the shared width too.
   const lineDigits = Math.max(
     1,
     ...file.hunks.flatMap((h) => h.lines.map((l) => String(l.oldLine ?? l.newLine ?? 0).length)),
+    maxLineDigits(expansion.lines),
   );
   // Only rendered (unhidden) hunks tokenise; unhiding later picks up the
   // cache or tokenises on demand. Folded files skip entirely (no body).
@@ -591,6 +664,129 @@ export function FileSection(props: SectionProps): ReactNode {
     io.observe(el);
     return () => io.disconnect();
   }, [props.eager]);
+
+  // Colspan for control rows inside per-hunk tables (#140 builds one
+  // table per hunk, so the parent scope owns the column count).
+  const cols = props.view === "split" ? 4 : 3;
+
+  /**
+   * File body sections (issue #133 on #140's structure): hidden runs stay
+   * table-free `.dhid` blocks; each shown hunk mounts edge-above /
+   * revealed-above into its section's `beforeRows` and revealed-below /
+   * edge-below / gap into `afterRows`. Folded hunks render no table, so
+   * their expansion rows wait for unfolding.
+   */
+  function buildSections(): ReactNode {
+    const groups = groupHunks(file.hunks, props.isHidden);
+    const shown = new Set(groups.flatMap((g) => (g.type === "show" ? [g.index] : [])));
+    const lastIndex = file.hunks.length - 1;
+    return groups.map((g) => {
+      if (g.type === "hidden") {
+        return (
+          <HiddenRow
+            key={`hid-${g.indices.join("-")}`}
+            file={file}
+            indices={g.indices}
+            briefs={props.briefs}
+            summaries={props.states}
+            onUnhide={props.onUnhide}
+          />
+        );
+      }
+      const i = g.index;
+      const h = file.hunks[i];
+      const u = canExpand ? expansion.unitFor(h) : null;
+      const before: ReactNode[] = [];
+      const after: ReactNode[] = [];
+      if (canExpand) {
+        const above = expansion.regionAbove(i);
+        if (above) {
+          before.push(
+            <ExpandEdge
+              key={`xa-${file.fileKey}-${i}`}
+              hunk={h}
+              index={i}
+              side="above"
+              expansion={expansion}
+              file={file}
+              cols={cols}
+              showHide={i === 0}
+            />,
+          );
+          // Gap lines render once, below the earlier hunk — so only the
+          // top region renders lines above.
+          if (i === 0) {
+            const aboveLines = expansion.lines.filter((l) => l.line >= above.start && l.line <= above.end);
+            if (aboveLines.length > 0) {
+              before.push(
+                <RevealedRows
+                  key={`ra-${file.fileKey}-${i}`}
+                  fileKey={file.fileKey}
+                  lines={aboveLines}
+                  view={props.view}
+                  tokens={revealedTokens}
+                  slots={props.slots}
+                  highlight={props.highlight}
+                />,
+              );
+            }
+          }
+        }
+        const below = expansion.regionBelow(i, file.hunks);
+        if (below) {
+          const belowLines = expansion.lines.filter((l) => l.line >= below.start && l.line <= below.end);
+          if (belowLines.length > 0) {
+            after.push(
+              <RevealedRows
+                key={`rb-${file.fileKey}-${i}`}
+                fileKey={file.fileKey}
+                lines={belowLines}
+                view={props.view}
+                tokens={revealedTokens}
+                slots={props.slots}
+                highlight={props.highlight}
+              />,
+            );
+          }
+        }
+        after.push(
+          <ExpandEdge
+            key={`xb-${file.fileKey}-${i}`}
+            hunk={h}
+            index={i}
+            side="below"
+            expansion={expansion}
+            file={file}
+            cols={cols}
+            showHide={i === lastIndex}
+          />,
+        );
+        // The gap row lives with the earlier hunk, and only while both
+        // sides show: a fully revealed gap then reads as one run of code
+        // lines, closed by the slim hide row, with the next hunk's own
+        // (pinning) header below it.
+        const gap = expansion.regions.find((r) => r.key === `gap-${i}`);
+        if (gap && shown.has(i + 1)) {
+          after.push(<ExpandGap key={`gap-${file.fileKey}-${i}`} region={gap} expansion={expansion} cols={cols} />);
+        }
+      }
+      return (
+        <HunkBlock
+          key={`hunk-${file.fileKey}-${i}`}
+          index={i}
+          {...props}
+          tokens={tokens}
+          beforeRows={before}
+          afterRows={after}
+          unitName={u?.name ?? null}
+          unitApprox={u?.approx ?? false}
+          unitNext={u?.next ?? null}
+          unitPending={u?.pending ?? false}
+          onUnitExpand={u ? () => expansion.expandUnit(h) : undefined}
+        />
+      );
+    });
+  }
 
   return (
     <div
@@ -643,20 +839,17 @@ export function FileSection(props: SectionProps): ReactNode {
               Binary file · changes not shown.
             </p>
           ) : visible ? (
-            groupHunks(file.hunks, props.isHidden).map((g) =>
-              g.type === "hidden" ? (
-                <HiddenRow
-                  key={`hid-${g.indices.join("-")}`}
-                  file={file}
-                  indices={g.indices}
-                  briefs={props.briefs}
-                  summaries={props.states}
-                  onUnhide={props.onUnhide}
-                />
-              ) : (
-                <HunkBlock key={`hunk-${file.fileKey}-${g.index}`} index={g.index} {...props} tokens={tokens} />
-              ),
-            )
+            <>
+              {buildSections()}
+              {expansion.error ? (
+                <div className="xerr">
+                  <span>Couldn&apos;t load those lines: {expansion.error}</span>
+                  <button className="tbtn xs" type="button" onClick={expansion.retry}>
+                    Retry
+                  </button>
+                </div>
+              ) : null}
+            </>
           ) : (
             <div style={{ minHeight: 28 }} aria-hidden="true" />
           )}

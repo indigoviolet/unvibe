@@ -6,6 +6,7 @@ import {
   commentCardAnchor,
   diffRangeForSelection,
   githubHrefForRange,
+  isRevealedElement,
   resolveSelectionHost,
   type DiffRange,
 } from "./SelectionToolbar.js";
@@ -187,5 +188,68 @@ describe("GitHub action range (issue #134)", () => {
         range,
       ),
     ).toBeNull();
+  });
+});
+
+describe("revealed context (issue #133)", () => {
+  function seedRevealedTable(): void {
+    document.body.innerHTML =
+      `<div id="right"><div class="dfile" id="F-conn"><table class="diff"><tbody>` +
+      `<tr data-revealed="1" id="L-conn-70"><td class="n">70</td><td class="n">70</td><td class="c"><span>revealed context</span></td></tr>` +
+      `</tbody></table></div>` +
+      `<div class="dfile" id="F-gone"><table class="diff"><tbody>` +
+      `<tr data-revealed="1"><td class="n">12</td><td class="n"></td><td class="c"><span>old context</span></td></tr>` +
+      `</tbody></table></div></div>`;
+  }
+
+  function selectCellText(cellText: string): Selection {
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    const walker = document.createTreeWalker(document.querySelector("#right")!, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const at = (node as Text).data.indexOf(cellText);
+      if (at < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + cellText.length);
+      sel.addRange(range);
+      return sel;
+    }
+    throw new Error(`text ${cellText} not found`);
+  }
+
+  test("revealed rows flag the toolbar against Comment", () => {
+    seedRevealedTable();
+    const cell = document.querySelector("#right td.c") as HTMLElement;
+    expect(isRevealedElement(cell)).toBe(true);
+    expect(resolveSelectionHost(cell)).toEqual({
+      anchor: { where: "diff-line", fileKey: "conn", line: 70 },
+    });
+  });
+
+  test("hunk rows stay unflagged", () => {
+    document.body.innerHTML =
+      `<div id="right"><table class="diff"><tbody>` +
+      `<tr class="ctx" id="L-conn-71"><td class="n">71</td><td class="n">71</td><td class="c"><span>hunk line</span></td></tr>` +
+      `</tbody></table></div>`;
+    expect(isRevealedElement(document.querySelector("#right td.c") as HTMLElement)).toBe(false);
+  });
+
+  test("revealed lines read as new-side lines for the GitHub link", () => {
+    seedRevealedTable();
+    expect(diffRangeForSelection(selectCellText("revealed context"))).toEqual({
+      fileKey: "conn",
+      newLines: [70],
+      oldLines: [],
+    });
+  });
+
+  test("revealed lines on a deleted file read as old-side lines", () => {
+    seedRevealedTable();
+    expect(diffRangeForSelection(selectCellText("old context"))).toEqual({
+      fileKey: "gone",
+      newLines: [],
+      oldLines: [12],
+    });
   });
 });

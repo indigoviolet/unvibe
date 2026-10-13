@@ -15,6 +15,7 @@ import { resetMockState } from "../../../mock/index.js";
 import { MOCK_FILES } from "../../../mock/diff.js";
 import { DiffView } from "../DiffView.js";
 import { FileSection } from "../FileSection.js";
+import { RevealedRows, type RevealedLine } from "../FileExpansion.js";
 import type { LineTokens } from "./tokenize.js";
 
 beforeEach(() => {
@@ -77,6 +78,10 @@ describe("FileSection with injected tokens", () => {
         commentedLines={new Set()}
         highlight={null}
         fileHighlighted={false}
+        reviewId="demo"
+        headCommit="bdcc1e493e"
+        baseCommit="443cb01be1"
+        contentAvailable
         briefs={null}
         tokens={byHash}
         states={new Map()}
@@ -91,6 +96,7 @@ describe("FileSection with injected tokens", () => {
     const section = document.getElementById(`F-${file.fileKey}`);
     expect(section).not.toBeNull();
     // Highlighted add-rows carry keyword spans…
+    expect(section!.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     expect(section!.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     // …and no `cm` comment fallback anywhere (tokens own comment colour).
     expect(section!.querySelectorAll("td.c .cm").length).toBe(0);
@@ -114,6 +120,10 @@ describe("FileSection with injected tokens", () => {
         commentedLines={new Set()}
         highlight={null}
         fileHighlighted={false}
+        reviewId="demo"
+        headCommit="bdcc1e493e"
+        baseCommit="443cb01be1"
+        contentAvailable
         briefs={null}
         states={new Map()}
         isHidden={() => false}
@@ -154,6 +164,10 @@ describe("FileSection with injected tokens", () => {
         commentedLines={new Set()}
         highlight={null}
         fileHighlighted={false}
+        reviewId="demo"
+        headCommit="bdcc1e493e"
+        baseCommit="443cb01be1"
+        contentAvailable
         briefs={null}
         tokens={byHash}
         states={new Map()}
@@ -227,6 +241,10 @@ describe("hostile code text (issue #101)", () => {
         commentedLines={new Set()}
         highlight={null}
         fileHighlighted={false}
+        reviewId="demo"
+        headCommit="bdcc1e493e"
+        baseCommit="443cb01be1"
+        contentAvailable
         briefs={null}
         tokens={tokens}
         states={new Map()}
@@ -282,17 +300,53 @@ describe("hostile code text (issue #101)", () => {
       // The injected `</td><td>` smuggled in no rows or cells: the hunk's
       // code table holds exactly the one code row (3 cells unified — old
       // number, new number, code — 4 split, a pair with an empty left)…
-      const codeRows = section.querySelectorAll(".dhunk table.diff tbody tr");
+      // (control rows carry `.pr`, so the count excludes the expand
+      // control below the hunk — an injected row would still show up as
+      // an extra non-control row or a third row overall).
+      const codeRows = section.querySelectorAll(".dhunk table.diff tbody tr:not(.pr)");
       expect(codeRows.length).toBe(1);
       expect(codeRows[0].querySelectorAll("td").length).toBe(view === "split" ? 4 : 3);
       // …the hunk header renders exactly once, outside any table…
       const headers = section.querySelectorAll(".dhunk-h");
       expect(headers.length).toBe(1);
       expect(headers[0].closest("table")).toBeNull();
-      // …and no rows, cells or tables were injected anywhere in the section.
-      expect(section.querySelectorAll("tr").length).toBe(1);
+      // …and no rows, cells or tables were injected anywhere in the section
+      // (one code row plus the expand control row).
+      expect(section.querySelectorAll("tr").length).toBe(2);
       expect(section.querySelectorAll("table").length).toBe(1);
       if (tokens) expect(section.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     }
+  });
+
+  it.each(["unified", "split"] as const)("renders hostile text inert in revealed %s rows", (view) => {
+    cleanup();
+    const lines: RevealedLine[] = [{ line: 9, oldLine: 9, newLine: 9, text: EVIL }];
+    render(
+      <table className={`diff ${view}`}>
+        <tbody>
+          <RevealedRows
+            fileKey="evil"
+            lines={lines}
+            view={view}
+            tokens={new Map()}
+            slots={{}}
+            highlight={null}
+          />
+        </tbody>
+      </table>,
+    );
+    const row = document.querySelector("tr[data-revealed]");
+    expect(row).not.toBeNull();
+    // Nothing parsed: no script element, exact raw text, no smuggled cells.
+    expect(row!.querySelector("script")).toBeNull();
+    const cells = [...row!.querySelectorAll("td.c")].filter((cell) => cell.textContent?.includes("<script>"));
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) {
+      expect(cell.textContent).toContain(EVIL);
+      expect(cell.querySelectorAll("td").length).toBe(0);
+    }
+    // One revealed row, with both number cells in split view.
+    expect(document.querySelectorAll("tr[data-revealed]").length).toBe(1);
+    expect(row!.querySelectorAll("td.n:not(.empty)").length).toBe(2);
   });
 });

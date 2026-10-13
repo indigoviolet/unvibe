@@ -72,6 +72,16 @@ function elementOf(node: Node | null): HTMLElement | null {
 }
 
 /**
+ * True when the element sits in revealed context around a hunk (issue
+ * #133): the anchor stays a diff line, but Comment is not offered there
+ * (it could never land on the diff's own lines). Kept separate from
+ * `resolveSelectionHost` so host shapes stay untouched.
+ */
+export function isRevealedElement(el: HTMLElement): boolean {
+  return el.closest("tr[data-revealed]") !== null;
+}
+
+/**
  * Resolve a selection anchor element to an `ActionAnchor`. Exported for
  * reuse (Explain cards resolve the same hosts).
  */
@@ -160,6 +170,12 @@ interface Pending {
   quote: string;
   anchor: ActionAnchor;
   /**
+   * Issue #133: true when the selection sits in revealed context around
+   * a hunk. Explain, Ask and GitHub stay; Comment hides (it could never
+   * land on the diff's own lines).
+   */
+  revealed: boolean;
+  /**
    * Issue #135: when the selection sits inside an expansion (an agent
    * answer), a Comment anchors where the card is anchored instead of on
    * the selected block. Absent for every other host.
@@ -213,9 +229,10 @@ export function diffRangeForSelection(sel: Selection): DiffRange | null {
       newLines.push(parsed.line);
       continue;
     }
-    // Id-less rows are pure deletions: the old-side line sits in the
-    // first number cell.
-    if (!(row as HTMLElement).className.includes("del")) continue;
+    // Id-less rows are pure deletions — or revealed context on a deleted
+    // file's old side (issue #133, `data-revealed`, likewise id-less):
+    // the old-side line sits in the first number cell.
+    if (!(row as HTMLElement).className.includes("del") && (row as HTMLElement).dataset.revealed !== "1") continue;
     const section = (row as HTMLElement).closest("[id^='F-']");
     const sectionKey = section ? (section as HTMLElement).id.slice(2) : "";
     if (!sectionKey) continue;
@@ -355,6 +372,7 @@ export function SelectionToolbar() {
         setPending({
           quote,
           anchor: host.anchor,
+          revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
           ...(diffRange ? { diffRange } : {}),
         });
@@ -462,9 +480,11 @@ export function SelectionToolbar() {
       <button type="button" data-act="ask" onClick={() => onAskNote(false)}>
         Ask…
       </button>
-      <button type="button" data-act="note" onClick={() => onAskNote(true)}>
-        Comment
-      </button>
+      {pending?.revealed ? null : (
+        <button type="button" data-act="note" onClick={() => onAskNote(true)}>
+          Comment
+        </button>
+      )}
       {pending?.diffRange ? (
         <GithubAction snapshot={snapshot} repo={githubRepo} diffRange={pending.diffRange} onOpen={dismiss} />
       ) : null}

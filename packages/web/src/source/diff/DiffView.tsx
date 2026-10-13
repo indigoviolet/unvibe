@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { api } from "../../api/client.js";
+import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
@@ -125,6 +125,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
   const [banner, setBanner] = useState<BannerCounts | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [eagerFiles, setEagerFiles] = useState<ReadonlySet<string>>(new Set());
+  // Reviews without readable file content (issue #133: the service
+  // answers `no-content`, e.g. the demo) hide every expansion control
+  // instead of showing load errors. One probe per review, decided by the
+  // service — never by "is demo".
+  const [noContent, setNoContent] = useState(false);
   const versionParam = useReviewVersion();
   const [briefs, setBriefs] = useState<Record<string, string> | null>(null);
   const hlTimer = useRef<number | undefined>(undefined);
@@ -157,6 +162,29 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
       cancelled = true;
     };
   }, [reviewId, versionParam, snapshot, setSnapshot]);
+
+  // Content probe (issue #133): hide expansion where the review has no
+  // file content to read. Only `no-content` hides; any other outcome
+  // (slices work, other errors) keeps the controls.
+  const probeHead = snapshot?.version.headSha;
+  const probePath = useMemo(() => {
+    const files = snapshot?.files ?? [];
+    return (files.find((f) => !f.isBinary && f.hunks.length > 0) ?? files[0])?.path;
+  }, [snapshot?.files]);
+  useEffect(() => {
+    setNoContent(false);
+    if (!probeHead || !probePath) return;
+    let cancelled = false;
+    api
+      .fileSlice(reviewId, { path: probePath, commit: probeHead, start: 1, end: 1 })
+      .then(() => {})
+      .catch((err: unknown) => {
+        if (!cancelled && apiErrorCode(err) === "no-content") setNoContent(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reviewId, probeHead, probePath]);
 
   // Refresh on open: a cheap fetch-and-compare, no agent time (PRD §8).
   // Skipped while viewing an older version, and a no-op for reviews with
@@ -727,6 +755,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
               commentedLines={commentedLines ?? new Set()}
               highlight={highlight?.fileKey === f.fileKey ? { start: highlight.start, end: highlight.end } : null}
               fileHighlighted={fileHighlight === f.fileKey}
+              reviewId={reviewId}
+              headCommit={snapshot.version.headSha}
+              baseCommit={snapshot.version.mergeBaseSha}
+              contentAvailable={!noContent}
               briefs={briefs}
               states={states}
               isHidden={isHidden}

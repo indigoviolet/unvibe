@@ -59,6 +59,7 @@ import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
 import { freshBlockId, parseGitHubRepoInput } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
+import { mockFileSlice, mockOutline } from "./fileContents.js";
 import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } from "./guide.js";
 import {
   mockAddedD2Block,
@@ -2616,6 +2617,22 @@ export const mockApi = {
     hunkStates.set(hash, { ...prev, summary });
     emitHunkStates();
     return { jobId: `mock-${hash}` };
+  },
+
+  fileSlice: async (
+    id: string,
+    params: { path: string; commit: string; start: number; end: number },
+  ): Promise<import("@unvibe/shared").FileSliceResponse> => {
+    await wait(60);
+    return mockFileSlice(id, params);
+  },
+
+  outline: async (
+    id: string,
+    params: { path: string; commit: string; start: number; end: number },
+  ): Promise<import("@unvibe/shared").FileOutlineResponse> => {
+    await wait(60);
+    return mockOutline(id, params);
   },
 
   createComment: async (

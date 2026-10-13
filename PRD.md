@@ -219,6 +219,14 @@ Every card and every expansion card has the same controls:
 - Each run of hidden hunks becomes one thin row: "Hunks i–j hidden · <reason> · +x −y", plus a one-line reason why it's skippable. Clicking the row shows those hunks.
 - **One-line changes are never hidden.** A real version should also never hide a hunk that the guide cites.
 
+**Expand beyond hunks**
+- Step controls above and below every hunk reveal context a few lines at a time; the gap between two hunks also offers Show all. A fully revealed gap reads as continuous.
+- Revealed lines are context: visibly apart from the diff's own lines, syntax-coloured like the rest, collapsible back per region.
+- Deleted files expand on the old side, new files on the new side; binary files offer no expansion. Old and new numbers stay aligned in Split.
+- Revealed lines offer Explain and Ask, anchored on the diff line (read as `code:<path>:<lines>@<sha>`). Note is not offered there.
+- Expand by unit: one control per hunk steps from the innermost enclosing function or method to its class and then the file, one level per click, with the unit's name in the hunk header. Units come from tree-sitter grammars (eight languages) with an indentation fallback shown as approximate; hunks with no enclosing unit expand by lines.
+- Where the review has no file content to read, expansion controls hide instead of showing load errors.
+
 **Fold all and Unfold all:** Fold all summarizes and folds every hunk that isn't hidden. Unfold all shows all code and keeps the summaries.
 
 **Views**
