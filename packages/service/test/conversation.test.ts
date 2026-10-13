@@ -213,6 +213,37 @@ describe("conversation cards (#136)", () => {
     }
   });
 
+  it("reply send clears the stored reply draft (it never flows back)", { timeout: 90000 }, async () => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+    const agents = fakeAgents(SECOND_ANSWER);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      const { annotationId } = await explainFirstTurn(app, ctx, id);
+      // Half-typed reply text persisted through the draft path.
+      const patched = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/comments/${annotationId}`,
+        headers: authed,
+        payload: { reply: "What about ordering?" },
+      } as never);
+      expect(patched.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.reply).toBe(
+        "What about ordering?",
+      );
+      // Sending consumes it: the stored draft clears with the turn.
+      const rep = await postAction(app, id, {
+        kind: "reply",
+        annotationId,
+        message: "What about ordering?",
+      });
+      expect(rep.status).toBe(200);
+      if (rep.json.jobId) await waitForJob(ctx, rep.json.jobId as string);
+      expect(ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.reply ?? "").toBe("");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("a dead session rebuilds with the stored turns as the transcript", { timeout: 90000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const agents = fakeAgents(SECOND_ANSWER);

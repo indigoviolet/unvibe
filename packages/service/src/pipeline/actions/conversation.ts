@@ -782,6 +782,14 @@ export async function replyAction(
   if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
 
   const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing reply…");
+  // The reply-box text is consumed by this turn: clear the stored draft
+  // like comment replies do, so it can never flow back into the emptied
+  // box (or survive a reload) after sending. Follow-up chips keep any
+  // typed reply text, so only the reply path clears.
+  await reviews.mutate(reviewId, (draft) => {
+    const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+    if (target) target.reply = "";
+  });
   const probe = await probeConversationSessionFor(ctx, card);
   const live = probe.continueSessionId !== undefined;
   const res = await runConversationTurn(ctx, annotationId, turnId, {
