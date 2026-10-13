@@ -274,7 +274,7 @@ describe("change lists and the seen marker (PRD §9.3)", () => {
         match: "",
         events: [
           { type: "text", delta: forkReply },
-          { type: "usage", inputTokens: 10, cachedTokens: 90, outputTokens: 5 },
+          { type: "usage", inputTokens: 10, cachedReadTokens: 90, cachedWriteTokens: 0, outputTokens: 5 },
           { type: "done", stopReason: "end_turn" },
         ],
       },
@@ -299,6 +299,9 @@ describe("change lists and the seen marker (PRD §9.3)", () => {
       expect(res.text).toContain("Body with citation");
       // The first turn saw an empty change list…
       expect(agents.prompts[agents.prompts.length - 1].text).toContain("(no changes)");
+      // #122: the answer resolves before post-turn bookkeeping; the
+      // contributions land when the job settles.
+      await setup.ctx.jobs.drain(5000);
       const snap = setup.ctx.reviews.getSnapshot(setup.reviewId)!;
       expect(snap.contributions.map((c) => c.id)).toEqual(["ct_1"]);
       expect(snap.contributions[0].sourceSession).toBeTruthy();
@@ -314,6 +317,7 @@ describe("change lists and the seen marker (PRD §9.3)", () => {
         conversationKey: "conv-1",
         cardId: "c-A",
       });
+      await setup.ctx.jobs.drain(5000);
       const lastPrompt = agents.prompts[agents.prompts.length - 1].text;
       expect(lastPrompt).toContain("(no changes)");
       // The repeated fact is a duplicate: no second contribution.

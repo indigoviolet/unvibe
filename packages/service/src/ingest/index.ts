@@ -81,13 +81,17 @@ async function linguistGenerated(
 /**
  * Ingest a PR or branch into version-1 review data. Pure git/gh side
  * effects only (fetch, worktree); persistence is the caller's job.
+ *
+ * `refresh` (PR sources): the caller's repo-wide fetch, awaited alongside
+ * `gh pr view` instead of before it (#123).
  */
 export async function ingestReview(
   deps: IngestDeps,
   source: IngestSource,
   reviewId: string = newReviewId(),
+  refresh?: Promise<unknown> | null,
 ): Promise<IngestedReview> {
-  const resolved = await resolveSource(deps.runner, source, deps.dataDir, reviewId);
+  const resolved = await resolveSource(deps.runner, source, deps.dataDir, reviewId, refresh ?? null);
   const parsed = parseUnifiedDiff(resolved.diffText);
   const gen = await linguistGenerated(
     deps.runner,

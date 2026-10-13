@@ -556,9 +556,10 @@ export type PipelineStage = "reader" | "base" | "critic" | "concepts" | "hunk-pa
  */
 export interface ReviewUsageTotals {
   inputTokens: number;
-  cachedTokens: number;
+  cachedReadTokens: number;
+  cachedWriteTokens: number;
   outputTokens: number;
-  /** Cache read share: cached/(input+cached). input counts uncached input only (M0). */
+  /** Cache read share: cachedRead/(input+cachedRead+cachedWrite). input counts uncached input only (M0, #125). */
   cacheHitRate?: number;
   /** Epoch ms of the first card streamed (time-to-first-card, PRD §16). */
   firstCardAt?: number;

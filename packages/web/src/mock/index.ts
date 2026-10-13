@@ -610,7 +610,7 @@ function seedJobs(): Job[] {
       state: "done",
       sessionId: "sess-reader-1",
       promptSnapshot: "You are the reader: explore the repo and write the guided review.",
-      usage: { inputTokens: 48200, cachedTokens: 0, outputTokens: 6300 },
+      usage: { inputTokens: 48200, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 6300 },
       cacheHitRate: 0,
       progress: "Finished: 6 cards",
     },
@@ -627,8 +627,8 @@ function seedJobs(): Job[] {
       // cardId): keep the seed faithful so no card shows a stuck busy state.
       threadId: "ann_seed_thread",
       promptSnapshot: "Explain the quoted text with citations to the diff.",
-      usage: { inputTokens: 42500, cachedTokens: 38900, outputTokens: 1200 },
-      cacheHitRate: 0.915,
+      usage: { inputTokens: 42500, cachedReadTokens: 38900, cachedWriteTokens: 0, outputTokens: 1200 },
+      cacheHitRate: 0.478,
       progress: "Streaming answer…",
     },
     {

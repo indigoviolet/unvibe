@@ -49,15 +49,22 @@ describe("formatCacheRate", () => {
 });
 
 describe("pooled usage", () => {
-  it("sums tokens and weights the cache rate by input", () => {
+  it("sums tokens and shows the read share as the hit rate", () => {
     const jobs = [
-      job({ usage: { inputTokens: 40000, cachedTokens: 36000, outputTokens: 1000 } }),
-      job({ id: "j2", usage: { inputTokens: 10000, cachedTokens: 0, outputTokens: 500 } }),
+      job({ usage: { inputTokens: 40000, cachedReadTokens: 36000, cachedWriteTokens: 4000, outputTokens: 1000 } }),
+      job({ id: "j2", usage: { inputTokens: 10000, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 500 } }),
       job({ id: "j3" }),
     ];
-    expect(pooledTokens(jobs)).toEqual({ input: 50000, output: 1500, cached: 36000 });
-    expect(pooledCacheRate(jobs)).toBeCloseTo(0.72);
+    expect(pooledTokens(jobs)).toEqual({ input: 50000, output: 1500, read: 36000, written: 4000 });
+    expect(pooledCacheRate(jobs)).toBeCloseTo(0.4);
     expect(pooledCacheRate([job({ id: "j3" })])).toBeUndefined();
+  });
+
+  it("writes without reads show 0 % (#125)", () => {
+    const jobs = [
+      job({ usage: { inputTokens: 100, cachedReadTokens: 0, cachedWriteTokens: 900, outputTokens: 10 } }),
+    ];
+    expect(pooledCacheRate(jobs)).toBe(0);
   });
 });
 
