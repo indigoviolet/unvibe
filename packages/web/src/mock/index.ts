@@ -56,7 +56,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { parseGitHubRepoInput } from "@unvibe/shared";
+import { freshBlockId, parseGitHubRepoInput } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } from "./guide.js";
@@ -276,6 +276,66 @@ function mockCardLevel(ref: MockCardRef): import("@unvibe/shared").DepthLevel {
   return (ref.kind === "page" ? ref.card.level : ref.annotation.expansion!.level) as import("@unvibe/shared").DepthLevel;
 }
 
+/**
+ * Qualify a block anchor the way the service stores it (#116):
+ * `<owner>#<block>` with the page card or expansion holding the block
+ * (aside inner blocks resolve like the service's `findBlock`). Unknown
+ * blocks pass through. The web requires qualified hosts to attach an
+ * annotation, so the mock must not store bare ones.
+ */
+function qualifyMockBlock(blockId: string): string {
+  const found = findMockBlock(blockId);
+  if (!found) return blockId;
+  return `${found.ownerId}#${found.blockId}`;
+}
+
+function findMockBlock(blockId: string): { ownerId: string; blockId: string } | null {
+  const hash = blockId.indexOf("#");
+  const owner = hash >= 0 ? blockId.slice(0, hash) : null;
+  const short = hash >= 0 ? blockId.slice(hash + 1) : blockId;
+  const scan = (
+    blocks: { id: string; type: string; inner?: { id: string }[] }[],
+    ownerId: string,
+  ): { ownerId: string; blockId: string } | null => {
+    for (const b of blocks) {
+      if (b.id === blockId || b.id === short) return { ownerId, blockId: b.id };
+      if (b.type === "aside") {
+        for (const ib of b.inner ?? []) {
+          if (ib.id === blockId || ib.id === short) return { ownerId, blockId: ib.id };
+        }
+      }
+    }
+    return null;
+  };
+  if (owner !== null) {
+    for (const p of mockPages) {
+      const c = p.cards.find((c) => c.id === owner);
+      if (c) {
+        const m = scan(c.blocks as never[], c.id);
+        if (m) return m;
+        return null;
+      }
+    }
+    const ann = annotations.find((a) => a.id === owner);
+    if (ann?.type === "expansion" && ann.expansion) {
+      return scan(ann.expansion.blocks as never[], ann.id);
+    }
+    return null;
+  }
+  for (const p of mockPages) {
+    for (const c of p.cards) {
+      const m = scan(c.blocks as never[], c.id);
+      if (m) return m;
+    }
+  }
+  for (const a of annotations) {
+    if (a.type !== "expansion" || !a.expansion) continue;
+    const m = scan(a.expansion.blocks as never[], a.id);
+    if (m) return m;
+  }
+  return null;
+}
+
 /** Card controls in mock: depth/examples/diagram/undo through the patch path. */
 function mockCardControl(a: { kind: string; cardId: string; direction?: string }): {
   accepted: boolean;
@@ -298,13 +358,28 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
       // + at the deepest level adds the Underlying principle block once.
       if (a.direction === "deeper" && !blocks.some((b) => b.type === "aside" && (b as { kind: string }).kind === "Underlying principle")) {
         const cur = [...blocks];
+        // Fresh ID within this body (#116), inner IDs moving along.
+        const principle = mockPrincipleAside() as { id: string; inner: { id: string }[] };
+        const principleId = freshBlockId(cur as never[], principle.id);
+        const stamped =
+          principleId === principle.id
+            ? principle
+            : {
+                ...principle,
+                id: principleId,
+                inner: principle.inner.map((ib) =>
+                  ib.id.startsWith(`${principle.id}-`)
+                    ? { ...ib, id: `${principleId}-${ib.id.slice(principle.id.length + 1)}` }
+                    : ib,
+                ),
+              };
         if (ref.kind === "page") {
           ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level });
-          ref.card.blocks = [...cur, mockPrincipleAside()] as never;
+          ref.card.blocks = [...cur, stamped] as never;
           ref.card.revision += 1;
         } else {
           ref.annotation.expansion!.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level });
-          ref.annotation.expansion!.blocks = [...cur, mockPrincipleAside()] as never;
+          ref.annotation.expansion!.blocks = [...cur, stamped] as never;
           ref.annotation.expansion!.revision += 1;
         }
         emitPages();
@@ -340,10 +415,24 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
     }
     const cur = [...blocks];
     const insert = a.kind === "examples" ? mockExampleAside() : mockDiagramAside();
+    // Fresh ID within this body (#116): the timestamp base collides only
+    // across same-millisecond inserts, but the used-set makes it exact.
+    // Aside inner IDs move with a restamped parent.
+    const insertId = freshBlockId(cur as never[], (insert as { id: string }).id);
+    const stamped =
+      insert.type === "aside" && insert.id !== insertId
+        ? {
+            ...insert,
+            id: insertId,
+            inner: (insert.inner as { id: string }[]).map((ib) =>
+              ib.id.startsWith(`${insert.id}-`) ? { ...ib, id: `${insertId}-${ib.id.slice(insert.id.length + 1)}` } : ib,
+            ),
+          }
+        : { ...insert, id: insertId };
     // Blocks appear after the paragraphs they relate to: insert after the
     // first paragraph when one exists, else append.
     const at = cur.findIndex((b) => b.type === "paragraph");
-    const nextBlocks = at >= 0 ? [...cur.slice(0, at + 1), insert, ...cur.slice(at + 1)] : [...cur, insert];
+    const nextBlocks = at >= 0 ? [...cur.slice(0, at + 1), stamped, ...cur.slice(at + 1)] : [...cur, stamped];
     if (ref.kind === "page") {
       ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(cur)), level: level as never });
       ref.card.blocks = nextBlocks as never;
@@ -2187,7 +2276,7 @@ export const mockApi = {
         const anchor = a.anchor;
         const host =
           anchor.where === "block"
-            ? { kind: "block", blockId: anchor.blockId }
+            ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
             : anchor.where === "description"
               ? { kind: "description", paragraphId: anchor.paragraphId }
               : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
@@ -2225,7 +2314,7 @@ export const mockApi = {
       const anchor = a.anchor;
       const host =
         anchor.where === "block"
-          ? { kind: "block", blockId: anchor.blockId }
+          ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
           : anchor.where === "description"
             ? { kind: "description", paragraphId: anchor.paragraphId }
             : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
@@ -2313,9 +2402,11 @@ export const mockApi = {
     }
     if (a.kind === "followup") {
       const { cardId, blockId, index } = a as { cardId: string; blockId: string; index: number };
-      const holder = mockPages.flatMap((p) => p.cards).find((c) => c.id === cardId);
-      const block = holder?.blocks.find((b) => b.id === blockId && b.type === "follow-up") as
-        | { items: { label: string; ask?: string }[] }
+      // Page cards and expansions alike (mirrors the service's findFollowUp).
+      const ref = findMockCard(cardId);
+      const holderBlocks = ref ? mockCardBlocks(ref) : [];
+      const block = holderBlocks.find((b) => b.id === blockId && b.type === "follow-up") as
+        | { id: string; items: { label: string; ask?: string }[] }
         | undefined;
       if (!block || !block.items[index]) throw new Error(`unknown follow-up ${index} on block ${blockId}`);
       const item = block.items[index];
@@ -2327,7 +2418,9 @@ export const mockApi = {
         id,
         type: "expansion",
         anchor: {
-          host: { kind: "block", blockId },
+          // Qualified like the service stores it (#116): a bare block ID
+          // would match the same-numbered block of every card.
+          host: { kind: "block", blockId: `${cardId}#${block.id}` },
           quotedText: item.label,
           prefix: "",
           suffix: "",
@@ -2521,7 +2614,7 @@ export const mockApi = {
     const anchor = body.anchor;
     const host =
       anchor.where === "block"
-        ? { kind: "block", blockId: anchor.blockId }
+        ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
         : anchor.where === "description"
           ? { kind: "description", paragraphId: anchor.paragraphId }
           : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
