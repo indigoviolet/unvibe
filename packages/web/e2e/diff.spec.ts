@@ -153,7 +153,7 @@ test("start page opens a review", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // The page follows the selected repo; the remembered repo is selected.
   await expect(page.getByLabel("Repo")).toHaveValue("urllib3");
-  await page.locator('[data-testid="session-demo"] button.cj').click();
+  await page.locator('[data-testid="session-demo"] button.cj-open').click();
   await expect(page).toHaveURL(/\/review\/demo/);
   await expect(page.locator(connFile)).toBeVisible();
 });
