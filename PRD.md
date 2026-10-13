@@ -332,8 +332,8 @@ type AgentEvent =
 | Page | id, kind (root, concept, finding, opened-expansion), title, saved, parent, cards[] |
 | Card | id, page, title, level, collapsed, revision, blocks[], undo stack, second opinions |
 | Block | id, type (paragraph, list, table, code, diagram, finding link, follow-up, aside), text per depth level, citations |
-| Annotation | id, type (conversation, comment, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for comments: messages, `post`, draft; plus for links moved mid-fill: the unsettled turns with their page-card mapping until they settle |
-| Anchor | host (block ID, description paragraph, or diff line), quoted text, prefix/suffix, position at creation, version |
+| Annotation | id, type (conversation, comment, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for comments: messages, `post`, draft; plus for links moved mid-fill: the unsettled turns with their page-card mapping until they settle. A conversation can host on a hunk (`h:…`), created from the hunk's summary text with no agent call. |
+| Anchor | host (block ID, description paragraph, diff line, or hunk), quoted text, prefix/suffix, position at creation, version |
 | Contribution | id, source session, items (fact, correction, open question, reader note), citations, replaces, status |
 | Job | id, kind, model, priority, state, session ID, prompt snapshot, usage, error, card/annotation address |
 | LogEntry | seq, kind, payload, scope (global, or local to a card) |
