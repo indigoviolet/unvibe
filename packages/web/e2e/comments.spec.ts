@@ -5,6 +5,7 @@
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
+import { selectText } from "./select-text.js";
 
 const CONN = "src-urllib3-connection.py";
 
@@ -16,55 +17,7 @@ async function gotoReview(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready).catch(() => {});
 }
 
-/**
- * Select the first occurrence of `text` under `rootSelector` in the page,
- * optionally with partial offsets inside the matched text node, then
- * dispatch mouseup so the selection toolbar reacts as if the user dragged.
- * Returns the normalized quote the toolbar computed.
- */
-async function selectText(
-  page: Page,
-  rootSelector: string,
-  text: string,
-  startIn = 0,
-  endIn?: number,
-): Promise<string> {
-  await page.evaluate((rootSelector) => {
-    document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
-  }, rootSelector);
-  // No settle wait: the app has no smooth scrolling.
-  const quote = await page.evaluate(
-    ({ rootSelector, text, startIn, endIn }) => {
-      const root = document.querySelector(rootSelector);
-      if (!root) return null;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const data = (node as Text).data;
-        const at = data.indexOf(text);
-        if (at < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, at + startIn);
-        range.setEnd(node, at + (endIn ?? text.length));
-        const sel = getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        const host = (node as Text).parentElement;
-        host?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return true;
-      }
-      return null;
-    },
-    { rootSelector, text, startIn, endIn },
-  );
-  expect(quote).not.toBeNull();
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
-  // Re-read after the toolbar snapped the live selection to whole words.
-  return (
-    (await page.evaluate(() =>
-      (getSelection()?.toString() ?? "").trim().replace(/\s+/g, " "),
-    )) ?? ""
-  );
-}
+
 
 test("selection snaps to whole words and Ask creates a working thread", async ({ page }) => {
   await gotoReview(page);

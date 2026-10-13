@@ -19,6 +19,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { selectText } from "./select-text.js";
 import type { Locator, Page } from "@playwright/test";
 
 const exec = promisify(execFile);
@@ -30,37 +31,6 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
   if (body !== undefined) args.push("-d", JSON.stringify(body));
   const { stdout } = await exec("curl", args);
   return JSON.parse(stdout);
-}
-
-async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
-  await page.evaluate((sel: string) => {
-    document.querySelector(sel)?.scrollIntoView({ block: "center" });
-  }, rootSelector);
-  // No settle wait: the app has no smooth scrolling.
-  const found = await page.evaluate(
-    ({ rootSelector, text }: { rootSelector: string; text: string }) => {
-      const root = document.querySelector(rootSelector);
-      if (!root) return false;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const data = (node as Text).data;
-        const at = data.indexOf(text);
-        if (at < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, at);
-        range.setEnd(node, at + text.length);
-        const sel = getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return true;
-      }
-      return false;
-    },
-    { rootSelector, text },
-  );
-  expect(found).toBe(true);
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 5000 });
 }
 
 /**

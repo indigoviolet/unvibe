@@ -17,6 +17,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { selectText } from "./select-text.js";
 import type { Page } from "@playwright/test";
 
 const exec = promisify(execFile);
@@ -30,66 +31,7 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
   return JSON.parse(stdout);
 }
 
-async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
-  await page.evaluate((sel: string) => {
-    document.querySelector(sel)?.scrollIntoView({ block: "center" });
-  }, rootSelector);
-  await page.waitForTimeout(350);
-  const found = await page.evaluate(
-    ({ rootSelector, text }: { rootSelector: string; text: string }) => {
-      const root = document.querySelector(rootSelector);
-      if (!root) return false;
-      // Highlight token spans split code text across many nodes: locate in
-      // the joined text first, then map back (issue #23).
-      // Scoped per code cell: joining the whole table would match across
-      // line-number/code boundaries and anchor the selection in the gutter.
-      const cells = [...root.querySelectorAll("td.c")];
-      const scopes = cells.length > 0 ? cells : [root];
-      for (const scope of scopes) {
-        const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
-        const nodes: Text[] = [];
-        for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
-        const joined = nodes.map((n) => n.data).join("");
-        const at = joined.indexOf(text);
-        if (at < 0) continue;
-        const nodeAt = (offset: number): { node: Text; at: number } | null => {
-          let acc = 0;
-          for (let i = 0; i < nodes.length; i++) {
-            const n = nodes[i];
-            const next = acc + n.data.length;
-            // Boundary offsets prefer the next node (a range starting at
-            // the end of one node behaves as starting in the gutter).
-            if (offset < next) return { node: n, at: offset - acc };
-            if (offset === next) {
-              return i + 1 < nodes.length ? { node: nodes[i + 1], at: 0 } : { node: n, at: n.data.length };
-            }
-            acc = next;
-          }
-          return null;
-        };
-        const s = nodeAt(at);
-        const e = nodeAt(at + text.length);
-        if (!s || !e) continue;
-        const range = document.createRange();
-        try {
-          range.setStart(s.node, s.at);
-          range.setEnd(e.node, e.at);
-        } catch {
-          continue;
-        }
-        const sel = getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        (range.endContainer as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return true;
-      }
-      return false;
-    },
-    { rootSelector, text },
-  );
-  expect(found).toBe(true);
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 5000 });
-}
+
 
 test.describe("no-agent state (UNVIBE_AGENT=none)", () => {
   let dataDir = "";

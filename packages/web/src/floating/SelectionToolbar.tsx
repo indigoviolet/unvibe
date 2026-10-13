@@ -24,6 +24,13 @@
  * block — and quotes the selection as a Markdown blockquote prefilled in
  * the composer, so it reads correctly once submitted to GitHub.
  *
+ * Scroll race (issue #147): the bar hides on scroll, so an app-initiated
+ * scroll (a cited line revealed, a card arriving and shifting the page)
+ * landing within milliseconds of the mouse-up hides the bar the user just
+ * summoned. Scrolls in the first `SCROLL_GRACE_MS` after the bar shows
+ * re-position it over the (still live) selection instead of hiding it;
+ * later scrolls hide it as before.
+ *
  * GitHub (issue #134) is a plain link out: on a diff selection it opens
  * the selected lines in GitHub's file view at the review's commit (head
  * for added/unchanged lines, base for removed-only selections). It creates
@@ -296,6 +303,13 @@ export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   return { where: "diff-line", fileKey: host.fileKey, line: host.line };
 }
 
+/**
+ * Issue #147: scrolls landing just after the bar shows are the app's own
+ * (reveal jumps, card fills shifting the page), not the user's — give them
+ * a grace window where the bar re-positions instead of hiding.
+ */
+export const SCROLL_GRACE_MS = 500;
+
 export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
   const readOnly = useIsReadOnlyVersion();
@@ -303,6 +317,7 @@ export function SelectionToolbar() {
   const barRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<Pending | null>(null);
   pendingRef.current = pending;
+  const shownAt = useRef(0);
   // Issue #134: the repo behind this review (owner/name for the GitHub
   // link). Local checkouts (`owner: "local"`), the demo and unknown repos
   // have no GitHub file view, so the action hides there.
@@ -376,17 +391,21 @@ export function SelectionToolbar() {
           ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
           ...(diffRange ? { diffRange } : {}),
         });
+        shownAt.current = Date.now();
         // Position after render (needs the bar's size).
-        window.setTimeout(() => {
-          const b = bar();
-          if (!b || sel.rangeCount === 0) return;
-          const r = sel.getRangeAt(0).getBoundingClientRect();
-          b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, r.left + r.width / 2 - b.offsetWidth / 2))}px`;
-          const preferBelow = r.top - b.offsetHeight - 8 < 56;
-          const rawTop = preferBelow ? r.bottom + 8 : r.top - b.offsetHeight - 8;
-          b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, rawTop))}px`;
-        }, 0);
+        window.setTimeout(place, 0);
       }, 0);
+    };
+
+    const place = (): void => {
+      const b = bar();
+      const sel = window.getSelection();
+      if (!b || !sel || sel.rangeCount === 0) return;
+      const r = sel.getRangeAt(0).getBoundingClientRect();
+      b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, r.left + r.width / 2 - b.offsetWidth / 2))}px`;
+      const preferBelow = r.top - b.offsetHeight - 8 < 56;
+      const rawTop = preferBelow ? r.bottom + 8 : r.top - b.offsetHeight - 8;
+      b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, rawTop))}px`;
     };
 
     const onSelectionChange = (): void => {
@@ -395,7 +414,15 @@ export function SelectionToolbar() {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === "Escape") hide();
     };
-    const onScroll = (): void => hide();
+    const onScroll = (): void => {
+      // Issue #147: a scroll landing just after the bar shows is the app's
+      // own — the selection is still live, so follow it instead of hiding.
+      if (pendingRef.current !== null && Date.now() - shownAt.current < SCROLL_GRACE_MS) {
+        place();
+        return;
+      }
+      hide();
+    };
     const onPointerDown = (e: PointerEvent): void => {
       if (!(e.target as Element | null)?.closest?.("#selbar")) hide();
     };
