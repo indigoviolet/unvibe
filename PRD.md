@@ -220,10 +220,11 @@ Every card and every expansion card has the same controls:
 - **One-line changes are never hidden.** A real version should also never hide a hunk that the guide cites.
 
 **Expand beyond hunks**
-- Step controls above and below every hunk reveal context a few lines at a time; the gap between two hunks also offers Show all. A fully revealed gap reads as continuous.
-- Revealed lines are context: visibly apart from the diff's own lines, syntax-coloured like the rest, collapsible back per region.
+- Quiet caret icons in the line-number gutter reveal context: a single caret steps a few lines, a double caret shows a whole hidden run; direction follows where lines appear. No text labels, no control rows that read as content.
+- Each gap holds one hidden run with one set of controls sharing its remaining count. Continuous boundaries — fully revealed gaps, adjacent hunks, file edges — show no controls. Revealed blocks collapse back through a quiet fold icon on their first line's gutter.
+- Revealed lines are context: visibly apart from the diff's own lines, syntax-coloured like the rest.
 - Deleted files expand on the old side, new files on the new side; binary files offer no expansion. Old and new numbers stay aligned in Split.
-- Revealed lines offer Explain and Ask, anchored on the diff line (read as `code:<path>:<lines>@<sha>`). Note is not offered there.
+- Revealed lines offer Explain, Ask and GitHub, anchored on the diff line (read as `code:<path>:<lines>@<sha>`). Comment is not offered there.
 - Expand by unit: one control per hunk steps from the innermost enclosing function or method to its class and then the file, one level per click, with the unit's name in the hunk header. Units come from tree-sitter grammars (eight languages) with an indentation fallback shown as approximate; hunks with no enclosing unit expand by lines.
 - Where the review has no file content to read, expansion controls hide instead of showing load errors.
 
