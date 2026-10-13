@@ -99,6 +99,38 @@ test("reveals a whole gap so the hunks read as continuous", async ({ page }) => 
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(0);
 });
 
+test("revealing a gap fully from below leaves no controls at the boundary", async ({ page }) => {
+  await scrollDiffToBottom(page);
+  await page.getByText(/Hunks 1–2 of 3 hidden · imports/).click();
+  await expect(page.getByText("Hunk 1 of 3")).toBeVisible();
+  const tconn = page.locator(tconnFile);
+  // The small gap's lower step finishes it in one click.
+  const steps = tconn.getByRole("button", { name: "Show 4 more lines" });
+  await expect(steps).toHaveCount(2);
+  await steps.nth(1).click();
+  await expect(tconn.locator("tr[data-revealed]")).toHaveCount(4);
+  // No separator rows at the revealed boundary: hunk 1's table holds
+  // only its top-region control (above its code), hunk 2's table only
+  // the next gap's control (below its code).
+  const [first, second] = await tconn.locator(".dhunk").all();
+  await expect(first.locator("tr.xsep")).toHaveCount(1);
+  await expect(second.locator("tr.xsep")).toHaveCount(1);
+  const firstRowClass: string = await first.locator("table.diff tbody tr").first().getAttribute("class") ?? "";
+  expect(firstRowClass.split(" ")).toContain("xsep");
+  const nums: number[] = await tconn.evaluate((el) => {
+    const dhunks = [...el.querySelectorAll(".dhunk")].slice(0, 2);
+    const out: number[] = [];
+    for (const d of dhunks) {
+      for (const tr of d.querySelectorAll("table.diff tbody tr")) {
+        const id = (tr as HTMLElement).id;
+        if (id.startsWith("L-")) out.push(Number(id.split("-").pop()));
+      }
+    }
+    return out;
+  });
+  expect(nums).toEqual([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
+});
+
 test("split view keeps both sides of revealed lines aligned", async ({ page }) => {
   await page.getByRole("button", { name: "Split" }).click();
   const conn = page.locator(connFile);
