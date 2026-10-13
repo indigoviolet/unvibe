@@ -39,14 +39,13 @@ function isCitationHref(href: string): boolean {
   if (/^https?:\/\//i.test(t) || t.startsWith("//") || t.startsWith("data:") || t.startsWith("javascript:")) {
     return false;
   }
-  // Bare tokens: diff:/code:/desc:/h: (also allow [[…]]-wrapped legacy).
-  const bare = t.startsWith("[[") && t.endsWith("]]") ? t.slice(2, -2).split("|")[0].trim() : t.split("|")[0].trim();
+  // Bare tokens: diff:/code:/desc:/h:.
+  const bare = t.split("|")[0].trim();
   return /^(diff|code|desc|h):[^:]+:.+|^(diff|code|desc|h):[^:]+$|^desc:[^:]+$/.test(bare) || /^(diff|code|desc):/.test(bare);
 }
 
 function bareOf(href: string): string {
   let t = href.trim();
-  if (t.startsWith("[[") && t.endsWith("]]")) t = t.slice(2, -2).trim();
   const pipe = t.indexOf("|");
   if (pipe >= 0) t = t.slice(0, pipe).trim();
   return t;

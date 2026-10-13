@@ -157,6 +157,7 @@ export async function setupReview(
     version,
     files,
     description,
+    ingest: { status: "ready" },
     pages: opts.pages ?? [],
     annotations: opts.annotations ?? [],
     hunkStates: [],

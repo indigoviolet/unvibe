@@ -106,11 +106,16 @@ exit 1
  * GitHub or real agents). The service resolves tools through the login
  * shell (`$SHELL` first), which would put the real `gh` ahead of our fake:
  * point SHELL at a stub that prints the fake bin first (real tools stay
- * visible after it).
+ * visible after it), wrapped in the probe's delimiters
+ * (`diagnostics/path-probe.ts`: undelimited output is not accepted).
  */
 async function startServiceWithFakeGh(dataDir: string, fakeBin: string): Promise<RunningService> {
   const fakeShell = path.join(fakeBin, "fakeshell");
-  writeFileSync(fakeShell, `#!/bin/sh\necho "${fakeBin}:$PATH"\n`, { mode: 0o755 });
+  writeFileSync(
+    fakeShell,
+    `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`,
+    { mode: 0o755 },
+  );
   return startService(dataDir, {
     extraEnv: {
       SHELL: fakeShell,

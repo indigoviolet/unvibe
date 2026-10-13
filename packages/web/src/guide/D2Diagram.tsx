@@ -84,17 +84,6 @@ interface Props {
   capNaturalWidth?: boolean;
 }
 
-/**
- * Tolerate blocks stored before D2 rendering (e.g. the pre-decision
- * fixture, which carries a legacy `mermaid` field and no `render`): show
- * the source fallback instead of breaking the card.
- */
-export function d2SourceOf(block: DiagramBlock): string {
-  if (typeof block.source === "string" && block.source !== "") return block.source;
-  const legacy = (block as unknown as { mermaid?: unknown }).mermaid;
-  return typeof legacy === "string" ? legacy : "";
-}
-
 export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth }: Props): React.JSX.Element {
   const theme = usePageTheme();
   const hostRef = useRef<HTMLDivElement>(null);
@@ -208,7 +197,7 @@ export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth }: Props)
   }
 
   if (state.kind === "fallback") {
-    const source = d2SourceOf(block);
+    const source = block.source;
     return (
       <div key="d2-fallback" className="dg-fallback">
         {source !== "" ? <pre className="code">{source}</pre> : null}

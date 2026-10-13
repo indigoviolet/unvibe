@@ -497,16 +497,14 @@ needed (that deviation is closed, not added).
   live runs: “hide violations: none”). Hunk replies tolerate format slips
   (issue #99): bare/unfenced `{"hunk": …}` still yields summary +
   `hiddenReason` (`shared/src/content/hunk.ts`, one helper for both call
-  sites); JSON-looking text is never stored, long fallbacks cut on a word
-  boundary, and a stored JSON-looking summary is treated as missing on
-  reuse (regenerated or cleared on the next summarize) and reads as absent
-  in the diff pane (Summarize action, never the JSON text).
+  sites); JSON-looking text is never stored and long fallbacks cut on a
+  word boundary (the stored-row cleanup for pre-fix rows was removed
+  under #137 — a stored JSON-looking summary is now reused/shown as-is).
 - Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
   (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
-  The Summarize dots clear when the summary lands by patch — including a
-  landed JSON-looking summary, which still reads as absent with Summarize
-  re-offered (issue #63; `DiffView.tsx` raw-row effect,
-  `source/diff/summarizeBusy.test.tsx`).
+  The Summarize dots clear when the summary lands by patch — any landed
+  summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
+  effect, `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
   — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
 - Syntax highlighting (issue #23): plain rows first, token colours after
@@ -629,7 +627,8 @@ needed (that deviation is closed, not added).
 ## §7 Data model and IDs — all met
 
 - Entities per §7.1 table — met (`shared/src/entities.ts` 699 lines;
-  migrations 001–003 + sessions table; `store.test.ts`, `state.test.ts`).
+  single schema migration (001–005 collapsed under #137) + sessions table;
+  `store.test.ts`, `state.test.ts`).
 - ID grammar (§7.2 all nine forms) — met (`shared/src/ids.ts`,
   `links.ts`; `ids` unit tests).
 - App assigns IDs; agents never invent them — met: every token validated
@@ -897,7 +896,8 @@ needed (that deviation is closed, not added).
   (49), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
   still green. Note: the live database file is `unvibe.db`
   (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
-  and is corrected there — the backup covers both names when present.
+  and is corrected there. The legacy `unvibe.sqlite*` backup was removed
+  under #137 — only `unvibe.db*` is backed up and restored.
 
 ### §14.1 Endpoints — all met (ran)
 
@@ -1157,7 +1157,8 @@ Skipped entries (with reasons) and the commit hashes are in the
 implementer's report on the issue; glossary item 5 ("Guided review"
 default title) was deliberately not done pending the owner's decision —
 decided 2026-10-12 and renamed to "Guide" under #102 (no data migration:
-stored "Guided review" still counts as the default).
+stored "Guided review" still counts as the default; removed under #137 —
+only "Guide" counts, stored "Guided review" now reads as a real title).
 Small companion code changes the list calls for: shared stage→label map
 (`web/src/guide/stageLabels.ts`, used by the start page and the guide
 empty state, with `stageLabels.test.ts`); one `NO_AGENT_COPY` constant;

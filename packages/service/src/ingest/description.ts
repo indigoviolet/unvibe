@@ -181,10 +181,7 @@ export function currentDescriptionHtml(
 /**
  * Parse stored description HTML back into paragraphs in document order.
  * Blocks keep the `id="..."` ingest wrote; headings (which carry no ID)
- * are skipped. When the HTML predates stable IDs entirely (no `id="..."`
- * anywhere), fall back to positional `d-p<n>` per non-heading block —
- * headings take no number and a whole list is one block, matching
- * `renderMarkdownBlocks` numbering for the same block structure.
+ * are skipped.
  */
 export function parseDescriptionParagraphs(html: string): DescriptionParagraph[] {
   if (!html) return [];
@@ -200,14 +197,7 @@ export function parseDescriptionParagraphs(html: string): DescriptionParagraph[]
   if (blocks.some((b) => b.id !== null)) {
     return blocks.filter((b) => b.id !== null && b.text !== "").map((b) => ({ id: b.id!, text: b.text }));
   }
-  const out: DescriptionParagraph[] = [];
-  let n = 0;
-  for (const b of blocks) {
-    if (b.tag.startsWith("h") || b.text === "") continue;
-    n += 1;
-    out.push({ id: `d-p${n}`, text: b.text });
-  }
-  return out;
+  return [];
 }
 
 /** Plain text of one description paragraph by ID, or null when unknown. */
