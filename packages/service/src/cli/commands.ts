@@ -13,8 +13,11 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import { loadOrCreateToken } from "../auth.js";
 import { loadConfig } from "../config.js";
-import { isHealthOk, isPidAlive, readLock, removeLock, removeOwnLock, waitForHealth, writeLock } from "./lock.js";
-import { installSetup, resolveSetupPaths, uninstallSetup } from "./setup/index.js";
+import { isHealthOk, readLock, removeLock, removeOwnLock, waitForHealth, isPidAlive } from "./lock.js";
+import { cliEnsureRunning, cliStart, cliStatus, cliStop, spawnDetachedService, type CliDeps } from "./managed-cli.js";
+import { installSetup, realSetupRunner, resolveSetupPaths, uninstallSetup } from "./setup/index.js";
+import { currentUid } from "../update/service-manager.js";
+import { bookmarkUrl, serviceUrl } from "./urls.js";
 
 export const CLI_USAGE = [
   "unvibe: read and review code changes on your machine",
@@ -39,130 +42,61 @@ export const CLI_USAGE = [
   "  UNVIBE_IDLE_MS    stop the service after this long with no open window (default 600000 = 10 minutes; 0 or less: never)",
 ].join("\n");
 
-export function serviceUrl(port: number, token: string): string {
-  // The bookmarkable name (issue #108): browsers resolve `*.localhost`
-  // to loopback themselves. The 127.0.0.1 URL stays valid (same service).
-  return `http://unvibe.localhost:${port}/?token=${token}`;
-}
-
-/** The plain bookmark URL (no token: the cookie carries it after setup). */
-export function bookmarkUrl(port: number): string {
-  return `http://unvibe.localhost:${port}`;
-}
-
 function cliScriptPath(): string {
   const script = process.argv[1];
   if (!script) throw new Error("cannot determine CLI script path (process.argv[1] missing)");
   return script;
 }
 
-async function ensureRunning(): Promise<{ port: number; token: string; fresh: boolean }> {
+/**
+ * Real process/network wiring for the start/stop/status commands
+ * (issue #108 follow-up: login-managed services go through the service
+ * manager; see `managed-cli.ts`). `withToken` avoids creating the token
+ * file for commands that never print it (`stop`, `status`).
+ */
+function cliDeps(withToken: boolean): CliDeps {
   const config = loadConfig();
-  const token = loadOrCreateToken(config.dataDir);
-  const lock = readLock(config.dataDir);
-  if (lock && isPidAlive(lock.pid)) {
-    return { port: lock.port, token, fresh: false };
-  }
-  if (lock) removeLock(config.dataDir);
-  await spawnDetached();
-  const ok = await waitForHealth(config.port);
-  if (!ok) {
-    throw new Error(
-      `service did not answer on port ${config.port}; run \`unvibe doctor\` and \`unvibe status\``,
-    );
-  }
-  return { port: config.port, token, fresh: true };
-}
-
-async function spawnDetached(): Promise<number> {
-  const config = loadConfig();
-  const child = spawn(process.execPath, [cliScriptPath(), "start", "--foreground"], {
-    detached: true,
-    stdio: "ignore",
-    env: process.env,
-  });
-  child.unref();
-  if (child.pid === undefined) throw new Error("couldn't start the service process");
-  writeLock(config.dataDir, { pid: child.pid, port: config.port, startedAt: new Date().toISOString() });
-  return child.pid;
+  const d: CliDeps = {
+    homeDir: os.homedir(),
+    platform: process.platform,
+    uid: currentUid(),
+    runner: realSetupRunner(),
+    dataDir: config.dataDir,
+    port: config.port,
+    token: withToken ? loadOrCreateToken(config.dataDir) : "",
+    cliScriptPath: cliScriptPath(),
+    readLock,
+    removeLock,
+    removeOwnLock,
+    isPidAlive,
+    isHealthOk,
+    waitForHealth: (port: number) => waitForHealth(port),
+    kill: (pid: number, signal: "SIGTERM" | "SIGKILL") => process.kill(pid, signal),
+    spawnDetached: () => spawnDetachedService(d),
+    serveForeground: async () => {
+      // Dynamic import avoids loading the server for lightweight commands
+      // and keeps `stop`/`status` fast even when Fastify is unavailable.
+      const { serve } = await import("../serve.js");
+      await serve();
+    },
+    log: (line: string) => console.log(line),
+    err: (line: string) => console.error(line),
+    sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
+    now: () => Date.now(),
+  };
+  return d;
 }
 
 async function cmdStart(args: string[]): Promise<number> {
-  const foreground = args.includes("--foreground");
-  const config = loadConfig();
-  const token = loadOrCreateToken(config.dataDir);
-  const lock = readLock(config.dataDir);
-  if (!foreground && lock && isPidAlive(lock.pid)) {
-    const healthy = await isHealthOk(lock.port);
-    console.log(serviceUrl(lock.port, token));
-    console.log(healthy ? `already running (pid ${lock.pid})` : `already running (pid ${lock.pid}; still starting?)`);
-    return 0;
-  }
-  if (lock && !isPidAlive(lock.pid)) removeLock(config.dataDir);
-  if (foreground) {
-    // Dynamic import avoids loading the server for lightweight commands
-    // and keeps `stop`/`status` fast even when Fastify is unavailable.
-    const { serve } = await import("../serve.js");
-    await serve();
-    // serve() returns after logging while the server lives on in the event
-    // loop — never fall through to the dispatcher's process.exit().
-    await new Promise<never>(() => {});
-  }
-  await spawnDetached();
-  const ok = await waitForHealth(config.port);
-  if (!ok) {
-    console.error(`service did not answer on port ${config.port}; run \`unvibe doctor\``);
-    return 1;
-  }
-  console.log(serviceUrl(config.port, token));
-  return 0;
+  return cliStart(cliDeps(true), args);
 }
 
 async function cmdStop(): Promise<number> {
-  const config = loadConfig();
-  const lock = readLock(config.dataDir);
-  if (!lock) {
-    console.log("not running");
-    return 0;
-  }
-  if (!isPidAlive(lock.pid)) {
-    removeLock(config.dataDir);
-    console.log("not running (removed a leftover lock file)");
-    return 0;
-  }
-  try {
-    process.kill(lock.pid, "SIGTERM");
-  } catch {
-    // raced with its exit; fall through to cleanup
-  }
-  const deadline = Date.now() + 5000;
-  while (isPidAlive(lock.pid) && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  if (isPidAlive(lock.pid)) {
-    try {
-      process.kill(lock.pid, "SIGKILL");
-    } catch {
-      // already gone
-    }
-  }
-  removeOwnLock(config.dataDir, lock.pid);
-  console.log("stopped");
-  return 0;
+  return cliStop(cliDeps(false));
 }
 
 async function cmdStatus(): Promise<number> {
-  const config = loadConfig();
-  const lock = readLock(config.dataDir);
-  if (lock && isPidAlive(lock.pid)) {
-    const healthy = await isHealthOk(lock.port);
-    console.log(
-      `running on http://unvibe.localhost:${lock.port} (pid ${lock.pid}, since ${lock.startedAt || "unknown"}${healthy ? "" : "; starting?"})`,
-    );
-    return 0;
-  }
-  console.log("not running (start it with: unvibe start)");
-  return 1;
+  return cliStatus(cliDeps(false));
 }
 
 async function cmdSetup(args: string[]): Promise<number> {
@@ -195,7 +129,7 @@ async function cmdSetup(args: string[]): Promise<number> {
 }
 
 async function cmdOpen(): Promise<number> {
-  const { port, token } = await ensureRunning();
+  const { port, token } = await cliEnsureRunning(cliDeps(true));
   const url = serviceUrl(port, token);
   await openBrowser(url);
   console.log(url);

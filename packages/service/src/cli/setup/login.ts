@@ -17,21 +17,22 @@
  * Pure builders (snapshot-tested, including paths with spaces) + paths
  * under a home dir. Enabling/disabling goes through the injected runner so
  * tests assert the commands without touching the real login session.
+ *
+ * Identity (label, unit name, file paths) lives in
+ * `update/service-manager.ts` — the self-contained update-helper bundle
+ * imports it from there, so this module re-exports it rather than
+ * duplicating it.
  */
 
-export const LAUNCHD_LABEL = "com.unvibe.service";
-export const LAUNCHD_PLIST_FILENAME = `${LAUNCHD_LABEL}.plist`;
-export const SYSTEMD_UNIT_NAME = "unvibe.service";
+import { LAUNCHD_LABEL } from "../../update/service-manager.js";
 
-/** `~/Library/LaunchAgents/com.unvibe.service.plist` (macOS). */
-export function launchdPlistPath(homeDir: string): string {
-  return `${homeDir}/Library/LaunchAgents/${LAUNCHD_PLIST_FILENAME}`;
-}
-
-/** `~/.config/systemd/user/unvibe.service` (Linux). */
-export function systemdUnitPath(homeDir: string): string {
-  return `${homeDir}/.config/systemd/user/${SYSTEMD_UNIT_NAME}`;
-}
+export {
+  LAUNCHD_LABEL,
+  LAUNCHD_PLIST_FILENAME,
+  SYSTEMD_UNIT_NAME,
+  launchdPlistPath,
+  systemdUnitPath,
+} from "../../update/service-manager.js";
 
 export interface LoginUnitOpts {
   nodePath: string;
@@ -45,7 +46,7 @@ function xmlEscape(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** launchd agent plist: run at load, keep alive, never idle-exit. */
+/** launchd agent plist: run at load, restart on crash only, never idle-exit. */
 export function launchdPlistContent(opts: LoginUnitOpts): string {
   const { nodePath, cliPath, port, dataDir } = opts;
   return [
@@ -73,8 +74,14 @@ export function launchdPlistContent(opts: LoginUnitOpts): string {
     "  </dict>",
     "  <key>RunAtLoad</key>",
     "  <true/>",
+    // Restart on crash only (a deliberate stop — `unvibe stop` — exits 0
+    // and is respected; with plain `KeepAlive true` launchd would undo
+    // the stop at once). Mirrors systemd `Restart=on-failure`.
     "  <key>KeepAlive</key>",
-    "  <true/>",
+    "  <dict>",
+    "    <key>SuccessfulExit</key>",
+    "    <false/>",
+    "  </dict>",
     "  <key>StandardOutPath</key>",
     `  <string>${xmlEscape(dataDir)}/unvibe-login.log</string>`,
     "  <key>StandardErrorPath</key>",
