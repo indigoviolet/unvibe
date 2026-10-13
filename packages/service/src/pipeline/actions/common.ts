@@ -43,6 +43,8 @@ export function anchorKey(anchor: ActionAnchor): string {
       return `desc:${anchor.paragraphId}`;
     case "diff-line":
       return `diff:${anchor.fileKey}:${anchor.line}`;
+    case "hunk":
+      return `h:${anchor.fileKey}:${anchor.contentHash}`;
   }
 }
 

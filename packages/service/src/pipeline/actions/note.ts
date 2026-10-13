@@ -19,6 +19,12 @@ export async function noteAction(
 ): Promise<{ annotationId: string }> {
   const { reviews, reviewId } = ctx;
   if (req.quote === undefined) throw new Error("quote is required");
+  // Issue #138: a Comment on a summary attaches to the hunk's first
+  // changed line and never activates the summary — the client maps the
+  // hunk anchor to a diff-line anchor; a bare hunk anchor here is a bug.
+  if (req.anchor.where === "hunk") {
+    throw new Error("a comment on a hunk summary goes to the hunk's first changed line, not the hunk");
+  }
   const before = getSnapshotOrThrow(reviews, reviewId);
   // Notes start no agent reply and settle on close (one line via
   // `maybeSettleThread`): nothing enters the log at creation.

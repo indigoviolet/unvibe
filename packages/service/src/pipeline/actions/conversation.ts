@@ -24,8 +24,8 @@
  * extended by turns.
  */
 import { randomBytes } from "node:crypto";
-import type { ActionAnchor, Anchor, Annotation, Block, Job, Turn } from "@unvibe/shared";
-import { JOB_PRIORITY, dedupeBlockIds } from "@unvibe/shared";
+import type { ActionAnchor, Anchor, Annotation, Block, Job, ReviewSnapshot, Turn } from "@unvibe/shared";
+import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
 import { mirrorPromotedAnswer, recordInteraction } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
@@ -75,6 +75,122 @@ export function holdsFillableTurns(ann: Annotation | undefined): ann is Annotati
   if (!ann) return false;
   if (ann.type === "conversation") return true;
   return ann.type === "link" && (ann.turns?.length ?? 0) > 0;
+}
+
+/**
+ * The conversation card hosted on a hunk (issue #138), if the hunk's
+ * idle summary has been activated. Matched by content hash: a hunk whose
+ * content changed gets a new hash, so the old card stays with the old
+ * version and is never drawn on the new hunk.
+ */
+export function hunkCardFor(
+  snapshot: ReviewSnapshot,
+  fileKey: string,
+  contentHash: string,
+): Annotation | undefined {
+  return (snapshot.annotations ?? []).find(
+    (a) =>
+      a.type === "conversation" &&
+      a.anchor.host.kind === "hunk" &&
+      a.anchor.host.fileKey === fileKey &&
+      a.anchor.host.contentHash === contentHash,
+  );
+}
+
+/**
+ * Ensure the hunk's conversation card (issue #138): created from the
+ * stored summary text with no agent call — the first turn carries the
+ * default question and the summary parsed into blocks (so inline code
+ * and citations render). Reuses and reopens the stored card when the
+ * hunk is already activated. The card gets no session here; the first
+ * reply in its reply box creates one.
+ */
+export async function ensureHunkCard(
+  ctx: ActionContext,
+  fileKey: string,
+  contentHash: string,
+): Promise<{ annotationId: string; turnId: string }> {
+  const { reviews, reviewId } = ctx;
+  const snapshot = getSnapshotOrThrow(reviews, reviewId);
+  const file = (snapshot.files ?? []).find((f) => f.fileKey === fileKey);
+  if (!file) throw new Error(`unknown file ${fileKey}`);
+  if (!file.hunks.some((h) => h.contentHash === contentHash)) {
+    throw new Error(`unknown hunk ${fileKey}:${contentHash}`);
+  }
+  const summary = (snapshot.hunkStates ?? []).find((s) => s.contentHash === contentHash)?.summary?.trim();
+  if (!summary) throw new Error(`hunk ${fileKey}:${contentHash} has no summary yet`);
+  const existing = hunkCardFor(snapshot, fileKey, contentHash);
+  if (existing) {
+    if (!existing.open) {
+      await reviews.mutate(reviewId, (draft) => {
+        const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === existing.id);
+        if (target) target.open = true;
+      });
+    }
+    const firstTurn = (existing.turns ?? [])[0];
+    if (!firstTurn) throw new Error(`hunk card ${existing.id} has no turns`);
+    return { annotationId: existing.id, turnId: firstTurn.id };
+  }
+  const version = snapshot.version.n;
+  const annotationId = newAnnotationId();
+  const turnId = newTurnId();
+  const blocks = parseBlocks(summary) as Block[];
+  if (blocks.length === 0) throw new Error(`hunk ${fileKey}:${contentHash} summary produced no content`);
+  const turn: Turn = {
+    id: turnId,
+    question: null,
+    blocks,
+    level: "standard",
+    revision: 1,
+    undoStack: [],
+    working: null,
+  };
+  await reviews.mutate(reviewId, (draft) => {
+    (draft.annotations as unknown as Annotation[]).push({
+      id: annotationId,
+      type: "conversation",
+      anchor: {
+        host: { kind: "hunk", fileKey, contentHash },
+        quotedText: "",
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version,
+      },
+      open: true,
+      messages: [],
+      post: false,
+      turns: [turn],
+    } as unknown as Annotation);
+  });
+  return { annotationId, turnId };
+}
+
+/**
+ * First summary block of a hunk card's turn (the nested Explain/Ask
+ * anchors here, exactly like a selection in any answer).
+ */
+function hunkSummaryBlock(ctx: ActionContext, annotationId: string, turnId: string): string {
+  const snapshot = getSnapshotOrThrow(ctx.reviews, ctx.reviewId);
+  const card = snapshot.annotations.find((a) => a.id === annotationId);
+  const turn = card?.turns?.find((t) => t.id === turnId);
+  const block = turn?.blocks.find((b) => b.type === "paragraph") ?? turn?.blocks[0];
+  if (!turn || !block) throw new Error(`hunk card ${annotationId} has no content`);
+  return `${turnId}#${block.id}`;
+}
+
+/**
+ * `hunk_card`: the explicit hunk control (issue #138). Activates the
+ * hunk's idle summary into its conversation card — or reopens it — with
+ * no agent call. Selecting summary text and choosing Explain/Ask reaches
+ * the same card through those actions with a hunk anchor.
+ */
+export async function hunkCardAction(
+  ctx: ActionContext,
+  fileKey: string,
+  contentHash: string,
+): Promise<{ annotationId: string; turnId: string }> {
+  return ensureHunkCard(ctx, fileKey, contentHash);
 }
 
 /**
@@ -486,6 +602,16 @@ export async function explainAction(
   const { reviews, reviewId } = ctx;
   // Empty quotes are legal: the anchor still scopes the turn.
   if (typeof req.quote !== "string") throw new Error("quote is required");
+  // Issue #138: a hunk anchor activates the hunk's idle summary into a
+  // card (no agent call), then this same Explain runs nested on the
+  // selected summary text inside that answer.
+  if (req.anchor.where === "hunk") {
+    const ensured = await ensureHunkCard(ctx, req.anchor.fileKey, req.anchor.contentHash);
+    return explainAction(ctx, {
+      quote: req.quote,
+      anchor: { where: "block", blockId: hunkSummaryBlock(ctx, ensured.annotationId, ensured.turnId) },
+    });
+  }
   const before = getSnapshotOrThrow(reviews, reviewId);
   const normalized = normalizeBlockAnchor(before, req.anchor);
   // Validate the host exists (buildAnchor throws on unknown hosts).
@@ -560,6 +686,17 @@ export async function askAction(
   // carry no quote (the header falls back to file:line). Only the type is
   // enforced (the dispatcher 400s a missing quote).
   if (typeof req.quote !== "string") throw new Error("quote is required");
+  // Issue #138: a hunk anchor activates the hunk's idle summary into a
+  // card (no agent call), then this same Ask runs nested on the selected
+  // summary text inside that answer.
+  if (req.anchor.where === "hunk") {
+    const ensured = await ensureHunkCard(ctx, req.anchor.fileKey, req.anchor.contentHash);
+    return askAction(ctx, {
+      quote: req.quote,
+      anchor: { where: "block", blockId: hunkSummaryBlock(ctx, ensured.annotationId, ensured.turnId) },
+      message: req.message,
+    });
+  }
   const before = getSnapshotOrThrow(reviews, reviewId);
   const normalized = normalizeBlockAnchor(before, req.anchor);
   const anchor = buildAnchor(before, normalized, req.quote);

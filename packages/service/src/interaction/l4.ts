@@ -135,6 +135,21 @@ export function hostBlockText(snapshot: ReviewSnapshot, anchor: Annotation["anch
     if (text !== null) return text;
     return `(unknown description paragraph ${host.paragraphId})`;
   }
+  if (host.kind === "hunk") {
+    // Issue #138: a hunk card's text is its summary (the first turn's
+    // blocks). Actions run as nested cards on summary blocks, so this is
+    // normally unreachable — a backstop, not a context source.
+    const card = (snapshot.annotations ?? []).find(
+      (a) =>
+        a.type === "conversation" &&
+        a.anchor.host.kind === "hunk" &&
+        a.anchor.host.fileKey === host.fileKey &&
+        a.anchor.host.contentHash === host.contentHash,
+    );
+    const first = card?.turns?.[0];
+    if (first) return first.blocks.map((b) => blockPlainText(b)).join("\n\n");
+    return `(unknown hunk ${host.fileKey}:${host.contentHash})`;
+  }
   const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
   if (!file) return `(unknown file ${host.fileKey})`;
   const rows: string[] = [];

@@ -79,6 +79,8 @@ function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
       }
       return host;
     }
+    case "hunk":
+      return { kind: "hunk", fileKey: anchor.fileKey, contentHash: anchor.contentHash };
   }
 }
 
@@ -201,6 +203,20 @@ export function buildAnchor(
   // back to the nearest commentable line or the review body).
   const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
   if (!file) throw new Error(`unknown file ${host.fileKey}`);
+  if (host.kind === "hunk") {
+    // Issue #138: the hunk must exist; the summary text lives in
+    // hunkStates, read by the hunk-card creation (not stored here).
+    const hunk = file.hunks.find((h) => h.contentHash === host.contentHash);
+    if (!hunk) throw new Error(`unknown hunk ${host.fileKey}:${host.contentHash}`);
+    return {
+      host,
+      quotedText: quote,
+      prefix: opts.prefix ?? "",
+      suffix: opts.suffix ?? "",
+      position: opts.position ?? 0,
+      version,
+    };
+  }
   if (!Number.isSafeInteger(host.line) || host.line < 1) {
     throw new Error(`invalid diff line ${String(host.line)}`);
   }

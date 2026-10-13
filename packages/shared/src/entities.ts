@@ -522,7 +522,13 @@ export type AnchorHost =
    */
   | { kind: "block"; blockId: string }
   | { kind: "description"; paragraphId: string }
-  | { kind: "diff-line"; fileKey: string; line: number; endLine?: number; side?: "LEFT" | "RIGHT" };
+  | { kind: "diff-line"; fileKey: string; line: number; endLine?: number; side?: "LEFT" | "RIGHT" }
+  /**
+   * Issue #138: a hunk, addressed `h:<fileKey>:<contentHash>` (stable
+   * across versions while the hunk's content is). Hosts the conversation
+   * card an idle hunk summary activates into.
+   */
+  | { kind: "hunk"; fileKey: string; contentHash: string };
 
 export interface Anchor {
   host: AnchorHost;
