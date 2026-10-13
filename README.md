@@ -36,7 +36,7 @@ node packages/service/dist/index.js setup
 node packages/service/dist/index.js open
 ```
 
-`unvibe setup` registers the service to start at login plus the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. The login-started service never idle-exits; a manually started one exits after 10 minutes with no open window and no running jobs. `unvibe setup --uninstall` removes the handler and the login start (`--no-login` installs the handler only). Details in `docs/unvibe-localhost.md`.
+`unvibe setup` registers the service to start at login plus the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. The login-started service never idle-exits; a manually started one exits after 10 minutes with no open window and no running jobs. While the login unit is installed, `stop`/`start` go through the service manager (`status` says `starts at login`); updates refresh the unit with the new paths. `unvibe setup --uninstall` removes the handler and the login start (`--no-login` installs the handler only). Details in `docs/unvibe-localhost.md`.
 
 Other commands:
 
@@ -91,6 +91,7 @@ The service and the web app talk only to loopback (`127.0.0.1` and `::1`, opened
 - `claude`/`codex` missing or too old → install or update the CLI, make sure it is on the login-shell PATH, then Re-check.
 - Diagrams show as text → install `d2` 0.9.0 or newer, make sure it is on the login-shell PATH, then Re-check.
 - Port in use by something else → set `UNVIBE_PORT` to a free port, then re-run `unvibe setup` (the login unit bakes the port in) and reinstall the web app if you installed it (its origin changes with the port).
+- The bookmark stopped answering after an update, or `doctor` warns the login unit points at moved files → re-run `unvibe setup` (updates refresh the unit, but a moved Node or install needs a fresh setup).
 - A failed agent job shows its error on the card with a retry. Jobs interrupted by a restart come back marked and can be resumed.
 - Opening a review whose checkout moved or was deleted says so and names the missing directory.
 - On macOS, the CLIs must be on the login-shell PATH (not just the Terminal PATH); `doctor` reports which PATH the service sees.

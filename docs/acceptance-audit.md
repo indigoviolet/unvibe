@@ -93,10 +93,19 @@ checkouts; job-list snapshot bloat; doctor port diagnosis; broken
   launchd agent (macOS) / systemd user unit (Linux) running
   `start --foreground` with port + data dir baked in and
   `UNVIBE_IDLE_MS=0`, so the login-started service never idle-exits; a
-  manually started service keeps the 10-minute idle exit. `setup.test.ts`
-  pins the unit contents and enable commands with a fake HOME;
-  `e2e-*.mjs` use `--no-login` to stay hermetic. macOS enable + Safari
-  still need a human (see `macos-testing.md`).
+  manually started service keeps the 10-minute idle exit. Follow-up:
+  while the unit is installed, `stop`/`start`/`open` go through the
+  service manager (crash-only restart: launchd `KeepAlive
+  SuccessfulExit:false`, systemd `Restart=on-failure` — a deliberate
+  stop stays down, updates can't race a restart); `status` says `starts
+  at login`; failed manager starts unload again (no crash-loop, no port
+  fight) and fall back to a direct spawn with a warning. Both update
+  paths refresh the unit with the just-installed paths; `doctor` warns
+  on stale baked paths; the login-shell PATH probe (headless-safe) is
+  how manager-started services find their tools. `managed-cli` +
+  `service-manager` tests pin the matrix with a stub runner + fake HOME
+  (`e2e-*.mjs` use `--no-login` to stay hermetic). macOS
+  enable + Safari still need a human (see `macos-testing.md`).
 - **New repos under the team org** — cannot verify here (process rule, no
   org access from this machine).
 

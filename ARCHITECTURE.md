@@ -128,6 +128,8 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/web/src/shell/PreviewBuildBadge.tsx` | Quiet preview pill (branch · commit) in the review/Settings/Start headers |
 | `packages/service/src/cli/` | `start`/`stop`/`status`/`setup`/`open`/`token`/`doctor`, single-instance lock |
 | `packages/service/src/cli/setup/` | `unvibe://` handler (macOS helper, Linux desktop file) + start-at-login unit (launchd agent, systemd user unit, issue #108) |
+| `packages/service/src/cli/managed-cli.ts` | Manager-aware start/stop/status: through launchd/systemd while the login unit is installed, pid-direct otherwise (issue #108 follow-up) |
+| `packages/service/src/update/service-manager.ts` | Login-unit identity/paths/argv, staleness check, unit refresh; imported by the self-contained update-helper bundle |
 | `packages/service/src/lifecycle/` | Idle exit, bounded ordered shutdown (`service-shutdown.ts`, issue #30) |
 | `packages/service/src/security/` | Token auth, loopback Host/Origin gates (exact names incl. `unvibe.localhost`, Origin pinned to port), CSP header |
 | `packages/service/src/telemetry/` | Dev-only Sentry error reporting (off without `SENTRY_DSN_SERVICE`; SDK not in the release) |

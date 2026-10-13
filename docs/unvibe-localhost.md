@@ -11,7 +11,10 @@ no DNS lookup, no hosts-file edit, no hosted service — and page and
 service stay on the same machine. The service listens on `127.0.0.1` plus
 a `::1` companion socket (same port, same router, same gate), so it
 answers however the browser resolves the name. It never binds a routable
-address, and there is no host setting that could move it there.
+address, and there is no host setting that could move it there. Both
+sockets must bind or the service refuses to start: a half-bound start
+would send this site's cookie to whatever other program holds the other
+half.
 
 `http://127.0.0.1:4517` keeps working: it is the same service. There are
 no redirects and nothing to migrate.
@@ -46,18 +49,46 @@ any published page.
 `unvibe setup` writes a start-at-login unit alongside the handler:
 
 - macOS: `~/Library/LaunchAgents/com.unvibe.service.plist` (launchd:
-  run at load, kept alive).
+  run at load, restart on crash only).
 - Linux: `~/.config/systemd/user/unvibe.service` (enabled and started
-  with `systemctl --user`).
+  with `systemctl --user`; `Restart=on-failure`).
 
 Both run the installed CLI's `start --foreground` with the port and data
 dir baked in at setup time (re-run setup after changing either), and both
 set `UNVIBE_IDLE_MS=0`: a login-started service never idle-exits. A
-manually started service (`unvibe start`) keeps the normal 10-minute idle
-exit. Only the port, data dir and idle-disable are baked in — never the
-whole environment, never `GITHUB_TOKEN`. `unvibe setup --uninstall`
-removes the handler and the unit; `unvibe setup --no-login` installs the
-handler only.
+manually started service (`unvibe start` with no unit installed) keeps
+the normal 10-minute idle exit. Only the port, data dir and idle-disable
+are baked in — never the whole environment, never `GITHUB_TOKEN`, and
+never `PATH`: the service repairs `PATH` from the login shell at every
+boot (`diagnostics/path-probe.ts`, headless-safe), which is also how a
+manager-started service finds `git`, `gh`, `d2` and the agent CLIs.
+`unvibe setup --uninstall` removes the handler and the unit;
+`unvibe setup --no-login` installs the handler only.
+
+### Who owns the process
+
+When the unit is installed, `stop`/`start` (and `open`) go through the
+service manager; otherwise the CLI owns the process directly, as before.
+Concretely: `unvibe stop` unloads the service (the crash-only restart
+respects a deliberate stop, so it stays down); `unvibe start` loads it
+back; `unvibe status` says `starts at login`. `unvibe update` refuses
+while the service runs, so the order is `stop` → `update` → `start`,
+all manager-aware, and the install can never race a manager restart
+(the old generation exits 0 before `npm` touches anything). The in-app
+version switch restarts through the manager the same way, and every
+update rewrites the unit with the just-installed node and entry paths.
+If a manager start never answers, the CLI unloads again (no crash-loop
+on the port) and falls back to a direct spawn with a warning — the
+service stays up but unmanaged (idle exit applies) until the next login.
+
+### Baked paths can go stale
+
+A global reinstall or a Node upgrade can move the installed files, while
+the unit still names the old node and entry. Both update paths refresh
+the unit automatically; `unvibe doctor` warns when the baked paths no
+longer exist (re-run `unvibe setup`). Not handled: if the baked node
+binary is deleted outright between updates, the login start fails until
+you re-run setup — doctor names the missing path.
 
 ## If nothing answers
 

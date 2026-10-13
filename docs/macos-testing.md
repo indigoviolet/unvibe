@@ -123,12 +123,15 @@ $ xattr ~/Applications/Unvibe.app
 $ cat ~/Library/LaunchAgents/com.unvibe.service.plist
 (Label com.unvibe.service, ProgramArguments <node> <cli> start --foreground,
 EnvironmentVariables UNVIBE_PORT=4517, UNVIBE_DATA_DIR=…,
-UNVIBE_IDLE_MS=0, RunAtLoad + KeepAlive true)
+UNVIBE_IDLE_MS=0, RunAtLoad true, KeepAlive with SuccessfulExit false —
+restart on crash only, so a deliberate `unvibe stop` is respected)
 $ launchctl print gui/$(id -u)/com.unvibe.service | head -8
 (running service state)
 ```
 
-Re-run `mise run setup` — output identical, exit 0 (idempotent).
+Re-run `mise run setup` — output identical, exit 0 (idempotent; it
+restarts the login instance through the manager, so `unvibe status`
+shows a fresh `since`).
 
 **Send back:** the setup output, the PlistBuddy output, `xcode-select -p`
 (the CLT may be missing if `osacompile` failed), and `ls -la ~/Applications`.
@@ -145,7 +148,7 @@ Within ~5 s the service must be up:
 
 ```
 $ unvibe status
-running on http://unvibe.localhost:4517 (pid …)
+running on http://unvibe.localhost:4517 (pid …, since …; starts at login)
 $ curl -s http://unvibe.localhost:4517/api/health
 {"ok":true,"version":"…"}
 ```
@@ -325,11 +328,20 @@ checkout's `mise run build` + `node packages/service/dist/index.js`):
 ```
 $ unvibe setup
 (open the printed token link once, then bookmark the plain URL)
-$ unvibe stop; sleep 1
-$ launchctl kickstart gui/$(id -u)/com.unvibe.service
+$ unvibe stop
+$ curl -s --max-time 3 http://unvibe.localhost:4517/api/health || echo STOPPED
+STOPPED
+$ unvibe start
 $ curl -s http://unvibe.localhost:4517/api/health
 {"ok":true,"version":"…"}
+$ unvibe status
+running on http://unvibe.localhost:4517 (pid …, since …; starts at login)
 ```
+
+`stop`/`start` go through launchd while the agent is installed (a
+deliberate stop exits 0, so the crash-only restart leaves it down;
+`start` bootstraps it back). If `stop` ever leaves the port answering,
+or `start` reports a conflict, send back the full output.
 
 1. **Chrome (or Vivaldi):** open the bookmark `http://unvibe.localhost:4517`
    — the app loads with no token in the URL.
