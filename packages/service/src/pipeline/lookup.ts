@@ -22,9 +22,8 @@ export function lookupForSnapshot(snapshot: ReviewSnapshot): ReturnType<typeof c
   const descTexts = descTextsOf(currentDescriptionHtml(snapshot.description));
   const concepts = new Set<string>();
   for (const page of snapshot.pages) {
-    if (page.kind === "concept") {
-      const slug = page.id.startsWith("c-") ? page.id.slice(2) : page.id;
-      concepts.add(slug);
+    if (page.kind === "concept" && page.id.startsWith("c-")) {
+      concepts.add(page.id.slice(2));
     }
   }
   // Reader-declared concepts may not have pages yet; they are still known
