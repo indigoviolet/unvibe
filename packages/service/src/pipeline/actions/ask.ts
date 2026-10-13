@@ -448,6 +448,9 @@ async function replyOnSession(
     promptSnapshot: prompt,
     run: async (jobCtx) => {
       jobCtx.setPromptSnapshot(prompt);
+      // #122: never continue from a stale log — wait for the previous
+      // turn's bookkeeping (base growth) to land first.
+      await pipeline.drainBookkeeping(reviewId);
       const send = sessions!.sendOnConversation.bind(sessions);
       const usage: TokenUsage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
       const collect = async (text: string): Promise<string> => {
@@ -489,33 +492,38 @@ async function replyOnSession(
             if (fixedCitations.length > 0) last.citations = fixedCitations;
           });
           // Same-session turns ingest contributions, advance the cursor and
-          // grow the base exactly like fork turns (best-effort).
-          if (wireDeps?.sharedctx && wireDeps.settings && wireDeps.sessions) {
-            try {
-              const lookup = lookupWithAliases(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
-              await ingestAgentTurn(
-                {
-                  reviews,
-                  sessions: wireDeps.sessions,
-                  settings: wireDeps.settings,
-                  promptsDir,
-                  sharedctx: wireDeps.sharedctx,
-                },
-                reviewId,
-                {
-                  sessionId,
-                  threadId,
-                  conversationKey: threadId,
-                  data: turnSplit.ok ? turnSplit.data : null,
-                  snapshot: getSnapshotOrThrow(reviews, reviewId),
-                  lookup,
-                  appendToBase: (baseKey, batch) => wireDeps.sessions.appendLogBatch(baseKey, batch),
-                },
-              );
-            } catch {
-              // best-effort
+          // grow the base exactly like fork turns (best-effort). #122: the
+          // reply is applied above; bookkeeping joins the per-review chain
+          // (still awaited before the job ends, so a crash leaves the job
+          // visibly interrupted, never silently unbookkept).
+          await pipeline.finishBookkeeping(reviewId, async () => {
+            if (wireDeps?.sharedctx && wireDeps.settings && wireDeps.sessions) {
+              try {
+                const lookup = lookupWithAliases(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
+                await ingestAgentTurn(
+                  {
+                    reviews,
+                    sessions: wireDeps.sessions,
+                    settings: wireDeps.settings,
+                    promptsDir,
+                    sharedctx: wireDeps.sharedctx,
+                  },
+                  reviewId,
+                  {
+                    sessionId,
+                    threadId,
+                    conversationKey: threadId,
+                    data: turnSplit.ok ? turnSplit.data : null,
+                    snapshot: getSnapshotOrThrow(reviews, reviewId),
+                    lookup,
+                    appendToBase: (baseKey, batch) => wireDeps.sessions.appendLogBatch(baseKey, batch),
+                  },
+                );
+              } catch {
+                // best-effort
+              }
             }
-          }
+          });
           // Answers citing fetched code are shared in full (PRD §9.3).
           try {
             if (hasOutOfBaseCitations(parsed.validation.tokens)) {

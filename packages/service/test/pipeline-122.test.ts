@@ -105,6 +105,116 @@ const FORK_REPLY =
   `## Answer\n\nBody with citation [[diff:a-py:1-2]].\n\n` +
   '```json\n{"title": "T"}\n```\n';
 
+describe("#122.2 answer before bookkeeping", () => {
+  beforeEach(() => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+  });
+
+  it("the answer resolves while bookkeeping is still pending; the next job waits; the job stays open", async () => {
+    const forkReplyWithContribute =
+      `## Answer\n\nBody with citation [[diff:a-py:1-2]].\n\n` +
+      "```json\n" +
+      JSON.stringify({ title: "T", contribute: { facts: [{ text: "y equals two", citations: ["diff:a-py:2"] }] } }) +
+      "\n```\n";
+    const agents = new FakeAgentRunner([
+      { match: "reply with exactly", events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end_turn" }] },
+      {
+        match: "",
+        events: [
+          { type: "text", delta: forkReplyWithContribute },
+          { type: "usage", inputTokens: 10, cachedTokens: 90, outputTokens: 5 },
+          { type: "done", stopReason: "end_turn" },
+        ],
+      },
+    ]);
+    const { app, ctx } = await demoApp(agents);
+    try {
+      const id = await makeDemoReview(ctx);
+      // Seed enough log volume that post-turn growth appends a batch to the
+      // base (default batch is 2000 tokens).
+      await ctx.reviews.mutate(id, (draft) => {
+        for (let i = 0; i < 60; i++) {
+          const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
+          draft.logTail.push({
+            seq,
+            kind: "new-card",
+            payload: { summary: `seed entry ${i} ${"x".repeat(300)}` },
+            scope: { scope: "global" },
+          });
+        }
+      });
+      // Gate the base-growth append: bookkeeping blocks here.
+      const origAppend = ctx.sessions.appendLogBatch.bind(ctx.sessions);
+      let releaseAppend!: () => void;
+      const appendGate = new Promise<void>((r) => {
+        releaseAppend = r;
+      });
+      let appendCalls = 0;
+      let appendGated = true;
+      ctx.sessions.appendLogBatch = async (key, batch, opts) => {
+        appendCalls += 1;
+        if (appendGated) await appendGate;
+        return origAppend(key, batch, opts);
+      };
+
+      let jobA: Job | undefined;
+      let aResolved = false;
+      const doneA = ctx.pipeline
+        .runInFork({
+          reviewId: id,
+          kind: "explain",
+          template: "explain",
+          variables: EXPLAIN_VARS,
+          priority: JOB_PRIORITY.userRequested,
+          conversationKey: "conv-A",
+          onJob: (job) => {
+            jobA = job;
+          },
+        })
+        .then((r) => {
+          aResolved = true;
+          return r;
+        });
+      // A reaches its (gated) bookkeeping…
+      await waitFor(() => appendCalls >= 1, 8000);
+      await sleep(200);
+      // …and the answer is already out, while the job is still open (a crash
+      // now leaves it visibly interrupted, never silently unbookkept).
+      expect(aResolved).toBe(true);
+      expect(jobA).toBeDefined();
+      expect(ctx.jobs.get(jobA!.id)?.state).toBe("running");
+
+      // The next job must not fork from the stale log: its turn waits for
+      // A's bookkeeping to land.
+      const varsB = { ...EXPLAIN_VARS, message: "Bee?" };
+      const doneB = ctx.pipeline.runInFork({
+        reviewId: id,
+        kind: "explain",
+        template: "explain",
+        variables: varsB,
+        priority: JOB_PRIORITY.userRequested,
+        conversationKey: "conv-B",
+      });
+      await sleep(300);
+      expect(agents.prompts.some((p) => p.text.includes("Bee?"))).toBe(false);
+
+      appendGated = false;
+      releaseAppend();
+      const [resA, resB] = await Promise.all([doneA, doneB]);
+      expect(resA.text).toContain("Body with citation");
+      expect(resB.text).toContain("Body with citation");
+      await ctx.jobs.drain(8000);
+      expect(ctx.jobs.get(jobA!.id)?.state).toBe("done");
+      // Bookkeeping was not lost: the contribution landed.
+      const snap = ctx.reviews.getSnapshot(id)!;
+      expect(snap.contributions.length).toBeGreaterThan(0);
+      expect(agents.prompts.some((p) => p.text.includes("Bee?"))).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("#122.1 enqueue before the base", () => {
   beforeEach(() => {
     process.env.UNVIBE_REPO_ROOTS = "";

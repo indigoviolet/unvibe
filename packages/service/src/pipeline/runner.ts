@@ -420,14 +420,6 @@ export class Pipeline {
             }
             ctx.reportUsage(usage);
             await this.recordUsage(o.reviewId, usage);
-            await this.ingestTurn(o.reviewId, {
-              sessionId: forked.session.id,
-              ...(o.threadId ? { threadId: o.threadId } : {}),
-              ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
-              ...(o.cardId ? { cardId: o.cardId } : {}),
-              ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
-              data: finalData,
-            });
             if (o.onPartial) {
               try {
                 await o.onPartial(finalCards);
@@ -435,6 +427,10 @@ export class Pipeline {
                 // ignore
               }
             }
+            // #122: the finished answer goes out before post-turn
+            // bookkeeping. The job still awaits the bookkeeping below, so a
+            // crash in between leaves it visibly interrupted (never silently
+            // unbookkept), and the next job drains the chain in forkFor.
             resolveResult({
               job: this.opts.jobs.get(enqueued.id) ?? enqueued,
               text: finalText,
@@ -445,6 +441,16 @@ export class Pipeline {
               viaFork: forked.viaFork,
               repaired,
             });
+            await this.finishBookkeeping(o.reviewId, () =>
+              this.ingestTurn(o.reviewId, {
+                sessionId: forked.session.id,
+                ...(o.threadId ? { threadId: o.threadId } : {}),
+                ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
+                ...(o.cardId ? { cardId: o.cardId } : {}),
+                ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
+                data: finalData,
+              }),
+            );
             return;
           } catch (err) {
             if (err instanceof RetryableError && attempt < 3) {
@@ -1011,7 +1017,41 @@ export class Pipeline {
       });
   }
 
+  /** #122: tails of per-review post-turn bookkeeping chains (never reject). */
+  private bookkeepingTails = new Map<string, Promise<void>>();
+
+  /**
+   * #122: wait for the review's pending post-turn bookkeeping, so the next
+   * job never forks (or continues) from a stale log. Resolves at once when
+   * nothing is pending.
+   */
+  async drainBookkeeping(reviewId: string): Promise<void> {
+    await (this.bookkeepingTails.get(reviewId) ?? Promise.resolve());
+  }
+
+  /**
+   * #122: run post-turn bookkeeping serialized after the review's pending
+   * bookkeeping. Callers resolve their answer first and await this before
+   * their job settles. Never rejects (`ingestTurn` is best-effort).
+   */
+  async finishBookkeeping(reviewId: string, task: () => Promise<void>): Promise<void> {
+    const prev = this.bookkeepingTails.get(reviewId) ?? Promise.resolve();
+    const cur = prev.then(task).then(
+      () => undefined,
+      () => undefined,
+    );
+    this.bookkeepingTails.set(reviewId, cur);
+    try {
+      await cur;
+    } finally {
+      if (this.bookkeepingTails.get(reviewId) === cur) this.bookkeepingTails.delete(reviewId);
+    }
+  }
+
   private async forkFor(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
+    // #122: never fork from a stale log — wait for the previous turn's
+    // bookkeeping (base growth) to land first.
+    await this.drainBookkeeping(reviewId);
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
@@ -1159,7 +1199,9 @@ export class Pipeline {
             finalValidation = second.validation;
           }
           await this.applyReaderResult(reviewId, finalCards, finalData, finalValidation);
-          await this.ingestTurn(reviewId, { sessionId: session.id, data: finalData });
+          // #122: the guide cards are already applied above; bookkeeping
+          // joins the per-review chain (still awaited before the job ends).
+          await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: session.id, data: finalData }));
           this.setStage(reviewId, "reader", "done");
           this.enqueueAfterReader(reviewId);
           // #122: the guide just landed — build the base before the next click.
@@ -1457,7 +1499,8 @@ export class Pipeline {
               });
             });
             await this.updateRestatedMapping(reviewId);
-            await this.ingestTurn(reviewId, { sessionId: forked.session.id, data });
+            // #122: the finding is applied above; bookkeeping joins the chain.
+            await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
             // #122: findings changed the guide — rebuild the base ahead.
             this.warmBase(reviewId);
             this.maybeMarkStageDone(reviewId, "critic", 2);
@@ -1696,7 +1739,8 @@ export class Pipeline {
       }
     });
     await this.updateRestatedMapping(reviewId);
-    await this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data });
+    // #122: the fill is applied above; bookkeeping joins the chain.
+    await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data }));
     // #122: the fill changed the guide — rebuild the base ahead.
     this.warmBase(reviewId);
   }
