@@ -426,6 +426,13 @@ export type ReviewAction =
   | { kind: "concept"; slug: string };
 
 export type ActionAnchor =
+  /**
+   * A guide block, addressed `<card>#<block>` (block ids restart at `b1`
+   * in every card, so the card qualifier is required). The card part is a
+   * page-card id, or — for a selection inside an explanation (#116) — the
+   * hosting expansion's annotation id, so nested explanations address
+   * `<expansion>#<block>` the same way.
+   */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
   | { where: "diff-line"; fileKey: string; line: number };
