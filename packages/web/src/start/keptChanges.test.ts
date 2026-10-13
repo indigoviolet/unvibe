@@ -54,6 +54,81 @@ describe("keptChanges storage", () => {
     expect(getKeptLists("r1")).toBeNull();
   });
 
+  it("rounds-trips rows with the #94/#95/#100 fields", () => {
+    const saved = setKeptLists("r1", {
+      authoring: [
+        {
+          kind: "pr" as const,
+          title: "Full PR",
+          prNumber: 7,
+          branch: "b7",
+          url: "https://github.com/acme/app/pull/7",
+          additions: 1200,
+          deletions: 34,
+          changedFiles: 6,
+        },
+      ],
+      requested: [
+        {
+          kind: "pr" as const,
+          title: "Team ask",
+          prNumber: 8,
+          reviewScope: "team" as const,
+          requestedTeams: ["core"],
+        },
+      ],
+      branches: [],
+      fetchNote: null,
+    });
+    const back = getKeptLists("r1");
+    expect(back).toEqual(saved);
+    expect(back?.authoring[0].url).toBe("https://github.com/acme/app/pull/7");
+    expect(back?.requested[0].reviewScope).toBe("team");
+  });
+
+  it("upgrades a stored entry from before the new row fields (never throws)", () => {
+    localStorage.setItem(
+      KEPT_CHANGES_KEY,
+      JSON.stringify({
+        version: 1,
+        viewer: null,
+        repos: {
+          r1: {
+            authoring: [{ kind: "pr", title: "Old PR", prNumber: 99, branch: "kept-branch" }],
+            requested: [{ kind: "pr", title: "Old ask", prNumber: 98 }],
+            branches: [],
+            fetchNote: null,
+            fetchedAt: Date.now(),
+          },
+        },
+      }),
+    );
+    __resetKeptForTests();
+    const back = getKeptLists("r1");
+    expect(back?.authoring[0].prNumber).toBe(99);
+    expect(back?.authoring[0].url).toBeUndefined();
+    expect(back?.requested[0].reviewScope).toBeUndefined();
+  });
+
+  it("drops a row with a mistyped new field instead of throwing", () => {
+    localStorage.setItem(
+      KEPT_CHANGES_KEY,
+      JSON.stringify({
+        version: 1,
+        viewer: null,
+        repos: {
+          r1: {
+            ...ENTRY,
+            authoring: [{ kind: "pr", title: "Bad", prNumber: 1, additions: "many" }],
+            fetchedAt: Date.now(),
+          },
+        },
+      }),
+    );
+    __resetKeptForTests();
+    expect(getKeptLists("r1")).toBeNull();
+  });
+
   it("drops an old-shape (unversioned) entry", () => {
     localStorage.setItem(
       KEPT_CHANGES_KEY,

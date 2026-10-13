@@ -92,6 +92,53 @@ function changeKey(c: RepoChange, i: number): string {
   return `${c.kind}-${c.reviewId ?? c.prNumber ?? c.branch ?? i}`;
 }
 
+/**
+ * Review-request scope (#95): rows the service marked team-only read as
+ * "team"; everything else (direct rows, other lists, rows stored before
+ * the scope existed) reads as direct, as the single list did before.
+ */
+export function reviewScopeOf(c: RepoChange): "direct" | "team" {
+  return c.reviewScope === "team" ? "team" : "direct";
+}
+
+/** Recency windows for the review-request filter (#95): last update within. */
+export type RecencyWindow = "all" | "1d" | "3d" | "1w" | "2w";
+
+export const RECENCY_KEY = "unvibe.start.reviewRecency";
+
+export const RECENCY_WINDOWS: { value: RecencyWindow; label: string; ms: number | null; emptyNote: string }[] = [
+  { value: "all", label: "All", ms: null, emptyNote: "" },
+  { value: "1d", label: "Last day", ms: 86400_000, emptyNote: "No PRs updated in the last day." },
+  { value: "3d", label: "Last 3 days", ms: 3 * 86400_000, emptyNote: "No PRs updated in the last 3 days." },
+  { value: "1w", label: "Last week", ms: 7 * 86400_000, emptyNote: "No PRs updated in the last week." },
+  { value: "2w", label: "Last 2 weeks", ms: 14 * 86400_000, emptyNote: "No PRs updated in the last 2 weeks." },
+];
+
+function isRecencyWindow(v: unknown): v is RecencyWindow {
+  return RECENCY_WINDOWS.some((w) => w.value === v);
+}
+
+function readRecency(): RecencyWindow {
+  try {
+    const saved = localStorage.getItem(RECENCY_KEY);
+    if (isRecencyWindow(saved)) return saved;
+  } catch {
+    // Ignore: default below.
+  }
+  return "all";
+}
+
+/**
+ * True when the row is recent enough for the window (#95). Recency means
+ * last PR update; rows with no known update stay visible (their age is
+ * unknown, not old).
+ */
+export function inRecencyWindow(c: RepoChange, windowMs: number | null, now = Date.now()): boolean {
+  if (windowMs === null) return true;
+  if (typeof c.updatedAt !== "number" || !Number.isFinite(c.updatedAt)) return true;
+  return c.updatedAt >= now - windowMs;
+}
+
 function timeAgo(ts: number): string {
   const d = Date.now() - ts;
   if (d < 60_000) return "just now";
@@ -247,6 +294,8 @@ export function StartPage(): React.JSX.Element {
   // background refresh is in flight on top of kept rows.
   const [keptFetchedAt, setKeptFetchedAt] = useState<number | null>(initial.kept?.fetchedAt ?? null);
   const [refreshing, setRefreshing] = useState(false);
+  // Review-request recency filter (#95): remembered like the repo choice.
+  const [recency, setRecency] = useState<RecencyWindow>(readRecency);
 
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
@@ -408,6 +457,15 @@ export function StartPage(): React.JSX.Element {
     },
     [],
   );
+
+  const selectRecency = useCallback((w: RecencyWindow) => {
+    setRecency(w);
+    try {
+      localStorage.setItem(RECENCY_KEY, w);
+    } catch {
+      // Ignore: the choice simply does not persist.
+    }
+  }, []);
 
   const retryLists = useCallback(() => {
     if (!selectedId) return;
@@ -689,6 +747,16 @@ export function StartPage(): React.JSX.Element {
   const keptStatus =
     listsFor !== null && listsFor === selectedId ? keptStatusText(keptFetchedAt, refreshing) : null;
 
+  // Review requests, split (#95): asked of you by name vs only of a team
+  // you belong to (a PR asking both reads once, as direct). The service
+  // returns both groups newest-first; the recency window only hides rows.
+  const directRequested = requested.filter((c) => reviewScopeOf(c) === "direct");
+  const teamRequested = requested.filter((c) => reviewScopeOf(c) === "team");
+  const windowMs = RECENCY_WINDOWS.find((w) => w.value === recency)?.ms ?? null;
+  const windowEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.emptyNote ?? "";
+  const visibleDirect = directRequested.filter((c) => inRecencyWindow(c, windowMs));
+  const visibleTeam = teamRequested.filter((c) => inRecencyWindow(c, windowMs));
+
   return (
     <div className="app">
       <Toast />
@@ -940,23 +1008,79 @@ export function StartPage(): React.JSX.Element {
                       })
                     }
                   />
-                  <ChangeSection
-                    title="Waiting on your review"
-                    changes={requested}
-                    error={listErrors.requested}
-                    errorTestId="changes-error-requested"
-                    opening={opening}
-                    empty="No PRs waiting."
-                    onOpen={(c, i) =>
-                      openReview(changeKey(c, i), {
-                        repoId: selectedId,
-                        pr: c.prNumber,
-                        branch: c.branch,
-                        title: c.title,
-                        ...(c.author ? { author: c.author } : {}),
-                      })
-                    }
-                  />
+                  <div className="divider">Waiting on your review</div>
+                  {listErrors.requested ? (
+                    <p className="hint" role="alert" data-testid="changes-error-requested">
+                      {listErrors.requested}
+                    </p>
+                  ) : null}
+                  <div className="frow" style={{ gap: 6, alignItems: "center", marginBottom: 2 }}>
+                    <label className="hint" htmlFor="review-recency">
+                      Updated within
+                    </label>
+                    <select
+                      id="review-recency"
+                      className="tbtn"
+                      value={recency}
+                      onChange={(e) => {
+                        if (isRecencyWindow(e.target.value)) selectRecency(e.target.value);
+                      }}
+                    >
+                      {RECENCY_WINDOWS.map((w) => (
+                        <option key={w.value} value={w.value}>
+                          {w.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="subhead">Requested of you</div>
+                  {visibleDirect.length === 0 ? (
+                    <p className="hint" data-testid="requested-direct-empty">
+                      {directRequested.length === 0 ? "No PRs requested of you." : windowEmptyNote}
+                    </p>
+                  ) : (
+                    visibleDirect.map((c, i) => (
+                      <ChangeRow
+                        key={changeKey(c, i)}
+                        c={c}
+                        i={i}
+                        opening={opening}
+                        onOpen={(row, j) =>
+                          openReview(changeKey(row, j), {
+                            repoId: selectedId,
+                            pr: row.prNumber,
+                            branch: row.branch,
+                            title: row.title,
+                            ...(row.author ? { author: row.author } : {}),
+                          })
+                        }
+                      />
+                    ))
+                  )}
+                  <div className="subhead">Requested of your team</div>
+                  {visibleTeam.length === 0 ? (
+                    <p className="hint" data-testid="requested-team-empty">
+                      {teamRequested.length === 0 ? "No PRs requested of your team." : windowEmptyNote}
+                    </p>
+                  ) : (
+                    visibleTeam.map((c, i) => (
+                      <ChangeRow
+                        key={changeKey(c, i)}
+                        c={c}
+                        i={i}
+                        opening={opening}
+                        onOpen={(row, j) =>
+                          openReview(changeKey(row, j), {
+                            repoId: selectedId,
+                            pr: row.prNumber,
+                            branch: row.branch,
+                            title: row.title,
+                            ...(row.author ? { author: row.author } : {}),
+                          })
+                        }
+                      />
+                    ))
+                  )}
                   <ChangeSection
                     title="Recent branches"
                     changes={branches}
@@ -1086,6 +1210,39 @@ export function changeHead(c: RepoChange): string {
   return c.branch ?? c.title;
 }
 
+/**
+ * One PR/branch list row (#95, #100, #94): the head line carries the PR
+ * number and branch, author, relative update time, diff size and team
+ * names — each omitted when unknown — above the title that opens the
+ * review.
+ */
+function ChangeRow({
+  c,
+  i,
+  opening,
+  onOpen,
+}: {
+  c: RepoChange;
+  i: number;
+  opening: string | null;
+  onOpen: (c: RepoChange, i: number) => void;
+}): React.JSX.Element {
+  return (
+    <div className="ci">
+      <button className="cj" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
+        <span className="cw">
+          {changeHead(c)}
+          {c.author ? ` · ${c.author}` : ""}
+          {c.kind === "pr" && typeof c.updatedAt === "number" ? ` · ${timeAgo(c.updatedAt)}` : ""}
+          {c.requestedTeams && c.requestedTeams.length > 0 ? ` · via ${c.requestedTeams.join(", ")}` : ""}
+        </span>
+        <span className="cx2">{c.title}</span>
+      </button>
+      {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
+    </div>
+  );
+}
+
 function ChangeSection({
   title,
   changes,
@@ -1116,18 +1273,7 @@ function ChangeSection({
       {changes.length === 0 && !error ? (
         <p className="hint">{empty}</p>
       ) : (
-        changes.map((c, i) => (
-          <div key={changeKey(c, i)} className="ci">
-            <button className="cj" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
-              <span className="cw">
-                {changeHead(c)}
-                {c.author ? ` · ${c.author}` : ""}
-              </span>
-              <span className="cx2">{c.title}</span>
-            </button>
-            {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
-          </div>
-        ))
+        changes.map((c, i) => <ChangeRow key={changeKey(c, i)} c={c} i={i} opening={opening} onOpen={onOpen} />)
       )}
     </>
   );
