@@ -23,21 +23,26 @@ No `[[ ]]` wrapper and no `tooltip:`. The single source of the wording given to 
 ## Look (issue #16)
 
 The two renders keep D2's built-in themes (0 light / 200 dark); the web
-app remaps D2's uniform blue to the guide palette with stylesheet rules
-over the classes D2 emits (`prototype.css`, `.dg-d2 …`), so served bytes
-— and the fixture seeds — never change. Agents may mark shapes
-`*.class: [ok]` / `[bad]`: D2 passes unknown classes through and the
-stylesheet paints them with the guide's ok/warn colours. `classes:`
-stanzas stay rejected by the pre-check (they can smuggle fonts).
+ app remaps D2's uniform blue to the guide palette with stylesheet rules
+ over the classes D2 emits (`prototype.css`, `.dg-d2 …`), so served bytes
+ — and the fixture seeds — never change. Agents mark a good/bad outcome
+ with `myid.class: [ok]` / `[bad]` on its own line: D2 passes unknown
+ classes through and the stylesheet paints them with the guide's ok/warn
+ colours. `classes:` stanzas stay rejected by the pre-check (they can
+ smuggle fonts), as does `.class:` inside `{ … }` (invalid D2 — the
+ pre-check names the legal line form so the repair turn can act).
 
 ## Pipeline (`packages/service/src/diagrams/`)
 
-1. Extract every `link:` value from the source.
-2. Validate each as a citation with the standard validator (ranges, automatic repair, unverified marking).
-3. Pre-check the source against the deny list below, then compile with the binary.
-4. Check that every validated citation has a matching `href` in the SVG. D2 silently drops a `link:` written on a dedented line under a sequence message, so a clean exit code is not enough.
-5. Any failure in 2 to 4 triggers exactly one repair turn carrying the validator or compiler message.
-6. Render light and dark, rewrite citation anchors to `<a href="#" data-refs data-src>`, strip `<title>` tooltips that contain tokens, sanitise, and cache by content hash. The web app fetches `GET /api/reviews/:id/diagrams/:hash?theme=`.
+1. Rename unambiguous reserved-word shapes: a top-level `steps: "label"`
+   with a same-line scalar value (and its connection/dotted references)
+   becomes `steps_box` instead of failing.
+2. Extract every `link:` value from the source.
+3. Validate each as a citation with the standard validator (ranges, automatic repair, unverified marking).
+4. Pre-check the source against the deny list below, then compile with the binary.
+5. Check that every validated citation has a matching `href` in the SVG. D2 silently drops a `link:` written on a dedented line under a sequence message, so a clean exit code is not enough.
+6. Any failure in 3 to 5 triggers exactly one repair turn carrying the validator or compiler message.
+7. Render light and dark, rewrite citation anchors to `<a href="#" data-refs data-src>`, strip `<title>` tooltips that contain tokens, sanitise, and cache by content hash. The web app fetches `GET /api/reviews/:id/diagrams/:hash?theme=`.
 
 The sanitiser keeps everything D2 needs for layout: tspan `x`/`dy`
 (multi-line labels) and `dx`, `mask` + `maskUnits` (the gap edges leave
@@ -49,20 +54,47 @@ unversioned files are swept on start. Fixture seeds keep the unversioned
 layout; they ship with the code, so re-record them (`mise run
 fixture-snapshot`) whenever the sanitiser keeps more or less.
 
-## Inline diagrams (issue #71)
+## Inline diagrams (issues #71, #130)
 
-Only the Add diagram action runs the pipeline above. A fenced `d2`
-block anywhere else (Explain expansions, go-deeper results, asides,
-second-opinion reasoning) is stored with `render.status: "unavailable"`
-and rendered on demand when the web fetches it: from the fixture-seed
-cache, or by compiling then (the binary may have appeared since). Hash
+Only the Add diagram action used to run the pipeline above. Since #130,
+diagrams written inline in Explain expansions go through the same
+finalize (rename, cite validation, compile-check, render, cache) and get
+exactly one repair turn on failure, so stored blocks carry a real status
+(`pipeline/actions/diagram-finalize.ts`, shared with the Add diagram
+action). The same finalize covers go-deeper results and concept pages
+(one repair turn on the fill's own session — enqueueing a nested repair
+job could deadlock against the per-provider cap) and diagrams nested in
+asides at any depth (repaired diagrams splice into the failed slots in
+depth-first order, keeping the stored ids). Second-opinion reasoning
+still skips the repair turn (on-demand render only). Ask thread replies are excluded (raw `<pre class="d2">`
+source in message HTML, not blocks — shown as static source text). Hash
 lookup covers every live `Block[]` list through one shared walker
 (`packages/shared/src/content/blocks.ts`), so a new container is added
 there, not in the route. Undo-stack revisions are excluded (stale, never
-rendered); ask thread replies are excluded (raw `<pre class="d2">`
-source in message HTML, not blocks — shown as static source text). An
-inline diagram that fails to compile resolves to `409` with the error
-and its source shown; the card is unaffected.
+rendered).
+
+A fenced `d2` block anywhere else is stored with `render.status:
+"unavailable"` and rendered on demand when the web fetches it: from the
+fixture-seed cache, or by compiling then (the binary may have appeared
+since).
+
+## Endpoint statuses (issue #130)
+
+`GET /api/reviews/:id/diagrams/:hash` answers `409` with a
+`DiagramStatusBody` (contract in `packages/shared/src/api.ts`) when the
+hash is known but has no SVG. The two statuses are never inferred from
+each other:
+
+- `unavailable`: the `d2` binary is missing or too old, so nothing was
+  attempted. Only this status renders the install hint (Settings →
+  Environment).
+- `error`: `d2` ran and the source failed (pre-check rejection or
+  compiler/render failure). The body carries the raw message for the
+  Debug page; the reader sees a plain "Couldn't draw this diagram."
+  with a retry, and no zoom, Reset or Expand controls.
+
+A block with no render result yet (nothing to fetch by) shows a neutral
+"Drawing diagram…" state, never a claim about `d2`.
 
 ## Defences
 
@@ -76,7 +108,18 @@ The source is agent-written, and the binary will act on it. Observed with d2 0.9
 | `link: "javascript:…"` or `data:` | Passed through unchanged into `href` and `xlink:href` | Every `link:` must match the citation grammar; after rendering only recognised citations are rewritten and every other link is removed |
 | Very large input | 5,000 shapes reached 451 MB of memory; 1 MB of input took 5.6 s | 64 KB input cap, 512 KB output cap, 12 shapes and 16 connections, 15 s timeout, 2 renders at a time |
 
-Also rejected: layers, scenarios, steps, boards, `vars`, `d2-config`, classes that set fonts. Source goes in on stdin only, with a scrubbed environment.
+Also rejected: `vars`, `d2-config`, classes that set fonts, `.class:` /
+`class:` anywhere but a dotted `shape.class:` line (the only class syntax
+D2 accepts; the prompt shows it — an inline `{.class: [bad]}` fails to
+compile). Source goes in on stdin only, with a scrubbed environment.
+
+Reserved board words (`layers`, `scenarios`, `steps`, `boards`) are
+renamed, not rejected, where unambiguous: a top-level `steps: "label"`
+with a same-line scalar value becomes `steps_box` (connection endpoints
+and dotted keys follow). Block forms (`steps: { … }`) stay rejected with
+a rename hint the repair turn can act on. The prompts list these words
+as names a shape must never have, so the rename is a backstop, not the
+plan.
 
 ## Version
 

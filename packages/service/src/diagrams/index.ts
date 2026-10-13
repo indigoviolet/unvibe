@@ -12,7 +12,14 @@ export {
   D2_MIN,
 } from "./bins.js";
 export type { ResolvedD2Bin } from "./bins.js";
-export { D2_MAX_CONNECTIONS, D2_MAX_SHAPES, precheckD2Source } from "./precheck.js";
+export {
+  D2_MAX_CONNECTIONS,
+  D2_MAX_SHAPES,
+  RESERVED_SHAPE_NAMES,
+  RESERVED_SHAPE_SUFFIX,
+  precheckD2Source,
+  renameReservedShapeKeys,
+} from "./precheck.js";
 export type { PrecheckResult } from "./precheck.js";
 export {
   D2_INPUT_BYTE_CAP,

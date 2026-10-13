@@ -22,6 +22,7 @@ import {
 } from "./common.js";
 import { aliasCanonicalizer, remapAliasTargets } from "./validate-apply.js";
 import { newCardForExpansion } from "./events.js";
+import { DegradedTurnError } from "../../jobs/errors.js";
 
 export async function followupAction(
   ctx: ActionContext,
@@ -173,6 +174,9 @@ export async function followupAction(
         found.expansion.working = null;
         found.error = msg;
         found.expansion.error = msg;
+        // A degraded turn must leave no card behind: streamed partials
+        // may already hold the chatter (#51).
+        if (err instanceof DegradedTurnError) found.expansion.blocks = [];
       });
       return msg;
     },

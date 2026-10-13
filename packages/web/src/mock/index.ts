@@ -63,6 +63,7 @@ import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } fr
 import {
   mockAddedD2Block,
   mockDiagramSvg,
+  mockErrorD2Block,
   mockMultilineD2Block,
   mockSeedD2Block,
   mockUnavailableD2Block,
@@ -548,8 +549,9 @@ let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
  * Seed mock D2 edge cases into the go-deeper flow card: the fixture's own
  * diagram block (rendered fixture SVGs served by `diagramSvg` below)
  * covers the ok path; the seeds add an unverified-anchor block, an
- * unavailable block (no binary) and a multi-line-label block, so
- * mock-mode tests exercise those branches without touching the fixture.
+ * unavailable block (no binary), a failed-compile block (plain fallback
+ * + retry, #130) and a multi-line-label block, so mock-mode tests
+ * exercise those branches without touching the fixture.
  */
 function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
   const card = pages
@@ -560,6 +562,7 @@ function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
     ...card.blocks,
     mockSeedD2Block() as never,
     mockUnavailableD2Block() as never,
+    mockErrorD2Block() as never,
     mockMultilineD2Block() as never,
   ];
 }

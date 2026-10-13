@@ -5,12 +5,15 @@
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { parseBlocks, type DiagramBlock, type ReviewSnapshot } from "@unvibe/shared";
 import { BlockView } from "./BlockView.js";
 import { REVEAL_EVENT } from "../source/reveal.js";
+import { api } from "../api/client.js";
+import { DiagramStatusError } from "../api/diagram.js";
 import { useReview } from "../state/store.js";
+import { clearD2SvgCache } from "./D2Diagram.js";
 
 const REVIEW_ID = "caption-test";
 
@@ -70,6 +73,8 @@ function renderDiagram(block: DiagramBlock): ReturnType<typeof render> {
 afterEach(() => {
   cleanup();
   useReview.getState().clear();
+  clearD2SvgCache();
+  vi.restoreAllMocks();
 });
 
 describe("DiagramView caption (#48)", () => {
@@ -130,5 +135,56 @@ describe("DiagramView caption (#48)", () => {
     expect(cap?.querySelector("code")).toBeNull();
     // No citations: no chip row.
     expect(container.querySelector("button.lk")).toBeNull();
+  });
+});
+
+const FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="10" height="10"/></svg>`;
+
+describe("DiagramView failed diagrams (#130)", () => {
+  test("a failed diagram carries no zoom, Reset or Expand controls, only a retry", async () => {
+    const spy = vi.spyOn(api, "diagramSvg").mockRejectedValue(new DiagramStatusError("error", "boom"));
+    try {
+      seedSnapshot();
+      const { container } = renderDiagram({
+        type: "diagram",
+        id: "b-err",
+        source: "a -> b",
+        citations: [],
+        render: { hash: "h-err", status: "error", error: "boom" },
+      });
+      await waitFor(() => expect(screen.getByText(/Couldn't draw this diagram/)).toBeInTheDocument());
+      expect(spy).toHaveBeenCalled();
+      // The raw reason never reaches the reader.
+      expect(container.textContent).not.toContain("boom");
+      // No zoom controls, no Reset, no Expand — only the retry.
+      expect(screen.queryByRole("button", { name: "Zoom in" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Zoom out" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Reset view" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Expand diagram" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("zoom and Expand appear once the diagram renders", async () => {
+    const spy = vi.spyOn(api, "diagramSvg").mockResolvedValue(FALLBACK_SVG);
+    try {
+      seedSnapshot();
+      renderDiagram({
+        type: "diagram",
+        id: "b-ok",
+        source: "a -> b",
+        citations: [],
+        render: { hash: "h-ok", status: "ok" },
+      });
+      await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
+      expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Reset view" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Expand diagram" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

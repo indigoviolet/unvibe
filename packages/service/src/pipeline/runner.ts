@@ -29,7 +29,7 @@ import type {
 } from "@unvibe/shared";
 import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
-import { RetryableError } from "../jobs/errors.js";
+import { DegradedConnError, DegradedTurnError, RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
@@ -49,6 +49,8 @@ import { lookupForSnapshot } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
 import { criticApply, isDefaultReaderCardId, readerApply, readerCardId } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
+import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
+import type { ActionContext } from "./actions/common.js";
 import { changeListVariable, ingestAgentTurn } from "./sharedctx-wire.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import type { RunInForkOptions, RunInForkResult, RunSmallOptions } from "./types.js";
@@ -113,6 +115,25 @@ async function collectStreaming(
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Tool-chatter frames, issue #51 — see throwIfDegradedTurn. Ordinary
+ * words in a process-complaint shape ("I tried to look it up with gh",
+ * "resolve returned no IDs"). They fail a job only conjoined with a
+ * fact below. Tool names and the words MCP/gh on their own never fail a
+ * job: a PR about MCP legitimately discusses them in prose.
+ */
+const DEGRADED_FRAME_RES = [
+  /\bi\s+(could\s*not|couldn'?t|tried\s+to|attempted\s+to|was\s+unable\s+to|wasn'?t\s+able\s+to)\b[^.]{0,120}\b(look|cite|connect|access|confirm|verify|fetch|retrieve)\b/i,
+  /command\s+was\s+refused|permission\s+(denied|refused)/i,
+  /failed\s+to\s+connect/i,
+  /resolve\s+returned\s+no\b/i,
+];
+
+/** Strip fenced and inline code: code may legitimately contain these words. */
+function stripCodeForChatter(body: string): string {
+  return body.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ");
 }
 
 /**
@@ -372,6 +393,7 @@ export class Pipeline {
             const forked = await this.forkFor(o.reviewId);
             ctx.setSessionId(forked.session.id);
             let buffer = "";
+            const mcpBefore = this.opts.mcp.activitySnapshot(o.reviewId);
             const { text, usage } = await collectStreaming(
               this.opts.runner,
               forked.session,
@@ -392,6 +414,9 @@ export class Pipeline {
             );
             throwIfMcpRefusal(text);
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
+            // A degraded first reply fails fast: no repair turn can fix
+            // chatter about the agent's own tooling (#51).
+            this.throwIfDegradedTurn(o.reviewId, mcpBefore, first.data, first.body);
             let finalText = text;
             let finalCards = first.cards;
             let finalData = first.data;
@@ -399,12 +424,17 @@ export class Pipeline {
             let repaired = false;
             if (first.validation.needsRepairTurn) {
               repaired = true;
+              const anchorProblem =
+                first.validation.anchor && !first.validation.anchor.ok
+                  ? `\nAnchor problem: ${first.validation.anchor.reason}. Reply with the same content and a corrected anchor host (the host block's ID).\n`
+                  : "";
               const repairPrompt =
                 `Some citations in your previous reply could not be verified:\n` +
                 first.validation.tokens
                   .filter((t) => t.status === "unverified")
                   .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                   .join("\n") +
+                anchorProblem +
                 `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
               const repair = await collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                 ctx.reportText(d),
@@ -419,6 +449,7 @@ export class Pipeline {
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
+              this.throwIfDegradedTurn(o.reviewId, mcpBefore, second.data, second.body);
             }
             ctx.reportUsage(usage);
             await this.recordUsage(o.reviewId, usage);
@@ -455,6 +486,11 @@ export class Pipeline {
             );
             return;
           } catch (err) {
+            // One retry on a fresh session when the turn observably hit a
+            // dead review-MCP URL (#51: transient, e.g. slow-starting
+            // server): the loop re-forks above. A second failure, and any
+            // other degraded turn, is terminal.
+            if (err instanceof DegradedConnError && attempt < 1) continue;
             if (err instanceof RetryableError && attempt < 3) {
               await sleepMs(50 * (attempt + 1));
               continue;
@@ -723,6 +759,22 @@ export class Pipeline {
           slug,
         ]);
         const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
+        const blocks = this.withValidation(
+          reviewId,
+          cards.flatMap((c) => c.blocks),
+          validation,
+        );
+        // Inline diagrams go through finalize + one repair turn on the
+        // fill's own session (#130), so stored blocks carry a real status.
+        const stored = await this.finalizeInlineBlocks(
+          reviewId,
+          forked.session,
+          ctx.signal,
+          `Concept page: ${slug}`,
+          "standard",
+          blocks,
+          (u) => ctx.reportUsage(u),
+        );
         await this.opts.reviews.mutate(reviewId, (draft) => {
           let page = draft.pages.find((p) => p.id === `c-${slug}`);
           if (!page) {
@@ -739,11 +791,7 @@ export class Pipeline {
               read: false,
               collapsed: false,
               revision: (page.cards[0]?.revision ?? 0) + 1,
-              blocks: this.withValidation(
-                reviewId,
-                cards.flatMap((c) => c.blocks),
-                validation,
-              ),
+              blocks: stored,
               undoStack: [],
             },
           ];
@@ -914,6 +962,122 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     return this.lookupWithAliases(snapshot);
+  }
+
+  /**
+   * Fail a degraded turn instead of storing its reply (#51). Facts only,
+   * never vocabulary alone:
+   * - the trailing `degraded` field is present → terminal fail: the agent
+   *   says the reply is weakened, deterministically for the session;
+   * - the body matches a process-complaint frame AND the turn ran without
+   *   the review MCP server (no new connection or call) or observably hit
+   *   a dead review-MCP URL → fail: without tools behind it the reply is
+   *   weakened. A connection-error failure throws DegradedConnError, which
+   *   runInFork retries once on a fresh session; anything else here is
+   *   terminal (a retry would likely reproduce it at full token cost).
+   * The message lands in the job error, shown on the Debug page.
+   */
+  private throwIfDegradedTurn(
+    reviewId: string,
+    before: { connected: number; toolCalls: number; unknownHits: number },
+    data: ReplyData | null,
+    body: string,
+  ): void {
+    const field = data?.degraded;
+    if (typeof field === "string" && field.trim() !== "") {
+      throw new DegradedTurnError(`agent reported a degraded turn: ${field.trim().slice(0, 300)}`);
+    }
+    const after = this.opts.mcp.activitySnapshot(reviewId);
+    const noActivity = after.toolCalls <= before.toolCalls && after.connected <= before.connected;
+    const connError = after.unknownHits > before.unknownHits;
+    if (!noActivity && !connError) return;
+    const stripped = stripCodeForChatter(body);
+    if (!DEGRADED_FRAME_RES.some((re) => re.test(stripped))) return;
+    if (connError) {
+      throw new DegradedConnError(
+        `agent reply reports what it could not look up; a review-MCP call failed this turn`,
+      );
+    }
+    throw new DegradedTurnError(`agent reply reports what it could not look up instead of answering`);
+  }
+
+  /**
+   * ActionContext for diagram finalize/repair from fills that run inside
+   * the pipeline itself (go-deeper, concept pages). finalizeFresh takes
+   * an ActionContext; the pipeline owns every field it needs.
+   */
+  private actionContextFor(reviewId: string): ActionContext {
+    return {
+      pipeline: this,
+      jobs: this.opts.jobs,
+      reviews: this.opts.reviews,
+      reviewId,
+      ...(this.opts.sharedctx ? { sharedctx: this.opts.sharedctx } : {}),
+      ...(this.opts.fixturesDir ? { fixturesDir: this.opts.fixturesDir } : {}),
+      ...(this.promptsDir ? { promptsDir: this.promptsDir } : {}),
+    };
+  }
+
+  /**
+   * Finalize inline diagrams for a fill that already holds its blocks
+   * (#130): pre-check + render, plus exactly one repair turn on the
+   * fill's own session when needed. A failed repair keeps the
+   * error-status blocks; the prose is unaffected.
+   */
+  private async finalizeInlineBlocks(
+    reviewId: string,
+    session: Session,
+    signal: AbortSignal | undefined,
+    card: string,
+    level: string,
+    blocks: Block[],
+    onUsage?: (u: TokenUsage) => void,
+  ): Promise<Block[]> {
+    const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
+    if (!first.needsRepair) return first.blocks;
+    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage);
+  }
+
+  /**
+   * One inline diagram-repair turn on an already-forked session (#130).
+   * Fills that run inside a job (go-deeper, concept pages) cannot enqueue
+   * a nested repair job through runInFork: with every per-provider slot
+   * held by fills awaiting repair, the repairs would never start. So the
+   * turn runs on the fill's own session with the same prompt shape —
+   * exactly one turn, no loop. Content failures keep the error-status
+   * blocks; aborts and transient (retryable) errors propagate so the
+   * fill's job can cancel or retry whole.
+   */
+  private async repairDiagramsInline(
+    reviewId: string,
+    session: Session,
+    signal: AbortSignal | undefined,
+    card: string,
+    level: string,
+    first: { blocks: Block[]; messages: string[] },
+    onUsage?: (u: TokenUsage) => void,
+  ): Promise<Block[]> {
+    const actx = this.actionContextFor(reviewId);
+    try {
+      const variables = buildRepairVariables(card, level, first.messages, first.blocks);
+      const { text, usage } = await collectStreaming(
+        this.opts.runner,
+        session,
+        this.render("diagram", variables),
+        signal,
+        () => {},
+      );
+      onUsage?.(usage);
+      await this.recordUsage(reviewId, usage);
+      throwIfMcpRefusal(text);
+      const second = this.parseAndValidate(reviewId, text);
+      const merged = mergeRepairedDiagrams(first.blocks, second.cards.flatMap((c) => c.blocks));
+      return (await finalizeFresh(actx, merged)).blocks;
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      if (err instanceof RetryableError) throw err;
+      return first.blocks;
+    }
   }
 
   private lookupWithAliases(snapshot: ReviewSnapshot): ReturnType<typeof lookupForSnapshot> {
@@ -1153,6 +1317,11 @@ export class Pipeline {
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
+        // Card ids present before this turn: a degraded turn removes what
+        // it streamed, never older cards (#51).
+        const beforeIds = new Set(
+          (this.opts.reviews.getSnapshot(reviewId)?.pages.find((p) => p.id === "root")?.cards ?? []).map((c) => c.id),
+        );
         const session = await this.opts.runner.start({
           provider: settings.main.provider,
           model: settings.main.model,
@@ -1164,6 +1333,7 @@ export class Pipeline {
         try {
           let buffer = "";
           const streamed = new Set<number>();
+          const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
           const { text, usage } = await collectStreaming(
             this.opts.runner,
             session,
@@ -1198,17 +1368,24 @@ export class Pipeline {
           throwIfMcpRefusal(text);
           await this.recordUsage(reviewId, usage);
           // Issue #50: reader cards match their own `##` titles.
-          const { cards, data, validation } = this.parseAndValidate(reviewId, buffer, []);
+          const { cards, data, validation, body } = this.parseAndValidate(reviewId, buffer, []);
           let finalCards = cards;
           let finalData = data;
           let finalValidation = validation;
+          let finalBody = body;
+          this.throwIfDegradedTurn(reviewId, mcpBefore, data, body);
           if (validation.needsRepairTurn) {
+            const anchorProblem =
+              validation.anchor && !validation.anchor.ok
+                ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
+                : "";
             const repairPrompt =
               `Some citations in your previous reply could not be verified:\n` +
               validation.tokens
                 .filter((t) => t.status === "unverified")
                 .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                 .join("\n") +
+              anchorProblem +
               `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
             const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
               ctx.reportText(d),
@@ -1224,7 +1401,9 @@ export class Pipeline {
             finalCards = second.cards;
             finalData = second.data;
             finalValidation = second.validation;
+            finalBody = second.body;
           }
+          this.throwIfDegradedTurn(reviewId, mcpBefore, finalData, finalBody);
           await this.applyReaderResult(reviewId, finalCards, finalData, finalValidation);
           // #122: the guide cards are already applied above; bookkeeping
           // joins the per-review chain (still awaited before the job ends).
@@ -1237,6 +1416,15 @@ export class Pipeline {
           this.warmBase(reviewId);
         } catch (err) {
           this.setStage(reviewId, "reader", "error", (err as Error).message);
+          if (err instanceof DegradedTurnError) {
+            // A degraded turn must leave no card behind: provisional cards
+            // streamed mid-turn may already hold the chatter (#51).
+            await this.opts.reviews.mutate(reviewId, (draft) => {
+              const root = draft.pages.find((p) => p.id === "root");
+              if (!root) return;
+              root.cards = root.cards.filter((c) => beforeIds.has(c.id));
+            }).catch(() => {});
+          }
           throw err;
         } finally {
           try {
@@ -1741,13 +1929,24 @@ export class Pipeline {
       cards.flatMap((c) => c.blocks),
       validation,
     );
+    // Inline diagrams go through finalize + one repair turn on the fill's
+    // own session (#130), so stored blocks carry a real status.
+    const stored = await this.finalizeInlineBlocks(
+      reviewId,
+      forked.session,
+      signal,
+      direction,
+      "standard",
+      blocks,
+      (u) => ctx?.reportUsage(u),
+    );
     const title = (data?.["title"] as string | undefined) ?? card.pending.label;
     await this.opts.reviews.mutate(reviewId, (draft) => {
       const r = draft.pages.find((p) => p.id === "root");
       const c = r?.cards.find((x) => x.id === cardId);
       if (!c) return;
       c.title = title;
-      c.blocks = blocks;
+      c.blocks = stored;
       delete c.pending;
       c.revision += 1;
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
@@ -1796,6 +1995,21 @@ export class Pipeline {
       slug,
     ]);
     const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
+    const blocks = this.withValidation(
+      reviewId,
+      cards.flatMap((c) => c.blocks),
+      validation,
+    );
+    // Inline diagrams go through finalize + one repair turn on the fill's
+    // own session (#130), so stored blocks carry a real status.
+    const stored = await this.finalizeInlineBlocks(
+      reviewId,
+      forked.session,
+      undefined,
+      `Concept page: ${slug}`,
+      "standard",
+      blocks,
+    );
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let page = draft.pages.find((p) => p.id === `c-${slug}`);
       if (!page) {
@@ -1812,11 +2026,7 @@ export class Pipeline {
           read: false,
           collapsed: false,
           revision: (page.cards[0]?.revision ?? 0) + 1,
-          blocks: this.withValidation(
-            reviewId,
-            cards.flatMap((c) => c.blocks),
-            validation,
-          ),
+          blocks: stored,
           undoStack: [],
         },
       ];

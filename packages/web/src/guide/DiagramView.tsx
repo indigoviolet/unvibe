@@ -105,6 +105,9 @@ export function DiagramView({ reviewId, block, onOpenPage, fetchSvg }: Props) {
   const dgRef = useRef<HTMLDivElement | null>(null);
   useDiagramBreakout(dgRef);
   const zoomed = pan.view.s > 1;
+  // Zoom and Expand act on the rendered SVG: a diagram that did not
+  // render carries neither, only the fallback's own retry (#130).
+  const [rendered, setRendered] = useState(block.render?.status === "ok");
   return (
     <>
       <div ref={dgRef} className="dg dg-d2">
@@ -122,26 +125,34 @@ export function DiagramView({ reviewId, block, onOpenPage, fetchSvg }: Props) {
             className="dg-doc"
             style={{ transform: `translate(${pan.view.x}px, ${pan.view.y}px) scale(${pan.view.s})` }}
           >
-            <D2Diagram reviewId={reviewId} block={block} fetchSvg={fetchSvg} capNaturalWidth />
+            <D2Diagram
+              reviewId={reviewId}
+              block={block}
+              fetchSvg={fetchSvg}
+              capNaturalWidth
+              onStateChange={(s) => setRendered(s === "ready")}
+            />
           </div>
         </div>
-        <div className="dg-bar">
-          <ZoomControls
-            scale={pan.view.s}
-            onZoomIn={() => pan.zoomBy(ZOOM_STEP)}
-            onZoomOut={() => pan.zoomBy(1 / ZOOM_STEP)}
-            onReset={() => pan.applyView(IDENTITY_VIEW)}
-          />
-          <button
-            type="button"
-            className="tbtn dg-expand"
-            aria-label="Expand diagram"
-            aria-haspopup="dialog"
-            onClick={() => setExpanded(true)}
-          >
-            <Icon name="open" /> Expand
-          </button>
-        </div>
+        {rendered ? (
+          <div className="dg-bar">
+            <ZoomControls
+              scale={pan.view.s}
+              onZoomIn={() => pan.zoomBy(ZOOM_STEP)}
+              onZoomOut={() => pan.zoomBy(1 / ZOOM_STEP)}
+              onReset={() => pan.applyView(IDENTITY_VIEW)}
+            />
+            <button
+              type="button"
+              className="tbtn dg-expand"
+              aria-label="Expand diagram"
+              aria-haspopup="dialog"
+              onClick={() => setExpanded(true)}
+            >
+              <Icon name="open" /> Expand
+            </button>
+          </div>
+        ) : null}
       </div>
       {expanded
         ? createPortal(

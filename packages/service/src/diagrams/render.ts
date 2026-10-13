@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { canonicalizeD2Source, D2_RENDER_OPTIONS } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
-import { precheckD2Source } from "./precheck.js";
+import { precheckD2Source, renameReservedShapeKeys } from "./precheck.js";
 
 export const D2_INPUT_BYTE_CAP = 64 * 1024;
 export const D2_OUTPUT_BYTE_CAP = 512 * 1024;
@@ -84,7 +84,9 @@ function sandboxEnv(): Record<string, string | undefined> {
  * with one-line messages suitable for the repair prompt.
  */
 export async function renderD2Theme(source: string, opts: RenderOpts): Promise<RenderResult> {
-  const canon = canonicalizeD2Source(source);
+  // Unambiguous reserved-word shapes (`steps: "label"`) are renamed to
+  // `steps_box` before checking, so the binary sees the fixed source.
+  const canon = renameReservedShapeKeys(canonicalizeD2Source(source)).source;
   if (Buffer.byteLength(canon, "utf8") > D2_INPUT_BYTE_CAP) {
     return { ok: false, error: `diagram source exceeds ${D2_INPUT_BYTE_CAP} bytes` };
   }
@@ -147,7 +149,7 @@ export async function checkD2Source(
   source: string,
   opts: { runner: CommandRunner; binPath: string; timeoutMs?: number },
 ): Promise<{ ok: boolean; error?: string }> {
-  const canon = canonicalizeD2Source(source);
+  const canon = renameReservedShapeKeys(canonicalizeD2Source(source)).source;
   if (Buffer.byteLength(canon, "utf8") > D2_INPUT_BYTE_CAP) {
     return { ok: false, error: `diagram source exceeds ${D2_INPUT_BYTE_CAP} bytes` };
   }

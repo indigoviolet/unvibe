@@ -499,8 +499,15 @@ export interface ActionResponse {
 export type DiagramTheme = "light" | "dark";
 
 /**
- * `409` body when a diagram hash is known but has no SVG to serve
- * (binary missing/too old, or the source failed to compile).
+ * `409` body when a diagram hash is known but has no SVG to serve.
+ *
+ * The two statuses mean different things and are never inferred from each
+ * other (issue #130):
+ * - `"unavailable"`: the `d2` binary is missing or too old, so nothing was
+ *   even attempted. The web answers with the install hint.
+ * - `"error"`: `d2` ran and the source failed (pre-check rejection or
+ *   compiler/render failure). `error` carries the raw compiler message
+ *   for the Debug page; reader-facing text stays plain and never quotes it.
  */
 export interface DiagramStatusBody {
   status: "unavailable" | "error";

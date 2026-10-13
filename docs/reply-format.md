@@ -215,11 +215,18 @@ Metadata goes in the trailing JSON block:
   "hunk": {"summary": "…", "hiddenReason": "imports"},
   "depth": {"level": "simple", "cardId": "central"},
   "anchor": {"quote": "raw CRLF", "host": "card:problem#b1"},
-  "secondOpinion": {"verdict": "agrees", "reasoning": "…", "missed": "…"}
+  "secondOpinion": {"verdict": "agrees", "reasoning": "…", "missed": "…"},
+  "degraded": "resolve returned nothing for the description paragraphs"
 }
 ```
 
-All fields are optional; unknown fields are kept, never rejected. For
+All fields are optional; unknown fields are kept, never rejected. A
+`degraded` line reports what the turn could not do (unreachable tool,
+empty lookup, refused call) and what the reply is weaker for — process
+chatter never belongs in the Markdown body, and the service fails the
+turn instead of storing a weakened reply (issue #51). An `anchor.host`
+that names only a card (`card:central` with no `#block`) is rejected
+with one repair turn carrying the reason. For
 depth/example/diagram replies, `depth`/`title` say which card and level
 the body belongs to. For hunk-pass replies, `hunk` carries the summary
 and the one-line `hiddenReason` (null when the hunk is interesting — in

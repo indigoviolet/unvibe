@@ -186,7 +186,21 @@ describe("D2Diagram status branches", () => {
     expect(fetchSvg).toHaveBeenCalledWith("demo", "h2", "light");
   });
 
-  it("shows the source with a Settings note when unavailable and hash-less", () => {
+  it("a block with no render result yet shows a neutral working state, never the Settings link", () => {
+    // A diagram the service has not rendered or checked yet (still being
+    // written, or stored without a render field) must not claim d2 is
+    // missing (#130, sixth fault).
+    const fetchSvg = vi.fn(async () => CITED);
+    renderD2(<D2Diagram reviewId="demo" block={d2Block({ source: "a -> b", render: undefined })} fetchSvg={fetchSvg} />);
+    expect(fetchSvg).not.toHaveBeenCalled();
+    expect(screen.getByText(/Drawing diagram/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Settings → Environment/ })).toBeNull();
+    expect(screen.queryByText(/Diagrams need/)).toBeNull();
+  });
+
+  it("a hash-less unavailable block stays pending: no fetch, no Settings note", () => {
+    // The service has not checked the block yet: neutral working state,
+    // never a claim about d2 (#130).
     const fetchSvg = vi.fn(async () => CITED);
     renderD2(
       <D2Diagram
@@ -196,12 +210,12 @@ describe("D2Diagram status branches", () => {
       />,
     );
     expect(fetchSvg).not.toHaveBeenCalled();
-    expect(screen.getByText("a -> b")).toBeInTheDocument();
-    expect(screen.getByText(/Diagrams need/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Settings → Environment/ })).toHaveAttribute("href", "/settings?tab=environment");
+    expect(screen.getByText(/Drawing diagram/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Settings → Environment/ })).toBeNull();
+    expect(screen.queryByText(/Diagrams need/)).toBeNull();
   });
 
-  it("shows the source with the error text on error without a hash", () => {
+  it("a hash-less error block stays pending: the raw error is never quoted", () => {
     renderD2(
       <D2Diagram
         reviewId="demo"
@@ -209,18 +223,22 @@ describe("D2Diagram status branches", () => {
         fetchSvg={vi.fn(async () => CITED)}
       />,
     );
-    expect(screen.getByText("a - broken")).toBeInTheDocument();
-    expect(screen.getByText(/draw this diagram/)).toBeInTheDocument();
-    expect(screen.getByText(/boom/)).toBeInTheDocument();
+    expect(screen.getByText(/Drawing diagram/)).toBeInTheDocument();
+    expect(screen.queryByText(/boom/)).toBeNull();
   });
 
-  it("maps a 409 error to the source fallback with its detail", async () => {
+  it("maps a 409 error to a plain fallback with a retry, never quoting the compiler", async () => {
     const fetchSvg = vi.fn(async (): Promise<string> => {
-      throw new DiagramStatusError("error", "bad link");
+      throw new DiagramStatusError("error", "err: 7:37: invalid text beginning unquoted key");
     });
     renderD2(<D2Diagram reviewId="demo" block={d2Block({ source: "a -> b" })} fetchSvg={fetchSvg} />);
-    await waitFor(() => expect(screen.getByText(/draw this diagram/)).toBeInTheDocument());
-    expect(screen.getByText(/bad link/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Couldn't draw this diagram/)).toBeInTheDocument());
+    // Reader-facing text stays plain: the raw reason lives on Debug.
+    expect(screen.queryByText(/unquoted key/)).toBeNull();
+    expect(screen.getByText("a -> b")).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(fetchSvg).toHaveBeenCalledTimes(2));
   });
 
   it("maps a 409 unavailable to the source fallback without fetching again", async () => {
