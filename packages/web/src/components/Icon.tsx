@@ -49,6 +49,12 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
   hide: (<path d="M4 10l4-4 4 4" />),
+  fold: (
+    <>
+      <path d="M4 3.5l4 3.5 4-3.5" />
+      <path d="M4 12.5l4-3.5 4 3.5" />
+    </>
+  ),
   upUp: (
     <>
       <path d="M4 7.5l4-4 4 4" />

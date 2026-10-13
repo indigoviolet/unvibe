@@ -642,8 +642,8 @@ function RevealedCells({
 
 /**
  * Revealed context rows. Lines render in order; each contiguous block
- * gets a quiet Hide icon over its first row's gutter number (visible on
- * row hover or keyboard focus), so collapsing never needs a control row
+ * carries a quiet Hide icon on its first row's gutter number (words and
+ * count in the tooltip), so collapsing never needs a control row
  * between continuous code lines.
  */
 export function RevealedRows({
@@ -686,11 +686,11 @@ export function RevealedRows({
               <button
                 className="ib xhide"
                 type="button"
-                data-tip="Hide shown lines"
-                aria-label="Hide shown lines"
+                data-tip={`Hide ${block.length} lines`}
+                aria-label={`Hide ${block.length} lines`}
                 onClick={() => onHideBlock(block[0].line, block[block.length - 1].line)}
               >
-                <Icon name="x" />
+                <Icon name="fold" />
               </button>
             ) : null;
           return (

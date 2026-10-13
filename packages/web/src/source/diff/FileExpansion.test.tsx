@@ -69,7 +69,7 @@ describe("DiffView expansion", () => {
     await fireEvent.click(conn.getAllByRole("button", { name: "Show 20 more lines" })[0]);
     await conn.findByText("RefusedConnectionError");
     expect(revealedRows(connSection())).toHaveLength(20);
-    await fireEvent.click(conn.getByRole("button", { name: "Hide shown lines" }));
+    await fireEvent.click(conn.getByRole("button", { name: "Hide 20 lines" }));
     expect(revealedRows(connSection())).toHaveLength(0);
   });
 
@@ -87,9 +87,10 @@ describe("DiffView expansion", () => {
     for (let n = 10; n <= 13; n++) {
       expect(document.getElementById(`L-${TCONN}-${n}`)).not.toBeNull();
     }
-    // Fully revealed: this gap's show-all is gone, only the slim hide.
+    // Fully revealed: this gap's show-all is gone; the quiet Hide icon
+    // sits on the run's first row instead.
     expect(tconn.queryByRole("button", { name: "Show all 4 lines" })).toBeNull();
-    await fireEvent.click(tconn.getByRole("button", { name: "Hide shown lines" }));
+    await fireEvent.click(tconn.getByRole("button", { name: "Hide 4 lines" }));
     expect(revealedRows(section)).toHaveLength(0);
   });
 
@@ -219,7 +220,7 @@ describe("DiffView unit expansion", () => {
     expect(rows1[0].classList.contains("xsep")).toBe(false);
     expect(rows1[0].id).toBe(`L-${TCONN}-14`);
     // The hover Hide sits on the run's first row instead.
-    expect(section.querySelectorAll("button[aria-label='Hide shown lines']")).toHaveLength(1);
+    expect(section.querySelectorAll("button[aria-label='Hide 4 lines']")).toHaveLength(1);
   });
 
   it("shrinks one gap run from either end with one remaining count", async () => {

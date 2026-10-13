@@ -79,7 +79,7 @@ test("expands above a hunk in steps and collapses back", async ({ page }) => {
   await expect(conn.locator("tr[data-revealed]")).toHaveCount(40);
   await expect(page.locator(`[id="L-${CONN}-37"]`)).toBeVisible();
   // Collapse hides the region again.
-  await conn.getByRole("button", { name: "Hide shown lines" }).click();
+  await conn.getByRole("button", { name: "Hide 40 lines" }).click();
   await expect(conn.locator("tr[data-revealed]")).toHaveCount(0);
 });
 
@@ -93,9 +93,10 @@ test("reveals a whole gap so the hunks read as continuous", async ({ page }) => 
   for (const n of [10, 11, 12, 13]) {
     await expect(page.locator(`[id="L-${TCONN}-${n}"]`)).toBeVisible();
   }
-  // Fully revealed: this gap's show-all is gone, only the slim hide.
+  // Fully revealed: this gap's show-all is gone; the quiet Hide icon
+  // sits on the run's first row instead.
   await expect(tconn.getByRole("button", { name: "Show all 4 lines" })).toHaveCount(0);
-  await tconn.getByRole("button", { name: "Hide shown lines" }).click();
+  await tconn.getByRole("button", { name: "Hide 4 lines" }).click();
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(0);
 });
 

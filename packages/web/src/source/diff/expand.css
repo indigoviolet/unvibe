@@ -76,9 +76,10 @@ table.diff tr.xsep td.xgutter {
   height: 12px;
 }
 
-/* Hide control: overlaid on the first revealed row's gutter number,
-   visible on row hover or keyboard focus. Covers the number cell without
-   moving any code. */
+/* Hide control: one more quiet gutter icon in the same style as the
+   expand carets, overlaid on its revealed block's first gutter number.
+   Always present (never hover-only), muted at rest like the expandos.
+   Covers the number cell without moving any code. */
 table.diff td.xhide-cell {
   position: relative;
 }
@@ -95,17 +96,13 @@ table.diff td.xhide-cell {
   border: 0;
   background: var(--bg);
   color: var(--muted);
-  opacity: 0;
+  opacity: 0.55;
   cursor: pointer;
-}
-
-table.diff tr[data-revealed]:hover .ib.xhide,
-.ib.xhide:focus-visible {
-  opacity: 1;
 }
 
 .ib.xhide:hover,
 .ib.xhide:focus-visible {
+  opacity: 1;
   color: var(--ink);
 }
 
