@@ -47,7 +47,7 @@ const SIZED = pr(16, "Sized PR", NOW - 4 * HOUR, {
 });
 const UNSIZED = pr(17, "Unsized PR", NOW - 5 * HOUR, { reviewScope: "direct" });
 
-function mockLists(requested: RepoChange[], authoring: RepoChange[] = []): void {
+function mockLists(requested: RepoChange[], authoring: RepoChange[] = [], branches: RepoChange[] = []): void {
   vi.spyOn(api, "repos").mockResolvedValue({ repos: [REPO] });
   vi.spyOn(api, "reviews").mockResolvedValue({ reviews: [] });
   vi.spyOn(api, "readiness").mockResolvedValue({ checks: [], generatedAt: Date.now(), cached: false });
@@ -57,6 +57,7 @@ function mockLists(requested: RepoChange[], authoring: RepoChange[] = []): void 
     if (id === "demo") return { changes: [] };
     if (filter === "authoring") return { changes: authoring };
     if (filter === "review-requested") return { changes: requested };
+    if (filter === "recent") return { changes: branches };
     return { changes: [] };
   }) as typeof api.repoChanges);
 }
@@ -310,5 +311,90 @@ describe("StartPage authoring filter (#131)", () => {
     expect(screen.queryByText("Asked of your team")).not.toBeInTheDocument();
     expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs updated in the last day.");
     expect(screen.getByTestId("requested-team-empty").querySelector("button")).toHaveTextContent("Show all");
+  });
+});
+
+describe("StartPage branches filter (#131)", () => {
+  function branch(name: string, updatedAt: number): RepoChange {
+    return { kind: "branch", title: name, branch: name, updatedAt };
+  }
+
+  const FRESH = branch("fresh-work", NOW - HOUR);
+  const STALE = branch("old-experiment", NOW - 2 * DAY);
+
+  it("sorts branches newest first with ages on the rows", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    // Deliberately oldest-first: the page still renders newest first.
+    mockLists([], [], [STALE, FRESH]);
+    renderPage();
+    await screen.findByText("old-experiment");
+    const rows = screen.getAllByText(/^(fresh-work|old-experiment)$/).map((el) => el.textContent);
+    expect(rows[0]).toBe("fresh-work");
+    expect(rows[1]).toBe("old-experiment");
+    const freshMeta = screen.getByText("fresh-work").closest(".ci")?.querySelector(".cw");
+    expect(freshMeta?.textContent).toContain("1h ago");
+  });
+
+  it("one control filters branches by last commit with a way back", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([], [], [STALE, FRESH]);
+    renderPage();
+    await screen.findByText("old-experiment");
+
+    // Still one control for the whole page.
+    expect(screen.getAllByLabelText("Updated within")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    expect(screen.queryByText("old-experiment")).not.toBeInTheDocument();
+    expect(screen.getByText("fresh-work")).toBeInTheDocument();
+    // Reviews above stay unfiltered: the control sits below them.
+    const control = screen.getByLabelText("Updated within");
+    const reviews = screen.getByRole("heading", { name: "Reviews" });
+    expect(reviews.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("a filtered-out branch list names its window and offers All", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([], [], [STALE]);
+    renderPage();
+    await screen.findByText("old-experiment");
+    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    expect(screen.queryByText("old-experiment")).not.toBeInTheDocument();
+    const empty = screen.getByTestId("branches-empty");
+    expect(empty).toHaveTextContent("No branches updated in the last day.");
+    fireEvent.click(empty.querySelector("button") as HTMLButtonElement);
+    expect(screen.getByText("old-experiment")).toBeInTheDocument();
+    expect((screen.getByLabelText("Updated within") as HTMLSelectElement).value).toBe("all");
+  });
+
+  it("Reviews ignores the window, ordered by recent activity", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([], [], []);
+    const base: ReviewSummary = {
+      id: "s",
+      repoId: "r1",
+      repoOwner: "acme",
+      repoName: "app",
+      title: "t",
+      branch: "b",
+      createdAt: NOW - 20 * DAY,
+      lastOpened: NOW - 20 * DAY,
+      versionCount: 1,
+      currentVersion: 1,
+      stale: false,
+      totalHunks: 8,
+      reviewedHunks: 0,
+      pendingComments: 0,
+      guideStatus: "ready",
+      ingestStatus: "ready",
+    };
+    vi.mocked(api.reviews).mockResolvedValue({
+      reviews: [{ ...base, id: "s-old", title: "Old review" }],
+    });
+    renderPage();
+    await screen.findByText("Old review");
+    // A three-week-old last activity still lists under the 1-day window.
+    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    expect(screen.getByText("Old review")).toBeInTheDocument();
+    expect(screen.queryByTestId("sessions-empty")).not.toBeInTheDocument();
   });
 });

@@ -107,12 +107,42 @@ export type RecencyWindow = "all" | "1d" | "3d" | "1w" | "2w";
 
 export const RECENCY_KEY = "unvibe.start.reviewRecency";
 
-export const RECENCY_WINDOWS: { value: RecencyWindow; label: string; ms: number | null; emptyNote: string }[] = [
-  { value: "all", label: "All", ms: null, emptyNote: "" },
-  { value: "1d", label: "Last day", ms: 86400_000, emptyNote: "No PRs updated in the last day." },
-  { value: "3d", label: "Last 3 days", ms: 3 * 86400_000, emptyNote: "No PRs updated in the last 3 days." },
-  { value: "1w", label: "Last week", ms: 7 * 86400_000, emptyNote: "No PRs updated in the last week." },
-  { value: "2w", label: "Last 2 weeks", ms: 14 * 86400_000, emptyNote: "No PRs updated in the last 2 weeks." },
+export const RECENCY_WINDOWS: {
+  value: RecencyWindow;
+  label: string;
+  ms: number | null;
+  emptyNote: string;
+  branchesNote: string;
+}[] = [
+  { value: "all", label: "All", ms: null, emptyNote: "", branchesNote: "" },
+  {
+    value: "1d",
+    label: "Last day",
+    ms: 86400_000,
+    emptyNote: "No PRs updated in the last day.",
+    branchesNote: "No branches updated in the last day.",
+  },
+  {
+    value: "3d",
+    label: "Last 3 days",
+    ms: 3 * 86400_000,
+    emptyNote: "No PRs updated in the last 3 days.",
+    branchesNote: "No branches updated in the last 3 days.",
+  },
+  {
+    value: "1w",
+    label: "Last week",
+    ms: 7 * 86400_000,
+    emptyNote: "No PRs updated in the last week.",
+    branchesNote: "No branches updated in the last week.",
+  },
+  {
+    value: "2w",
+    label: "Last 2 weeks",
+    ms: 14 * 86400_000,
+    emptyNote: "No PRs updated in the last 2 weeks.",
+    branchesNote: "No branches updated in the last 2 weeks.",
+  },
 ];
 
 function isRecencyWindow(v: unknown): v is RecencyWindow {
@@ -761,14 +791,19 @@ export function StartPage(): React.JSX.Element {
   // you belong to (a PR asking both reads once, as direct). The service
   // returns every PR list newest-first; the recency window only hides
   // rows. #131 extends the window (and the newest-first order) to "Your
-  // PRs" as well; branches and Reviews stay unfiltered (see report).
+  // PRs" and to Recent branches (by last commit date); Reviews stays
+  // unfiltered, ordered by recent activity.
   const directRequested = requested.filter((c) => reviewScopeOf(c) === "direct");
   const teamRequested = requested.filter((c) => reviewScopeOf(c) === "team");
   const windowMs = RECENCY_WINDOWS.find((w) => w.value === recency)?.ms ?? null;
   const windowEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.emptyNote ?? "";
+  const branchesEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.branchesNote ?? "";
   const visibleDirect = directRequested.filter((c) => inRecencyWindow(c, windowMs));
   const visibleTeam = teamRequested.filter((c) => inRecencyWindow(c, windowMs));
   const visibleAuthoring = [...authoring]
+    .sort(byUpdatedDesc)
+    .filter((c) => inRecencyWindow(c, windowMs));
+  const visibleBranches = [...branches]
     .sort(byUpdatedDesc)
     .filter((c) => inRecencyWindow(c, windowMs));
 
@@ -1006,9 +1041,10 @@ export function StartPage(): React.JSX.Element {
                   <p className="hint" data-testid="kept-status" style={{ minHeight: "1.2em", margin: 0 }}>
                     {keptStatus ?? " "}
                   </p>
-                  {/* Recency filter (#95, #131): one control above all the
-                      PR lists — it governs "Your PRs" and both review
-                      groups. Branches and Reviews below stay unfiltered. */}
+                  {/* Recency filter (#95, #131): one control for everything
+                      below it — "Your PRs", both review groups and Recent
+                      branches (by last commit date). Reviews above stays
+                      unfiltered. */}
                   <div className="frow" style={{ gap: 6, alignItems: "center", marginBottom: 2 }}>
                     <label className="hint" htmlFor="review-recency">
                       Updated within
@@ -1128,11 +1164,14 @@ export function StartPage(): React.JSX.Element {
                   )}
                   <ChangeSection
                     title="Recent branches"
-                    changes={branches}
+                    changes={visibleBranches}
                     error={listErrors.branches}
                     errorTestId="changes-error-branches"
                     opening={opening}
                     empty="No branches."
+                    emptyTestId="branches-empty"
+                    filteredNote={branches.length > 0 && visibleBranches.length === 0 ? branchesEmptyNote : null}
+                    onShowAll={() => selectRecency("all")}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
@@ -1363,7 +1402,9 @@ function ChangeRow({
             (c.branch ?? c.title)
           )}
           {c.author ? ` · ${c.author}` : ""}
-          {c.kind === "pr" && typeof c.updatedAt === "number" ? ` · ${timeAgo(c.updatedAt)}` : ""}
+          {(c.kind === "pr" || c.kind === "branch") && typeof c.updatedAt === "number"
+            ? ` · ${timeAgo(c.updatedAt)}`
+            : ""}
           {size !== null ? (
             <>
               {" · "}
@@ -1408,7 +1449,7 @@ function ChangeSection({
   errorTestId: string;
   opening: string | null;
   empty: string;
-  /** #131: test id for the empty state (authoring needs one). */
+  /** #131: test id for the empty state (authoring and branches need one). */
   emptyTestId?: string;
   /** #131: when the recency window hides every row, this note replaces the
       generic empty text, with a way back to All. Null means genuinely empty. */
