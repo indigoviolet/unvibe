@@ -52,7 +52,7 @@ function cardOfBlockId(raw: string): string | null {
 /**
  * Locate a block by id; returns card + block. Block ids restart at `b1`
  * in every card, so a `<card>#<block>` id is looked up in that card (or
- * expansion) only. A bare id, or a card that no longer exists, falls back
+ * answer) only. A bare id, or a card that no longer exists, falls back
  * to the first block with that id on any page.
  */
 export function findBlock(
@@ -61,6 +61,18 @@ export function findBlock(
 ): { cardId: string; pageId: string; cardTitle: string | null; block: Block } | null {
   const cardId = cardOfBlockId(blockId);
   return (cardId !== null ? findBlockIn(snapshot, blockId, cardId) : null) ?? findBlockIn(snapshot, blockId, null);
+}
+
+/** Locate one conversation answer by id (page cards are not answers). */
+export function findAnswer(
+  snapshot: ReviewSnapshot,
+  answerId: string,
+): { annotation: Annotation; turn: import("@unvibe/shared").Turn } | null {
+  for (const annotation of snapshot.annotations ?? []) {
+    const turn = (annotation.turns ?? []).find((t) => t.id === answerId);
+    if (turn) return { annotation, turn };
+  }
+  return null;
 }
 
 function findBlockIn(
@@ -86,20 +98,22 @@ function findBlockIn(
       }
     }
   }
-  // Expansion bodies hold blocks too.
+  // Conversation answers hold blocks too (#136): the card part of
+  // `<answer>#<block>` is the answer's own `ans_…` id.
   for (const ann of snapshot.annotations ?? []) {
-    if (ann.type !== "expansion" || !ann.expansion) continue;
-    if (onlyCard !== null && ann.id !== onlyCard) continue;
-    for (const block of ann.expansion.blocks) {
-      if (block.id === blockId || block.id === short) {
-        return { cardId: ann.id, pageId: "", cardTitle: ann.anchor.quotedText, block };
-      }
-      // Aside inner blocks, like page cards above (#116: citations and
-      // anchors address them the same way in both hosts).
-      if (block.type === "aside") {
-        for (const inner of block.inner) {
-          if (inner.id === blockId || inner.id === short) {
-            return { cardId: ann.id, pageId: "", cardTitle: ann.anchor.quotedText, block: inner };
+    for (const turn of ann.turns ?? []) {
+      if (onlyCard !== null && turn.id !== onlyCard) continue;
+      for (const block of turn.blocks) {
+        if (block.id === blockId || block.id === short) {
+          return { cardId: turn.id, pageId: "", cardTitle: turn.question ?? ann.anchor.quotedText, block };
+        }
+        // Aside inner blocks, like page cards above (#116: citations and
+        // anchors address them the same way in both hosts).
+        if (block.type === "aside") {
+          for (const inner of block.inner) {
+            if (inner.id === blockId || inner.id === short) {
+              return { cardId: turn.id, pageId: "", cardTitle: turn.question ?? ann.anchor.quotedText, block: inner };
+            }
           }
         }
       }
@@ -148,12 +162,12 @@ export function cardTextFor(snapshot: ReviewSnapshot, anchor: Annotation["anchor
         }
       }
     }
-    // Explanations are cards too (#116): render the whole host expansion
-    // so a nested turn sees structure, not just one block.
-    const hostExp = (snapshot.annotations ?? []).find((a) => a.id === found.cardId);
-    if (hostExp?.type === "expansion" && hostExp.expansion) {
-      const body = hostExp.expansion.blocks.map((b) => blockPlainText(b)).join("\n\n");
-      return `### ${hostExp.anchor.quotedText} [[ann:${hostExp.id}]]\n\n${body}`;
+    // Answers are cards too (#136): render the whole host answer so a
+    // nested turn sees structure, not just one block.
+    const hostAns = findAnswer(snapshot, found.cardId);
+    if (hostAns) {
+      const body = hostAns.turn.blocks.map((b) => blockPlainText(b)).join("\n\n");
+      return `### ${hostAns.turn.question ?? hostAns.annotation.anchor.quotedText} [[ann:${hostAns.annotation.id}]]\n\n${body}`;
     }
     return blockPlainText(found.block);
   }
@@ -191,8 +205,10 @@ export function nearbyAnnotationsText(
         const msgs = a.messages.map((m) => `${m.who === "you" ? "Reader" : "Agent"}: ${m.text ?? m.html ?? ""}`).join("\n");
         return `Thread [[ann:${a.id}]] on "${a.anchor.quotedText}":\n${msgs}`;
       }
-      const body = a.expansion ? a.expansion.blocks.map(blockPlainText).join("\n\n") : "(empty)";
-      return `Expansion [[ann:${a.id}]] on "${a.anchor.quotedText}":\n${body}`;
+      const body = (a.turns ?? [])
+        .map((t) => `${t.question === null ? "(the default question)" : `Reader: ${t.question}`}\nAgent: ${t.blocks.map(blockPlainText).join("\n\n")}`)
+        .join("\n\n");
+      return `Conversation [[ann:${a.id}]] on "${a.anchor.quotedText}":\n${body || "(empty)"}`;
     })
     .join("\n\n");
 }
@@ -202,6 +218,21 @@ export function threadTextFor(thread: Annotation): string {
   if (thread.messages.length === 0) return "(none)";
   return thread.messages
     .map((m) => `${m.who === "you" ? "Reader" : "Agent"}: ${m.text ?? m.html ?? ""}`)
+    .join("\n\n");
+}
+
+/**
+ * Issue #136: stored turns so far, rendered for the rebuild prompt.
+ * A rebuilt session (restart, idle close) never saw the earlier turns,
+ * so the full first-turn prompt carries them as "conversation so far".
+ */
+export function turnsTextFor(card: Annotation): string {
+  if ((card.turns ?? []).length === 0) return "(none)";
+  return (card.turns ?? [])
+    .map((t) => {
+      const q = t.question === null ? "Explain this." : t.question;
+      return `Reader: ${q}\nAgent: ${t.blocks.map(blockPlainText).join("\n\n")}`;
+    })
     .join("\n\n");
 }
 
@@ -228,7 +259,12 @@ export function l4Variables(
   };
 }
 
-/** Card rendering for the depth/examples/diagram templates. */
+/**
+ * Card rendering for the depth/examples/diagram templates. `cardId` is a
+ * page-card id or one answer's `ans_…` id; an answer renders with its
+ * question in front (per the owner's rule the controls apply to the
+ * answer, so the agent rewrites that answer about that question).
+ */
 export function cardPromptText(snapshot: ReviewSnapshot, cardId: string): string {
   for (const page of snapshot.pages ?? []) {
     for (const card of page.cards ?? []) {
@@ -249,10 +285,11 @@ export function cardPromptText(snapshot: ReviewSnapshot, cardId: string): string
       }
     }
   }
-  const ann = (snapshot.annotations ?? []).find((a) => a.id === cardId);
-  if (ann?.type === "expansion" && ann.expansion) {
-    const body = ann.expansion.blocks.map((b) => blockPlainText(b)).join("\n\n");
-    return `### ${ann.anchor.quotedText} [[ann:${ann.id}]] (level: ${ann.expansion.level}, revision ${ann.expansion.revision})\n\n${body}`;
+  const ans = findAnswer(snapshot, cardId);
+  if (ans) {
+    const body = ans.turn.blocks.map((b) => blockPlainText(b)).join("\n\n");
+    const head = ans.turn.question ?? ans.annotation.anchor.quotedText;
+    return `### ${head} [[ann:${ans.annotation.id}]] (level: ${ans.turn.level}, revision ${ans.turn.revision})\n\n${body}`;
   }
   throw new Error(`unknown card ${cardId}`);
 }

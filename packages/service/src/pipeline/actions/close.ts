@@ -1,35 +1,43 @@
 /**
  * `close` / `delete` actions (PRD §4.7, §4.8).
  *
- * - `close` on an expansion closes it (the anchor becomes a dotted link;
- *   hover previews, click expands in place). On a thread it closes the
- *   thread (guide: back to its marker; diff: comment icon on the line).
- * - `delete` removes the annotation entirely.
+ * - `close` on a conversation closes it (the anchor becomes a dotted
+ *   link; hover previews, click expands in place). On a thread it closes
+ *   the thread (guide: back to its marker; diff: comment icon on the line).
+ * - `delete` removes the annotation entirely (and closes its session).
  * - Both cancel the annotation's job when one is still running (PRD §12).
  */
 import type { Annotation } from "@unvibe/shared";
 import { recordInteraction } from "../../interaction/index.js";
-import { cancelAnnotationJob, getSnapshotOrThrow, type ActionContext } from "./common.js";
+import { getSnapshotOrThrow, type ActionContext } from "./common.js";
+import { cancelConversationJob } from "./conversation.js";
+import { cancelAskJob } from "./ask.js";
 import { deletionFor, wasShared } from "./events.js";
 
 export async function closeAction(
   ctx: ActionContext,
   annotationId: string,
 ): Promise<{ annotationId: string }> {
-  const { jobs, reviews, reviewId } = ctx;
+  const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
   if (!found) throw new Error(`unknown annotation ${annotationId}`);
-  cancelAnnotationJob(jobs, reviewId, found.jobId ?? (found.type === "expansion" ? found.expansion?.jobId : undefined));
+  if (found.type === "conversation") {
+    cancelConversationJob(ctx, snapshot, annotationId);
+  } else {
+    cancelAskJob(ctx, annotationId);
+  }
 
   await reviews.mutate(reviewId, (draft) => {
     const ann = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
     if (!ann) throw new Error(`unknown annotation ${annotationId}`);
     ann.open = false;
     ann.working = null;
-    if (ann.type === "expansion" && ann.expansion) ann.expansion.working = null;
+    if (ann.type === "conversation") {
+      for (const turn of ann.turns ?? []) turn.working = null;
+    }
     // Closing keeps content for the dotted-link preview; a working job
-    // that finishes later still fills the (closed) expansion.
+    // that finishes later still fills the (closed) turn.
   });
   // Close is UI state (never logged). A closed thread settles at once:
   // one line in the log so other conversations see it (PRD §9.3).
@@ -50,11 +58,24 @@ export async function deleteAction(
   ctx: ActionContext,
   targetId: string,
 ): Promise<{ targetId: string }> {
-  const { jobs, reviews, reviewId } = ctx;
+  const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === targetId);
   if (!found) throw new Error(`unknown annotation ${targetId}`);
-  cancelAnnotationJob(jobs, reviewId, found.jobId ?? (found.type === "expansion" ? found.expansion?.jobId : undefined));
+  if (found.type === "conversation") {
+    cancelConversationJob(ctx, snapshot, targetId);
+  } else {
+    cancelAskJob(ctx, targetId);
+  }
+  // The card's session belongs to the card: close it so it does not linger.
+  const sessionId = found.sessionId;
+  if (sessionId && ctx.sessions) {
+    try {
+      await ctx.sessions.closeConversation(sessionId);
+    } catch {
+      // best-effort
+    }
+  }
 
   await reviews.mutate(reviewId, (draft) => {
     const idx = (draft.annotations as unknown as Annotation[]).findIndex((a) => a.id === targetId);

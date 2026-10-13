@@ -390,7 +390,13 @@ export class Pipeline {
             // went out. forkFor ensures the same base again (a live-cache hit).
             const base = await this.ensureBase(o.reviewId);
             void base;
-            const forked = await this.forkFor(o.reviewId);
+            // Issue #136: later turns of a conversation card continue on
+            // the card's session instead of forking again. All turns share
+            // this path's streaming, citation check, repair turn, usage
+            // and contribution handling.
+            const forked = o.continueSessionId
+              ? await this.continueOn(o.continueSessionId)
+              : await this.forkAndTrack(o.reviewId, o.conversationKey !== undefined);
             ctx.setSessionId(forked.session.id);
             let buffer = "";
             const mcpBefore = this.opts.mcp.activitySnapshot(o.reviewId);
@@ -788,7 +794,6 @@ export class Pipeline {
               pageId: `c-${slug}`,
               title: null,
               level: "standard",
-              read: false,
               collapsed: false,
               revision: (page.cards[0]?.revision ?? 0) + 1,
               blocks: stored,
@@ -1238,6 +1243,45 @@ export class Pipeline {
     }
   }
 
+  /**
+   * Issue #136: continue a later turn on an existing conversation
+   * session. The session is ensured (reopened when idle-closed); a
+   * rebuild between the caller's probe and this job proceeds on the fresh
+   * session — the retry path then forks with the stored transcript.
+   */
+  private async continueOn(sessionId: string): Promise<{ session: Session; viaFork: boolean }> {
+    const { session } = await this.opts.sessions.ensureConversation(sessionId);
+    return { session, viaFork: true };
+  }
+
+  /**
+   * Issue #136: fork for a turn and register the fork when it backs a
+   * persistent conversation (`conversationKey`, e.g. a card id).
+   * Registration is what makes the session tracked, persisted,
+   * idle-closed and reopenable (#143); one-shot forks stay untracked.
+   */
+  private async forkAndTrack(reviewId: string, track: boolean): Promise<{ session: Session; viaFork: boolean }> {
+    const forked = await this.forkFor(reviewId);
+    if (track) {
+      const snapshot = this.opts.reviews.getSnapshot(reviewId);
+      const settings = await this.effectiveSettings();
+      if (snapshot) {
+        this.opts.sessions.registerConversation(
+          forked.session,
+          {
+            reviewId,
+            reviewVersion: `v${snapshot.version.n}`,
+            guideRevision: guideRevisionForSnapshot(snapshot),
+            provider: settings.main.provider,
+            model: settings.main.model,
+          },
+          forked.viaFork,
+        );
+      }
+    }
+    return forked;
+  }
+
   private async forkFor(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
     // #122: never fork from a stale log — wait for the previous turn's
     // bookkeeping (base growth) to land first.
@@ -1467,7 +1511,6 @@ export class Pipeline {
           pageId: "root",
           title,
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: fixed,
@@ -1507,7 +1550,6 @@ export class Pipeline {
             pageId: "root",
             title: c.title,
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: fixed,
@@ -1534,7 +1576,6 @@ export class Pipeline {
           pageId: "root",
           title: p.label,
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: [],
@@ -1556,7 +1597,6 @@ export class Pipeline {
               pageId: `c-${c.slug}`,
               title: null,
               level: "standard",
-              read: false,
               collapsed: false,
               revision: 1,
               blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary }, citations: [] }],
@@ -1650,7 +1690,6 @@ export class Pipeline {
                   pageId: applied.pageId,
                   title: c.title,
                   level: "standard",
-                  read: false,
                   collapsed: false,
                   revision: 1,
                   blocks: c.blocks,
@@ -1778,7 +1817,6 @@ export class Pipeline {
                     pageId: `c-${c.slug}`,
                     title: null,
                     level: "standard",
-                    read: false,
                     collapsed: false,
                     revision: 1,
                     blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary ?? "" }, citations: [] }],
@@ -2023,7 +2061,6 @@ export class Pipeline {
           pageId: `c-${slug}`,
           title: null,
           level: "standard",
-          read: false,
           collapsed: false,
           revision: (page.cards[0]?.revision ?? 0) + 1,
           blocks: stored,

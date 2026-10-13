@@ -15,17 +15,12 @@
  *
  * `note` (no agent reply) lives in `note.ts`.
  */
-import type { ActionAnchor, Anchor, Annotation, Block, ChatMessage, Job, ParsedCard } from "@unvibe/shared";
-import { JOB_PRIORITY, parseCards, splitReply } from "@unvibe/shared";
+import type { ActionAnchor, Anchor, Annotation, ChatMessage, Job, ParsedCard } from "@unvibe/shared";
+import { JOB_PRIORITY, splitReply } from "@unvibe/shared";
 import { appendAgentReplyInDraft, buildAnchor, createThreadInDraft, newAnnotationId } from "../../comments/threads.js";
 import { recordInteraction, type InteractionEvent } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
-import { RetryableError } from "../../jobs/errors.js";
-import { validateReply } from "../../validate/index.js";
-import { lookupWithAliases } from "./validate-apply.js";
 import { withReplayMark } from "../replayMark.js";
-import { loadTemplatesDirSync, renderTemplate } from "../../prompts/index.js";
-import type { TokenUsage } from "@unvibe/shared";
 import {
   anchorKey,
   baseVersionOf,
@@ -40,8 +35,9 @@ import {
 } from "./common.js";
 import { canonicalizeCitations } from "./validate-apply.js";
 import { hasOutOfBaseCitations } from "./events.js";
-import { changeListVariable, ingestAgentTurn } from "../sharedctx-wire.js";
-import { anchorSameHost } from "./explain.js";
+import { anchorSameHost } from "./explain-host.js";
+import { pushConversationTurn, runConversationTurn } from "./conversation.js";
+import { probeConversationSessionFor } from "./ask-probe.js";
 
 export interface AskRequest {
   quote: string;
@@ -343,332 +339,116 @@ function isFollowUpsHeading(html: string): boolean {
 }
 
 /**
- * `reply`: follow-up user message in an existing thread on the *same*
- * conversation session. Falls back to a fresh `runAskFill` fork when the
- * session is gone (restart pruned it) — still one thread, one reply.
+ * `reply`: follow-up user message on a conversation card (added as a turn
+ * on the card's session) or on an Ask thread (slice 1: Ask still makes
+ * threads). A live session is continued; a dead one falls back to a fresh
+ * fork with the stored turns as the transcript — same card, same reply.
  */
 export async function replyAction(
   ctx: ActionContext,
-  threadId: string,
+  annotationId: string,
   message: string,
-): Promise<{ threadId: string; jobId?: string }> {
-  const { reviews, reviewId, sessions } = ctx;
+): Promise<{ annotationId: string; threadId?: string; turnId?: string; jobId?: string }> {
+  const { reviews, reviewId } = ctx;
   if (!message || message.trim() === "") throw new Error("reply message is required");
   const before = getSnapshotOrThrow(reviews, reviewId);
-  const thread = before.annotations.find((a) => a.id === threadId);
-  if (!thread) throw new Error(`unknown comment ${threadId}`);
-  if (thread.type !== "thread") throw new Error(`annotation ${threadId} is not a thread`);
-  if (thread.error) {
+  const found = before.annotations.find((a) => a.id === annotationId);
+  if (!found) throw new Error(`unknown comment ${annotationId}`);
+  if (found.type === "conversation") {
+    return replyOnConversation(ctx, annotationId, message);
+  }
+  if (found.type !== "thread") throw new Error(`annotation ${annotationId} is not a thread`);
+  const threadId = annotationId;
+  if (found.error) {
     // A failed turn must be retried explicitly; a new message on top of
     // a failure would hide the retry path.
     throw new Error(`thread ${threadId} has a failed reply; retry it first`);
   }
 
   await reviews.mutate(reviewId, (draft) => {
-    const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId)!;
-    (found.messages as ChatMessage[]).push({ who: "you", text: message });
-    found.working = "Reading…";
-    found.error = null;
-    found.open = true;
+    const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId)!;
+    (target.messages as ChatMessage[]).push({ who: "you", text: message });
+    target.working = "Reading…";
+    target.error = null;
+    target.open = true;
   });
 
-  const sessionId = thread.sessionId;
-  if (sessionId && sessions) {
-    // The conversation session may have died with a restart (agent
-    // subprocesses do not survive SIGKILL, and a fresh process has no live
-    // sessions). Probe it: when it cannot be reopened, drop the id so the
-    // fallback below forks fresh with the full thread history as L4 —
-    // same thread, same reply, no stuck error.
-    try {
-      await sessions.ensureConversation(sessionId);
-    } catch {
-      await reviews.mutate(reviewId, (draft) => {
-        const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
-        if (found) delete found.sessionId;
-      });
-      return { threadId, ...(await runAskFill(ctx, threadId, thread.anchor, { skipDedupe: true })) };
-    }
-    return replyOnSession(ctx, threadId, sessionId);
-  }
   // Fallback: fresh fork with the full thread history as L4.
-  return { threadId, ...(await runAskFill(ctx, threadId, thread.anchor, { skipDedupe: true })) };
+  return { annotationId: threadId, threadId, ...(await runAskFill(ctx, threadId, found.anchor, { skipDedupe: true })) };
 }
 
 /**
- * Follow-up turn on an existing conversation session: one prompt turn
- * via `SessionManager.sendOnConversation`, streamed, validated with one
- * repair turn, applied with `appendAgentReply`. Own job (user priority)
- * so the HTTP response carries its `jobId` and close/delete can cancel it.
+ * Follow-up turn on a conversation card through the shared turn path
+ * (`runConversationTurn`): same streaming, citation check, repair turn,
+ * diagram finalize and degraded handling as the first turn. Own job (user
+ * priority) so the HTTP response carries its `jobId`.
  */
-async function replyOnSession(
+async function replyOnConversation(
   ctx: ActionContext,
-  threadId: string,
-  sessionId: string,
-): Promise<{ threadId: string; jobId?: string }> {
-  const { jobs, reviews, reviewId, sessions, pipeline } = ctx;
-  const snapshot = getSnapshotOrThrow(reviews, reviewId);
-  const thread = snapshot.annotations.find((a) => a.id === threadId)!;
+  annotationId: string,
+  message: string,
+): Promise<{ annotationId: string; turnId: string; jobId?: string }> {
+  const { reviews, reviewId } = ctx;
+  const before = getSnapshotOrThrow(reviews, reviewId);
+  const card = before.annotations.find((a) => a.id === annotationId);
+  if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
 
-  const promptsDir = ctx.promptsDir ?? process.env.UNVIBE_PROMPTS_DIR ?? "prompts";
-  const lib = loadTemplatesDirSync(promptsDir);
-  const tpl = lib.get("ask");
-  if (!tpl) throw new Error("unknown prompt template ask");
-  const lastUser = [...thread.messages].reverse().find((m) => m.who === "you" && m.text);
-  // Filtered change list since this conversation's cursor (the wire seeds
-  // it at the base seq on first use); falls back to "(no changes)" when
-  // the shared-context service is absent (tests).
-  const wireDeps =
-    ctx.settings && ctx.sessions
-      ? {
-          reviews,
-          sessions: ctx.sessions,
-          settings: ctx.settings,
-          promptsDir,
-          ...(ctx.sharedctx ? { sharedctx: ctx.sharedctx } : {}),
-        }
-      : null;
-  const l4 = await l4VariablesWithRevealed(ctx, snapshot, thread.anchor, { thread, message: lastUser?.text ?? "" });
-  const variables = wireDeps
-    ? changeListVariable(wireDeps, reviewId, "ask", l4, { conversationKey: threadId })
-    : { ...l4, change_list: "(no changes)" };
-  let prompt = renderTemplate(tpl, variables);
-  if (isReplayRunner(pipeline.runner)) prompt = withReplayMark(prompt, { kind: "ask" });
-
-  const enqueued = jobs.enqueue({
-    reviewId,
-    kind: "ask",
-    provider: "main",
-    model: "main",
-    priority: JOB_PRIORITY.userRequested,
-    dedupe: {
-      anchor: `thread:${threadId}:${(lastUser?.text ?? "").slice(0, 40)}`,
-      requestKind: "ask-reply",
-      baseVersion: baseVersionOf(snapshot),
-    },
-    threadId,
-    promptSnapshot: prompt,
-    run: async (jobCtx) => {
-      jobCtx.setPromptSnapshot(prompt);
-      // #122: never continue from a stale log — wait for the previous
-      // turn's bookkeeping (base growth) to land first.
-      await pipeline.drainBookkeeping(reviewId);
-      const send = sessions!.sendOnConversation.bind(sessions);
-      const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
-      const collect = async (text: string): Promise<string> => {
-        let out = "";
-        const res = await send(sessionId, text, { signal: jobCtx.signal });
-        usage.inputTokens += res.usage.inputTokens;
-        usage.cachedReadTokens += res.usage.cachedReadTokens;
-        usage.cachedWriteTokens += res.usage.cachedWriteTokens;
-        usage.outputTokens += res.usage.outputTokens;
-        for (const chunk of chunkByWords(res.text, 64)) {
-          if (jobCtx.signal.aborted) throw new Error("aborted");
-          out += chunk;
-          jobCtx.reportText(chunk);
-        }
-        return out;
-      };
-      for (let attempt = 0; ; attempt++) {
-        try {
-          const text = await collect(attempt === 0 ? prompt : repairPromptText());
-          throwIfMcpRefusalLocal(text);
-          // Issue #50: the thread shows the selection and the question.
-          const parsed = parseAndValidateLocal(ctx, reviewId, text, [
-            thread.anchor.quotedText,
-            lastUser?.text ?? "",
-          ]);
-          if (parsed.validation.needsRepairTurn && attempt === 0) continue;
-          jobCtx.reportUsage(usage);
-          await recordUsageLocal(ctx, reviewId, usage);
-          const { html, citations } = replyHtml(parsed.cards);
-          const fixedCitations = canonicalizeCitations(citations, getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
-          const turnSplit = splitReply(text);
-          const turnBody = turnSplit.ok ? turnSplit.body.trim() : text;
-          await reviews.mutate(reviewId, (draft) => {
-            appendAgentReplyInDraft(draft, threadId, { text: turnBody, html });
-            const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId)!;
-            found.working = null;
-            found.error = null;
-            found.jobId = undefined;
-            const last = found.messages[found.messages.length - 1];
-            if (fixedCitations.length > 0) last.citations = fixedCitations;
-          });
-          // Same-session turns ingest contributions, advance the cursor and
-          // grow the base exactly like fork turns (best-effort). #122: the
-          // reply is applied above; bookkeeping joins the per-review chain
-          // (still awaited before the job ends, so a crash leaves the job
-          // visibly interrupted, never silently unbookkept).
-          await pipeline.finishBookkeeping(reviewId, async () => {
-            if (wireDeps?.sharedctx && wireDeps.settings && wireDeps.sessions) {
-              try {
-                const lookup = lookupWithAliases(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
-                await ingestAgentTurn(
-                  {
-                    reviews,
-                    sessions: wireDeps.sessions,
-                    settings: wireDeps.settings,
-                    promptsDir,
-                    sharedctx: wireDeps.sharedctx,
-                  },
-                  reviewId,
-                  {
-                    sessionId,
-                    threadId,
-                    conversationKey: threadId,
-                    data: turnSplit.ok ? turnSplit.data : null,
-                    snapshot: getSnapshotOrThrow(reviews, reviewId),
-                    lookup,
-                    appendToBase: (baseKey, batch) => wireDeps.sessions.appendLogBatch(baseKey, batch),
-                  },
-                );
-              } catch {
-                // best-effort
-              }
-            }
-          });
-          // Answers citing fetched code are shared in full (PRD §9.3).
-          try {
-            if (hasOutOfBaseCitations(parsed.validation.tokens)) {
-              await recordInteraction({
-                kind: "out-of-base-answer",
-                reviewId,
-                text: turnBody,
-                threadId,
-                citations: fixedCitations.map((c) => c.target),
-                sessionId,
-              });
-            }
-          } catch {
-            // Logging never fails the action.
-          }
-          return;
-        } catch (err) {
-          if (err instanceof RetryableError && attempt < 3) {
-            await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
-            continue;
-          }
-          if (await suppressFillError(ctx, threadId)) throw err;
-          const msg = err instanceof Error ? err.message : String(err);
-          await reviews.mutate(reviewId, (draft) => {
-            const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
-            if (found) {
-              found.working = null;
-              found.error = msg;
-            }
-          });
-          // Failures produce no shared knowledge: visible error only, no log.
-          throw err;
-        }
-      }
-    },
+  const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing reply…");
+  const probe = await probeConversationSessionFor(ctx, card);
+  const res = await runConversationTurn(ctx, annotationId, turnId, {
+    anchor: card.anchor,
+    template: "ask",
+    message,
+    ...(probe.transcript !== undefined ? { transcript: probe.transcript } : {}),
+    ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+    skipDedupe: true,
+    echoCandidates: [card.anchor.quotedText, message],
+    cardLabel: message,
+    workingLabel: "Writing reply…",
   });
-  void reviews
-    .mutate(reviewId, (draft) => {
-      const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
-      if (found) found.jobId = enqueued.id;
-    })
-    .catch(() => {});
-  return { threadId, jobId: enqueued.id };
-}
-
-function chunkByWords(text: string, size: number): string[] {
-  const chunks: string[] = [];
-  let cur = "";
-  for (const m of text.match(/\S+\s*|\s+/g) ?? []) {
-    if (cur.length > 0 && cur.length + m.length > size && m.trim() !== "") {
-      chunks.push(cur);
-      cur = m;
-    } else {
-      cur += m;
-    }
-  }
-  if (cur) chunks.push(cur);
-  return chunks;
-}
-
-const MCP_REFUSAL_RE = /can'?t access (that )?tool/i;
-function throwIfMcpRefusalLocal(text: string): void {
-  if (MCP_REFUSAL_RE.test(text)) throw new RetryableError("codex MCP refusal flake (no tool attempt); retrying");
-}
-
-function repairPromptText(): string {
-  return "Some citations in your previous reply could not be verified. Reply with the same content and corrected citation tokens.";
-}
-
-function parseAndValidateLocal(
-  ctx: ActionContext,
-  reviewId: string,
-  text: string,
-  echoCandidates: string[] = [],
-): { cards: ParsedCard[]; validation: ReturnType<typeof validateReply> } {
-  // Lightweight mirror of the pipeline's parse+validate (the shared seam
-  // owns the full version; this path only runs for same-session turns).
-  const split = splitReply(text);
-  if (!split.ok && (split.error.kind === "malformed" || split.error.kind === "not-object")) {
-    throw new Error(`the agent's reply was not in the expected format (${split.error.kind}: ${split.error.message})`);
-  }
-  const body = split.ok ? split.body : (split as { body: string }).body;
-  // Issue #50: same echo strip as `runInFork` (selection, question).
-  const cards = parseCards(body, { echoCandidates });
-  const snapshot = ctx.reviews.getSnapshot(reviewId)!;
-  const lookup = lookupWithAliases(snapshot, ctx.fixturesDir);
-  const blocks = cards.flatMap((c) => c.blocks);
-  const anchor =
-    split.ok && typeof split.data === "object" && split.data !== null
-      ? (split.data as { anchor?: { quote?: string; host?: string } }).anchor
-      : undefined;
-  const validation = validateReply(blocks as Block[], lookup, {
-    ...(anchor?.quote && anchor?.host ? { anchor: { quote: anchor.quote, host: anchor.host } } : {}),
-  });
-  return { cards, validation };
-}
-
-async function recordUsageLocal(ctx: ActionContext, reviewId: string, usage: TokenUsage): Promise<void> {
-  try {
-    await ctx.reviews.mutate(reviewId, (draft) => {
-      const t = draft.usageTotals ?? {
-        inputTokens: 0,
-        cachedReadTokens: 0,
-        cachedWriteTokens: 0,
-        outputTokens: 0,
-        createdAt: draft.review.createdAt,
-      };
-      t.inputTokens += usage.inputTokens;
-      t.cachedReadTokens += usage.cachedReadTokens;
-      t.cachedWriteTokens += usage.cachedWriteTokens;
-      t.outputTokens += usage.outputTokens;
-      const total = t.inputTokens + t.cachedReadTokens + t.cachedWriteTokens;
-      t.cacheHitRate = total > 0 ? t.cachedReadTokens / total : undefined;
-      draft.usageTotals = t;
-    });
-  } catch {
-    // best-effort
-  }
+  return { annotationId, turnId, ...res };
 }
 
 /**
- * `retry`: rebuild the failed fill on the *same* thread/expansion id.
- * The queue's own retry can't re-trigger the completion applier, so a
- * rebuild (same anchor/message, new fork) is the correct retry; the
+ * `retry`: rebuild the failed fill on the *same* annotation id (the last
+ * turn of a conversation card, or an Ask thread fill). The queue's own
+ * retry can't re-trigger the completion applier, so a rebuild (same
+ * anchor/message, same session when live) is the correct retry; the
  * visible error clears when the new attempt starts.
  */
 export async function retryAction(
   ctx: ActionContext,
-  threadId: string,
-): Promise<{ threadId: string; jobId?: string }> {
+  annotationId: string,
+): Promise<{ annotationId: string; threadId?: string; turnId?: string; jobId?: string }> {
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
-  const thread = snapshot.annotations.find((a) => a.id === threadId);
-  if (!thread) throw new Error(`unknown comment ${threadId}`);
-  if (!thread.error) throw new Error(`thread ${threadId} has no failed reply to retry`);
-
-  if (thread.type === "expansion") {
-    const { runExplainFill } = await import("./explain.js");
-    const res = await runExplainFill(ctx, threadId, thread.anchor, thread.anchor.quotedText, { skipDedupe: true });
-    return { threadId, ...res };
+  const found = snapshot.annotations.find((a) => a.id === annotationId);
+  if (!found) throw new Error(`unknown comment ${annotationId}`);
+  if (found.type === "conversation") {
+    const turns = found.turns ?? [];
+    const last = turns[turns.length - 1];
+    if (!last) throw new Error(`conversation ${annotationId} has no turn to retry`);
+    if (!last.error && !found.error) throw new Error(`conversation ${annotationId} has no failed turn to retry`);
+    const firstTurn = last.question === null;
+    const probe = await probeConversationSessionFor(ctx, found);
+    const message = last.question ?? `Explain: ${found.anchor.quotedText}`;
+    const res = await runConversationTurn(ctx, annotationId, last.id, {
+      anchor: found.anchor,
+      template: firstTurn ? "explain" : "ask",
+      message,
+      ...(probe.transcript !== undefined ? { transcript: probe.transcript } : {}),
+      ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+      skipDedupe: true,
+      echoCandidates: firstTurn ? [found.anchor.quotedText] : [found.anchor.quotedText, message],
+      cardLabel: firstTurn ? `Explain: ${found.anchor.quotedText}` : message,
+      workingLabel: firstTurn ? "Thinking…" : "Writing reply…",
+    });
+    return { annotationId, turnId: last.id, ...res };
   }
-  const res = await runAskFill(ctx, threadId, thread.anchor, { skipDedupe: true });
-  return { threadId, ...res };
+  if (!found.error) throw new Error(`thread ${annotationId} has no failed reply to retry`);
+
+  const res = await runAskFill(ctx, annotationId, found.anchor, { skipDedupe: true });
+  return { annotationId, threadId: annotationId, ...res };
 }
 
 /** Cancel the ask job (used by close/delete). */

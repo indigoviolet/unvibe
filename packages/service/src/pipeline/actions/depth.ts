@@ -13,6 +13,7 @@ import type { Block, DepthLevel, Job } from "@unvibe/shared";
 import { JOB_PRIORITY, freshBlockId } from "@unvibe/shared";
 import {
   cardPromptText,
+  findCardTarget,
   findCardTargetInDraft,
   hasLevelText,
   hasPrinciple,
@@ -22,9 +23,11 @@ import {
   recordInteraction,
   setTargetContent,
   stepLevel,
+  targetBlocks,
+  targetLevel,
   withFreshAsideId,
 } from "../../interaction/index.js";
-import { cardTitle, storedCardTitle } from "./events.js";
+import { answerEchoTitle, cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   baseVersionOf,
@@ -41,18 +44,10 @@ export async function depthAction(
 ): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean; level?: DepthLevel }> {
   const { jobs, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
-  const target = (() => {
-    for (const page of snapshot.pages ?? []) {
-      const card = (page.cards ?? []).find((c) => c.id === cardId);
-      if (card) return { kind: "page-card" as const, card };
-    }
-    const annotation = (snapshot.annotations ?? []).find((a) => a.id === cardId);
-    if (annotation?.type === "expansion" && annotation.expansion) return { kind: "expansion" as const, annotation };
-    return null;
-  })();
+  const target = findCardTarget(snapshot, cardId);
   if (!target) throw new Error(`unknown card ${cardId}`);
-  const level = target.kind === "page-card" ? target.card.level : (target.annotation.expansion?.level ?? "standard");
-  const blocks = (target.kind === "page-card" ? target.card.blocks : target.annotation.expansion?.blocks) as Block[];
+  const level = targetLevel(target);
+  const blocks = targetBlocks(target) as Block[];
   const next = stepLevel(level, direction);
 
   // + at the deepest level with no principle yet: the agent supplies one
@@ -75,8 +70,8 @@ export async function depthAction(
     await reviews.mutate(reviewId, (draft) => {
       const t = findCardTargetInDraft(draft, cardId);
       if (!t) throw new Error(`unknown card ${cardId}`);
-      pushUndo(t, t.kind === "page-card" ? [...t.card.blocks] : [...t.annotation.expansion!.blocks], from);
-      const current = t.kind === "page-card" ? t.card.blocks : t.annotation.expansion!.blocks;
+      pushUndo(t, [...targetBlocks(t)], from);
+      const current = targetBlocks(t);
       setTargetContent(t, current, next);
       markStaleAnchors(draft, cardId);
     });
@@ -118,14 +113,15 @@ async function depthViaAgent(
     level: target,
   };
   const capture = captureJobId();
-  // Replay fixtures are keyed by stable card ids (central/problem); expansion
-  // ids are dynamic (`ann_…`), so expansions share one `expansion:<level>`
-  // recording (audit #10 E2E). Added as `depth-expansion-deep.md` in the
-  // existing reply format.
-  const replayKey = cardId.startsWith("ann_") ? `expansion:${target}` : `${cardId}:${target}`;
+  // Replay fixtures are keyed by stable card ids (central/problem);
+  // conversation cards and answers carry dynamic ids (`ann_…`, `ans_…`),
+  // so they share one `expansion:<level>` recording (audit #10 E2E).
+  // Added as `depth-expansion-deep.md` in the existing reply format.
+  const replayKey = cardId.startsWith("ann_") || cardId.startsWith("ans_") ? `expansion:${target}` : `${cardId}:${target}`;
   const replay = isReplayRunner(pipeline.runner) ? { kind: "depth", key: replayKey } : undefined;
-  // Issue #50: a rewrite must not open by repeating the card title.
-  const echoTitle = storedCardTitle(snapshot, cardId);
+  // Issue #50: a rewrite must not open by repeating the card title — for
+  // an answer, its question (else the card's quoted text).
+  const echoTitle = storedCardTitle(snapshot, cardId) ?? answerEchoTitle(snapshot, cardId);
 
   const done = pipeline.runInFork({
     reviewId,
@@ -147,8 +143,8 @@ async function depthViaAgent(
       await reviews.mutate(reviewId, (draft) => {
         const t = findCardTargetInDraft(draft, cardId);
         if (!t) return;
-        const current = (t.kind === "page-card" ? t.card.blocks : t.annotation.expansion!.blocks) as Block[];
-        const from = t.kind === "page-card" ? t.card.level : t.annotation.expansion!.level;
+        const current = targetBlocks(t) as Block[];
+        const from = targetLevel(t);
         pushUndo(t, [...current], from);
         let merged = mergeDepthText(current, replyBlocks, target);
         // + at the deepest level adds one Underlying-principle block (once,

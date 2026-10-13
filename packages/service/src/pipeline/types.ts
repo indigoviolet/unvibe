@@ -31,6 +31,14 @@ export interface RunInForkOptions {
   hunkHash?: string;
   /** Thread the turn replies in (contribution labelling; M4: WS correlation). */
   threadId?: string;
+  /**
+   * Issue #136: continue on an existing conversation session instead of
+   * forking the base. The session is ensured (reopened/rebuilt) inside
+   * the job; a rebuild loses history past the base, so the caller sends
+   * the full prompt (stored turns as "conversation so far") when it
+   * expects one. Every later turn of a conversation card runs this way.
+   */
+  continueSessionId?: string;
   /** Called with newly finished cards as they stream in. */
   onPartial?: (cards: ParsedCard[]) => void | Promise<void>;
   /**

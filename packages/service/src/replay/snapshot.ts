@@ -58,7 +58,6 @@ function mkCard(id: string, pageId: string, title: string | null, blocks: Block[
     pageId,
     title,
     level: "standard",
-    read: false,
     collapsed: false,
     revision: 1,
     blocks,
@@ -293,18 +292,18 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
 
   // --- annotations (prototype seed()) ----------------------------------
   // Annotation anchors use real file keys; card anchors use card#block IDs.
-  // M4: the seed expansion carries its body (`Annotation.expansion`) so it
-  // renders like any explain result — an expansion is a card in its own
-  // right (level, read, collapsed, revision, undo stack). Content comes
-  // from the recorded `explain-obs-fold` reply, canonicalized like the
-  // live pipeline stores it.
+  // Issue #136: the seed conversation carries its turns (`Annotation.turns`)
+  // so it renders like any explain result — each answer is a unit in its
+  // own right (level, revision, undo stack). Content comes from the
+  // recorded `explain-obs-fold` reply, canonicalized like the live
+  // pipeline stores it.
   const connKey = meta.keyAliases["conn"];
   const tconnKey = meta.keyAliases["tconn"];
   const explainSeed = parseReply(textOf("explain-obs-fold.md"));
   const annotations: Annotation[] = [
     {
       id: "x-seed",
-      type: "expansion",
+      type: "conversation",
       anchor: {
         host: { kind: "block", blockId: "problem#b1" },
         quotedText: "raw CRLF",
@@ -317,14 +316,16 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       messages: [],
       post: false,
       note: false,
-      expansion: {
-        blocks: canonBlocks(explainSeed.blocks),
-        level: "standard",
-        read: false,
-        collapsed: false,
-        revision: 1,
-        undoStack: [],
-      },
+      turns: [
+        {
+          id: "ans_seed1",
+          question: null,
+          blocks: canonBlocks(explainSeed.blocks),
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+        },
+      ],
     },
     {
       id: "t-seed",

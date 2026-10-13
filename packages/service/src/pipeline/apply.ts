@@ -18,7 +18,6 @@ function mkCard(id: string, pageId: string, title: string | null, blocks: Block[
     pageId,
     title,
     level: "standard",
-    read: false,
     collapsed: false,
     revision: 1,
     blocks,

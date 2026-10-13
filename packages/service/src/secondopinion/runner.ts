@@ -128,15 +128,17 @@ function lookupWithAliases(snapshot: ReviewSnapshot, fixturesDir?: string): Retu
 }
 
 interface ResolvedTarget {
-  kind: "card" | "finding" | "expansion";
+  kind: "card" | "finding" | "answer";
   page: Page;
   card: Card | null;
   cards: Card[];
   citedIds: string[];
   filePaths: string[];
   claimText: string;
-  /** Set when the target is an expansion annotation (M4). */
-  expansionId?: string;
+  /** Set when the target is one conversation answer (issue #136). */
+  answerId?: string;
+  /** The conversation card holding the answer target. */
+  annotationId?: string;
 }
 
 function filePathsFor(snapshot: ReviewSnapshot, citedIds: string[]): string[] {
@@ -195,34 +197,38 @@ export function resolveTarget(snapshot: ReviewSnapshot, cardId: string): Resolve
       };
     }
   }
-  // M4: expansions are cards in their own right — resolve the annotation's
-  // embedded blocks so second opinions work there too and survive depth/undo
-  // (stored on the expansion body, outside the revisable blocks).
-  const expansion = snapshot.annotations.find(
-    (a) => a.id === cardId && a.type === "expansion" && a.expansion,
-  );
-  if (expansion?.expansion) {
-    const blocks = expansion.expansion.blocks;
+  // Issue #136: answers are cards in their own right — resolve the
+  // answer's blocks so second opinions work there too and survive
+  // depth/undo (stored on the turn, outside the revisable blocks). For an
+  // answer to a typed question the claim includes the question.
+  for (const ann of snapshot.annotations) {
+    if (ann.type !== "conversation") continue;
+    const turn = (ann.turns ?? []).find((t) => t.id === cardId);
+    if (!turn) continue;
+    const blocks = turn.blocks;
     const citedIds = [...new Set(collectTargets(blocks).citations)];
     const markdown = renderMarkdown(blocks).trim();
-    const claimText = expansion.anchor.quotedText
-      ? `“${expansion.anchor.quotedText}”\n\n${markdown}`.trim()
-      : markdown;
+    const claimText = turn.question
+      ? `${turn.question}\n\n${markdown}`.trim()
+      : ann.anchor.quotedText
+        ? `“${ann.anchor.quotedText}”\n\n${markdown}`.trim()
+        : markdown;
     // Parent page for the blind/check default + prompt context: the page
     // hosting the anchor block when known, else root.
     const hostPage =
-      snapshot.pages.find((p) => p.cards.some((c) => c.blocks.some((b) => `block:${b.id}` === `block:${expansion.anchor.host.kind === "block" ? expansion.anchor.host.blockId.split("#").pop() : ""}`))) ??
+      snapshot.pages.find((p) => p.cards.some((c) => c.blocks.some((b) => `block:${b.id}` === `block:${ann.anchor.host.kind === "block" ? ann.anchor.host.blockId.split("#").pop() : ""}`))) ??
       snapshot.pages.find((p) => p.kind === "root") ??
       snapshot.pages[0];
     return {
-      kind: "expansion",
+      kind: "answer",
       page: hostPage,
       card: null,
       cards: [],
       citedIds,
       filePaths: filePathsFor(snapshot, citedIds),
       claimText,
-      expansionId: expansion.id,
+      answerId: turn.id,
+      annotationId: ann.id,
     };
   }
   throw new Error(`unknown card ${cardId}`);
@@ -425,11 +431,9 @@ export function findStoredSecondOpinion(
 ): SecondOpinionResult | null {
   const matches = (s: SecondOpinionResult): boolean =>
     s.mode === mode && s.provider === provider && s.model === model && s.version === version;
-  const expansion = snapshot.annotations.find(
-    (a) => a.id === cardId && a.type === "expansion" && a.expansion,
-  );
-  if (expansion?.expansion?.secondOpinions) {
-    const hit = expansion.expansion.secondOpinions.find(matches);
+  for (const ann of snapshot.annotations) {
+    const turn = (ann.turns ?? []).find((t) => t.id === cardId);
+    const hit = turn?.secondOpinions?.find(matches);
     if (hit) return hit;
   }
   for (const page of snapshot.pages) {
@@ -490,7 +494,9 @@ export async function requestSecondOpinion(
       : `${req.cardId}:${req.mode}`;
     turn = withReplayMark(turn, { kind: "second-opinion", key: replayKey });
   }
-  const cardIdForJob = target.card ? target.card.id : target.page.id;
+  // Answers carry their own id on the job so the answer view shows the
+  // working state; cards keep theirs; findings keep the page.
+  const cardIdForJob = target.answerId ?? (target.card ? target.card.id : target.page.id);
   const job = deps.jobs.enqueue({
     reviewId: req.reviewId,
     kind,
@@ -608,18 +614,19 @@ export async function requestSecondOpinion(
         if (ctx.signal.aborted || req.signal?.aborted) return;
         // Store on the card (attached, not revisable): replace any entry
         // with the same mode (keep one per mode), keep the other mode.
-        // Expansions store on the expansion body so depth/undo leave the
-        // result attached (M4).
+        // Answers store on the turn so depth/undo leave the result
+        // attached (#136).
         await deps.reviews.mutate(req.reviewId, (draft) => {
-          if (target.expansionId) {
+          if (target.answerId) {
             const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
-              (a) => a.id === target.expansionId,
+              (a) => a.id === target.annotationId,
             );
-            if (!ann || ann.type !== "expansion" || !ann.expansion) {
+            const turn = ann?.type === "conversation" ? (ann.turns ?? []).find((t) => t.id === target.answerId) : undefined;
+            if (!ann || !turn) {
               throw new Error(`unknown card ${req.cardId}`);
             }
-            const rest = (ann.expansion.secondOpinions ?? []).filter((s) => s.mode !== req.mode);
-            ann.expansion.secondOpinions = [...rest, { ...result, cardId: ann.id }];
+            const rest = (turn.secondOpinions ?? []).filter((s) => s.mode !== req.mode);
+            turn.secondOpinions = [...rest, { ...result, cardId: turn.id }];
             const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
             draft.logTail.push({
               seq,
@@ -703,33 +710,22 @@ export async function removeSecondOpinion(
 ): Promise<void> {
   await deps.reviews.mutate(reviewId, (draft) => {
     let found = false;
-    // M4: expansions carry their results on the expansion body.
+    // Issue #136: answers carry their results on the turn. `cardId` here
+    // is an answer id for answer results; a stored `so-…` id matches
+    // globally (ids are unique) so `delete` works without a card.
     for (const a of draft.annotations as unknown as import("@unvibe/shared").Annotation[]) {
-      if (a.id !== cardId) continue;
-      if (a.type !== "expansion" || !a.expansion) continue;
-      const before = a.expansion.secondOpinions ?? [];
-      const after = before.filter((s) => {
-        if (opinionId && s.id === opinionId) return false;
-        if (opinionId && s.id !== opinionId) return true;
-        if (mode && s.mode === mode) return false;
-        if (!mode && !opinionId && s.cardId === cardId) return false;
-        return true;
-      });
-      if (after.length !== before.length) {
-        a.expansion.secondOpinions = after;
-        found = true;
-      }
-    }
-    // Opinion ids are globally unique (`so-<card>-…`): also match by id
-    // alone so `delete` with a stored `so-…` id works without a card.
-    if (opinionId && !found) {
-      for (const a of draft.annotations as unknown as import("@unvibe/shared").Annotation[]) {
-        if (a.type !== "expansion" || !a.expansion) continue;
-        const before = a.expansion.secondOpinions ?? [];
-        if (before.some((s) => s.id === opinionId)) {
-          a.expansion.secondOpinions = before.filter((s) => s.id !== opinionId);
+      if (a.type !== "conversation") continue;
+      for (const t of a.turns ?? []) {
+        if (opinionId === undefined && t.id !== cardId) continue;
+        const before = t.secondOpinions ?? [];
+        const after = before.filter((s) => {
+          if (opinionId) return s.id !== opinionId;
+          if (mode) return s.mode !== mode;
+          return s.cardId !== cardId;
+        });
+        if (after.length !== before.length) {
+          t.secondOpinions = after;
           found = true;
-          break;
         }
       }
     }

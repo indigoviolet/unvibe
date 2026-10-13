@@ -18,7 +18,7 @@ import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import { generateAction } from "./generate.js";
 import { askAction, replyAction, retryAction } from "./ask.js";
-import { bookmarkAction, collapseAction, readAction } from "./read.js";
+import { bookmarkAction, collapseAction } from "./read.js";
 import { closeAction, deleteAction } from "./close.js";
 import { conceptAction } from "./concept.js";
 import { depthAction } from "./depth.js";
@@ -117,7 +117,7 @@ export async function dispatchAction(
         need(ctx);
         if (typeof action.quote !== "string" || !action.anchor) return bad(reply, "quote and anchor are required");
         const res = await explainAction(ctx, { quote: action.quote, anchor: action.anchor });
-        const out: ActionResponse = { accepted: true, annotationId: res.annotationId };
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
         if (res.reused) out.reused = true;
@@ -147,19 +147,23 @@ export async function dispatchAction(
       }
       case "reply": {
         need(ctx);
-        if (typeof action.threadId !== "string" || typeof action.message !== "string") {
-          return bad(reply, "threadId and message are required");
+        if (typeof action.annotationId !== "string" || typeof action.message !== "string") {
+          return bad(reply, "annotationId and message are required");
         }
-        const res = await replyAction(ctx, action.threadId, action.message);
-        const out: ActionResponse = { accepted: true, threadId: res.threadId, annotationId: res.threadId };
+        const res = await replyAction(ctx, action.annotationId, action.message);
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId };
+        if (res.threadId) out.threadId = res.threadId;
+        if (res.turnId) out.turnId = res.turnId;
         if (res.jobId) out.jobId = res.jobId;
         return out;
       }
       case "retry": {
         need(ctx);
-        if (typeof action.threadId !== "string") return bad(reply, "threadId is required");
-        const res = await retryAction(ctx, action.threadId);
-        const out: ActionResponse = { accepted: true, threadId: res.threadId, annotationId: res.threadId };
+        if (typeof action.annotationId !== "string") return bad(reply, "annotationId is required");
+        const res = await retryAction(ctx, action.annotationId);
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId };
+        if (res.threadId) out.threadId = res.threadId;
+        if (res.turnId) out.turnId = res.turnId;
         if (res.jobId) out.jobId = res.jobId;
         return out;
       }
@@ -204,14 +208,6 @@ export async function dispatchAction(
         need(ctx);
         if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
         const res = await undoAction(ctx, action.cardId);
-        return { accepted: true, cardId: res.cardId } satisfies ActionResponse;
-      }
-      case "read": {
-        need(ctx);
-        if (typeof action.cardId !== "string" || typeof action.read !== "boolean") {
-          return bad(reply, "cardId and read are required");
-        }
-        const res = await readAction(ctx, action.cardId, action.read);
         return { accepted: true, cardId: res.cardId } satisfies ActionResponse;
       }
       case "collapse": {
@@ -273,6 +269,7 @@ export async function dispatchAction(
         }
         const res = await followupAction(ctx, action.cardId, action.blockId, action.index);
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, cardId: action.cardId };
+        if (res.turnId) out.turnId = res.turnId;
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
         if ((res as { reused?: boolean }).reused) out.reused = true;
