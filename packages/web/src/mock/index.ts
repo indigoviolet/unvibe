@@ -2234,7 +2234,9 @@ export const mockApi = {
             position: 0,
             version: 1,
           },
-          open: host.kind === "block" ? false : true,
+          // Ask cards open in place everywhere, like Explain (no
+          // closed-thread legacy).
+          open: true,
           messages: [],
           post: false,
           working: "Thinking…",

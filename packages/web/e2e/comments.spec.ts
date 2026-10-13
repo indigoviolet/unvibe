@@ -66,7 +66,7 @@ async function selectText(
   );
 }
 
-test("selection snaps to whole words and Ask creates a working thread", async ({ page }) => {
+test("selection snaps to whole words and Ask creates a working card", async ({ page }) => {
   await gotoReview(page);
   // Partial selection inside "optional" snaps to the whole word.
   const quote = await selectText(page, "#C-central", "ptional", 0, 7);
@@ -77,13 +77,15 @@ test("selection snaps to whole words and Ask creates a working thread", async ({
   await expect(composer.locator(".mq")).toContainText("optional");
   await composer.locator("textarea").fill("What does optional mean here?");
   await composer.getByRole("button", { name: "Ask" }).click();
-  // The thread shows the agent as working until the canned reply lands.
-  const thread = page.locator("#C-central .ithread[data-thread]", {
+  // The card shows the agent as working until the canned answer lands.
+  const card = page.locator("#C-central [data-expansion]", {
     hasText: "What does optional mean here?",
   });
-  await expect(thread.locator(".working")).toBeVisible({ timeout: 3000 });
-  await expect(thread).toContainText("Mock answer", { timeout: 5000 });
-  await expect(thread.locator(".msg .av.ai")).toBeVisible();
+  await expect(card.locator(".working")).toBeVisible({ timeout: 3000 });
+  await expect(card).toContainText("Mock explanation", { timeout: 8000 });
+  // The question reads as the answer heading; the card never posts.
+  await expect(card.locator(".ans-q").first()).toContainText("What does optional mean here?");
+  await expect(card.getByRole("button", { name: "Mark for the PR" })).toHaveCount(0);
 });
 
 test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }) => {
