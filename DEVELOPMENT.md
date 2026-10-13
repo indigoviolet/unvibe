@@ -53,7 +53,10 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:live:submit` | Submit path against a scratch repo (draft PR only) | Login; opt-in, writes a draft PR |
 
 `test:live:*` never runs under `check` or CI. CI (`.github/workflows/ci.yml`)
-runs on `ubuntu-latest` and `macos-latest`: `check` + `build` +
+runs on `ubuntu-latest` for every branch push except `spike/**`, and on
+`macos-latest` only nightly against `main` and on manual dispatch
+(`gh workflow run ci`, both platforms; macOS minutes bill at 10x, and
+`release.yml` also covers macOS on every `v*` tag): `check` + `build` +
 `test:e2e`, then the shell end-to-end (`e2e` on Linux, `e2e:macos` on
 macOS), `check-global-install` (both), and
 `node scripts/restart-resilience.mjs` (both). Diagrams render service-side
