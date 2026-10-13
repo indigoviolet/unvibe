@@ -82,7 +82,7 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
     const stats = ctx.sharedctx?.statsForReview(id) ?? [];
     const info = ctx.sessions?.baseInfo(currentKey);
     const hasBase = stats.length > 0 || info !== null;
-    const batchTokens = settings?.logBatchTokens ?? 2000;
+    const batchTokens = settings ? settings.logBatchTokens : 2000;
 
     const body: SharedContextResponse = {
       reviewId: id,

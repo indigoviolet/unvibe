@@ -24,6 +24,7 @@ const SETTINGS: Settings = {
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10000,
+  logBatchTokens: 2000,
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
   versionPickerEnabled: true,

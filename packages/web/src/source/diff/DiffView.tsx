@@ -15,7 +15,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { looksLikeJson } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -224,17 +223,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
     }
   }, []);
 
-  // #99: a stored summary holding the agent's raw JSON reads as absent,
-  // so the hunk shows its Summarize action instead of the JSON text. The
-  // stored row is untouched: the next summarize regenerates or clears it.
+  // Hunk states keyed by content hash for the file sections below.
   const states = useMemo(
-    () =>
-      new Map<string, HunkUiState>(
-        (snapshot?.hunkStates ?? []).map((s) => [
-          s.contentHash,
-          s.summary !== undefined && looksLikeJson(s.summary) ? { ...s, summary: undefined } : s,
-        ]),
-      ),
+    () => new Map<string, HunkUiState>((snapshot?.hunkStates ?? []).map((s) => [s.contentHash, s])),
     [snapshot],
   );
 
@@ -275,9 +266,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
 
   // Summarize is async (a job on the service, canned text in mock): the
   // button shows progress until the snapshot actually carries a summary.
-  // Read the raw rows here, not the #99-filtered `states`: a landed summary
-  // that looks like JSON still settles the request — the dots go away and
-  // the hunk re-offers Summarize instead of showing the JSON text.
+  // Read the snapshot rows directly: any landed summary settles the
+  // request, and the hunk offers Summarize again for unusable text.
   useEffect(() => {
     setBusy((prev) => {
       if (Object.keys(prev).length === 0) return prev;

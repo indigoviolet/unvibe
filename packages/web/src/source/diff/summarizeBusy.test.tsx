@@ -1,9 +1,9 @@
 /**
  * Hunk summarize busy state (issue #63): clicking Summarize shows dots
  * (`aria-label="Summarizing"`) until the summary lands through a patch —
- * never stuck next to the fresh summary. A landed summary that looks like
- * JSON (#99, shown as absent with Summarize re-offered) still settles the
- * request; a failed request clears the dots and re-offers Summarize.
+ * never stuck next to the fresh summary. Any landed summary settles the
+ * request (#137: landed text is shown as-is, never hidden as absent);
+ * a failed request clears the dots and re-offers Summarize.
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -104,7 +104,7 @@ describe("summarize busy dots (#63)", () => {
     expect(screen.queryByLabelText("Summarizing")).toBeNull();
   });
 
-  test("a landed summary that looks like JSON clears the dots and re-offers Summarize", async () => {
+  test("a landed summary that looks like JSON clears the dots and shows as-is (#137)", async () => {
     seed();
     let resolveReq!: (v: { jobId: string }) => void;
     vi.spyOn(api, "summarizeHunk").mockImplementation(
@@ -122,9 +122,9 @@ describe("summarize busy dots (#63)", () => {
     });
     await Promise.resolve();
     landSummary(`{"hunk": {"summary": "Maps the Nav 2 Conversations item`);
-    // #99: the JSON text stays hidden and Summarize is re-offered — with no dots.
-    expect(screen.queryByText(/"hunk"/)).toBeNull();
-    expect(await screen.findByRole("button", { name: "Summarize with agent" })).toBeInTheDocument();
+    // #137: no display filter — the landed text is shown as-is, and the
+    // dots clear because the summary landed.
+    expect(await screen.findByText(/"hunk"/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Summarizing")).toBeNull();
   });
 

@@ -1,8 +1,7 @@
 /**
  * #92: refuse actions on reviews that are still opening or failed to open
  * (409, plain reason shown after the caller's "Couldn't …" prefix).
- * Returns the reason text, or null when the snapshot is ready (absent
- * ingest status = ready, for pre-#92 rows).
+ * Returns the reason text, or null when the snapshot is ready.
  */
 import { ingestStatusOf, type ReviewSnapshot } from "@unvibe/shared";
 

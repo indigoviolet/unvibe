@@ -93,10 +93,9 @@ describe("d2 discovery", () => {
 // --- shared pure helpers --------------------------------------------------
 
 describe("d2 shared helpers", () => {
-  it("extracts link: cites (quoted, bare, bracket-wrapped)", () => {
+  it("extracts link: cites (quoted, bare)", () => {
     expect(extractD2Links('a: {link: "diff:conn:80-88"}')).toEqual(["diff:conn:80-88"]);
     expect(extractD2Links("a -> b: x {link: diff:conn:1-2}")).toEqual(["diff:conn:1-2"]);
-    expect(extractD2Links('a: {link: "[[diff:conn:91-110]]"}')).toEqual(["diff:conn:91-110"]);
     expect(extractD2Links('a: {link: "code:src/x.py:10-20"}')).toEqual(["code:src/x.py:10-20"]);
     expect(extractD2Links("no links here")).toEqual([]);
   });
@@ -369,18 +368,13 @@ describe("diagram cache", () => {
     }
   });
 
-  it("versions disk filenames and sweeps legacy unversioned renders (#16)", () => {
+  it("versions disk filenames (#16)", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-"));
     try {
       const dir = path.join(tmp, "diagrams");
       fs.mkdirSync(dir, { recursive: true });
-      // A render cached by an older post-processor (pre-version layout).
-      fs.writeFileSync(path.join(dir, "deadbeefdeadbeef.light.svg"), "<svg>stale</svg>");
       const cache = new DiagramCache({ dataDir: tmp });
-      // Legacy bytes are gone, never served…
-      expect(fs.existsSync(path.join(dir, "deadbeefdeadbeef.light.svg"))).toBe(false);
-      expect(cache.get("deadbeefdeadbeef", "light")).toBeNull();
-      // …and fresh puts land under the versioned name.
+      // Fresh puts land under the versioned name.
       cache.put("deadbeefdeadbeef", "light", "<svg>fresh</svg>");
       expect(cache.get("deadbeefdeadbeef", "light")).toBe("<svg>fresh</svg>");
       const files = fs.readdirSync(dir);

@@ -91,17 +91,9 @@ export function buildScrubbedEnv(opts: { home?: string; shell?: string } = {}): 
 function extractDelimitedPath(stdout: string): string | null {
   const re = new RegExp(`${START_MARK}(.*?)${END_MARK}`, "s");
   const m = stdout.match(re);
-  if (m) {
-    const p = (m[1] ?? "").trim();
-    return p || null;
-  }
-  // Backwards compat: fake shells in older tests just `echo /path` without
-  // delimiters. Accept the trimmed stdout when it looks like a PATH.
-  const trimmed = stdout.trim();
-  if (!trimmed) return null;
-  const lastLine = trimmed.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "";
-  if (lastLine.includes("/") || lastLine.includes(":")) return lastLine;
-  return null;
+  if (!m) return null;
+  const p = (m[1] ?? "").trim();
+  return p || null;
 }
 
 function probeOneShell(
@@ -191,4 +183,19 @@ export async function probeEffectivePath(
     onlyInProbed,
     onlyInInherited,
   };
+}
+
+/**
+ * Apply the login-shell PATH to this process (before anything spawns
+ * git/gh/agent adapters). Returns the detail, or null when nothing
+ * changed. Never throws.
+ */
+export async function applyLoginShellPath(
+  opts: { shell?: string; timeoutMs?: number } = {},
+): Promise<{ before: string; after: string; shell: string } | null> {
+  const before = process.env.PATH ?? "";
+  const found = await probeEffectivePath(opts);
+  if (!found || found.effectivePath === before) return null;
+  process.env.PATH = found.effectivePath;
+  return { before, after: found.effectivePath, shell: found.shell };
 }

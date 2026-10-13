@@ -202,7 +202,7 @@ export class SharedContextService {
     if (!snap || !baseKey) return { appended: 0, pendingTokens: 0 };
     const info = this.deps.sessions.baseInfo(baseKey);
     const through = info?.logSeq ?? 0;
-    const batchTokens = (await this.effectiveSettings()).logBatchTokens ?? 2000;
+    const batchTokens = (await this.effectiveSettings()).logBatchTokens;
     const plan = opts.force
       ? { batches: forceBatches(snap.logTail, through, { batchTokens }), pending: [], pendingTokens: 0 }
       : planGrowth(snap.logTail, through, { batchTokens });

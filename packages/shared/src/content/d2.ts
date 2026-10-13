@@ -15,7 +15,6 @@
  * Supported `link:` forms (all normalised to the bare token):
  * - `link: "diff:conn:80-88"` (the convention: quoted bare token)
  * - `link: diff:conn:80-88` (unquoted bare token)
- * - `link: "[[diff:conn:91-110]]"` (legacy bracket form, still accepted)
  * - `link: "code:src/x.py:10-20"` / `link: "desc:d-intro"` (code/desc forms)
  *
  * Pure helpers only (no Node/DOM): extraction, canonicalisation, hashing.
@@ -71,8 +70,8 @@ export function canonicalizeD2Source(source: string): string {
 
 /**
  * Extract `link:` citation targets from D2 source (first-seen order,
- * deduped). Accepts quoted/unquoted and `[[…]]`-wrapped forms; strips
- * `|label` suffixes; returns bare tokens (e.g. `diff:conn:80-88`).
+ * deduped). Accepts quoted/unquoted forms; strips `|label` suffixes;
+ * returns bare tokens (e.g. `diff:conn:80-88`).
  * Returns [] for sources with no links.
  */
 export function extractD2Links(source: string): string[] {
@@ -94,8 +93,6 @@ export function extractD2Links(source: string): string[] {
 
 function bareToken(raw: string): string {
   let t = raw.trim();
-  // Strip [[…]] wrapper (legacy) and optional |label.
-  if (t.startsWith("[[") && t.endsWith("]]")) t = t.slice(2, -2).trim();
   const pipe = t.indexOf("|");
   if (pipe >= 0) t = t.slice(0, pipe).trim();
   // Strip surrounding quotes once more (nested quoting).

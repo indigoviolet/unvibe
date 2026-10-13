@@ -41,7 +41,7 @@ export function ReviewBar({
   // stable across the loading → ready transition.
   const snapshot = useReview((s) => s.snapshot);
   const ingestReady =
-    (snapshot?.ingest?.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
+    (snapshot?.ingest.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
   // #98: live job count for this review (running · queued). The open
   // itself is not a job (ingest state, never a snapshot job), so the count
   // waits for the finished open like the Debug icon. Nothing renders when

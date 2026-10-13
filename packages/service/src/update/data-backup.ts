@@ -14,9 +14,7 @@
  * the live `-wal`/`-shm` first so a stale journal can never shadow a
  * restored main file.
  *
- * The live database is `<dataDir>/unvibe.db` (`dbFilePath`); very old
- * installs may still carry `unvibe.sqlite` (the name `DEVELOPMENT.md`
- * uses), so both basenames are backed up and restored when present.
+ * The live database is `<dataDir>/unvibe.db` (`dbFilePath`).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -25,21 +23,12 @@ import { dbFilePath } from "../store/paths.js";
 /** Slot for installs with no channel record (source checkouts, old builds). */
 export const UNKNOWN_CHANNEL_SLOT = "_unknown";
 
-const LEGACY_BASE = "unvibe.sqlite";
 const SUFFIXES = ["", "-wal", "-shm"];
-
-function liveBases(dataDir: string): string[] {
-  const primary = path.basename(dbFilePath(dataDir));
-  return primary === LEGACY_BASE ? [primary] : [primary, LEGACY_BASE];
-}
 
 /** Every database filename handled, e.g. `unvibe.db`, `unvibe.db-wal`. */
 export function dbFileNames(dataDir: string): string[] {
-  const out: string[] = [];
-  for (const base of liveBases(dataDir)) {
-    for (const suffix of SUFFIXES) out.push(`${base}${suffix}`);
-  }
-  return out;
+  const base = path.basename(dbFilePath(dataDir));
+  return SUFFIXES.map((suffix) => `${base}${suffix}`);
 }
 
 function isFile(p: string): boolean {

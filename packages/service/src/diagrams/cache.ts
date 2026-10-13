@@ -6,8 +6,7 @@
  * Bounded: pruned to `MAX_CACHED_DIAGRAMS` entries (oldest mtime first).
  * The postprocess version in the filename is the cache key's sanitiser
  * half: renders cached by an older `postProcessSvg` are never served
- * stale — files in the legacy unversioned `<hash>.<theme>.svg` layout are
- * swept on construction. Fixture seeds keep the unversioned layout (they
+ * stale. Fixture seeds keep the unversioned layout (they
  * ship with the code, so they are always current by construction).
  *
  * Seed: `fixtures/urllib3-5020/diagrams/<hash>.<theme>.svg` ships
@@ -38,30 +37,6 @@ export class DiagramCache {
       fs.mkdirSync(this.dir, { recursive: true });
     } catch {
       // best effort; gets surface as write failures
-    }
-    this.sweepLegacy();
-  }
-
-  /**
-   * Delete legacy unversioned cache files (`<hash>.<theme>.svg`): they
-   * were post-processed by an older sanitiser and must never be served.
-   * Best-effort; never throws.
-   */
-  private sweepLegacy(): void {
-    let files: string[];
-    try {
-      files = fs.readdirSync(this.dir);
-    } catch {
-      return;
-    }
-    for (const f of files) {
-      if (/^[0-9a-f]+\.(light|dark)\.svg$/.test(f)) {
-        try {
-          fs.rmSync(path.join(this.dir, f));
-        } catch {
-          // best effort
-        }
-      }
     }
   }
 
