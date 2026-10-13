@@ -59,5 +59,9 @@ docs/              design notes and decisions (spikes live on spike/* branches)
   - Set a recurring check (a Paseo heartbeat, every 5 to 10 minutes) as soon as the first agent starts, without being asked. Unblock or replace agents that are stuck.
   - When an agent reports, review the branch, then publish its preview and comment on the issue, saying which tests have run. Run the full gates one branch at a time, before merging at the latest.
   - Once the owner approves the preview, merge, close the issue, archive the Paseo workspace, remove the worktree and branch, and delete the branch's preview refs, local and on the remote (or ask the agent to). Cleanup is not done while a `preview/<slug>` for a merged branch is still on the remote.
+- This repository and its issues are public. Never put anything from a repository under review into an issue, comment, commit message, branch name, test, fixture, doc, screenshot, spike corpus or agent brief, or into anything pushed (preview refs, spike branches): no repository or organisation names, PR or issue numbers, PR titles, branch names, file paths, identifiers, code, diagram source, commit hashes, or people's names and logins.
+  - When a report or screenshot from the owner shows such details, describe the problem with neutral placeholders (`acme/app#123`, `example_module.py`, `some_function`) and say only what is needed to reproduce it.
+  - Examples and test data come from this repo, the bundled demo, or public open-source projects.
+  - If you find such details already published, tell the owner. Edits leave a public edit history that only the owner can delete.
 - Durable guidance about how to work on this repo goes in this file, not in an agent's private memory.
 - When done, report: what was built, what was verified (commands + results), what is stubbed or missing, and anything in the PRD you deviated from.
