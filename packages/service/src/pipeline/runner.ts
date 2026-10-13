@@ -300,7 +300,7 @@ export class Pipeline {
     reviewId: string,
     turn: {
       sessionId: string;
-      threadId?: string;
+      annotationId?: string;
       conversationKey?: string;
       cardId?: string;
       hunkHash?: string;
@@ -314,7 +314,7 @@ export class Pipeline {
       const lookup = this.lookupWithAliases(snapshot);
       await ingestAgentTurn(this.wireDeps(), reviewId, {
         sessionId: turn.sessionId,
-        ...(turn.threadId ? { threadId: turn.threadId } : {}),
+        ...(turn.annotationId ? { annotationId: turn.annotationId } : {}),
         ...(turn.conversationKey ? { conversationKey: turn.conversationKey } : {}),
         ...(turn.cardId ? { cardId: turn.cardId } : {}),
         ...(turn.hunkHash ? { hunkHash: turn.hunkHash } : {}),
@@ -378,7 +378,7 @@ export class Pipeline {
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
-      ...(o.threadId ? { threadId: o.threadId } : {}),
+      ...(o.annotationId ? { annotationId: o.annotationId } : {}),
       promptSnapshot: prompt,
       run: async (ctx) => {
         // Retryable errors retry inside the job (so the deferred settles
@@ -483,7 +483,7 @@ export class Pipeline {
             await this.finishBookkeeping(o.reviewId, () =>
               this.ingestTurn(o.reviewId, {
                 sessionId: forked.session.id,
-                ...(o.threadId ? { threadId: o.threadId } : {}),
+                ...(o.annotationId ? { annotationId: o.annotationId } : {}),
                 ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
                 ...(o.cardId ? { cardId: o.cardId } : {}),
                 ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
@@ -539,7 +539,7 @@ export class Pipeline {
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
-      ...(o.threadId ? { threadId: o.threadId } : {}),
+      ...(o.annotationId ? { annotationId: o.annotationId } : {}),
       promptSnapshot: prompt,
       run: async (ctx) => {
         for (let attempt = 0; ; attempt++) {

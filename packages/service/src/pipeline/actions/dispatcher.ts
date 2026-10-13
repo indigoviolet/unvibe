@@ -17,14 +17,13 @@ import type { SharedContextService } from "../../sharedctx/service.js";
 import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import { generateAction } from "./generate.js";
-import { askAction, replyAction, retryAction } from "./ask.js";
+import { askAction, explainAction, replyAction, retryAction } from "./conversation.js";
 import { bookmarkAction, collapseAction } from "./read.js";
 import { closeAction, deleteAction } from "./close.js";
 import { conceptAction } from "./concept.js";
 import { depthAction } from "./depth.js";
 import { diagramAction } from "./diagram.js";
 import { examplesAction } from "./examples.js";
-import { explainAction } from "./explain.js";
 import { followupAction } from "./followup.js";
 import { noteAction } from "./note.js";
 import { promoteAction } from "./promote.js";
@@ -129,7 +128,7 @@ export async function dispatchAction(
           return bad(reply, "quote, anchor and message are required");
         }
         const res = await askAction(ctx, { quote: action.quote, anchor: action.anchor, message: action.message });
-        const out: ActionResponse = { accepted: true, annotationId: res.threadId, threadId: res.threadId };
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
         if (res.reused) out.reused = true;
@@ -143,7 +142,7 @@ export async function dispatchAction(
           anchor: action.anchor,
           ...(action.text !== undefined ? { text: action.text } : {}),
         });
-        return { accepted: true, annotationId: res.threadId, threadId: res.threadId } satisfies ActionResponse;
+        return { accepted: true, annotationId: res.annotationId } satisfies ActionResponse;
       }
       case "reply": {
         need(ctx);
@@ -151,9 +150,7 @@ export async function dispatchAction(
           return bad(reply, "annotationId and message are required");
         }
         const res = await replyAction(ctx, action.annotationId, action.message);
-        const out: ActionResponse = { accepted: true, annotationId: res.annotationId };
-        if (res.threadId) out.threadId = res.threadId;
-        if (res.turnId) out.turnId = res.turnId;
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
         if (res.jobId) out.jobId = res.jobId;
         return out;
       }
@@ -161,9 +158,7 @@ export async function dispatchAction(
         need(ctx);
         if (typeof action.annotationId !== "string") return bad(reply, "annotationId is required");
         const res = await retryAction(ctx, action.annotationId);
-        const out: ActionResponse = { accepted: true, annotationId: res.annotationId };
-        if (res.threadId) out.threadId = res.threadId;
-        if (res.turnId) out.turnId = res.turnId;
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
         if (res.jobId) out.jobId = res.jobId;
         return out;
       }

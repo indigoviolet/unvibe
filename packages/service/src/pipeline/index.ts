@@ -13,8 +13,7 @@ export type { RunInForkOptions, RunInForkResult, RunSmallOptions, RunSmallResult
 export { ingestDemo, isDemoRequest, demoFixtureName, fixturesDirDefault } from "./demo.js";
 export { dispatchAction, type ActionDeps } from "./actions/dispatcher.js";
 export { generateAction } from "./actions/generate.js";
-export { explainAction, runExplainFill } from "./actions/explain.js";
-export { askAction, replyAction, retryAction, runAskFill } from "./actions/ask.js";
+export { askAction, explainAction, replyAction, retryAction } from "./actions/conversation.js";
 export { noteAction } from "./actions/note.js";
 export { depthAction } from "./actions/depth.js";
 export { examplesAction } from "./actions/examples.js";

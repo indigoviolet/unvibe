@@ -109,7 +109,7 @@ export function newCardForTurn(
     kind: "new-card",
     reviewId,
     text: turnText(turn.blocks, annotation.anchor.quotedText, turn.question),
-    threadId: annotation.id,
+    annotationId: annotation.id,
   };
   const cardId = hostCardId(snapshot, annotation.anchor);
   if (cardId) event.cardId = cardId;
@@ -120,17 +120,17 @@ export function newCardForTurn(
 /** True when an annotation holds shared agent content (deletion-worthy). */
 export function wasShared(annotation: Annotation): boolean {
   if (annotation.type === "conversation") return (annotation.turns ?? []).some((t) => t.blocks.length > 0);
-  if (annotation.type === "thread") return annotation.messages.some((m) => m.who === "ai");
+  if (annotation.type === "comment") return annotation.messages.some((m) => m.who === "ai");
   return false;
 }
 
 /** `item-deleted` one-liner for a deleted shared item. */
 export function deletionFor(reviewId: string, annotation: Annotation): InteractionEvent {
-  const what = annotation.type === "conversation" ? "explanation" : annotation.type === "thread" ? "thread" : "annotation";
+  const what = annotation.type === "conversation" ? "explanation" : annotation.type === "comment" ? "comment" : "annotation";
   return {
     kind: "item-deleted",
     reviewId,
     text: `Deleted ${what} "${oneLine(annotation.anchor.quotedText)}"`,
-    threadId: annotation.id,
+    annotationId: annotation.id,
   };
 }

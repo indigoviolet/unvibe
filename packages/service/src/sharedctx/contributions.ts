@@ -26,7 +26,7 @@ export const MAX_CONTRIBUTION_ITEMS = 3;
 export interface ContributeInput {
   reviewId: string;
   sessionId: string;
-  threadId?: string;
+  annotationId?: string;
   contribute: NonNullable<ReplyData["contribute"]>;
   /** Text the session already saw (L1+L2+change list); matches dedupe here. */
   contextText: string;
@@ -172,7 +172,7 @@ export function processContribute(input: ContributeInput, lookup: ReviewLookup):
     const contribution: Contribution = {
       id: input.nextId,
       sourceSession: input.sessionId,
-      ...(input.threadId ? { sourceThread: input.threadId } : {}),
+      ...(input.annotationId ? { sourceThread: input.annotationId } : {}),
       items: keptItems.map((item) => ({
         kind: item.kind,
         text: item.text,
@@ -188,7 +188,7 @@ export function processContribute(input: ContributeInput, lookup: ReviewLookup):
       payload: {
         contributionId: contribution.id,
         sourceSession: input.sessionId,
-        ...(input.threadId ? { sourceThread: input.threadId } : {}),
+        ...(input.annotationId ? { sourceThread: input.annotationId } : {}),
         items: contribution.items.map((i) => ({ kind: i.kind, text: i.text })),
       },
       scope: { scope: "global" },

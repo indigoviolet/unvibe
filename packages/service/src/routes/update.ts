@@ -255,7 +255,7 @@ export async function registerUpdate(
       activeJobs = deps.jobs?.activeCount() ?? 0;
       if (activeJobs > 0) {
         blocked = (deps.jobs?.listActive(UPDATE_BLOCKED_JOBS_CAP) ?? []).map((j) => {
-          const label = j.progress ?? j.cardId ?? j.threadId;
+          const label = j.progress ?? j.cardId ?? j.annotationId;
           return {
             id: j.id,
             kind: j.kind,

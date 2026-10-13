@@ -1,20 +1,20 @@
 /**
- * Comment threads (M6, PRD 4.8-4.9, 7, 14.1).
+ * Comments (M6, PRD 4.8-4.9, 7, 14.1; #136 slice 2: every thread is a
+ * comment — Ask makes conversation cards).
  *
- * - `POST /api/reviews/:id/comments` — create a thread as a Note or as the
- *   user's first message (guide block, description paragraph, or diff line),
+ * - `POST /api/reviews/:id/comments` — create a comment with the user's
+ *   first message (guide block, description paragraph, or diff line),
  *   or an agent-suggested comment (`suggested` on a diff line, never marked
  *   For PR initially).
  * - `POST …/comments/:commentId/replies` — user reply.
  * - `PATCH …/comments/:commentId` — `{ post?, draft?, open?, reply? }`:
  *   mark For PR, edit the For-PR draft, open/close, reply-box content.
- * - `DELETE …/comments/:commentId` — delete the thread.
+ * - `DELETE …/comments/:commentId` — delete the comment.
  *
  * Everything goes through `ReviewStore.mutate`. The `POST …/actions`
  * union (`note`, `close`, `delete`) overlaps: the actions route should call
  * `createNoteThread`, `closeAnnotation`, and `deleteAnnotation` from
- * `src/comments/threads.ts`; `ask` creates via `createAskThread` and gets
- * its agent reply through the `appendAgentReply` seam.
+ * `src/comments/threads.ts`.
  */
 import type { FastifyInstance } from "fastify";
 import type { ActionAnchor, Annotation, CreateCommentRequest, UpdateCommentRequest } from "@unvibe/shared";
@@ -22,7 +22,6 @@ import {
   createSuggestedComment,
   createThread,
   deleteAnnotation,
-  isCommentThread,
   replyToThread,
 } from "../comments/index.js";
 import type { ServiceContext } from "./context.js";
@@ -99,7 +98,6 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
         ...(body.prefix !== undefined ? { prefix: body.prefix } : {}),
         ...(body.suffix !== undefined ? { suffix: body.suffix } : {}),
         ...(body.position !== undefined ? { position: body.position } : {}),
-        note: body.note ?? true,
         ...(body.text !== undefined ? { text: body.text } : {}),
       });
       return reply.code(201).send({ id: cid });
@@ -160,17 +158,7 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
     if (post === undefined && draft === undefined && open === undefined && replyBox === undefined) {
       return reply.code(400).send({ error: "nothing to update" });
     }
-    const snapshot = reviews.getSnapshot(id);
-    if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
-    // Issue #135: only Comments are submitted, so `post` is not accepted
-    // on an Ask thread in either direction. Stored data is dev-only and
-    // reset, so there is no legacy path for old marks.
-    if (post !== undefined) {
-      const target = snapshot.annotations.find((a) => a.id === commentId);
-      if (target && target.type === "thread" && !isCommentThread(target as Annotation)) {
-        return reply.code(400).send({ error: "ask threads are never posted to GitHub — write a comment instead" });
-      }
-    }
+    if (!reviews.getSnapshot(id)) return reply.code(404).send({ error: `unknown review ${id}` });
     try {
       await reviews.mutate(id, (draftState) => {
         const found = (
@@ -179,11 +167,11 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
         if (!found) throw new Error(`unknown comment ${commentId}`);
         // Issue #136: `open` and the reply-box draft (`reply`) apply to
         // conversation cards too (dotted-link click re-expands a closed
-        // card in place). Post/draft stay thread-only: only comments post.
-        if (open !== undefined && (found.type === "thread" || found.type === "conversation" || found.type === "link")) {
+        // card in place). Post/draft stay comment-only: only comments post.
+        if (open !== undefined && (found.type === "comment" || found.type === "conversation" || found.type === "link")) {
           found.open = open;
         } else if (open !== undefined) {
-          throw new Error(`annotation ${commentId} is not a thread`);
+          throw new Error(`annotation ${commentId} is not a comment`);
         }
         if (found.type === "conversation") {
           if (post !== undefined || draft !== undefined || draft === null) {
@@ -196,9 +184,9 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
           }
           return;
         }
-        if (found.type !== "thread") {
+        if (found.type !== "comment") {
           if (post !== undefined || draft !== undefined || draft === null || replyBox !== undefined || replyBox === null) {
-            throw new Error(`annotation ${commentId} is not a thread`);
+            throw new Error(`annotation ${commentId} is not a comment`);
           }
           return;
         }

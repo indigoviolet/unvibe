@@ -1,9 +1,6 @@
 export {
-  appendAgentReply,
-  appendAgentReplyInDraft,
   buildAnchor,
   closeAnnotation,
-  createAskThread,
   createNoteThread,
   createSuggestedComment,
   createSuggestedCommentInDraft,
@@ -11,7 +8,6 @@ export {
   createThreadInDraft,
   deleteAnnotation,
   deleteInDraft,
-  isCommentThread,
   newAnnotationId,
   replyInDraft,
   replyToThread,

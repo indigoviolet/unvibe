@@ -201,9 +201,9 @@ export function nearbyAnnotationsText(
   return same
     .slice(0, 5)
     .map((a) => {
-      if (a.type === "thread") {
-        const msgs = a.messages.map((m) => `${m.who === "you" ? "Reader" : "Agent"}: ${m.text ?? m.html ?? ""}`).join("\n");
-        return `Thread [[ann:${a.id}]] on "${a.anchor.quotedText}":\n${msgs}`;
+      if (a.type === "comment") {
+        const msgs = a.messages.map((m) => `${m.who === "you" ? "Reader" : "Agent"}: ${m.text ?? ""}`).join("\n");
+        return `Comment [[ann:${a.id}]] on "${a.anchor.quotedText}":\n${msgs}`;
       }
       const body = (a.turns ?? [])
         .map((t) => `${t.question === null ? "(the default question)" : `Reader: ${t.question}`}\nAgent: ${t.blocks.map(blockPlainText).join("\n\n")}`)
@@ -213,12 +213,10 @@ export function nearbyAnnotationsText(
     .join("\n\n");
 }
 
-/** Thread messages so far, rendered for the prompt. */
+/** Comment messages so far, rendered for the prompt. */
 export function threadTextFor(thread: Annotation): string {
   if (thread.messages.length === 0) return "(none)";
-  return thread.messages
-    .map((m) => `${m.who === "you" ? "Reader" : "Agent"}: ${m.text ?? m.html ?? ""}`)
-    .join("\n\n");
+  return thread.messages.map((m) => `${m.who === "you" ? "Reader" : "Agent"}: ${m.text ?? ""}`).join("\n\n");
 }
 
 /**

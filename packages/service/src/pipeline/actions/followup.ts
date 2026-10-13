@@ -55,19 +55,21 @@ export async function followupAction(
   // the same conversation (the item stays, like reply-box text).
   if (located.holder.kind === "conversation") {
     const annotationId = located.holder.annotationId;
-    const live = getSnapshotOrThrow(reviews, reviewId);
-    const card = live.annotations.find((a) => a.id === annotationId);
+    const current = getSnapshotOrThrow(reviews, reviewId);
+    const card = current.annotations.find((a) => a.id === annotationId);
     if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
     const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing answer…");
     const probe = await probeConversationSessionFor(ctx, card);
+    const live = probe.continueSessionId !== undefined;
     const res = await runConversationTurn(ctx, annotationId, turnId, {
       anchor: card.anchor,
-      template: "ask",
+      template: live ? "ask_turn" : "ask",
       message,
-      ...(probe.transcript !== undefined ? { transcript: probe.transcript } : {}),
+      ...(probe.transcript !== undefined && !live ? { transcript: probe.transcript } : {}),
       ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
       dedupeKey: key,
       echoCandidates: [quote, message],
+      replayKind: "ask",
       cardLabel: message,
       workingLabel: "Writing answer…",
     });
@@ -103,6 +105,7 @@ export async function followupAction(
     // Issue #50: the card header shows the suggestion label; the
     // question is the label (or its pre-baked ask text).
     echoCandidates: [quote, message],
+    replayKind: "ask",
     cardLabel: message,
     workingLabel: "Writing answer…",
   });

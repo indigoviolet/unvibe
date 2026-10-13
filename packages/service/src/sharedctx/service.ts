@@ -329,18 +329,18 @@ export class SharedContextService {
   // -- settled threads ---------------------------------------------------------
 
   /**
-   * Settle check for one thread: closed, or idle past the threshold after an
-   * agent reply. Settled summaries are logged (one line) via the interaction
-   * path so other conversations see them in their change lists.
+   * Settle check for one comment: closed, or idle past the threshold.
+   * Settled summaries are logged (one line) via the interaction path so
+   * other conversations see them in their change lists.
    */
   async maybeSettleThread(
     reviewId: string,
-    threadId: string,
+    commentId: string,
     opts: { now?: number; settleAfterMs?: number; lastActivityAt?: number } = {},
   ): Promise<{ settled: boolean; summary?: string }> {
     const snap = this.snapshot(reviewId);
-    const thread = snap?.annotations.find((a) => a.id === threadId);
-    if (!snap || !thread || thread.type !== "thread") return { settled: false };
+    const thread = snap?.annotations.find((a) => a.id === commentId);
+    if (!snap || !thread || thread.type !== "comment") return { settled: false };
     const now = opts.now ?? this.clock.now();
     const lastActivity = opts.lastActivityAt ?? threadLastActivity(thread, now);
     const snapThread: ThreadSnapshot = toThreadSnapshot(thread, lastActivity);
@@ -353,14 +353,14 @@ export class SharedContextService {
         e.kind === "thread-summary" &&
         e.payload !== null &&
         typeof e.payload === "object" &&
-        (e.payload as Record<string, unknown>).threadId === threadId,
+        (e.payload as Record<string, unknown>).annotationId === commentId,
     );
     if (already) return { settled: true, summary };
     const host = thread.anchor.host;
     await this.appendLog(
       reviewId,
       "thread-summary",
-      { summary, threadId },
+      { summary, annotationId: commentId },
       { scope: "global" },
     );
     void host;

@@ -20,7 +20,7 @@ export const DEFAULT_THREAD_SETTLE_MS = 5 * 60 * 1000;
 export interface ThreadSnapshot {
   id: string;
   open: boolean;
-  messages: { who: "you" | "ai"; text?: string; html?: string }[];
+  messages: { who: "you" | "ai"; text?: string }[];
   /** Epoch ms of the last message; null when unknown (never settles by idle). */
   lastActivityAt: number | null;
 }
@@ -29,7 +29,7 @@ export function toThreadSnapshot(thread: Annotation, lastActivityAt: number | nu
   return {
     id: thread.id,
     open: thread.open,
-    messages: thread.messages.map((m) => ({ who: m.who, ...(m.text !== undefined ? { text: m.text } : {}), ...(m.html !== undefined ? { html: m.html } : {}) })),
+    messages: thread.messages.map((m) => ({ who: m.who, ...(m.text !== undefined ? { text: m.text } : {}) })),
     lastActivityAt,
   };
 }
@@ -59,7 +59,7 @@ export function lastAgentLines(thread: ThreadSnapshot): string[] {
   for (let i = thread.messages.length - 1; i >= 0; i--) {
     const m = thread.messages[i];
     if (m.who !== "ai") continue;
-    const raw = m.text ?? m.html ?? "";
+    const raw = m.text ?? "";
     const stripped = raw.replace(/<[^>]+>/g, "");
     return stripped
       .split("\n")
@@ -85,7 +85,7 @@ export async function summarizeSettledThread(
   summarizeWithSmallModel?: (threadText: string) => Promise<string>,
 ): Promise<string> {
   const rendered = thread.messages
-    .map((m) => `${m.who === "ai" ? "Agent" : "Reader"}: ${(m.text ?? m.html ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()}`)
+    .map((m) => `${m.who === "ai" ? "Agent" : "Reader"}: ${(m.text ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()}`)
     .join("\n");
   if (summarizeWithSmallModel) {
     try {

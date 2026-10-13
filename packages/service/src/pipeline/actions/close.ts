@@ -2,16 +2,16 @@
  * `close` / `delete` actions (PRD §4.7, §4.8).
  *
  * - `close` on a conversation closes it (the anchor becomes a dotted
- *   link; hover previews, click expands in place). On a thread it closes
- *   the thread (guide: back to its marker; diff: comment icon on the line).
+ *   link; hover previews, click expands in place). On a comment it closes
+ *   the comment (guide: back to its marker; diff: comment icon on the line).
  * - `delete` removes the annotation entirely (and closes its session).
- * - Both cancel the annotation's job when one is still running (PRD §12).
+ * - A running fill job is cancelled on close/delete (PRD §12); comments
+ *   never carry jobs.
  */
 import type { Annotation } from "@unvibe/shared";
 import { recordInteraction } from "../../interaction/index.js";
 import { getSnapshotOrThrow, type ActionContext } from "./common.js";
 import { cancelConversationJob } from "./conversation.js";
-import { cancelAskJob } from "./ask.js";
 import { deletionFor, wasShared } from "./events.js";
 
 export async function closeAction(
@@ -24,8 +24,6 @@ export async function closeAction(
   if (!found) throw new Error(`unknown annotation ${annotationId}`);
   if (found.type === "conversation") {
     cancelConversationJob(ctx, snapshot, annotationId);
-  } else {
-    cancelAskJob(ctx, annotationId);
   }
 
   await reviews.mutate(reviewId, (draft) => {
@@ -39,10 +37,10 @@ export async function closeAction(
     // Closing keeps content for the dotted-link preview; a working job
     // that finishes later still fills the (closed) turn.
   });
-  // Close is UI state (never logged). A closed thread settles at once:
+  // Close is UI state (never logged). A closed comment settles at once:
   // one line in the log so other conversations see it (PRD §9.3).
-  if (found.type === "thread") {
-    await recordInteraction({ kind: "close", reviewId, threadId: annotationId, text: `Closed thread "${annotationId}"` });
+  if (found.type === "comment") {
+    await recordInteraction({ kind: "close", reviewId, annotationId, text: `Closed comment "${annotationId}"` });
     try {
       await ctx.sharedctx?.maybeSettleThread(reviewId, annotationId);
     } catch {
@@ -64,8 +62,6 @@ export async function deleteAction(
   if (!found) throw new Error(`unknown annotation ${targetId}`);
   if (found.type === "conversation") {
     cancelConversationJob(ctx, snapshot, targetId);
-  } else {
-    cancelAskJob(ctx, targetId);
   }
   // The card's session belongs to the card: close it so it does not linger.
   const sessionId = found.sessionId;

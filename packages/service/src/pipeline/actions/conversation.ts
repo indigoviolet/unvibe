@@ -14,27 +14,36 @@
  * - degraded-turn handling (`DegradedTurnError`, #51): a complaining turn
  *   fails the job and leaves no blocks behind.
  *
- * Prompt changes are deliberately minimal in slice 1: the first turn of
- * an Explain still uses `explain.md`, later turns use `ask.md` (the
- * merged first-turn + short follow-up prompts land with slice 2).
+ * Prompts (slice 2): the first turn of both Explain and Ask uses the
+ * merged `ask.md`; later turns on a live session use the short
+ * `ask_turn.md` (change list + question only), while rebuilt sessions get
+ * the full prompt with the stored turns as the transcript.
+ *
+ * This module also owns the `explain` / `ask` / `reply` / `retry`
+ * actions: one stored card, created by either first question and
+ * extended by turns.
  */
 import { randomBytes } from "node:crypto";
-import type { Anchor, Annotation, Block, Job, Turn } from "@unvibe/shared";
+import type { ActionAnchor, Anchor, Annotation, Block, Job, Turn } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds } from "@unvibe/shared";
-import { newAnnotationId } from "../../comments/threads.js";
+import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
 import { recordInteraction } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { DegradedTurnError } from "../../jobs/errors.js";
 import {
+  anchorKey,
   baseVersionOf,
   cancelAnnotationJob,
   captureJobId,
   findActiveJob,
   getSnapshotOrThrow,
   l4VariablesWithRevealed,
+  normalizeBlockAnchor,
   suppressFillError,
   type ActionContext,
 } from "./common.js";
+import { anchorSameHost } from "./explain-host.js";
+import { probeConversationSessionFor } from "./ask-probe.js";
 import { aliasCanonicalizer, remapAliasTargets } from "./validate-apply.js";
 import { newCardForTurn } from "./events.js";
 import { finalizeFresh, repairDiagrams } from "./diagram-finalize.js";
@@ -117,14 +126,18 @@ export async function pushConversationTurn(
 
 export interface ConversationTurnOptions {
   anchor: Anchor;
-  /** `explain` for first Explain turns, `ask` for every later turn (slice 1). */
-  template: "explain" | "ask";
+  /**
+   * `ask` for first turns (both questions) and rebuilt sessions;
+   * `ask_turn` for later turns on a live session (change list +
+   * question only — no resend of the anchor, card and history).
+   */
+  template: "ask" | "ask_turn";
   /** User question text (L4 message + echo-strip candidate). */
   message: string;
   /**
    * Stored turns rendered as "conversation so far", sent instead of the
    * empty thread when the session was rebuilt (restart, idle close) and
-   * the agent never saw the earlier turns.
+   * the agent never saw the earlier turns. Only with template `ask`.
    */
   transcript?: string;
   /** Continue on this session instead of forking (later turns, live session). */
@@ -132,7 +145,11 @@ export interface ConversationTurnOptions {
   dedupeKey?: { anchor: string; requestKind: string; depth?: string; baseVersion: string };
   skipDedupe?: boolean;
   echoCandidates: string[];
-  replay?: { kind: string; key?: string };
+  /**
+   * Replay marker kind: `explain` for default-question first turns,
+   * `ask` for everything else (matches the recorded kinds).
+   */
+  replayKind: "explain" | "ask";
   /** Human label for the repair-turn prompt (question, else `Explain: <quote>`). */
   cardLabel: string;
   workingLabel: string;
@@ -152,7 +169,7 @@ export async function runConversationTurn(
   const live = getSnapshotOrThrow(reviews, reviewId);
   const key = opts.dedupeKey ?? {
     anchor: `ann:${annotationId}:${opts.message.slice(0, 80)}`,
-    requestKind: opts.template === "explain" ? "explain" : "ask",
+    requestKind: "ask",
     baseVersion: baseVersionOf(live),
   };
   if (!opts.skipDedupe) {
@@ -173,19 +190,25 @@ export async function runConversationTurn(
   });
 
   const latest = getSnapshotOrThrow(reviews, reviewId);
-  const variables = await l4VariablesWithRevealed(ctx, latest, opts.anchor, { message: opts.message });
+  // Later turns on a live session send only what is new (the change
+  // list rides `change_list` via the shared-context wire inside
+  // `runInFork`); every other turn sends the full first-turn prompt.
+  const variables =
+    opts.template === "ask_turn"
+      ? { message: opts.message }
+      : await l4VariablesWithRevealed(ctx, latest, opts.anchor, { message: opts.message });
   if (opts.transcript !== undefined) variables.thread = opts.transcript;
   const capture = captureJobId();
-  const replay = opts.replay ?? (isReplayRunner(pipeline.runner) ? { kind: opts.template } : undefined);
+  const replay = isReplayRunner(pipeline.runner) ? { kind: opts.replayKind } : undefined;
 
   const done = pipeline.runInFork({
     reviewId,
-    kind: opts.template,
+    kind: "ask",
     template: opts.template,
     variables,
     priority: JOB_PRIORITY.userRequested,
     dedupeKey: key,
-    threadId: annotationId,
+    annotationId,
     // Persistent conversation: the next turn's change list resumes from
     // this turn's cursor (sharedctx wire advances it only on success).
     conversationKey: annotationId,
@@ -258,8 +281,8 @@ export async function runConversationTurn(
                 card: opts.cardLabel,
                 level: turn?.level ?? "standard",
                 dedupeAnchor: `ann:${annotationId}`,
-                requestKind: `${opts.template}-diagram-repair`,
-                threadId: annotationId,
+                requestKind: "ask-diagram-repair",
+                annotationId,
                 conversationKey: annotationId,
                 echoCandidates: opts.echoCandidates,
               },
@@ -359,4 +382,245 @@ export function cancelConversationJob(ctx: ActionContext, snapshot: { annotation
       ? [...(found.turns ?? [])].reverse().find((t) => t.jobId)?.jobId
       : undefined;
   cancelAnnotationJob(ctx.jobs, ctx.reviewId, found?.jobId ?? turnJob);
+}
+
+export interface ExplainRequest {
+  quote: string;
+  anchor: ActionAnchor;
+}
+
+export interface AskRequest {
+  quote: string;
+  anchor: ActionAnchor;
+  message: string;
+}
+
+/** The default question, fixed in code (the merged prompt takes it as the message). */
+export const DEFAULT_QUESTION = "Explain this.";
+
+function questionEchoCandidates(quote: string, message: string): string[] {
+  // Issue #50: the app shows the selection in the card header, and a
+  // first-turn question in the answer heading; a body line that merely
+  // repeats either is dropped when the reply is parsed.
+  return [quote, message];
+}
+
+export async function explainAction(
+  ctx: ActionContext,
+  req: ExplainRequest,
+): Promise<{ annotationId: string; turnId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
+  const { reviews, reviewId } = ctx;
+  // Empty quotes are legal: the anchor still scopes the turn.
+  if (typeof req.quote !== "string") throw new Error("quote is required");
+  const before = getSnapshotOrThrow(reviews, reviewId);
+  const normalized = normalizeBlockAnchor(before, req.anchor);
+  // Validate the host exists (buildAnchor throws on unknown hosts).
+  const anchor = buildAnchor(before, normalized, req.quote);
+  const key = {
+    anchor: `${anchorKey(normalized)}:${req.quote.slice(0, 80)}`,
+    requestKind: "explain",
+    baseVersion: baseVersionOf(before),
+  };
+
+  // Dedupe: identical active request, or an already-stored identical card.
+  const active = findActiveJob(ctx.jobs, reviewId, key);
+  if (active) {
+    const existing = before.annotations.find(
+      (a) => a.type === "conversation" && a.anchor.quotedText === req.quote && a.jobId === active.id,
+    );
+    return {
+      annotationId: existing?.id ?? "",
+      turnId: existing?.turns?.[0]?.id ?? "",
+      jobId: active.id,
+      deduplicated: true,
+    };
+  }
+  // PRD §12 reuse (#10): the same anchor+quote on the same base version
+  // reopens the stored card instead of generating a second one. Closed
+  // cards reopen (dotted-link → expand in place); deleted cards
+  // are gone so a repeat is legitimately a new request. A new base version
+  // (new commits) invalidates: anchor.version must match current version.
+  const storedDup = before.annotations.find(
+    (a) =>
+      a.type === "conversation" &&
+      a.anchor.quotedText === req.quote &&
+      anchorSameHost(a.anchor, anchor) &&
+      a.anchor.version === before.version.n &&
+      !a.error &&
+      !(a.turns ?? []).some((t) => t.error) &&
+      (a.turns ?? []).some((t) => t.blocks.length > 0),
+  );
+  if (storedDup) {
+    if (!storedDup.open) {
+      await reviews.mutate(reviewId, (draft) => {
+        const found = (draft.annotations as unknown as Annotation[]).find((x) => x.id === storedDup.id);
+        if (found) found.open = true;
+      });
+    }
+    return { annotationId: storedDup.id, turnId: storedDup.turns?.[0]?.id ?? "", reused: true };
+  }
+
+  // Immediately visible working state.
+  const { annotationId, turnId } = await createConversationCard(ctx, anchor, null, "Thinking…");
+
+  const res = await runConversationTurn(ctx, annotationId, turnId, {
+    anchor,
+    template: "ask",
+    message: DEFAULT_QUESTION,
+    dedupeKey: key,
+    echoCandidates: questionEchoCandidates(req.quote, DEFAULT_QUESTION),
+    replayKind: "explain",
+    cardLabel: `Explain: ${req.quote}`,
+    workingLabel: "Thinking…",
+  });
+  return { annotationId, turnId, ...res };
+}
+
+export async function askAction(
+  ctx: ActionContext,
+  req: AskRequest,
+): Promise<{ annotationId: string; turnId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
+  const { reviews, reviewId } = ctx;
+  if (!req.message || req.message.trim() === "") throw new Error("ask message is required");
+  // Empty quotes are legal: diff-line clicks and description flows often
+  // carry no quote (the header falls back to file:line). Only the type is
+  // enforced (the dispatcher 400s a missing quote).
+  if (typeof req.quote !== "string") throw new Error("quote is required");
+  const before = getSnapshotOrThrow(reviews, reviewId);
+  const normalized = normalizeBlockAnchor(before, req.anchor);
+  const anchor = buildAnchor(before, normalized, req.quote);
+  // PRD §12 key (#10): the question itself is part of the identity — two
+  // different messages on the same anchor must not share a job/result.
+  const messageKey = req.message.trim().slice(0, 120);
+  const key = {
+    anchor: `${anchorKey(normalized)}:${req.quote.slice(0, 80)}:${messageKey}`,
+    requestKind: "ask",
+    baseVersion: baseVersionOf(before),
+  };
+
+  const active = findActiveJob(ctx.jobs, reviewId, key);
+  if (active) {
+    const existing = before.annotations.find(
+      (a) => a.type === "conversation" && a.jobId === active.id,
+    );
+    return {
+      annotationId: existing?.id ?? "",
+      turnId: existing?.turns?.[0]?.id ?? "",
+      jobId: active.id,
+      deduplicated: true,
+    };
+  }
+
+  // PRD §12 reuse (#10): the same message on the same anchor and base
+  // version returns the stored card without an agent call. A different
+  // message is legitimately a new request; a deleted card is gone so a
+  // repeat is a new request; a new base version invalidates via
+  // anchor.version.
+  const storedDup = before.annotations.find((a) => {
+    if (a.type !== "conversation") return false;
+    if (a.anchor.quotedText !== req.quote) return false;
+    if (!anchorSameHost(a.anchor, anchor)) return false;
+    if (a.anchor.version !== before.version.n) return false;
+    if (a.error || (a.turns ?? []).some((t) => t.error)) return false;
+    const first = (a.turns ?? [])[0];
+    if (!first || first.question?.trim() !== req.message.trim()) return false;
+    return first.blocks.length > 0;
+  });
+  if (storedDup) {
+    if (!storedDup.open) {
+      await reviews.mutate(reviewId, (draft) => {
+        const found = (draft.annotations as unknown as Annotation[]).find((x) => x.id === storedDup.id);
+        if (found) found.open = true;
+      });
+    }
+    return { annotationId: storedDup.id, turnId: storedDup.turns?.[0]?.id ?? "", reused: true };
+  }
+
+  // Card with the reader's question as its first turn (guide cards start
+  // open in place, like Explain).
+  const { annotationId, turnId } = await createConversationCard(ctx, anchor, req.message, "Thinking…");
+
+  const res = await runConversationTurn(ctx, annotationId, turnId, {
+    anchor,
+    template: "ask",
+    message: req.message,
+    dedupeKey: key,
+    echoCandidates: questionEchoCandidates(req.quote, req.message),
+    replayKind: "ask",
+    cardLabel: req.message,
+    workingLabel: "Thinking…",
+  });
+  return { annotationId, turnId, ...res };
+}
+
+/**
+ * `reply`: follow-up user message on a conversation card, added as a turn
+ * on the card's session. A live session gets the short prompt (only what
+ * is new); a dead one falls back to a fresh fork with the stored turns
+ * as the transcript — same card, same reply.
+ */
+export async function replyAction(
+  ctx: ActionContext,
+  annotationId: string,
+  message: string,
+): Promise<{ annotationId: string; turnId: string; jobId?: string }> {
+  const { reviews, reviewId } = ctx;
+  if (!message || message.trim() === "") throw new Error("reply message is required");
+  const before = getSnapshotOrThrow(reviews, reviewId);
+  const card = before.annotations.find((a) => a.id === annotationId);
+  if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
+
+  const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing reply…");
+  const probe = await probeConversationSessionFor(ctx, card);
+  const live = probe.continueSessionId !== undefined;
+  const res = await runConversationTurn(ctx, annotationId, turnId, {
+    anchor: card.anchor,
+    template: live ? "ask_turn" : "ask",
+    message,
+    ...(probe.transcript !== undefined && !live ? { transcript: probe.transcript } : {}),
+    ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+    skipDedupe: true,
+    echoCandidates: [card.anchor.quotedText, message],
+    replayKind: "ask",
+    cardLabel: message,
+    workingLabel: "Writing reply…",
+  });
+  return { annotationId, turnId, ...res };
+}
+
+/**
+ * `retry`: rebuild the failed fill on the *same* annotation id (the last
+ * turn). The queue's own retry can't re-trigger the completion applier,
+ * so a rebuild (same anchor/message, same session when live) is the
+ * correct retry; the visible error clears when the new attempt starts.
+ */
+export async function retryAction(
+  ctx: ActionContext,
+  annotationId: string,
+): Promise<{ annotationId: string; turnId: string; jobId?: string }> {
+  const { reviews, reviewId } = ctx;
+  const snapshot = getSnapshotOrThrow(reviews, reviewId);
+  const found = snapshot.annotations.find((a) => a.id === annotationId);
+  if (!found || found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
+  const turns = found.turns ?? [];
+  const last = turns[turns.length - 1];
+  if (!last) throw new Error(`conversation ${annotationId} has no turn to retry`);
+  if (!last.error && !found.error) throw new Error(`conversation ${annotationId} has no failed turn to retry`);
+  const firstTurn = last.question === null;
+  const probe = await probeConversationSessionFor(ctx, found);
+  const live = probe.continueSessionId !== undefined && !firstTurn;
+  const message = last.question ?? DEFAULT_QUESTION;
+  const res = await runConversationTurn(ctx, annotationId, last.id, {
+    anchor: found.anchor,
+    template: firstTurn ? "ask" : live ? "ask_turn" : "ask",
+    message,
+    ...(probe.transcript !== undefined && !live && !firstTurn ? { transcript: probe.transcript } : {}),
+    ...(live && probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+    skipDedupe: true,
+    echoCandidates: questionEchoCandidates(found.anchor.quotedText, message),
+    replayKind: firstTurn ? "explain" : "ask",
+    cardLabel: firstTurn ? `Explain: ${found.anchor.quotedText}` : message,
+    workingLabel: firstTurn ? "Thinking…" : "Writing reply…",
+  });
+  return { annotationId, turnId: last.id, ...res };
 }

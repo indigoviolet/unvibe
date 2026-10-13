@@ -54,7 +54,7 @@ export function logEntryForEvent(event: InteractionEvent): TaxonomyResult | null
         kind: "thread-summary",
         payload: {
           summary: event.text,
-          threadId: event.threadId,
+          annotationId: event.annotationId,
           ...(event.sessionId ? { sessionId: event.sessionId } : {}),
           ...(event.hunkHash ? { hunkHash: event.hunkHash } : {}),
         },

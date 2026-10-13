@@ -142,7 +142,7 @@ export function suggestedAnnotation(
   const quotedText = m ? m[0] : lineText.slice(0, 40);
   return {
     id,
-    type: "thread",
+    type: "comment",
     anchor: {
       host: { kind: "diff-line", fileKey, line },
       quotedText,
@@ -154,7 +154,6 @@ export function suggestedAnnotation(
     open: true,
     messages: [{ who: "ai", suggested: true, text }],
     post: false,
-    note: false,
   };
 }
 

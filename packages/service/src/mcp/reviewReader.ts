@@ -56,11 +56,19 @@ export class StoreReviewReader implements ReviewReader {
         text: plainText(renderMarkdown(c.blocks)),
       })),
     );
+    // Issue #143: agents read explanation text through the review tools.
+    // Conversation answers are blocks, rendered like cards; comments
+    // contribute their messages.
     const annotations = snap.annotations.map((a) => ({
       id: a.id,
       type: a.type,
       anchorSummary: a.anchor.quotedText.slice(0, 80),
-      text: a.messages.map((m) => m.text ?? m.html ?? "").join("\n"),
+      text:
+        a.type === "conversation"
+          ? (a.turns ?? [])
+              .map((t) => `${t.question === null ? "Explain this." : t.question}\n${plainText(renderMarkdown(t.blocks))}`)
+              .join("\n\n")
+          : a.messages.map((m) => m.text ?? "").join("\n"),
     }));
     const contributions = snap.contributions.flatMap((c) =>
       c.items.map((it) => ({
