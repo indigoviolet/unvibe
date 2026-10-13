@@ -49,6 +49,8 @@ import { lookupForSnapshot } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
 import { criticApply, isDefaultReaderCardId, readerApply, readerCardId } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
+import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
+import type { ActionContext } from "./actions/common.js";
 import { changeListVariable, ingestAgentTurn } from "./sharedctx-wire.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import type { RunInForkOptions, RunInForkResult, RunSmallOptions } from "./types.js";
@@ -916,6 +918,65 @@ export class Pipeline {
     return this.lookupWithAliases(snapshot);
   }
 
+  /**
+   * ActionContext for diagram finalize/repair from fills that run inside
+   * the pipeline itself (go-deeper, concept pages). finalizeFresh takes
+   * an ActionContext; the pipeline owns every field it needs.
+   */
+  private actionContextFor(reviewId: string): ActionContext {
+    return {
+      pipeline: this,
+      jobs: this.opts.jobs,
+      reviews: this.opts.reviews,
+      reviewId,
+      ...(this.opts.sharedctx ? { sharedctx: this.opts.sharedctx } : {}),
+      ...(this.opts.fixturesDir ? { fixturesDir: this.opts.fixturesDir } : {}),
+      ...(this.promptsDir ? { promptsDir: this.promptsDir } : {}),
+    };
+  }
+
+  /**
+   * One inline diagram-repair turn on an already-forked session (#130).
+   * Fills that run inside a job (go-deeper, concept pages) cannot enqueue
+   * a nested repair job through runInFork: with every per-provider slot
+   * held by fills awaiting repair, the repairs would never start. So the
+   * turn runs on the fill's own session with the same prompt shape —
+   * exactly one turn, no loop. Content failures keep the error-status
+   * blocks; aborts and transient (retryable) errors propagate so the
+   * fill's job can cancel or retry whole.
+   */
+  private async repairDiagramsInline(
+    reviewId: string,
+    session: Session,
+    signal: AbortSignal | undefined,
+    card: string,
+    level: string,
+    first: { blocks: Block[]; messages: string[] },
+    onUsage?: (u: TokenUsage) => void,
+  ): Promise<Block[]> {
+    const actx = this.actionContextFor(reviewId);
+    try {
+      const variables = buildRepairVariables(card, level, first.messages, first.blocks);
+      const { text, usage } = await collectStreaming(
+        this.opts.runner,
+        session,
+        this.render("diagram", variables),
+        signal,
+        () => {},
+      );
+      onUsage?.(usage);
+      await this.recordUsage(reviewId, usage);
+      throwIfMcpRefusal(text);
+      const second = this.parseAndValidate(reviewId, text);
+      const merged = mergeRepairedDiagrams(first.blocks, second.cards.flatMap((c) => c.blocks));
+      return (await finalizeFresh(actx, merged)).blocks;
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      if (err instanceof RetryableError) throw err;
+      return first.blocks;
+    }
+  }
+
   private lookupWithAliases(snapshot: ReviewSnapshot): ReturnType<typeof lookupForSnapshot> {
     const aliases = aliasesForReview(snapshot, this.opts.fixturesDir);
     if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot);
@@ -1741,13 +1802,33 @@ export class Pipeline {
       cards.flatMap((c) => c.blocks),
       validation,
     );
+    // Inline diagrams go through finalize + one repair turn on the fill's
+    // own session (#130), so stored blocks carry a real status. A failed
+    // repair keeps the error-status blocks; the card prose is unaffected.
+    let stored: Block[];
+    {
+      const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
+      if (first.needsRepair) {
+        stored = await this.repairDiagramsInline(
+          reviewId,
+          forked.session,
+          signal,
+          direction,
+          "standard",
+          first,
+          (u) => ctx?.reportUsage(u),
+        );
+      } else {
+        stored = first.blocks;
+      }
+    }
     const title = (data?.["title"] as string | undefined) ?? card.pending.label;
     await this.opts.reviews.mutate(reviewId, (draft) => {
       const r = draft.pages.find((p) => p.id === "root");
       const c = r?.cards.find((x) => x.id === cardId);
       if (!c) return;
       c.title = title;
-      c.blocks = blocks;
+      c.blocks = stored;
       delete c.pending;
       c.revision += 1;
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;

@@ -91,6 +91,48 @@ export interface RepairDiagramsOpts {
   echoCandidates?: string[];
 }
 
+/** Marker line of the diagram repair prompt (fake-runner scripts match it). */
+export const DIAGRAM_REPAIR_MARKER = "The previous diagram failed validation:";
+
+/**
+ * Repair-turn variables for the `diagram` template: the failed sources
+ * plus the validator/compiler messages, asking for fixed D2. Pure so
+ * fills that already hold a session (go-deeper, concept pages) can run
+ * the same turn without enqueueing a nested job.
+ */
+export function buildRepairVariables(
+  card: string,
+  level: string,
+  messages: string[],
+  blocks: Block[],
+): { card: string; level: string } {
+  const problems = messages.join("\n");
+  const prevSources = blocks
+    .filter((b) => b.type === "diagram")
+    .map((b) => `\`\`\`d2\n${(b as DiagramBlock).source}\n\`\`\``)
+    .join("\n");
+  return {
+    card: `${card}\n\n${DIAGRAM_REPAIR_MARKER}\n${problems}\n${prevSources}\nFix the D2 source (citations and syntax) and reply again.`,
+    level,
+  };
+}
+
+/**
+ * Merge a repair reply into the first pass: keep first-pass prose,
+ * replace its diagrams with the repaired ones. Throws when the repair
+ * carries no diagram (the caller keeps the error-status blocks).
+ */
+export function mergeRepairedDiagrams(fresh: Block[], retry: Block[]): Block[] {
+  const diagrams = retry.filter((b) => b.type === "diagram");
+  if (diagrams.length === 0) {
+    throw new Error(`diagram repair failed: no diagram in repair reply`);
+  }
+  const kept = fresh.filter((b) => b.type !== "diagram");
+  // Repair replies number their blocks from scratch (#116): dedupe across
+  // the merge so one anchor still matches one block.
+  return dedupeBlockIds([...kept, ...diagrams]);
+}
+
 /** One repair turn: re-ask with validator/compiler messages + previous source. */
 export async function repairDiagrams(
   ctx: ActionContext,
@@ -99,16 +141,8 @@ export async function repairDiagrams(
   messages: string[],
 ): Promise<Block[]> {
   const { pipeline, reviews, reviewId } = ctx;
-  const problems = messages.join("\n");
-  const prevSources = fresh
-    .filter((b) => b.type === "diagram")
-    .map((b) => `\`\`\`d2\n${(b as DiagramBlock).source}\n\`\`\``)
-    .join("\n");
-  const variables = {
-    card: `${opts.card}\n\nThe previous diagram failed validation:\n${problems}\n${prevSources}\nFix the D2 source (citations and syntax) and reply again.`,
-    level: opts.level,
-  };
   const live = getSnapshotOrThrow(reviews, reviewId);
+  const variables = buildRepairVariables(opts.card, opts.level, messages, fresh);
   const echoTitle = opts.cardId ? storedCardTitle(live, opts.cardId) : undefined;
   const res = await pipeline.runInFork({
     reviewId,
@@ -128,12 +162,5 @@ export async function repairDiagrams(
     ...(isReplayRunner(pipeline.runner) ? { replay: { kind: "diagram" } } : {}),
   });
   const retry = res.cards.flatMap((c) => c.blocks) as Block[];
-  const diagrams = retry.filter((b) => b.type === "diagram");
-  if (diagrams.length === 0) {
-    throw new Error(`diagram repair failed: no diagram in repair reply`);
-  }
-  const kept = fresh.filter((b) => b.type !== "diagram");
-  // Repair replies number their blocks from scratch (#116): dedupe across
-  // the merge so one anchor still matches one block.
-  return dedupeBlockIds([...kept, ...diagrams]);
+  return mergeRepairedDiagrams(fresh, retry);
 }
