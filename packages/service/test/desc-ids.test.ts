@@ -77,6 +77,7 @@ function snapshotFor(html: string, extra?: Partial<ReviewSnapshot["description"]
       editable: true,
       ...extra,
     },
+    ingest: { status: "ready" },
     pages: [],
     annotations: [],
     hunkStates: [],
@@ -237,23 +238,5 @@ describe("issue #96: desc: IDs from the review tools", () => {
     const lookup = lookupForSnapshot(snapshot);
     expect(lookup.descParagraph(id)).toContain("ZETA-EDITED");
   });
-
-  it("a stored description without id attributes falls back to positional block IDs", async () => {
-    const legacyHtml =
-      `<div class="desc"><p>First para one.</p>` +
-      `<h3>Old heading</h3><p>Second para two.</p>` +
-      `<ul><li>item aye</li><li>item bee</li></ul>` +
-      `<p>Third para three.</p></div>`;
-    const snapshot = snapshotFor(legacyHtml);
-    const { base, registry } = await serveRegistry(snapshot);
-    // Positional per-block numbering (headings take no number, a whole list
-    // is one block): d-p1 First, d-p2 Second, d-p3 list, d-p4 Third.
-    const searchText = await callTool(base, registry, "session", "search_review", { query: "Second para two" });
-    expect(searchText).toContain("desc:d-p2");
-    const listText = await callTool(base, registry, "session", "search_review", { query: "item bee" });
-    expect(listText).toContain("desc:d-p3");
-    const lookup = lookupForSnapshot(snapshot);
-    expect(lookup.descParagraph("d-p2")).toContain("Second para two");
-    expect(lookup.descParagraph("d-p3")).toContain("item bee");
-  });
 });
+

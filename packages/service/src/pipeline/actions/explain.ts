@@ -12,7 +12,7 @@
  * same annotation id); `explainAction` creates the annotation first.
  */
 import type { ActionAnchor, Anchor, Annotation, Block, Job, ReviewSnapshot } from "@unvibe/shared";
-import { JOB_PRIORITY } from "@unvibe/shared";
+import { JOB_PRIORITY, dedupeBlockIds } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
 import { l4Variables, recordInteraction } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
@@ -187,8 +187,10 @@ export async function runExplainFill(
         .catch(() => {});
     },
     onPartial: (cards) => {
-      // Stream finished cards into the expansion as blocks.
-      const blocks = cards.flatMap((c) => c.blocks);
+      // Stream finished cards into the expansion as blocks. A multi-card
+      // reply repeats block IDs across cards (#116): dedupe so one anchor
+      // matches one block.
+      const blocks = dedupeBlockIds(cards.flatMap((c) => c.blocks));
       if (blocks.length === 0) return;
       void reviews
         .mutate(reviewId, (draft) => {
@@ -213,9 +215,10 @@ export async function runExplainFill(
       capture.settled();
       const blocks = res.cards.flatMap((c) => c.blocks) as Block[];
       // Stored targets are canonical (real file keys); repaired tokens
-      // resolve to their fix, unverified stay flagged (PRD §4.5).
+      // resolve to their fix, unverified stay flagged (PRD §4.5). Dedupe
+      // repeated block IDs from multi-card replies (#116).
       const canon = aliasCanonicalizer(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
-      const fixed = remapAliasTargets(blocks, res.validation.tokens, canon);
+      const fixed = dedupeBlockIds(remapAliasTargets(blocks, res.validation.tokens, canon));
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
         if (!found || found.type !== "expansion" || !found.expansion) return;

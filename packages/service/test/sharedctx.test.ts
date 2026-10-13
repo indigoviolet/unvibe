@@ -149,6 +149,7 @@ async function setupSharedCtx(
     version,
     files,
     description,
+    ingest: { status: "ready" },
     pages: opts.pages ?? [
       { id: "root", kind: "root", title: "Guide", saved: false, cards: [card("c-A", "Alpha body text."), card("c-B", "Beta body text.")] },
     ],

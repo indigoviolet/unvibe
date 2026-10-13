@@ -128,7 +128,10 @@ export function ExpansionHighlights() {
       const target = e.target as Element | null;
       if (!target || typeof target.closest !== "function") return;
       const mark = target.closest("mark[data-jump]");
-      document.querySelectorAll("#page .on").forEach((x) => x.classList.remove("on"));
+      // Clear only the outlines this handler adds (marks + expansion
+      // cards). A bare `#page .on` would also strip the depth stepper
+      // pips (`.pips i.on`, issue #111), which React owns.
+      document.querySelectorAll("#page mark.on, #page .card.child.on").forEach((x) => x.classList.remove("on"));
       if (mark) {
         const id = (mark as HTMLElement).dataset.jump ?? "";
         mark.classList.add("on");

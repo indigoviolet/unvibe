@@ -169,6 +169,7 @@ async function setupWithAgents(agents: FakeAgentRunner) {
     contributions: [],
     logTail: [],
     rev: 1,
+    ingest: { status: "ready" },
   };
   ctx.reviews.putSnapshot("rv_reuse", snapshot);
   return { app, ctx, reviewId: "rv_reuse" };

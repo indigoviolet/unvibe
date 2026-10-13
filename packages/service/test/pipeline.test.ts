@@ -271,6 +271,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
       contributions: [],
       logTail: [],
       rev: 1,
+      ingest: { status: "ready" },
     };
     ctx.reviews.putSnapshot(id, snap);
     return id;
@@ -671,7 +672,7 @@ describe("reader pinned code (#37)", () => {
         autoPipeline: false,
       });
       try {
-        // Review rows without ingest (same shape as m6-helpers setupReview).
+        // Review rows with a ready ingest (same shape as m6-helpers setupReview).
         const repo = repoRow();
         ctx.repos.upsert(repo);
         const reviewId = "rv_pin37";
@@ -699,6 +700,7 @@ describe("reader pinned code (#37)", () => {
           version,
           files,
           description,
+          ingest: { status: "ready" },
           pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
           annotations: [],
           hunkStates: [],

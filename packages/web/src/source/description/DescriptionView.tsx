@@ -424,13 +424,23 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
             ) : null}
             {(() => {
               // An explain started from a selection in this paragraph shows
-              // a placeholder where the expansion will land (issue #46).
+              // a placeholder where the expansion will land (issue #46) —
+              // until the expansion itself is in the snapshot (issue #97),
+              // so the two never stack.
               if (!seg.id || readOnly) return null;
               const incoming = inflightForAnchor(inflight, {
                 where: "description",
                 paragraphId: seg.id,
               });
               if (incoming?.kind !== "explain") return null;
+              const arrived = (snapshot?.annotations ?? []).some(
+                (a) =>
+                  a.type === "expansion" &&
+                  a.open &&
+                  a.anchor.host.kind === "description" &&
+                  a.anchor.host.paragraphId === seg.id,
+              );
+              if (arrived) return null;
               return (
                 <div className="dann">
                   <WorkingPlaceholder label={inflightLabel(incoming.kind)} />

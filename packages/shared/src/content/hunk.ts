@@ -31,8 +31,8 @@ export interface HunkReplyResult {
 
 /**
  * True when the text looks like raw JSON or a code fence rather than a
- * human-readable summary. Used to reject fallback lines and to recognise
- * already-stored bad summaries (#99) so they are treated as missing.
+ * human-readable summary. Used to reject fallback lines when reading a
+ * fresh agent reply.
  */
 export function looksLikeJson(text: string): boolean {
   const t = text.trimStart();

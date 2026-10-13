@@ -3,8 +3,7 @@
  *
  * Description paragraphs come from the stored description HTML through the
  * single source (`parseDescriptionParagraphs`, issue #96): the `id="..."`
- * attributes ingest wrote, with a positional per-block fallback for stored
- * HTML that predates stable IDs. File lengths for `code:` ranges are
+ * attributes ingest wrote. File lengths for `code:` ranges are
  * derived from hunk coverage (unknown files return null, so `code:` tokens
  * to outside files validate as unverified rather than crashing). Concepts
  * are the union of reader-declared slugs and existing concept pages. Host
@@ -23,9 +22,8 @@ export function lookupForSnapshot(snapshot: ReviewSnapshot): ReturnType<typeof c
   const descTexts = descTextsOf(currentDescriptionHtml(snapshot.description));
   const concepts = new Set<string>();
   for (const page of snapshot.pages) {
-    if (page.kind === "concept") {
-      const slug = page.id.startsWith("c-") ? page.id.slice(2) : page.id;
-      concepts.add(slug);
+    if (page.kind === "concept" && page.id.startsWith("c-")) {
+      concepts.add(page.id.slice(2));
     }
   }
   // Reader-declared concepts may not have pages yet; they are still known

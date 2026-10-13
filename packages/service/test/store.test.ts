@@ -7,11 +7,11 @@ import { currentVersion, migrate } from "../src/store/migrate.js";
 import { ensureReviewDir } from "../src/store/paths.js";
 
 describe("store migrations", () => {
-  it("applies 001 and is idempotent", () => {
+  it("applies the single schema and is idempotent", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-db-"));
     const db = openDatabase(path.join(dir, "test.db"));
     try {
-      expect(migrate(db)).toEqual([1, 2, 3, 4, 5]);
+      expect(migrate(db)).toEqual([5]);
       expect(currentVersion(db)).toBe(5);
       expect(migrate(db)).toEqual([]);
       db.prepare("INSERT INTO repos (id, owner, name, local_path) VALUES (?, ?, ?, ?)").run(

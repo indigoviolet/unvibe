@@ -36,6 +36,7 @@ import type {
 import {
   canonicalizeTarget,
   collectTargets,
+  dedupeBlockIds,
   JOB_PRIORITY,
   parseCards,
   parseId,
@@ -583,7 +584,9 @@ export async function requestSecondOpinion(
         const reasoning = typeof reasoningRaw === "string" ? reasoningRaw : body.trim().slice(0, 2000);
         const missed =
           typeof missedRaw === "string" ? missedRaw : Array.isArray(missedRaw) ? missedRaw.join("\n") : undefined;
-        const fixedBlocks = withValidation(live, finalBlocks, finalValidation, deps.fixturesDir);
+        // One reasoning body may flatten several reply cards (#116):
+        // dedupe repeated block IDs so one anchor matches one block.
+        const fixedBlocks = dedupeBlockIds(withValidation(live, finalBlocks, finalValidation, deps.fixturesDir));
         const now = Date.now();
         const result: SecondOpinionResult = {
           id: secondOpinionId(req.cardId, req.mode, provider, model),

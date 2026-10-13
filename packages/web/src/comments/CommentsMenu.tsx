@@ -22,7 +22,7 @@ import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
 import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { requestGuideBlock } from "../guide/actions.js";
-import { REVEAL_EVENT } from "../source/diff/revealSource.js";
+import { REVEAL_EVENT, ensureDiffVisible } from "../source/diff/revealSource.js";
 import { revealSource } from "../source/reveal.js";
 import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
@@ -220,7 +220,10 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     if (host.kind === "diff-line") {
       revealSource(`diff:${host.fileKey}:${host.line}`);
       window.setTimeout(() => {
-        document.getElementById(thread.id)?.scrollIntoView({ block: "nearest" });
+        // The thread renders under the revealed line: keep it out from
+        // behind the pinned diff rows (#132) instead of plain nearest-scroll.
+        const el = document.getElementById(thread.id);
+        if (el) ensureDiffVisible(el);
       }, 300);
       return;
     }

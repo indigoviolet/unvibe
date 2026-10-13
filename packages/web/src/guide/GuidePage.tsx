@@ -166,14 +166,19 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   // The PR title/number/author rode the create request (TopBar shows them
   // from the summary); here the step is what matters until the ingest lands
   // through patch events.
-  const ingestStatus = snapshot.ingest?.status ?? "ready";
+  const ingestStatus = snapshot.ingest.status;
   if (ingestStatus === "loading") {
-    const stepLabel = ingestStepLabel(snapshot.ingest?.step);
+    const stepLabel = ingestStepLabel(snapshot.ingest.step);
     const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
     return (
       <div className="doc" data-testid="review-loading">
         <h1 className="title">Opening {pr}…</h1>
         <p className="hint" data-testid="review-loading-step">
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>{" "}
           {stepLabel}
         </p>
       </div>
@@ -201,6 +206,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
             <>
               <h1 className="title">Building the guide…</h1>
               <p className="hint">
+                <span className="dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>{" "}
                 {emptyLabel ? `${emptyLabel} ` : ""}The diff is ready to read while you wait.
               </p>
             </>

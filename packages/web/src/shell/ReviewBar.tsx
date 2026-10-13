@@ -4,16 +4,20 @@
  * panes; stays in place when the panes scroll.
  *
  * - Left: the review identity (`owner/name#N` + title, truncated with the
- *   full title on hover), a GitHub link-out for PR reviews, and Debug as
+ *   full title on hover), the PR label linking to GitHub for PR reviews
+ *   (#94, new tab) alongside the link-out icon, and Debug as
  *   an icon button (hidden until the review finishes opening, issue #92).
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
  *   its pane (issue #83); `#toggleRight` stays on the Source segment.
- * - Right: Comments and Submit side by side, Submit as the primary button.
+ * - Right: Comments and Submit side by side, Submit as the primary button,
+ *   plus the live job count (running · queued, issue #98) once the review
+ *   is open and at least one job is live — a link to the Debug jobs list.
  */
 import { Link } from "react-router-dom";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
+import { jobCounts } from "./jobCounts.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
 
@@ -37,11 +41,26 @@ export function ReviewBar({
   // stable across the loading → ready transition.
   const snapshot = useReview((s) => s.snapshot);
   const ingestReady =
-    (snapshot?.ingest?.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
+    (snapshot?.ingest.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
+  // #98: live job count for this review (running · queued). The open
+  // itself is not a job (ingest state, never a snapshot job), so the count
+  // waits for the finished open like the Debug icon. Nothing renders when
+  // idle, so no space is reserved; last in the right corner so appearing
+  // never shifts the title or the buttons. Plain link text (no live
+  // region) so screen readers are not spammed on every change.
+  const counts = jobCounts(snapshot?.jobs ?? []);
+  const showJobs = ingestReady && counts.running + counts.queued > 0;
+  const jobsLabel = `${counts.running} running, ${counts.queued} queued`;
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">
-        <span className="num">{short}</span>
+        {prUrl ? (
+          <a className="num" href={prUrl} target="_blank" rel="noreferrer" title="Open PR on GitHub">
+            {short}
+          </a>
+        ) : (
+          <span className="num">{short}</span>
+        )}
         <b title={title}>{title}</b>
         {prUrl ? (
           <a className="ib bd" href={prUrl} target="_blank" rel="noreferrer" aria-label="Open PR on GitHub" title="Open PR on GitHub">
@@ -75,6 +94,16 @@ export function ReviewBar({
       <span className="ra">
         <CommentsMenu reviewId={reviewId} />
         <SubmitPanel reviewId={reviewId} primary />
+        {showJobs ? (
+          <Link
+            className={`jcount${counts.running > 0 ? " live" : ""}`}
+            to={`/review/${encodeURIComponent(reviewId)}/debug`}
+            aria-label={jobsLabel}
+            title={jobsLabel}
+          >
+            {counts.running} · {counts.queued}
+          </Link>
+        ) : null}
       </span>
     </div>
   );

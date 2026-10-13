@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGitHubRepoInput } from "../src/repos.js";
+import { changePrUrl, githubPrUrl, parseGitHubRepoInput } from "../src/repos.js";
 
 describe("parseGitHubRepoInput", () => {
   it.each([
@@ -72,5 +72,25 @@ describe("parseGitHubRepoInput", () => {
   it("rejects an overlong owner and name", () => {
     expect(() => parseGitHubRepoInput(`${"a".repeat(40)}/app`)).toThrow(/invalid owner/);
     expect(() => parseGitHubRepoInput(`acme/${"a".repeat(101)}`)).toThrow(/invalid repo name/);
+  });
+});
+
+describe("PR page URLs (#94)", () => {
+  it("builds the canonical pull URL from owner, repo and number", () => {
+    expect(githubPrUrl("acme", "app", 123)).toBe("https://github.com/acme/app/pull/123");
+  });
+
+  it("prefers the URL gh returned when the row has one", () => {
+    expect(
+      changePrUrl({ url: "https://github.com/acme/app/pull/123", prNumber: 123 }, "acme", "app"),
+    ).toBe("https://github.com/acme/app/pull/123");
+  });
+
+  it("builds the URL from the repo and number otherwise", () => {
+    expect(changePrUrl({ prNumber: 7 }, "acme", "app")).toBe("https://github.com/acme/app/pull/7");
+  });
+
+  it("returns null when the row names no PR", () => {
+    expect(changePrUrl({}, "acme", "app")).toBeNull();
   });
 });

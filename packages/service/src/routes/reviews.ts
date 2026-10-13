@@ -5,6 +5,8 @@
  *   the response, then fill the snapshot through patch events (or mark it
  *   failed with a retry). The `demo` fixture stays synchronous (201).
  * - `POST /api/reviews/:id/retry` — re-run a failed ingest (#92).
+ * - `POST /api/reviews/:id/redo` — re-do the guide: delete + create in
+ *   one call, answering with the new review's loading snapshot (#115).
  * - `GET /api/reviews/:id[?version=n]` — current snapshot (with live jobs
  *   merged in), or an older version's `version` + `files` swapped in.
  * - `POST /api/reviews/:id/refresh` — fetch and compare (no agent time).
@@ -60,6 +62,7 @@ import {
   touchReviewOpened,
 } from "../reviews/index.js";
 import { hasAnySubmitLease } from "../update/index.js";
+import { readSubmitLease } from "../submit/lease.js";
 import { isNoneRunner } from "../agent/factory.js";
 
 export interface ReviewsRouteDeps {
@@ -308,6 +311,144 @@ async function runIngestBackground(
   }
 }
 
+interface BeginCreateArgs {
+  repoId: string;
+  pr?: number;
+  branch?: string;
+  title?: string;
+  author?: string;
+}
+
+type BeginCreateResult =
+  | { ok: true; status: 200 | 202; snapshot: ReviewSnapshot }
+  | { ok: false; status: number; error: string };
+
+/**
+ * #115: the shared create path behind `POST /api/reviews` and redo:
+ * resolve the repo, reuse a loading/failed review for the same source, or
+ * insert the row + loading snapshot and start the background ingest. The
+ * demo fixture is not handled here (callers branch before calling).
+ */
+async function beginReviewFromSource(
+  ctx: ServiceContext,
+  opts: { pipeline?: Pipeline; autoPipeline?: boolean },
+  pendingIngests: Map<string, string>,
+  args: BeginCreateArgs,
+): Promise<BeginCreateResult> {
+  let repo = ctx.repos.get(args.repoId);
+  if (!repo) {
+    // Detected checkouts are addressable too: the first review remembers
+    // the checkout under the same id, so the start page's selection holds.
+    const found = (await listAllRepos(ctx)).find((r) => r.id === args.repoId);
+    if (found) {
+      ctx.repos.upsert(found);
+      repo = ctx.repos.get(found.id);
+    }
+  }
+  if (!repo) return { ok: false, status: 404, error: "unknown repo" };
+
+  // #92: same PR/branch opened twice while loading reuses the review —
+  // decided here in the service so two tabs share one row.
+  const key = dedupeKeyFor(repo.id, args.pr, args.branch);
+  const pendingId = pendingIngests.get(key);
+  if (pendingId) {
+    const pendingSnap = ctx.reviews.getSnapshot(pendingId);
+    if (pendingSnap && ingestStatusOf(pendingSnap) !== "ready") {
+      return { ok: true, status: 200, snapshot: pendingSnap };
+    }
+    pendingIngests.delete(key);
+  }
+  const reusable = findReusableReview(ctx, repo.id, args.pr, args.branch);
+  if (reusable) {
+    pendingIngests.set(key, reusable.id);
+    return { ok: true, status: 200, snapshot: reusable.snapshot };
+  }
+
+  // #92: create the row + loading snapshot and answer at once (202),
+  // before the fetch and ingest. The web navigates immediately; the
+  // ingest fills the snapshot through patch events.
+  const reviewId = newReviewId();
+  const branchPlaceholder = args.branch ?? (args.pr !== undefined ? `pr-${args.pr}` : "");
+  const titleHint =
+    args.title?.trim() || (args.pr !== undefined ? `PR #${args.pr}` : (args.branch ?? "review"));
+  const now = Date.now();
+  const placeholder: ReviewSnapshot = {
+    review: {
+      id: reviewId,
+      repoId: repo.id,
+      branch: branchPlaceholder,
+      ...(args.pr !== undefined ? { prNumber: args.pr } : {}),
+      versions: [],
+      currentVersion: 0,
+      createdAt: now,
+    },
+    // #92: placeholder (n: 0) — no real version/files/description yet.
+    version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+    files: [],
+    pages: [],
+    annotations: [],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+    ingest: { status: "loading", step: "fetching" },
+  };
+  transaction(ctx.db, () => {
+    ctx.db
+      .prepare(
+        "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        reviewId,
+        repo.id,
+        branchPlaceholder,
+        args.pr ?? null,
+        0,
+        now,
+        JSON.stringify({ title: titleHint, ...(args.author ? { author: args.author } : {}) }),
+      );
+    ctx.reviews.putSnapshot(reviewId, placeholder);
+  });
+  try {
+    ctx.repos.touch(repo.id);
+  } catch {
+    // Ignore.
+  }
+  const pipeline = opts.pipeline;
+  const autoPipeline = opts.autoPipeline ?? true;
+  pendingIngests.set(key, reviewId);
+  void runIngestBackground(
+    ctx,
+    { ...(pipeline ? { pipeline } : {}), autoPipeline },
+    {
+      repoId: repo.id,
+      repoPath: repo.localPath,
+      reviewId,
+      ...(args.pr !== undefined ? { pr: args.pr } : { branch: args.branch }),
+    },
+  )
+    .catch(() => {})
+    .finally(() => {
+      if (pendingIngests.get(key) === reviewId) pendingIngests.delete(key);
+    });
+  return { ok: true, status: 202, snapshot: placeholder };
+}
+
+/** #115: the stored title hint for a review's loading page (best effort). */
+function storedTitle(db: ServiceContext["db"], reviewId: string): string | undefined {
+  try {
+    const row = db.prepare("SELECT data FROM reviews WHERE id = ?").get(reviewId) as
+      | { data: string }
+      | undefined;
+    if (!row) return undefined;
+    const data = JSON.parse(row.data) as { title?: unknown };
+    return typeof data.title === "string" && data.title.trim() !== "" ? data.title : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function registerReviews(
   app: FastifyInstance,
   ctx: ServiceContext,
@@ -339,7 +480,7 @@ export async function registerReviews(
   // Never touches GitHub or the user's checkout; removes the managed
   // worktree. Confirm in the UI before calling.
   const removeReview = async (id: string): Promise<boolean> => {
-    const jobs = (deps as { jobs?: { listByReview: (id: string) => { id: string; state: string }[]; cancel: (id: string) => void } }).jobs;
+    const jobs = (deps as { jobs?: { listByReview: (id: string) => { id: string; state: string }[]; cancel: (id: string) => void; dropReview: (id: string) => void } }).jobs;
     const result = await deleteReviewLocal({
       db: ctx.db,
       runner: ctx.runner,
@@ -365,6 +506,14 @@ export async function registerReviews(
         : {}),
     }, id);
     if (!result.deleted) return false;
+    // #115: finished jobs outlive the delete (their rows are gone but the
+    // queue still lists them), so drop the review's entries too — a review
+    // added again for the same change starts with no jobs.
+    try {
+      jobs?.dropReview(id);
+    } catch {
+      // Best effort: the rows are already gone.
+    }
     // Close the review's agent sessions (base + conversations) so a review
     // added again for the same change starts from new ones.
     try {
@@ -424,6 +573,7 @@ export async function registerReviews(
         version: ingested.version,
         files: ingested.files,
         description: ingested.description,
+        ingest: { status: "ready" },
         pages: [
           {
             id: "root",
@@ -462,102 +612,19 @@ export async function registerReviews(
     if (body.pr === undefined && !body.branch) {
       return reply.code(400).send({ error: "either pr or branch is required" });
     }
-    let repo = ctx.repos.get(body.repoId);
-    if (!repo) {
-      // Detected checkouts are addressable too: the first review remembers
-      // the checkout under the same id, so the start page's selection holds.
-      const found = (await listAllRepos(ctx)).find((r) => r.id === body.repoId);
-      if (found) {
-        ctx.repos.upsert(found);
-        repo = ctx.repos.get(found.id);
-      }
-    }
-    if (!repo) return reply.code(404).send({ error: "unknown repo" });
-
-    // #92: same PR/branch opened twice while loading reuses the review —
-    // decided here in the service so two tabs share one row.
-    const key = dedupeKeyFor(repo.id, body.pr, body.branch);
-    const pendingId = pendingIngests.get(key);
-    if (pendingId) {
-      const pendingSnap = ctx.reviews.getSnapshot(pendingId);
-      if (pendingSnap && ingestStatusOf(pendingSnap) !== "ready") {
-        return reply.code(200).send(pendingSnap);
-      }
-      pendingIngests.delete(key);
-    }
-    const reusable = findReusableReview(ctx, repo.id, body.pr, body.branch);
-    if (reusable) {
-      pendingIngests.set(key, reusable.id);
-      return reply.code(200).send(reusable.snapshot);
-    }
-
-    // #92: create the row + loading snapshot and answer at once (202),
-    // before the fetch and ingest. The web navigates immediately; the
-    // ingest fills the snapshot through patch events.
-    const reviewId = newReviewId();
-    const branchPlaceholder = body.branch ?? (body.pr !== undefined ? `pr-${body.pr}` : "");
-    const titleHint =
-      body.title?.trim() || (body.pr !== undefined ? `PR #${body.pr}` : (body.branch ?? "review"));
-    const now = Date.now();
-    const placeholder: ReviewSnapshot = {
-      review: {
-        id: reviewId,
-        repoId: repo.id,
-        branch: branchPlaceholder,
-        ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
-        versions: [],
-        currentVersion: 0,
-        createdAt: now,
-      },
-      // #92: placeholder (n: 0) — no real version/files/description yet.
-      version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
-      files: [],
-      pages: [],
-      annotations: [],
-      hunkStates: [],
-      jobs: [],
-      contributions: [],
-      logTail: [],
-      rev: 1,
-      ingest: { status: "loading", step: "fetching" },
-    };
-    transaction(ctx.db, () => {
-      ctx.db
-        .prepare(
-          "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(
-          reviewId,
-          repo.id,
-          branchPlaceholder,
-          body.pr ?? null,
-          0,
-          now,
-          JSON.stringify({ title: titleHint, ...(body.author ? { author: body.author } : {}) }),
-        );
-      ctx.reviews.putSnapshot(reviewId, placeholder);
-    });
-    try {
-      ctx.repos.touch(repo.id);
-    } catch {
-      // Ignore.
-    }
-    pendingIngests.set(key, reviewId);
-    void runIngestBackground(
+    const created = await beginReviewFromSource(
       ctx,
       { ...(pipeline ? { pipeline } : {}), autoPipeline },
+      pendingIngests,
       {
-        repoId: repo.id,
-        repoPath: repo.localPath,
-        reviewId,
+        repoId: body.repoId,
         ...(body.pr !== undefined ? { pr: body.pr } : { branch: body.branch }),
+        ...(body.title !== undefined ? { title: body.title } : {}),
+        ...(body.author !== undefined ? { author: body.author } : {}),
       },
-    )
-      .catch(() => {})
-      .finally(() => {
-        if (pendingIngests.get(key) === reviewId) pendingIngests.delete(key);
-      });
-    return reply.code(202).send(placeholder);
+    );
+    if (!created.ok) return reply.code(created.status).send({ error: created.error });
+    return reply.code(created.status).send(created.snapshot);
   });
 
   // #92: retry a failed ingest. Loading reviews return the current snapshot
@@ -581,6 +648,54 @@ export async function registerReviews(
       return reply.code(502).send({ error: "this review's repo is gone — add the repo again, then open the review again" });
     }
     return reply.code(202).send(after ?? snap);
+  });
+
+  // #115: re-do a review's guide — delete + create in one call, reusing
+  // both paths so "same as delete + recreate" stays true by construction.
+  // Running jobs are cancelled first (like delete); the review gets a new
+  // id, so the web navigates to the new loading page (same as a fresh
+  // open). Refused for the demo, while loading/failed (like
+  // refresh/update/resume), while a submit is in flight for the review
+  // (delete does not check — redo must never lose a submission), and when
+  // the repo is gone (nothing is deleted then).
+  app.post("/api/reviews/:id/redo", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const snap = ctx.reviews.getSnapshot(id);
+    if (!snap) return reply.code(404).send({ error: "unknown review" });
+    if (snap.review.repoId === "demo") {
+      return reply.code(409).send({ error: "the demo guide can't be re-done" });
+    }
+    const refusedRedo = ingestRefusal(snap);
+    if (refusedRedo) return reply.code(409).send({ error: refusedRedo });
+    if (readSubmitLease(ctx.db, id)) {
+      return reply.code(409).send({ error: "A review is being submitted. Try again when it has finished." });
+    }
+    const row = readReviewRow(ctx.db, id);
+    if (!row) return reply.code(404).send({ error: "unknown review" });
+    if (row.prNumber === null && row.branch === "") {
+      return reply.code(409).send({ error: "this review has no PR or branch to open again" });
+    }
+    const repoKnown =
+      ctx.repos.get(row.repoId) ?? (await listAllRepos(ctx)).find((r) => r.id === row.repoId);
+    if (!repoKnown) {
+      return reply
+        .code(409)
+        .send({ error: "this review's repo is gone — add the repo again, then open the review again" });
+    }
+    const title = storedTitle(ctx.db, id);
+    if (!(await removeReview(id))) return reply.code(404).send({ error: "unknown review" });
+    const created = await beginReviewFromSource(
+      ctx,
+      { ...(pipeline ? { pipeline } : {}), autoPipeline },
+      pendingIngests,
+      {
+        repoId: row.repoId,
+        ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
+        ...(title !== undefined ? { title } : {}),
+      },
+    );
+    if (!created.ok) return reply.code(created.status).send({ error: created.error });
+    return reply.code(created.status).send(created.snapshot);
   });
 
   app.get("/api/reviews/:id", async (req, reply) => {

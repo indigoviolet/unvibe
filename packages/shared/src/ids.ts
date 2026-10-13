@@ -6,7 +6,10 @@
  * h:<fileKey>:<contentHash>                  a hunk (stable across versions)
  * code:<path>:<line>[-<line>]@<sha>          any code at a commit
  * desc:<paragraph>@<rev>                     description paragraph
- * card:<cardId>[#<blockId>]                  guide content
+ * card:<cardId>[#<blockId>]                  guide content (cardId is a
+ *                                            page-card id, or an expansion
+ *                                            annotation id for content
+ *                                            inside an explanation, #116)
  * page:<pageId>                              a page
  * concept:<slug>                             a concept (may be a hidden candidate)
  * ann:<id>                                   an annotation

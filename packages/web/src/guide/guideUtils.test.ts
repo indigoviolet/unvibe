@@ -191,7 +191,22 @@ describe("anchor block ids", () => {
     expect(splitAnchorBlockId("b4")).toEqual({ cardId: null, block: "b4" });
     expect(anchorMatchesBlock("central#b4", "central", "b4")).toBe(true);
     expect(anchorMatchesBlock("central#b4", "problem", "b4")).toBe(false);
-    expect(anchorMatchesBlock("b4", "central", "b4")).toBe(true);
+  });
+
+  it("matches exact owner and block only (#116)", () => {
+    // Unqualified block IDs never match: b1 restarts in every card.
+    expect(anchorMatchesBlock("b4", "central", "b4")).toBe(false);
+    // No prefix matching.
+    expect(anchorMatchesBlock("c1#b1", "c1", "b10")).toBe(false);
+    expect(anchorMatchesBlock("c1#b10", "c1", "b1")).toBe(false);
+    // An expansion host never matches its outer card, a sibling, or a
+    // nested expansion reusing the block number.
+    expect(anchorMatchesBlock("ann_parent#b2", "c1", "b2")).toBe(false);
+    expect(anchorMatchesBlock("ann_parent#b2", "ann_sibling", "b2")).toBe(false);
+    expect(anchorMatchesBlock("ann_parent#b2", "ann_child", "b2")).toBe(false);
+    // ...but matches its own block.
+    expect(anchorMatchesBlock("ann_parent#b2", "ann_parent", "b2")).toBe(true);
+    expect(anchorMatchesBlock("ann_parent#b2", "ann_parent", "b3")).toBe(false);
   });
 });
 
