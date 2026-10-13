@@ -76,13 +76,16 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ### 4.2 Start page
 - A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
 - For the selected repo:
-  - **PRs you're authoring:** `gh pr list --author @me`;
+  - **PRs you're authoring:** `gh pr list --author @me`, newest first;
   - **PRs waiting on your review:** `gh pr list --search "review-requested:@me"`
     split into **requested of you** (direct, `user-review-requested:@me`) and
     **requested of your team** (the rest, with team names), each newest
-    first, with a remembered recency filter (1d, 3d, 1w, 2w, All);
-  - **recent branches**, local and remote;
-  - **reviews you've opened before**, with their unread and stale state ("new commits · Update").
+    first;
+  - one remembered recency filter (1d, 3d, 1w, 2w, All) above all the PR
+    lists applies to every PR list by last update; a list the filter empties
+    names its window with a way back to All;
+  - **recent branches**, local and remote (unfiltered);
+  - **reviews you've opened before**, with their unread and stale state ("new commits · Update") (unfiltered).
 - PR rows show the head branch, a relative update time and the diff size
   (lines added and removed, files changed); where a row names a GitHub PR,
   its number links to the PR page (new tab) without opening the review.

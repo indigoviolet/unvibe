@@ -246,3 +246,68 @@ describe("StartPage requested split and filter (#95)", () => {
     expect(branchRow?.querySelector("a")).toBeNull();
   });
 });
+
+describe("StartPage authoring filter (#131)", () => {
+  const AUTHORED_NEW = pr(31, "My fresh PR", NOW - HOUR, { author: "you" });
+  const AUTHORED_OLD = pr(32, "My old PR", NOW - 2 * DAY, { author: "you" });
+
+  it("sorts Your PRs newest first with relative times", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    // Deliberately oldest-first: the page still renders newest first.
+    mockLists([DIRECT_NEW], [AUTHORED_OLD, AUTHORED_NEW]);
+    renderPage();
+    await screen.findByText("My old PR");
+    const rows = screen.getAllByText(/My (fresh|old) PR/).map((el) => el.textContent);
+    expect(rows[0]).toBe("My fresh PR");
+    expect(rows[1]).toBe("My old PR");
+    const freshMeta = screen.getByText("My fresh PR").closest(".ci")?.querySelector(".cw");
+    expect(freshMeta?.textContent).toContain("1h ago");
+  });
+
+  it("one control filters Your PRs and both review groups, with a way back", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([DIRECT_NEW, TEAM_MID], [AUTHORED_NEW, AUTHORED_OLD]);
+    renderPage();
+    await screen.findByText("My old PR");
+
+    // One control for the whole page.
+    expect(screen.getAllByLabelText("Updated within")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    // The old authored PR and the 2-day-old team ask hide; recent rows stay.
+    expect(screen.queryByText("My old PR")).not.toBeInTheDocument();
+    expect(screen.getByText("My fresh PR")).toBeInTheDocument();
+    expect(screen.queryByText("Asked of your team")).not.toBeInTheDocument();
+    expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs updated in the last day.");
+    // The filtered-out group offers a way back to All.
+    const showAll = screen.getByTestId("requested-team-empty").querySelector("button");
+    expect(showAll).toHaveTextContent("Show all");
+    fireEvent.click(showAll as HTMLButtonElement);
+    expect(screen.getByText("My old PR")).toBeInTheDocument();
+    expect(screen.getByText("Asked of your team")).toBeInTheDocument();
+    expect((screen.getByLabelText("Updated within") as HTMLSelectElement).value).toBe("all");
+  });
+
+  it("a filtered-out Your PRs list names its window and offers All", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([], [AUTHORED_OLD]);
+    renderPage();
+    await screen.findByText("My old PR");
+    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    expect(screen.queryByText("My old PR")).not.toBeInTheDocument();
+    const empty = screen.getByTestId("authoring-empty");
+    expect(empty).toHaveTextContent("No PRs updated in the last day.");
+    fireEvent.click(empty.querySelector("button") as HTMLButtonElement);
+    expect(screen.getByText("My old PR")).toBeInTheDocument();
+  });
+
+  it("filtered-empty review groups offer All too", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([DIRECT_NEW, TEAM_MID], []);
+    renderPage();
+    await screen.findByText("Asked of your team");
+    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    expect(screen.queryByText("Asked of your team")).not.toBeInTheDocument();
+    expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs updated in the last day.");
+    expect(screen.getByTestId("requested-team-empty").querySelector("button")).toHaveTextContent("Show all");
+  });
+});

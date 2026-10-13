@@ -1537,6 +1537,12 @@ items noticed while passing through (not verified, listed only):
   `test/changes-pr-lists.test.ts` (direct/team/both, sorting, missing
   fields, call counts), `StartPage.requested.test.tsx`,
   `e2e/start-lists.spec.ts`.
+- **#131 (start page, §4.2):** the one recency filter sits above all the PR
+  lists and applies to "Your PRs" too (newest first with the same relative
+  time); a list the filter empties names its window with a Show-all way
+  back. Branches and Reviews stay unfiltered. Evidence:
+  `StartPage.requested.test.tsx` (authoring sort, one control, filtered-empty
+  with Show all), `e2e/start-lists.spec.ts`.
 - **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
   in the quiet meta style with the diff add/delete colours, omitted when
   unknown; thousands separators, "1 file" singular. Evidence:
