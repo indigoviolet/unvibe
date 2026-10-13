@@ -17,10 +17,15 @@ Node 24 or newer, `git`, and `gh` logged in (needed for PRs and submitting; loca
 ```sh
 npm install -g github:indigoviolet/unvibe#release
 unvibe setup
-unvibe open
 ```
 
-The same command updates (or `unvibe update <channel>` to switch between
+`setup` registers the service to start at login (a launchd agent on macOS, a systemd user unit on Linux) and prints a link with the token — open it once to connect the browser, then bookmark the plain URL:
+
+```sh
+http://unvibe.localhost:4517
+```
+
+After that the bookmark just works, across browser restarts. The same command updates (or `unvibe update <channel>` to switch between
 `release`, `release-rc` and `preview/*` builds — see `DEVELOPMENT.md`
 "Preview builds"). From a checkout instead (`mise` supplies the Node toolchain; see `DEVELOPMENT.md`):
 
@@ -31,7 +36,7 @@ node packages/service/dist/index.js setup
 node packages/service/dist/index.js open
 ```
 
-`unvibe setup` registers the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. Nothing starts at login, and the service exits after 10 minutes with no open window and no running jobs. `unvibe setup --uninstall` removes the handler.
+`unvibe setup` registers the service to start at login plus the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. The login-started service never idle-exits; a manually started one exits after 10 minutes with no open window and no running jobs. `unvibe setup --uninstall` removes the handler and the login start (`--no-login` installs the handler only). Details in `docs/unvibe-localhost.md`.
 
 Other commands:
 
@@ -68,7 +73,7 @@ The Settings page picks the model for each role (main, small, second opinion) an
 |---|---|---|
 | `UNVIBE_PORT` | `4517` | Another program holds the port. |
 | `UNVIBE_DATA_DIR` | `~/.local/share/unvibe` | You want data elsewhere. |
-| `UNVIBE_IDLE_MS` | `600000` | Idle exit timeout; `<=0` disables it. |
+| `UNVIBE_IDLE_MS` | `600000` | Idle exit timeout; `<=0` disables it. The login-started service runs with it at `0` (never exits); re-run `setup` after changing it if you want login starts to follow. |
 | `UNVIBE_AGENT` | live agents | `replay` for the demo without tokens. |
 | `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN` / `UNVIBE_D2_BIN` | login-shell PATH | A program lives somewhere unusual. |
 
@@ -76,7 +81,7 @@ The Settings page picks the model for each role (main, small, second opinion) an
 
 Everything lives under the data dir: the SQLite database, the token, and a worktree per review where the agents read the code. Removing a review in the UI deletes its data and its worktree; your checkout is left alone. Full removal: `unvibe stop`, `unvibe setup --uninstall`, then delete the data dir and the checkout.
 
-The service and the web app talk only to `127.0.0.1`. The only network traffic goes through tools you already use: `gh` and `git` for GitHub and fetching, and the `claude`/`codex` CLIs for the agent calls, all under your own logins. `d2` runs locally and is given no network access. How this is enforced is in `ARCHITECTURE.md` and `DEVELOPMENT.md`.
+The service and the web app talk only to loopback (`127.0.0.1` and `::1`, opened as `http://unvibe.localhost:4517`; a Host/Origin gate accepts exactly the loopback names). The only network traffic goes through tools you already use: `gh` and `git` for GitHub and fetching, and the `claude`/`codex` CLIs for the agent calls, all under your own logins. `d2` runs locally and is given no network access. How this is enforced is in `ARCHITECTURE.md` and `DEVELOPMENT.md`.
 
 ## Troubleshooting
 
@@ -85,13 +90,14 @@ The service and the web app talk only to `127.0.0.1`. The only network traffic g
 - `gh not logged in` → `gh auth login`. Local branches still work.
 - `claude`/`codex` missing or too old → install or update the CLI, make sure it is on the login-shell PATH, then Re-check.
 - Diagrams show as text → install `d2` 0.9.0 or newer, make sure it is on the login-shell PATH, then Re-check.
-- Port in use by something else → set `UNVIBE_PORT` to a free port.
+- Port in use by something else → set `UNVIBE_PORT` to a free port, then re-run `unvibe setup` (the login unit bakes the port in) and reinstall the web app if you installed it (its origin changes with the port).
 - A failed agent job shows its error on the card with a retry. Jobs interrupted by a restart come back marked and can be resumed.
 - Opening a review whose checkout moved or was deleted says so and names the missing directory.
 - On macOS, the CLIs must be on the login-shell PATH (not just the Terminal PATH); `doctor` reports which PATH the service sees.
 
 ## More
 
+- `docs/unvibe-localhost.md` — the bookmark URL, the token cookie, start-at-login, and browser notes.
 - `DEVELOPMENT.md` — setup, tasks, tests, releases.
 - `ARCHITECTURE.md` — components and the life of a review.
 - `PRD.md` — the product spec.

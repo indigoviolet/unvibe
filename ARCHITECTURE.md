@@ -1,11 +1,11 @@
 # Architecture
 
-One process owns everything. The browser app is served by it and talks to it over HTTP + WebSocket on `127.0.0.1`.
+One process owns everything. The browser app is served by it and talks to it over HTTP + WebSocket on loopback, opened at `http://unvibe.localhost:4517` (bookmark; the service starts at login — `docs/unvibe-localhost.md`).
 
 ```
 browser: React app (served by the service, installable)
   │  HTTP + WebSocket, per-install token, loopback Host/Origin checks
-service: Node on 127.0.0.1:4517
+service: Node on loopback (127.0.0.1 + ::1) :4517
   ├── store ─────── SQLite + files under the data dir
   ├── ingest ────── git/gh ──► managed worktree of the branch
   ├── agent sessions ───────── your claude / codex CLIs (your logins)
@@ -127,8 +127,9 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/web/src/settings/VersionSection.tsx` | Settings → Version: toggle, channel groups, switch + restart wait |
 | `packages/web/src/shell/PreviewBuildBadge.tsx` | Quiet preview pill (branch · commit) in the review/Settings/Start headers |
 | `packages/service/src/cli/` | `start`/`stop`/`status`/`setup`/`open`/`token`/`doctor`, single-instance lock |
+| `packages/service/src/cli/setup/` | `unvibe://` handler (macOS helper, Linux desktop file) + start-at-login unit (launchd agent, systemd user unit, issue #108) |
 | `packages/service/src/lifecycle/` | Idle exit, bounded ordered shutdown (`service-shutdown.ts`, issue #30) |
-| `packages/service/src/security/` | Token auth, loopback Host/Origin gates, CSP header |
+| `packages/service/src/security/` | Token auth, loopback Host/Origin gates (exact names incl. `unvibe.localhost`, Origin pinned to port), CSP header |
 | `packages/service/src/telemetry/` | Dev-only Sentry error reporting (off without `SENTRY_DSN_SERVICE`; SDK not in the release) |
 | `packages/service/src/repos/` + `src/reviews/` | Repo detection/list, review create/list/delete |
 | `packages/web/src/start/` | Front screen: prior reviews, demo, repos, PRs, branches |

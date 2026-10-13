@@ -47,7 +47,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `fixture-snapshot` | Rebuild `fixtures/urllib3-5020/snapshot.json`; fails on unverified citations | — |
 | `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `playwright-install` | Install the Playwright Chromium browser | — |
-| `e2e` | Linux shell end-to-end (setup, handler, reuse, idle exit, uninstall, in temp HOME/port) | Linux |
+| `e2e` | Linux shell end-to-end (setup --no-login, handler, reuse, idle exit, uninstall, in temp HOME/port; the login unit's contents + enable commands are pinned by `setup.test.ts`, not here) | Linux |
 | `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
 | `check-global-install` | `release`, then install the tarball and the `#release` git ref into temp prefixes (npm 10 and 11, no flags) | npm 10 + 11 |
 | `release` | Self-contained release tree + tarball + local `release` branch; no push | `build` first |
@@ -198,7 +198,7 @@ Rules:
 |---|---|---|
 | `UNVIBE_PORT` | `4517` | Service port. The installed web app is bound to its origin, so reinstall it after changing ports. |
 | `UNVIBE_DATA_DIR` | `~/.local/share/unvibe` | SQLite DB (`unvibe.db`), `token`, lock, `worktrees/<review-id>/`. |
-| `UNVIBE_IDLE_MS` | `600000` | Idle exit after this long with no window/jobs; `<=0` disables. |
+| `UNVIBE_IDLE_MS` | `600000` | Idle exit after this long with no window/jobs; `<=0` disables. The start-at-login unit bakes in `0` (issue #108: a login-started service never idle-exits). |
 | `UNVIBE_AGENT` | live agents | `replay` / `none` (see above). |
 | `UNVIBE_ACP_DEBUG` | — | `1` logs permission decisions, `2` full payloads (stderr). |
 | `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN` | login-shell PATH | Override the agent executable (else `CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`). |
@@ -483,4 +483,4 @@ Data stays on the machine. The app's own code contacts nothing but `127.0.0.1`; 
 - Service: the vitest setup makes non-loopback sockets fail suite-wide (`test/network-privacy.test.ts`); an end-to-end test boots the app, creates the demo review with the replay runner, and asserts no non-loopback attempt.
 - Static: a guard test (`test/network-guards.test.ts`) finds no fetchable `http(s)://` URL to a non-local host in shipped web assets and no `fetch`/`http`/`net`/`tls`/`dns`/WebSocket-client use in `packages/service/src` outside the allowlist (loopback clients, the 127.0.0.1-only server, stdio adapters). A stale `dist/` is skipped, never scanned.
 - Subprocesses: `test/subprocess-allowlist.test.ts` asserts the service spawns only `git`, `gh`, the login shell, the agent CLIs, and the `unvibe setup` helpers.
-- Requests additionally require a loopback `Host` and loopback `Origin`/`Referer` (`src/security/host.ts`, DNS-rebinding defence behind the per-install token, checked on every HTTP and WebSocket route).
+- Requests additionally require a loopback `Host` and loopback `Origin`/`Referer` (`src/security/host.ts`, DNS-rebinding defence behind the per-install token, checked on every HTTP and WebSocket route). The accepted names are exactly `127.0.0.1`, `localhost`, `unvibe.localhost`, `::1` and `::ffff:127.0.0.1` (issue #108; no suffix matching), and the service pins `Origin`/`Referer` to its own port. The service listens on `127.0.0.1` plus a `::1` companion socket sharing the Fastify router, so `unvibe.localhost` answers however the browser resolves it — still loopback only, with no host setting that could move it.
