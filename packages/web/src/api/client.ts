@@ -20,6 +20,7 @@ import type {
   DiagramTheme,
   DismissContributionResponse,
   ExistingCommentsResponse,
+  FileSliceResponse,
   HealthResponse,
   Job,
   JobPromptResponse,
@@ -305,6 +306,15 @@ const realApi = {
     }),
   summarizeHunk: (id: string, hash: string): Promise<SummarizeHunkResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/hunks/${encodeURIComponent(hash)}/summarize`),
+
+  /** Raw file lines at a commit (issue #133: diff expansion). */
+  fileSlice: (
+    id: string,
+    params: { path: string; commit: string; start: number; end: number },
+  ): Promise<FileSliceResponse> =>
+    get(
+      `/api/reviews/${encodeURIComponent(id)}/file?path=${encodeURIComponent(params.path)}&commit=${encodeURIComponent(params.commit)}&start=${params.start}&end=${params.end}`,
+    ),
 
   createComment: (reviewId: string, body: CreateCommentRequest): Promise<CreateCommentResponse> =>
     request(`/api/reviews/${encodeURIComponent(reviewId)}/comments`, {
