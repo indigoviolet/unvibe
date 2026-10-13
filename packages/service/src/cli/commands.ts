@@ -24,7 +24,7 @@ export const CLI_USAGE = [
   "  start [--foreground]   start the service (reuses it when already running)",
   "  stop                   stop the running service",
   "  status                 show whether the service is running (exit 1 when it is not)",
-  "  setup [--uninstall]    install the unvibe:// link handler that lets the app start the service (safe to run again)",
+  "  setup [--uninstall] [--no-login]  install start-at-login service + unvibe:// link handler (safe to run again)",
   "  open                   start if needed, open the app URL in a browser",
   "  token                  print the app URL, including your token",
   "  doctor [--strict]      check node, git, gh, agents, PATH, data dir, port (exit 1 on problems with --strict)",
@@ -171,12 +171,17 @@ async function cmdSetup(args: string[]): Promise<number> {
   if (uninstall) {
     const steps = await uninstallSetup(resolveSetupPaths());
     for (const s of steps) console.log(s);
-    console.log("removed the link handler (token and data kept)");
+    console.log("removed the link handler and login start (token and data kept)");
     return 0;
   }
+  const noLogin = args.includes("--no-login");
   const token = loadOrCreateToken(config.dataDir);
   void token;
-  const steps = await installSetup(resolveSetupPaths());
+  const steps = await installSetup(resolveSetupPaths(), undefined, undefined, {
+    port: config.port,
+    dataDir: config.dataDir,
+    ...(noLogin ? { noLogin: true } : {}),
+  });
   for (const s of steps) console.log(s);
   console.log(`token ready in ${config.dataDir}/token`);
   // The link with the token, printed once (issue #108): opening it stores

@@ -354,7 +354,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
   const start = runInstalled(["start"]);
   assert(start.code === 0, `${label}: unvibe start (${start.out.trim().split("\n")[0]})`);
   assert(await waitFor(port, true, 20_000, `${label} health`), `${label}: globally installed service answers`);
-  assert(start.out.includes(`http://127.0.0.1:${port}/?token=`), `${label}: start prints the token URL`);
+  assert(start.out.includes(`http://unvibe.localhost:${port}/?token=`), `${label}: start prints the token URL`);
 
   const token = fs.readFileSync(path.join(DATA, "token"), "utf8").trim();
   const prompts = await simpleGet(port, "/api/prompts", { authorization: `Bearer ${token}` });

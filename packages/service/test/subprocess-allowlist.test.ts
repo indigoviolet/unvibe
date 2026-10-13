@@ -5,7 +5,9 @@
  * wrapper), the login shell for PATH resolution, the agent adapters/CLIs,
  * `npm` for `unvibe update` channel installs,
  * and the platform helpers used by `unvibe setup` (`osacompile`,
- * `lsregister`, `xdg-mime`, `update-desktop-database`, `open`/`xdg-open`),
+ * `lsregister`, `xdg-mime`, `update-desktop-database`, `launchctl`
+ * (start-at-login agent, issue #108), `systemctl --user` (start-at-login
+ * unit, issue #108), `open`/`xdg-open`),
  * the native folder-picker dialogs (`osascript` on macOS,
  * `zenity`/`kdialog` on Linux, #26),
  * plus the service lifecycle itself (spawning its own CLI entry).
@@ -42,6 +44,8 @@ const ALLOWED_LITERAL: { cmd: string; reason: string }[] = [
   { cmd: "osacompile", reason: "unvibe setup on macOS (builds the local helper app)" },
   { cmd: "xdg-mime", reason: "unvibe setup on Linux (registers unvibe://)" },
   { cmd: "update-desktop-database", reason: "unvibe setup on Linux (refreshes desktop entries)" },
+  { cmd: "launchctl", reason: "unvibe setup on macOS (bootstrap/bootout the start-at-login agent, issue #108)" },
+  { cmd: "systemctl", reason: "unvibe setup on Linux (enable/disable the start-at-login user unit, issue #108)" },
   { cmd: "open", reason: "unvibe open on macOS (opens the app URL)" },
   { cmd: "xdg-open", reason: "unvibe open on Linux (opens the app URL)" },
   { cmd: "osascript", reason: "native folder picker on macOS (choose folder; user cancel reported as cancelled, #26)" },

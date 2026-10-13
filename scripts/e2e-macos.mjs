@@ -2,10 +2,13 @@
  // macOS end-to-end for the app shell (PRD §14), run as:
  //   node scripts/e2e-macos.mjs [--port N]
  //
- // macOS counterpart of `scripts/e2e-linux.mjs`. Uses a temporary HOME +
- // data dir + port, outside the user's real setup:
- //  1. `unvibe setup` compiles the helper app with `osacompile` (real, on
- //     macOS), patches its Info.plist, and registers it with `lsregister`.
+// macOS counterpart of `scripts/e2e-linux.mjs`. Uses a temporary HOME +
+// data dir + port, outside the user's real setup:
+//  1. `unvibe setup --no-login` compiles the helper app with `osacompile`
+//     (real, on macOS), patches its Info.plist, and registers it with
+//     `lsregister`. The start-at-login agent is skipped here on purpose:
+//     bootstrapping it would touch the real login session; its contents
+//     and enable commands are covered by `setup.test.ts` with a fake HOME.
  //  2. The Info.plist contents and quarantine state are asserted directly.
  //  3. URL dispatch is attempted for real (`open "unvibe://start"`). On a
  //     headless runner LaunchServices may not dispatch to GUI apps; when the
@@ -144,9 +147,11 @@ const lockPid = (dataDir) => {
 };
 
 // 1. setup -----------------------------------------------------------------
-const setup = runCli(["setup"]);
+// --no-login keeps this hermetic: no real launchctl bootstrap.
+const setup = runCli(["setup", "--no-login"]);
 console.log(setup.out);
 assert(setup.code === 0, "setup exits 0");
+assert(setup.out.includes(`http://unvibe.localhost:${PORT}`), "setup prints the new URL");
 const APP = path.join(HOME, "Applications", "Unvibe.app");
 assert(fs.existsSync(APP), "helper app written to temp HOME");
 if (setup.out.includes("registered unvibe:// with LaunchServices")) {
@@ -267,7 +272,7 @@ assert(after.code === 1 && after.out.includes("not running"), "status reports st
 const uninstall = runCli(["setup", "--uninstall"]);
 assert(uninstall.code === 0 && !fs.existsSync(APP), "uninstall removes the helper");
 const uninstall2 = runCli(["setup", "--uninstall"]);
-assert(uninstall2.code === 0 && uninstall2.out.includes("not present"), "uninstall is idempotent");
+assert(uninstall2.code === 0 && uninstall2.out.includes("nothing to remove"), "uninstall is idempotent");
 
 // Final cleanup: a service we dispatched (but never confirmed) must not be
 // left running on the defaults. Foreign 4517 owners are never touched.
