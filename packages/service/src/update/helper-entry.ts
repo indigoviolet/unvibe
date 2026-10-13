@@ -22,11 +22,18 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { RealCommandRunner } from "../exec/runner.js";
 import { readLock } from "../cli/lock.js";
 import { FakeUpdater, RealUpdater, type Updater } from "./updater.js";
 import { clearPendingSwitch, updateDir, writeSwitchOutcome } from "./state.js";
+import {
+  isLoginManaged,
+  refreshLoginUnitIfManaged,
+  startManagedService,
+  stopManagedService,
+} from "./service-manager.js";
 import { runSwitchFlow, type HelperArgs, type ObservedHealth } from "./helper.js";
 import type { SwitchOutcome } from "@unvibe/shared";
 
@@ -113,6 +120,14 @@ function parseArgs(raw: unknown): HelperArgs {
     }
     return v;
   })();
+  if (typeof o["managed"] !== "boolean") throw new Error("helper args: missing managed");
+  if (typeof o["loginUnitPath"] !== "string" || (o["loginUnitPath"] as string) === "") {
+    throw new Error("helper args: missing loginUnitPath");
+  }
+  const loginUid = o["loginUid"];
+  if (loginUid !== null && (typeof loginUid !== "number" || !Number.isSafeInteger(loginUid) || loginUid < 0)) {
+    throw new Error("helper args: bad loginUid");
+  }
   return {
     from: str("from"),
     to: str("to"),
@@ -128,6 +143,9 @@ function parseArgs(raw: unknown): HelperArgs {
     logPath: str("logPath"),
     scriptPath: str("scriptPath"),
     serviceVersion: str("serviceVersion"),
+    managed: o["managed"] as boolean,
+    loginUnitPath: o["loginUnitPath"] as string,
+    loginUid: loginUid as number | null,
     ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
   };
 }
@@ -218,7 +236,12 @@ async function main(): Promise<number> {
     }
   };
 
-  const startService = async (): Promise<number> => {
+  const startService = async (): Promise<number | null> => {
+    if (args.managed) {
+      const started = await startManagedGeneration();
+      if (started) return started;
+      log("warning: service-manager start failed; starting directly instead (unmanaged until the next login)");
+    }
     // Our own node: the helper was spawned by the service through this
     // same executable, so it always runs the restart (no stale path).
     const child = spawn(process.execPath, [args.scriptPath, "start", "--foreground"], {
@@ -237,6 +260,13 @@ async function main(): Promise<number> {
   // Stop a generation the helper itself started (never the told-about
   // service PID, which is only waited on). Best-effort, never throws.
   const stopService = async (pid: number): Promise<void> => {
+    if (args.managed) {
+      // Never SIGTERM a manager-owned generation: with crash-only
+      // restart the manager would revive it at once and fight the next
+      // generation for the port. Unload through the manager instead.
+      await stopManagedService(managerOp());
+      return;
+    }
     try {
       if (!isPidAlive(pid)) return;
       process.kill(pid, "SIGTERM");
@@ -261,6 +291,126 @@ async function main(): Promise<number> {
       return false;
     }
   };
+
+  /**
+   * Manager plumbing for the helper's own restarts (issue #108
+   * follow-up). `runManager` spawns one manager command (30 s bound —
+   * a hung manager must fail the start, never the switch).
+   */
+  function managerOp(): {
+    runner: { run(cmd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> };
+    log(message: string): void;
+    platform: string;
+    uid: number | null;
+    unitPath: string;
+  } {
+    return {
+      runner: { run: (cmd, a) => runManager(cmd, a) },
+      log,
+      platform: process.platform,
+      uid: args.loginUid,
+      unitPath: args.loginUnitPath,
+    };
+  }
+
+  function runManager(cmd: string, a: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+    return new Promise((resolve) => {
+      let out = "";
+      let errOut = "";
+      let done = false;
+      const finish = (code: number): void => {
+        if (done) return;
+        done = true;
+        resolve({ code, stdout: out, stderr: errOut });
+      };
+      let child;
+      try {
+        child = spawn(cmd, a, { stdio: ["ignore", "pipe", "pipe"] });
+      } catch (err) {
+        resolve({ code: 127, stdout: "", stderr: err instanceof Error ? err.message : String(err) });
+        return;
+      }
+      const timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // already gone
+        }
+        finish(1);
+      }, 30_000);
+      child.stdout?.on("data", (d) => {
+        out += String(d);
+      });
+      child.stderr?.on("data", (d) => {
+        errOut += String(d);
+      });
+      child.on("error", () => {
+        clearTimeout(timer);
+        finish(127);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        finish(typeof code === "number" ? code : 1);
+      });
+    });
+  }
+
+  /**
+   * Restart through the service manager: stop whatever generation is
+   * loaded first (covers a stacked generation the flow lost track of),
+   * start, then read the generation's pid back from the data-dir lock.
+   * Null when the pid could not be read (the flow skips its
+   * stale-generation check for it) or when the manager failed (the
+   * caller falls back to a direct spawn).
+   */
+  async function startManagedGeneration(): Promise<number | null> {
+    const op = managerOp();
+    await stopManagedService(op);
+    if (!(await startManagedService(op))) return null;
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      try {
+        const lock = readLock(args.dataDir);
+        if (lock && isPidAlive(lock.pid)) {
+          log(`managed generation holds the lock (pid ${lock.pid})`);
+          return lock.pid;
+        }
+      } catch {
+        // keep polling
+      }
+      if (Date.now() >= deadline) {
+        log("warning: managed generation started but holds no lock yet; continuing without a pid");
+        return null;
+      }
+      await sleep(250);
+    }
+  }
+
+  /**
+   * Rewrite the login unit with the just-installed paths (Q2): the global
+   * npm install can move the installed files, and the helper's own node
+   * plus the renewed-in-place entry are the fresh values. No-op when
+   * unmanaged.
+   */
+  function refreshUnit(when: string): void {
+    try {
+      const home = process.env.HOME ?? os.homedir();
+      const ok = refreshLoginUnitIfManaged(home, process.platform, {
+        nodePath: process.execPath,
+        cliPath: args.scriptPath,
+        port: args.port,
+        dataDir: args.dataDir,
+      });
+      // Believe the file check, not the args flag: when the unit is gone
+      // (user uninstalled mid-switch) there is nothing to refresh.
+      if (ok) log(`login unit refreshed ${when}`);
+      else if (args.managed && !isLoginManaged(home, process.platform)) {
+        log("login unit no longer installed; leaving the restart unmanaged");
+      }
+    } catch (err) {
+      log(`warning: login unit refresh failed (${err instanceof Error ? err.message : String(err)})`);
+    }
+  }
 
   // Wait for a sample reporting `expectVersion` (null = any healthy
   // build): the install waits for the target, the rollback waits for the
@@ -293,7 +443,11 @@ async function main(): Promise<number> {
     { ...args, exitWaitMs, healthTimeoutMs, pollIntervalMs, stopWaitMs },
     {
       waitForExit,
-      switchTo: (ref, opts) => updater.switchTo(ref, opts),
+      switchTo: async (ref, opts) => {
+        const switched = await updater.switchTo(ref, opts);
+        refreshUnit("after install of " + switched.to);
+        return switched;
+      },
       startService,
       stopService,
       isCurrentService,

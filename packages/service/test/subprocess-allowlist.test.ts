@@ -8,6 +8,8 @@
  * `lsregister`, `xdg-mime`, `update-desktop-database`, `launchctl`
  * (start-at-login agent, issue #108), `systemctl --user` (start-at-login
  * unit, issue #108), `open`/`xdg-open`),
+ * plus the same two managers driven by the detached update helper for a
+ * login-managed restart (argv built by `update/service-manager.ts`),
  * the native folder-picker dialogs (`osascript` on macOS,
  * `zenity`/`kdialog` on Linux, #26),
  * plus the service lifecycle itself (spawning its own CLI entry).
@@ -127,6 +129,10 @@ describe("subprocess allowlist", () => {
           // service entry (process.execPath, handled above).
           if (/cli\/commands/.test(rel) && /opener/.test(line)) return;
           if (/exec\/runner/.test(rel) && /spawn\(\s*cmd/.test(line)) return; // RealCommandRunner dispatcher
+          // update/helper-entry.ts drives the service manager for a
+          // login-managed restart (launchctl/systemctl argv only, built by
+          // update/service-manager.ts; 30 s bound, never the service PID).
+          if (/update\/helper-entry/.test(rel) && /spawn\(\s*cmd/.test(line)) return;
           offenders.push(`${rel}:${i + 1}: spawn ${line.trim().slice(0, 80)}`);
         }
       });

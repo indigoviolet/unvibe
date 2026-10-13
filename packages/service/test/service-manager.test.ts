@@ -11,16 +11,21 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  checkLoginUnit,
   isLoginManaged,
   kickstartServiceCommands,
   LAUNCHD_LABEL,
+  launchdPlistContent,
   loginUnitPath,
   managedStatusText,
+  parseLoginUnit,
+  refreshLoginUnitIfManaged,
   startManagedService,
   startServiceCommands,
   stopManagedService,
   stopServiceCommands,
   SYSTEMD_UNIT_NAME,
+  systemdUnitContent,
   unloadManagedService,
   type ManagerRunner,
 } from "../src/update/service-manager.js";
@@ -183,5 +188,90 @@ describe("unloadManagedService", () => {
     const runner2 = stubRunner();
     await unloadManagedService(op(runner2, "linux"));
     expect(runner2.calls).toEqual(["systemctl --user stop unvibe.service"]);
+  });
+});
+
+describe("parseLoginUnit (Q2 round-trip against the builders)", () => {
+  const OPTS = { nodePath: "/usr/bin/node", cliPath: "/x/cli.js", port: 4517, dataDir: "/home/u/.local/share/unvibe" };
+
+  it("reads back a generated plist", () => {
+    expect(parseLoginUnit(launchdPlistContent(OPTS), "darwin")).toEqual(OPTS);
+  });
+
+  it("reads back a generated systemd unit, including quoted paths", () => {
+    expect(parseLoginUnit(systemdUnitContent(OPTS), "linux")).toEqual(OPTS);
+    const spacy = { ...OPTS, nodePath: "/home/u/My Tools/node", dataDir: "/home/u/My Data" };
+    expect(parseLoginUnit(systemdUnitContent(spacy), "linux")).toEqual(spacy);
+  });
+
+  it("rejects foreign content", () => {
+    expect(parseLoginUnit("nonsense", "darwin")).toBeNull();
+    expect(parseLoginUnit("nonsense", "linux")).toBeNull();
+    expect(parseLoginUnit(launchdPlistContent(OPTS), "linux")).toBeNull();
+  });
+});
+
+describe("checkLoginUnit (Q2 staleness)", () => {
+  it("unmanaged is clean", () => {
+    const home = fakeHome();
+    expect(checkLoginUnit(home, "linux")).toEqual({
+      managed: false,
+      unitPath: loginUnitPath(home, "linux"),
+      problems: [],
+    });
+  });
+
+  it("fresh unit is clean; moved node/cli are reported with the fix", () => {
+    const home = fakeHome();
+    const unit = loginUnitPath(home, "linux");
+    fs.mkdirSync(path.dirname(unit), { recursive: true });
+    fs.writeFileSync(
+      unit,
+      systemdUnitContent({ nodePath: "/nonexistent/node", cliPath: "/nonexistent/cli.js", port: 4517, dataDir: home }),
+    );
+    const checked = checkLoginUnit(home, "linux");
+    expect(checked.managed).toBe(true);
+    expect(checked.problems).toHaveLength(2);
+    expect(checked.problems.join("\n")).toContain("re-run `unvibe setup`");
+  });
+});
+
+describe("refreshLoginUnitIfManaged (Q2)", () => {
+  it("no-op when unmanaged", () => {
+    const home = fakeHome();
+    const written: string[] = [];
+    const ok = refreshLoginUnitIfManaged(
+      home,
+      "linux",
+      { nodePath: "/n", cliPath: "/c", port: 1, dataDir: home },
+      (p, c) => {
+        written.push(p, c);
+      },
+    );
+    expect(ok).toBe(false);
+    expect(written).toEqual([]);
+  });
+
+  it("rewrites a managed unit with fresh paths", () => {
+    const home = fakeHome();
+    const unit = loginUnitPath(home, "linux");
+    fs.mkdirSync(path.dirname(unit), { recursive: true });
+    fs.writeFileSync(
+      unit,
+      systemdUnitContent({ nodePath: "/old/node", cliPath: "/old/cli.js", port: 4517, dataDir: home }),
+    );
+    const ok = refreshLoginUnitIfManaged(home, "linux", {
+      nodePath: "/new/node",
+      cliPath: "/new/cli.js",
+      port: 4599,
+      dataDir: home,
+    });
+    expect(ok).toBe(true);
+    expect(parseLoginUnit(fs.readFileSync(unit, "utf8"), "linux")).toEqual({
+      nodePath: "/new/node",
+      cliPath: "/new/cli.js",
+      port: 4599,
+      dataDir: home,
+    });
   });
 });
