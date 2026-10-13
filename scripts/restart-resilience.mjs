@@ -252,9 +252,10 @@ const main = async () => {
       token,
       "POST",
       `/api/reviews/${id}/actions`,
+      // Slice 1 contract (#136): reply/retry take annotationId.
       hasAnswer
-        ? { kind: "reply", threadId, message: "And why?" }
-        : { kind: "retry", threadId },
+        ? { kind: "reply", annotationId: threadId, message: "And why?" }
+        : { kind: "retry", annotationId: threadId },
     );
     assert(again.code === 200, `${path} after restart accepted (${again.code})`);
     let answered = false;
@@ -264,6 +265,55 @@ const main = async () => {
       answered = (cur?.messages ?? []).filter((m) => m.who === "ai").length >= (hasAnswer ? 2 : 1) && !cur?.working;
     }
     assert(answered, "conversation recovers after restart (no lost thread)");
+  }
+
+  // 3b. Conversation card (issue #136 slice 1): Explain, follow up,
+  // SIGKILL mid-follow-up, restart, reply again on the same card. The
+  // card's session rebuilds from the stored turns; no turn is lost. -----
+  if (blockId) {
+    const explain = await api(token, "POST", `/api/reviews/${id}/actions`, {
+      kind: "explain",
+      quote: "test",
+      anchor: { where: "block", blockId },
+    });
+    assert(explain.code === 200, `explain accepted (${explain.code})`);
+    const cardId = json(explain.body)?.annotationId ?? null;
+    let firstFilled = false;
+    for (let i = 0; i < 45 && !firstFilled; i++) {
+      await sleep(1000);
+      const cur = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === cardId);
+      firstFilled = ((cur?.turns ?? [])[0]?.blocks ?? []).length > 0 && !cur?.working;
+    }
+    assert(firstFilled, "explain first turn fills");
+    const follow = await api(token, "POST", `/api/reviews/${id}/actions`, {
+      kind: "reply",
+      annotationId: cardId,
+      message: "And why?",
+    });
+    assert(follow.code === 200, `follow-up accepted (${follow.code})`);
+    await sleep(400); // second turn streaming
+    await kill9(svc, "mid-follow-up SIGKILL");
+    svc = await startService("restart after mid-follow-up SIGKILL");
+    const c = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === cardId);
+    assert(!!c && (c.turns ?? []).length >= 1, "conversation card survives SIGKILL");
+    console.log(
+      `  card after restart: turns=${(c?.turns ?? []).length} working=${c?.working ?? null} error=${(c?.error ?? "").slice(0, 60) || null} session=${c?.sessionId ? "yes" : "no"}`,
+    );
+    // Reply again on the same card: the session rebuilds from the stored turns.
+    const again2 = await api(token, "POST", `/api/reviews/${id}/actions`, {
+      kind: "reply",
+      annotationId: cardId,
+      message: "And then?",
+    });
+    assert(again2.code === 200, `reply on conversation after restart accepted (${again2.code})`);
+    let recovered = false;
+    for (let i = 0; i < 45 && !recovered; i++) {
+      await sleep(1000);
+      const cur = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === cardId);
+      const turns = cur?.turns ?? [];
+      recovered = turns.length >= 3 && turns.every((t) => (t.blocks ?? []).length > 0) && !cur?.working;
+    }
+    assert(recovered, "conversation recovers after restart (follow-up turns kept)");
   }
 
   // 4. Clean shutdown + fresh start through the CLI. -------------------------
