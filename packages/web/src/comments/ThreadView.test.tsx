@@ -169,11 +169,15 @@ describe("ThreadView ask-about (issue #136)", () => {
   });
 });
 
-describe("ThreadView authorship (issue #86, finding 21; prototype avatar)", () => {
-  test("the user's avatar reads Me and the name reads You", () => {
+describe("ThreadView authorship (owner decision: icons, not text)", () => {
+  test("the user's avatar is a person icon with a screen-reader name, and no visible author text", () => {
     const found = useReview.getState().snapshot?.annotations[0] as Annotation;
     const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
-    expect(container.querySelector(".av.you")?.textContent).toBe("Me");
-    expect(screen.getByText("You", { selector: ".who" })).toBeInTheDocument();
+    const avatar = container.querySelector(".av.you");
+    expect(avatar?.getAttribute("aria-label")).toBe("You");
+    expect(avatar?.querySelector("svg")).not.toBeNull();
+    // No visible "Me"/"You" text: the icon alone is the marker.
+    expect(avatar?.textContent).toBe("");
+    expect(container.querySelector(".msg .who")).toBeNull();
   });
 });

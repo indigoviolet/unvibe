@@ -192,9 +192,15 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
       ) : null}
       {messages.map((m, i) => (
         <div className="msg" key={i}>
-          <span className={`av ${m.who === "you" ? "you" : "ai"}`}>{m.who === "you" ? "Me" : "AI"}</span>
+          <span
+            className={`av ${m.who === "you" ? "you" : "ai"}`}
+            role="img"
+            aria-label={m.who === "you" ? "You" : "Agent"}
+            data-tip={m.who === "you" ? "You" : "Agent"}
+          >
+            <Icon name={m.who === "you" ? "person" : "spark"} />
+          </span>
           <div>
-            <div className="who">{m.who === "you" ? "You" : m.suggested ? "Agent · suggested comment" : "Agent"}</div>
             <p dangerouslySetInnerHTML={{ __html: tick(m.text ?? "") }} />
           </div>
         </div>

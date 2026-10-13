@@ -475,6 +475,11 @@ needed (that deviation is closed, not added).
   answer, on hover/focus for earlier ones. Follow-up chips send the next
   turn and stay (they are not consumed). “Ask the agent about this” on
   comments and keep-filling open-as-page have no prototype counterpart.
+  Author markers are icons, not text — a person icon for the reviewer,
+  the spark for the agent, with screen-reader names (“You” / “Agent”)
+  and tooltips — where the prototype prints “Me”/“You”/“AI” plus a name
+  line (owner decision; the second-opinion model label stays, since it
+  is information, not an author label).
 
 ### §4.8 Comments — all met (#136 slice 2: threads are comments only)
 

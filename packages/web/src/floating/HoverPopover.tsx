@@ -18,6 +18,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Anchor, Annotation, Page } from "@unvibe/shared";
+import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations } from "../guide/citations.js";
@@ -33,12 +34,17 @@ const esc = (s: string): string =>
 const tick = (s: string): string => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 
 function renderMsgs(msgs: Annotation["messages"]): string {
+  // Author avatars are icons, not text (owner decision): a person icon
+  // for the reviewer, the spark for the agent. Shapes come from
+  // `components/Icon.tsx`. Screen-reader names follow the #45 glossary
+  // ("You" / "Agent").
   return msgs
     .map((m) => {
-      const who = m.who === "you" ? "You" : m.suggested ? "Agent · suggested comment" : "Agent";
-      const av = m.who === "you" ? "you" : "ai";
-      const label = m.who === "you" ? "Me" : "AI";
-      return `<div class="msg"><span class="av ${av}">${label}</span><div><div class="who">${who}</div><p>${tick(m.text ?? "")}</p></div></div>`;
+      const you = m.who === "you";
+      const av = you ? "you" : "ai";
+      const name = you ? "You" : "Agent";
+      const inner = you ? PERSON_SVG_INNER : SPARK_SVG_INNER;
+      return `<div class="msg"><span class="av ${av}" role="img" aria-label="${name}" data-tip="${name}"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${inner}</svg></span><div><p>${tick(m.text ?? "")}</p></div></div>`;
     })
     .join("");
 }

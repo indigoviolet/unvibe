@@ -323,7 +323,9 @@ function HunkCard({
     <div className={`fcard${reviewed ? " rev" : ""}`}>
       {summary ? (
         <div className="fsum">
-          <span className="av ai">AI</span>
+          <span className="av ai" role="img" aria-label="Agent" data-tip="Agent">
+            <Icon name="spark" />
+          </span>
           <p>{summary}</p>
           <button
             className="ib"
@@ -338,7 +340,9 @@ function HunkCard({
       ) : null}
       {note && noteDraft === undefined ? (
         <div className="fsum">
-          <span className="av you">Me</span>
+          <span className="av you" role="img" aria-label="You" data-tip="You">
+            <Icon name="person" />
+          </span>
           <div>
             <p style={{ margin: 0 }}>{note}</p>
             {noteStale ? <span className="hint">code changed since this note</span> : null}
