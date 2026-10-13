@@ -430,7 +430,18 @@ needed (that deviation is closed, not added).
   back → highlight).
 - Open as page moves content (one page card per answer, first titled
   with the quote, later ones with their questions), anchor becomes link
-  — met (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
+  at once in the guide, the description and the diff — met
+  (`actions/promote.ts`, `actions-m4.test.ts` “promote”,
+  `source/diff/DiffPromotedLink.test.tsx`). Opening as a page never
+  discards work (issue #152): a still-running fill keeps running and
+  lands on the page card (turns stay on the link as the fill's state
+  owner with the card's session, mirrored per partial; the job is
+  re-targeted at the page card so the page shows the working state; the
+  turns drop off the link and the session closes once everything has
+  settled), a failed fill shows the error with Retry on the page, and
+  second opinions move to the page with the answers — met
+  (`conversation.test.ts` “promote mid-fill”, `guide/CardViewPromoted.test.tsx`,
+  `e2e/promote-midfill.spec.ts`).
 - One box while working (issue #97) — met: the Explain placeholder gives
   way as soon as its expansion is in the snapshot (guide, description and
   diff alike), the card shows the fixed “Writing explanation…” label from

@@ -351,24 +351,23 @@ export async function runConversationTurn(
         // Promoted mid-fill: the page card is the visible copy.
         mirrorPromotedAnswer(draft, turnId);
       });
-      // A promoted turn that just settled may be the last one the link
-      // owns: with nothing left to fill or retry, the turns move off the
-      // link (the page holds the content) and the session closes, since
-      // pages have no reply box.
-      await dropSettledPromotedTurns(ctx, annotationId);
       // New turn content enters the log in full (PRD §9.3 `new-card`).
-      // Awaited so tests observe the entry once the fill settles.
+      // Awaited so tests observe the entry once the fill settles. Runs
+      // before the promoted-turn drop below: the event is built from the
+      // link's turns, which a settled promote then moves off the link.
       try {
         const jobId = (await capture.wait())?.id;
         const sessionId = jobId ? ctx.jobs.get(jobId)?.sessionId : undefined;
         const snap = getSnapshotOrThrow(reviews, reviewId);
         const filled = snap.annotations.find((a) => a.id === annotationId);
         // The card's session may have been rebuilt under a new id while
-        // the turn ran: store what the job actually used.
-        if (sessionId && filled && filled.sessionId !== sessionId) {
+        // the turn ran: store what the job actually used — unless the
+        // turns already moved off a settled promoted link.
+        const stillOwnsTurn = (filled?.turns ?? []).some((t) => t.id === turnId);
+        if (sessionId && filled && stillOwnsTurn && filled.sessionId !== sessionId) {
           await reviews.mutate(reviewId, (draft) => {
             const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-            if (target) target.sessionId = sessionId;
+            if (target && (target.turns ?? []).some((t) => t.id === turnId)) target.sessionId = sessionId;
           });
         }
         const event = filled ? newCardForTurn(reviewId, snap, filled, turnId, sessionId) : null;
@@ -376,6 +375,11 @@ export async function runConversationTurn(
       } catch {
         // Logging never fails the action.
       }
+      // A promoted turn that just settled may be the last one the link
+      // owns: with nothing left to fill or retry, the turns move off the
+      // link (the page holds the content) and the session closes, since
+      // pages have no reply box.
+      await dropSettledPromotedTurns(ctx, annotationId);
       return null;
     },
     async (err: Error): Promise<string | null> => {

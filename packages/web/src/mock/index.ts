@@ -2320,6 +2320,7 @@ export const mockApi = {
           messages: [],
           post: false,
           working: "Thinking…",
+          jobId: askJobId,
           turns: [
             {
               id: turnId,
@@ -2329,6 +2330,7 @@ export const mockApi = {
               revision: 1,
               undoStack: [],
               working: "Thinking…",
+              jobId: askJobId,
             },
           ],
         } as unknown as import("@unvibe/shared").Annotation);
@@ -2357,10 +2359,12 @@ export const mockApi = {
           revision: 1,
           undoStack: [],
           working: "Writing reply…",
+          jobId: `mock-reply-${found.id}-${turnId}`,
         } as never);
         found.working = "Writing reply…";
         found.error = null;
         found.open = true;
+        found.jobId = `mock-reply-${found.id}-${turnId}`;
         delete found.reply;
         emitAnnotations();
         const replyJobId = `mock-reply-${found.id}-${turnId}`;
@@ -2378,8 +2382,10 @@ export const mockApi = {
       last.working = "Thinking…";
       found.working = "Thinking…";
       if (found.type === "conversation") found.open = true;
-      emitAnnotations();
       const retryJobId = `mock-retry-${found.id}`;
+      last.jobId = retryJobId;
+      found.jobId = retryJobId;
+      emitAnnotations();
       trackMockJob(retryJobId, "ask", { annotationId: found.id });
       // A retry on a promoted link refills the page (issue #152).
       if (found.type === "link") {
@@ -2422,6 +2428,7 @@ export const mockApi = {
         messages: [],
         post: false,
         working: "Thinking…",
+        jobId,
         turns: [
           {
             id: turnId,
@@ -2431,6 +2438,7 @@ export const mockApi = {
             revision: 1,
             undoStack: [],
             working: "Thinking…",
+            jobId,
           },
         ],
       } as unknown as import("@unvibe/shared").Annotation);
