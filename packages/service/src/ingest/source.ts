@@ -9,8 +9,10 @@
  *   `git rev-parse`, base = upstream → default branch → root commit.
  *
  * All commands go through the injectable `CommandRunner`; `gh` runs with
- * `GITHUB_TOKEN` unset (PRD §15). Fetch failures never fail ingest: local
- * branches and test fixtures have no remote.
+ * `GITHUB_TOKEN` unset (PRD §15). Fetches stay best-effort — local
+ * branches and test fixtures have no remote — but every attempt is kept
+ * (#139): when the PR head is missing afterwards, ingest fails with the
+ * fetch failure in plain words instead of "commit not found".
  */
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
@@ -63,12 +65,39 @@ async function runGit(
   return { ok: res.code === 0, stdout: res.stdout, stderr: res.stderr };
 }
 
-async function bestEffortFetch(runner: CommandRunner, repoPath: string, ref: string): Promise<void> {
+/**
+ * What one `git fetch` attempt did (#139). Every fetch (combined and
+ * fallback) is kept, so when the head commit is missing afterwards the
+ * error can name the fetch failure instead of blaming the repo.
+ */
+export interface FetchAttempt {
+  /** The exact command, e.g. "git fetch origin refs/pull/42/head main". */
+  command: string;
+  ok: boolean;
+  /** Shortened git stderr (or stdout) when it failed. */
+  detail: string;
+}
+
+/** Run one `git fetch origin …` and record what happened (never throws). */
+async function runFetch(runner: CommandRunner, repoPath: string, refspecs: string[]): Promise<FetchAttempt> {
+  const args = ["fetch", "origin", ...refspecs];
+  const command = `git ${args.join(" ")}`;
   try {
-    await runner.run("git", { args: ["fetch", "origin", ref], cwd: repoPath });
-  } catch {
-    // No remote / offline / test fixture: ingest proceeds with local refs.
+    const res = await runner.run("git", { args, cwd: repoPath });
+    return {
+      command,
+      ok: res.code === 0,
+      detail: res.code === 0 ? "" : (res.stderr.trim() || res.stdout.trim()).slice(0, 300),
+    };
+  } catch (e) {
+    return { command, ok: false, detail: (e instanceof Error ? e.message : String(e)).slice(0, 300) };
   }
+}
+
+async function bestEffortFetch(runner: CommandRunner, repoPath: string, ref: string): Promise<FetchAttempt> {
+  if (!ref) return { command: "git fetch origin", ok: false, detail: "no ref to fetch" };
+  // No remote / offline / test fixture: ingest proceeds with local refs.
+  return runFetch(runner, repoPath, [ref]);
 }
 
 /**
@@ -112,8 +141,12 @@ async function fetchPrHead(
 /**
  * #123: one `git fetch` for the PR head and the base together (was two
  * sequential fetches). The head keeps its #93 shape — `refs/pull/<n>/head`
- * with the branch-name fallback — and the base stays best-effort:
- * `resolvePrMergeBase` names what's missing when it is still gone.
+ * with the branch-name fallback — and the base stays best-effort.
+ *
+ * #139: every attempt is returned (combined and fallback). Best-effort
+ * stays — offline use and remote-less fixtures keep working — it just
+ * stops discarding what happened, so a missing head can report the fetch
+ * failure instead of "commit not found".
  */
 async function fetchPrHeadAndBase(
   runner: CommandRunner,
@@ -121,20 +154,42 @@ async function fetchPrHeadAndBase(
   pr: number,
   headRefName: string,
   baseRefName: string,
-): Promise<void> {
-  try {
-    const res = await runner.run(
-      "git",
-      { args: ["fetch", "origin", `refs/pull/${pr}/head`, baseRefName], cwd: repoPath },
-    );
-    if (res.code === 0) return;
-  } catch {
-    // Fall through to per-refspec best effort below.
-  }
+): Promise<FetchAttempt[]> {
+  const first = await runFetch(runner, repoPath, [`refs/pull/${pr}/head`, baseRefName].filter(Boolean));
+  if (first.ok) return [first];
+  const out = [first];
   if (headRefName) {
-    await bestEffortFetch(runner, repoPath, headRefName);
+    out.push(await bestEffortFetch(runner, repoPath, headRefName));
   }
-  await bestEffortFetch(runner, repoPath, baseRefName);
+  if (baseRefName) {
+    out.push(await bestEffortFetch(runner, repoPath, baseRefName));
+  }
+  return out;
+}
+
+/**
+ * #139: the head commit is missing after fetching. Name the fetch failure
+ * and its reason in plain words (which fetch, what git said, what to try)
+ * instead of "commit not found". When every fetch worked but the commit is
+ * still gone (moved head that the retry below did not catch, shallow or
+ * partial clone), say that instead.
+ */
+function headFetchError(pr: number, headSha: string, attempts: FetchAttempt[]): Error {
+  const failed = attempts.filter((a) => !a.ok);
+  if (failed.length > 0) {
+    const first = failed[0];
+    const reason = first.detail ? `: ${first.detail}` : "";
+    return new Error(
+      `couldn't download the commits for PR #${pr} (${first.command} failed${reason}). ` +
+        `Check that this machine can reach GitHub, then try again — your repo is fine, ` +
+        `Unvibe downloads the PR's commits itself.`,
+    );
+  }
+  return new Error(
+    `couldn't download the commits for PR #${pr}: the download seemed to work but commit ` +
+      `${headSha} isn't there. The PR may have changed just now — try again, and if it keeps ` +
+      `failing run \`git fetch origin refs/pull/${pr}/head\` in the repo and open the PR again.`,
+  );
 }
 
 /**
@@ -368,16 +423,34 @@ export async function resolveSource(
     descriptionEditable = info.state === "OPEN";
     descriptionAuthor = info.authorLogin || undefined;
     descriptionState = info.state || undefined;
-    await fetchPrHeadAndBase(runner, repoPath, source.pr, info.headRefName, baseRef);
+    let attempts = await fetchPrHeadAndBase(runner, repoPath, source.pr, info.headRefName, baseRef);
     if (!headSha) {
       const local = await runGit(runner, ["rev-parse", info.headRefName], repoPath);
       if (!local.ok) {
+        // #139: the branch is missing locally most often because the fetch
+        // above failed — report that instead of the bare rev-parse stderr.
+        if (attempts.some((a) => !a.ok)) throw headFetchError(source.pr, info.headRefName || `#${source.pr}`, attempts);
         const detail = (local.stderr.trim() || local.stdout.trim()).slice(0, 300);
         throw new Error(
           `the PR's branch ${info.headRefName || `#${source.pr}`} wasn't found in this repo${detail ? `: ${detail}` : ""}`,
         );
       }
       headSha = local.stdout.trim();
+    } else if (!(await headCommitExists(runner, repoPath, headSha))) {
+      // #139: the head may have moved between `gh pr view` and the fetch
+      // (force-push) — re-read once and retry for the new head.
+      const reread = await fetchPrInfo(runner, repoPath, source.pr).catch(() => null);
+      if (reread && reread.headRefOid && reread.headRefOid !== headSha) {
+        headSha = reread.headRefOid;
+        baseRef = reread.baseRefName || baseRef;
+        attempts = [
+          ...attempts,
+          ...(await fetchPrHeadAndBase(runner, repoPath, source.pr, reread.headRefName, baseRef)),
+        ];
+      }
+      if (!(await headCommitExists(runner, repoPath, headSha))) {
+        throw headFetchError(source.pr, headSha, attempts);
+      }
     }
   } else if (source.branch !== undefined) {
     branch = source.branch;
