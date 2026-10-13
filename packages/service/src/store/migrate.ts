@@ -1,5 +1,6 @@
 /**
- * Database schema (issue #137: collapsed, no backward compatibility).
+ * Database schema (issue #137: collapsed, no backward compatibility;
+ * issue #142: dead tables removed).
  *
  * A single migration creates every table at its current shape (what the
  * 001–005 series produced, with 005's `repos.managed` column defined
@@ -10,8 +11,11 @@
  * databases: stored data can be reset, so a stale data directory is
  * deleted, never migrated.
  *
- * Tables cover the §7.1 entities. Nested shapes (blocks, anchors, messages,
- * items, payloads) are JSON columns; owners parse them with the shared types.
+ * A review is one JSON snapshot (`review_snapshots`); the `annotations`,
+ * `cards`, `blocks` and `hunk_states` tables the 001–005 series created
+ * were never read or written, so they are gone (#142). Nested shapes
+ * (annotations, cards, blocks, anchors, messages, items, payloads) live
+ * inside the snapshot JSON; owners parse them with the shared types.
  */
 import type { DatabaseSync } from "node:sqlite";
 
@@ -76,15 +80,6 @@ export const MIGRATIONS: Migration[] = [
         hidden_reason TEXT,
         PRIMARY KEY (review_id, version_n, file_key, content_hash)
       );
-      CREATE TABLE IF NOT EXISTS hunk_states (
-        review_id TEXT NOT NULL REFERENCES reviews(id),
-        content_hash TEXT NOT NULL,
-        folded INTEGER NOT NULL DEFAULT 0,
-        reviewed INTEGER NOT NULL DEFAULT 0,
-        summary TEXT,
-        note TEXT,
-        PRIMARY KEY (review_id, content_hash)
-      );
       CREATE TABLE IF NOT EXISTS pages (
         review_id TEXT NOT NULL REFERENCES reviews(id),
         id TEXT NOT NULL,
@@ -92,36 +87,6 @@ export const MIGRATIONS: Migration[] = [
         title TEXT NOT NULL,
         saved INTEGER NOT NULL DEFAULT 0,
         parent TEXT,
-        data JSON NOT NULL DEFAULT '{}',
-        PRIMARY KEY (review_id, id)
-      );
-      CREATE TABLE IF NOT EXISTS cards (
-        review_id TEXT NOT NULL REFERENCES reviews(id),
-        page_id TEXT NOT NULL,
-        id TEXT NOT NULL,
-        title TEXT,
-        level TEXT NOT NULL DEFAULT 'standard',
-        is_read INTEGER NOT NULL DEFAULT 0,
-        collapsed INTEGER NOT NULL DEFAULT 0,
-        revision INTEGER NOT NULL DEFAULT 1,
-        data JSON NOT NULL DEFAULT '{}',
-        PRIMARY KEY (review_id, page_id, id)
-      );
-      CREATE TABLE IF NOT EXISTS blocks (
-        review_id TEXT NOT NULL REFERENCES reviews(id),
-        card_id TEXT NOT NULL,
-        id TEXT NOT NULL,
-        ord INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        data JSON NOT NULL DEFAULT '{}',
-        PRIMARY KEY (review_id, card_id, id)
-      );
-      CREATE TABLE IF NOT EXISTS annotations (
-        review_id TEXT NOT NULL REFERENCES reviews(id),
-        id TEXT NOT NULL,
-        type TEXT NOT NULL,
-        anchor JSON NOT NULL DEFAULT '{}',
-        open INTEGER NOT NULL DEFAULT 0,
         data JSON NOT NULL DEFAULT '{}',
         PRIMARY KEY (review_id, id)
       );
