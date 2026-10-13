@@ -86,6 +86,26 @@ test("selection snaps to whole words and Ask creates a working thread", async ({
   await expect(thread.locator(".msg .av.ai")).toBeVisible();
 });
 
+test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }) => {
+  await gotoReview(page);
+  await selectText(page, "#C-central", "optional");
+  await page.locator('#selbar [data-act="note"]').click();
+  const composer = page.locator("#C-central .ithread[data-pending-thread]");
+  await expect(composer).toBeVisible();
+  await expect(composer.locator("textarea")).toHaveAttribute("placeholder", "Write a comment…");
+  await composer.locator("textarea").fill("A quiet comment");
+  await composer.getByRole("button", { name: "Save" }).click();
+  const thread = page.locator("#C-central .ithread[data-thread]", {
+    hasText: "A quiet comment",
+  });
+  await expect(thread).toBeVisible({ timeout: 5000 });
+  // No agent reply, already marked for the PR.
+  await expect(thread.locator(".working")).toHaveCount(0);
+  await expect(thread.locator(".msg .av.ai")).toHaveCount(0);
+  await thread.getByRole("button", { name: "Close" }).click();
+  await expect(thread).toHaveCount(0);
+});
+
 // DISABLED(#119): subset of interaction.spec.ts test 1 (select, Explain, expansion visible)
 test.skip("Explain creates an expansion without breaking", async ({ page }) => {
   await gotoReview(page);
@@ -102,12 +122,15 @@ test("diff line click starts a comment; close leaves an icon; reopen works", asy
   await line.click();
   const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
   await expect(slot).toBeVisible();
-  await slot.locator("textarea").fill("A diff note");
-  await slot.getByRole("button", { name: "Ask" }).click();
+  await slot.locator("textarea").fill("A diff comment");
+  await slot.getByRole("button", { name: "Save" }).click();
   // Scope to the created thread: the fixture already has open threads on
   // nearby lines in this file.
-  const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`, { hasText: "A diff note" });
+  const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`, { hasText: "A diff comment" });
   await expect(thread).toBeVisible({ timeout: 5000 });
+  // A comment is for the PR by default: no agent reply, already marked.
+  await expect(thread.locator(".working")).toHaveCount(0);
+  await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
   // Close leaves a comment icon on the line number; clicking reopens.
   await thread.getByRole("button", { name: "Close" }).click();
   await expect(thread).toHaveCount(0);
@@ -139,10 +162,10 @@ test("For PR drafts live in the Comments menu and persist", async ({ page }) => 
   await line.click();
   const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
   await slot.locator("textarea").fill("Ship it?");
-  await slot.getByRole("button", { name: "Ask" }).click();
+  await slot.getByRole("button", { name: "Save" }).click();
   const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
   await expect(thread).toContainText("Ship it?", { timeout: 5000 });
-  await thread.getByRole("button", { name: "Mark for the PR" }).click();
+  // Comments are for the PR by default — no explicit mark needed.
   await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
 
   // The Comments menu lists it with a For-PR count; the draft is editable.
@@ -264,10 +287,10 @@ test("submit panel previews and posts For-PR threads", async ({ page }) => {
   await line.click();
   const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
   await slot.locator("textarea").fill("Please add a test");
-  await slot.getByRole("button", { name: "Ask" }).click();
+  await slot.getByRole("button", { name: "Save" }).click();
   const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
   await expect(thread).toContainText("Please add a test", { timeout: 5000 });
-  await thread.getByRole("button", { name: "Mark for the PR" }).click();
+  // Already marked for the PR by default.
 
   await page.locator("#submitSlot [data-submit]").click();
   const panel = page.locator("#submitSlot .submit");

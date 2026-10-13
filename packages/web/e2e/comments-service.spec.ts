@@ -190,7 +190,7 @@ test.describe("comments over the real service", () => {
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 60_000 });
   }
 
-  test("create a note on a diff line; it survives reload", async ({ page }) => {
+  test("create a comment on a diff line; it survives reload", async ({ page }) => {
     test.setTimeout(120_000);
     await openReview(page);
     // Line 2 is `return 2` on the new side of the first hunk.
@@ -198,11 +198,14 @@ test.describe("comments over the real service", () => {
     const slot = page.locator(`[id="F-${appKey}"] .ithread[data-pending-thread]`);
     await expect(slot).toBeVisible();
     await slot.locator("textarea").fill("Why 2 and not 3?");
-    await slot.getByRole("button", { name: "Ask" }).click();
+    await slot.getByRole("button", { name: "Save" }).click();
     const thread = page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, {
       hasText: "Why 2 and not 3?",
     });
     await expect(thread).toBeVisible({ timeout: 10_000 });
+    // Comments start no agent job and are for the PR by default.
+    await expect(thread.locator(".working")).toHaveCount(0);
+    await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
     await page.reload();
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });
     await expect(
@@ -218,7 +221,8 @@ test.describe("comments over the real service", () => {
       hasText: "Why 2 and not 3?",
     });
     await expect(thread).toBeVisible({ timeout: 10_000 });
-    await thread.getByRole("button", { name: "Mark for the PR" }).click();
+    // Already marked for the PR by default (comments are for the PR).
+    await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
     // Edit the For-PR draft in the Comments menu and let it save.
     await page.locator('#reviewbar [data-cm=""]').click();
     await page.locator('.cmenu [data-cmf="pr"]').click();
