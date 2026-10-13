@@ -6,6 +6,7 @@
  * the ranges the expand specs touch, with comment filler elsewhere. Only
  * used through `mockApi.fileSlice` in mock mode; never shipped.
  */
+import type { EnclosingUnit } from "@unvibe/shared";
 import { MOCK_FILES } from "./diff.js";
 
 export const MOCK_HEAD_SHA = "bdcc1e493e";
@@ -310,5 +311,75 @@ export function mockFileSlice(
     end,
     totalLines: contents.totalLines,
     lines: contents.at.slice(start, end + 1),
+  };
+}
+
+/** Canned unit chains (issue #133, stage 2), keyed `fileKey:hunkIndex`. */
+const MOCK_OUTLINE_CHAINS: Record<string, EnclosingUnit[]> = {
+  // getresponse call site: method, then class.
+  "src-urllib3-connection.py:1": [
+    { kind: "method_definition", name: "getresponse", start: 640, end: 665 },
+    { kind: "class_definition", name: "HTTPConnection", start: 116, end: 700 },
+  ],
+  // The two unit tests sit in one test class.
+  "test-test_connection.py:2": [{ kind: "class_definition", name: "TestConnection", start: 24, end: 280 }],
+  // Socket-level test: test method, then case class.
+  "test-with_dummyserver-test_socketlevel.py:1": [
+    { kind: "function_definition", name: "test_obsolete_line_folding_is_unfolded", start: 94, end: 150 },
+    { kind: "class_definition", name: "TestSNI", start: 80, end: 160 },
+  ],
+};
+
+/**
+ * Serve an outline in mock mode: canned chains for sketched hunks, an
+ * empty parser chain for other hunk ranges, `none` elsewhere. Throws
+ * `METHOD path: STATUS {json}` errors shaped like the real client.
+ */
+export function mockOutline(
+  reviewId: string,
+  params: { path: string; commit: string; start: number; end: number },
+): {
+  path: string;
+  commit: string;
+  start: number;
+  end: number;
+  totalLines: number;
+  language: string | null;
+  how: "parser" | "heuristic" | "none";
+  chain: EnclosingUnit[];
+} {
+  const url = `/api/reviews/${reviewId}/outline`;
+  const fail = (status: number, error: string): Error => {
+    return new Error(`GET ${url}: ${status} ${JSON.stringify({ error })}`);
+  };
+  if (reviewId !== "demo") throw fail(404, "unknown review");
+  const { path: relPath, commit, start, end } = params;
+  if (!relPath) throw fail(400, "path is required");
+  if (!/^[0-9a-fA-F]{4,64}$/.test(commit)) throw fail(400, "commit must be a hex sha");
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) {
+    throw fail(400, "start and end must be line numbers with end after start");
+  }
+  const file = MOCK_FILES.find((f) => f.path === relPath);
+  if (!file) throw fail(404, `no ${relPath} at ${commit}`);
+  // Every sketched fixture file is Python; the changelog is prose.
+  const language = /\.py$/.test(relPath) ? "python" : null;
+  if (file.isBinary) {
+    return { path: relPath, commit, start, end, totalLines: 0, language, how: "none", chain: [] };
+  }
+  const contents = MOCK_FILE_CONTENTS[relPath];
+  const totalLines = contents?.totalLines ?? file.hunks[file.hunks.length - 1]?.newEnd ?? end;
+  if (end > totalLines) throw fail(400, `lines ${start}-${end} are outside ${relPath} (${totalLines} lines)`);
+  const hunkIndex = file.hunks.findIndex((h) => start >= h.newStart && end <= h.newEnd);
+  const chain =
+    hunkIndex >= 0 ? (MOCK_OUTLINE_CHAINS[`${file.fileKey}:${hunkIndex}`] ?? []) : [];
+  return {
+    path: relPath,
+    commit,
+    start,
+    end,
+    totalLines,
+    language,
+    how: chain.length > 0 ? "parser" : hunkIndex >= 0 ? "parser" : "none",
+    chain,
   };
 }

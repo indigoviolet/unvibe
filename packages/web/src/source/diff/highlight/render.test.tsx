@@ -80,6 +80,7 @@ describe("FileSection with injected tokens", () => {
         reviewId="demo"
         headCommit="bdcc1e493e"
         baseCommit="443cb01be1"
+        contentAvailable
         briefs={null}
         tokens={byHash}
         states={new Map()}
@@ -121,6 +122,7 @@ describe("FileSection with injected tokens", () => {
         reviewId="demo"
         headCommit="bdcc1e493e"
         baseCommit="443cb01be1"
+        contentAvailable
         briefs={null}
         states={new Map()}
         isHidden={() => false}
@@ -164,6 +166,7 @@ describe("FileSection with injected tokens", () => {
         reviewId="demo"
         headCommit="bdcc1e493e"
         baseCommit="443cb01be1"
+        contentAvailable
         briefs={null}
         tokens={byHash}
         states={new Map()}
@@ -240,6 +243,7 @@ describe("hostile code text (issue #101)", () => {
         reviewId="demo"
         headCommit="bdcc1e493e"
         baseCommit="443cb01be1"
+        contentAvailable
         briefs={null}
         tokens={tokens}
         states={new Map()}

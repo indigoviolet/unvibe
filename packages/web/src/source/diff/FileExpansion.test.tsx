@@ -3,9 +3,10 @@
  * step controls above/below hunks, gap show-all with continuity, collapse,
  * split alignment, and no comment start on revealed lines.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { api } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
 import { resetMockState, setMockLatency } from "../../mock/index.js";
 import { DiffView } from "./DiffView.js";
@@ -122,5 +123,75 @@ describe("DiffView expansion", () => {
     const numCell = row.querySelectorAll("td.n")[1];
     await fireEvent.click(numCell);
     expect(seen).toEqual([]);
+  });
+});
+
+describe("DiffView unit expansion", () => {
+  it("steps one level per click with the unit name in the hunk header", async () => {
+    await renderDiff();
+    const conn = within(connSection());
+    // Second hunk (getresponse call site): method, then class.
+    const buttons = conn.getAllByRole("button", { name: "Show the enclosing function or class" });
+    expect(buttons).toHaveLength(2);
+    await fireEvent.click(buttons[1]);
+    // Level 0: the method span around the hunk, named in the header.
+    await waitFor(() => expect(document.getElementById(`L-${CONN}-640`)).not.toBeNull());
+    expect(document.getElementById(`L-${CONN}-665`)).not.toBeNull();
+    expect(conn.getByText(/in getresponse/)).toBeInTheDocument();
+    // Next step offers the class.
+    await fireEvent.click(conn.getByRole("button", { name: "Show enclosing class HTTPConnection" }));
+    expect(await conn.findByText(/in HTTPConnection/)).toBeInTheDocument();
+    // Past the class, the whole file is next, then stepping is done.
+    expect(conn.getByRole("button", { name: "Show the whole file" })).toBeInTheDocument();
+  });
+
+  it("hides the unit control when no unit encloses the hunk", async () => {
+    await renderDiff();
+    const conn = within(connSection());
+    // First hunk spans top-level items: the outline is empty.
+    await fireEvent.click(conn.getAllByRole("button", { name: "Show the enclosing function or class" })[0]);
+    await waitFor(() => {
+      expect(conn.queryAllByRole("button", { name: /Show .*enclosing|Show unit/ })).toHaveLength(1);
+    });
+  });
+
+  it("marks heuristic units as approximate", async () => {
+    const spy = vi.spyOn(api, "outline").mockResolvedValue({
+      path: "src/urllib3/connection.py",
+      commit: "bdcc1e493e",
+      start: 647,
+      end: 654,
+      totalLines: 760,
+      language: null,
+      how: "heuristic",
+      chain: [{ kind: "block", name: "def getresponse  (approx)", start: 640, end: 665 }],
+    });
+    try {
+      await renderDiff();
+      const section = connSection();
+      const conn = within(section);
+      await fireEvent.click(conn.getAllByRole("button", { name: "Show the enclosing function or class" })[1]);
+      await waitFor(() => expect(conn.getByText(/in def getresponse/)).toBeInTheDocument());
+      expect(
+        section.querySelector('span[data-tip="Approximate unit: guessed without a grammar"]'),
+      ).not.toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("hides every expansion control where the review has no file content", async () => {
+    const spy = vi.spyOn(api, "fileSlice").mockRejectedValue(
+      new Error('GET /api/reviews/demo/file: 404 {"error":"this review has no file content to read","code":"no-content"}'),
+    );
+    try {
+      await renderDiff();
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "Show 20 more lines" })).toBeNull();
+      });
+      expect(screen.queryByRole("button", { name: "Show the enclosing function or class" })).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

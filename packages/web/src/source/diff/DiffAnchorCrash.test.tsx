@@ -148,6 +148,7 @@ function Harness({ tokens }: { tokens?: Tokens }): React.JSX.Element {
           reviewId={REVIEW_ID}
           headCommit="head"
           baseCommit="base"
+          contentAvailable
           briefs={null}
           tokens={tokens}
           states={new Map()}

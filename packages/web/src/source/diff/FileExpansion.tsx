@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Fragment } from "react";
-import type { FileSliceRangeError, Hunk, ReviewFile } from "@unvibe/shared";
+import type { EnclosingUnit, FileSliceRangeError, Hunk, ReviewFile } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
 import { slotKey, type LineSlots } from "./lineSlots.js";
@@ -79,6 +79,40 @@ export interface FileExpansion {
   collapse: (region: ExpandRegion) => void;
   regionAbove: (index: number) => ExpandRegion | null;
   regionBelow: (index: number, hunks: Hunk[]) => ExpandRegion | null;
+  /** Unit step for one hunk (issue #133, stage 2). */
+  expandUnit: (hunk: Hunk) => void;
+  unitFor: (hunk: Hunk) => HunkUnit;
+}
+
+/** Display state of one hunk's unit step. */
+export interface HunkUnit {
+  /** Name shown in the hunk header (`· in <name>`), if any level expanded. */
+  name: string | null;
+  /** True when the shown unit came from the heuristic fallback. */
+  approx: boolean;
+  /** Next-step button, null when stepping is done or unavailable. */
+  next: { label: string; tip: string } | null;
+  pending: boolean;
+}
+
+interface UnitState {
+  chain: EnclosingUnit[];
+  how: "parser" | "heuristic" | "none";
+  totalLines: number;
+  /** -1 none, 0..chain.length-1 unit, chain.length whole file. */
+  level: number;
+  /** True when no unit exists (empty chain or how none): no control. */
+  hidden: boolean;
+  pending: boolean;
+}
+
+/** Short display word for a unit kind. */
+export function unitWord(kind: string): string {
+  if (/method|constructor/.test(kind)) return "method";
+  if (/function/.test(kind)) return "function";
+  if (/callback|bound-function/.test(kind)) return "function";
+  if (/class|module|interface|struct|enum|trait|record|namespace/.test(kind)) return "class";
+  return "unit";
 }
 
 function rangeKey(r: RevealedRange): string {
@@ -95,6 +129,8 @@ export function useFileExpansion(
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [failed, setFailed] = useState<RevealedRange[]>([]);
+  const [units, setUnits] = useState<ReadonlyMap<string, UnitState>>(new Map());
+  const [failedUnit, setFailedUnit] = useState<Hunk | null>(null);
   const src = sourceFor(file, opts.headCommit, opts.baseCommit);
   const hunks = file.hunks;
 
@@ -207,6 +243,137 @@ export function useFileExpansion(
     [revealed, fetchRanges],
   );
 
+  const chunkRange = useCallback(
+    (start: number, end: number): void => {
+      const out: RevealedRange[] = [];
+      for (let s = start; s <= end; s += SLICE_CAP) out.push({ start: s, end: Math.min(s + SLICE_CAP - 1, end) });
+      void fetchRanges(out);
+    },
+    [fetchRanges],
+  );
+
+  /**
+   * One unit level per click (issue #133, stage 2): fetch the hunk's
+   * chain on first click, then reveal each level's span around the hunk
+   * (unit spans merge into the same revealed lines as steps). Past the
+   * last unit, one more click reveals the whole file. Empty chains and
+   * `how: "none"` hide the control (degrade to expand-by-lines).
+   */
+  const expandUnit = useCallback(
+    (hunk: Hunk): void => {
+      if (opts.disabled) return;
+      const { start: hs, end: he } = edgeOf(hunk);
+      const st = units.get(hunk.contentHash);
+      if (st?.pending) return;
+      const step = (chain: EnclosingUnit[], total: number, level: number): void => {
+        if (level < chain.length) {
+          const u = chain[level];
+          if (u.start < hs) chunkRange(u.start, hs - 1);
+          if (u.end > he) chunkRange(he + 1, u.end);
+        } else if (level === chain.length) {
+          if (1 < hs) chunkRange(1, hs - 1);
+          if (he < total) chunkRange(he + 1, total);
+          setTotalLines(total);
+        } else {
+          return;
+        }
+        setUnits((prev) => {
+          const cur = prev.get(hunk.contentHash);
+          if (!cur) return prev;
+          const next = new Map(prev);
+          next.set(hunk.contentHash, { ...cur, level });
+          return next;
+        });
+      };
+      if (st && !st.hidden) {
+        step(st.chain, st.totalLines, st.level + 1);
+        return;
+      }
+      if (st) return;
+      setUnits((prev) => {
+        const next = new Map(prev);
+        next.set(hunk.contentHash, { chain: [], how: "parser", totalLines: 0, level: -1, hidden: false, pending: true });
+        return next;
+      });
+      setError(null);
+      void (async () => {
+        try {
+          const res = await api.outline(opts.reviewId, { path: src.path, commit: src.commit, start: hs, end: he });
+          if (res.totalLines !== undefined) setTotalLines(res.totalLines);
+          if (res.chain.length === 0 || res.how === "none") {
+            setUnits((prev) => {
+              const next = new Map(prev);
+              next.set(hunk.contentHash, {
+                chain: [],
+                how: res.how,
+                totalLines: res.totalLines,
+                level: -1,
+                hidden: true,
+                pending: false,
+              });
+              return next;
+            });
+            return;
+          }
+          setUnits((prev) => {
+            const next = new Map(prev);
+            next.set(hunk.contentHash, {
+              chain: res.chain,
+              how: res.how,
+              totalLines: res.totalLines,
+              level: -1,
+              hidden: false,
+              pending: false,
+            });
+            return next;
+          });
+          step(res.chain, res.totalLines, 0);
+        } catch (err) {
+          learnTotal(err);
+          setError(friendlyError(err));
+          setFailedUnit(hunk);
+          setUnits((prev) => {
+            const next = new Map(prev);
+            next.delete(hunk.contentHash);
+            return next;
+          });
+        }
+      })();
+    },
+    [opts.disabled, opts.reviewId, edgeOf, units, chunkRange, src.path, src.commit, learnTotal],
+  );
+
+  const unitFor = useCallback(
+    (hunk: Hunk): HunkUnit => {
+      const st = units.get(hunk.contentHash);
+      if (!st || st.hidden) {
+        if (st?.hidden) return { name: null, approx: false, next: null, pending: false };
+        return {
+          name: null,
+          approx: false,
+          next: { label: "Show unit", tip: "Show the enclosing function or class" },
+          pending: false,
+        };
+      }
+      if (st.pending) {
+        return { name: null, approx: false, next: { label: "Show unit", tip: "Show the enclosing function or class" }, pending: true };
+      }
+      const shown = st.level >= 0 ? st.chain[Math.min(st.level, st.chain.length - 1)] : null;
+      const nextLevel = st.level + 1;
+      const next =
+        nextLevel < st.chain.length
+          ? {
+              label: `Show ${unitWord(st.chain[nextLevel].kind)}`,
+              tip: `Show enclosing ${unitWord(st.chain[nextLevel].kind)} ${st.chain[nextLevel].name}`,
+            }
+          : nextLevel === st.chain.length
+            ? { label: "Show file", tip: "Show the whole file" }
+            : null;
+      return { name: shown?.name ?? null, approx: st.how === "heuristic", next, pending: false };
+    },
+    [units],
+  );
+
   const collapse = useCallback((region: ExpandRegion): void => {
     setTexts((prev) => {
       const next = new Map(prev);
@@ -214,13 +381,32 @@ export function useFileExpansion(
       return next;
     });
     setRevealed((prev) => prev.flatMap((r) => (r.end < region.start || r.start > region.end ? [r] : [])));
+    // A collapsed region takes any unit step overlapping it back to none.
+    setUnits((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const [hash, st] of next) {
+        if (st.level < 0) continue;
+        const span =
+          st.level < st.chain.length
+            ? { start: st.chain[st.level].start, end: st.chain[st.level].end }
+            : { start: 1, end: st.totalLines };
+        if (span.end >= region.start && span.start <= region.end) {
+          next.set(hash, { ...st, level: -1 });
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
     setError(null);
     setFailed([]);
+    setFailedUnit(null);
   }, []);
 
   const retry = useCallback((): void => {
     if (failed.length > 0) void fetchRanges(failed);
-  }, [failed, fetchRanges]);
+    else if (failedUnit) expandUnit(failedUnit);
+  }, [failed, failedUnit, fetchRanges, expandUnit]);
 
   const lines = useMemo<RevealedLine[]>(() => {
     const out: RevealedLine[] = [];
@@ -252,6 +438,8 @@ export function useFileExpansion(
     collapse,
     regionAbove,
     regionBelow,
+    expandUnit,
+    unitFor,
   };
 }
 

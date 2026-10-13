@@ -93,6 +93,12 @@ interface SectionProps {
   headCommit: string;
   /** Base commit: the side expanded for deleted files. */
   baseCommit: string;
+  /**
+   * False when the review has no readable file content (issue #133:
+   * the service answers `no-content`, e.g. the demo). Expansion and
+   * unit controls hide instead of showing load errors.
+   */
+  contentAvailable: boolean;
   /** Brief copy for hidden rows, keyed `fileKey:index` (mock fixture). */
   briefs: Readonly<Record<string, string>> | null;
   /**
@@ -418,7 +424,18 @@ function HiddenRow({
   );
 }
 
-function HunkBlock(props: SectionProps & { index: number; cols: number }): ReactNode {
+function HunkBlock(props: SectionProps & {
+  index: number;
+  cols: number;
+  /** Unit name for the header (`· in <name>`), once a unit level expanded (issue #133). */
+  unitName?: string | null;
+  /** True when the shown unit came from the heuristic fallback. */
+  unitApprox?: boolean;
+  /** Next unit step, null when done or unavailable. */
+  unitNext?: { label: string; tip: string } | null;
+  unitPending?: boolean;
+  onUnitExpand?: () => void;
+}): ReactNode {
   const { file, index, cols } = props;
   const h = file.hunks[index];
   const st = props.states.get(h.contentHash);
@@ -433,6 +450,7 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
   const busy = !!props.busy[h.contentHash];
   const k = `${file.fileKey}:${index}`;
   const fn = h.context?.match(/(?:def|class)\s+(\w+)/)?.[1];
+  const inName = props.unitName ?? fn ?? null;
   const rowProps: RowProps = {
     fileKey: file.fileKey,
     hunk: h,
@@ -461,7 +479,13 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
                 Hunk {index + 1} of {file.hunks.length}
               </b>{" "}
               · lines {h.newStart}–{h.newEnd}
-              {fn ? ` · in ${fn}` : ""} ·{" "}
+              {inName ? ` · in ${inName}` : ""}
+              {props.unitApprox && props.unitName ? (
+                <span className="hint" data-tip="Approximate unit: guessed without a grammar">
+                  {" ~"}
+                </span>
+              ) : null}{" "}
+              ·{" "}
               <span className="st">
                 <span className="a">+{h.added}</span> <span className="d">−{h.removed}</span>
               </span>
@@ -491,6 +515,18 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
                 <Icon name="spark" />
               </button>
             )}
+            {props.unitNext ? (
+              <button
+                className="ib"
+                type="button"
+                data-tip={props.unitNext.tip}
+                aria-label={props.unitNext.tip}
+                disabled={props.unitPending}
+                onClick={props.onUnitExpand}
+              >
+                <Icon name="code" />
+              </button>
+            ) : null}
             <button
               className="ib"
               type="button"
@@ -572,12 +608,14 @@ export function FileSection(props: SectionProps): ReactNode {
   // hook's live rows do.
   const tokens = fileHl.byHash.size > 0 ? fileHl.byHash : (props.tokens ?? EMPTY_TOKENS);
   // Expand-by-lines state (issue #133): revealed context around hunks.
-  // Binary files never expand (no text to show).
+  // Binary files never expand (no text to show); reviews without file
+  // content hide every expansion control instead of failing per hunk.
+  const canExpand = props.contentAvailable && !file.isBinary;
   const expansion = useFileExpansion(file, {
     reviewId: props.reviewId,
     headCommit: props.headCommit,
     baseCommit: props.baseCommit,
-    disabled: file.isBinary === true,
+    disabled: !canExpand,
   });
   const revealedTokens = useRevealedTokens(file.path, expansion.lines, visible && !props.folded && !file.isBinary);
 
@@ -667,7 +705,7 @@ export function FileSection(props: SectionProps): ReactNode {
                     groups.flatMap((g) => (g.type === "show" ? [g.index] : [])),
                   );
                   const lastIndex = file.hunks.length - 1;
-                  const expandable = !file.isBinary;
+                  const expandable = canExpand;
                   return groups.flatMap((g): ReactNode[] => {
                     if (g.type === "hidden") {
                       return [
@@ -684,6 +722,7 @@ export function FileSection(props: SectionProps): ReactNode {
                     }
                     const i = g.index;
                     const h = file.hunks[i];
+                    const u = expandable ? expansion.unitFor(h) : null;
                     const nodes: ReactNode[] = [];
                     if (expandable) {
                       const above = expansion.regionAbove(i);
@@ -721,7 +760,20 @@ export function FileSection(props: SectionProps): ReactNode {
                         }
                       }
                     }
-                    nodes.push(<HunkBlock key={`hunk-${file.fileKey}-${i}`} index={i} cols={cols} {...props} tokens={tokens} />);
+                    nodes.push(
+                      <HunkBlock
+                        key={`hunk-${file.fileKey}-${i}`}
+                        index={i}
+                        cols={cols}
+                        {...props}
+                        tokens={tokens}
+                        unitName={u?.name ?? null}
+                        unitApprox={u?.approx ?? false}
+                        unitNext={u?.next ?? null}
+                        unitPending={u?.pending ?? false}
+                        onUnitExpand={u ? () => expansion.expandUnit(h) : undefined}
+                      />,
+                    );
                     if (expandable) {
                       const below = expansion.regionBelow(i, file.hunks);
                       if (below) {
