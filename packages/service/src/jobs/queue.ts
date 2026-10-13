@@ -253,6 +253,23 @@ export class JobQueue {
     return copy(entry.job);
   }
 
+  /**
+   * Drop every entry for a review (review delete, #115 redo). Without
+   * this, finished jobs linger in memory after their rows are deleted, so
+   * the jobs endpoint keeps listing a deleted review's jobs. Dedupe keys
+   * go too, so a re-opened review starts clean. Callers cancel live jobs
+   * first; a detached run settling afterwards still saves once
+   * (pre-existing cancel-then-settle race, unchanged).
+   */
+  dropReview(reviewId: string): void {
+    for (const [id, entry] of this.entries) {
+      if (entry.reviewId !== reviewId) continue;
+      this.forgetDedupe(entry);
+      this.entries.delete(id);
+    }
+    this.checkDrain();
+  }
+
   // -- retry / rebind -------------------------------------------------
 
   /**
