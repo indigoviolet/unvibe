@@ -129,7 +129,7 @@ test("open blocks survive a tab switch", async ({ page }) => {
 test("jobs show state, tokens, cache rate, prompt link and cancel", async ({ page }) => {
   await page.goto("/review/demo/debug");
   const running = page.locator('[data-testid="job-job-explain-1"]');
-  await expect(running).toContainText("explain");
+  await expect(running).toContainText("ask");
   await expect(running).toContainText("running");
   await expect(running).toContainText("42.5k in");
   await expect(running).toContainText("47.8% hit");
