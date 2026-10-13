@@ -218,6 +218,69 @@ interface ReviewRow {
   head_sha: string | null;
 }
 
+/**
+ * #149: existing reviews per source for the row markers (most recently
+ * active review wins when stored duplicates meet). PR sources key by PR
+ * number; branch sources key by branch with no PR number — a PR review
+ * and a branch review of the same branch are different sources.
+ */
+interface ReviewMark {
+  id: string;
+  stale: boolean;
+}
+
+interface ReviewMarks {
+  pr: Map<number, ReviewMark>;
+  branch: Map<string, ReviewMark>;
+}
+
+function reviewMarksFor(db: DatabaseSync, repoId: string): ReviewMarks {
+  const marks: ReviewMarks = { pr: new Map(), branch: new Map() };
+  let rows: { id: string; pr_number: number | null; branch: string; snapshot: string | null }[];
+  try {
+    rows = db
+      .prepare(
+        `SELECT r.id AS id, r.pr_number AS pr_number, r.branch AS branch, rs.snapshot AS snapshot
+         FROM reviews r LEFT JOIN review_snapshots rs ON rs.review_id = r.id
+         WHERE r.repo_id = ? ORDER BY COALESCE(rs.updated_at, r.created_at) DESC`,
+      )
+      .all(repoId) as unknown as typeof rows;
+  } catch {
+    return marks;
+  }
+  for (const row of rows) {
+    let stale = false;
+    if (row.snapshot) {
+      try {
+        stale = (JSON.parse(row.snapshot) as { versionStatus?: { stale?: boolean } }).versionStatus?.stale ?? false;
+      } catch {
+        // Unreadable snapshot: not stale as far as we know.
+      }
+    }
+    const mark: ReviewMark = { id: row.id, stale };
+    if (row.pr_number !== null) {
+      if (!marks.pr.has(row.pr_number)) marks.pr.set(row.pr_number, mark);
+    } else {
+      if (!marks.branch.has(row.branch)) marks.branch.set(row.branch, mark);
+    }
+  }
+  return marks;
+}
+
+/** #149: mark PR/branch rows that already have a review (open, not start). */
+function attachReviewMarks(changes: RepoChange[], marks: ReviewMarks): RepoChange[] {
+  return changes.map((c) => {
+    if (c.kind === "pr" && c.prNumber !== undefined) {
+      const m = marks.pr.get(c.prNumber);
+      if (m) return { ...c, reviewId: m.id, ...(m.stale ? { stale: true } : {}) };
+    } else if (c.kind === "branch" && c.branch) {
+      const m = marks.branch.get(c.branch);
+      if (m) return { ...c, reviewId: m.id, ...(m.stale ? { stale: true } : {}) };
+    }
+    return c;
+  });
+}
+
 /** Reviews opened before, with stale state (head moved since fetch). #92: loading reviews (no versions row yet) show too. */
 async function listPreviousReviews(
   runner: CommandRunner,
@@ -313,24 +376,33 @@ export async function repoChanges(
   repo: Repo,
   filter: ChangesFilter = "all",
 ): Promise<RepoChange[]> {
+  // #149: one DB read per listing; PR/branch rows that already have a
+  // review carry its id (previous-review rows already carry their own).
+  const marks = reviewMarksFor(deps.db, repo.id);
   switch (filter) {
     case "authoring":
-      return ((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc);
+      return attachReviewMarks(
+        ((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc),
+        marks,
+      );
     case "review-requested":
-      return requestedPrs(deps.runner, repo);
+      return attachReviewMarks(await requestedPrs(deps.runner, repo), marks);
     case "branches":
-      return listBranches(deps.runner, repo);
+      return attachReviewMarks(await listBranches(deps.runner, repo), marks);
     case "recent":
       return [
-        ...(await listBranches(deps.runner, repo)),
+        ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
         ...(await listPreviousReviews(deps.runner, deps.db, repo)),
       ];
     case "all":
     default:
       return [
-        ...(((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc)),
-        ...(await requestedPrs(deps.runner, repo)),
-        ...(await listBranches(deps.runner, repo)),
+        ...attachReviewMarks(
+          ((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc),
+          marks,
+        ),
+        ...attachReviewMarks(await requestedPrs(deps.runner, repo), marks),
+        ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
         ...(await listPreviousReviews(deps.runner, deps.db, repo)),
       ];
   }

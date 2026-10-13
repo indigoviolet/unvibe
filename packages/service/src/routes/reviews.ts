@@ -23,6 +23,7 @@
 import type { FastifyInstance } from "fastify";
 import type {
   CreateReviewRequest,
+  CreateReviewResponse,
   RefreshResponse,
   ResetDataResponse,
   ResumeReviewResponse,
@@ -88,9 +89,12 @@ function dedupeKeyFor(repoId: string, pr: number | undefined, branch: string | u
 }
 
 /**
- * #92: find a loading or failed review for the same repo + PR/branch to
- * reuse (same PR opened twice while loading goes to the same review).
- * Ready reviews are left alone (opening again creates a new review, as today).
+ * #149: find any review for the same source to reuse (same PR opened twice
+ * goes to the same review, whether it is still loading, failed, or ready).
+ * A PR review and a branch review of the same branch are different sources
+ * and may both exist: PR sources match by PR number, branch sources match
+ * by branch with no PR number. When stored duplicates meet the lookup, the
+ * most recently active review wins (deterministic).
  */
 function findReusableReview(
   ctx: ServiceContext,
@@ -102,11 +106,18 @@ function findReusableReview(
   try {
     if (pr !== undefined) {
       rows = ctx.db
-        .prepare("SELECT id FROM reviews WHERE repo_id = ? AND pr_number = ? ORDER BY created_at DESC")
+        .prepare(
+          `SELECT r.id AS id FROM reviews r LEFT JOIN review_snapshots rs ON rs.review_id = r.id
+           WHERE r.repo_id = ? AND r.pr_number = ? ORDER BY COALESCE(rs.updated_at, r.created_at) DESC`,
+        )
         .all(repoId, pr) as { id: string }[];
     } else {
       rows = ctx.db
-        .prepare("SELECT id FROM reviews WHERE repo_id = ? AND pr_number IS NULL AND branch = ? ORDER BY created_at DESC")
+        .prepare(
+          `SELECT r.id AS id FROM reviews r LEFT JOIN review_snapshots rs ON rs.review_id = r.id
+           WHERE r.repo_id = ? AND r.pr_number IS NULL AND r.branch = ?
+           ORDER BY COALESCE(rs.updated_at, r.created_at) DESC`,
+        )
         .all(repoId, branch ?? "") as { id: string }[];
     }
   } catch {
@@ -115,8 +126,7 @@ function findReusableReview(
   for (const row of rows) {
     const snap = ctx.reviews.getSnapshot(row.id);
     if (!snap) continue;
-    const st = ingestStatusOf(snap);
-    if (st === "loading" || st === "failed") return { id: row.id, snapshot: snap };
+    return { id: row.id, snapshot: snap };
   }
   return null;
 }
@@ -320,19 +330,21 @@ interface BeginCreateArgs {
 }
 
 type BeginCreateResult =
-  | { ok: true; status: 200 | 202; snapshot: ReviewSnapshot }
+  | { ok: true; status: 200 | 202; snapshot: CreateReviewResponse }
   | { ok: false; status: number; error: string };
 
 /**
  * #115: the shared create path behind `POST /api/reviews` and redo:
- * resolve the repo, reuse a loading/failed review for the same source, or
- * insert the row + loading snapshot and start the background ingest. The
- * demo fixture is not handled here (callers branch before calling).
+ * resolve the repo, reuse a review for the same source (#92 while loading
+ * or failed, #149 once ready), or insert the row + loading snapshot and
+ * start the background ingest. The demo fixture is not handled here
+ * (callers branch before calling).
  */
 async function beginReviewFromSource(
   ctx: ServiceContext,
   opts: { pipeline?: Pipeline; autoPipeline?: boolean },
   pendingIngests: Map<string, string>,
+  inFlightCreates: Map<string, Promise<BeginCreateResult>>,
   args: BeginCreateArgs,
 ): Promise<BeginCreateResult> {
   let repo = ctx.repos.get(args.repoId);
@@ -347,27 +359,69 @@ async function beginReviewFromSource(
   }
   if (!repo) return { ok: false, status: 404, error: "unknown repo" };
 
-  // #92: same PR/branch opened twice while loading reuses the review —
-  // decided here in the service so two tabs share one row.
+  // #92/#149: same source opened twice reuses the review — decided here in
+  // the service so two tabs share one row. A ready review is reused too
+  // (#149): opening it again opens it (with its refresh when the source
+  // moved), never a second review.
   const key = dedupeKeyFor(repo.id, args.pr, args.branch);
+  // #149: a concurrent create for the same source is already inserting —
+  // await it and share its review instead of inserting a second row. (The
+  // #92 `pendingIngests` entry below covers creates whose ingest is still
+  // running; this covers creates that have not inserted yet.)
+  const concurrent = inFlightCreates.get(key);
+  if (concurrent) {
+    const settled = await concurrent;
+    if (settled.ok) return { ok: true, status: 200, snapshot: { ...settled.snapshot, reused: true } };
+    const retry = findReusableReview(ctx, repo.id, args.pr, args.branch);
+    if (retry) {
+      if (ingestStatusOf(retry.snapshot) === "ready") touchReviewOpened(ctx.db, retry.id);
+      return { ok: true, status: 200, snapshot: { ...retry.snapshot, reused: true } };
+    }
+  }
   const pendingId = pendingIngests.get(key);
   if (pendingId) {
     const pendingSnap = ctx.reviews.getSnapshot(pendingId);
     if (pendingSnap && ingestStatusOf(pendingSnap) !== "ready") {
-      return { ok: true, status: 200, snapshot: pendingSnap };
+      return { ok: true, status: 200, snapshot: { ...pendingSnap, reused: true } };
     }
     pendingIngests.delete(key);
   }
   const reusable = findReusableReview(ctx, repo.id, args.pr, args.branch);
   if (reusable) {
     pendingIngests.set(key, reusable.id);
-    return { ok: true, status: 200, snapshot: reusable.snapshot };
+    // Opening a finished review counts as opening it (front-screen order).
+    if (ingestStatusOf(reusable.snapshot) === "ready") touchReviewOpened(ctx.db, reusable.id);
+    return { ok: true, status: 200, snapshot: { ...reusable.snapshot, reused: true } };
   }
 
-  // #92: create the row + loading snapshot and answer at once (202),
-  // before the fetch and ingest. The web navigates immediately; the
-  // ingest fills the snapshot through patch events.
-  const reviewId = newReviewId();
+  // #149: claim the creation slot before inserting, so a concurrent
+  // create for the same source (already past its own repo lookup) awaits
+  // this insert instead of adding a second row. Everything below runs
+  // synchronously until the row exists; the background ingest stays
+  // fire-and-forget after the 202 response.
+  let resolveCreate!: (r: BeginCreateResult) => void;
+  const creating = new Promise<BeginCreateResult>((resolve) => {
+    resolveCreate = resolve;
+  });
+  inFlightCreates.set(key, creating);
+  const done = (r: BeginCreateResult): BeginCreateResult => {
+    resolveCreate(r);
+    if (inFlightCreates.get(key) === creating) inFlightCreates.delete(key);
+    return r;
+  };
+  try {
+    // A waiter may have inserted while this call awaited the repo lookup:
+    // re-check the DB under the slot before inserting.
+    const late = findReusableReview(ctx, repo.id, args.pr, args.branch);
+    if (late) {
+      pendingIngests.set(key, late.id);
+      if (ingestStatusOf(late.snapshot) === "ready") touchReviewOpened(ctx.db, late.id);
+      return done({ ok: true, status: 200, snapshot: { ...late.snapshot, reused: true } });
+    }
+    // #92: create the row + loading snapshot and answer at once (202),
+    // before the fetch and ingest. The web navigates immediately; the
+    // ingest fills the snapshot through patch events.
+    const reviewId = newReviewId();
   const branchPlaceholder = args.branch ?? (args.pr !== undefined ? `pr-${args.pr}` : "");
   const titleHint =
     args.title?.trim() || (args.pr !== undefined ? `PR #${args.pr}` : (args.branch ?? "review"));
@@ -428,11 +482,14 @@ async function beginReviewFromSource(
       ...(args.pr !== undefined ? { pr: args.pr } : { branch: args.branch }),
     },
   )
-    .catch(() => {})
-    .finally(() => {
-      if (pendingIngests.get(key) === reviewId) pendingIngests.delete(key);
-    });
-  return { ok: true, status: 202, snapshot: placeholder };
+      .catch(() => {})
+      .finally(() => {
+        if (pendingIngests.get(key) === reviewId) pendingIngests.delete(key);
+      });
+    return done({ ok: true, status: 202, snapshot: placeholder });
+  } catch (err) {
+    return done({ ok: false, status: 500, error: (err as Error).message });
+  }
 }
 
 /** #115: the stored title hint for a review's loading page (best effort). */
@@ -460,6 +517,10 @@ export async function registerReviews(
   // once share one review). Entries are best-effort; the DB check above is
   // the authority across restarts.
   const pendingIngests = new Map<string, string>();
+  // #149: creations currently inserting a row, by dedupe key. A concurrent
+  // create for the same source awaits the in-flight insert instead of
+  // adding a second row; entries live only for the synchronous insert.
+  const inFlightCreates = new Map<string, Promise<BeginCreateResult>>();
 
   // Front screen: every review opened before, across ALL repos, most
   // recent first (PRD §4.2). No gh/git calls; summaries come from durable
@@ -616,6 +677,7 @@ export async function registerReviews(
       ctx,
       { ...(pipeline ? { pipeline } : {}), autoPipeline },
       pendingIngests,
+      inFlightCreates,
       {
         repoId: body.repoId,
         ...(body.pr !== undefined ? { pr: body.pr } : { branch: body.branch }),
@@ -688,6 +750,7 @@ export async function registerReviews(
       ctx,
       { ...(pipeline ? { pipeline } : {}), autoPipeline },
       pendingIngests,
+      inFlightCreates,
       {
         repoId: row.repoId,
         ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
