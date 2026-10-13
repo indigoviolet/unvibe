@@ -30,8 +30,10 @@ describe("GET /api/prompts", () => {
       const reader = body.templates.find((t) => t.name === "reader");
       expect(reader?.variables).toEqual(["diff_inline", "repo_path", "source"]);
       expect(reader?.template).toContain("{{source}}");
-      const explain = body.templates.find((t) => t.name === "explain");
-      expect(explain?.variables).toContain("anchor.quote");
+      const ask = body.templates.find((t) => t.name === "ask");
+      expect(ask?.variables).toContain("anchor.quote");
+      const askTurn = body.templates.find((t) => t.name === "ask_turn");
+      expect(askTurn?.variables).toEqual(["change_list", "message"]);
     } finally {
       await app.close();
     }

@@ -1,9 +1,10 @@
 /**
- * Ask threads never show follow-up suggestions (issue #103) end to end:
- * even when the model ends its reply with a `### Follow-ups` section (or
- * another heading shape the parser turns into a `follow-up` block), the
- * thread HTML carries the answer only — no bare bullets, no leftover
- * heading. Cards and Explain answers still keep their follow-up chips.
+ * Follow-up suggestions on the unified card (#136 slice 2, owner
+ * decisions on #136): one behaviour for every answer — the model may end
+ * any answer with a `### Follow-ups` section (or another heading shape
+ * the parser turns into a `follow-up` block), it is stored as chips on
+ * that answer, and clicking one sends it as the next turn. Explain
+ * answers keep them as before.
  *
  * Over HTTP on the demo review with scripted fakes (no real agents, no
  * network).
@@ -95,10 +96,12 @@ async function waitForJob(
   return state;
 }
 
-function aiMessages(thread: unknown): { who: string; text?: string; html?: string }[] {
-  return (thread as { messages: { who: string; text?: string; html?: string }[] }).messages.filter(
-    (m) => m.who === "ai",
-  );
+function followUpItems(turn: unknown): { label: string; ask?: string }[] {
+  const blocks = (turn as { blocks: { type: string }[] }).blocks;
+  const follow = blocks.find((b) => b.type === "follow-up") as unknown as {
+    items: { label: string; ask?: string }[];
+  };
+  return follow?.items ?? [];
 }
 
 /** An ask reply whose answer ends in a Follow-ups section with the given heading. */
@@ -116,12 +119,12 @@ ${heading}
 `;
 }
 
-describe("ask threads drop follow-up suggestions (issue #103)", () => {
+describe("follow-up suggestions on answers (#136 slice 2)", () => {
   beforeEach(() => {
     process.env.UNVIBE_REPO_ROOTS = "";
   });
 
-  it("ask drops a trailing ### Follow-ups section from the thread HTML", { timeout: 90000 }, async () => {
+  it("ask stores a trailing ### Follow-ups section as chips on the answer", { timeout: 90000 }, async () => {
     const agents = fakeWith([{ match: "# Ask", events: textEvents(askReplyWithFollowUps("### Follow-ups")) }]);
     const { app, ctx } = await createApp("tok", { agents });
     try {
@@ -136,23 +139,19 @@ describe("ask threads drop follow-up suggestions (issue #103)", () => {
       });
       expect(res.status).toBe(200);
       await waitForJob(ctx, res.json.jobId as string);
-      const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.threadId as string))!;
-      expect(thread.error).toBeNull();
-      const [ai] = aiMessages(thread);
-      expect(ai.html).toContain("rewritten in place");
-      // No bare bullets, no leftover heading.
-      expect(ai.html).not.toContain("<li>");
-      expect(ai.html).not.toContain("bare LF");
-      expect(ai.html).not.toContain("Follow-ups");
-      // The stored reply text keeps what the model sent; only the
-      // rendered thread drops the suggestions.
-      expect(ai.text).toContain("### Follow-ups");
+      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
+      expect(card.error).toBeNull();
+      const turn = (card.turns ?? []).find((t) => t.id === (res.json.turnId as string))!;
+      expect(turn.blocks.length).toBeGreaterThan(0);
+      const items = followUpItems(turn);
+      expect(items).toHaveLength(2);
+      expect(items[0].label).toContain("bare LF");
     } finally {
       await app.close();
     }
   });
 
-  it("ask drops the other heading shapes the parser turns into follow-ups", { timeout: 90000 }, async () => {
+  it("ask keeps a card-boundary Follow-up section as ordinary blocks", { timeout: 90000 }, async () => {
     const agents = fakeWith([{ match: "# Ask", events: textEvents(askReplyWithFollowUps("## Follow-up")) }]);
     const { app, ctx } = await createApp("tok", { agents });
     try {
@@ -167,19 +166,20 @@ describe("ask threads drop follow-up suggestions (issue #103)", () => {
       });
       expect(res.status).toBe(200);
       await waitForJob(ctx, res.json.jobId as string);
-      const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.threadId as string))!;
-      expect(thread.error).toBeNull();
-      const [ai] = aiMessages(thread);
-      expect(ai.html).toContain("rewritten in place");
-      expect(ai.html).not.toContain("<li>");
-      expect(ai.html).not.toContain("bare LF");
-      expect(ai.html).not.toContain("Follow-up");
+      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
+      expect(card.error).toBeNull();
+      const turn = (card.turns ?? []).find((t) => t.id === (res.json.turnId as string))!;
+      // A "## Follow-up" line is a card boundary to the parser, not a
+      // chip section: the items land as an ordinary list block — nothing
+      // is lost, nothing becomes a chip.
+      expect(followUpItems(turn)).toHaveLength(0);
+      expect(turn.blocks.some((b) => b.type === "list")).toBe(true);
     } finally {
       await app.close();
     }
   });
 
-  it("ask leaves no empty Follow-ups heading behind", { timeout: 90000 }, async () => {
+  it("ask with an empty Follow-ups section stores no empty chip", { timeout: 90000 }, async () => {
     const reply = `Not with this PR. The message is rewritten in place.
 
 ### Follow-ups
@@ -202,17 +202,17 @@ describe("ask threads drop follow-up suggestions (issue #103)", () => {
       });
       expect(res.status).toBe(200);
       await waitForJob(ctx, res.json.jobId as string);
-      const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.threadId as string))!;
-      expect(thread.error).toBeNull();
-      const [ai] = aiMessages(thread);
-      expect(ai.html).toContain("rewritten in place");
-      expect(ai.html).not.toContain("Follow-ups");
+      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
+      expect(card.error).toBeNull();
+      const turn = (card.turns ?? []).find((t) => t.id === (res.json.turnId as string))!;
+      expect(turn.blocks.length).toBeGreaterThan(0);
+      expect(followUpItems(turn)).toHaveLength(0);
     } finally {
       await app.close();
     }
   });
 
-  it("reply turns drop follow-ups through the same path", { timeout: 90000 }, async () => {
+  it("reply turns store follow-ups on the new turn", { timeout: 90000 }, async () => {
     const agents = fakeWith([{ match: "# Ask", events: textEvents(askReplyWithFollowUps("### Follow-ups")) }]);
     const { app, ctx } = await createApp("tok", { agents });
     try {
@@ -226,21 +226,18 @@ describe("ask threads drop follow-up suggestions (issue #103)", () => {
         message: "Does Requests see the raw value?",
       });
       expect(res.status).toBe(200);
-      const threadId = res.json.threadId as string;
+      const annotationId = res.json.annotationId as string;
       await waitForJob(ctx, res.json.jobId as string);
 
-      const rep = await postAction(app, id, { kind: "reply", annotationId: threadId, message: "What about ordering?" });
+      const rep = await postAction(app, id, { kind: "reply", annotationId, message: "What about ordering?" });
       expect(rep.status).toBe(200);
       await waitForJob(ctx, rep.json.jobId as string);
-      const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
+      const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(after.error).toBeNull();
-      const answers = aiMessages(after);
-      expect(answers).toHaveLength(2);
-      for (const ai of answers) {
-        expect(ai.html).toContain("rewritten in place");
-        expect(ai.html).not.toContain("<li>");
-        expect(ai.html).not.toContain("bare LF");
-        expect(ai.html).not.toContain("Follow-ups");
+      const turns = after.turns ?? [];
+      expect(turns).toHaveLength(2);
+      for (const turn of turns) {
+        expect(followUpItems(turn)).toHaveLength(2);
       }
     } finally {
       await app.close();
@@ -259,7 +256,7 @@ describe("ask threads drop follow-up suggestions (issue #103)", () => {
 {}
 \`\`\`
 `;
-    const agents = fakeWith([{ match: "# Explain", events: textEvents(reply) }]);
+    const agents = fakeWith([{ match: "## The question\n\nExplain this.", events: textEvents(reply) }]);
     const { app, ctx } = await createApp("tok", { agents });
     try {
       const id = await createDemoReview(app);

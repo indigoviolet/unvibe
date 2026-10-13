@@ -92,7 +92,7 @@ function fakeAgents(): FakeAgentRunner {
   return new FakeAgentRunner([
     { match: "reply with exactly", events: textEvents("ready") },
     { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-    { match: "# Explain", events: textEvents(TWO_CARD_EXPLAIN) },
+    { match: "## The question\n\nExplain this.", events: textEvents(TWO_CARD_EXPLAIN) },
     { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
     { match: "# Examples", events: textEvents(EXAMPLES_REPLY) },
     { match: "# Ask", events: textEvents(ASK_REPLY) },

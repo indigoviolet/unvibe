@@ -155,7 +155,7 @@ function fakeAgents(askReply: string): FakeAgentRunner {
   return new FakeAgentRunner([
     { match: "reply with exactly", events: textEvents("ready") },
     { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-    { match: "# Explain", events: textEvents(FIRST_ANSWER) },
+    { match: "## The question\n\nExplain this.", events: textEvents(FIRST_ANSWER) },
     { match: "# Ask", events: textEvents(askReply) },
     { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
   ]);

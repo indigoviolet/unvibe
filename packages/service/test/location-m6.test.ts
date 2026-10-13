@@ -32,12 +32,11 @@ function snapshotWith(annotations: Annotation[], files = [sourceFile()], pages: 
 function diffThread(fileKey: string, line: number, text = "body", extra: Partial<Annotation> = {}): Annotation {
   return {
     id: `t-${fileKey}-${line}`,
-    type: "thread",
+    type: "comment",
     anchor: { host: { kind: "diff-line", fileKey, line }, quotedText: "", prefix: "", suffix: "", position: line, version: 1 },
     open: true,
     messages: [{ who: "you", text }],
     post: true,
-    note: true,
     ...extra,
   };
 }
@@ -142,12 +141,11 @@ describe("locateThread", () => {
     ];
     const t: Annotation = {
       id: "t-guide",
-      type: "thread",
+      type: "comment",
       anchor: { host: { kind: "block", blockId: "b1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
       messages: [{ who: "you", text: "guide q" }],
       post: true,
-      note: false,
     };
     const snap = snapshotWith([t], [sourceFile()], pages);
     expect(locateThread(snap, t)).toEqual({ kind: "inline", path: "a.py", line: 3, side: "RIGHT" });
@@ -177,21 +175,19 @@ describe("locateThread", () => {
     ];
     const guide: Annotation = {
       id: "t-g",
-      type: "thread",
+      type: "comment",
       anchor: { host: { kind: "block", blockId: "b9" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
       messages: [{ who: "you", text: "g" }],
       post: true,
-      note: true,
     };
     const desc: Annotation = {
       id: "t-d",
-      type: "thread",
+      type: "comment",
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
       messages: [{ who: "you", text: "d" }],
       post: true,
-      note: true,
     };
     const snap = snapshotWith([guide, desc], [sourceFile()], pages);
     expect(locateThread(snap, guide).kind).toBe("general");
@@ -209,7 +205,7 @@ describe("locateThread", () => {
   it("prefers draft, then you, then suggested text", () => {
     const base: Annotation = {
       id: "t",
-      type: "thread",
+      type: "comment",
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
       messages: [
@@ -217,7 +213,6 @@ describe("locateThread", () => {
         { who: "you", text: "mine" },
       ],
       post: true,
-      note: false,
     };
     expect(threadPostText(base)).toBe("mine");
     expect(threadPostText({ ...base, draft: "d" })).toBe("d");

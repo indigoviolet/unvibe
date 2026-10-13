@@ -98,7 +98,7 @@ describe("degraded turns (#51)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(
           `The host block is described here.\n\n\`\`\`json\n{"degraded": "resolve returned nothing for the description paragraphs"}\n\`\`\`\n`,
         ),
@@ -126,7 +126,7 @@ describe("degraded turns (#51)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(
           `The review's MCP server failed to connect, so I could not look up the host block's ID.\n\n\`\`\`json\n{}\n\`\`\`\n`,
         ),
@@ -151,7 +151,7 @@ describe("degraded turns (#51)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(
           `I don't know the exact repo name, though. I tried to look it up with gh, but the command was refused.\n\n\`\`\`json\n{}\n\`\`\`\n`,
         ),
@@ -179,7 +179,7 @@ describe("degraded turns (#51)", () => {
     let mcp: McpRegistry | null = null;
     class ConnectingFakeRunner extends FakeAgentRunner {
       override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
-        if (reviewId && mcp && text.includes("# Explain")) {
+        if (reviewId && mcp && text.includes("## The question\n\nExplain this.")) {
           const issued = mcp.issueSession(reviewId, "mid-turn", "session");
           void mcp.handleRequest(issued.secret, {} as never, {} as never, { method: "ping" }).catch(() => {});
           await new Promise((r) => setTimeout(r, 150));
@@ -191,7 +191,7 @@ describe("degraded turns (#51)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(`I could not verify the timeout from the context alone.\n\n\`\`\`json\n{}\n\`\`\`\n`),
       },
     ]);
@@ -246,7 +246,7 @@ describe("card-only anchors (#51 validator)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(
           `The host block is described here.\n\n\`\`\`json\n{"anchor": {"quote": "problem paragraph", "host": "card:central"}}\n\`\`\`\n`,
         ),
@@ -286,7 +286,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
     let mcp: McpRegistry | null = null;
     class ConnectingFakeRunner extends FakeAgentRunner {
       override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
-        if (reviewId && mcp && text.includes("# Explain")) {
+        if (reviewId && mcp && text.includes("## The question\n\nExplain this.")) {
           const issued = mcp.issueSession(reviewId, "mid-turn", "session");
           void mcp.handleRequest(issued.secret, {} as never, {} as never, { method: "ping" }).catch(() => {});
           await new Promise((r) => setTimeout(r, 150));
@@ -297,7 +297,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
     const agents = new ConnectingFakeRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-      { match: "# Explain", events: textEvents(MCP_PROSE_REPLY) },
+      { match: "## The question\n\nExplain this.", events: textEvents(MCP_PROSE_REPLY) },
     ]);
     const { app, ctx, id } = await openDemo(agents);
     try {
@@ -318,7 +318,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
     const agents = new FakeAgentRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-      { match: "# Explain", events: textEvents(MCP_PROSE_REPLY) },
+      { match: "## The question\n\nExplain this.", events: textEvents(MCP_PROSE_REPLY) },
     ]);
     const { app, ctx, id } = await openDemo(agents);
     try {
@@ -350,7 +350,7 @@ describe("connection-error retry (#51 review)", () => {
       seen: string[] = [];
       override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
         this.seen.push(text);
-        if (text.includes("# Explain")) {
+        if (text.includes("## The question\n\nExplain this.")) {
           calls += 1;
           mcp.current?.noteUnknownHit();
           yield* scripted[Math.min(calls, scripted.length) - 1]!;
@@ -373,7 +373,7 @@ describe("connection-error retry (#51 review)", () => {
       mcp.current = ctx.mcp;
       const { annotationId, jobId } = await runExplain(app, ctx, id);
       // Exactly two turns: the first attempt plus one retry on a fresh fork.
-      const explains = agents.seen.filter((t) => t.includes("# Explain"));
+      const explains = agents.seen.filter((t) => t.includes("## The question\n\nExplain this."));
       expect(explains).toHaveLength(2);
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/could not look up|degraded/i);
@@ -390,7 +390,7 @@ describe("connection-error retry (#51 review)", () => {
     try {
       mcp.current = ctx.mcp;
       const { annotationId, jobId } = await runExplain(app, ctx, id);
-      const explains = agents.seen.filter((t) => t.includes("# Explain"));
+      const explains = agents.seen.filter((t) => t.includes("## The question\n\nExplain this."));
       expect(explains).toHaveLength(2);
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;

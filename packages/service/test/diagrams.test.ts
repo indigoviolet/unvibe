@@ -566,7 +566,7 @@ describe("conversation answer diagrams (#71, #136)", () => {
       const agents = new FakeAgentRunner([
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_WITH_DIAGRAM) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_WITH_DIAGRAM) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -643,7 +643,7 @@ aside-demo-a -> aside-demo-b: hi
       const agents = new FakeAgentRunner([
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(reply) },
+        { match: "## The question\n\nExplain this.", events: textEvents(reply) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -720,7 +720,7 @@ broken-shape: "x" {link: "diff:nope:999999"}
       const agents = new FakeAgentRunner([
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(reply) },
+        { match: "## The question\n\nExplain this.", events: textEvents(reply) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -883,7 +883,7 @@ describe("failed on-demand renders (#130)", () => {
       const agents = new FakeAgentRunner([
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -948,7 +948,7 @@ describe("failed on-demand renders (#130)", () => {
         { match: "failed validation", events: textEvents(EXPLAIN_FIXED_REPAIR) },
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -1013,7 +1013,7 @@ describe("failed on-demand renders (#130)", () => {
         { match: "failed validation", events: textEvents(EXPLAIN_FIXED_REPAIR) },
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_STEPS_SHAPE) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_STEPS_SHAPE) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -1245,7 +1245,7 @@ describe("aside-nested diagrams (#130)", () => {
         { match: "failed validation", events: textEvents(EXPLAIN_ASIDE_FIXED) },
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -1303,7 +1303,7 @@ describe("aside-nested diagrams (#130)", () => {
         { match: "failed validation", events: textEvents("Prose without a diagram.\n\n```json\n{}\n```\n") },
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {

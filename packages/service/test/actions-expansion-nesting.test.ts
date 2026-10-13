@@ -125,7 +125,7 @@ describe("actions inside a conversation answer (#116, #136)", () => {
       expect(done.anchor.host).toMatchObject({ kind: "block", blockId: host });
       expect(done.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
 
-      // Ask on the same expansion block creates a working thread.
+      // Ask on the same answer block creates a nested conversation card.
       const ask = await postAction(app, id, {
         kind: "ask",
         quote,
@@ -133,8 +133,8 @@ describe("actions inside a conversation answer (#116, #136)", () => {
         message: "What does this mean?",
       });
       expect(ask.status).toBe(200);
-      const threadId = ask.json.threadId as string;
-      expect(threadId).toMatch(/^ann_/);
+      const askId = ask.json.annotationId as string;
+      expect(askId).toMatch(/^ann_/);
       if (ask.json.jobId) {
         await waitFor(() =>
           ["done", "error", "cancelled"].includes(ctx.jobs.get(ask.json.jobId as string)?.state ?? ""),
@@ -142,12 +142,12 @@ describe("actions inside a conversation answer (#116, #136)", () => {
       } else {
         await new Promise((r) => setTimeout(r, 500));
       }
-      const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
-      expect(thread.type).toBe("thread");
-      expect(thread.anchor.host).toMatchObject({ kind: "block", blockId: host });
-      expect(thread.messages.some((m) => m.who === "ai")).toBe(true);
+      const askCard = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === askId)!;
+      expect(askCard.type).toBe("conversation");
+      expect(askCard.anchor.host).toMatchObject({ kind: "block", blockId: host });
+      expect((askCard.turns?.[0]?.blocks.length ?? 0)).toBeGreaterThan(0);
 
-      // Note on the same expansion block stores a quiet thread.
+      // Note on the same answer block stores a quiet comment.
       const note = await postAction(app, id, {
         kind: "note",
         quote,
@@ -155,8 +155,8 @@ describe("actions inside a conversation answer (#116, #136)", () => {
         text: "A reader note.",
       });
       expect(note.status).toBe(200);
-      const noteThread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (note.json.threadId as string))!;
-      expect(noteThread.note).toBe(true);
+      const noteThread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (note.json.annotationId as string))!;
+      expect(noteThread.type).toBe("comment");
       expect(noteThread.anchor.host).toMatchObject({ kind: "block", blockId: host });
 
       // Citation validation accepts the answer block as a card target.

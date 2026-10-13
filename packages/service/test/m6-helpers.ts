@@ -180,12 +180,11 @@ export function threadOnDiffLine(
   threadSeq += 1;
   return {
     id: `ann_test${threadSeq}`,
-    type: "thread",
+    type: "comment",
     anchor: { host: { kind: "diff-line", fileKey, line }, quotedText: "q", prefix: "", suffix: "", position: line, version: 1 },
     open: true,
     messages: [{ who: "you", text }],
     post: true,
-    note: true,
     ...extra,
   };
 }
