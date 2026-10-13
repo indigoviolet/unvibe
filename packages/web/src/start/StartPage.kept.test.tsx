@@ -211,9 +211,10 @@ describe("StartPage kept lists (#90)", () => {
 
     renderPage();
     const row = await screen.findByText("Kept PR");
-    // The kept row's button opens with its PR number; the service fetches
-    // fresh on open, so a since-closed PR still goes through this path.
-    const btn = row.closest("div")?.querySelector("button.cj");
+    // The kept row's title button opens with its PR number; the service
+    // fetches fresh on open, so a since-closed PR still goes through this
+    // path.
+    const btn = row.closest(".ci")?.querySelector("button.cj-open");
     expect(btn).not.toBeNull();
     fireEvent.click(btn as HTMLButtonElement);
     await waitFor(() =>

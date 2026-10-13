@@ -1477,19 +1477,44 @@ export const mockApi = {
         branch: "fix-obs-fold",
         author: "you",
         updatedAt: NOW - 3600000,
+        url: "https://github.com/urllib3/urllib3/pull/5020",
+        additions: 42,
+        deletions: 18,
+        changedFiles: 4,
       },
       {
-        // #91: `gh search prs` has no head-branch field, so PR rows arrive
-        // without `branch` — keep one branch-less row so the row text
-        // (no "undefined", no dangling separator) stays exercised.
+        // #91: keep one branch-less row (as when `gh` omits the head
+        // branch) so the row text (no "undefined", no dangling separator)
+        // stays exercised.
         kind: "pr",
         title: "Fix retry backoff on 429s",
         prNumber: 5011,
         author: "you",
         updatedAt: NOW - 86400000 * 2,
+        url: "https://github.com/urllib3/urllib3/pull/5011",
+        additions: 120,
+        deletions: 34,
+        changedFiles: 6,
       },
     ];
+    // #95: review requests split by scope (newest first, like the
+    // service): asked of you (#5019 both + #5018 direct) and of your team
+    // (#5017 recent, #5016 older than every filter window).
     const requested: RepoChange[] = [
+      {
+        kind: "pr",
+        title: "Docs: clarify retry wording",
+        prNumber: 5019,
+        branch: "docs-retry-words",
+        author: "teammate",
+        updatedAt: NOW - 1800000,
+        url: "https://github.com/urllib3/urllib3/pull/5019",
+        additions: 9,
+        deletions: 2,
+        changedFiles: 1,
+        reviewScope: "direct",
+        requestedTeams: ["docs"],
+      },
       {
         kind: "pr",
         title: "Pool: reuse connections across redirects",
@@ -1497,6 +1522,36 @@ export const mockApi = {
         branch: "pool-redirect-reuse",
         author: "teammate",
         updatedAt: NOW - 7200000,
+        url: "https://github.com/urllib3/urllib3/pull/5018",
+        additions: 545,
+        deletions: 280,
+        changedFiles: 30,
+        reviewScope: "direct",
+      },
+      {
+        kind: "pr",
+        title: "CI: pin the lint action",
+        prNumber: 5017,
+        branch: "ci-pin-lint",
+        author: "teammate",
+        updatedAt: NOW - 86400000 * 2,
+        url: "https://github.com/urllib3/urllib3/pull/5017",
+        additions: 3,
+        deletions: 3,
+        changedFiles: 1,
+        reviewScope: "team",
+        requestedTeams: ["core"],
+      },
+      {
+        kind: "pr",
+        title: "Changelog: backfill old entries",
+        prNumber: 5016,
+        branch: "changelog-backfill",
+        author: "teammate",
+        updatedAt: NOW - 86400000 * 20,
+        url: "https://github.com/urllib3/urllib3/pull/5016",
+        reviewScope: "team",
+        requestedTeams: ["core"],
       },
     ];
     const branches: RepoChange[] = [

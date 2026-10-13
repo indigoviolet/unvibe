@@ -63,7 +63,7 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
     expect(screen.getByText("Fetching…")).toBeInTheDocument();
     expect(screen.getByText("opening")).toBeInTheDocument();
     // Reopenable from there (open button enabled).
-    const btn = screen.getByTestId("session-r1").querySelector("button.cj");
+    const btn = screen.getByTestId("session-r1").querySelector("button.cj-open");
     expect(btn).not.toBeNull();
     expect(btn).toBeEnabled();
   });
