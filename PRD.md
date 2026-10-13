@@ -92,9 +92,8 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ### 4.3 Pages
 - **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
-  - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page;
-  - a **bookmark** icon (save or unsave the page);
-  - the title.
+  - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page (no label row at all on pages with no label);
+  - the title, with the **bookmark** icon (save or unsave the page) on the title line, right-aligned.
 - **Trail:** a breadcrumb back to the root, on every page except the root.
 - **Contents:** a collapsible box listing this page's cards (click to jump, expanding the card if needed) and the pages it links to. Read items are muted. There are no other status labels.
 - **Go deeper:** the root page ends with placeholder cards for the directions the agent picked for this change. **Generate** shows progress and fills the card. A generated card may end with follow-up suggestions; clicking one adds its answer.

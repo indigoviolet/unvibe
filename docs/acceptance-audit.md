@@ -229,7 +229,10 @@ needed (that deviation is closed, not added).
 
 - Kinds (root/concept/finding/opened-expansion), root+finding labels only
   — met (walk shows “GUIDED REVIEW”; `reply-format.md` §7 finding refs).
-- Header (label, bookmark, title) — met (`guide.spec.ts`).
+- Header (label only where it matters, bookmark right-aligned on the
+  title line — #118, deliberately off-prototype; no empty label row) —
+  met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header cases,
+  `guide.spec.ts` finding-label + saved-bookmark cases).
 - Trail breadcrumb off-root — met (`guide.spec.ts` “pages navigate”).
 - Contents box (cards jump + linked pages, read muted, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
