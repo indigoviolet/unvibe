@@ -143,4 +143,70 @@ describe("ReviewBar", () => {
     expect(onToggleGuide).toHaveBeenCalledOnce();
     expect(onToggleSource).toHaveBeenCalledOnce();
   });
+
+  describe("job count (#98)", () => {
+    function renderCountBar(reviewId: string): void {
+      render(
+        <MemoryRouter initialEntries={[`/review/${reviewId}`]}>
+          <ReviewBar
+            reviewId={reviewId}
+            guideOpen
+            sourceOpen
+            onToggleGuide={noop}
+            onToggleSource={noop}
+          />
+        </MemoryRouter>,
+      );
+    }
+
+    it("shows running and queued jobs and links to the Debug jobs list", async () => {
+      // The mock demo seeds 1 running + 1 queued + 1 backing-off job.
+      await renderBar("demo", "urllib3/urllib3#5020");
+      const count = screen.getByRole("link", { name: "1 running, 2 queued" });
+      expect(count).toHaveTextContent("1 · 2");
+      expect(count).toHaveAttribute("href", "/review/demo/debug");
+      expect(count).toHaveAttribute("title", "1 running, 2 queued");
+      // Something runs: the animated gradient.
+      expect(count.className).toContain("live");
+    });
+
+    it("is quiet with only queued jobs and hidden when idle", async () => {
+      const snap = await api.review("demo");
+      const live = (snap.jobs ?? []).filter(
+        (j) => j.state === "running" || j.state === "queued" || j.state === "backing-off",
+      );
+      expect(live.length).toBeGreaterThan(0);
+      // Queued-only: still shown, but quiet (no animated gradient).
+      useReview.getState().setSnapshot({
+        ...snap,
+        jobs: live.map((j) => ({ ...j, state: "queued" as const })),
+      });
+      renderCountBar("demo");
+      const quiet = screen.getByRole("link", { name: `0 running, ${live.length} queued` });
+      expect(quiet).toHaveAttribute("href", "/review/demo/debug");
+      expect(quiet.className).not.toContain("live");
+      cleanup();
+      // Idle: nothing renders, so no space is reserved.
+      useReview.getState().setSnapshot({ ...snap, jobs: [] });
+      renderCountBar("demo");
+      expect(screen.queryByRole("link", { name: /running, .* queued/ })).toBeNull();
+    });
+
+    it("stays hidden while the review is still opening, even with live jobs", async () => {
+      // The open itself is not a job (ingest state), so the count waits
+      // for the finished open like the Debug icon does.
+      const snap = await api.review("demo");
+      useReview.getState().setSnapshot({
+        ...snap,
+        review: { ...snap.review, id: "opening-2", branch: "feature" },
+        version: { ...snap.version, n: 0 },
+        files: [],
+        pages: [],
+        ingest: { status: "loading", step: "fetching" },
+        jobs: [{ id: "j1", kind: "explain", model: "m", priority: 1, state: "running" }],
+      } as typeof snap);
+      renderCountBar("opening-2");
+      expect(screen.queryByRole("link", { name: /running, .* queued/ })).toBeNull();
+    });
+  });
 });
