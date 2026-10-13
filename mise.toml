@@ -275,3 +275,7 @@ run = "mise run build && node scripts/live-second-opinion.mjs"
 [tasks."test:live:diagram"]
 description = "Live D2 diagram check: real diagram action per provider with cite + render asserts (needs logins, d2; small token spend; never run by check)"
 run = "mise run build && node scripts/live-diagram.mjs"
+
+[tasks."test:live:fork-tools"]
+description = "Live #124 check: a Codex fork calls a review tool (needs codex login; tiny spend; never run by check)"
+run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_LIVE_PROVIDERS=codex npm run test:live:fork-tools --workspace @unvibe/service"
