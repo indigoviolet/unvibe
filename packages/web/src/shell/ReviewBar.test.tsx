@@ -206,7 +206,7 @@ describe("ReviewBar", () => {
         files: [],
         pages: [],
         ingest: { status: "loading", step: "fetching" },
-        jobs: [{ id: "j1", kind: "explain", model: "m", priority: 1, state: "running" }],
+        jobs: [{ id: "j1", kind: "ask", model: "m", priority: 1, state: "running" }],
       } as typeof snap);
       renderCountBar("opening-2");
       expect(screen.queryByRole("link", { name: /running, .* queued/ })).toBeNull();

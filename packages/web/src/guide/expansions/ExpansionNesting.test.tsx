@@ -36,7 +36,6 @@ function expansion(
     open,
     messages: [],
     post: false,
-    note: false,
     turns: [
       {
         id: `ans_${id}`,
@@ -54,12 +53,11 @@ function thread(id: string, hostBlockId: string, quote: string): Annotation {
   const storedHost = hostBlockId.replace(/^ann_([^#]+)#/, "ans_ann_$1#");
   return {
     id,
-    type: "thread",
+    type: "comment",
     anchor: { host: { kind: "block", blockId: storedHost }, quotedText: quote, prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
     messages: [{ who: "you", text: "What does this mean?" }],
     post: false,
-    note: false,
   } as unknown as Annotation;
 }
 
@@ -231,7 +229,6 @@ Second paragraph about the folded header.
     const asker = thread("ann_ask", `ann_parent#${first.id}`, first.quote);
     const noter: Annotation = {
       ...thread("ann_note", `ann_parent#${second.id}`, second.quote),
-      note: true,
     };
     seed(c, [parent, asker, noter]);
     show(c);

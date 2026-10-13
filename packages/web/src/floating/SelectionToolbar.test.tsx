@@ -86,7 +86,6 @@ function seedConversationCard(): void {
     open: true,
     messages: [],
     post: false,
-    note: false,
   };
   useReview.getState().clear();
   useReview.getState().setSnapshot({

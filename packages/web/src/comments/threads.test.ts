@@ -11,12 +11,11 @@ import {
 function thread(over: Partial<Annotation> = {}): Annotation {
   return {
     id: "ann_x",
-    type: "thread",
+    type: "comment",
     anchor: { host: { kind: "block", blockId: "c#b" }, quotedText: "q", prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
     messages: [],
     post: false,
-    note: true,
     ...over,
   };
 }

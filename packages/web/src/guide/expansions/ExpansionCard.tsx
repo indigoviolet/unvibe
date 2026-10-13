@@ -122,6 +122,7 @@ function AnswerView({
   reviewId,
   card,
   turn,
+  isFirst,
   isLatest,
   cardBusy,
   lookupPage,
@@ -132,6 +133,7 @@ function AnswerView({
   reviewId: string;
   card: Annotation;
   turn: Turn;
+  isFirst: boolean;
   isLatest: boolean;
   /** Card-level busy (fills address the card; rewrites address the answer). */
   cardBusy: BusyState | null;
@@ -153,7 +155,7 @@ function AnswerView({
   const showWorking = !!direct || serverWorking || (!!cardBusy && isLatest && !hasWorkingTurn(card));
   const workingLabel =
     direct?.label ??
-    (serverWorking || (isLatest && !hasWorkingTurn(card)) ? (cardBusy?.label ?? fixedTurnLabel(snapshot, card, turn)) : "Working…");
+    (serverWorking || (isLatest && !hasWorkingTurn(card)) ? (cardBusy?.label ?? fixedTurnLabel(snapshot, card, turn, isFirst)) : "Working…");
   const errorText = turn.error ?? null;
   const noAgent = isNoAgentMessage(errorText);
 
@@ -319,10 +321,12 @@ function fixedTurnLabel(
   snapshot: import("@unvibe/shared").ReviewSnapshot | null | undefined,
   card: Annotation,
   turn: Turn,
+  isFirst: boolean,
 ): string {
   if (isFollowupAnswer(snapshot, card)) return inflightLabel("followup");
   if ((turn.blocks?.length ?? 0) > 0) return "Working…";
-  return turn.question === null ? inflightLabel("explain") : inflightLabel("reply");
+  if (turn.question === null) return inflightLabel("explain");
+  return isFirst ? inflightLabel("ask") : inflightLabel("reply");
 }
 
 /** Full conversation card: header + one answer view per turn + reply box. */
@@ -409,6 +413,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           reviewId={reviewId}
           card={expansion}
           turn={turn}
+          isFirst={i === 0}
           isLatest={i === turns.length - 1}
           cardBusy={cardBusy}
           lookupPage={lookupPage}

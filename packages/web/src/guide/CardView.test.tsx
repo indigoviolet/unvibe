@@ -62,7 +62,6 @@ function answerCard(): Annotation {
     open: true,
     messages: [],
     post: false,
-    note: false,
     working: "Writing answer…",
     turns: [
       {
@@ -455,7 +454,6 @@ describe("CardView titles (issue #49)", () => {
       open: false,
       messages: [],
       post: false,
-      note: false,
     } as unknown as Annotation;
     seedSnapshot([withPara], [], [closed]);
     render(

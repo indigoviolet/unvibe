@@ -12,7 +12,6 @@ import {
   blockIdsMatch,
   busyForCard,
   busyForConversation,
-  busyForThread,
   conceptKey,
   diffAnchorForExplainKey,
   explainKey,
@@ -94,7 +93,6 @@ describe("inflight labels", () => {
 describe("busy resolution", () => {
   test("no entry and no job means not busy", () => {
     expect(busyForCard({}, [], "c1")).toBeNull();
-    expect(busyForThread({}, [], "t1")).toBeNull();
   });
 
   test("the in-flight entry wins over the job", () => {
@@ -115,12 +113,8 @@ describe("busy resolution", () => {
     expect(liveJobForTarget([job({ cardId: "c1", state: "cancelled" })], "c1")).toBeUndefined();
   });
 
-  test("jobs match by card or thread id", () => {
-    expect(liveJobForTarget([job({ threadId: "t1" })], "t1")?.id).toBe("job-1");
-    expect(busyForThread({}, [job({ threadId: "t1", kind: "ask" })], "t1")).toMatchObject({
-      label: "Asking…",
-      rewriting: false,
-    });
+  test("jobs match by card or annotation id", () => {
+    expect(liveJobForTarget([job({ annotationId: "t1" })], "t1")?.id).toBe("job-1");
   });
 });
 
@@ -202,7 +196,7 @@ describe("entry keys", () => {
     const direct = { ann_ans: entry("retry", "ann_ans") };
     expect(busyForConversation(direct, [], snap, answer)).toMatchObject({ label: "Retrying…" });
     // Job-derived ask fill on an answer reads as its answer…
-    const jobs = [job({ kind: "ask", threadId: "ann_ans" })];
+    const jobs = [job({ kind: "ask", annotationId: "ann_ans" })];
     expect(busyForConversation({}, jobs, snap, answer)).toMatchObject({ label: "Writing answer…" });
     // …but not on ordinary expansions.
     const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Annotation;

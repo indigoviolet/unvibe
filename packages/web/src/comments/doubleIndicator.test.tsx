@@ -16,8 +16,7 @@ import { NEW_THREAD_EVENT } from "../floating/SelectionToolbar.js";
 import { performAction } from "../guide/actions.js";
 import { CardView } from "../guide/CardView.js";
 import { useReview } from "../state/store.js";
-import { resetAskState } from "./askState.js";
-import { GuideBlockThreads } from "./GuideThreads.js";
+
 
 const REVIEW_ID = "double-test";
 
@@ -66,7 +65,6 @@ function workingExpansion(): Annotation {
     open: true,
     messages: [],
     post: false,
-    note: false,
     working: "Thinking…",
     turns: [
       {
@@ -82,10 +80,10 @@ function workingExpansion(): Annotation {
   } as unknown as Annotation;
 }
 
-function workingThread(): Annotation {
+function workingConversation(): Annotation {
   return {
     id: "ann_t",
-    type: "thread",
+    type: "conversation",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Some text.",
@@ -95,10 +93,20 @@ function workingThread(): Annotation {
       version: 1,
     },
     open: true,
-    messages: [{ who: "you", text: "what's that" }],
+    messages: [],
     post: false,
-    note: false,
-    working: "Reading…",
+    working: "Thinking…",
+    turns: [
+      {
+        id: "ans_t1",
+        question: "what's that",
+        blocks: [],
+        level: "standard",
+        revision: 1,
+        undoStack: [],
+        working: "Thinking…",
+      },
+    ],
   } as unknown as Annotation;
 }
 
@@ -127,14 +135,12 @@ function holdAction(): { resolveAction: (res: Record<string, unknown>) => void; 
 
 beforeEach(() => {
   vi.useRealTimers();
-  resetAskState();
   seedSnapshot();
 });
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  resetAskState();
   useReview.getState().clear();
 });
 
@@ -183,17 +189,25 @@ describe("issue #97: one box while working", () => {
     }
   });
 
-  test("Ask: the composer gives way to the working thread labelled as an Ask", async () => {
+  test("Ask: the composer gives way to the working card labelled as an Ask", async () => {
     const held = holdAction();
     try {
-      render(<GuideBlockThreads reviewId={REVIEW_ID} cardId="c1" blockId="b1" />);
+      render(
+        <CardView
+          reviewId={REVIEW_ID}
+          card={card()}
+          lookupPage={() => undefined}
+          onOpenPage={() => {}}
+          onFollowUp={() => {}}
+        />,
+      );
       act(() => {
         window.dispatchEvent(
           new CustomEvent(NEW_THREAD_EVENT, {
             detail: {
               anchor: { where: "block", blockId: "c1#b1" },
               quote: "Some text.",
-              note: false,
+              kind: "ask",
             },
           }),
         );
@@ -201,15 +215,15 @@ describe("issue #97: one box while working", () => {
       fireEvent.change(screen.getByLabelText("New comment"), { target: { value: "what's that" } });
       fireEvent.click(screen.getByRole("button", { name: "Ask" }));
       expect(screen.getByRole("status")).toHaveTextContent("Asking…");
-      // The service's working thread lands before the request returns.
-      addAnnotations([workingThread()]);
+      // The service's working card lands before the request returns.
+      addAnnotations([workingConversation()]);
       // The question is shown once, with one Ask-labelled indicator.
       expect(screen.queryByLabelText("New comment")).toBeNull();
       expect(screen.getAllByRole("status")).toHaveLength(1);
       expect(screen.getByRole("status")).toHaveTextContent("Asking…");
       // The request returns: still exactly one box.
       act(() => {
-        held.resolveAction({ accepted: true, threadId: "ann_t" });
+        held.resolveAction({ accepted: true, annotationId: "ann_t", turnId: "ans_t1" });
       });
       await act(async () => {});
       expect(screen.queryByLabelText("New comment")).toBeNull();
