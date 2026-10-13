@@ -102,7 +102,7 @@ function startService(dataDir) {
     const timer = setTimeout(() => reject(new Error(`service did not start: ${out}`)), 30000);
     proc.stdout?.on("data", (d) => {
       out += d.toString();
-      const m = out.match(/Unvibe listening on (http:\/\/127\.0\.0\.1:\d+)\/\?token=(\S+)/);
+      const m = out.match(/Unvibe listening on (http:\/\/(?:unvibe\.localhost|127\.0\.0\.1):\d+)\/\?token=(\S+)/);
       if (m) {
         clearTimeout(timer);
         resolve({

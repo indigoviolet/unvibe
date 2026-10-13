@@ -91,13 +91,6 @@ export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
     hasJobs?: () => boolean;
     onIdleExit?: () => void | Promise<void>;
   };
-  /**
-   * The service's own port (issue #108): when given, the Host/Origin gate
-   * additionally requires `Origin`/`Referer` to be on this port. `serve()`
-   * passes the configured port; tests omit it (name-only checks) unless
-   * they exercise the port rule.
-   */
-  servicePort?: number;
 }
 
 /**
@@ -213,10 +206,7 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     // install token): only loopback Host and loopback Origin/Referer ever
     // reach a handler. Applies to every route including /api/health and
     // the MCP mount (WebSocket handshakes pass through here too).
-    const allowed = hostCheckAllows(
-      { headers: req.headers as Record<string, string | string[] | undefined> },
-      opts.servicePort === undefined ? {} : { servicePort: opts.servicePort },
-    );
+    const allowed = hostCheckAllows({ headers: req.headers as Record<string, string | string[] | undefined> });
     if (!allowed.ok) {
       reply.code(403).send({ error: `forbidden: ${allowed.reason}` });
       return;

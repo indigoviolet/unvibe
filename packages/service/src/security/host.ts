@@ -19,11 +19,13 @@
  *   as before for the other entries.
  * - `Origin`/`Referer`, when present (browsers always send one of them on
  *   cross-site subresource loads and WebSocket handshakes), must be an
- *   `http(s)` origin on one of the same names — and, when the gate knows
- *   the service port, on that port (our pages are served from the
- *   service's own origin, so a same-name different-port origin is not one
- *   of ours). Non-browser clients send neither and are unaffected (the
- *   token still applies).
+ *   `http(s)` origin on one of the same names. The check is deliberately
+ *   port-agnostic, as before: the service cannot reliably know its public
+ *   port (ephemeral `UNVIBE_PORT=0` binds, tunnels), and pinning it 403s
+ *   the app's own asset loads with a blank page. An attacker cannot mint
+ *   one of these names as an `Origin` from a victim's browser, so the
+ *   exact-name match is the whole defence. Non-browser clients send
+ *   neither header and are unaffected (the token still applies).
  */
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set([
@@ -56,16 +58,8 @@ export function isLoopbackHost(host: string | string[] | undefined): boolean {
 /**
  * One `Origin`/`Referer` value → loopback http(s) origin, or absent (allow:
  * non-browser clients send neither; the install token still applies).
- *
- * When `servicePort` is given, an origin that carries an explicit port
- * (or whose scheme implies one) must be on that port: our pages are served
- * from the service's own origin. Omitted (tests, port-agnostic callers)
- * keeps the previous name-only check.
  */
-export function isAllowedOrigin(
-  value: string | string[] | undefined,
-  servicePort?: number,
-): boolean {
+export function isAllowedOrigin(value: string | string[] | undefined): boolean {
   const raw = Array.isArray(value) ? value[0] : value;
   if (!raw) return true;
   let url: URL;
@@ -77,37 +71,17 @@ export function isAllowedOrigin(
   if (url.protocol !== "http:" && url.protocol !== "https:") return false;
   // URL keeps IPv6 brackets on hostname ("[::1]"); strip them.
   const name = url.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
-  if (!LOOPBACK_HOSTS.has(name)) return false;
-  if (servicePort !== undefined) {
-    // Effective port: explicit, else the scheme default (80/443).
-    const portText = url.port !== "" ? url.port : url.protocol === "https:" ? "443" : "80";
-    if (Number(portText) !== servicePort) return false;
-  }
-  return true;
+  return LOOPBACK_HOSTS.has(name);
 }
 
 export interface HostCheckRequest {
   headers: Record<string, string | string[] | undefined>;
 }
 
-export interface HostCheckOptions {
-  /**
-   * The service's own port: when given, `Origin`/`Referer` must be on it
-   * (see `isAllowedOrigin`). The server wires its configured port;
-   * callers without one keep the name-only check.
-   */
-  servicePort?: number;
-}
-
 /** Combined gate for the service `onRequest` hook. */
-export function hostCheckAllows(
-  req: HostCheckRequest,
-  opts: HostCheckOptions = {},
-): { ok: true } | { ok: false; reason: string } {
+export function hostCheckAllows(req: HostCheckRequest): { ok: true } | { ok: false; reason: string } {
   if (!isLoopbackHost(req.headers["host"])) return { ok: false, reason: "host is not loopback" };
-  if (!isAllowedOrigin(req.headers["origin"], opts.servicePort))
-    return { ok: false, reason: "origin is not loopback" };
-  if (!isAllowedOrigin(req.headers["referer"], opts.servicePort))
-    return { ok: false, reason: "referer is not loopback" };
+  if (!isAllowedOrigin(req.headers["origin"])) return { ok: false, reason: "origin is not loopback" };
+  if (!isAllowedOrigin(req.headers["referer"])) return { ok: false, reason: "referer is not loopback" };
   return { ok: true };
 }

@@ -53,9 +53,6 @@ export async function serve(): Promise<void> {
     db,
     dataDir: config.dataDir,
     mcpBaseUrl: `http://127.0.0.1:${config.port}`,
-    // The gate pins Origin/Referer to the configured port (issue #108):
-    // our pages are served from this origin.
-    servicePort: config.port,
     lifecycle: {
       idleMs: config.idleMs,
       // A committed switch suppresses idle exit: the helper is about to

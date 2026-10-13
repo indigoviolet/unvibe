@@ -991,8 +991,9 @@ needed (that deviation is closed, not added).
 - Host/Origin checks (DNS-rebinding, cross-site WS) — met (new
   `security/host.ts`, 403 for evil Host/Origin — ran; `host.test.ts`).
   Issue #108 accepts exactly `unvibe.localhost` more (no suffix match;
-  look-alikes, trailing dot, userinfo, hex IPv6, wrong-port origins all
-  403 — ran, HTTP and WS).
+  look-alikes, trailing dot, userinfo, hex IPv6 all 403 — ran, HTTP and
+  WS; the gate stays port-agnostic by decision: pinning 403s the app's
+  own loads on ephemeral binds).
 - MCP per-session secrets (unguessable 256-bit, scoped per review, expire
   with session/review, pin_context reader-only) — met (`mcp/registry.ts`
   + lifecycle fixes + `mcp.test.ts` “secret lifecycle” — ran).

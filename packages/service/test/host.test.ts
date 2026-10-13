@@ -104,18 +104,22 @@ describe("isAllowedOrigin", () => {
       expect(isAllowedOrigin(o), o).toBe(false);
     }
   });
-  it("with a service port, rejects same-name origins on a different port", () => {
-    expect(isAllowedOrigin("http://unvibe.localhost:4517", 4517)).toBe(true);
-    expect(isAllowedOrigin("http://127.0.0.1:4517", 4517)).toBe(true);
-    expect(isAllowedOrigin("http://unvibe.localhost:9999", 4517)).toBe(false);
-    expect(isAllowedOrigin("http://127.0.0.1:9999", 4517)).toBe(false);
-    // No explicit port means the scheme default (80/443), not our port.
-    expect(isAllowedOrigin("http://unvibe.localhost", 4517)).toBe(false);
-    expect(isAllowedOrigin("https://unvibe.localhost/", 4517)).toBe(false);
-    // An explicit matching port is fine on either scheme.
-    expect(isAllowedOrigin("https://unvibe.localhost:4517", 4517)).toBe(true);
+  it("stays port-agnostic on accepted names (decided, issue #108)", () => {
+    // Pinning Origin to the service port was tried and reverted: the
+    // service cannot reliably know its public port (ephemeral UNVIBE_PORT=0
+    // binds, tunnels), and the pin 403s the app's own asset loads with a
+    // blank page (caught by real-service.spec). The exact-name match is
+    // the whole defence: no look-alike name passes on any port.
+    for (const o of [
+      "http://unvibe.localhost:4517",
+      "http://unvibe.localhost:9999",
+      "http://unvibe.localhost",
+      "http://127.0.0.1:9999",
+    ]) {
+      expect(isAllowedOrigin(o), o).toBe(true);
+    }
     // Absent origins stay allowed (non-browser clients).
-    expect(isAllowedOrigin(undefined, 4517)).toBe(true);
+    expect(isAllowedOrigin(undefined)).toBe(true);
   });
 });
 
@@ -125,10 +129,9 @@ describe("hostCheckAllows", () => {
       hostCheckAllows({ headers: { host: "unvibe.localhost:4517", origin: "http://evil.com" } }),
     ).toEqual({ ok: false, reason: "origin is not loopback" });
     expect(
-      hostCheckAllows(
-        { headers: { host: "unvibe.localhost:4517", origin: "http://127.0.0.1:9999" } },
-        { servicePort: 4517 },
-      ),
+      hostCheckAllows({
+        headers: { host: "unvibe.localhost:4517", origin: "http://unvibe.localhost.evil.example:4517" },
+      }),
     ).toEqual({ ok: false, reason: "origin is not loopback" });
   });
   it("rejects an evil Host even with an accepted Origin", () => {
@@ -230,21 +233,15 @@ describe("service host gate", () => {
     }
   });
 
-  it("pins Origin to the service port when the app knows it", async () => {
-    const { app } = await createApp("tok", { servicePort: 4517 });
+  it("accepts matching-name traffic on any port (the gate is name-only)", async () => {
+    const { app } = await createApp("tok", {});
     try {
-      const right = await app.inject({
+      const res = await app.inject({
         method: "GET",
         url: "/api/health",
-        headers: { host: "unvibe.localhost:4517", origin: "http://unvibe.localhost:4517" },
+        headers: { host: "unvibe.localhost:9999", origin: "http://unvibe.localhost:9999" },
       });
-      expect(right.statusCode).toBe(200);
-      const wrongPort = await app.inject({
-        method: "GET",
-        url: "/api/health",
-        headers: { host: "unvibe.localhost:4517", origin: "http://unvibe.localhost:9999" },
-      });
-      expect(wrongPort.statusCode).toBe(403);
+      expect(res.statusCode).toBe(200);
     } finally {
       await app.close();
     }
