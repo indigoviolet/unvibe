@@ -147,6 +147,9 @@ function threadAnchorMatches(anchor: ActionAnchor, thread: Annotation): boolean 
   if (anchor.where === "diff-line" && host.kind === "diff-line") {
     return anchor.fileKey === host.fileKey && anchor.line === host.line;
   }
+  if (anchor.where === "hunk" && host.kind === "hunk") {
+    return anchor.fileKey === host.fileKey && anchor.contentHash === host.contentHash;
+  }
   return false;
 }
 

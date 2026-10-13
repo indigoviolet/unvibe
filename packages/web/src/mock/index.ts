@@ -165,6 +165,15 @@ function seedHunkStates(): Map<string, HunkState> {
           note: "Only call site; everything else is the helper.",
         });
       }
+      // Issue #138: one idle hunk summary to activate in tests.
+      if (f.path === "src/urllib3/connection.py" && i === 0) {
+        map.set(h.contentHash, {
+          contentHash: h.contentHash,
+          folded: false,
+          reviewed: false,
+          summary: "Unfolds folded header values before reading.",
+        });
+      }
     });
   }
   return map;
@@ -1122,8 +1131,7 @@ function mirrorMockPromotedTurn(tid: string, turnId: string): void {
  * Drop a promoted link's turns once every moved turn has settled
  * (issue #152, mirrors the service: the page holds the content).
  */
-function dropSettledMockPromotedTurns(tid: string): void {
-  const link = annotations.find((x) => x.id === tid);
+function dropSettledMockPromotedTurns(tid: string): void {  const link = annotations.find((x) => x.id === tid);
   if (!link || link.type !== "link" || (link.turns?.length ?? 0) === 0) return;
   const unsettled = (link.turns ?? []).some(
     (t) => ((t.working ?? "") !== "" && t.working !== null) || ((t.error ?? "") !== "" && t.error !== null) || t.jobId !== undefined,
@@ -1132,6 +1140,71 @@ function dropSettledMockPromotedTurns(tid: string): void {
   delete (link as { turns?: unknown }).turns;
   delete (link as { promotedTurns?: unknown }).promotedTurns;
   emitAnnotations();
+}
+
+/**
+ * Ensure the hunk's conversation card in mock mode (issue #138, mirrors
+ * the service): created from the stored summary text with no job — the
+ * first turn carries the summary as a paragraph block. Reuses and
+ * reopens the stored card when already activated.
+ */
+function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string; turnId: string; blockId: string } {
+  const file = MOCK_FILES.find((f) => f.fileKey === fileKey);
+  if (!file?.hunks.some((h) => h.contentHash === contentHash)) {
+    throw new Error(`unknown hunk ${fileKey}:${contentHash}`);
+  }
+  const summary = hunkStates.get(contentHash)?.summary?.trim();
+  if (!summary) throw new Error(`hunk ${fileKey}:${contentHash} has no summary yet`);
+  const existing = annotations.find(
+    (x) =>
+      x.type === "conversation" &&
+      (x.anchor.host as { kind?: string }).kind === "hunk" &&
+      (x.anchor.host as { fileKey?: string }).fileKey === fileKey &&
+      (x.anchor.host as { contentHash?: string }).contentHash === contentHash,
+  );
+  if (existing) {
+    if (!existing.open) {
+      existing.open = true;
+      emitAnnotations();
+    }
+    const first = (existing.turns ?? [])[0] as unknown as { id: string; blocks: { id: string }[] } | undefined;
+    if (!first) throw new Error(`hunk card ${existing.id} has no turns`);
+    return { id: existing.id, turnId: first.id, blockId: first.blocks[0].id };
+  }
+  const stamp = Date.now().toString(36);
+  const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${stamp}`;
+  const turnId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${stamp}`;
+  const blockId = `b-hunk-${stamp}`;
+  const safe = summary.replace(/</g, "&lt;");
+  annotations.push({
+    id,
+    type: "conversation",
+    anchor: {
+      host: { kind: "hunk", fileKey, contentHash },
+      quotedText: "",
+      prefix: "",
+      suffix: "",
+      position: 0,
+      version: 1,
+    },
+    open: true,
+    messages: [],
+    post: false,
+    working: null,
+    turns: [
+      {
+        id: turnId,
+        question: null,
+        blocks: [{ type: "paragraph", id: blockId, text: { standard: safe }, citations: [] }],
+        level: "standard",
+        revision: 1,
+        undoStack: [],
+        working: null,
+      },
+    ],
+  } as unknown as import("@unvibe/shared").Annotation);
+  emitAnnotations();
+  return { id, turnId, blockId };
 }
 
 /**
@@ -2293,7 +2366,15 @@ export const mockApi = {
       const newTurnId = (): string =>
         `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       if (a.kind === "ask") {
-        const anchor = a.anchor;
+        // Issue #138: a hunk anchor activates the summary into its card,
+        // then this same Ask runs nested on the summary block.
+        const anchor: import("@unvibe/shared").ActionAnchor =
+          a.anchor.where === "hunk"
+            ? (() => {
+                const ensured = ensureMockHunkCard(a.anchor.fileKey, a.anchor.contentHash);
+                return { where: "block", blockId: `${ensured.turnId}#${ensured.blockId}` };
+              })()
+            : a.anchor;
         const host =
           anchor.where === "block"
             ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
@@ -2403,7 +2484,15 @@ export const mockApi = {
     // the real shapes (working → streamed text → blocks, error + retry via
     // `retry`, anchor-stale fallback, dotted-link close).
     if (a.kind === "explain") {
-      const anchor = a.anchor;
+      // Issue #138: a hunk anchor activates the summary into its card,
+      // then this same Explain runs nested on the summary block.
+      const anchor: import("@unvibe/shared").ActionAnchor =
+        a.anchor.where === "hunk"
+          ? (() => {
+              const ensured = ensureMockHunkCard(a.anchor.fileKey, a.anchor.contentHash);
+              return { where: "block", blockId: `${ensured.turnId}#${ensured.blockId}` };
+            })()
+          : a.anchor;
       const host =
         anchor.where === "block"
           ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
@@ -2611,6 +2700,12 @@ export const mockApi = {
       }, 700);
       return { accepted: true, pageId, jobId };
     }
+    if (a.kind === "hunk_card") {
+      // Issue #138: the explicit hunk control. Activates (or reopens)
+      // the summary card with no job.
+      const ensured = ensureMockHunkCard(a.fileKey, a.contentHash);
+      return { accepted: true, annotationId: ensured.id, turnId: ensured.turnId };
+    }
     if (a.kind === "promote") {
       const annId = (a as { annotationId: string }).annotationId;
       const found = annotations.find((x) => x.id === annId);
@@ -2769,6 +2864,11 @@ export const mockApi = {
     body: import("@unvibe/shared").CreateCommentRequest,
   ): Promise<{ id: string }> => {
     const anchor = body.anchor;
+    // Issue #138: comments never anchor hunks (the client maps summary
+    // Comments to the hunk's first changed line), mirroring the service.
+    if (anchor.where === "hunk") {
+      throw new Error("a comment on a hunk summary goes to the hunk's first changed line, not the hunk");
+    }
     const host =
       anchor.where === "block"
         ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }

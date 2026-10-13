@@ -206,6 +206,7 @@ export function updateKey(reviewId: string): string {
 function anchorSuffix(anchor: ActionAnchor): string {
   if (anchor.where === "block") return `block:${anchor.blockId}`;
   if (anchor.where === "description") return `desc:${anchor.paragraphId}`;
+  if (anchor.where === "hunk") return `hunk:${anchor.fileKey}:${anchor.contentHash}`;
   return `diff:${anchor.fileKey}:${anchor.line}`;
 }
 
