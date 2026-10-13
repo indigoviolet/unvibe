@@ -1,0 +1,588 @@
+{
+  "jobs": [
+    {
+      "id": "60d2e336-0501-4e5c-9a08-bf258252c897",
+      "kind": "reader",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 50,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "guide|reader||v1",
+      "sessionId": "cc37cff1-fcce-4b68-a125-655c71f4f0a8",
+      "usage": {
+        "inputTokens": 7181,
+        "cachedTokens": 39031,
+        "outputTokens": 3066
+      },
+      "cacheHitRate": 0.8446074612654721
+    },
+    {
+      "id": "17bfc4fd-a323-4fa4-a668-1f41db151db0",
+      "kind": "critic",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "finding:f-critic-0|critic||v1",
+      "sessionId": "d08b7cd8-55e8-46bd-9e3d-6749a14d5df3",
+      "usage": {
+        "inputTokens": 10,
+        "cachedTokens": 206721,
+        "outputTokens": 7728
+      },
+      "cacheHitRate": 0.9999516279609735
+    },
+    {
+      "id": "57fdce65-3c73-4b57-b6a1-bcaf4ae162ca",
+      "kind": "critic",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "finding:f-critic-1|critic||v1",
+      "sessionId": "e11ebb45-35ae-4bac-aed6-a23571930881",
+      "usage": {
+        "inputTokens": 10,
+        "cachedTokens": 212891,
+        "outputTokens": 7831
+      },
+      "cacheHitRate": 0.9999530298119783
+    },
+    {
+      "id": "4b3d8b9c-fa5b-46d3-b1cc-c640236aec74",
+      "kind": "concept",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "concepts|concept-stubs||v1",
+      "sessionId": "ad6d9b77-9dfd-4dff-8a86-11ab66ef8df4",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 36898,
+        "outputTokens": 1434
+      },
+      "cacheHitRate": 0.9999457994579946
+    },
+    {
+      "id": "9e522a49-9188-470e-b35a-b9a634d4930e",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|hunk-pass||v1",
+      "sessionId": "6c994411-7636-4d75-8959-dced18ed0cd8",
+      "usage": {
+        "inputTokens": 1721,
+        "cachedTokens": 12514,
+        "outputTokens": 781
+      },
+      "cacheHitRate": 0.8791008078679312
+    },
+    {
+      "id": "21548c51-dec9-4f0e-9966-01ec5637954d",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|hunk-pass||v1",
+      "sessionId": "20b123f0-d277-4593-a16e-2d7a762dfb17",
+      "usage": {
+        "inputTokens": 2208,
+        "cachedTokens": 12859,
+        "outputTokens": 360
+      },
+      "cacheHitRate": 0.8534545695891684
+    },
+    {
+      "id": "94786656-cdea-4371-bc9c-26b8a2c2bb69",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b355d2096d4d7f39|hunk-pass||v1",
+      "sessionId": "71b01b1a-5fb8-4b8b-8927-b76c590e3b22",
+      "usage": {
+        "inputTokens": 1772,
+        "cachedTokens": 12423,
+        "outputTokens": 436
+      },
+      "cacheHitRate": 0.8751673124339556
+    },
+    {
+      "id": "0bcd8922-d753-48f6-9681-4c668eb5915c",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:6cfb09ec98cba6ba|hunk-pass||v1",
+      "sessionId": "8e747c12-c90c-4f8a-96d1-efffd51d0219",
+      "usage": {
+        "inputTokens": 1701,
+        "cachedTokens": 12352,
+        "outputTokens": 368
+      },
+      "cacheHitRate": 0.8789582295595246
+    },
+    {
+      "id": "7901762c-9265-4ff8-bd94-c92230490728",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:92cf4ca541bdb0f2|hunk-pass||v1",
+      "sessionId": "dc98d64b-fdb7-4c8a-8a0d-0c1dadb57dad",
+      "usage": {
+        "inputTokens": 1725,
+        "cachedTokens": 12376,
+        "outputTokens": 501
+      },
+      "cacheHitRate": 0.8776682504786895
+    },
+    {
+      "id": "b4891c6f-0e50-49a6-9c63-7379bb7871ec",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b33779988cee5f8a|hunk-pass||v1",
+      "sessionId": "e512691c-3905-4cc2-ac3b-18c4c2d3cf5c",
+      "usage": {
+        "inputTokens": 2333,
+        "cachedTokens": 12984,
+        "outputTokens": 726
+      },
+      "cacheHitRate": 0.847685578115819
+    },
+    {
+      "id": "4fe73b42-954e-404a-a03e-df396a38fc6e",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:29382503b8689e5f|hunk-pass||v1",
+      "sessionId": "c43ae534-7bcb-4a67-81fa-5b8db7b5a233",
+      "usage": {
+        "inputTokens": 1753,
+        "cachedTokens": 12404,
+        "outputTokens": 306
+      },
+      "cacheHitRate": 0.8761743307197852
+    },
+    {
+      "id": "0bf754a7-36cc-414a-b05c-a89c76a8b154",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:949dda852e448b55|hunk-pass||v1",
+      "sessionId": "75b67204-7e6b-4168-827a-37e7f38a8527",
+      "usage": {
+        "inputTokens": 2867,
+        "cachedTokens": 13518,
+        "outputTokens": 352
+      },
+      "cacheHitRate": 0.8250228867866951
+    },
+    {
+      "id": "55392540-9bdc-4a4c-a4c5-c32ee754c7d4",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b1:Some servers still send a single|explain||v1",
+      "threadId": "ann_a12b92b723cb",
+      "sessionId": "827fa6f2-3714-461f-b12b-1d7d32050ef1",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 40982,
+        "outputTokens": 944
+      },
+      "cacheHitRate": 0.9999512004684755
+    },
+    {
+      "id": "640aad82-7876-40af-9846-757103c877f4",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b2:Before this change, urllib3 copied those|explain||v1",
+      "threadId": "ann_c0c093d086af",
+      "sessionId": "2c325645-30a7-4b92-be29-dcde99e85576",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 41435,
+        "outputTokens": 1220
+      },
+      "cacheHitRate": 0.9999517339575742
+    },
+    {
+      "id": "14dcacc2-7e6a-4878-95f3-e1c240bfd59d",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b3:The case that prompted this is|explain||v1",
+      "threadId": "ann_8cef2791d589",
+      "sessionId": "5d7a0e0d-c324-4b5f-8b30-b61c535c7290",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 42032,
+        "outputTokens": 1580
+      },
+      "cacheHitRate": 0.999952419469953
+    },
+    {
+      "id": "cdd16ba2-afc9-4a35-a522-20a07b8452ef",
+      "kind": "ask",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b4:The change replaces each fold with:Why does this matter for a reviewer? Answer in two or three sentences.|ask||v1",
+      "threadId": "ann_5bd13f1a2a0c",
+      "sessionId": "7a0c70a4-243e-4da2-b6f9-e80b0f5e43f9",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 42515,
+        "outputTokens": 602
+      },
+      "cacheHitRate": 0.9999529599924736
+    },
+    {
+      "id": "ed9e4cf4-3ec3-4773-8a5f-b48f2b3ae274",
+      "kind": "ask",
+      "model": "main",
+      "provider": "main",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "thread:ann_5bd13f1a2a0c:What would break if this were left out? |ask-reply||v1",
+      "threadId": "ann_5bd13f1a2a0c",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 32400,
+        "outputTokens": 0
+      },
+      "cacheHitRate": 0.9999382754150978
+    },
+    {
+      "id": "7decc98b-ac78-471b-b7ee-50377cf480e8",
+      "kind": "ask",
+      "model": "main",
+      "provider": "main",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "thread:ann_5bd13f1a2a0c:Is there a test that covers it? One sent|ask-reply||v1",
+      "threadId": "ann_5bd13f1a2a0c",
+      "usage": {
+        "inputTokens": 0,
+        "cachedTokens": 1666,
+        "outputTokens": 0
+      },
+      "cacheHitRate": 1
+    },
+    {
+      "id": "a32c615a-49e2-41a6-af76-ae109a03aeb5",
+      "kind": "go-deeper",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "go-deeper:g-flow|generate||v1",
+      "cardId": "g-flow",
+      "sessionId": "bc9a03ea-4e2c-49b0-988e-2811622dadc9",
+      "usage": {
+        "inputTokens": 4,
+        "cachedTokens": 80887,
+        "outputTokens": 2350
+      },
+      "cacheHitRate": 0.9999505507411207
+    },
+    {
+      "id": "ea1824ea-1097-4810-86a1-7c2e9b55c59d",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b5:It deliberately leaves out the separate|explain||v1",
+      "threadId": "ann_441f9137ac7a",
+      "sessionId": "b10816ab-b0c7-4634-a098-18d7cea1d72d",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 44248,
+        "outputTokens": 1528
+      },
+      "cacheHitRate": 0.999954802259887
+    },
+    {
+      "id": "78fc0815-5d06-4575-8555-08dfd1cdd8d4",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b1:message through a new helper,|explain||v1",
+      "threadId": "ann_ac4a26dd84a9",
+      "sessionId": "50ad69e0-6219-4e93-9532-6e29d0dd7569",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 45468,
+        "outputTokens": 774
+      },
+      "cacheHitRate": 0.9999560149549154
+    },
+    {
+      "id": "07ea570d-3dfc-40b8-a84a-16ecaef83ec8",
+      "kind": "depth",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "card:problem|depth|deep|v1",
+      "cardId": "problem",
+      "sessionId": "4bbf38c3-028f-43aa-8cad-a9e35b1e96bf",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 44220,
+        "outputTokens": 2038
+      },
+      "cacheHitRate": 0.9999547736420786
+    },
+    {
+      "id": "cbc9b493-9ff0-4eb4-b8e8-c83e3c049bdd",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|summarize||v1",
+      "sessionId": "6d2301dc-c4de-4521-8ddd-8202f7bc14cb",
+      "usage": {
+        "inputTokens": 1721,
+        "cachedTokens": 12372,
+        "outputTokens": 842
+      },
+      "cacheHitRate": 0.8778826367700276
+    },
+    {
+      "id": "894834dd-e381-4a74-80c8-ae7f9a1df4f3",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|summarize||v1",
+      "sessionId": "e3da8063-3d94-4d3a-8eda-470540071f82",
+      "usage": {
+        "inputTokens": 2195,
+        "cachedTokens": 12846,
+        "outputTokens": 357
+      },
+      "cacheHitRate": 0.8540655541519846
+    },
+    {
+      "id": "dbd5cf85-2407-440d-98e0-66078fe642cb",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|summarize||v1",
+      "sessionId": "fe66bf35-b530-4ebf-ad4e-b48c3c4c2ba6",
+      "usage": {
+        "inputTokens": 1721,
+        "cachedTokens": 12372,
+        "outputTokens": 793
+      },
+      "cacheHitRate": 0.8778826367700276
+    },
+    {
+      "id": "d9ae9436-8485-4eb5-be9a-2b9005442658",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|summarize||v1",
+      "sessionId": "446c70a2-97a9-46ac-873d-fe6df6ca9087",
+      "usage": {
+        "inputTokens": 2195,
+        "cachedTokens": 12846,
+        "outputTokens": 455
+      },
+      "cacheHitRate": 0.8540655541519846
+    },
+    {
+      "id": "a5f94221-a140-456a-a705-0cfea9f4cd8b",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b355d2096d4d7f39|summarize||v1",
+      "sessionId": "681a4a26-e074-4938-9e5a-c0d1be406821",
+      "usage": {
+        "inputTokens": 1759,
+        "cachedTokens": 12410,
+        "outputTokens": 427
+      },
+      "cacheHitRate": 0.8758557414072976
+    },
+    {
+      "id": "d2afb9ca-853d-4bba-ab5e-00f88f779bf1",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:6cfb09ec98cba6ba|summarize||v1",
+      "sessionId": "8acd8a98-2907-4d6f-8adb-e92b7cffa24d",
+      "usage": {
+        "inputTokens": 1701,
+        "cachedTokens": 12352,
+        "outputTokens": 477
+      },
+      "cacheHitRate": 0.8789582295595246
+    },
+    {
+      "id": "16691908-ef97-423f-80dd-6fb7e6fa8523",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:92cf4ca541bdb0f2|summarize||v1",
+      "sessionId": "7033bfdd-ded7-488b-ba60-7ec8a15a794b",
+      "usage": {
+        "inputTokens": 1725,
+        "cachedTokens": 12376,
+        "outputTokens": 393
+      },
+      "cacheHitRate": 0.8776682504786895
+    },
+    {
+      "id": "a9702a2c-810b-49fc-a29e-49c95078d855",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b33779988cee5f8a|summarize||v1",
+      "sessionId": "be5edbab-ea76-4329-9c01-a23f1c470f72",
+      "usage": {
+        "inputTokens": 2320,
+        "cachedTokens": 12971,
+        "outputTokens": 332
+      },
+      "cacheHitRate": 0.848276764109607
+    },
+    {
+      "id": "302c0b1e-733c-4cde-b4fa-e6b46211b6a1",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:29382503b8689e5f|summarize||v1",
+      "sessionId": "90f1ca1c-f434-4da0-a93f-e40cf15855ba",
+      "usage": {
+        "inputTokens": 1753,
+        "cachedTokens": 12404,
+        "outputTokens": 622
+      },
+      "cacheHitRate": 0.8761743307197852
+    },
+    {
+      "id": "0e899bfe-9c1b-492d-b888-357c039b52d4",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_5d3ea0db8f7f",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:949dda852e448b55|summarize||v1",
+      "sessionId": "fced2966-89c9-40a6-9e7a-b2d66cd6a5c2",
+      "usage": {
+        "inputTokens": 2854,
+        "cachedTokens": 13505,
+        "outputTokens": 289
+      },
+      "cacheHitRate": 0.8255394584021029
+    }
+  ]
+}

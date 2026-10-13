@@ -105,6 +105,10 @@ class Client {
     this.counts = { patch: 0, job: 0, text: 0, other: 0 };
     this.firstTextAt = new Map(); // jobId -> t
     this.resyncs = 0;
+    // First time each annotation id was seen / had content, by patch arrival
+    // (so a mark does not depend on when the HTTP response came back).
+    this.annSeen = new Map();
+    this.annContent = new Map();
   }
   async connect() {
     this.ws = new WebSocket(`ws://127.0.0.1:${PORT}/api/events?review=${this.reviewId}&token=${token}`);
@@ -174,6 +178,11 @@ class Client {
   }
   check() {
     if (!this.snapshot) return;
+    for (const a of this.snapshot.annotations ?? []) {
+      if (!this.annSeen.has(a.id)) this.annSeen.set(a.id, now());
+      const has = (a.expansion?.blocks ?? []).length > 0 || (a.messages ?? []).some((m) => m.who === "ai");
+      if (has && !this.annContent.has(a.id)) this.annContent.set(a.id, now());
+    }
     for (const w of [...this.waiters]) {
       let ok = false;
       try {
@@ -348,7 +357,8 @@ async function explainOnce(client, reviewId, name, skip) {
     const id = res.json.annotationId;
     rec.jobId = res.json.jobId;
     const ann = (s) => (s.annotations ?? []).find((a) => a.id === id);
-    rec.marks.workingVisible = await client.until((s) => Boolean(ann(s)));
+    await client.until((s) => Boolean(ann(s)));
+    rec.marks.workingVisible = client.annSeen.get(id) ?? null;
     const content = client.until((s) => (ann(s)?.expansion?.blocks ?? []).length > 0);
     const done = client.until((s) => ann(s) && !ann(s).working);
     rec.marks.firstContent = await content;
@@ -378,7 +388,8 @@ async function runActions(client, reviewId) {
     threadId = res.json.threadId;
     rec.jobId = res.json.jobId;
     const th = (s) => (s.annotations ?? []).find((a) => a.id === threadId);
-    rec.marks.workingVisible = await client.until((s) => Boolean(th(s)));
+    await client.until((s) => Boolean(th(s)));
+    rec.marks.workingVisible = client.annSeen.get(threadId) ?? null;
     rec.marks.done = await client.until((s) => th(s) && !th(s).working && th(s).messages.some((m) => m.who === "ai"));
     rec.error = th(client.snapshot)?.error ?? undefined;
     if (rec.jobId) rec.marks.firstTextEvent = client.firstTextAt.get(rec.jobId) ?? null;

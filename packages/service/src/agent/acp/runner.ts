@@ -226,6 +226,16 @@ export class AcpAgentRunner implements AgentRunner {
       configOptions?: unknown[];
     };
     if (!r?.sessionId) throw new Error(`${provider} did not start a session`);
+    // SPIKE(#114): which model/effort a new session starts with.
+    spikeMark("acp.session.config", {
+      provider,
+      sessionId: r.sessionId,
+      mode: r.modes?.currentModeId,
+      options: (r.configOptions ?? []).map((o) => {
+        const opt = o as { id?: string; currentValue?: unknown };
+        return { id: opt.id, current: opt.currentValue };
+      }),
+    });
     const rec: AcpSessionRecord = {
       acpSessionId: r.sessionId,
       provider,
@@ -375,6 +385,13 @@ export class AcpAgentRunner implements AgentRunner {
           sessionId: rec.acpSessionId,
           cwd: rec.cwd,
           mcpServers: toAcpMcpServers(rec.mcpServers),
+          // SPIKE(#114) EXPERIMENT, off by default: give the resumed fork the
+          // same system prompt + tool lockdown as `session/new`. Without it the
+          // adapter resumes with the default Claude Code preset, so the fork's
+          // prefix differs from the base and the base's prompt cache is missed.
+          ...(process.env.UNVIBE_SPIKE_FORK_META === "1"
+            ? { _meta: this.newSessionMeta(rec.provider, rec.systemPrompt, rec.readOnly) }
+            : {}),
         });
       } catch {
         // ignored: prompt() will resume on demand
@@ -456,6 +473,9 @@ export class AcpAgentRunner implements AgentRunner {
     const since = (): number => Math.round(performance.now() - tPrompt);
     let sawUpdate = false;
     let sawText = false;
+    let sawThought = false;
+    let thoughtChars = 0;
+    let textChunks = 0;
     let textChars = 0;
     let lastTextAt = 0;
     spikeMark("acp.turn.start", { provider: rec.provider, sessionId: rec.acpSessionId, promptChars: text.length });
@@ -472,7 +492,14 @@ export class AcpAgentRunner implements AgentRunner {
             spikeMark("acp.turn.first-text", { sessionId: rec.acpSessionId, ms: since() });
           }
           textChars += su.content.text.length;
+          textChunks += 1;
           lastTextAt = since();
+        } else if (su?.sessionUpdate === "agent_thought_chunk") {
+          if (!sawThought) {
+            sawThought = true;
+            spikeMark("acp.turn.first-thought", { sessionId: rec.acpSessionId, ms: since() });
+          }
+          thoughtChars += su.content?.text?.length ?? 0;
         } else if (su?.sessionUpdate === "tool_call" || su?.sessionUpdate === "tool_call_update") {
           spikeMark("acp.turn.tool", { sessionId: rec.acpSessionId, kind: su.sessionUpdate, title: su.title, status: su.status, toolCallId: su.toolCallId, ms: since() });
         }
@@ -570,7 +597,7 @@ export class AcpAgentRunner implements AgentRunner {
     }
     for (const e of flush()) yield e;
     // SPIKE(#114): provider response arrived; what follows is our own wait.
-    spikeMark("acp.turn.response", { provider: rec.provider, sessionId: rec.acpSessionId, ms: since(), textChars, lastTextMs: lastTextAt, failed: failed !== null });
+    spikeMark("acp.turn.response", { provider: rec.provider, sessionId: rec.acpSessionId, ms: since(), textChars, textChunks, thoughtChars, lastTextMs: lastTextAt, failed: failed !== null });
     // Grace period for straggler notifications flushed before the response.
     await sleep(300);
     for (const e of flush()) yield e;
@@ -629,6 +656,8 @@ export class AcpAgentRunner implements AgentRunner {
       cacheWrite: report.cachedWriteTokens,
       output: report.outputTokens,
       models: tu.models,
+      rawUsage: r?.usage,
+      rawMeta: r?._meta,
       stopReason,
       ms: since(),
     });

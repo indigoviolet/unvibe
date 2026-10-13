@@ -58,8 +58,9 @@ for (const m of marks) {
   if (!t) continue;
   if (m.name === "acp.turn.first-update") t.firstUpdateMs = m.ms;
   if (m.name === "acp.turn.first-text") t.firstTextMs = m.ms;
+  if (m.name === "acp.turn.first-thought") t.firstThoughtMs = m.ms;
   if (m.name === "acp.turn.tool") t.tools.push({ ms: m.ms, kind: m.kind, title: m.title, status: m.status, id: m.toolCallId });
-  if (m.name === "acp.turn.response") Object.assign(t, { responseMs: m.ms, textChars: m.textChars, lastTextMs: m.lastTextMs });
+  if (m.name === "acp.turn.response") Object.assign(t, { responseMs: m.ms, textChars: m.textChars, textChunks: m.textChunks, thoughtChars: m.thoughtChars, lastTextMs: m.lastTextMs });
   if (m.name === "acp.turn.usage") Object.assign(t, { usage: { input: m.input, cacheRead: m.cacheRead, cacheWrite: m.cacheWrite, output: m.output }, models: m.models, endMs: m.ms, model: m.model });
 }
 
@@ -105,6 +106,9 @@ function jobBreakdown(j) {
     setupRequests: rq.map((r) => `${r.method.replace("session/", "")} ${r.ms}`).join(", "),
     turns: mine.length,
     ttft: first?.firstTextMs ?? null,
+    firstThought: first?.firstThoughtMs ?? null,
+    thoughtChars: mine.reduce((n, t) => n + (t.thoughtChars ?? 0), 0),
+    textChunks: mine.reduce((n, t) => n + (t.textChunks ?? 0), 0),
     firstUpdate: first?.firstUpdateMs ?? null,
     turnMs: mine.reduce((n, t) => n + (t.responseMs ?? 0), 0),
     tools: mine.reduce((n, t) => n + toolTime(t).calls, 0),
@@ -167,6 +171,12 @@ for (const f of run.flows) {
     })(),
     mcp: win.filter((m) => m.name === "mcp.tool").map((m) => ({ tool: m.tool, ms: m.ms, role: m.role })),
   };
+  // Turns in the window on sessions no job in this flow owns (thread replies
+  // run on the thread's session; base builds; log appends).
+  const owned = new Set(flowJobs.map((j) => j.sessionId).filter(Boolean));
+  row.otherTurns = [...turns.entries()]
+    .filter(([sid]) => !owned.has(sid))
+    .flatMap(([sid, ts]) => ts.filter((t) => t.start >= f.startedAt - 50 && t.start <= (f.endedAt ?? Infinity)).map((t) => ({ sessionId: sid.slice(0, 8), at: t.start - f.startedAt, promptChars: t.promptChars, firstThought: t.firstThoughtMs, ttft: t.firstTextMs, ms: t.responseMs, usage: t.usage })));
   result.flows.push(row);
 }
 result.baseBuilds = marks.filter((m) => m.name === "sessions.base-build").map((m) => ({ t: m.t, ms: m.ms, packChars: m.packChars, guide: m.key.split("|")[2] }));
@@ -213,13 +223,14 @@ for (const f of result.flows) {
   if (f.validate.some((v) => v.repair)) console.log(`REPAIR TURNS: ${JSON.stringify(f.validate.filter((v) => v.repair))}`);
   if (f.innerRetries.length) console.log(`INNER RETRIES: ${f.innerRetries.join(" | ")}`);
   if (f.forkFallbacks.length) console.log(`FORK FALLBACKS: ${f.forkFallbacks.join(" | ")}`);
+  if (f.otherTurns.length) console.log(`other turns in window (replies on the thread session, base builds, log appends): ${f.otherTurns.map((t) => `[${s1(t.at)}s] ${t.promptChars} chars: thought ${s1(t.firstThought)} ttft ${s1(t.ttft)} turn ${s1(t.ms)} in/read/write/out ${t.usage ? `${t.usage.input}/${t.usage.cacheRead}/${t.usage.cacheWrite}/${t.usage.output}` : "?"}`).join("; ")}`);
   if (f.mcp.length) console.log(`mcp tools: ${f.mcp.map((m) => `${m.tool} ${Math.round(m.ms)}ms`).join(", ")}`);
   if (f.jobs.length) {
-    console.log("| job | model | queue | setup | TTFT | turn(s) | tools | grace | post | total | in | cache-read | cache-write | out | setup requests |");
-    console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+    console.log("| job | model | queue | setup | 1st thought | TTFT | turn(s) | tools | grace | post | total | in | cache-read | cache-write | out | setup requests |");
+    console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
     for (const j of f.jobs) {
       console.log(
-        `| ${j.kind}${j.state !== "done" ? ` (${j.state})` : ""}${j.turns > 1 ? ` ×${j.turns} turns` : ""}${j.attempts > 1 ? ` ×${j.attempts} attempts` : ""} | ${j.model} | ${s1(j.queueWait)} | ${s1(j.setup)} | ${s1(j.ttft)} | ${s1(j.turnMs)} | ${j.tools} (${s1(j.toolMs)}) | ${s1(j.grace)} | ${s1(j.post)} | ${s1(j.total)} | ${j.usage.input} | ${j.usage.cacheRead} | ${j.usage.cacheWrite} | ${j.usage.output} | ${j.setupRequests} |`,
+        `| ${j.kind}${j.state !== "done" ? ` (${j.state})` : ""}${j.turns > 1 ? ` ×${j.turns} turns` : ""}${j.attempts > 1 ? ` ×${j.attempts} attempts` : ""} | ${j.model} | ${s1(j.queueWait)} | ${s1(j.setup)} | ${s1(j.firstThought)} | ${s1(j.ttft)} | ${s1(j.turnMs)} | ${j.tools} (${s1(j.toolMs)}) | ${s1(j.grace)} | ${s1(j.post)} | ${s1(j.total)} | ${j.usage.input} | ${j.usage.cacheRead} | ${j.usage.cacheWrite} | ${j.usage.output} | ${j.setupRequests} |`,
       );
     }
   }
