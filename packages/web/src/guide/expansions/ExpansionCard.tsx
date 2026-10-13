@@ -26,6 +26,7 @@ import { useReview } from "../../state/store.js";
 import { performAction, performInsertAction } from "../actions.js";
 import { blockThreads } from "../annotations.js";
 import { BlockView } from "../BlockView.js";
+import { DepthControl } from "../DepthControl.js";
 import { busyForExpansion, inflightLabel, isFollowupAnswer } from "../inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
 import { isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
@@ -261,41 +262,14 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         <ControlButton icon="x" label="Close" onClick={onClose} />
       </div>
       <div className="ctl">
-        <span className="depth" role="group" aria-label="Depth" aria-busy={depthBusy || undefined}>
-          <button
-            type="button"
-            data-tip="Simpler"
-            aria-label={depthBusy ? "Working…" : "Simpler"}
-            disabled={safeDepthIndex <= 0 || !contentReady}
-            onClick={() => run({ kind: "depth", cardId: expansion.id, direction: "simpler" })}
-          >
-            −
-          </button>
-          <span className="dl" data-tip="Depth">
-            <span className="pips" aria-hidden="true">
-              {DEPTH_ORDER.map((_, j) => (
-                <i key={j} className={j <= safeDepthIndex ? "on" : ""} />
-              ))}
-            </span>
-          </span>
-          <button
-            type="button"
-            data-tip={depthBusy ? "Working…" : "Deeper"}
-            aria-label={depthBusy ? "Working…" : "Deeper"}
-            disabled={!contentReady}
-            onClick={() => run({ kind: "depth", cardId: expansion.id, direction: "deeper" })}
-          >
-            {depthBusy ? (
-              <span className="dots" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-            ) : (
-              "+"
-            )}
-          </button>
-        </span>
+        <DepthControl
+          level={body.level}
+          disabled={!contentReady}
+          depthBusy={depthBusy}
+          simplerAtLimit={safeDepthIndex <= 0}
+          onSimpler={() => run({ kind: "depth", cardId: expansion.id, direction: "simpler" })}
+          onDeeper={() => run({ kind: "depth", cardId: expansion.id, direction: "deeper" })}
+        />
         <ControlButton
           icon="bulb"
           label="Use examples"
