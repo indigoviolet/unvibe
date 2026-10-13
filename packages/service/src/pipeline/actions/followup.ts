@@ -10,7 +10,7 @@
 import type { WritableDraft } from "immer";
 import type { Annotation, Block, FollowUpBlock, Job, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds } from "@unvibe/shared";
-import { l4Variables, recordInteraction } from "../../interaction/index.js";
+import { recordInteraction } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { newAnnotationId } from "../../comments/threads.js";
 import {
@@ -18,6 +18,7 @@ import {
   captureJobId,
   findActiveJob,
   getSnapshotOrThrow,
+  l4VariablesWithRevealed,
   type ActionContext,
 } from "./common.js";
 import { aliasCanonicalizer, remapAliasTargets } from "./validate-apply.js";
@@ -90,7 +91,7 @@ export async function followupAction(
 
   const live = getSnapshotOrThrow(reviews, reviewId);
   const ann = live.annotations.find((a) => a.id === annotationId)!;
-  const variables = l4Variables(live, ann.anchor, { message });
+  const variables = await l4VariablesWithRevealed(ctx, live, ann.anchor, { message });
   const capture = captureJobId();
   const done = pipeline.runInFork({
     reviewId,

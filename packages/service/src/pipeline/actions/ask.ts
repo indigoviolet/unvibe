@@ -18,7 +18,7 @@
 import type { ActionAnchor, Anchor, Annotation, Block, ChatMessage, Job, ParsedCard } from "@unvibe/shared";
 import { JOB_PRIORITY, parseCards, splitReply } from "@unvibe/shared";
 import { appendAgentReplyInDraft, buildAnchor, createThreadInDraft, newAnnotationId } from "../../comments/threads.js";
-import { l4Variables, recordInteraction, type InteractionEvent } from "../../interaction/index.js";
+import { recordInteraction, type InteractionEvent } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { RetryableError } from "../../jobs/errors.js";
 import { validateReply } from "../../validate/index.js";
@@ -33,6 +33,7 @@ import {
   captureJobId,
   findActiveJob,
   getSnapshotOrThrow,
+  l4VariablesWithRevealed,
   normalizeBlockAnchor,
   suppressFillError,
   type ActionContext,
@@ -154,7 +155,7 @@ export async function runAskFill(
 
   const latest = getSnapshotOrThrow(reviews, reviewId);
   const current = latest.annotations.find((a) => a.id === threadId)!;
-  const variables = l4Variables(latest, anchor, { thread: current, message });
+  const variables = await l4VariablesWithRevealed(ctx, latest, anchor, { thread: current, message });
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "ask" } : undefined;
 
@@ -426,7 +427,7 @@ async function replyOnSession(
           ...(ctx.sharedctx ? { sharedctx: ctx.sharedctx } : {}),
         }
       : null;
-  const l4 = l4Variables(snapshot, thread.anchor, { thread, message: lastUser?.text ?? "" });
+  const l4 = await l4VariablesWithRevealed(ctx, snapshot, thread.anchor, { thread, message: lastUser?.text ?? "" });
   const variables = wireDeps
     ? changeListVariable(wireDeps, reviewId, "ask", l4, { conversationKey: threadId })
     : { ...l4, change_list: "(no changes)" };

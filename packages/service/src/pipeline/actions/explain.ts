@@ -14,7 +14,7 @@
 import type { ActionAnchor, Anchor, Annotation, Block, Job, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
-import { l4Variables, recordInteraction } from "../../interaction/index.js";
+import { recordInteraction } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   anchorKey,
@@ -23,6 +23,7 @@ import {
   captureJobId,
   findActiveJob,
   getSnapshotOrThrow,
+  l4VariablesWithRevealed,
   normalizeBlockAnchor,
   suppressFillError,
   type ActionContext,
@@ -153,7 +154,7 @@ export async function runExplainFill(
   });
 
   const latest = getSnapshotOrThrow(reviews, reviewId);
-  const variables = l4Variables(latest, anchor, {
+  const variables = await l4VariablesWithRevealed(ctx, latest, anchor, {
     message: `Explain: ${quote}`,
   });
   const capture = captureJobId();

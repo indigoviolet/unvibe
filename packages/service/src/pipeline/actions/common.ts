@@ -7,14 +7,16 @@
  * repair turn) by the `runInFork` seam.
  */
 import type { Job } from "@unvibe/shared";
-import { JOB_PRIORITY, jobDedupeKeyString, type ActionAnchor, type JobDedupeKey, type ReviewSnapshot } from "@unvibe/shared";
+import { JOB_PRIORITY, jobDedupeKeyString, type ActionAnchor, type Anchor, type Annotation, type JobDedupeKey, type ReviewSnapshot } from "@unvibe/shared";
+import path from "node:path";
 import type { JobQueue } from "../../jobs/index.js";
+import { readCodeSlice } from "../../mcp/read.js";
 import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import type { SessionManager } from "../../sessions/manager.js";
 import type { SettingsStore } from "../../settings/index.js";
 import type { SharedContextService } from "../../sharedctx/service.js";
-import { findBlock, recordInteraction } from "../../interaction/index.js";
+import { findBlock, l4Variables, recordInteraction } from "../../interaction/index.js";
 
 export { JOB_PRIORITY };
 export { recordInteraction };
@@ -68,6 +70,62 @@ export function getSnapshotOrThrow(reviews: ReviewStore, reviewId: string): Revi
   const snapshot = reviews.getSnapshot(reviewId);
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
   return snapshot;
+}
+
+/**
+ * Host line text for Explain/Ask on revealed context (issue #133).
+ *
+ * Revealed lines sit outside any hunk, where the snapshot has no row
+ * text (`(line N not in diff)`). Read the line through the same
+ * file-slice source instead, so the agent sees the selected code. Null
+ * when hunk rows cover the line or the read fails — callers keep the
+ * snapshot text then. Never throws.
+ */
+export async function revealedBlockText(ctx: ActionContext, anchor: Anchor): Promise<string | null> {
+  const host = anchor.host;
+  if (host.kind !== "diff-line") return null;
+  const line = host.line;
+  const fileKey = host.fileKey;
+  let snapshot: ReviewSnapshot;
+  try {
+    snapshot = getSnapshotOrThrow(ctx.reviews, ctx.reviewId);
+  } catch {
+    return null;
+  }
+  const file = (snapshot.files ?? []).find((f) => f.fileKey === fileKey);
+  if (!file) return null;
+  for (const hunk of file.hunks ?? []) {
+    for (const row of hunk.lines) {
+      if ((row.newLine ?? row.oldLine) === line) return null;
+    }
+  }
+  try {
+    const deleted = file.isDeleted === true;
+    const cwd = path.join(ctx.pipeline.dataDir, "worktrees", ctx.reviewId);
+    const rev = deleted ? snapshot.version.mergeBaseSha : snapshot.version.headSha;
+    const relPath = deleted ? (file.oldPath ?? file.path) : file.path;
+    const slice = await readCodeSlice(ctx.pipeline.commands, cwd, rev, relPath, line, line);
+    if ("text" in slice && slice.text.trim() !== "") return slice.text;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `l4Variables` with the revealed-line host fix above: the agent prompt
+ * carries the actual line text for Explain/Ask on expanded context.
+ */
+export async function l4VariablesWithRevealed(
+  ctx: ActionContext,
+  snapshot: ReviewSnapshot,
+  anchor: Anchor,
+  opts: { thread?: Annotation; message: string; excludeId?: string },
+): Promise<Record<string, unknown>> {
+  const variables = l4Variables(snapshot, anchor, opts);
+  const text = await revealedBlockText(ctx, anchor);
+  if (text !== null) (variables.anchor as { block: string }).block = text;
+  return variables;
 }
 
 /**
