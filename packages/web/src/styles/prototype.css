@@ -69,17 +69,11 @@ code { font-family: var(--mono); font-size: .86em; }
 .rbar .rid b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .rbar .rid .ib { flex: none; align-self: center; }
 /* Review bar (#120): the version selector sits next to the identity. It
-   never shrinks (the title gives way first) and its read-only note never
-   truncates away at narrow widths. */
+   never shrinks (the title gives way first); an older shown version flags
+   it with the warning border. */
 .rbar .rid .vs { display: inline-flex; gap: 6px; align-items: center; flex: none; align-self: center; min-width: 0; }
 .rbar .rid .vs select.tbtn { font-size: 12px; padding: 2px 6px; max-width: 220px; }
-.rbar .rid .vs .ro { white-space: nowrap; }
-.rbar .rid .vs .ro button { flex: none; }
 .rbar .rid .vs[data-ro] select.tbtn { border-color: var(--warn); }
-/* Narrow windows keep the way back, not the words: the select already
-   shows the older version with the warning border, so only the "Viewing
-   …" words hide and "Back to current" never truncates away. */
-@media (max-width: 1100px) { .rbar .rid .vs .ro .words { display: none; } }
 .rbar .seg { flex: none; }
 .rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
 /* Live job count (issue #98): two numbers (running · queued) in the review

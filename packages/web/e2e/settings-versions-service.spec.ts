@@ -244,7 +244,10 @@ test.describe("settings + versions on the real service", () => {
 
     // Update is not wired without the pipeline (no base runner): the button
     // reports that plainly instead of hanging.
-    await page.getByRole("button", { name: "Back to current" }).click();
+    // Choosing the current version (annotated in the dropdown) is the way back.
+    const options = page.locator("#version-pick option");
+    await expect(options.last()).toContainText("current");
+    await page.locator("#version-pick").selectOption({ index: (await options.count()) - 1 });
     await expect(banner).toBeVisible();
     await banner.getByRole("button", { name: "Update" }).click();
   });

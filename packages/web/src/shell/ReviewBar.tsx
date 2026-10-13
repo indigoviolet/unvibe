@@ -5,8 +5,9 @@
  *
  * - Left: the review identity (`owner/name#N` + title, truncated with the
  *   full title on hover), the version selector next to it (issue #120;
- *   hidden for single-version reviews, with its read-only way back), the
- *   PR label linking to GitHub for PR reviews
+ *   hidden for single-version reviews, the current version annotated in
+ *   the dropdown, an older shown version flagged with a warning border),
+ *   the PR label linking to GitHub for PR reviews
  *   (#94, new tab) alongside the link-out icon, and Debug as
  *   an icon button (hidden until the review finishes opening, issue #92).
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles

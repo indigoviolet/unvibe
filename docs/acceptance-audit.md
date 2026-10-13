@@ -109,7 +109,7 @@ UI); nothing below was edited by this pass.
   link-out + Debug icon, [ Guide | Source ] pane toggles incl. full-width
   source per #83, Comments + primary Submit; source tabs keep PR
   description / Diff only; at narrow widths the title gives way first and
-  the selector with its read-only way back never truncates) — met
+  the selector never truncates) — met
   (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
   `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
   `55-review-800px.png`, `55-review-dark.png`,
@@ -664,8 +664,8 @@ needed (that deviation is closed, not added).
   fixtures).
 - New head SHA → version + ID mapping; old versions viewable — met
   (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
-  the selector rendered once in the review bar per #120 with its read-only
-  way back, `versions-refresh.test.ts`,
+  the selector rendered once in the review bar per #120 with the current
+  version annotated in the dropdown, `versions-refresh.test.ts`,
   `settings-versions-service.spec.ts` “v1 viewable”).
 - Rebase-vs-branch by content hash + `range-diff` — met
   (`versions/compare.ts`, `rangeDiff.ts`; refresh test (a): rebase

@@ -328,10 +328,16 @@ test("version switcher views the older version read-only", async ({ page }) => {
   await expect(page.locator('[data-testid="version-switcher"]')).toBeVisible();
   await page.locator("#version-pick").selectOption("1");
   await expect(page).toHaveURL(/version=1/);
-  await expect(page.locator('[data-testid="version-switcher"]').getByText("Viewing v1 · read-only")).toBeVisible();
+  // Current is annotated in the dropdown; the select flags the older
+  // version and the bar itself carries no notice and no back button.
+  await expect(page.locator('#version-pick option[value="2"]')).toContainText("current");
+  await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
+  await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
+  // The page still signals read-only elsewhere (the diff hint).
   await expect(page.getByText("Viewing v1 · read-only", { exact: false }).first()).toBeVisible();
   await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0);
-  await page.getByRole("button", { name: "Back to current" }).click();
+  // Choosing the annotated current version is the way back.
+  await page.locator("#version-pick").selectOption("2");
   await expect(page).not.toHaveURL(/version=1/);
   await expect(page.locator('[data-testid="stale-banner"]')).toBeVisible();
 });

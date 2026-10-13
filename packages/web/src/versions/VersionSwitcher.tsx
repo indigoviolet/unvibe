@@ -1,9 +1,12 @@
 /**
- * Version switcher + read-only notice (PRD §8 "older versions stay
- * viewable"): a compact select of `review.versions`; picking an older one
- * navigates to `?version=n`, picking current clears it. Rendered once in
- * the review bar next to the review identity (issue #120), so it works
- * with the guide pane hidden; the diff pane reads the same param.
+ * Version switcher (PRD §8 "older versions stay viewable"): a compact
+ * select of `review.versions`; picking an older one navigates to
+ * `?version=n`, picking the current one clears it. Rendered once in the
+ * review bar next to the review identity (issue #120), so it works with
+ * the guide pane hidden; the diff pane reads the same param. The current
+ * version's option is annotated; an older shown version flags the select
+ * with the warning border (the page's other read-only signs stay as they
+ * are).
  */
 import { useLocation, useNavigate } from "react-router-dom";
 import { useReview } from "../state/store.js";
@@ -34,25 +37,17 @@ export function VersionSwitcher(): React.JSX.Element | null {
         id="version-pick"
         className="tbtn"
         aria-label="View version"
-        title={readOnly ? `Viewing v${viewing} · read-only` : "View version"}
+        title="View version"
         value={value}
         onChange={(e) => pick(Number(e.target.value))}
       >
         {review.versions.map((v) => (
           <option key={v.n} value={v.n}>
-            v{v.n}
-            {v.n === current ? " (current)" : ""} · {v.headSha.slice(0, 8)}
+            v{v.n} · {v.headSha.slice(0, 8)}
+            {v.n === current ? " · current" : ""}
           </option>
         ))}
       </select>
-      {readOnly ? (
-        <span className="hint ro" role="status">
-          <span className="words">Viewing v{viewing} · read-only · </span>
-          <button type="button" className="x" onClick={() => pick(current)}>
-            Back to current
-          </button>
-        </span>
-      ) : null}
     </span>
   );
 }

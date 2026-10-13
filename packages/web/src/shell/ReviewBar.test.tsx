@@ -3,7 +3,8 @@
  * link-out (PR reviews only), the Debug icon button, the Guide|Source
  * selector, and Comments + primary Submit side by side. Issue #120: the
  * version selector lives here next to the identity (rendered once, also
- * with the guide pane hidden) with its read-only way back.
+ * with the guide pane hidden); the current version is annotated in the
+ * dropdown and an older shown version flags the select.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -222,6 +223,10 @@ describe("ReviewBar", () => {
       const pick = screen.getByLabelText("View version") as HTMLSelectElement;
       expect(pick.value).toBe("2");
       expect(pick).toHaveClass("tbtn");
+      // The current version is annotated in the dropdown.
+      const texts = [...pick.options].map((o) => o.textContent);
+      expect(texts).toContain("v2 · e4f5a6b7 · current");
+      expect(texts).toContain("v1 · bdcc1e49");
       cleanup();
       useReview.getState().clear();
       await renderBar("demo", "urllib3/urllib3#5020");
@@ -239,7 +244,7 @@ describe("ReviewBar", () => {
       expect(screen.getByTestId("version-switcher")).toBeInTheDocument();
     });
 
-    it("shows the read-only state with a way back to current", async () => {
+    it("flags an older shown version and annotates current as the way back", async () => {
       window.history.replaceState({}, "", "/review/r-old?version=1");
       try {
         useReview.getState().setSnapshot(await api.review("r-old"));
@@ -249,9 +254,16 @@ describe("ReviewBar", () => {
           </MemoryRouter>,
         );
         await screen.findByText("urllib3/urllib3#5011", {}, { timeout: 5000 });
-        const notice = screen.getByTestId("version-switcher");
-        expect(notice).toHaveTextContent("Viewing v1 · read-only");
-        expect(screen.getByRole("button", { name: "Back to current" })).toBeInTheDocument();
+        // The select shows the older version with the warning state; the
+        // bar itself carries no notice and no back button.
+        const switcher = screen.getByTestId("version-switcher");
+        expect(switcher).toHaveAttribute("data-ro", "1");
+        expect(screen.queryByRole("button", { name: "Back to current" })).toBeNull();
+        expect(switcher).not.toHaveTextContent("read-only");
+        const pick = screen.getByLabelText("View version") as HTMLSelectElement;
+        expect(pick.value).toBe("1");
+        const texts = [...pick.options].map((o) => o.textContent);
+        expect(texts).toContain("v2 · e4f5a6b7 · current");
       } finally {
         window.history.replaceState({}, "", "/");
       }
