@@ -33,6 +33,9 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 - Secrets come from the 1Password Environment through `mise run op -- <cmd>` (see `DEVELOPMENT.md`). Never print their values and never commit `.env`.
 - API types live in `packages/shared`; service and web both import them. Change the contract there first.
 - Keep `mise run check` green from a clean tree with no `dist/`. The full gates (`build`, `test:e2e`, `e2e`, `check-global-install`, `test:live`, restart resilience) are listed in `DEVELOPMENT.md`.
+- Run targeted tests while implementing: only the test files and specs for what you changed (plus typecheck and lint when they are cheap). Do not run the full `mise run check`, `test:e2e` or `e2e` on every iteration, and say in your report exactly which tests you ran. This machine is shared by many agents: full suites run at once have exhausted its memory.
+- The full gates run once per branch, with current `main` merged in, before the merge or when the machine is free, and never several at the same time. A supervisor runs them for its agents. Nothing merges into `main` without them passing on that tree.
+- A preview may be published on targeted tests alone. The issue comment then says "full gates not yet run".
 - `docs/acceptance-audit.md` is the requirement-by-requirement verdict + open list; update it when behaviour changes.
 - Work is tracked in GitHub issues at `indigoviolet/unvibe` (`gh issue list`). Each piece of work has an issue; name the issue in your report and in the merge commit (`Closes #N`), tick its checklist as items land, and open a new issue for anything you find but do not fix. Labels: `in-progress`, `waiting-for-user-testing`, `waiting-for-user-response`, `needs-decision`, `needs-mac`, `future`.
 - Keep the issue current, so its state always says where the work is:
@@ -53,7 +56,7 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 - A supervisor asked to "spin off" an issue creates the worktree, starts an Implementer agent in it with a full brief, and labels the issue `in-progress`. An empty worktree is not a spin-off.
 - A supervisor owns every agent it started until that work is merged and cleaned up:
   - Set a recurring check (a Paseo heartbeat, every 5 to 10 minutes) as soon as the first agent starts, without being asked. Unblock or replace agents that are stuck.
-  - When an agent reports, review the branch and run the gates, then publish its preview and comment on the issue.
+  - When an agent reports, review the branch, then publish its preview and comment on the issue, saying which tests have run. Run the full gates one branch at a time, before merging at the latest.
   - Once the owner approves the preview, merge, close the issue, archive the Paseo workspace, remove the worktree and branch, and delete the branch's preview refs, local and on the remote (or ask the agent to). Cleanup is not done while a `preview/<slug>` for a merged branch is still on the remote.
 - Durable guidance about how to work on this repo goes in this file, not in an agent's private memory.
 - When done, report: what was built, what was verified (commands + results), what is stubbed or missing, and anything in the PRD you deviated from.

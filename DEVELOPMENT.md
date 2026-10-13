@@ -143,6 +143,7 @@ Rules:
 - Run `gh` with `GITHUB_TOKEN` unset (it can override the keyring login).
 - Nothing is posted to GitHub except through `src/submit/` (crash-safe via in-flight leases in `src/submit/lease.ts`); `test/gh-writes.test.ts` enforces the boundary.
 - E2E scripts take a temp port/HOME/data dir so parallel checkouts do not clash.
+- While implementing, run targeted tests: the vitest files for what you changed (`npx vitest run <file>` in the package) and the specific Playwright spec (`mise run test:e2e -- <spec>`). The full gates (`check`, `build`, `test:e2e`, `e2e`) run once per branch with current `main` merged in, before merge or when the machine is free, one run at a time.
 
 ## Environment variables
 
