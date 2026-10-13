@@ -1,5 +1,5 @@
 /**
- * HTTP + WebSocket server (PRD §14): Fastify bound to 127.0.0.1 only.
+ * HTTP + WebSocket server (PRD §14): Fastify bound to loopback only.
  *
  * Auth: per-install token required on everything except `/api/health`
  * (and the bare static-asset paths, which carry no data — see below).
@@ -12,6 +12,7 @@
  * URL into localStorage + cookie). Documented for later agents.
  */
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,6 +91,13 @@ export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
     hasJobs?: () => boolean;
     onIdleExit?: () => void | Promise<void>;
   };
+  /**
+   * The service's own port (issue #108): when given, the Host/Origin gate
+   * additionally requires `Origin`/`Referer` to be on this port. `serve()`
+   * passes the configured port; tests omit it (name-only checks) unless
+   * they exercise the port rule.
+   */
+  servicePort?: number;
 }
 
 /**
@@ -205,7 +213,10 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     // install token): only loopback Host and loopback Origin/Referer ever
     // reach a handler. Applies to every route including /api/health and
     // the MCP mount (WebSocket handshakes pass through here too).
-    const allowed = hostCheckAllows({ headers: req.headers as Record<string, string | string[] | undefined> });
+    const allowed = hostCheckAllows(
+      { headers: req.headers as Record<string, string | string[] | undefined> },
+      opts.servicePort === undefined ? {} : { servicePort: opts.servicePort },
+    );
     if (!allowed.ok) {
       reply.code(403).send({ error: `forbidden: ${allowed.reason}` });
       return;
@@ -360,8 +371,73 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
 }
 
 export async function listen(app: FastifyInstance, config: ServiceConfig): Promise<string> {
+  // Companion socket first: Fastify forbids addHook once listening.
+  const v6 = prepareLoopbackV6(app);
   await app.listen({ host: config.host, port: config.port });
   const addr = app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : config.port;
-  return `http://${config.host}:${port}`;
+  await bindLoopbackV6(v6, port);
+  // The bookmarkable URL (issue #108): the name browsers resolve to
+  // loopback themselves. The 127.0.0.1 URL keeps working (same service).
+  return `http://unvibe.localhost:${port}`;
+}
+
+/**
+ * The `::1` companion socket for an app started with `listen()` (tests,
+ * shutdown). Fastify binds one address per server, and the service must
+ * answer however the browser resolves `unvibe.localhost` — `::1` as well
+ * as `127.0.0.1` — while never touching a routable address. The companion
+ * shares the Fastify router for HTTP and re-emits upgrades on the Fastify
+ * server, so `@fastify/websocket` runs the same `onRequest` gate and route
+ * for both sockets (one `websocketServer` serves both).
+ */
+const extraLoopbackServers = new WeakMap<FastifyInstance, http.Server>();
+
+export function extraLoopbackServer(app: FastifyInstance): http.Server | undefined {
+  return extraLoopbackServers.get(app);
+}
+
+/**
+ * Create the `::1` companion socket and its close hook. Runs before
+ * `app.listen` (Fastify forbids addHook once listening); binding happens
+ * in `bindLoopbackV6` once the primary port is known.
+ */
+function prepareLoopbackV6(app: FastifyInstance): http.Server {
+  const existing = extraLoopbackServers.get(app);
+  if (existing) return existing;
+  const v6 = http.createServer((req, res) => {
+    app.routing(req, res);
+  });
+  v6.on("upgrade", (req, socket, head) => {
+    app.server.emit("upgrade", req, socket, head);
+  });
+  extraLoopbackServers.set(app, v6);
+  app.addHook("onClose", async () => {
+    extraLoopbackServers.delete(app);
+    await new Promise<void>((resolve) => {
+      try {
+        if (typeof v6.closeAllConnections === "function") v6.closeAllConnections();
+        v6.close(() => resolve());
+      } catch {
+        resolve();
+      }
+    });
+  });
+  return v6;
+}
+
+async function bindLoopbackV6(v6: http.Server, port: number): Promise<void> {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      v6.once("error", reject);
+      v6.listen(port, "::1", () => {
+        v6.removeListener("error", reject);
+        resolve();
+      });
+    });
+  } catch (err) {
+    // No IPv6 on this machine: stay up on 127.0.0.1 rather than fail start.
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn(`unvibe: not listening on [::1]:${port} (${detail}); answering on 127.0.0.1 only`);
+  }
 }

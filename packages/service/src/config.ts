@@ -4,7 +4,13 @@ import path from "node:path";
 import { DEFAULT_IDLE_MS } from "./lifecycle/index.js";
 
 export interface ServiceConfig {
-  /** Bind host: always 127.0.0.1 (PRD §14). */
+  /**
+   * Primary bind host: always 127.0.0.1 (PRD §14). `listen()` adds a `::1`
+   * companion socket on the same port (issue #108) so the service answers
+   * however the browser resolves `unvibe.localhost`. There is deliberately
+   * no host knob: no environment variable can move the bind to a routable
+   * address.
+   */
   host: string;
   port: number;
   dataDir: string;

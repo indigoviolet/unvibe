@@ -36,7 +36,8 @@ function attempts(): string[] {
 
 function isLoopbackHost(host: string | undefined | null): boolean {
   if (!host) return true; // Unix socket / unspecified: allow.
-  const h = host.toLowerCase();
+  // URL keeps IPv6 brackets on hostname ("[::1]"); strip them.
+  const h = host.toLowerCase().replace(/^\[(.*)\]$/, "$1");
   return (
     h === "127.0.0.1" ||
     h === "::1" ||
