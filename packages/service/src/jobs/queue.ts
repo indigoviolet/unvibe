@@ -36,6 +36,14 @@ export const DEFAULT_CONCURRENCY_CAP = 4;
 export const DEFAULT_MAX_ATTEMPTS = 8;
 export const DEFAULT_BACKOFF_BASE_MS = 1000;
 export const DEFAULT_BACKOFF_MAX_MS = 60_000;
+/**
+ * #123: small-model jobs (hunk summaries) run in their own concurrency
+ * bucket per provider, so the hunk pass never queues behind main-model
+ * critics. The burst stays bounded (provider rate limits surface as
+ * retryable errors and back off through the usual schedule).
+ */
+export const SMALL_CONCURRENCY_CAP = 4;
+const SMALL_JOB_KINDS: ReadonlySet<JobKind> = new Set(["hunk-pass", "summarize", "consolidate"]);
 export const INTERRUPTED_MESSAGE = "stopped because the service restarted — retry to run it again";
 
 /** Context handed to a job's `run` function. */
@@ -368,10 +376,12 @@ export class JobQueue {
     return entry;
   }
 
-  private runningCount(provider: string): number {
+  private runningCount(provider: string, small: boolean): number {
     let n = 0;
     for (const e of this.entries.values()) {
-      if (e.job.provider === provider && e.job.state === "running") n += 1;
+      if (e.job.provider === provider && e.job.state === "running" && SMALL_JOB_KINDS.has(e.job.kind) === small) {
+        n += 1;
+      }
     }
     return n;
   }
@@ -383,7 +393,9 @@ export class JobQueue {
       .sort((a, b) => b.job.priority - a.job.priority || a.seq - b.seq);
     for (const entry of queued) {
       const provider = entry.job.provider ?? "";
-      if (this.runningCount(provider) >= this.getConcurrencyCap(provider)) continue;
+      const small = SMALL_JOB_KINDS.has(entry.job.kind);
+      const cap = small ? SMALL_CONCURRENCY_CAP : this.getConcurrencyCap(provider);
+      if (this.runningCount(provider, small) >= cap) continue;
       void this.execute(entry);
     }
   }

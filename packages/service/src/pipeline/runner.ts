@@ -628,6 +628,12 @@ export class Pipeline {
     this.setStage(reviewId, "concepts", "pending");
     this.setStage(reviewId, "hunk-pass", "pending");
     await this.enqueueReader(reviewId);
+    // #123: the hunk pass needs only the diff, so it starts at ingest
+    // instead of waiting for the reader. Small-model jobs run in their own
+    // queue bucket, never behind the critics. The CITED-BY-GUIDE hint is
+    // absent this early (no guide yet); `unhideCitedHunks` repairs hides
+    // that the guide later contradicts.
+    await this.enqueueHunkPass(reviewId);
   }
 
   async resumeReview(reviewId: string): Promise<{ jobIds: string[]; pendingStages: string[] }> {
@@ -835,6 +841,28 @@ export class Pipeline {
       if (fileHunk) {
         if (hiddenReason) fileHunk.hiddenReason = hiddenReason;
         else delete fileHunk.hiddenReason;
+      }
+    });
+  }
+
+  /**
+   * #123: a hunk hidden as uninteresting before the guide existed must not
+   * stay hidden once the guide cites it. Runs when the reader lands; hunks
+   * applied later check the live guide in `applyHunkSummary`, so either
+   * order is safe (both are single atomic mutates on live state).
+   */
+  private async unhideCitedHunks(reviewId: string): Promise<void> {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) return;
+    const cited = snapshot.files
+      .flatMap((f) => f.hunks)
+      .filter((h) => h.hiddenReason && this.isCitedByGuide(reviewId, h.contentHash))
+      .map((h) => h.contentHash);
+    if (cited.length === 0) return;
+    const wanted = new Set(cited);
+    await this.opts.reviews.mutate(reviewId, (draft) => {
+      for (const h of draft.files.flatMap((f) => f.hunks)) {
+        if (wanted.has(h.contentHash)) delete h.hiddenReason;
       }
     });
   }
@@ -1203,7 +1231,9 @@ export class Pipeline {
           // joins the per-review chain (still awaited before the job ends).
           await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: session.id, data: finalData }));
           this.setStage(reviewId, "reader", "done");
-          this.enqueueAfterReader(reviewId);
+          // Awaited: the reader job ends with its follow-ups enqueued and
+          // the cited-hunk repair applied (#123), never floating behind it.
+          await this.enqueueAfterReader(reviewId);
           // #122: the guide just landed — build the base before the next click.
           this.warmBase(reviewId);
         } catch (err) {
@@ -1368,7 +1398,9 @@ export class Pipeline {
     this.setStage(reviewId, "base", "running");
     out.push(...(await this.enqueueCritic(reviewId)));
     out.push(...(await this.enqueueConcepts(reviewId)));
-    out.push(...(await this.enqueueHunkPass(reviewId)));
+    // #123: the hunk pass starts in startReview now (at ingest), not here.
+    // Hunks hidden before the guide existed are unhidden when cited.
+    await this.unhideCitedHunks(reviewId);
     if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
       out.push(...(await this.enqueueDemoFill(reviewId)));
     }

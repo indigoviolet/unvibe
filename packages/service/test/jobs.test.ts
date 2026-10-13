@@ -144,6 +144,32 @@ describe("concurrency cap", () => {
     gates[1].resolve();
     await queue.drain();
   });
+
+  it("#123: small-model jobs run in their own bucket, never behind main jobs", async () => {
+    const { queue } = makeQueue({ cap: 1 });
+    const mainGate = deferred();
+    queue.enqueue(spec({ kind: "critic", run: () => mainGate.promise.then(() => {}) }));
+    const smallGates = [deferred(), deferred()];
+    const small = smallGates.map((g) =>
+      queue.enqueue(spec({ kind: "hunk-pass", run: () => g.promise.then(() => {}) })),
+    );
+    await flush();
+    // The main slot is full, yet both hunk jobs still run.
+    expect(queue.get(small[0].id)?.state).toBe("running");
+    expect(queue.get(small[1].id)?.state).toBe("running");
+    // The small bucket still caps itself: a fifth small job waits while four run.
+    const extraGates = [deferred(), deferred(), deferred()];
+    const extra = extraGates.map((g) =>
+      queue.enqueue(spec({ kind: "hunk-pass", run: () => g.promise.then(() => {}) })),
+    );
+    await flush();
+    expect(queue.get(extra[0].id)?.state).toBe("running");
+    expect(queue.get(extra[1].id)?.state).toBe("running");
+    expect(queue.get(extra[2].id)?.state).toBe("queued");
+    for (const g of [...smallGates, ...extraGates]) g.resolve();
+    mainGate.resolve();
+    await queue.drain();
+  });
 });
 
 describe("priority", () => {

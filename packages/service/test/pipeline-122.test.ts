@@ -215,6 +215,93 @@ describe("#122.2 answer before bookkeeping", () => {
   });
 });
 
+describe("#123 hunk pass starts at ingest", () => {
+  beforeEach(() => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+  });
+
+  it("hunk summaries land before the reader finishes; a hide the guide contradicts is undone", async () => {
+    const agents = new FakeAgentRunner([
+      {
+        match: "Hunk pass",
+        events: [
+          { type: "text", delta: 'Other summary\n\n```json\n{"hunk": {"summary": "S", "hiddenReason": "imports"}}\n```\n' },
+          { type: "usage", inputTokens: 5, cachedTokens: 0, outputTokens: 3 },
+          { type: "done", stopReason: "end_turn" },
+        ],
+      },
+      {
+        match: "Reader task",
+        events: [
+          { type: "text", delta: "## T\n\nBody [[h:a-py:h222]].\n\n```json\n{}\n```\n" },
+          { type: "usage", inputTokens: 5, cachedTokens: 0, outputTokens: 3 },
+          { type: "done", stopReason: "end_turn" },
+        ],
+      },
+    ]);
+    // Block the reader turn until the hunk jobs have settled.
+    let readerRelease!: () => void;
+    const readerGate = new Promise<void>((r) => {
+      readerRelease = r;
+    });
+    let readerGated = true;
+    const origPrompt = agents.prompt.bind(agents);
+    agents.prompt = async function* (session, text, signal) {
+      if (readerGated && text.includes("Reader task")) await readerGate;
+      yield* origPrompt(session, text, signal);
+    };
+    const { app, ctx } = await demoApp(agents);
+    try {
+      const id = await makeDemoReview(ctx);
+      // A second, multi-line hunk (hideable, unlike one-line h111).
+      await ctx.reviews.mutate(id, (draft) => {
+        const f = draft.files.find((x) => x.fileKey === "a-py")!;
+        f.hunks.push({
+          contentHash: "h222",
+          header: "@@ -10,3 +10,4 @@",
+          newStart: 10,
+          newEnd: 13,
+          oldStart: 10,
+          oldEnd: 12,
+          added: 2,
+          removed: 1,
+          lines: [
+            { kind: "ctx", oldLine: 10, newLine: 10, text: "a = 1" },
+            { kind: "del", oldLine: 11, text: "b = 2" },
+            { kind: "add", newLine: 11, text: "b = 3" },
+            { kind: "add", newLine: 12, text: "c = 4" },
+            { kind: "ctx", oldLine: 12, newLine: 13, text: "d = 5" },
+          ],
+        });
+      });
+
+      await ctx.pipeline.startReview(id);
+      // Both hunk summaries settle while the reader is still blocked: the
+      // pass started at ingest, not after the reader.
+      await waitFor(
+        () => ctx.jobs.listByReview(id).filter((j) => j.kind === "hunk-pass" && j.state === "done").length === 2,
+        8000,
+      );
+      expect(ctx.jobs.listByReview(id).find((j) => j.kind === "reader")?.state).toBe("running");
+      // No guide yet, so the multi-line hunk hid as uninteresting.
+      expect(ctx.reviews.getSnapshot(id)!.files.flatMap((f) => f.hunks).find((h) => h.contentHash === "h222")?.hiddenReason).toBe(
+        "imports",
+      );
+
+      readerGated = false;
+      readerRelease();
+      await ctx.jobs.drain(15000);
+      const snap = ctx.reviews.getSnapshot(id)!;
+      expect(snap.hunkStates.filter((h) => h.summary).length).toBe(2);
+      // The guide cites h222 now: the early hide is undone.
+      expect(snap.files.flatMap((f) => f.hunks).find((h) => h.contentHash === "h222")?.hiddenReason).toBeUndefined();
+      expect(ctx.jobs.listByReview(id).find((j) => j.kind === "reader")?.state).toBe("done");
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("#122.1 enqueue before the base", () => {
   beforeEach(() => {
     process.env.UNVIBE_REPO_ROOTS = "";
