@@ -86,11 +86,25 @@ code { font-family: var(--mono); font-size: .86em; }
 /* Live job count (issue #98): two numbers (running · queued) in the review
    bar's right corner, after Submit so appearing never shifts the title or
    the buttons. Nothing renders when no job is live, so it reserves no
-   space. The gradient drifts while anything runs; queued-only is quiet. */
+   space. While anything runs (issue #144) a highlight travels around the
+   pill's border with the inside calm; queued-only is quiet. */
 .jcount { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; white-space: nowrap; background: var(--surface); }
 .jcount:hover { border-color: var(--accent); color: var(--accent); }
-.jcount.live { background: linear-gradient(115deg, var(--accent-soft), var(--surface) 40%, var(--accent-soft)); background-size: 220% 100%; animation: jcount-drift 4s ease-in-out infinite alternate; }
-@keyframes jcount-drift { from { background-position: 0% 0; } to { background-position: 100% 0; } }
+/* Live job count (issue #144, option A): the inside stays calm so the
+   numbers never shift, while a highlight travels around the pill's
+   border. The ring is a masked conic gradient on a pseudo-element, so it
+   never touches layout; only the registered `--jangle` animates. */
+@property --jangle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.jcount.live { position: relative; background: var(--surface); }
+.jcount.live::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 2px;
+  background: conic-gradient(from var(--jangle), var(--accent) 0deg, transparent 120deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: jcount-spin 1.6s linear infinite;
+  pointer-events: none;
+}
+@keyframes jcount-spin { to { --jangle: 360deg; } }
 /* A review shows one bar (the review bar, issue #141), so the grid needs
    two rows like every other screen. */
 .app.with-reviewbar { grid-template-rows: auto minmax(0, 1fr); }
@@ -480,7 +494,17 @@ mark.anc.on { outline: 2px solid var(--note); }
 @keyframes rewrite-pulse { 0%, 100% { border-left-color: var(--accent); } 50% { border-left-color: var(--line); } }
 /* Placeholder where agent-started content will land: dashed like a pending card. */
 .card.child.placeholder { border-style: dashed; background: none; }
-@media (prefers-reduced-motion: reduce) { .fresh, .dots i, .card.rewriting, .jcount.live { animation: none; } .dots i { opacity: 1; transform: none; } }
+@keyframes dot-fade { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes jcount-fade { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+/* Reduced motion (issue #144): opacity-only signs of life — the dots take
+   turns fading (no rise), the pill's travelling highlight fades in place
+   (no rotation, no drifting gradient). The rewriting border keeps its
+   colour-only pulse. The depth stepper's pips never animate in any mode. */
+@media (prefers-reduced-motion: reduce) {
+  .fresh { animation: none; }
+  .dots i { animation: dot-fade 1.8s ease-in-out infinite; transform: none; }
+  .jcount.live::before { animation: jcount-fade 2.2s ease-in-out infinite; }
+}
 .dg { margin: 12px 0 4px; }
 /* D2 diagrams (service-rendered SVG, inlined): the svg fills the block
    width up to its natural size (max-width, set per diagram), preserving

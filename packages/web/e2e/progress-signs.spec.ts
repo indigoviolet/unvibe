@@ -1,8 +1,11 @@
 /**
- * Progress signs (issue #98) against mock mode: the review bar shows a
- * running / queued job count while jobs are live and hides it when idle,
- * linking to the Debug jobs list; and the working dots run a visible
- * sequential pulse that stays still under reduced motion.
+ * Progress signs (issues #98, #144) against mock mode: the review bar
+ * shows a running / queued job count while jobs are live and hides it
+ * when idle, linking to the Debug jobs list; while anything runs a
+ * highlight travels around the pill's border with the inside calm. The
+ * working dots run a visible sequential pulse in full motion and an
+ * opacity-only fade under reduced motion; the depth stepper never
+ * animates in either mode.
  *
  * The mock demo seeds 1 running + 1 queued + 1 backing-off job, so the
  * count reads "1 running, 2 queued" on load.
@@ -25,6 +28,73 @@ async function dotsAnimation(page: Page): Promise<string> {
     const cs = getComputedStyle(el);
     return `${cs.animationName} ${cs.animationDuration}`;
   });
+}
+
+/** Computed `animation-name` + `animation-duration` of the live pill's travelling border. */
+async function pillBorderAnimation(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const el = document.querySelector("#reviewbar .jcount.live");
+    if (!el) return "missing";
+    const cs = getComputedStyle(el, "::before");
+    return `${cs.animationName} ${cs.animationDuration}`;
+  });
+}
+
+/** Computed `animation-name`s inside the depth stepper (must stay still). */
+async function depthAnimation(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const els = [...document.querySelectorAll(".depth, .depth button, .pips i")];
+    if (els.length === 0) return "missing";
+    return els.map((el) => getComputedStyle(el).animationName).join(",");
+  });
+}
+
+/**
+ * Sample the computed `transform` of the first working dot five times.
+ * Under reduced motion nothing may move: every sample is `none`.
+ * Returns "missing" when the dots filled mid-sample (caller retries).
+ */
+async function dotsTransforms(page: Page): Promise<string> {
+  return page.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        const out: string[] = [];
+        const tick = (): void => {
+          const el = document.querySelector("#C-g-flow .dots i");
+          if (!el) {
+            resolve("missing");
+            return;
+          }
+          out.push(getComputedStyle(el).transform);
+          if (out.length >= 5) resolve(out.join(" / "));
+          else window.setTimeout(tick, 120);
+        };
+        tick();
+      }),
+  );
+}
+
+/** Six bounding boxes over ~1.8s (a full border-travel cycle): all identical. */
+async function pillBoxes(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      new Promise<string[]>((resolve) => {
+        const out: string[] = [];
+        const snap = (): void => {
+          const pill = document.querySelector("#reviewbar .jcount.live");
+          const submit = document.querySelector("#reviewbar #submitSlot [data-submit]");
+          const box = (el: Element | null): string => {
+            if (!el) return "missing";
+            const r = el.getBoundingClientRect();
+            return [r.x, r.y, r.width, r.height].map((n) => n.toFixed(1)).join(",");
+          };
+          out.push(`pill=${box(pill)} submit=${box(submit)}`);
+          if (out.length >= 6) resolve(out);
+          else window.setTimeout(snap, 300);
+        };
+        snap();
+      }),
+  );
 }
 
 test("review bar shows the job count and links to the Debug jobs list", async ({ page }) => {
@@ -78,16 +148,47 @@ test("working dots pulse while the agent works", async ({ page }) => {
   });
 });
 
+test("the live pill travels its border without moving or resizing", async ({ page }) => {
+  await gotoDemo(page);
+  const pill = page.locator("#reviewbar .jcount.live");
+  await expect(pill).toBeVisible();
+  await expect.poll(() => pillBorderAnimation(page), { timeout: 8000 }).toBe("jcount-spin 1.6s");
+  // Same box on every sample (and the Submit neighbour too): the
+  // animation never moves, resizes or shifts its neighbours.
+  const boxes = await pillBoxes(page);
+  expect(new Set(boxes).size).toBe(1);
+});
+
+test("nothing inside the depth stepper animates", async ({ page }) => {
+  await gotoDemo(page);
+  await expect(page.locator(".depth").first()).toBeVisible();
+  for (const name of (await depthAnimation(page)).split(",")) {
+    expect(name).toBe("none");
+  }
+});
+
 test.describe("reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
 
-  test("dots stay still and the count gradient does not animate", async ({ page }) => {
+  test("dots and pill fade in place with no movement", async ({ page }) => {
     await gotoDemo(page);
     const bar = page.locator("#reviewbar");
     const count = bar.getByRole("link", { name: "1 running, 2 queued" });
     await expect(count).toBeVisible();
+    // The pill body is calm; its border highlight fades in place.
     await expect(count).toHaveCSS("animation-name", "none");
+    await expect.poll(() => pillBorderAnimation(page), { timeout: 8000 }).toBe("jcount-fade 2.2s");
     await page.locator("#C-g-flow .follow button").first().click();
-    await expect.poll(() => dotsAnimation(page), { timeout: 8000 }).toBe("none 0s");
+    await expect.poll(() => dotsAnimation(page), { timeout: 8000 }).toBe("dot-fade 1.8s");
+    // No transform animates on the dots while they fade.
+    await expect.poll(() => dotsTransforms(page), { timeout: 8000 }).toBe("none / none / none / none / none");
+  });
+
+  test("nothing inside the depth stepper animates", async ({ page }) => {
+    await gotoDemo(page);
+    await expect(page.locator(".depth").first()).toBeVisible();
+    for (const name of (await depthAnimation(page)).split(",")) {
+      expect(name).toBe("none");
+    }
   });
 });
