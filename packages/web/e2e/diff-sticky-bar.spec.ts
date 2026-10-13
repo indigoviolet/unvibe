@@ -468,3 +468,23 @@ test("hunk headers pin even if the code wrapper computes overflow-y:hidden", asy
   await expectPinned(page, `[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
   await expectStuck(page, "hunk", "Hunk 2 of");
 });
+
+test("code columns start at the same x in every hunk of a file", async ({ page }) => {
+  // Each hunk is its own table (#140), so the file shares one line-number
+  // width (`--lnw`): 2-digit and 4-digit hunks must still line their code
+  // columns up. Checked in unified and split.
+  for (const view of ["unified", "split"] as const) {
+    if (view === "split") {
+      await page.getByRole("button", { name: "Split" }).click();
+      await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
+    }
+    const xs = await page.evaluate((key) => {
+      const file = document.getElementById(`F-${key}`) as HTMLElement;
+      return [...file.querySelectorAll(".dhunk")].map((sec) =>
+        Math.round(sec.querySelector("td.c")?.getBoundingClientRect().x ?? -1),
+      );
+    }, CONN);
+    expect(xs.length).toBeGreaterThan(1);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(1.5);
+  }
+});

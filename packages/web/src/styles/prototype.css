@@ -233,6 +233,14 @@ table.diff.split { table-layout: fixed; width: 100%; }
 table.diff.split col.cn { width: 3.6em; }
 table.diff.split td.c { white-space: pre-wrap; overflow-wrap: anywhere; }
 table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select: none; opacity: .75; }
+/* Per-hunk tables share their file's line-number width (issue #140:
+   `--lnw`, digit count, on `.dfile`), so code columns start at the same x
+   in every hunk instead of sizing per hunk. Old-side numbers never carry
+   the comment icon (padding only); new-side numbers reserve its slot too,
+   matching the old single-table sizing. Unified only: split tables are
+   fixed-layout with identical colgroups already. */
+table.diff:not(.split) td.n { min-width: calc(var(--lnw, 4ch) + 16px); }
+table.diff:not(.split) td.n.new { min-width: calc(var(--lnw, 4ch) + 30px); }
 table.diff td.n.new { cursor: pointer; }
 table.diff td.n.new:hover { color: var(--note); opacity: 1; text-decoration: underline; }
 table.diff td.n.hc { color: var(--note); opacity: 1; }

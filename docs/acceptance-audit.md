@@ -514,7 +514,15 @@ needed (that deviation is closed, not added).
   scroller: no vertical scroll container sits between header and pane on any
   engine (asserted in the spec, plus a forced-`hidden` regression test).
   Side effect: unified code tables now scroll sideways per hunk instead of
-  per file. Verified by breaking sticky on purpose (`position: static`):
+  per file. Follow-up: per-hunk tables size their line-number columns
+  independently, so code columns drifted between hunks (measured 802 vs 809
+  in the fixture). Fixed with a per-file digit width (`--lnw` from the hunk
+  data on `.dfile`; `min-width` on unified number cells, new-side reserving
+  the comment-icon slot as the old single table did), asserted in the spec
+  in both views. The gate also caught `render.test.tsx` "hostile code text"
+  counting `tbody tr` (header row no longer in the table): rewritten to
+  assert one code row with the right cell count, the header once outside any
+  table, and no injected rows/cells/tables in the section. Verified by breaking sticky on purpose (`position: static`):
   exactly the 4 hunk-stickiness tests fail — met
   (`e2e/diff-sticky-bar.spec.ts` 15 tests; `docs/screenshots/140-*.png`).
   Measured stack 149px (strip 41 + bar 43 + file 34 + hunk 31); no compact

@@ -18,7 +18,7 @@
  * mounts ~300 headers instead of 5k hunks. `eager` bypasses the lazy gate
  * (above-the-fold files, file jumps, `revealSource` targets).
  */
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Hunk, HunkLine, ReviewFile } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
@@ -549,6 +549,11 @@ export function FileSection(props: SectionProps): ReactNode {
   const base = file.path.split("/").pop()!;
   const dir = file.path.slice(0, Math.max(0, file.path.length - base.length));
   const done = props.reviewed === file.hunks.length;
+  // Widest line number in the file, in digits (see `--lnw` on `.dfile`).
+  const lineDigits = Math.max(
+    1,
+    ...file.hunks.flatMap((h) => h.lines.map((l) => String(l.oldLine ?? l.newLine ?? 0).length)),
+  );
   // Only rendered (unhidden) hunks tokenise; unhiding later picks up the
   // cache or tokenises on demand. Folded files skip entirely (no body).
   const renderedHunks = useMemo(
@@ -588,7 +593,15 @@ export function FileSection(props: SectionProps): ReactNode {
   }, [props.eager]);
 
   return (
-    <div className={`dfile${props.fileHighlighted ? " hl" : ""}`} id={`F-${file.fileKey}`}>
+    <div
+      className={`dfile${props.fileHighlighted ? " hl" : ""}`}
+      id={`F-${file.fileKey}`}
+      // Shared line-number width for the file's hunk tables (#140): every
+      // hunk is its own table, so without this the number columns would size
+      // per hunk (2-digit vs 4-digit) and code columns would start at
+      // different x offsets. Digits come from the data, not the DOM.
+      style={{ "--lnw": `${lineDigits}ch` } as CSSProperties}
+    >
       <div className="dfile-h">
         <button
           className="ib"
