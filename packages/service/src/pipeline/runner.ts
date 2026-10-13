@@ -34,9 +34,11 @@ import type { JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
+import { NoAgentError } from "../agent/none.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildDiffSection, buildSourceBlurb } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
+import { baseKeyString } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
 import { resolveEffectiveSettings } from "../settings/index.js";
 import type { ModelCatalog } from "../settings/index.js";
@@ -81,7 +83,7 @@ async function collectStreaming(
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   let afterTool = false;
-  const usage: TokenUsage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+  const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
   for await (const ev of runner.prompt(session, prompt, signal)) {
     if (ev.type === "text") {
       // Text on either side of a tool call arrives with nothing between it
@@ -97,7 +99,8 @@ async function collectStreaming(
       }
     } else if (ev.type === "usage") {
       usage.inputTokens += ev.inputTokens;
-      usage.cachedTokens += ev.cachedTokens;
+      usage.cachedReadTokens += ev.cachedReadTokens;
+      usage.cachedWriteTokens += ev.cachedWriteTokens;
       usage.outputTokens += ev.outputTokens;
     } else if (ev.type === "error") {
       if (ev.retryable) throw new RetryableError(ev.message);
@@ -211,6 +214,8 @@ function citationsOf(block: Block): string[] {
 export class Pipeline {
   private promptsDir: string;
   private mcpBaseUrl: string;
+  /** #122: reviews with a base rebuild already warming (debounce). */
+  private warmInFlight = new Set<string>();
 
   constructor(private readonly opts: PipelineOptions) {
     this.promptsDir = opts.promptsDir ?? resolvePromptsDir() ?? "prompts";
@@ -307,9 +312,27 @@ export class Pipeline {
   async runInFork(o: RunInForkOptions): Promise<RunInForkResult> {
     const snapshot = this.opts.reviews.getSnapshot(o.reviewId);
     if (!snapshot) throw new Error(`unknown review ${o.reviewId}`);
+    // Fail fast when the pipeline is disabled: the base build below would
+    // throw this anyway, but only after a job id went out (#122 keeps the
+    // enqueue ahead of the base — a doomed job must never be handed out).
+    if (isNoneRunner(this.opts.runner)) throw new NoAgentError();
     const settings = await this.effectiveSettings();
-    const base = await this.ensureBase(o.reviewId);
-    const baseLogSeq = this.opts.sessions.baseInfo(base.key)?.logSeq ?? 0;
+    const provider = settings.main.provider;
+    const model = settings.main.model;
+    // #122: enqueue before awaiting the base, so the click gets its job id
+    // at once. The base seq for the change list is read synchronously from
+    // the current base (absent → 0, a safe under-approximation: the fork may
+    // repeat entries, never miss them); the job ensures the base inside.
+    const baseLogSeq =
+      this.opts.sessions.baseInfo(
+        baseKeyString({
+          reviewId: o.reviewId,
+          reviewVersion: `v${snapshot.version.n}`,
+          guideRevision: guideRevisionForSnapshot(snapshot),
+          provider,
+          model,
+        }),
+      )?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
       ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
@@ -318,8 +341,6 @@ export class Pipeline {
     });
     const template = this.render(o.template, variables);
     const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
-    const provider = settings.main.provider;
-    const model = settings.main.model;
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -340,10 +361,14 @@ export class Pipeline {
       promptSnapshot: prompt,
       run: async (ctx) => {
         // Retryable errors retry inside the job (so the deferred settles
-        // once); non-retryable errors reject and mark the job error.
-        for (let attempt = 0; ; attempt++) {
+          // once); non-retryable errors reject and mark the job error.
+          for (let attempt = 0; ; attempt++) {
           try {
             ctx.setPromptSnapshot(prompt);
+            // #122: the base builds here, inside the job — after the job id
+            // went out. forkFor ensures the same base again (a live-cache hit).
+            const base = await this.ensureBase(o.reviewId);
+            void base;
             const forked = await this.forkFor(o.reviewId);
             ctx.setSessionId(forked.session.id);
             let buffer = "";
@@ -385,7 +410,8 @@ export class Pipeline {
                 ctx.reportText(d),
               );
               usage.inputTokens += repair.usage.inputTokens;
-              usage.cachedTokens += repair.usage.cachedTokens;
+              usage.cachedReadTokens += repair.usage.cachedReadTokens;
+              usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
               usage.outputTokens += repair.usage.outputTokens;
               throwIfMcpRefusal(repair.text);
               finalText = repair.text;
@@ -396,14 +422,6 @@ export class Pipeline {
             }
             ctx.reportUsage(usage);
             await this.recordUsage(o.reviewId, usage);
-            await this.ingestTurn(o.reviewId, {
-              sessionId: forked.session.id,
-              ...(o.threadId ? { threadId: o.threadId } : {}),
-              ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
-              ...(o.cardId ? { cardId: o.cardId } : {}),
-              ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
-              data: finalData,
-            });
             if (o.onPartial) {
               try {
                 await o.onPartial(finalCards);
@@ -411,6 +429,10 @@ export class Pipeline {
                 // ignore
               }
             }
+            // #122: the finished answer goes out before post-turn
+            // bookkeeping. The job still awaits the bookkeeping below, so a
+            // crash in between leaves it visibly interrupted (never silently
+            // unbookkept), and the next job drains the chain in forkFor.
             resolveResult({
               job: this.opts.jobs.get(enqueued.id) ?? enqueued,
               text: finalText,
@@ -421,7 +443,16 @@ export class Pipeline {
               viaFork: forked.viaFork,
               repaired,
             });
-            void base;
+            await this.finishBookkeeping(o.reviewId, () =>
+              this.ingestTurn(o.reviewId, {
+                sessionId: forked.session.id,
+                ...(o.threadId ? { threadId: o.threadId } : {}),
+                ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
+                ...(o.cardId ? { cardId: o.cardId } : {}),
+                ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
+                data: finalData,
+              }),
+            );
             return;
           } catch (err) {
             if (err instanceof RetryableError && attempt < 3) {
@@ -503,7 +534,8 @@ export class Pipeline {
                   ctx.reportText(d),
                 );
                 usage.inputTokens += repair.usage.inputTokens;
-                usage.cachedTokens += repair.usage.cachedTokens;
+                usage.cachedReadTokens += repair.usage.cachedReadTokens;
+                usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
                 usage.outputTokens += repair.usage.outputTokens;
                 finalText = repair.text;
                 const second = this.parseAndValidate(o.reviewId, repair.text);
@@ -599,6 +631,12 @@ export class Pipeline {
     this.setStage(reviewId, "concepts", "pending");
     this.setStage(reviewId, "hunk-pass", "pending");
     await this.enqueueReader(reviewId);
+    // #123: the hunk pass needs only the diff, so it starts at ingest
+    // instead of waiting for the reader. Small-model jobs run in their own
+    // queue bucket, never behind the critics. The CITED-BY-GUIDE hint is
+    // absent this early (no guide yet); `unhideCitedHunks` repairs hides
+    // that the guide later contradicts.
+    await this.enqueueHunkPass(reviewId);
   }
 
   async resumeReview(reviewId: string): Promise<{ jobIds: string[]; pendingStages: string[] }> {
@@ -711,6 +749,8 @@ export class Pipeline {
           ];
         });
         await this.appendLog(reviewId, "new-card", { summary: `concept page ${slug}` }, { scope: "global" });
+        // #122: the page changed the guide — rebuild the base ahead.
+        this.warmBase(reviewId);
       },
     });
     return job;
@@ -799,6 +839,28 @@ export class Pipeline {
       if (fileHunk) {
         if (hiddenReason) fileHunk.hiddenReason = hiddenReason;
         else delete fileHunk.hiddenReason;
+      }
+    });
+  }
+
+  /**
+   * #123: a hunk hidden as uninteresting before the guide existed must not
+   * stay hidden once the guide cites it. Runs when the reader lands; hunks
+   * applied later check the live guide in `applyHunkSummary`, so either
+   * order is safe (both are single atomic mutates on live state).
+   */
+  private async unhideCitedHunks(reviewId: string): Promise<void> {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) return;
+    const cited = snapshot.files
+      .flatMap((f) => f.hunks)
+      .filter((h) => h.hiddenReason && this.isCitedByGuide(reviewId, h.contentHash))
+      .map((h) => h.contentHash);
+    if (cited.length === 0) return;
+    const wanted = new Set(cited);
+    await this.opts.reviews.mutate(reviewId, (draft) => {
+      for (const h of draft.files.flatMap((f) => f.hunks)) {
+        if (wanted.has(h.contentHash)) delete h.hiddenReason;
       }
     });
   }
@@ -963,7 +1025,59 @@ export class Pipeline {
     return { sessionId: handle.session.id, key: handle.key };
   }
 
+  /**
+   * #122: rebuild the base in the background when the guide changed, so it
+   * is ready before the next click. Fire-and-forget (never fails the
+   * caller); at most one warm per review at a time, and `getBase` shares
+   * in-flight builds, so each guide state builds at most once. A warm for a
+   * guide state nobody acts on costs one base turn — the same turn the next
+   * click would have paid.
+   */
+  private warmBase(reviewId: string): void {
+    if (this.warmInFlight.has(reviewId)) return;
+    this.warmInFlight.add(reviewId);
+    void this.ensureBase(reviewId)
+      .catch(() => {})
+      .finally(() => {
+        this.warmInFlight.delete(reviewId);
+      });
+  }
+
+  /** #122: tails of per-review post-turn bookkeeping chains (never reject). */
+  private bookkeepingTails = new Map<string, Promise<void>>();
+
+  /**
+   * #122: wait for the review's pending post-turn bookkeeping, so the next
+   * job never forks (or continues) from a stale log. Resolves at once when
+   * nothing is pending.
+   */
+  async drainBookkeeping(reviewId: string): Promise<void> {
+    await (this.bookkeepingTails.get(reviewId) ?? Promise.resolve());
+  }
+
+  /**
+   * #122: run post-turn bookkeeping serialized after the review's pending
+   * bookkeeping. Callers resolve their answer first and await this before
+   * their job settles. Never rejects (`ingestTurn` is best-effort).
+   */
+  async finishBookkeeping(reviewId: string, task: () => Promise<void>): Promise<void> {
+    const prev = this.bookkeepingTails.get(reviewId) ?? Promise.resolve();
+    const cur = prev.then(task).then(
+      () => undefined,
+      () => undefined,
+    );
+    this.bookkeepingTails.set(reviewId, cur);
+    try {
+      await cur;
+    } finally {
+      if (this.bookkeepingTails.get(reviewId) === cur) this.bookkeepingTails.delete(reviewId);
+    }
+  }
+
   private async forkFor(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
+    // #122: never fork from a stale log — wait for the previous turn's
+    // bookkeeping (base growth) to land first.
+    await this.drainBookkeeping(reviewId);
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
@@ -1100,7 +1214,8 @@ export class Pipeline {
               ctx.reportText(d),
             );
             usage.inputTokens += repair.usage.inputTokens;
-            usage.cachedTokens += repair.usage.cachedTokens;
+                usage.cachedReadTokens += repair.usage.cachedReadTokens;
+                usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
             usage.outputTokens += repair.usage.outputTokens;
             ctx.reportUsage(repair.usage);
             throwIfMcpRefusal(repair.text);
@@ -1111,9 +1226,15 @@ export class Pipeline {
             finalValidation = second.validation;
           }
           await this.applyReaderResult(reviewId, finalCards, finalData, finalValidation);
-          await this.ingestTurn(reviewId, { sessionId: session.id, data: finalData });
+          // #122: the guide cards are already applied above; bookkeeping
+          // joins the per-review chain (still awaited before the job ends).
+          await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: session.id, data: finalData }));
           this.setStage(reviewId, "reader", "done");
-          this.enqueueAfterReader(reviewId);
+          // Awaited: the reader job ends with its follow-ups enqueued and
+          // the cited-hunk repair applied (#123), never floating behind it.
+          await this.enqueueAfterReader(reviewId);
+          // #122: the guide just landed — build the base before the next click.
+          this.warmBase(reviewId);
         } catch (err) {
           this.setStage(reviewId, "reader", "error", (err as Error).message);
           throw err;
@@ -1276,7 +1397,9 @@ export class Pipeline {
     this.setStage(reviewId, "base", "running");
     out.push(...(await this.enqueueCritic(reviewId)));
     out.push(...(await this.enqueueConcepts(reviewId)));
-    out.push(...(await this.enqueueHunkPass(reviewId)));
+    // #123: the hunk pass starts in startReview now (at ingest), not here.
+    // Hunks hidden before the guide existed are unhidden when cited.
+    await this.unhideCitedHunks(reviewId);
     if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
       out.push(...(await this.enqueueDemoFill(reviewId)));
     }
@@ -1407,7 +1530,10 @@ export class Pipeline {
               });
             });
             await this.updateRestatedMapping(reviewId);
-            await this.ingestTurn(reviewId, { sessionId: forked.session.id, data });
+            // #122: the finding is applied above; bookkeeping joins the chain.
+            await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
+            // #122: findings changed the guide — rebuild the base ahead.
+            this.warmBase(reviewId);
             this.maybeMarkStageDone(reviewId, "critic", 2);
           } catch (err) {
             this.setStage(reviewId, "critic", "error", (err as Error).message);
@@ -1487,6 +1613,8 @@ export class Pipeline {
               }
             }
           }
+          // #122: stubs changed the guide — rebuild the base ahead.
+          this.warmBase(reviewId);
         } catch (err) {
           this.setStage(reviewId, "concepts", "error", (err as Error).message);
           throw err;
@@ -1642,7 +1770,10 @@ export class Pipeline {
       }
     });
     await this.updateRestatedMapping(reviewId);
-    await this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data });
+    // #122: the fill is applied above; bookkeeping joins the chain.
+    await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data }));
+    // #122: the fill changed the guide — rebuild the base ahead.
+    this.warmBase(reviewId);
   }
 
   private async ensureConceptPageInner(reviewId: string, slug: string): Promise<void> {
@@ -1869,13 +2000,21 @@ export class Pipeline {
   private async recordUsage(reviewId: string, usage: TokenUsage): Promise<void> {
     try {
       await this.opts.reviews.mutate(reviewId, (draft) => {
-        const t = draft.usageTotals ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0, createdAt: draft.review.createdAt };
+        const t = draft.usageTotals ?? {
+          inputTokens: 0,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
+          outputTokens: 0,
+          createdAt: draft.review.createdAt,
+        };
         t.inputTokens += usage.inputTokens;
-        t.cachedTokens += usage.cachedTokens;
+        t.cachedReadTokens += usage.cachedReadTokens;
+        t.cachedWriteTokens += usage.cachedWriteTokens;
         t.outputTokens += usage.outputTokens;
-        // Read share (M0 pitfall #2): input counts uncached input only.
-        t.cacheHitRate =
-          t.inputTokens + t.cachedTokens > 0 ? t.cachedTokens / (t.inputTokens + t.cachedTokens) : undefined;
+        // Read share (#125, M0 pitfall #2): input counts uncached input
+        // only; writes never count as hits.
+        const total = t.inputTokens + t.cachedReadTokens + t.cachedWriteTokens;
+        t.cacheHitRate = total > 0 ? t.cachedReadTokens / total : undefined;
         draft.usageTotals = t;
       });
     } catch {
@@ -1887,7 +2026,8 @@ export class Pipeline {
     if (!draft.usageTotals?.firstCardAt) {
       draft.usageTotals = {
         inputTokens: draft.usageTotals?.inputTokens ?? 0,
-        cachedTokens: draft.usageTotals?.cachedTokens ?? 0,
+        cachedReadTokens: draft.usageTotals?.cachedReadTokens ?? 0,
+        cachedWriteTokens: draft.usageTotals?.cachedWriteTokens ?? 0,
         outputTokens: draft.usageTotals?.outputTokens ?? 0,
         createdAt: draft.review.createdAt,
         firstCardAt: Date.now(),

@@ -43,12 +43,20 @@ export interface AcpRunnerOptions {
   /** Override per-provider transports (tests). */
   factories?: Partial<Record<ProviderId, TransportFactory>>;
   /**
-   * Straggler-notification grace after every prompt, and replay drain in
-   * load() (ms; default 300). Tests pass 0: the fake transports deliver
-   * synchronously, so no grace is needed.
+   * Ceiling for notification-settling waits after every prompt and in
+   * load() (ms; default 300). The waits end early once notifications are
+   * quiet for 20 ms; the ceiling only bounds a chatty adapter. Tests pass
+   * 0: the fake transports deliver synchronously, so no wait is needed.
    */
   settleMs?: number;
 }
+
+/**
+ * #122.3: quiet window proving no more notifications are in flight. Both
+ * settling waits (post-turn stragglers, load replay drain) end after one
+ * quiet window instead of a fixed sleep, bounded by the ceiling above.
+ */
+const SETTLE_QUIET_MS = 20;
 
 interface PendingPrompt {
   sessionAcpId: string;
@@ -133,6 +141,16 @@ export class AcpAgentRunner implements AgentRunner {
     if (all) c.reapply(all);
     // Re-set this session's policy in case the transport is fresh.
     return caller;
+  }
+
+  /**
+   * #121: one place that builds the session-defining `_meta` (system prompt
+   * + tool lockdown for Claude, custom instructions for Codex). `session/new`,
+   * `session/resume` and `session/load` must all carry the same value so a
+   * new session, a resume and a load cannot drift apart again.
+   */
+  private sessionMeta(rec: Pick<AcpSessionRecord, "provider" | "systemPrompt" | "readOnly">): Record<string, unknown> {
+    return this.newSessionMeta(rec.provider, rec.systemPrompt, rec.readOnly);
   }
 
   private newSessionMeta(provider: ProviderId, systemPrompt: string, readOnly: boolean): Record<string, unknown> {
@@ -353,6 +371,7 @@ export class AcpAgentRunner implements AgentRunner {
           sessionId: rec.acpSessionId,
           cwd: rec.cwd,
           mcpServers: toAcpMcpServers(rec.mcpServers),
+          _meta: this.sessionMeta(rec),
         });
       } catch {
         // ignored: prompt() will resume on demand
@@ -387,18 +406,30 @@ export class AcpAgentRunner implements AgentRunner {
         sessionId: known.acpSessionId,
         cwd: known.cwd,
         mcpServers: toAcpMcpServers(known.mcpServers),
+        _meta: this.sessionMeta(known),
       });
     } catch (e) {
       throw new Error(`couldn't reopen the ${known.provider} session: ${errorMessage(e)}`, { cause: e });
     }
     // Load replays history as `session/update` notifications; drain the
     // replay before the next prompt so stale chunks never leak into it.
+    // #122.3: drain until quiet (one 20 ms window with nothing new) instead
+    // of a fixed sleep, bounded by the ceiling.
     const c = this.conn(known.provider);
+    const ceiling = this.opts.settleMs ?? 300;
+    const t0 = Date.now();
     c.drain(known.acpSessionId);
-    await sleep(this.opts.settleMs ?? 300);
-    c.drain(known.acpSessionId);
+    for (;;) {
+      const elapsed = Date.now() - t0;
+      if (elapsed >= ceiling) break;
+      await sleep(Math.min(SETTLE_QUIET_MS, ceiling - elapsed));
+      if (c.drain(known.acpSessionId).length === 0) break;
+    }
     const rec: AcpSessionRecord = { ...known };
     this.live.set(rec.acpSessionId, rec);
+    if (rec.provider === "codex" && rec.readOnly) {
+      await this.applyCodexRestricted(rec);
+    }
     return { id: rec.acpSessionId, provider: rec.provider, model: rec.model };
   }
 
@@ -521,10 +552,23 @@ export class AcpAgentRunner implements AgentRunner {
       });
       waker.fn = null;
     }
-    for (const e of flush()) yield e;
-    // Grace period for straggler notifications flushed before the response.
-    await sleep(this.opts.settleMs ?? 300);
-    for (const e of flush()) yield e;
+    // #122.3: straggler notifications flushed by the adapter just before
+    // the response may still be in flight. Wait until quiet (one 20 ms
+    // window with nothing new) instead of a fixed sleep, bounded by the
+    // ceiling.
+    {
+      const ceiling = this.opts.settleMs ?? 300;
+      const t0 = Date.now();
+      for (;;) {
+        for (const e of flush()) yield e;
+        const elapsed = Date.now() - t0;
+        if (elapsed >= ceiling) break;
+        if (pending.length === 0) {
+          await sleep(Math.min(SETTLE_QUIET_MS, ceiling - elapsed));
+          if (pending.length === 0) break;
+        }
+      }
+    }
     unsub();
     signal?.removeEventListener("abort", onAbort);
 
@@ -539,6 +583,7 @@ export class AcpAgentRunner implements AgentRunner {
             sessionId: rec.acpSessionId,
             cwd: rec.cwd,
             mcpServers: toAcpMcpServers(rec.mcpServers),
+            _meta: this.sessionMeta(rec),
           });
           yield { type: "error", message: `forked session needed resume; retry the prompt: ${msg}`, retryable: true };
           return;
@@ -573,7 +618,8 @@ export class AcpAgentRunner implements AgentRunner {
     yield {
       type: "usage",
       inputTokens: report.inputTokens,
-      cachedTokens: report.cachedReadTokens + report.cachedWriteTokens,
+      cachedReadTokens: report.cachedReadTokens,
+      cachedWriteTokens: report.cachedWriteTokens,
       outputTokens: report.outputTokens,
     };
     yield { type: "done", stopReason };

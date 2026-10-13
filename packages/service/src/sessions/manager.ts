@@ -561,13 +561,14 @@ export class SessionManager {
     signal?: AbortSignal,
   ): Promise<{ text: string; usage: TokenUsage }> {
     let out = "";
-    const usage: TokenUsage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+    const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
     for await (const event of this.runner.prompt(session, text, signal)) {
       const e: AgentEvent = event;
       if (e.type === "text") out += e.delta;
       else if (e.type === "usage") {
         usage.inputTokens += e.inputTokens;
-        usage.cachedTokens += e.cachedTokens;
+        usage.cachedReadTokens += e.cachedReadTokens;
+        usage.cachedWriteTokens += e.cachedWriteTokens;
         usage.outputTokens += e.outputTokens;
       } else if (e.type === "error") {
         if (e.retryable) throw new RetryableError(e.message);

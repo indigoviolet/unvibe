@@ -208,7 +208,13 @@ async function runIngestBackground(
   const autoPipeline = opts.autoPipeline ?? true;
   try {
     const repo = ctx.repos.get(repoId);
-    if (repo?.managed === true) {
+    // #123: the repo-wide fetch runs alongside `gh pr view` for PR sources
+    // (independent: git vs API) instead of serially before it; the ingest
+    // awaits it where the refs are needed. Branch sources keep the old order
+    // (the fresh tip is needed before resolving).
+    const refresh =
+      repo?.managed === true && args.pr !== undefined ? refreshManagedCheckout(ctx.runner, repo) : null;
+    if (repo?.managed === true && args.pr === undefined) {
       await refreshManagedCheckout(ctx.runner, repo);
     }
     await ctx.reviews
@@ -220,6 +226,7 @@ async function runIngestBackground(
       { runner: ctx.runner, dataDir: ctx.dataDir },
       { repoPath, ...(args.pr !== undefined ? { pr: args.pr } : { branch: args.branch }) },
       reviewId,
+      refresh,
     );
     // Deleted while loading: skip the write (best-effort worktree cleanup).
     if (!ctx.reviews.getSnapshot(reviewId)) {

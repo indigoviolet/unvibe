@@ -30,7 +30,13 @@ export interface Session {
 export type AgentEvent =
   | { type: "text"; delta: string }
   | { type: "tool"; name: string; status: "start" | "end" }
-  | { type: "usage"; inputTokens: number; cachedTokens: number; outputTokens: number }
+  | {
+      type: "usage";
+      inputTokens: number;
+      cachedReadTokens: number;
+      cachedWriteTokens: number;
+      outputTokens: number;
+    }
   | { type: "done"; stopReason: string }
   | { type: "error"; message: string; retryable: boolean };
 

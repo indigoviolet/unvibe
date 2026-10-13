@@ -50,7 +50,7 @@ async function waitFor(check: () => boolean, timeoutMs = 30000, intervalMs = 50)
 function textEvents(text: string): AgentEvent[] {
   return [
     { type: "text", delta: text },
-    { type: "usage", inputTokens: 10, cachedTokens: 5, outputTokens: 10 },
+    { type: "usage", inputTokens: 10, cachedReadTokens: 5, cachedWriteTokens: 0, outputTokens: 10 },
     { type: "done", stopReason: "end_turn" },
   ];
 }
@@ -795,6 +795,10 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
    */
   class FlippableRunner extends ReplayAgentRunner {
     useNone = false;
+    /** Marker for `isNoneRunner`, like the real `NoAgentRunner` (#122: runInFork fails fast before enqueueing). */
+    get none(): boolean {
+      return this.useNone;
+    }
     override async start(opts: {
       provider: string;
       model: string;

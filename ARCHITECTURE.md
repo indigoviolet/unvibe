@@ -19,12 +19,16 @@ The service never writes into your checkout; agents read the code in a worktree 
 1. **Ingest** (`src/ingest/`, async open #92): `POST /api/reviews` creates
    the review row + a loading snapshot (`ingest: {status: "loading",
    step: "fetching"}`) and answers 202 at once — before any fetch. The
-   fetch (`git fetch origin`, then PR heads via `refs/pull/<n>/head` with a
-   branch-name fallback) + `gh pr view` + merge-base (against
-   `origin/<base>` first, bare second — stacked PRs, #93) + local diff +
-   worktree run after the response, stepping the snapshot to "reading
+   fetch (repo-wide `git fetch origin` alongside `gh pr view`, then PR
+   heads via `refs/pull/<n>/head` with a branch-name fallback in one fetch
+   with the base — #123) + merge-base (against `origin/<base>` first,
+   bare second — stacked PRs, #93) + local diff + worktree run after the
+   response, stepping the snapshot to "reading
    diff" then filling it to ready in one mutate (one WS patch; the page
-   fills through the usual events). The PR title/number/author from the
+   fills through the usual events). Every fetch authenticates with the
+   user's `gh` login and keeps its result, so a missing PR head reports
+   the fetch failure in plain words instead of "commit not found" (#139).
+   The PR title/number/author from the
    list row ride the create request so the loading page shows them at
    once. Failures mark the snapshot failed with the error + a retry
    (`POST …/retry`); the review never looks like a normal empty review
@@ -37,8 +41,8 @@ The service never writes into your checkout; agents read the code in a worktree 
    service, so two tabs share one). The pipeline starts only after the
    ingest; the demo fixture stays synchronous. No agent involved in ingest itself.
 2. **Reader** (`src/pipeline/`): the main model explores the worktree and streams the guide cards (problem, central change, go-deeper directions), hidden concept candidates, and pinned code excerpts.
-3. **Base session** (`src/sessions/`): the shared context (source, pinned code, guide) is built once per model and kept warm, so later conversations start mostly from cache.
-4. **Parallel forks**: a critic writes findings as separate pages with drafted suggested comments on diff lines; concept stubs become full pages; the small model summarizes each hunk and marks uninteresting ones (never a cited or one-line hunk).
+3. **Base session** (`src/sessions/`): the shared context (source, pinned code, guide) is built once per model and kept warm, so later conversations start mostly from cache. Fork jobs enqueue before the base build and the base rebuilds in the background when the guide settles (#122); a finished answer applies before post-turn bookkeeping, which still settles with its job.
+4. **Parallel forks**: a critic writes findings as separate pages with drafted suggested comments on diff lines; concept stubs become full pages; the small model summarizes each hunk and marks uninteresting ones (never a cited or one-line hunk). The hunk pass starts at ingest in its own queue bucket, not after the reader (#123); hunks hidden before the guide exists reappear once cited.
 5. **Conversations** (`src/pipeline/actions/`, `src/secondopinion/`): explain, ask, depth, examples, go-deeper generation, and second opinions each run in a fork of the base and apply their result to the page.
 6. **Comments** (`src/comments/`): threads on guide text, description paragraphs, and diff lines, with editable For-PR drafts. The comments menu lists them all and never posts.
 7. **Submit** (`src/submit/`): one GitHub review with every marked comment, plus the description edit when there is one. An in-flight lease reconciled against GitHub means a crash and retry can never double-post.
