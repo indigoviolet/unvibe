@@ -60,7 +60,6 @@ function goldenValues(): Record<string, RenderValues> {
     },
     explain: { anchor, card, thread, change_list: changeList, message: "Why does this matter for Set-Cookie?" },
     ask: { anchor, card, thread, change_list: changeList, message: "Does Requests see the raw value?" },
-    note_ack: { anchor, card, thread, change_list: changeList },
     depth: { card, level: "deep" },
     examples: { card, level: "standard" },
     diagram: { card, level: "standard" },

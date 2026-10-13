@@ -3,8 +3,8 @@
  *
  * Pure builders over a `ReviewSnapshot`: anchor quote, full host block,
  * its card, nearby annotations in full, thread so far, change list, user
- * message. The action modules render these into the `explain` / `ask` /
- * `note_ack` templates through `runInFork`.
+ * message. The action modules render these into the `explain` / `ask`
+ * templates through `runInFork`.
  */
 import type { Annotation, Block, ReviewSnapshot } from "@unvibe/shared";
 import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
