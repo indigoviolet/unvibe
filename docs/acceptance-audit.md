@@ -1008,7 +1008,10 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   (`firstCardAt`, WS text events in first 10 s — live doc); replay ask
   answers in <5 s (restart script observed).
 - Cache-hit rate measured + shown (target: mostly cache reads):
-  **0.947 (Claude) / 0.834 (Codex)** live; per-job + totals in Jobs/Settings.
+  per-job + totals on the Debug page as the read share
+  `cachedRead/(input+cachedRead+cachedWrite)` with writes listed separately
+  (#125; earlier **0.947 (Claude) / 0.834 (Codex)** numbers used the old
+  read+write formula and are not comparable).
 - Restart loses no user data; sessions reopen/rebuild: restart script
   (SIGKILL mid-reader, mid-ask) all green; jobs interrupted-visible +
   resumable; reply falls back to fresh fork.

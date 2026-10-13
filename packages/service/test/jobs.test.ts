@@ -144,6 +144,32 @@ describe("concurrency cap", () => {
     gates[1].resolve();
     await queue.drain();
   });
+
+  it("#123: small-model jobs run in their own bucket, never behind main jobs", async () => {
+    const { queue } = makeQueue({ cap: 1 });
+    const mainGate = deferred();
+    queue.enqueue(spec({ kind: "critic", run: () => mainGate.promise.then(() => {}) }));
+    const smallGates = [deferred(), deferred()];
+    const small = smallGates.map((g) =>
+      queue.enqueue(spec({ kind: "hunk-pass", run: () => g.promise.then(() => {}) })),
+    );
+    await flush();
+    // The main slot is full, yet both hunk jobs still run.
+    expect(queue.get(small[0].id)?.state).toBe("running");
+    expect(queue.get(small[1].id)?.state).toBe("running");
+    // The small bucket still caps itself: a fifth small job waits while four run.
+    const extraGates = [deferred(), deferred(), deferred()];
+    const extra = extraGates.map((g) =>
+      queue.enqueue(spec({ kind: "hunk-pass", run: () => g.promise.then(() => {}) })),
+    );
+    await flush();
+    expect(queue.get(extra[0].id)?.state).toBe("running");
+    expect(queue.get(extra[1].id)?.state).toBe("running");
+    expect(queue.get(extra[2].id)?.state).toBe("queued");
+    for (const g of [...smallGates, ...extraGates]) g.resolve();
+    mainGate.resolve();
+    await queue.drain();
+  });
 });
 
 describe("priority", () => {
@@ -346,15 +372,15 @@ describe("dedupe", () => {
 });
 
 describe("usage, prompts and events", () => {
-  it("accumulates usage, computes cache-hit rate, streams text with card id", async () => {
+  it("accumulates usage, computes the read share as the hit rate, streams text with card id", async () => {
     const { queue, events } = makeQueue();
     const job = queue.enqueue(
       spec({
         cardId: "c-central",
         promptSnapshot: "PROMPT",
         run: async (ctx) => {
-          ctx.reportUsage({ inputTokens: 100, cachedTokens: 30, outputTokens: 10 });
-          ctx.reportUsage({ inputTokens: 100, cachedTokens: 90, outputTokens: 10 });
+          ctx.reportUsage({ inputTokens: 100, cachedReadTokens: 30, cachedWriteTokens: 10, outputTokens: 10 });
+          ctx.reportUsage({ inputTokens: 100, cachedReadTokens: 90, cachedWriteTokens: 0, outputTokens: 10 });
           ctx.reportText("hello");
           ctx.setSessionId("s-1");
         },
@@ -362,14 +388,29 @@ describe("usage, prompts and events", () => {
     );
     await queue.drain();
     const cur = queue.get(job.id)!;
-    expect(cur.usage).toEqual({ inputTokens: 200, cachedTokens: 120, outputTokens: 20 });
-    // Read share = cached/(input+cached) (M0 pitfall #2: input counts
-    // uncached input only, so cached/input can exceed 1).
-    expect(cur.cacheHitRate).toBeCloseTo(120 / 320);
+    expect(cur.usage).toEqual({ inputTokens: 200, cachedReadTokens: 120, cachedWriteTokens: 10, outputTokens: 20 });
+    // Read share = read/(input+read+write) (#125; M0 pitfall #2: input
+    // counts uncached input only, so cached/input can exceed 1).
+    expect(cur.cacheHitRate).toBeCloseTo(120 / 330);
     expect(cur.sessionId).toBe("s-1");
     expect(cur.promptSnapshot).toBe("PROMPT");
     const texts = events.filter((e) => e.type === "text");
     expect(texts).toEqual([{ type: "text", jobId: job.id, cardId: "c-central", delta: "hello" }]);
+  });
+
+  it("a turn with writes and no reads shows 0 % (#125)", async () => {
+    const { queue } = makeQueue();
+    const job = queue.enqueue(
+      spec({
+        run: async (ctx) => {
+          ctx.reportUsage({ inputTokens: 100, cachedReadTokens: 0, cachedWriteTokens: 900, outputTokens: 10 });
+        },
+      }),
+    );
+    await queue.drain();
+    const cur = queue.get(job.id)!;
+    expect(cur.usage).toEqual({ inputTokens: 100, cachedReadTokens: 0, cachedWriteTokens: 900, outputTokens: 10 });
+    expect(cur.cacheHitRate).toBe(0);
   });
 });
 

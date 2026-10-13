@@ -37,9 +37,14 @@ function textOf(events: AgentEvent[]): string {
   return events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("");
 }
 
-function usageOf(events: AgentEvent[]): { inputTokens: number; cachedTokens: number; outputTokens: number } | undefined {
+function usageOf(events: AgentEvent[]): {
+  inputTokens: number;
+  cachedReadTokens: number;
+  cachedWriteTokens: number;
+  outputTokens: number;
+} | undefined {
   return events.find((e) => e.type === "usage") as unknown as
-    | { inputTokens: number; cachedTokens: number; outputTokens: number }
+    | { inputTokens: number; cachedReadTokens: number; cachedWriteTokens: number; outputTokens: number }
     | undefined;
 }
 
@@ -226,7 +231,7 @@ describe.skipIf(!LIVE)("ACP live adapters", () => {
           for (const [label, ev] of [["fork1", r1], ["fork2", r2]] as const) {
             const u = usageOf(ev);
             expect(u, `${label} usage`).toBeDefined();
-            expect(u!.cachedTokens, `${label} cachedTokens>0`).toBeGreaterThan(0);
+            expect(u!.cachedReadTokens + u!.cachedWriteTokens, `${label} cached>0`).toBeGreaterThan(0);
           }
           await runner.close(f1);
           await runner.close(f2);

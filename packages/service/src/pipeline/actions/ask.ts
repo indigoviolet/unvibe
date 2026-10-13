@@ -449,13 +449,17 @@ async function replyOnSession(
     promptSnapshot: prompt,
     run: async (jobCtx) => {
       jobCtx.setPromptSnapshot(prompt);
+      // #122: never continue from a stale log — wait for the previous
+      // turn's bookkeeping (base growth) to land first.
+      await pipeline.drainBookkeeping(reviewId);
       const send = sessions!.sendOnConversation.bind(sessions);
-      const usage: TokenUsage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+      const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
       const collect = async (text: string): Promise<string> => {
         let out = "";
         const res = await send(sessionId, text, { signal: jobCtx.signal });
         usage.inputTokens += res.usage.inputTokens;
-        usage.cachedTokens += res.usage.cachedTokens;
+        usage.cachedReadTokens += res.usage.cachedReadTokens;
+        usage.cachedWriteTokens += res.usage.cachedWriteTokens;
         usage.outputTokens += res.usage.outputTokens;
         for (const chunk of chunkByWords(res.text, 64)) {
           if (jobCtx.signal.aborted) throw new Error("aborted");
@@ -490,33 +494,38 @@ async function replyOnSession(
             if (fixedCitations.length > 0) last.citations = fixedCitations;
           });
           // Same-session turns ingest contributions, advance the cursor and
-          // grow the base exactly like fork turns (best-effort).
-          if (wireDeps?.sharedctx && wireDeps.settings && wireDeps.sessions) {
-            try {
-              const lookup = lookupWithAliases(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
-              await ingestAgentTurn(
-                {
-                  reviews,
-                  sessions: wireDeps.sessions,
-                  settings: wireDeps.settings,
-                  promptsDir,
-                  sharedctx: wireDeps.sharedctx,
-                },
-                reviewId,
-                {
-                  sessionId,
-                  threadId,
-                  conversationKey: threadId,
-                  data: turnSplit.ok ? turnSplit.data : null,
-                  snapshot: getSnapshotOrThrow(reviews, reviewId),
-                  lookup,
-                  appendToBase: (baseKey, batch) => wireDeps.sessions.appendLogBatch(baseKey, batch),
-                },
-              );
-            } catch {
-              // best-effort
+          // grow the base exactly like fork turns (best-effort). #122: the
+          // reply is applied above; bookkeeping joins the per-review chain
+          // (still awaited before the job ends, so a crash leaves the job
+          // visibly interrupted, never silently unbookkept).
+          await pipeline.finishBookkeeping(reviewId, async () => {
+            if (wireDeps?.sharedctx && wireDeps.settings && wireDeps.sessions) {
+              try {
+                const lookup = lookupWithAliases(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
+                await ingestAgentTurn(
+                  {
+                    reviews,
+                    sessions: wireDeps.sessions,
+                    settings: wireDeps.settings,
+                    promptsDir,
+                    sharedctx: wireDeps.sharedctx,
+                  },
+                  reviewId,
+                  {
+                    sessionId,
+                    threadId,
+                    conversationKey: threadId,
+                    data: turnSplit.ok ? turnSplit.data : null,
+                    snapshot: getSnapshotOrThrow(reviews, reviewId),
+                    lookup,
+                    appendToBase: (baseKey, batch) => wireDeps.sessions.appendLogBatch(baseKey, batch),
+                  },
+                );
+              } catch {
+                // best-effort
+              }
             }
-          }
+          });
           // Answers citing fetched code are shared in full (PRD §9.3).
           try {
             if (hasOutOfBaseCitations(parsed.validation.tokens)) {
@@ -617,11 +626,19 @@ function parseAndValidateLocal(
 async function recordUsageLocal(ctx: ActionContext, reviewId: string, usage: TokenUsage): Promise<void> {
   try {
     await ctx.reviews.mutate(reviewId, (draft) => {
-      const t = draft.usageTotals ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0, createdAt: draft.review.createdAt };
+      const t = draft.usageTotals ?? {
+        inputTokens: 0,
+        cachedReadTokens: 0,
+        cachedWriteTokens: 0,
+        outputTokens: 0,
+        createdAt: draft.review.createdAt,
+      };
       t.inputTokens += usage.inputTokens;
-      t.cachedTokens += usage.cachedTokens;
+      t.cachedReadTokens += usage.cachedReadTokens;
+      t.cachedWriteTokens += usage.cachedWriteTokens;
       t.outputTokens += usage.outputTokens;
-      t.cacheHitRate = t.inputTokens + t.cachedTokens > 0 ? t.cachedTokens / (t.inputTokens + t.cachedTokens) : undefined;
+      const total = t.inputTokens + t.cachedReadTokens + t.cachedWriteTokens;
+      t.cacheHitRate = total > 0 ? t.cachedReadTokens / total : undefined;
       draft.usageTotals = t;
     });
   } catch {

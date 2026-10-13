@@ -12,6 +12,7 @@ import { isDefaultGuideTitle } from "@unvibe/shared";
 import { FakeCommandRunner, RealCommandRunner, type CommandRunner } from "../src/exec/index.js";
 import { createApp } from "../src/server.js";
 import { openDatabase, migrate } from "../src/store/index.js";
+import { isGitFetch } from "./git-args.js";
 
 const real = new RealCommandRunner();
 const authed = { authorization: "Bearer tok" };
@@ -55,7 +56,7 @@ function heldGhRunner(): {
           void opts;
         }) as Promise<{ stdout: string; stderr: string; code: number }>;
       }
-      if (cmd === "git" && opts.args[0] === "fetch") {
+      if (cmd === "git" && isGitFetch(opts.args)) {
         fetches.push(opts.args.join(" "));
         return Promise.resolve({ stdout: "", stderr: "", code: 0 });
       }
@@ -213,7 +214,7 @@ describe("POST /api/reviews async (#92)", () => {
     const runner: CommandRunner = {
       run: (cmd, opts) => {
         if (cmd === "gh") return fake.run(cmd, opts);
-        if (cmd === "git" && opts.args[0] === "fetch") return Promise.resolve({ stdout: "", stderr: "", code: 0 });
+        if (cmd === "git" && isGitFetch(opts.args)) return Promise.resolve({ stdout: "", stderr: "", code: 0 });
         return real.run(cmd, opts);
       },
     };
@@ -403,7 +404,7 @@ describe("POST /api/reviews async (#92)", () => {
     const failingRunner: CommandRunner = {
       run: (cmd, opts) => {
         if (cmd === "gh") return failing.run(cmd, opts);
-        if (cmd === "git" && opts.args[0] === "fetch") return Promise.resolve({ stdout: "", stderr: "", code: 0 });
+        if (cmd === "git" && isGitFetch(opts.args)) return Promise.resolve({ stdout: "", stderr: "", code: 0 });
         return real.run(cmd, opts);
       },
     };
@@ -441,7 +442,7 @@ describe("POST /api/reviews async (#92)", () => {
     const goodRunner: CommandRunner = {
       run: (cmd, opts) => {
         if (cmd === "gh") return good.run(cmd, opts);
-        if (cmd === "git" && opts.args[0] === "fetch") return Promise.resolve({ stdout: "", stderr: "", code: 0 });
+        if (cmd === "git" && isGitFetch(opts.args)) return Promise.resolve({ stdout: "", stderr: "", code: 0 });
         return real.run(cmd, opts);
       },
     };
