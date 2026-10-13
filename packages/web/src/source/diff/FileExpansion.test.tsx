@@ -6,10 +6,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { Hunk, ReviewFile } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
 import { resetMockState, setMockLatency } from "../../mock/index.js";
 import { DiffView } from "./DiffView.js";
+import { FileSection } from "./FileSection.js";
 
 beforeEach(() => {
   localStorage.clear();
@@ -192,6 +194,100 @@ describe("DiffView unit expansion", () => {
       expect(screen.queryByRole("button", { name: "Show the enclosing function or class" })).toBeNull();
     } finally {
       spy.mockRestore();
+    }
+  });
+});
+
+describe("FileSection number width", () => {
+  const hunk: Hunk = {
+    contentHash: "big-h",
+    header: "@@ -10,3 +10,3 @@",
+    newStart: 10,
+    newEnd: 12,
+    oldStart: 10,
+    oldEnd: 12,
+    added: 0,
+    removed: 0,
+    lines: [
+      { kind: "ctx", oldLine: 10, newLine: 10, text: "a" },
+      { kind: "ctx", oldLine: 11, newLine: 11, text: "b" },
+      { kind: "ctx", oldLine: 12, newLine: 12, text: "c" },
+    ],
+  };
+  const file: ReviewFile = {
+    fileKey: "big",
+    path: "big.py",
+    category: "source",
+    hunks: [hunk],
+  };
+  const actions = {
+    toggleFold: () => {},
+    summarize: () => {},
+    deleteSummary: () => {},
+    beginNote: () => {},
+    changeNote: () => {},
+    saveNote: () => {},
+    discardNote: () => {},
+    deleteNote: () => {},
+    toggleReviewed: () => {},
+  };
+
+  it("widens --lnw when revealed lines carry more digits than the hunks", async () => {
+    const slice = vi.spyOn(api, "fileSlice").mockImplementation(async (_id, params) => ({
+      path: params.path,
+      commit: params.commit,
+      start: params.start,
+      end: params.end,
+      totalLines: 1200,
+      lines: Array.from({ length: params.end - params.start + 1 }, (_, i) => `line ${params.start + i}`),
+    }));
+    const outline = vi.spyOn(api, "outline").mockResolvedValue({
+      path: "big.py",
+      commit: "abc1234",
+      start: 10,
+      end: 12,
+      totalLines: 1200,
+      language: "python",
+      how: "parser",
+      chain: [{ kind: "function_definition", name: "big", start: 1, end: 1200 }],
+    });
+    try {
+      render(
+        <FileSection
+          file={file}
+          view="unified"
+          reviewed={0}
+          folded={false}
+          eager
+          busy={{}}
+          editingNote={{}}
+          slots={{}}
+          commentedLines={new Set()}
+          highlight={null}
+          fileHighlighted={false}
+          reviewId="demo"
+          headCommit="abc1234"
+          baseCommit="def5678"
+          contentAvailable
+          briefs={null}
+          states={new Map()}
+          isHidden={() => false}
+          actions={actions}
+          onLineClick={undefined}
+          onToggleFileFold={() => {}}
+          onMarkFileReviewed={() => {}}
+          onUnhide={() => {}}
+        />,
+      );
+      const section = document.getElementById("F-big")!;
+      expect(section.style.getPropertyValue("--lnw")).toBe("2ch");
+      await fireEvent.click(screen.getByRole("button", { name: "Show the enclosing function or class" }));
+      await waitFor(() => {
+        expect(section.style.getPropertyValue("--lnw")).toBe("4ch");
+      });
+    } finally {
+      slice.mockRestore();
+      outline.mockRestore();
     }
   });
 });

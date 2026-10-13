@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changePrUrl, githubPrUrl, parseGitHubRepoInput } from "../src/repos.js";
+import { changePrUrl, githubFileUrl, githubPrUrl, parseGitHubRepoInput } from "../src/repos.js";
 
 describe("parseGitHubRepoInput", () => {
   it.each([
@@ -92,5 +92,31 @@ describe("PR page URLs (#94)", () => {
 
   it("returns null when the row names no PR", () => {
     expect(changePrUrl({}, "acme", "app")).toBeNull();
+  });
+});
+
+describe("GitHub file URLs (#134)", () => {
+  it("links a single line at the head commit", () => {
+    expect(githubFileUrl("acme", "app", "abc123", "src/index.ts", 42)).toBe(
+      "https://github.com/acme/app/blob/abc123/src/index.ts#L42",
+    );
+  });
+
+  it("links a line range", () => {
+    expect(githubFileUrl("acme", "app", "abc123", "src/index.ts", 10, 20)).toBe(
+      "https://github.com/acme/app/blob/abc123/src/index.ts#L10-L20",
+    );
+  });
+
+  it("collapses a degenerate range to one line", () => {
+    expect(githubFileUrl("acme", "app", "abc123", "src/index.ts", 10, 10)).toBe(
+      "https://github.com/acme/app/blob/abc123/src/index.ts#L10",
+    );
+  });
+
+  it("encodes spaces and non-ASCII per segment, keeping slashes", () => {
+    expect(githubFileUrl("acme", "app", "abc123", "my dir/fïle name.ts", 1, 3)).toBe(
+      "https://github.com/acme/app/blob/abc123/my%20dir/f%C3%AFle%20name.ts#L1-L3",
+    );
   });
 });

@@ -8,7 +8,7 @@
  * Markdown-only rule covers the shared-context parts, not this table.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { Job } from "@unvibe/shared";
+import type { Block, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { connectEvents } from "../api/ws.js";
 import {
@@ -22,13 +22,16 @@ import {
 
 export function JobsSection({ reviewId }: { reviewId: string | null }): React.JSX.Element {
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [snapshot, setSnapshot] = useState<ReviewSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!reviewId) return;
     setError(null);
     try {
-      setJobs((await api.jobs(reviewId)).jobs);
+      const [jobList, snap] = await Promise.all([api.jobs(reviewId), api.review(reviewId)]);
+      setJobs(jobList.jobs);
+      setSnapshot(snap);
     } catch (err) {
       setError(friendlyError(err));
     }
@@ -36,6 +39,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
 
   useEffect(() => {
     setJobs(null);
+    setSnapshot(null);
     void load();
   }, [load]);
 
@@ -74,7 +78,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
       ) : (
         <div className="card" style={{ padding: "4px 14px" }}>
           {jobs.map((j) => (
-            <JobRow key={j.id} job={j} onCancel={() => void cancel(j.id)} />
+            <JobRow key={j.id} job={j} diagramErrors={diagramErrorsFor(snapshot, j)} onCancel={() => void cancel(j.id)} />
           ))}
           <div className="frow" style={{ gap: 8, padding: "8px 0" }} data-testid="jobs-totals">
             <span className="hint">
@@ -92,7 +96,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
   );
 }
 
-function JobRow({ job, onCancel }: { job: Job; onCancel: () => void }): React.JSX.Element {
+function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: string[]; onCancel: () => void }): React.JSX.Element {
   const [showPrompt, setShowPrompt] = useState(false);
   const [prompt, setPrompt] = useState<string | null>(job.promptSnapshot ?? null);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -167,6 +171,11 @@ function JobRow({ job, onCancel }: { job: Job; onCancel: () => void }): React.JS
           </button>
         ) : null}
       </div>
+      {diagramErrors.map((detail, i) => (
+        <div className="frow" style={{ gap: 8 }} key={i}>
+          <span className="hint">Diagram: {detail}</span>
+        </div>
+      ))}
       {showPrompt ? (
         promptError ? (
           <p className="err">{promptError}</p>
@@ -178,4 +187,38 @@ function JobRow({ job, onCancel }: { job: Job; onCancel: () => void }): React.JS
       ) : null}
     </div>
   );
+}
+
+/**
+ * Raw diagram failure reasons for one job's card or expansion (issue
+ * #130): reader-facing diagram text stays plain, so the compiler message
+ * surfaces here on the Debug page instead. Empty when the snapshot is
+ * not loaded or nothing failed.
+ */
+function diagramErrorsFor(snapshot: ReviewSnapshot | null, job: Job): string[] {
+  if (!snapshot) return [];
+  const out: string[] = [];
+  const walk = (blocks: Block[]): void => {
+    for (const b of blocks) {
+      if (b.type === "diagram") {
+        if (b.render?.status === "error" && b.render.error) out.push(b.render.error);
+      } else if (b.type === "aside") {
+        walk(b.inner);
+      }
+    }
+  };
+  if (job.cardId) {
+    for (const page of snapshot.pages) {
+      for (const card of page.cards) {
+        if (card.id === job.cardId) walk(card.blocks);
+      }
+    }
+  }
+  if (job.threadId) {
+    const found = snapshot.annotations.find((a) => a.id === job.threadId) as unknown as
+      | { expansion?: { blocks: Block[] } }
+      | undefined;
+    if (found?.expansion) walk(found.expansion.blocks);
+  }
+  return out;
 }

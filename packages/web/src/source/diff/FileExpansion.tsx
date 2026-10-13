@@ -663,9 +663,14 @@ export function RevealedRows({
       {lines.map((l) => {
         const num = l.newLine ?? l.oldLine;
         const hl = num !== null && num !== undefined && highlight !== null && num >= highlight.start && num <= highlight.end;
+        // Ids address new-side lines (issue #134 reads them for the
+        // GitHub link). Deleted files have no new side: their revealed
+        // rows stay id-less old-side lines, read from the number cell.
+        const rowId =
+          l.newLine !== null && l.newLine !== undefined ? `L-${fileKey}-${l.newLine}` : undefined;
         return (
           <Fragment key={`rev-${l.line}`}>
-            <tr className={hl ? "hl" : undefined} data-revealed="1" id={num !== null && num !== undefined ? `L-${fileKey}-${num}` : undefined}>
+            <tr className={hl ? "hl" : undefined} data-revealed="1" id={rowId}>
               <RevealedCells line={l} view={view} segs={tokens.get(l.line) ?? null} />
             </tr>
             {num !== null && num !== undefined && slots[slotKey(fileKey, num)] != null ? (

@@ -12,7 +12,10 @@ import {
   createAskThread,
   createNoteThread,
   deleteAnnotation,
+  isCommentThread,
+  replyInDraft,
 } from "../src/comments/index.js";
+import { locatePendingThreads } from "../src/comments/location.js";
 import { setupReview, sourceFile } from "./m6-helpers.js";
 
 const authed = { authorization: "Bearer tok" };
@@ -40,7 +43,8 @@ describe("comment threads", () => {
       expect(t?.type).toBe("thread");
       expect(t?.open).toBe(true);
       expect(t?.note).toBe(true);
-      expect(t?.post).toBe(false);
+      // Issue #135: a Comment is for the PR by default.
+      expect(t?.post).toBe(true);
       expect(t?.messages).toEqual([{ who: "you", text: "why here?" }]);
       expect(t?.anchor.host).toEqual({ kind: "diff-line", fileKey: "a-py", line: 2 });
       expect(snap?.rev).toBe(2);
@@ -291,8 +295,7 @@ describe("comment threads", () => {
     }
   });
 
-  it("exposes actions-route seams + the agent-reply seam", async () => {
-    const runner = new FakeCommandRunner();
+  it("exposes actions-route seams + the agent-reply seam", async () => {    const runner = new FakeCommandRunner();
     const { app, ctx, reviewId } = await setupReview(runner);
     try {
       const note = await createNoteThread(ctx.reviews, reviewId, {
@@ -320,6 +323,94 @@ describe("comment threads", () => {
 
       await deleteAnnotation(ctx.reviews, reviewId, note.id);
       expect(ctx.reviews.getSnapshot(reviewId)?.annotations).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("comments for the PR (issue #135)", () => {
+  it("a Comment is for the PR by default; an Ask thread is not", async () => {
+    const runner = new FakeCommandRunner();
+    const { app, ctx, reviewId } = await setupReview(runner);
+    try {
+      const note = await createNoteThread(ctx.reviews, reviewId, {
+        anchor: { where: "diff-line", fileKey: "a-py", line: 1 },
+        quote: "x",
+        text: "a comment",
+      });
+      const ask = await createAskThread(ctx.reviews, reviewId, {
+        anchor: { where: "diff-line", fileKey: "a-py", line: 2 },
+        quote: "y",
+        message: "a question",
+      });
+      const snap = ctx.reviews.getSnapshot(reviewId)!;
+      const noteThread = snap.annotations.find((a) => a.id === note.id)!;
+      const askThread = snap.annotations.find((a) => a.id === ask.id)!;
+      expect(isCommentThread(noteThread)).toBe(true);
+      expect(noteThread.post).toBe(true);
+      expect(isCommentThread(askThread)).toBe(false);
+      expect(askThread.post).toBe(false);
+      // A comment and its reply start no agent job.
+      await ctx.reviews.mutate(reviewId, (draft) => {
+        replyInDraft(draft, note.id, "a reply");
+      });
+      expect(ctx.jobs.listByReview(reviewId)).toHaveLength(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("only Comments are submitted, even when an Ask thread carries the mark", async () => {
+    const runner = new FakeCommandRunner();
+    const { app, ctx, reviewId } = await setupReview(runner);
+    try {
+      const { id: commentId } = await createNoteThread(ctx.reviews, reviewId, {
+        anchor: { where: "diff-line", fileKey: "a-py", line: 1 },
+        quote: "x",
+        text: "ship it",
+      });
+      const { id: askId } = await createAskThread(ctx.reviews, reviewId, {
+        anchor: { where: "diff-line", fileKey: "a-py", line: 2 },
+        quote: "y",
+        message: "why?",
+      });
+      // An older review may still carry the mark on an Ask thread: force
+      // it directly (the PATCH route refuses new marks).
+      await ctx.reviews.mutate(reviewId, (draft) => {
+        const found = draft.annotations.find((a) => a.id === askId)!;
+        found.post = true;
+      });
+      const pending = locatePendingThreads(ctx.reviews.getSnapshot(reviewId)!);
+      expect(pending.map((p) => p.thread.id)).toEqual([commentId]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects post on an Ask thread in both directions", async () => {
+    const runner = new FakeCommandRunner();
+    const { app, ctx, reviewId } = await setupReview(runner);
+    try {
+      const { id: askId } = await createAskThread(ctx.reviews, reviewId, {
+        anchor: { where: "diff-line", fileKey: "a-py", line: 2 },
+        quote: "y",
+        message: "why?",
+      });
+      const mark = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${reviewId}/comments/${askId}`,
+        headers: authed,
+        payload: { post: true },
+      });
+      expect(mark.statusCode).toBe(400);
+      const unmark = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${reviewId}/comments/${askId}`,
+        headers: authed,
+        payload: { post: false },
+      });
+      expect(unmark.statusCode).toBe(400);
     } finally {
       await app.close();
     }

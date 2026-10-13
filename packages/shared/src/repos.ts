@@ -58,6 +58,32 @@ export function changePrUrl(
   if (typeof change.prNumber === "number") return githubPrUrl(owner, name, change.prNumber);
   return null;
 }
+
+/**
+ * GitHub file view URL for selected diff lines (#134). One place: the
+ * selection toolbar's GitHub action links out through here.
+ *
+ * - `sha` is the commit the file is read at: the review head for added
+ *   and unchanged lines, the merge base for removed-only selections.
+ * - `startLine`/`endLine` are 1-based lines in that commit's file; a
+ *   single line links `#Lx`, a range `#Lx-Ly`.
+ * - Each path segment is URL-encoded (spaces, non-ASCII), slashes kept.
+ */
+export function githubFileUrl(
+  owner: string,
+  name: string,
+  sha: string,
+  path: string,
+  startLine: number,
+  endLine?: number,
+): string {
+  const encoded = path
+    .split("/")
+    .map((seg) => encodeURIComponent(seg))
+    .join("/");
+  const last = endLine !== undefined && endLine !== startLine ? `-L${endLine}` : "";
+  return `https://github.com/${owner}/${name}/blob/${sha}/${encoded}#L${startLine}${last}`;
+}
 /**
  * GitHub login: alphanumerics and hyphens, 1–39 chars, never leading or
  * trailing hyphen (github.com/join rules, lower bound relaxed to 1).

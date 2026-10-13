@@ -47,8 +47,9 @@ card that appears right under the block the text came from.
 - If a diagram helps, use a fenced `d2` block per the D2 convention
   (prompts/includes/d2-convention.md): short labels (at most two lines),
   `direction:` to suit the flow, link: "diff:…" cites inline on each
-  code-mapped shape/connection (at least 2), `.class: [ok|bad]` for
-  good/bad states, ≤12 shapes/16 connections, no icon/imports/markdown
+  code-mapped shape/connection (at least 2), `myid.class: [ok|bad]` on its
+  own line for good/bad states, ≤12 shapes/16 connections, never name a
+  shape steps/layers/scenarios/boards, no icon/imports/markdown
   labels/layers/vars/`classes:` stanzas/tooltip:.
 - End with the trailing `json` block carrying the `anchor` (the selected
   `quote` and the host block's ID).

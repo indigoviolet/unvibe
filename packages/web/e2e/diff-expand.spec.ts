@@ -14,6 +14,50 @@ const TCONN = "test-test_connection.py";
 const connFile = `[id="F-${CONN}"]`;
 const tconnFile = `[id="F-${TCONN}"]`;
 
+async function scrollPaneTo(page: Page, sel: string, at: number): Promise<void> {
+  await page.evaluate(
+    ({ sel, at }: { sel: string; at: number }) => {
+      const pane = document.getElementById("right") as HTMLElement;
+      const el = pane.querySelector(sel) as HTMLElement;
+      const top = el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
+      pane.scrollTop = Math.max(0, top - at);
+    },
+    { sel, at },
+  );
+}
+
+/** File name shown by the file header pinned at the file slot (if any). */
+async function pinnedFile(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const pane = document.getElementById("right") as HTMLElement;
+    const p = pane.getBoundingClientRect();
+    const slot = p.top + (Number.parseFloat(getComputedStyle(pane).getPropertyValue("--dfile-top")) || 0);
+    let found: string | null = null;
+    for (const el of pane.querySelectorAll(".dfile-h")) {
+      if (Math.abs(el.getBoundingClientRect().top - slot) < 2.5) {
+        found = el.querySelector("b")?.textContent ?? "";
+      }
+    }
+    return found;
+  });
+}
+
+/** Text of the hunk header pinned at the hunk slot (if any). */
+async function pinnedHunk(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const pane = document.getElementById("right") as HTMLElement;
+    const p = pane.getBoundingClientRect();
+    const slot = p.top + (Number.parseFloat(getComputedStyle(pane).getPropertyValue("--dhunk-top")) || 0);
+    let found: string | null = null;
+    for (const el of pane.querySelectorAll(".dhunk-h")) {
+      if (Math.abs(el.getBoundingClientRect().top - slot) < 2.5) {
+        found = el.textContent ?? "";
+      }
+    }
+    return found;
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/review/demo");
   await expect(page.locator(connFile)).toBeVisible();
@@ -96,4 +140,31 @@ test("hides the unit control when no unit encloses the hunk", async ({ page }) =
   // First hunk spans top-level items: the outline is empty.
   await conn.getByRole("button", { name: "Show the enclosing function or class" }).first().click();
   await expect(conn.getByRole("button", { name: "Show the enclosing function or class" })).toHaveCount(1);
+});
+
+test("headers still pin and code columns line up with expansion revealed", async ({ page }) => {
+  const conn = page.locator(connFile);
+  // Lines above and below the first hunk…
+  await conn.getByRole("button", { name: "Show 20 more lines" }).first().click();
+  await expect(conn.locator("tr[data-revealed]")).toHaveCount(20);
+  // …and a fully revealed gap in another file.
+  await scrollDiffToBottom(page);
+  await page.getByText(/Hunks 1–2 of 3 hidden · imports/).click();
+  const tconn = page.locator(tconnFile);
+  await tconn.getByRole("button", { name: "Show all 4 lines" }).click();
+  await expect(tconn.locator("tr[data-revealed]")).toHaveCount(4);
+  // A revealed row scrolls under the pinned file + hunk headers.
+  await scrollPaneTo(page, `[id="L-${CONN}-60"]`, 500);
+  await expect.poll(async () => pinnedFile(page), { timeout: 5000 }).toBe("connection.py");
+  await expect.poll(async () => pinnedHunk(page), { timeout: 5000 }).toContain("Hunk 1 of 2");
+  // Code columns start at the same x across the file's hunk tables
+  // (revealed rows ride the same tables, so they line up by construction).
+  const xs: number[] = await page.evaluate((key: string) => {
+    const file = document.querySelector(`[id="F-${key}"]`)!;
+    return [...file.querySelectorAll(".dhunk table.diff")].map(
+      (t) => (t.querySelector("td.c") as HTMLElement).getBoundingClientRect().x,
+    );
+  }, CONN);
+  expect(xs.length).toBeGreaterThan(1);
+  expect(new Set(xs.map((x) => Math.round(x))).size).toBe(1);
 });

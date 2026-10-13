@@ -13,8 +13,14 @@
  * - the SVG is adopted via `d2sanitize.ts` (DOMParser + defensive pass +
  *   per-instance id/CSS namespacing), never `dangerouslySetInnerHTML`;
  * - `render.status: "unavailable"` with no usable SVG behind it shows the
- *   D2 source with a short note + link to Settings → Environment;
- *   `"error"` shows the source with the error text. Neither breaks the card.
+ *   D2 source with a short note + link to Settings → Environment (the
+ *   service answers `unavailable` only when the `d2` binary is really
+ *   missing — issue #130);
+ *   `"error"` shows the source with a plain failure note and a retry
+ *   (the raw compiler message stays on the Debug page, never quoted
+ *   here). Neither breaks the card.
+ * - A block with no render result yet (nothing to fetch by) shows a
+ *   neutral working state, never a claim about `d2`.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -68,8 +74,11 @@ export function clearD2SvgCache(): void {
 
 type LoadState =
   | { kind: "loading" }
+  | { kind: "pending" }
   | { kind: "ready"; svgText: string }
   | { kind: "fallback"; note: "unavailable" | "error" | "not-found"; message: string };
+
+export type D2RenderState = LoadState["kind"];
 
 interface Props {
   reviewId: string;
@@ -82,9 +91,15 @@ interface Props {
    * The overlay leaves this off (it sizes from the viewBox itself).
    */
   capNaturalWidth?: boolean;
+  /**
+   * Report load-state changes (issue #130): the parent hides its zoom and
+   * Expand controls until the diagram reports `ready`, so a diagram that
+   * did not render never carries controls that do nothing.
+   */
+  onStateChange?: (state: D2RenderState) => void;
 }
 
-export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth }: Props): React.JSX.Element {
+export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth, onStateChange }: Props): React.JSX.Element {
   const theme = usePageTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const render = block.render;
@@ -93,14 +108,19 @@ export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth }: Props)
   // Fetch whenever there is a hash to address: the endpoint serves
   // fixture-seeded SVGs — and renders on demand when the binary is
   // present — even for `unavailable`/`error` blocks, healing them to ok.
-  // Only a missing hash (nothing to fetch by) falls back immediately.
+  // A block with no render result yet (nothing to fetch by) stays in a
+  // neutral working state: it must never claim `d2` is missing (#130).
   const [state, setState] = useState<LoadState>(() => {
     if (hash !== "") return { kind: "loading" };
-    if (!render || status === "unavailable") {
-      return { kind: "fallback", note: "unavailable", message: render?.error ?? "" };
-    }
-    return { kind: "fallback", note: "error", message: render?.error ?? "" };
+    return { kind: "pending" };
   });
+  // A retry re-runs the fetch from scratch (issue #130): drop the cached
+  // entry — it may hold a failure — so the service gets another chance.
+  const [retrySeq, setRetrySeq] = useState(0);
+
+  useEffect(() => {
+    onStateChange?.(state.kind);
+  }, [state.kind, onStateChange]);
 
   useEffect(() => {
     if (!hash) return;
@@ -151,7 +171,7 @@ export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth }: Props)
     return () => {
       cancelled = true;
     };
-  }, [reviewId, hash, theme, status, fetchSvg]);
+  }, [reviewId, hash, theme, status, fetchSvg, retrySeq]);
 
   // Adopt the sanitised SVG into the host div (never innerHTML).
   useEffect(() => {
@@ -196,20 +216,56 @@ export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth }: Props)
     );
   }
 
+  if (state.kind === "pending") {
+    // No render result yet (the service has not checked the block): a
+    // neutral working state, never a claim about `d2` (issue #130).
+    return (
+      <div key="d2-pending" className="dg-loading" role="status" aria-label="Drawing diagram">
+        <span className="working">
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span>Drawing diagram…</span>
+        </span>
+      </div>
+    );
+  }
+
   if (state.kind === "fallback") {
     const source = block.source;
+    const retry = (): void => {
+      if (hash !== "") {
+        svgCache.delete(`${hash}:${theme}`);
+        pendingFetches.delete(`${hash}:${theme}`);
+      }
+      setRetrySeq((n) => n + 1);
+    };
     return (
       <div key="d2-fallback" className="dg-fallback">
         {source !== "" ? <pre className="code">{source}</pre> : null}
         {state.note === "unavailable" ? (
           <p className="hint">
             Diagrams need <code>d2</code>
-            {state.message !== "" ? ` (${state.message})` : ""}. The diagram&apos;s source is shown above. To install d2, see <Link to="/settings?tab=environment">Settings → Environment</Link>.
+            {state.message !== "" ? ` (${state.message})` : ""}. The diagram&apos;s source is shown above. To install d2, see <Link to="/settings?tab=environment">Settings → Environment</Link>.{" "}
+            <button type="button" className="x" onClick={retry}>
+              Retry
+            </button>
+          </p>
+        ) : state.note === "not-found" ? (
+          <p className="hint">
+            Couldn&apos;t draw this diagram: {state.message}. Its source is shown above.{" "}
+            <button type="button" className="x" onClick={retry}>
+              Retry
+            </button>
           </p>
         ) : (
           <p className="hint">
-            Couldn&apos;t draw this diagram
-            {state.message !== "" ? `: ${state.message}` : ""}. Its source is shown above.
+            Couldn&apos;t draw this diagram. Its source is shown above.{" "}
+            <button type="button" className="x" onClick={retry}>
+              Retry
+            </button>
           </p>
         )}
       </div>

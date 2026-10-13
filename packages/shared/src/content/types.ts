@@ -59,6 +59,14 @@ export interface ReplyData {
   anchor?: { quote?: string; host?: string };
   /** "Go deeper" placeholder directions (reader replies). */
   pendingCards?: { id?: string; label?: string; why?: string }[];
+  /**
+   * Degraded-turn report (issue #51): the turn could not do what was
+   * asked — a required tool was unreachable, a lookup came back empty, a
+   * call was refused. One line saying what was missing and what the
+   * reply is weaker for. The service fails the job instead of storing a
+   * degraded reply; process chatter never belongs in the Markdown body.
+   */
+  degraded?: string;
   /** Anything else the agent sent; kept, never validated. */
   [key: string]: unknown;
 }

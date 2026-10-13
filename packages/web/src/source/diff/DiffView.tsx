@@ -39,9 +39,10 @@ import {
 } from "./diffLogic.js";
 import { useLineSlots, type LineSlots } from "./lineSlots.js";
 import {
-  observeDiffTabStrip,
+  observeDiffPinned,
   onRevealSource,
   parseDiffRef,
+  refreshDiffPinned,
   revealDiffElement,
   revealSource,
   takePendingReveal,
@@ -392,15 +393,21 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
       }
     }
     el ??= document.getElementById(`F-${key}`);
-    // The actions bar pins under the tab strip (#132): land the target
-    // below the pinned rows through the shared offset, not center-scroll.
+    // The file and hunk headers pin under the actions bar (#140): land the
+    // target below the pinned rows through the shared offset, not
+    // center-scroll. A line target clears all four rows; a file target is
+    // the file header itself, so it clears the strip plus bar only.
     // jsdom (unit tests) has no layout; the helper falls back there.
-    if (el) revealDiffElement(el);
+    if (el) revealDiffElement(el, highlight ? "line" : "file");
   }, [highlight, fileHighlight]);
 
-  // #132: keep the actions bar's sticky `top` equal to the tab strip's live
-  // height (a ResizeObserver, never a scroll listener).
-  useEffect(() => observeDiffTabStrip(), []);
+  // #132/#140: keep the pinned rows' sticky `top`s equal to the rows' live
+  // heights (a ResizeObserver, never a scroll listener); re-sample when the
+  // snapshot or view changes, which mounts headers without resizing the pane.
+  useEffect(() => observeDiffPinned(), []);
+  useEffect(() => {
+    refreshDiffPinned();
+  }, [snapshot, prefs.view]);
 
   useEffect(() => () => window.clearTimeout(hlTimer.current), []);
 
@@ -705,8 +712,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
                       setEagerFiles((prev) => new Set(prev).add(key));
                       setTimeout(() => {
                         const el = document.getElementById(`F-${key}`);
-                        // Land the file header below the pinned rows (#132).
-                        if (el) revealDiffElement(el);
+                        // Land the file header below the pinned rows (#132):
+                        // the strip plus bar ("file" scope — the target is
+                        // the header itself, no file/hunk header pins above it).
+                        if (el) revealDiffElement(el, "file");
                       }, 0);
                     }}
                   />

@@ -109,12 +109,18 @@ UI); nothing below was edited by this pass.
   none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
   cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
   #31/#55 round 2).
-- Review bar (identity + GitHub link-out + Debug icon, [ Guide | Source ]
-  pane toggles incl. full-width source per #83, Comments + primary Submit;
-  source tabs keep PR description / Diff only) — met (`ReviewBar.tsx`,
-  `AppShell.test.tsx`, `e2e/review-bar.spec.ts`;
-  `docs/screenshots/55-review.png`, `55-review-800px.png`,
-  `55-review-dark.png`, `83-source-full-width.png`).
+- Review bar (identity + version selector next to it per #120 + GitHub
+  link-out + Debug icon, [ Guide | Source ] pane toggles incl. full-width
+  source per #83, Comments + primary Submit; source tabs keep PR
+  description / Diff only; at narrow widths the title gives way first and
+  the selector never truncates) — met
+  (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
+  `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
+  `55-review-800px.png`, `55-review-dark.png`,
+  `83-source-full-width.png`, `120-wide-light.png`,
+  `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
+  `120-narrow-light-readonly.png`,
+  `120-narrow-dark-readonly.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -258,26 +264,58 @@ needed (that deviation is closed, not added).
   share one derived fallback — the first sentence or clause of the body,
   cut on a word boundary with an ellipsis (`shared/src/content/titles.ts`,
   `CardView.test.tsx`). Expansions keep their quoted-selection header
-  with no derived second title. Replies never repeat what the reader
-  already sees (shared "Reply hygiene" guidance in `instructions.md`;
-  the `explain` "quote it back" rule is removed), with a deterministic
-  exact-match strip of a leading echo line at parse time
-  (`actions-echo.test.ts`, `content-titles.test.ts`).
+   with no derived second title. Replies never repeat what the reader
+   already sees (shared "Reply hygiene" guidance in `instructions.md`;
+   the `explain` "quote it back" rule is removed), with a deterministic
+   exact-match strip of a leading echo line at parse time
+   (`actions-echo.test.ts`, `content-titles.test.ts`). Agent process
+   chatter never reaches the reader (#51): the body never mentions
+   tools, connections, refusals or what could not be looked up (prompt
+   rule; failures go in the trailing `degraded` field). A job fails on
+   facts only: a `degraded` field fails terminally, and a
+   process-complaint frame fails when the turn ran without the review
+   MCP server or hit a dead MCP URL — tool names and MCP/gh alone never
+   fail a job. Connection-error failures retry once on a fresh session;
+   everything else degraded is terminal. Streamed partials are cleared
+   and the reason lands in the job error on the Debug page
+   (`degraded-turn-51.test.ts`). A reply anchor that names only the card
+   gets one repair turn carrying the reason (`validate.test.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
-  `actions-m4.test.ts` “depth round-trips”).
+  `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
+  + and − keep their icons and are disabled, with no dots inside the
+  control, in both directions — one shared control for cards and
+  expansions (issue #129; the target-pip pulse was dropped as allowed —
+  `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
+  `depth-principle-service.spec.ts`).
 - Examples / Add diagram inserts, never duplicated — met
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
   `reuse.test.ts`).
-- Diagrams expand (#47) — met: every diagram block carries an Expand
-  control opening a full-window overlay (dialog, focus in/out, Esc/close,
-  page scroll locked) with wheel/pinch zoom, drag pan, +/− buttons and
-  reset-to-fit on a CSS transform (no new dependency, no CSP change);
-  citation hover/click work inside it and a drag never counts as a click
-  (`guide/DiagramOverlay.tsx`, `e2e/d2-diagram-overlay.spec.ts`,
+- Diagrams expand (#47) — met: every rendered diagram block carries an
+  Expand control opening a full-window overlay (dialog, focus in/out,
+  Esc/close, page scroll locked) with wheel/pinch zoom, drag pan, +/−
+  buttons and reset-to-fit on a CSS transform (no new dependency, no CSP
+  change); citation hover/click work inside it and a drag never counts
+  as a click (`guide/DiagramOverlay.tsx`, `e2e/d2-diagram-overlay.spec.ts`,
   `guide/DiagramOverlay.test.tsx`). The overlay opens on the measured
-  fit (whole content incl. badges, equal margins, never above 100%).
+  fit (whole content incl. badges, equal margins, never above 100%). A
+  diagram that did not render carries no zoom, Reset or Expand controls
+  (#130) — only the fallback's own retry.
+- Failed diagrams (#130) — met: the endpoint answers `error` with the
+  compiler message only when `d2` ran and failed, and `unavailable` only
+  when the binary is really missing (never inferred from a stale
+  snapshot; `DiagramStatusBody` contract in `packages/shared/src/api.ts`
+  — `diagrams.test.ts` failing-script cases). Reader-facing text is
+  plain ("Couldn't draw this diagram." + Retry; no compiler quote, no
+  "out of scope"); the raw reason is stored on the block and shown on
+  the Debug Jobs tab. A block with no render result yet shows
+  "Drawing diagram…". Inline Explain diagrams run the same finalize +
+  one repair turn as Add-diagram blocks
+  (`pipeline/actions/diagram-finalize.ts`); unambiguous `steps:`-like
+  shapes are renamed (`steps_box`) and inline `{.class: …}` is rejected
+  with the legal line form named (`myid.class: [ok]`), with the prompts
+  updated to match.
 - Diagrams zoom inline (#47, round two) — met: blocks fit by default
   (no scrollbars, never above natural size) with +/−/Reset beside
   Expand on the same shared hook (`panZoom.ts`, `usePanZoom.ts`,
@@ -346,17 +384,27 @@ needed (that deviation is closed, not added).
 - Works in guide, description, diff code — met (`comments/selection.test.ts`).
 - Snap to words, trim, highlight matches — met (`e2e/comments.spec.ts`
   “selection snaps to whole words”).
-- Toolbar Explain / Ask… / Note; no examples/diagrams there; appears only
-  on selection-finish — met (`comments.spec.ts`). Inside an explanation
-  the same toolbar appears (#116); inside second-opinion reasoning and
-  thread replies it does not (neither is an anchor host —
-  `SelectionToolbar.test.tsx`).
+- Toolbar Explain / Ask… / Comment / GitHub; no examples/diagrams there;
+  appears only on selection-finish — met (`comments.spec.ts` “toolbar
+  Comment creates a quiet thread”, “GitHub action links diff lines”).
+  Inside an explanation the same toolbar appears (#116); inside
+  second-opinion reasoning and thread replies it does not (neither is an
+  anchor host — `SelectionToolbar.test.tsx`).
 - Selections inside an explanation anchor to the expansion's block
-  (`<expansion>#<block>`) for all three actions; the nested explanation,
-  thread or note renders under that block, nests to any depth by the same
-  mechanism, and survives reload with its highlight
+  (`<expansion>#<block>`) for Explain and Ask; a Comment there anchors
+  where the card is anchored and quotes the selection as a Markdown
+  blockquote prefilled in the composer (issue #135). The nested
+  explanation, thread or comment renders under its anchor, nests to any
+  depth by the same mechanism, and survives reload with its highlight
   (`actions-expansion-nesting.test.ts`, `ExpansionNesting.test.tsx`,
   `e2e/expansion-nesting-service.spec.ts`).
+- GitHub action (issue #134): a plain link out opening the selected diff
+  lines in GitHub's file view at the review's commit (head for
+  added/unchanged lines, base for removed-only selections; the viewed
+  version's commits). No job, no pending thread. Hidden for prose,
+  non-GitHub repos and the demo — met (shared `githubFileUrl` +
+  `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
+  `comments.spec.ts` “GitHub action links diff lines”).
 
 ### §4.7 Explanations — all met
 
@@ -395,17 +443,26 @@ needed (that deviation is closed, not added).
 
 ### §4.8 Comments — all met
 
-- Ask… (agent + citations) / Note (no reply) — met (`actions/ask.ts`,
-  `note.ts`, `comments-service.spec.ts` “create a note … survives reload”).
+- Ask… (agent + citations) / Comment (no reply, for the PR by default) —
+  met (`actions/ask.ts`, `note.ts`, `comments-service.spec.ts` “create a
+  comment … survives reload”; `comments-m6.test.ts` “comments for the PR”).
+  Only Ask sends text to the agent; clicking a diff line opens a Comment.
+  Only comments are submitted — Ask threads carry no For-PR control and
+  the submit path skips them (issue #135). A Comment from an agent answer
+  quotes the selection as a Markdown blockquote (replaces promote-to-PR;
+  “Open as page” is a different feature and stays).
 - Ask thread replies never show follow-up suggestions (issue #103) — met:
   the ask prompt no longer asks for them and `replyHtml` drops any
   `follow-up` block (plus a leftover heading or card title) on both the
   initial fill and reply turns, while cards and Explain expansions keep
   their chips (`actions-ask-followups.test.ts`).
-- Thread header (quote/`file:line`, Mark for PR filled when on, Delete,
-  Close) — met (`comments/threads.test.ts`, walk screenshot shows
-  “Agent · suggested comment” threads with Reply/Discard).
-- Reply box always visible, Discard/Reply, typed text survives rerender —
+- Thread header (quote/`file:line`, Mark for PR filled when on for
+  comments, Delete, Close) — met (`comments/threads.test.ts`,
+  `ThreadView.test.tsx` “only comment threads carry the For-PR control”,
+  walk screenshot shows “Agent · suggested comment” threads with
+  Reply/Discard).
+- Reply box always visible, Discard/Reply, typed text survives rerender;
+  Discard stays disabled on an existing thread until there is a draft —
   met (`comments/ThreadView.test.tsx`, `comments.spec.ts`).
 - Placement (guide closed + hover outline; diff under line + line-number
   reopen + click-number starts; description under paragraph) — met
@@ -466,7 +523,9 @@ needed (that deviation is closed, not added).
 
 ### §4.12 Submit review — all met
 
-- Nothing reaches GitHub until Submit — met (`gh-writes.test.ts`).
+- Nothing reaches GitHub until Submit — met (`gh-writes.test.ts`). Only
+  comments are submitted; Ask threads and explanations are never posted
+  (issue #135).
 - Button count, panel (locations + drafts, Cancel, Submit as \<user\>) —
   met (ui-walk opened the panel; `submit-m6.test.ts` preview).
 - One review + description update; branch-without-PR disabled with reason
@@ -493,7 +552,45 @@ needed (that deviation is closed, not added).
   `source/diff/revealSource.ts`); opening Files scrolls the pane to top so
   the panel + filter dropdown open fully visible — met
   (`e2e/diff-sticky-bar.spec.ts` 6 tests; `docs/screenshots/132-*.png`).
-  File headers deliberately do not stick (out of scope).
+  The current file header pins under the bar while its file scrolls and
+  the current hunk header pins under that while its hunk scrolls (issue
+  #140): plain CSS sticky inside each header's own container, so the next
+  file/hunk replaces the previous for free; offsets extend the same shared
+  mechanism (`--dfile-top`/`--dhunk-top` kept by `observeDiffPinned`, no
+  copied constants; a line reveal lands below all four rows, a file jump
+  below strip + bar via `diffPinnedHeight(scope)`); z-order file 2 / hunk 1
+  (below bar 3 and strip 4, above content, below overlays 6+); hidden-hunk
+  rows, folded placeholders, cards and threads scroll under, never pin;
+  controls work while pinned; unified + split, light + dark.
+  Follow-up fix: the first version put the hunk header in a table cell
+  inside the sideways-scroll wrapper (`.dwrap { overflow-x: auto;
+  overflow-y: clip }`). Per the CSS Overflow spec `clip` beside `auto`
+  computes to `hidden`, which makes the wrapper a vertical scroll container
+  and traps the sticky header — forcing `hidden` in Playwright's Chromium
+  reproduces the owner's report exactly (file header, outside the wrapper,
+  keeps pinning; hunk headers scroll away), while that Chromium (156)
+  natively computes `clip` and pins fine, which is why the spec passed here.
+  The owner's Vivaldi build was not directly observed; its exact computed
+  value is still open (worth asking its version), but the restructure below
+  makes the question moot. Each hunk is now its own section (header, card,
+  folded placeholder, code table) with the header outside every horizontal
+  scroller: no vertical scroll container sits between header and pane on any
+  engine (asserted in the spec, plus a forced-`hidden` regression test).
+  Side effect: unified code tables now scroll sideways per hunk instead of
+  per file. Follow-up: per-hunk tables size their line-number columns
+  independently, so code columns drifted between hunks (measured 802 vs 809
+  in the fixture). Fixed with a per-file digit width (`--lnw` from the hunk
+  data on `.dfile`; `min-width` on unified number cells, new-side reserving
+  the comment-icon slot as the old single table did), asserted in the spec
+  in both views. The gate also caught `render.test.tsx` "hostile code text"
+  counting `tbody tr` (header row no longer in the table): rewritten to
+  assert one code row with the right cell count, the header once outside any
+  table, and no injected rows/cells/tables in the section. Verified by breaking sticky on purpose (`position: static`):
+  exactly the 4 hunk-stickiness tests fail — met
+  (`e2e/diff-sticky-bar.spec.ts` 15 tests; `docs/screenshots/140-*.png`).
+  Measured stack 149px (strip 41 + bar 43 + file 34 + hunk 31); no compact
+  pinned variant — the hunk header is already one 31px line, pure CSS
+  cannot restyle only-while-pinned, and every control must stay usable.
 - Files panel (name filter + Filter dropdown with per-type counts and a
   Reviewed row, active count on the button, hunk progress, compacting tree
   + counts, click-scroll) — met (`diff.spec.ts` "file filter dropdown …",
@@ -696,8 +793,9 @@ needed (that deviation is closed, not added).
   fixtures).
 - New head SHA → version + ID mapping; old versions viewable — met
   (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
-  `versions-refresh.test.ts`, `settings-versions-service.spec.ts` “v1
-  viewable”).
+  the selector rendered once in the review bar per #120 with the current
+  version annotated in the dropdown, `versions-refresh.test.ts`,
+  `settings-versions-service.spec.ts` “v1 viewable”).
 - Rebase-vs-branch by content hash + `range-diff` — met
   (`versions/compare.ts`, `rangeDiff.ts`; refresh test (a): rebase
   no-conflicts → “no change”, state preserved — ran).
@@ -866,10 +964,12 @@ needed (that deviation is closed, not added).
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
   SVG sanitisation, `GET /api/reviews/:id/diagrams/:hash?theme=` endpoint;
   Mermaid removed entirely per user direction, PRD §19.4 resolved as D2).
-  Prompt guidance (#16): short labels (at most two lines), `direction:`
-  to suit the flow, cites on each code-mapped shape/connection, `.class:
-  [ok|bad]` for states — mirrored into `diagram.md`, `explain.md`,
-  `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
+   Prompt guidance (#16): short labels (at most two lines), `direction:`
+   to suit the flow, cites on each code-mapped shape/connection,
+   `myid.class: [ok|bad]` on its own line for states (never inside
+   `{ … }`), never name a shape steps/layers/scenarios/boards — mirrored
+   into `diagram.md`, `explain.md`,
+   `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
 
 ## §14 Shell, install, security, storage — all met
 
@@ -1263,7 +1363,7 @@ buildAnchor`), and highlight marks search only the named card — met
 `test:e2e` 150 passed). Anchors stored bare before the fix still match
 every card; no migration.
 
-### Expansion diagrams render on demand (#71)
+### Expansion diagrams render on demand (#71) + inline repair (#130)
 
 Inline `d2` blocks in Explain expansions (and go-deeper results, which
 land as ordinary cards) used to 404 on `GET
@@ -1275,9 +1375,16 @@ depth; undo stacks and thread HTML deliberately excluded) — met
 (`diagrams.test.ts` fake-Explain cases: top-level, aside-nested,
 invalid; `shared/test/blocks.test.ts` one case per container;
 `ExpansionDiagram.test.tsx` pins light + dark rendering with no
-component change). An inline diagram with invalid D2 or a bad citation
-resolves to 409 with the source shown and a note, never 404/500, and
-never breaks its card — no validate-and-repair pass by design.
+component change). Since #130, Explain expansions, go-deeper results,
+concept pages and aside-nested diagrams additionally run the same
+finalize + one repair turn as Add-diagram blocks
+(`diagram-finalize.ts`; go-deeper/concept repair runs on the fill's own
+session, nested repairs splice into the failed slots keeping stored
+ids), so a bad inline diagram is repaired before it reaches the reader;
+an unrepairable one resolves to 409 `error` with the source shown and a
+plain note + retry, never 404/500, and never breaks its card.
+Second-opinion reasoning still skips the repair turn (on-demand render
+only).
 Open: ask thread replies still show the raw D2 source (`<pre
 class="d2">`, no fetch). Serving them through the same endpoint would
 need thread replies stored as blocks (a storage change) or parsing the
@@ -1591,6 +1698,16 @@ items noticed while passing through (not verified, listed only):
   `test/changes-pr-lists.test.ts` (direct/team/both, sorting, missing
   fields, call counts), `StartPage.requested.test.tsx`,
   `e2e/start-lists.spec.ts`.
+- **#131 (start page, §4.2):** the one recency filter sits below Reviews
+  and applies to every list below it — "Your PRs" (newest first with the
+  same relative time) and Recent branches (by last commit date, newest
+  first with the commit age on each row) as well as both review groups; a
+  list the filter empties names its window with a Show-all way back.
+  Reviews stays unfiltered, ordered by recent activity. No contract change:
+  branch commit dates already rode `updatedAt`. Evidence:
+  `StartPage.requested.test.tsx` (authoring sort, one control below
+  Reviews, filtered-empty with Show all, branch ages, Reviews ignores the
+  window), `e2e/start-lists.spec.ts`.
 - **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
   in the quiet meta style with the diff add/delete colours, omitted when
   unknown; thousands separators, "1 file" singular. Evidence:

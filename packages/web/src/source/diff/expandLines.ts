@@ -166,6 +166,7 @@ export function planExpandAll(region: ExpandRegion, revealed: RevealedRange[], c
  * unchanged, so each region maps by offset. Null for new files (no old
  * side) and for lines inside hunks (never revealed).
  */
+
 export function mapNewToOld(file: Pick<ReviewFile, "hunks" | "isNew">, newLine: number): number | null {
   if (file.isNew === true) return null;
   const hunks = file.hunks;
@@ -179,4 +180,17 @@ export function mapNewToOld(file: Pick<ReviewFile, "hunks" | "isNew">, newLine: 
   const last = hunks[hunks.length - 1];
   if (newLine > last.newEnd) return newLine - last.newEnd + last.oldEnd;
   return null;
+}
+
+/**
+ * Digit width of revealed line numbers, for the shared `--lnw` number
+ * column (#140): a revealed range can carry more digits than the hunks
+ * (a 4-digit file with 3-digit hunks), so revealed lines widen it too.
+ */
+export function maxLineDigits(lines: { newLine: number | null; oldLine: number | null }[]): number {
+  let max = 1;
+  for (const l of lines) {
+    max = Math.max(max, String(l.newLine ?? l.oldLine ?? 0).length);
+  }
+  return max;
 }

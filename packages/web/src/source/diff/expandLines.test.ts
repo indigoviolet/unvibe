@@ -8,6 +8,7 @@ import {
   hiddenIn,
   isRegionFull,
   mapNewToOld,
+  maxLineDigits,
   mergeRanges,
   planExpandAll,
   planExpandDown,
@@ -107,6 +108,7 @@ describe("hidden/revealed math", () => {
 });
 
 describe("mapNewToOld", () => {
+
   const f = file([hunk(77, 113, 77, 82), hunk(647, 654, 616, 622)]);
   it("maps by offset per region", () => {
     expect(mapNewToOld(f, 76)).toBe(76);
@@ -117,5 +119,19 @@ describe("mapNewToOld", () => {
   it("returns null inside hunks and for new files", () => {
     expect(mapNewToOld(f, 80)).toBeNull();
     expect(mapNewToOld(file([hunk(1, 3, 0, 0)], { isNew: true }), 5)).toBeNull();
+  });
+});
+
+describe("maxLineDigits", () => {
+  it("widens past the hunks when revealed lines carry more digits", () => {
+    expect(maxLineDigits([])).toBe(1);
+    expect(
+      maxLineDigits([
+        { oldLine: 76, newLine: 76 },
+        { oldLine: 615, newLine: 646 },
+      ]),
+    ).toBe(3);
+    expect(maxLineDigits([{ oldLine: 1170, newLine: 1200 }])).toBe(4);
+    expect(maxLineDigits([{ oldLine: 12, newLine: null }])).toBe(2);
   });
 });

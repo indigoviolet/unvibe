@@ -139,6 +139,32 @@ describe("d2 precheck", () => {
     const manyEdges = Array.from({ length: 17 }, (_, i) => `a${i} -> b${i}`).join("\n");
     expect(ok(manyEdges)).toBe(false);
   });
+  it("renames an unambiguous reserved-word shape instead of rejecting (#130)", async () => {
+    const { renameReservedShapeKeys } = await import("../src/diagrams/precheck.js");
+    const src = 'direction: right\nsteps: "wait flow"\na -> steps: go\nsteps -> b: done\nb: "end"';
+    const r = renameReservedShapeKeys(src);
+    expect(r.renamed).toEqual(["steps"]);
+    expect(r.source).toContain('steps_box: "wait flow"');
+    expect(r.source).toContain("a -> steps_box: go");
+    expect(r.source).toContain("steps_box -> b: done");
+    expect(r.source).not.toMatch(/(^|\n)steps\s*:/);
+    // The renamed source passes the pre-check.
+    expect(ok(r.source)).toBe(true);
+  });
+  it("leaves board-form reserved words rejected with a rename hint (#130)", () => {
+    const r = precheckD2Source("layers: {x: {}}\na -> b");
+    expect(r.ok).toBe(false);
+    expect(r.ok ? "" : r.reason).toMatch(/rename the shape/);
+    expect(r.ok ? "" : r.reason).not.toMatch(/out of scope/);
+  });
+  it("rejects .class inside braces with an actionable reason (#130)", () => {
+    const bad = precheckD2Source('direction: right\ngone: "x" {.class: [bad]}');
+    expect(bad.ok).toBe(false);
+    expect(bad.ok ? "" : bad.reason).toMatch(/myshape\.class: \[ok\]/);
+    // The legal line form still passes (D2 passes the class through).
+    expect(ok('direction: right\na: "x"\na.class: [ok]')).toBe(true);
+    expect(ok('direction: right\na: "x"\n*.class: [ok]')).toBe(true);
+  });
 });
 
 // --- sanitiser hostile cases -----------------------------------------------
@@ -748,8 +774,586 @@ broken-shape: "x" {link: "diff:nope:999999"}
   });
 });
 
-// --- real binary (skipped without d2) ----------------------------------------
+// --- issue #130: failed on-demand renders answer error, not unavailable ---
 
+/**
+ * Fake `d2` executable (no real binary needed): version ok, every
+ * validate/render fails the way the owner's `.class: [bad]` report did
+ * (compiler error on stderr, exit 1).
+ */
+function writeFailingD2(): { dir: string; bin: string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-faked2-"));
+  const bin = path.join(dir, "d2");
+  fs.writeFileSync(
+    bin,
+    '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "d2 v0.9.0"; exit 0; fi\ncat > /dev/null\n' +
+      'echo "err: failed to compile -: -:7:37: invalid text beginning unquoted key" >&2\nexit 1\n',
+  );
+  fs.chmodSync(bin, 0o755);
+  return { dir, bin };
+}
+
+/** Wait until an Explain expansion's fill settled (final mutate cleared `working`). */
+function waitForExpansion(
+  ctx: { reviews: { getSnapshot(id: string): ReviewSnapshot | null } },
+  id: string,
+  annotationId: string,
+  timeoutMs = 60000,
+): Promise<void> {
+  return waitFor(() => {
+    const s = ctx.reviews.getSnapshot(id);
+    const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
+      | { working: string | null; expansion?: { blocks: unknown[]; working: string | null } }
+      | undefined;
+    return (a?.expansion?.blocks.length ?? 0) > 0 && a?.working == null && a?.expansion?.working == null;
+  }, timeoutMs);
+}
+/** Explain reply carrying the owner's failing shape (inline `.class`). */
+const EXPLAIN_CLASS_DIAGRAM = `An explanation with a diagram.
+
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup" {.class: [bad]}
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+/**
+ * Smarter fake `d2`: version ok, rejects sources with an inline `{.class`
+ * like the real compiler, validates and renders everything else (bare SVG,
+ * no cites to check).
+ */
+function writeSmartD2(): { dir: string; bin: string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-smartd2-"));
+  const bin = path.join(dir, "d2");
+  fs.writeFileSync(
+    bin,
+    '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "d2 v0.9.0"; exit 0; fi\n' +
+      'src=$(cat)\ncase "$src" in\n"{.class"*|*"{.class"*) echo "err: invalid text beginning unquoted key" >&2; exit 1;;\n' +
+      "esac\n" +
+      'if [ "$1" = "validate" ]; then echo "Success!"; exit 0; fi\n' +
+      'echo \'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text>ok</text></svg>\'\nexit 0\n',
+  );
+  fs.chmodSync(bin, 0o755);
+  return { dir, bin };
+}
+
+/** Broken first reply (owner's `.class` case) + fixed repair reply. */
+const EXPLAIN_FIXED_REPAIR = `An explanation with a fixed diagram.
+
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup"
+gone.class: [bad]
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+/** First reply with a box named `steps` (owner's first case). */
+const EXPLAIN_STEPS_SHAPE = `An explanation with a diagram.
+
+\`\`\`d2
+direction: right
+steps: "wait flow"
+start: "request in"
+start -> steps: go
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+describe("failed on-demand renders (#130)", () => {
+  it("a compile failure answers 409 error, never unavailable", { timeout: 90000 }, async () => {
+    const { dir, bin } = writeFailingD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitForExpansion(ctx, id, annotationId);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const dg = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          render?: { hash: string; status: string };
+        };
+        expect(dg).toBeDefined();
+
+        const got = await app.inject({
+          method: "GET",
+          url: `/api/reviews/${id}/diagrams/${dg.render!.hash}?theme=light`,
+          headers: authed,
+        } as never);
+        expect(got.statusCode).toBe(409);
+        const body = got.json() as { status?: string; error?: string };
+        // d2 ran and failed: the route must say so (the web shows the
+        // install hint only for a truly missing binary).
+        expect(body.status).toBe("error");
+        expect(body.error).toMatch(/not valid D2/);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("an inline .class failure gets one repair turn and lands drawn (#130)", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(EXPLAIN_FIXED_REPAIR) },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitForExpansion(ctx, id, annotationId);
+        // The repair turn ran (its marker reached the agent).
+        expect(agents.prompts.some((p) => p.text.includes("failed validation"))).toBe(true);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const dg = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          source: string;
+          render?: { hash: string; status: string };
+        };
+        expect(dg).toBeDefined();
+        // The repaired source won and rendered.
+        expect(dg.render?.status).toBe("ok");
+        expect(dg.source).toContain("gone.class: [bad]");
+        const got = await app.inject({
+          method: "GET",
+          url: `/api/reviews/${id}/diagrams/${dg.render!.hash}?theme=light`,
+          headers: authed,
+        } as never);
+        expect(got.statusCode).toBe(200);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a box named steps is renamed and lands drawn with no repair (#130)", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(EXPLAIN_FIXED_REPAIR) },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_STEPS_SHAPE) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitForExpansion(ctx, id, annotationId);
+        // Renamed, not repaired: no repair turn ran.
+        expect(agents.prompts.some((p) => p.text.includes("failed validation"))).toBe(false);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const dg = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          source: string;
+          render?: { hash: string; status: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.render?.status).toBe("ok");
+        expect(dg.source).toContain('steps_box: "wait flow"');
+        expect(dg.source).toContain("start -> steps_box: go");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+/** Concept reply carrying the owner's failing shape (inline `.class`). */
+const CONCEPT_CLASS_DIAGRAM = `A concept with a diagram.
+
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup" {.class: [bad]}
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{"title": "Flow"}
+\`\`\`
+`;
+
+/** Fixed concept repair reply. */
+const CONCEPT_FIXED_REPAIR = `A concept with a fixed diagram.
+
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup"
+gone.class: [bad]
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{"title": "Flow"}
+\`\`\`
+`;
+
+describe("concept inline diagrams (#130)", () => {
+  it("a bad diagram gets exactly one repair turn and lands drawn", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(CONCEPT_FIXED_REPAIR) },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Concept page", events: textEvents(CONCEPT_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "concept", slug: "flow" },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        // Exactly one repair turn, no loop.
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const page = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "c-flow")!;
+        const dg = page.cards[0].blocks.find((b) => b.type === "diagram") as unknown as {
+          source: string;
+          render?: { status: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.render?.status).toBe("ok");
+        expect(dg.source).toContain("gone.class: [bad]");
+        expect(JSON.stringify(page.cards[0].blocks)).toContain("A concept with a diagram.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("an unrepairable diagram keeps an error block and the prose", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents("Prose without a diagram.\n\n```json\n{}\n```\n") },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Concept page", events: textEvents(CONCEPT_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "concept", slug: "flow" },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const page = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "c-flow")!;
+        const dg = page.cards[0].blocks.find((b) => b.type === "diagram") as unknown as {
+          render?: { status: string; error?: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.render?.status).toBe("error");
+        expect(JSON.stringify(page.cards[0].blocks)).toContain("A concept with a diagram.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+/** Explain reply with a broken diagram nested in an example aside. */
+const EXPLAIN_ASIDE_BROKEN = `An explanation with an example.
+
+::: example
+\`\`\`d2
+direction: right
+gone: "unmount cleanup" {.class: [bad]}
+start -> gone: finish
+\`\`\`
+:::
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+/** Fixed repair reply (top-level diagram splices into the nested slot). */
+const EXPLAIN_ASIDE_FIXED = `An explanation with a fixed diagram.
+
+\`\`\`d2
+direction: right
+gone: "unmount cleanup"
+gone.class: [bad]
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+describe("aside-nested diagrams (#130)", () => {
+  it("a bad nested diagram gets exactly one repair turn and lands drawn", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(EXPLAIN_ASIDE_FIXED) },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitForExpansion(ctx, id, annotationId);
+        // Exactly one repair turn, no loop.
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const aside = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .expansion!.blocks.find((b) => b.type === "aside") as unknown as {
+          inner: { type: string; source?: string; render?: { status: string } }[];
+        };
+        expect(aside).toBeDefined();
+        const dg = aside.inner.find((b) => b.type === "diagram")!;
+        expect(dg.render?.status).toBe("ok");
+        expect(dg.source).toContain("gone.class: [bad]");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("an unrepairable nested diagram keeps an error block and the prose", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents("Prose without a diagram.\n\n```json\n{}\n```\n") },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitForExpansion(ctx, id, annotationId);
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const expansion = snap.annotations.find((a) => a.id === annotationId)!.expansion!;
+        const aside = expansion.blocks.find((b) => b.type === "aside") as unknown as {
+          inner: { type: string; render?: { status: string; error?: string } }[];
+        };
+        expect(aside).toBeDefined();
+        const dg = aside.inner.find((b) => b.type === "diagram")!;
+        expect(dg.render?.status).toBe("error");
+        expect(dg.render?.error).toMatch(/not valid D2/);
+        // The prose is unaffected.
+        expect(JSON.stringify(expansion.blocks)).toContain("An explanation with an example.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// --- real binary (skipped without d2) ----------------------------------------
 function realD2Available(): boolean {
   // Synchronous gate only (async probe happens inside the test, which
   // skips on failure). A shim without an installed version resolves but

@@ -30,6 +30,8 @@ import {
 } from "./common.js";
 import { aliasCanonicalizer, remapAliasTargets } from "./validate-apply.js";
 import { newCardForExpansion } from "./events.js";
+import { finalizeFresh, repairDiagrams } from "./diagram-finalize.js";
+import { DegradedTurnError } from "../../jobs/errors.js";
 
 export interface ExplainRequest {
   quote: string;
@@ -220,18 +222,52 @@ export async function runExplainFill(
       // repeated block IDs from multi-card replies (#116).
       const canon = aliasCanonicalizer(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
       const fixed = dedupeBlockIds(remapAliasTargets(blocks, res.validation.tokens, canon));
+      // Inline diagrams go through the same finalize + one repair turn as
+      // Add-diagram blocks (#130), so stored blocks carry a real status.
+      // A failed repair keeps the error-status blocks; the card prose is
+      // unaffected.
+      let stored: Block[];
+      {
+        const first = await finalizeFresh(ctx, fixed);
+        if (first.needsRepair) {
+          try {
+            const level =
+              getSnapshotOrThrow(reviews, reviewId).annotations.find((a) => a.id === annotationId)?.expansion
+                ?.level ?? "standard";
+            const repaired = await repairDiagrams(
+              ctx,
+              {
+                card: `Explain: ${quote}`,
+                level,
+                dedupeAnchor: `ann:${annotationId}`,
+                requestKind: "explain-diagram-repair",
+                threadId: annotationId,
+                conversationKey: annotationId,
+                echoCandidates: [quote],
+              },
+              first.blocks,
+              first.messages,
+            );
+            stored = (await finalizeFresh(ctx, repaired)).blocks;
+          } catch {
+            stored = first.blocks;
+          }
+        } else {
+          stored = first.blocks;
+        }
+      }
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
         if (!found || found.type !== "expansion" || !found.expansion) return;
         if (!found.open && found.expansion.blocks.length > 0) {
           // Closed while filling: keep the content for the dotted-link preview.
-          found.expansion.blocks = fixed;
+          found.expansion.blocks = stored;
           found.expansion.revision += 1;
           found.working = null;
           found.expansion.working = null;
           return;
         }
-        found.expansion.blocks = fixed;
+        found.expansion.blocks = stored;
         found.expansion.revision += 1;
         found.working = null;
         found.expansion.working = null;
@@ -265,6 +301,9 @@ export async function runExplainFill(
         found.expansion.working = null;
         found.error = message;
         found.expansion.error = message;
+        // A degraded turn must leave no card behind: streamed partials
+        // may already hold the chatter (#51).
+        if (err instanceof DegradedTurnError) found.expansion.blocks = [];
       });
       // Failures produce no shared knowledge: visible error only, no log.
       return message;

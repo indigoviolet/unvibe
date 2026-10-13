@@ -85,6 +85,11 @@ export function mockDiagramSvg(hash: string, theme: DiagramTheme): string {
   if (hash === "mock-d2-unavailable") {
     throw new DiagramStatusError("unavailable", "The d2 binary was not found on the service machine.");
   }
+  if (hash === "mock-d2-error") {
+    // A source d2 ran and rejected: the raw message is for the Debug
+    // page, never quoted in the reader-facing fallback (#130).
+    throw new DiagramStatusError("error", "err: 7:37: invalid text beginning unquoted key");
+  }
   const found = BY_HASH[hash];
   if (!found) throw new Error(`GET /api/reviews/demo/diagrams/${hash}: 404 {"error":"unknown diagram"}`);
   return theme === "dark" ? found.dark : found.light;
@@ -107,6 +112,21 @@ export function mockSeedD2Block(): DiagramBlock {
       { target: "diff:src-urllib3-connection.py:91-110", unverified: true },
     ],
     render: { hash: "mock-d2-unverified", status: "ok" },
+  };
+}
+
+/** D2 block whose source failed to compile (plain fallback + retry, #130). */
+export function mockErrorD2Block(): DiagramBlock {
+  return {
+    type: "diagram",
+    id: "b-mock-d2-error",
+    source: 'gone: "unmount cleanup" {.class: [bad]}',
+    citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
+    render: {
+      hash: "mock-d2-error",
+      status: "error",
+      error: "err: 7:37: invalid text beginning unquoted key",
+    },
   };
 }
 

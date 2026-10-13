@@ -125,11 +125,12 @@ test("?nohl=1 renders the plain first-paint state (no token spans)", async ({ pa
   });
   await gotoReview(page, "?nohl=1");
   await expect(page.locator(connFile)).toBeVisible();
-  await expect(page.locator(`${connFile} table.diff`)).toBeVisible();
+  // One code table per hunk (#140), so scope visibility to the first.
+  await expect(page.locator(`${connFile} table.diff`).first()).toBeVisible();
   expect(shikiRequests).toEqual([]);
   await expect(page.locator("table.diff td.c [class*='shk-']")).toHaveCount(0);
   // The pane itself is unaffected: files, hunks and line numbers render.
-  await expect(page.locator(`${connFile} table.diff`)).toBeVisible();
+  await expect(page.locator(`${connFile} table.diff`).first()).toBeVisible();
 });
 
 test("selection across token spans snaps to words and Ask opens a composer", async ({ page }) => {
@@ -191,7 +192,7 @@ test("revealSource highlights lines that are also token-highlighted", async ({ p
   await expect(row.locator("td.c [class*='shk-']").first()).toBeVisible();
   // Same in split view: paired cells keep their own side's tokens.
   await page.getByRole("button", { name: "Split" }).click();
-  const splitTable = page.locator(`${connFile} table.diff.split`);
+  const splitTable = page.locator(`${connFile} table.diff.split`).first();
   await expect(splitTable).toBeVisible();
   await expect(splitTable.locator("td.c [class*='shk-']").first()).toBeVisible();
 });
