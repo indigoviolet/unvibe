@@ -267,7 +267,7 @@ assert(after.code === 1 && after.out.includes("not running"), "status reports st
 const uninstall = runCli(["setup", "--uninstall"]);
 assert(uninstall.code === 0 && !fs.existsSync(APP), "uninstall removes the helper");
 const uninstall2 = runCli(["setup", "--uninstall"]);
-assert(uninstall2.code === 0 && uninstall2.out.includes("not present"), "uninstall is idempotent");
+assert(uninstall2.code === 0 && uninstall2.out.includes("nothing to remove"), "uninstall is idempotent");
 
 // Final cleanup: a service we dispatched (but never confirmed) must not be
 // left running on the defaults. Foreign 4517 owners are never touched.
