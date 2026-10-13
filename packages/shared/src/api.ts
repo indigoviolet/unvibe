@@ -685,10 +685,9 @@ export interface Settings {
   rebuildAppendedTokens: number;
   /**
    * M5 shared context (PRD §9.3): log tokens accumulated before the batch
-   * is appended to the base session as a new turn. Optional for backwards
-   * compatibility (older clients omit it); the service defaults to 2000.
+   * is appended to the base session as a new turn.
    */
-  logBatchTokens?: number;
+  logBatchTokens: number;
   /** Provider cache lifetime in ms: idle sessions close after this (PRD §12). */
   cacheLifetimeMs: number;
   /** Service exits after this many idle minutes (PRD §14; 0 = never). */
@@ -697,10 +696,9 @@ export interface Settings {
    * Version picker (issue #36, step 2): list installable update channels
    * and switch builds from Settings → Version. Off by default; listing
    * shells out through `gh` under the user's own login, so it stays
-   * opt-in. Optional for backwards compatibility (older clients omit it);
-   * the service defaults to false.
+   * opt-in.
    */
-  versionPickerEnabled?: boolean;
+  versionPickerEnabled: boolean;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
