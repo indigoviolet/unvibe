@@ -795,6 +795,10 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
    */
   class FlippableRunner extends ReplayAgentRunner {
     useNone = false;
+    /** Marker for `isNoneRunner`, like the real `NoAgentRunner` (#122: runInFork fails fast before enqueueing). */
+    get none(): boolean {
+      return this.useNone;
+    }
     override async start(opts: {
       provider: string;
       model: string;

@@ -34,9 +34,11 @@ import type { JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
+import { NoAgentError } from "../agent/none.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildDiffSection, buildSourceBlurb } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
+import { baseKeyString } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
 import { resolveEffectiveSettings } from "../settings/index.js";
 import type { ModelCatalog } from "../settings/index.js";
@@ -211,6 +213,8 @@ function citationsOf(block: Block): string[] {
 export class Pipeline {
   private promptsDir: string;
   private mcpBaseUrl: string;
+  /** #122: reviews with a base rebuild already warming (debounce). */
+  private warmInFlight = new Set<string>();
 
   constructor(private readonly opts: PipelineOptions) {
     this.promptsDir = opts.promptsDir ?? resolvePromptsDir() ?? "prompts";
@@ -307,9 +311,27 @@ export class Pipeline {
   async runInFork(o: RunInForkOptions): Promise<RunInForkResult> {
     const snapshot = this.opts.reviews.getSnapshot(o.reviewId);
     if (!snapshot) throw new Error(`unknown review ${o.reviewId}`);
+    // Fail fast when the pipeline is disabled: the base build below would
+    // throw this anyway, but only after a job id went out (#122 keeps the
+    // enqueue ahead of the base — a doomed job must never be handed out).
+    if (isNoneRunner(this.opts.runner)) throw new NoAgentError();
     const settings = await this.effectiveSettings();
-    const base = await this.ensureBase(o.reviewId);
-    const baseLogSeq = this.opts.sessions.baseInfo(base.key)?.logSeq ?? 0;
+    const provider = settings.main.provider;
+    const model = settings.main.model;
+    // #122: enqueue before awaiting the base, so the click gets its job id
+    // at once. The base seq for the change list is read synchronously from
+    // the current base (absent → 0, a safe under-approximation: the fork may
+    // repeat entries, never miss them); the job ensures the base inside.
+    const baseLogSeq =
+      this.opts.sessions.baseInfo(
+        baseKeyString({
+          reviewId: o.reviewId,
+          reviewVersion: `v${snapshot.version.n}`,
+          guideRevision: guideRevisionForSnapshot(snapshot),
+          provider,
+          model,
+        }),
+      )?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
       ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
@@ -318,8 +340,6 @@ export class Pipeline {
     });
     const template = this.render(o.template, variables);
     const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
-    const provider = settings.main.provider;
-    const model = settings.main.model;
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -340,10 +360,14 @@ export class Pipeline {
       promptSnapshot: prompt,
       run: async (ctx) => {
         // Retryable errors retry inside the job (so the deferred settles
-        // once); non-retryable errors reject and mark the job error.
-        for (let attempt = 0; ; attempt++) {
+          // once); non-retryable errors reject and mark the job error.
+          for (let attempt = 0; ; attempt++) {
           try {
             ctx.setPromptSnapshot(prompt);
+            // #122: the base builds here, inside the job — after the job id
+            // went out. forkFor ensures the same base again (a live-cache hit).
+            const base = await this.ensureBase(o.reviewId);
+            void base;
             const forked = await this.forkFor(o.reviewId);
             ctx.setSessionId(forked.session.id);
             let buffer = "";
@@ -421,7 +445,6 @@ export class Pipeline {
               viaFork: forked.viaFork,
               repaired,
             });
-            void base;
             return;
           } catch (err) {
             if (err instanceof RetryableError && attempt < 3) {
@@ -711,6 +734,8 @@ export class Pipeline {
           ];
         });
         await this.appendLog(reviewId, "new-card", { summary: `concept page ${slug}` }, { scope: "global" });
+        // #122: the page changed the guide — rebuild the base ahead.
+        this.warmBase(reviewId);
       },
     });
     return job;
@@ -968,6 +993,24 @@ export class Pipeline {
     return { sessionId: handle.session.id, key: handle.key };
   }
 
+  /**
+   * #122: rebuild the base in the background when the guide changed, so it
+   * is ready before the next click. Fire-and-forget (never fails the
+   * caller); at most one warm per review at a time, and `getBase` shares
+   * in-flight builds, so each guide state builds at most once. A warm for a
+   * guide state nobody acts on costs one base turn — the same turn the next
+   * click would have paid.
+   */
+  private warmBase(reviewId: string): void {
+    if (this.warmInFlight.has(reviewId)) return;
+    this.warmInFlight.add(reviewId);
+    void this.ensureBase(reviewId)
+      .catch(() => {})
+      .finally(() => {
+        this.warmInFlight.delete(reviewId);
+      });
+  }
+
   private async forkFor(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
@@ -1119,6 +1162,8 @@ export class Pipeline {
           await this.ingestTurn(reviewId, { sessionId: session.id, data: finalData });
           this.setStage(reviewId, "reader", "done");
           this.enqueueAfterReader(reviewId);
+          // #122: the guide just landed — build the base before the next click.
+          this.warmBase(reviewId);
         } catch (err) {
           this.setStage(reviewId, "reader", "error", (err as Error).message);
           throw err;
@@ -1413,6 +1458,8 @@ export class Pipeline {
             });
             await this.updateRestatedMapping(reviewId);
             await this.ingestTurn(reviewId, { sessionId: forked.session.id, data });
+            // #122: findings changed the guide — rebuild the base ahead.
+            this.warmBase(reviewId);
             this.maybeMarkStageDone(reviewId, "critic", 2);
           } catch (err) {
             this.setStage(reviewId, "critic", "error", (err as Error).message);
@@ -1492,6 +1539,8 @@ export class Pipeline {
               }
             }
           }
+          // #122: stubs changed the guide — rebuild the base ahead.
+          this.warmBase(reviewId);
         } catch (err) {
           this.setStage(reviewId, "concepts", "error", (err as Error).message);
           throw err;
@@ -1648,6 +1697,8 @@ export class Pipeline {
     });
     await this.updateRestatedMapping(reviewId);
     await this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data });
+    // #122: the fill changed the guide — rebuild the base ahead.
+    this.warmBase(reviewId);
   }
 
   private async ensureConceptPageInner(reviewId: string, slug: string): Promise<void> {
