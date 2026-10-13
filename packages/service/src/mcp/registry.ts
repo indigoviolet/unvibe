@@ -421,6 +421,23 @@ export class McpRegistry {
     for (const d of this.matchDescription(review, query)) {
       push(`desc:${d.id}`, "description", d.text);
     }
+    // Issue #107: once the L1 ladder leaves the file list out (huge PRs),
+    // the agent can still discover changed files through this tool: a
+    // query matching a path returns one hit per file with hunk IDs.
+    // Second-opinion isolation still applies (description only).
+    if (!this.isRestrictedRole(state)) {
+      const seenPaths = new Set<string>();
+      for (const h of review.hunks) {
+        if (seenPaths.has(h.path)) continue;
+        seenPaths.add(h.path);
+        if (!h.path.toLowerCase().includes(q)) continue;
+        if (hits.length >= 10) break;
+        const ids = review.hunks.filter((x) => x.path === h.path);
+        const first = ids.slice(0, 3).map((x) => `h:${x.fileKey}:${x.contentHash}`);
+        const more = ids.length > 3 ? ` (+${ids.length - 3} more — resolve "${h.path}" for all IDs)` : "";
+        hits.push(`file ${h.path} (${ids.length} hunk${ids.length === 1 ? "" : "s"}): ${first.join(", ")}${more}`);
+      }
+    }
     return hits.length > 0 ? hits.join("\n") : "no matches";
   }
 
