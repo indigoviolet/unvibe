@@ -1,0 +1,486 @@
+{
+  "label": "claude-effort-1",
+  "provider": "claude",
+  "pr": 5020,
+  "repo": "https://github.com/urllib3/urllib3",
+  "settings": {
+    "main": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "small": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "secondOpinion": {
+      "provider": "codex",
+      "model": "gpt-6.1-sol"
+    },
+    "sessionsPerProvider": 4,
+    "getSettingsMs": 1773
+  },
+  "flows": [
+    {
+      "name": "open#1",
+      "provider": "claude",
+      "startedAt": 1791858536508,
+      "load": [
+        1.84,
+        1.88,
+        2.86
+      ],
+      "marks": {
+        "httpResponse": 1791858536528,
+        "wsConnected": 1791858536543,
+        "ingestReady": 1791858544362,
+        "firstCard": 1791858564014,
+        "readerDone": 1791858587660,
+        "baseDone": 1791858590111,
+        "firstFinding": 1791858671576,
+        "criticDone": 1791858676181,
+        "firstHunkSummary": 1791858592271,
+        "hunkPassDone": 1791858618248,
+        "conceptsDone": 1791858605776,
+        "allIdle": 1791858676487
+      },
+      "http": {
+        "code": 202,
+        "ms": 19
+      },
+      "reviewId": "rv_bad7f9d22dd9",
+      "shape": {
+        "files": 4,
+        "hunks": 8,
+        "rootCards": 7,
+        "pending": 5,
+        "findings": 2,
+        "concepts": 5,
+        "snapshotBytes": 55763,
+        "stages": {
+          "reader": "done",
+          "base": "done",
+          "critic": "done",
+          "concepts": "done",
+          "hunk-pass": "done",
+          "go-deeper": "pending"
+        },
+        "usageTotals": {
+          "inputTokens": 23303,
+          "cachedTokens": 754010,
+          "outputTokens": 39274,
+          "createdAt": 1791858544339,
+          "firstCardAt": 1791858564009,
+          "cacheHitRate": 0.9700210854572097
+        },
+        "ws": {
+          "bytes": {
+            "patch": 71620,
+            "job": 172348,
+            "text": 140198,
+            "other": 0
+          },
+          "counts": {
+            "patch": 44,
+            "job": 72,
+            "text": 1572,
+            "other": 0
+          },
+          "resyncs": 0
+        }
+      },
+      "endedAt": 1791858678988,
+      "rel": {
+        "httpResponse": 20,
+        "wsConnected": 35,
+        "ingestReady": 7854,
+        "firstCard": 27506,
+        "readerDone": 51152,
+        "baseDone": 53603,
+        "firstFinding": 135068,
+        "criticDone": 139673,
+        "firstHunkSummary": 55763,
+        "hunkPassDone": 81740,
+        "conceptsDone": 69268,
+        "allIdle": 139979
+      }
+    },
+    {
+      "name": "explain effort=high #1",
+      "provider": "claude",
+      "startedAt": 1791858678989,
+      "load": [
+        2.53,
+        2.32,
+        2.89
+      ],
+      "marks": {
+        "httpResponse": 1791858681056,
+        "workingVisible": 1791858679000,
+        "firstContent": 1791858707674,
+        "done": 1791858708049,
+        "firstTextEvent": 1791858700480
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b1",
+        "quote": "A server may split one response"
+      },
+      "http": {
+        "ms": 2066,
+        "jobId": "05f0e7fe-8434-4989-a486-7cc50987aaac"
+      },
+      "jobId": "05f0e7fe-8434-4989-a486-7cc50987aaac",
+      "endedAt": 1791858710655,
+      "rel": {
+        "httpResponse": 2067,
+        "workingVisible": 11,
+        "firstContent": 28685,
+        "done": 29060,
+        "firstTextEvent": 21491
+      }
+    },
+    {
+      "name": "explain effort=high #2",
+      "provider": "claude",
+      "startedAt": 1791858710656,
+      "load": [
+        3.29,
+        2.57,
+        2.96
+      ],
+      "marks": {
+        "httpResponse": 1791858710719,
+        "workingVisible": 1791858710671,
+        "firstContent": 1791858740745,
+        "done": 1791858741149,
+        "firstTextEvent": 1791858740395
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b2",
+        "quote": "The old code built the response"
+      },
+      "http": {
+        "ms": 62,
+        "jobId": "a881764b-6e01-4f7d-ace1-ed806dfe2b74"
+      },
+      "jobId": "a881764b-6e01-4f7d-ace1-ed806dfe2b74",
+      "endedAt": 1791858743753,
+      "rel": {
+        "httpResponse": 63,
+        "workingVisible": 15,
+        "firstContent": 30089,
+        "done": 30493,
+        "firstTextEvent": 29739
+      }
+    },
+    {
+      "name": "explain effort=high #3",
+      "provider": "claude",
+      "startedAt": 1791858743754,
+      "load": [
+        2.34,
+        2.4,
+        2.89
+      ],
+      "marks": {
+        "httpResponse": 1791858743803,
+        "workingVisible": 1791858743766,
+        "firstContent": 1791858769895,
+        "done": 1791858770265,
+        "firstTextEvent": 1791858768804
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b3",
+        "quote": "It mattered beyond urllib3's own headers"
+      },
+      "http": {
+        "ms": 49,
+        "jobId": "27964613-782b-477e-ad20-bb02d25e9c27"
+      },
+      "jobId": "27964613-782b-477e-ad20-bb02d25e9c27",
+      "endedAt": 1791858772871,
+      "rel": {
+        "httpResponse": 49,
+        "workingVisible": 12,
+        "firstContent": 26141,
+        "done": 26511,
+        "firstTextEvent": 25050
+      }
+    },
+    {
+      "name": "ask effort=high",
+      "provider": "claude",
+      "startedAt": 1791858772871,
+      "load": [
+        2.1,
+        2.35,
+        2.86
+      ],
+      "marks": {
+        "httpResponse": 1791858772918,
+        "done": 1791858789674,
+        "firstTextEvent": 1791858782292
+      },
+      "jobId": "86f539ab-257e-4723-95fb-a8bc1702dcbf",
+      "endedAt": 1791858792279,
+      "rel": {
+        "httpResponse": 47,
+        "done": 16803,
+        "firstTextEvent": 9421
+      }
+    },
+    {
+      "name": "explain effort=medium #1",
+      "provider": "claude",
+      "startedAt": 1791858792280,
+      "load": [
+        2.51,
+        2.41,
+        2.86
+      ],
+      "marks": {
+        "httpResponse": 1791858792323,
+        "workingVisible": 1791858792289,
+        "firstContent": 1791858807299,
+        "done": 1791858807705,
+        "firstTextEvent": 1791858800213
+      },
+      "target": {
+        "cardId": "central",
+        "blockId": "b1",
+        "quote": "Every response header value is now"
+      },
+      "http": {
+        "ms": 43,
+        "jobId": "4bb5a49c-e495-4bf6-aba1-3f8b238b3a45"
+      },
+      "jobId": "4bb5a49c-e495-4bf6-aba1-3f8b238b3a45",
+      "endedAt": 1791858810310,
+      "rel": {
+        "httpResponse": 43,
+        "workingVisible": 9,
+        "firstContent": 15019,
+        "done": 15425,
+        "firstTextEvent": 7933
+      }
+    },
+    {
+      "name": "explain effort=medium #2",
+      "provider": "claude",
+      "startedAt": 1791858810311,
+      "load": [
+        2.18,
+        2.35,
+        2.83
+      ],
+      "marks": {
+        "httpResponse": 1791858810365,
+        "workingVisible": 1791858810325,
+        "firstContent": 1791858823025,
+        "done": 1791858823392,
+        "firstTextEvent": 1791858814968
+      },
+      "target": {
+        "cardId": "central",
+        "blockId": "b2",
+        "quote": "The change adds two helpers and"
+      },
+      "http": {
+        "ms": 53,
+        "jobId": "4824b72d-b225-4b70-ac05-f742b09a2eb6"
+      },
+      "jobId": "4824b72d-b225-4b70-ac05-f742b09a2eb6",
+      "endedAt": 1791858825997,
+      "rel": {
+        "httpResponse": 54,
+        "workingVisible": 14,
+        "firstContent": 12714,
+        "done": 13081,
+        "firstTextEvent": 4657
+      }
+    },
+    {
+      "name": "explain effort=medium #3",
+      "provider": "claude",
+      "startedAt": 1791858825998,
+      "load": [
+        2.42,
+        2.39,
+        2.84
+      ],
+      "marks": {
+        "httpResponse": 1791858826046,
+        "workingVisible": 1791858826011,
+        "firstContent": 1791858845402,
+        "done": 1791858846466,
+        "firstTextEvent": 1791858835644
+      },
+      "target": {
+        "cardId": "central",
+        "blockId": "b5",
+        "quote": "The unit tests show the transformation"
+      },
+      "http": {
+        "ms": 48,
+        "jobId": "3609b963-e5b9-49bd-a90a-0b8e139da9c7"
+      },
+      "jobId": "3609b963-e5b9-49bd-a90a-0b8e139da9c7",
+      "endedAt": 1791858849072,
+      "rel": {
+        "httpResponse": 48,
+        "workingVisible": 13,
+        "firstContent": 19404,
+        "done": 20468,
+        "firstTextEvent": 9646
+      }
+    },
+    {
+      "name": "ask effort=medium",
+      "provider": "claude",
+      "startedAt": 1791858849072,
+      "load": [
+        3.25,
+        2.59,
+        2.89
+      ],
+      "marks": {
+        "httpResponse": 1791858849129,
+        "done": 1791858858039,
+        "firstTextEvent": 1791858853019
+      },
+      "jobId": "e6f7f879-d5f0-4974-b03b-0943efe441fd",
+      "endedAt": 1791858860644,
+      "rel": {
+        "httpResponse": 57,
+        "done": 8967,
+        "firstTextEvent": 3947
+      }
+    },
+    {
+      "name": "explain effort=low #1",
+      "provider": "claude",
+      "startedAt": 1791858860644,
+      "load": [
+        2.97,
+        2.55,
+        2.88
+      ],
+      "marks": {
+        "httpResponse": 1791858860695,
+        "workingVisible": 1791858860657,
+        "firstContent": 1791858880640,
+        "done": 1791858881017,
+        "firstTextEvent": 1791858873264
+      },
+      "target": {
+        "cardId": "central",
+        "blockId": "b9",
+        "quote": "Two details address cost. Values without"
+      },
+      "http": {
+        "ms": 50,
+        "jobId": "57a3bc33-4a70-4212-a53b-2ed09b7d2574"
+      },
+      "jobId": "57a3bc33-4a70-4212-a53b-2ed09b7d2574",
+      "endedAt": 1791858883622,
+      "rel": {
+        "httpResponse": 51,
+        "workingVisible": 13,
+        "firstContent": 19996,
+        "done": 20373,
+        "firstTextEvent": 12620
+      }
+    },
+    {
+      "name": "explain effort=low #2",
+      "provider": "claude",
+      "startedAt": 1791858883623,
+      "load": [
+        2.48,
+        2.47,
+        2.85
+      ],
+      "marks": {
+        "httpResponse": 1791858883677,
+        "workingVisible": 1791858883636,
+        "firstContent": 1791858897236,
+        "done": 1791858897609,
+        "firstTextEvent": 1791858890261
+      },
+      "target": {
+        "cardId": "central",
+        "blockId": "b10",
+        "quote": "The invariant is that after"
+      },
+      "http": {
+        "ms": 54,
+        "jobId": "ffbff3e2-939b-4aff-a398-9c768b1dfb68"
+      },
+      "jobId": "ffbff3e2-939b-4aff-a398-9c768b1dfb68",
+      "endedAt": 1791858900214,
+      "rel": {
+        "httpResponse": 54,
+        "workingVisible": 13,
+        "firstContent": 13613,
+        "done": 13986,
+        "firstTextEvent": 6638
+      }
+    },
+    {
+      "name": "explain effort=low #3",
+      "provider": "claude",
+      "startedAt": 1791858900215,
+      "load": [
+        2.32,
+        2.44,
+        2.83
+      ],
+      "marks": {
+        "httpResponse": 1791858900220,
+        "workingVisible": 1791858679000,
+        "firstContent": 1791858900220,
+        "done": 1791858900220
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b1",
+        "quote": "A server may split one response"
+      },
+      "http": {
+        "ms": 5,
+        "jobId": null
+      },
+      "endedAt": 1791858902825,
+      "rel": {
+        "httpResponse": 5,
+        "workingVisible": -221215,
+        "firstContent": 5,
+        "done": 5
+      }
+    },
+    {
+      "name": "ask effort=low",
+      "provider": "claude",
+      "startedAt": 1791858902826,
+      "load": [
+        2.32,
+        2.44,
+        2.83
+      ],
+      "marks": {
+        "httpResponse": 1791858902880,
+        "done": 1791858908153,
+        "firstTextEvent": 1791858904560
+      },
+      "jobId": "32d3529c-7466-4bf2-86cb-ff5800bb3a26",
+      "endedAt": 1791858910758,
+      "rel": {
+        "httpResponse": 54,
+        "done": 5327,
+        "firstTextEvent": 1734
+      }
+    }
+  ]
+}

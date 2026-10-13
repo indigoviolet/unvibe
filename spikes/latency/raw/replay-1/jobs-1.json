@@ -1,0 +1,622 @@
+{
+  "jobs": [
+    {
+      "id": "d5bcbaf1-fb52-4f94-a560-13afadf357a0",
+      "kind": "reader",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 50,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "guide|reader||v1",
+      "sessionId": "fake-1",
+      "usage": {
+        "inputTokens": 3544,
+        "cachedTokens": 1772,
+        "outputTokens": 1398
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "6bb4e968-0722-4379-9608-c8e1bf1d4b4c",
+      "kind": "critic",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "finding:f-lf|critic||v1",
+      "sessionId": "fake-4",
+      "usage": {
+        "inputTokens": 590,
+        "cachedTokens": 295,
+        "outputTokens": 523
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "42ee7ad2-38a5-4a64-93ee-a6c85caf3d40",
+      "kind": "critic",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "finding:f-perf|critic||v1",
+      "sessionId": "fake-5",
+      "usage": {
+        "inputTokens": 590,
+        "cachedTokens": 295,
+        "outputTokens": 291
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "6b9ffd34-6035-445b-ad79-acfcc558ec8e",
+      "kind": "concept",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "concepts|concept-stubs||v1",
+      "sessionId": "fake-6",
+      "usage": {
+        "inputTokens": 74,
+        "cachedTokens": 37,
+        "outputTokens": 506
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "8f0318d6-6b05-4647-b7e1-f1be6d4fca6d",
+      "kind": "hunk-pass",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|hunk-pass||v1",
+      "sessionId": "fake-3",
+      "usage": {
+        "inputTokens": 640,
+        "cachedTokens": 320,
+        "outputTokens": 173
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "23195de5-0935-4af5-9cbb-c1b8bf4a6dfd",
+      "kind": "hunk-pass",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b355d2096d4d7f39|hunk-pass||v1",
+      "sessionId": "fake-7",
+      "usage": {
+        "inputTokens": 392,
+        "cachedTokens": 196,
+        "outputTokens": 97
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "2ecce34b-577a-4a37-965f-1289209c40bf",
+      "kind": "hunk-pass",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:6cfb09ec98cba6ba|hunk-pass||v1",
+      "sessionId": "fake-8",
+      "usage": {
+        "inputTokens": 346,
+        "cachedTokens": 173,
+        "outputTokens": 47
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "67c01289-72e8-40d2-8fdb-e585eafebc92",
+      "kind": "hunk-pass",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:92cf4ca541bdb0f2|hunk-pass||v1",
+      "sessionId": "fake-9",
+      "usage": {
+        "inputTokens": 345,
+        "cachedTokens": 172,
+        "outputTokens": 46
+      },
+      "cacheHitRate": 0.33268858800773693
+    },
+    {
+      "id": "233ffd74-f5b0-4c8c-b7ca-b87a72fbd280",
+      "kind": "hunk-pass",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b33779988cee5f8a|hunk-pass||v1",
+      "sessionId": "fake-10",
+      "usage": {
+        "inputTokens": 736,
+        "cachedTokens": 368,
+        "outputTokens": 110
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "c5db9c4b-8961-4023-9a1c-dc3a9e840697",
+      "kind": "hunk-pass",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:29382503b8689e5f|hunk-pass||v1",
+      "sessionId": "fake-11",
+      "usage": {
+        "inputTokens": 350,
+        "cachedTokens": 175,
+        "outputTokens": 48
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "acd5ed99-3004-44d0-a48f-d1db2338c1b0",
+      "kind": "hunk-pass",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:949dda852e448b55|hunk-pass||v1",
+      "sessionId": "fake-12",
+      "usage": {
+        "inputTokens": 1047,
+        "cachedTokens": 523,
+        "outputTokens": 106
+      },
+      "cacheHitRate": 0.33312101910828024
+    },
+    {
+      "id": "b7074ee0-850f-42e8-bae3-54e683cebfee",
+      "kind": "hunk-pass",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|hunk-pass||v1",
+      "sessionId": "fake-13",
+      "usage": {
+        "inputTokens": 354,
+        "cachedTokens": 177,
+        "outputTokens": 41
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "653d9589-2b8f-47e1-9b41-efa3dfbb448e",
+      "kind": "go-deeper",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "go-deeper:g-flow|go-deeper||v1",
+      "sessionId": "fake-15",
+      "usage": {
+        "inputTokens": 348,
+        "cachedTokens": 174,
+        "outputTokens": 340
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "25a321d7-eee9-424a-9ecd-32fea3048aa1",
+      "kind": "go-deeper",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "go-deeper:g-design|go-deeper||v1",
+      "sessionId": "fake-16",
+      "usage": {
+        "inputTokens": 349,
+        "cachedTokens": 174,
+        "outputTokens": 236
+      },
+      "cacheHitRate": 0.3326959847036329
+    },
+    {
+      "id": "01457c4b-936e-4d07-8f6d-c569d5ced61f",
+      "kind": "go-deeper",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "go-deeper:g-regex|go-deeper||v1",
+      "sessionId": "fake-19",
+      "usage": {
+        "inputTokens": 342,
+        "cachedTokens": 171,
+        "outputTokens": 207
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "e0c69588-318b-46af-a448-dbec7f41f636",
+      "kind": "go-deeper",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "go-deeper:g-check|go-deeper||v1",
+      "sessionId": "fake-22",
+      "usage": {
+        "inputTokens": 336,
+        "cachedTokens": 168,
+        "outputTokens": 197
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "0c72785c-58cf-4a97-8740-425c18244da6",
+      "kind": "explain",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b1:HTTP/1.1 used to let a server|explain||v1",
+      "threadId": "ann_79cb21ffbd16",
+      "sessionId": "fake-36",
+      "usage": {
+        "inputTokens": 875,
+        "cachedTokens": 437,
+        "outputTokens": 349
+      },
+      "cacheHitRate": 0.3330792682926829
+    },
+    {
+      "id": "bee58509-df5a-42cd-89c4-81f772970b1e",
+      "kind": "explain",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b2:The line break isn't just untidy.|explain||v1",
+      "threadId": "ann_07f409d371aa",
+      "sessionId": "fake-37",
+      "usage": {
+        "inputTokens": 1188,
+        "cachedTokens": 594,
+        "outputTokens": 349
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "07f99fa0-986d-4bd8-bea9-f0c57977bf98",
+      "kind": "explain",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b1:urllib3 now unfolds header values right|explain||v1",
+      "threadId": "ann_a2a0155cee00",
+      "sessionId": "fake-38",
+      "usage": {
+        "inputTokens": 1580,
+        "cachedTokens": 790,
+        "outputTokens": 349
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "f492a1e9-4ede-4918-8ac9-7eba0e7930a8",
+      "kind": "ask",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b4:The rule behind it: a parsed:Why does this matter for a reviewer? Answer in two or three sentences.|ask||v1",
+      "threadId": "ann_b652ec8bfe28",
+      "sessionId": "fake-39",
+      "usage": {
+        "inputTokens": 1812,
+        "cachedTokens": 906,
+        "outputTokens": 117
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "7854c568-d2b7-4557-ae7f-b39d415ae05b",
+      "kind": "ask",
+      "model": "main",
+      "provider": "main",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "thread:ann_b652ec8bfe28:What would break if this were left out? |ask-reply||v1",
+      "threadId": "ann_b652ec8bfe28",
+      "usage": {
+        "inputTokens": 757,
+        "cachedTokens": 378,
+        "outputTokens": 117
+      },
+      "cacheHitRate": 0.33303964757709253
+    },
+    {
+      "id": "aa8d61d6-6c72-4498-a0f6-82526e4c8864",
+      "kind": "ask",
+      "model": "main",
+      "provider": "main",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "thread:ann_b652ec8bfe28:Is there a test that covers it? One sent|ask-reply||v1",
+      "threadId": "ann_b652ec8bfe28",
+      "usage": {
+        "inputTokens": 860,
+        "cachedTokens": 430,
+        "outputTokens": 117
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "53203889-fdb7-4f7f-bc62-cf7c3b7e93b6",
+      "kind": "explain",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:g-design#b1:A response's headers exist twice: urllib3's|explain||v1",
+      "threadId": "ann_a5d1b8db99f4",
+      "sessionId": "fake-40",
+      "usage": {
+        "inputTokens": 1838,
+        "cachedTokens": 919,
+        "outputTokens": 349
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "e95aabf6-242b-4458-a0bf-56431445bf7a",
+      "kind": "explain",
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:g-design#b2:The helper therefore rewrites the original|explain||v1",
+      "threadId": "ann_27aed1bb3b7c",
+      "sessionId": "fake-41",
+      "usage": {
+        "inputTokens": 2194,
+        "cachedTokens": 1097,
+        "outputTokens": 349
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "3a8bf7b3-58b0-4ee9-9f04-ab152c60ea78",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|summarize||v1",
+      "sessionId": "fake-42",
+      "usage": {
+        "inputTokens": 636,
+        "cachedTokens": 318,
+        "outputTokens": 173
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "7543e73b-5bba-4a1d-94c9-fb986201d067",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b355d2096d4d7f39|summarize||v1",
+      "sessionId": "fake-43",
+      "usage": {
+        "inputTokens": 388,
+        "cachedTokens": 194,
+        "outputTokens": 97
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "c7bca552-e9d7-4837-9dc7-7744116d8f0e",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|summarize||v1",
+      "sessionId": "fake-44",
+      "usage": {
+        "inputTokens": 636,
+        "cachedTokens": 318,
+        "outputTokens": 173
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "c2c25c62-684f-4ba4-861f-ec42f0f53385",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b355d2096d4d7f39|summarize||v1",
+      "sessionId": "fake-45",
+      "usage": {
+        "inputTokens": 388,
+        "cachedTokens": 194,
+        "outputTokens": 97
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "e6833738-7e39-4fd7-9da4-bb987d603db5",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:6cfb09ec98cba6ba|summarize||v1",
+      "sessionId": "fake-46",
+      "usage": {
+        "inputTokens": 346,
+        "cachedTokens": 173,
+        "outputTokens": 47
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "20c40edf-f68b-436b-886f-d2200c0e0498",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:92cf4ca541bdb0f2|summarize||v1",
+      "sessionId": "fake-47",
+      "usage": {
+        "inputTokens": 345,
+        "cachedTokens": 172,
+        "outputTokens": 46
+      },
+      "cacheHitRate": 0.33268858800773693
+    },
+    {
+      "id": "7ee0463a-47a3-4eb6-b081-0e613245db90",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b33779988cee5f8a|summarize||v1",
+      "sessionId": "fake-48",
+      "usage": {
+        "inputTokens": 736,
+        "cachedTokens": 368,
+        "outputTokens": 110
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "32ea6921-f934-4b62-9dbb-063c5a302829",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:29382503b8689e5f|summarize||v1",
+      "sessionId": "fake-49",
+      "usage": {
+        "inputTokens": 350,
+        "cachedTokens": 175,
+        "outputTokens": 48
+      },
+      "cacheHitRate": 0.3333333333333333
+    },
+    {
+      "id": "9bd5f5ba-0a6d-4a9d-a7e1-b17aa1cddabf",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:949dda852e448b55|summarize||v1",
+      "sessionId": "fake-50",
+      "usage": {
+        "inputTokens": 1047,
+        "cachedTokens": 523,
+        "outputTokens": 106
+      },
+      "cacheHitRate": 0.33312101910828024
+    },
+    {
+      "id": "a93fdae0-276a-4f89-b03a-2dfb5bf94afa",
+      "kind": "summarize",
+      "model": "claude-haiku-5-5",
+      "provider": "claude",
+      "reviewId": "rv_2bcb51eabe4d",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|summarize||v1",
+      "sessionId": "fake-51",
+      "usage": {
+        "inputTokens": 354,
+        "cachedTokens": 177,
+        "outputTokens": 41
+      },
+      "cacheHitRate": 0.3333333333333333
+    }
+  ]
+}

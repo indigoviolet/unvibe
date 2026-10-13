@@ -1,0 +1,429 @@
+{
+  "jobs": [
+    {
+      "id": "ed731236-53fb-4a4c-af46-66b8668e417d",
+      "kind": "reader",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 50,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "guide|reader||v1",
+      "sessionId": "4b82cf36-6157-4e0c-93fb-fe4df075817d",
+      "usage": {
+        "inputTokens": 7177,
+        "cachedTokens": 39524,
+        "outputTokens": 4149
+      },
+      "cacheHitRate": 0.8463202072760755
+    },
+    {
+      "id": "4ad2a8a3-cf9f-4db1-89c8-5eaa9785d4d0",
+      "kind": "critic",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "finding:f-critic-0|critic||v1",
+      "sessionId": "63e55b62-d1bc-4d36-8d17-c64821663941",
+      "usage": {
+        "inputTokens": 8,
+        "cachedTokens": 105467,
+        "outputTokens": 7556
+      },
+      "cacheHitRate": 0.9999241526428063
+    },
+    {
+      "id": "0223e716-c684-4e31-855e-5871579ab9d2",
+      "kind": "critic",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "finding:f-critic-1|critic||v1",
+      "sessionId": "fadf1e91-2baa-468b-b906-3d609d2d0705",
+      "usage": {
+        "inputTokens": 8,
+        "cachedTokens": 101315,
+        "outputTokens": 7193
+      },
+      "cacheHitRate": 0.9999210445802039
+    },
+    {
+      "id": "ebf73fce-aef9-4fa4-a4e8-eb79397fd973",
+      "kind": "concept",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "concepts|concept-stubs||v1",
+      "sessionId": "b695ef40-505a-425e-b19f-9d1874dab24d",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 20658,
+        "outputTokens": 1582
+      },
+      "cacheHitRate": 0.9999031945788964
+    },
+    {
+      "id": "8c266a6a-0e75-4ce2-83d1-752dfbe02435",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|hunk-pass||v1",
+      "sessionId": "49f9e8c0-83b4-48e5-b97b-0d27f4f92475",
+      "usage": {
+        "inputTokens": 1721,
+        "cachedTokens": 12369,
+        "outputTokens": 586
+      },
+      "cacheHitRate": 0.8778566359119944
+    },
+    {
+      "id": "05503e8f-c81e-41e0-a8d3-46c0aba039a5",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|hunk-pass||v1",
+      "sessionId": "d3a95512-40b0-418d-8b7f-b0b795909d74",
+      "usage": {
+        "inputTokens": 2208,
+        "cachedTokens": 12856,
+        "outputTokens": 406
+      },
+      "cacheHitRate": 0.8534253850238981
+    },
+    {
+      "id": "4d2c73b4-8e02-4f17-9371-8e6b9a2b2018",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b355d2096d4d7f39|hunk-pass||v1",
+      "sessionId": "31804d12-b7f3-47c6-8293-d434a814d6ba",
+      "usage": {
+        "inputTokens": 1774,
+        "cachedTokens": 25186,
+        "outputTokens": 671
+      },
+      "cacheHitRate": 0.9341988130563799
+    },
+    {
+      "id": "5e769ca7-a54f-40d5-848b-f8c76439b4b4",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:6cfb09ec98cba6ba|hunk-pass||v1",
+      "sessionId": "9f1babae-c12f-41bb-8fbf-785614ba3f92",
+      "usage": {
+        "inputTokens": 1701,
+        "cachedTokens": 12349,
+        "outputTokens": 437
+      },
+      "cacheHitRate": 0.878932384341637
+    },
+    {
+      "id": "6b02e967-5a4f-4e51-a0d2-faaac5236a31",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:92cf4ca541bdb0f2|hunk-pass||v1",
+      "sessionId": "e1fa0ae3-4760-4493-b381-08b1c90d97ad",
+      "usage": {
+        "inputTokens": 1725,
+        "cachedTokens": 12373,
+        "outputTokens": 310
+      },
+      "cacheHitRate": 0.8776422187544333
+    },
+    {
+      "id": "ea9faaab-d6e4-46e6-b4ba-d93ee61861e3",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b33779988cee5f8a|hunk-pass||v1",
+      "sessionId": "1832b29a-a87d-46f4-bbcd-5e544a77150d",
+      "usage": {
+        "inputTokens": 2333,
+        "cachedTokens": 12981,
+        "outputTokens": 401
+      },
+      "cacheHitRate": 0.8476557398458926
+    },
+    {
+      "id": "9e03697a-c7aa-4ed2-ad26-55e311bd921d",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:29382503b8689e5f|hunk-pass||v1",
+      "sessionId": "595b0c7c-7198-423f-a211-25ebae3001a2",
+      "usage": {
+        "inputTokens": 1753,
+        "cachedTokens": 12401,
+        "outputTokens": 308
+      },
+      "cacheHitRate": 0.8761480853468984
+    },
+    {
+      "id": "9ba17a53-3e80-4f27-b1a2-4f689afd2878",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:949dda852e448b55|hunk-pass||v1",
+      "sessionId": "f426901c-313c-4c81-a918-3caa7235c6b2",
+      "usage": {
+        "inputTokens": 2867,
+        "cachedTokens": 13515,
+        "outputTokens": 338
+      },
+      "cacheHitRate": 0.824990843608839
+    },
+    {
+      "id": "05f0e7fe-8434-4989-a486-7cc50987aaac",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b1:A server may split one response|explain||v1",
+      "threadId": "ann_5c737a72d167",
+      "sessionId": "becd5d44-6f01-4e35-a588-bf460dd89cbb",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 25510,
+        "outputTokens": 2181
+      },
+      "cacheHitRate": 0.9999216055189715
+    },
+    {
+      "id": "a881764b-6e01-4f7d-ace1-ed806dfe2b74",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b2:The old code built the response|explain||v1",
+      "threadId": "ann_455cacbc42cd",
+      "sessionId": "08edf3dd-174d-42c1-88fd-29bd28fca1c9",
+      "usage": {
+        "inputTokens": 4,
+        "cachedTokens": 53614,
+        "outputTokens": 2474
+      },
+      "cacheHitRate": 0.999925398187176
+    },
+    {
+      "id": "27964613-782b-477e-ad20-bb02d25e9c27",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b3:It mattered beyond urllib3's own headers|explain||v1",
+      "threadId": "ann_ea192c977327",
+      "sessionId": "f32b56d0-de22-409b-9cb9-1cebca83438e",
+      "usage": {
+        "inputTokens": 4,
+        "cachedTokens": 55399,
+        "outputTokens": 2336
+      },
+      "cacheHitRate": 0.9999278017435879
+    },
+    {
+      "id": "86f539ab-257e-4723-95fb-a8bc1702dcbf",
+      "kind": "ask",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b5:The change covers only folded header:Why does this matter for a reviewer? Answer in two or three sentences.|ask||v1",
+      "threadId": "ann_341c01b91401",
+      "sessionId": "bee1f6ee-9227-4dc6-972e-1de7ecc2f22e",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 27436,
+        "outputTokens": 1003
+      },
+      "cacheHitRate": 0.9999271083898243
+    },
+    {
+      "id": "4bb5a49c-e495-4bf6-aba1-3f8b238b3a45",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b1:Every response header value is now|explain||v1",
+      "threadId": "ann_865a00cfe979",
+      "sessionId": "5f44fe2f-0a6d-4e49-b77d-bd69bcbd0f12",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 28180,
+        "outputTokens": 1248
+      },
+      "cacheHitRate": 0.9999290327159179
+    },
+    {
+      "id": "4824b72d-b225-4b70-ac05-f742b09a2eb6",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b2:The change adds two helpers and|explain||v1",
+      "threadId": "ann_659153fd8908",
+      "sessionId": "a859e343-af61-4b5d-bd02-33184e1395c6",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 28838,
+        "outputTokens": 1036
+      },
+      "cacheHitRate": 0.9999306518723995
+    },
+    {
+      "id": "3609b963-e5b9-49bd-a90a-0b8e139da9c7",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b5:The unit tests show the transformation|explain||v1",
+      "threadId": "ann_9e1fb7c3990d",
+      "sessionId": "93ca1480-4661-407c-ba3d-eec7bc8528f1",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 29623,
+        "outputTokens": 1669
+      },
+      "cacheHitRate": 0.9999324894514768
+    },
+    {
+      "id": "e6f7f879-d5f0-4974-b03b-0943efe441fd",
+      "kind": "ask",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b8:The message is rewritten only when:Why does this matter for a reviewer? Answer in two or three sentences.|ask||v1",
+      "threadId": "ann_911b58910cf9",
+      "sessionId": "e4279f33-0f06-44e6-a06c-24249911ceac",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 30506,
+        "outputTokens": 478
+      },
+      "cacheHitRate": 0.9999344434246755
+    },
+    {
+      "id": "57a3bc33-4a70-4212-a53b-2ed09b7d2574",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b9:Two details address cost. Values without|explain||v1",
+      "threadId": "ann_211d83b4919e",
+      "sessionId": "d22199ef-543c-42fd-a940-9941d1b42591",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 30710,
+        "outputTokens": 1561
+      },
+      "cacheHitRate": 0.999934878874707
+    },
+    {
+      "id": "ffbff3e2-939b-4aff-a398-9c768b1dfb68",
+      "kind": "explain",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:central#b10:The invariant is that after|explain||v1",
+      "threadId": "ann_0c45f826ad24",
+      "sessionId": "b7508a40-001c-4a08-8aef-ada1ef28cc2a",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 31463,
+        "outputTokens": 1096
+      },
+      "cacheHitRate": 0.9999364373112982
+    },
+    {
+      "id": "32d3529c-7466-4bf2-86cb-ff5800bb3a26",
+      "kind": "ask",
+      "model": "opus",
+      "provider": "claude",
+      "reviewId": "rv_bad7f9d22dd9",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b2:The old code built the response:Why does this matter for a reviewer? Answer in two or three sentences.|ask||v1",
+      "threadId": "ann_be20bd6e0d06",
+      "sessionId": "34295066-44fe-45a7-8507-2d8c83fa98d0",
+      "usage": {
+        "inputTokens": 2,
+        "cachedTokens": 31737,
+        "outputTokens": 255
+      },
+      "cacheHitRate": 0.9999369860424084
+    }
+  ]
+}

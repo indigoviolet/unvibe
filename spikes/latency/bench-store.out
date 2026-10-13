@@ -1,0 +1,12 @@
+┌─────────┬───────┬───────┬────────────┬───────┬──────────┐
+│ (index) │ files │ hunks │ snapshotKB │ getMs │ mutateMs │
+├─────────┼───────┼───────┼────────────┼───────┼──────────┤
+│ 0       │ 4     │ 8     │ 44         │ 0.17  │ 1.6      │
+│ 1       │ 40    │ 120   │ 542        │ 2.22  │ 7.01     │
+│ 2       │ 150   │ 450   │ 1986       │ 7.87  │ 24.35    │
+│ 3       │ 400   │ 1600  │ 7010       │ 28.81 │ 75.51    │
+└─────────┴───────┴───────┴────────────┴───────┴──────────┘
+8 hunks (44 KB): one Explain ≈ 16 ms of blocked event loop; the hunk pass ≈ 0 s in total
+120 hunks (542 KB): one Explain ≈ 92 ms of blocked event loop; the hunk pass ≈ 4 s in total
+450 hunks (1986 KB): one Explain ≈ 321 ms of blocked event loop; the hunk pass ≈ 47 s in total
+1600 hunks (7010 KB): one Explain ≈ 1065 ms of blocked event loop; the hunk pass ≈ 547 s in total

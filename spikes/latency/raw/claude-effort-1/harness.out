@@ -1,0 +1,44 @@
+service pid 3959475 port 4611 data /tmp/unvibe-latency-atcWrr
+settings {"main":{"provider":"claude","model":"opus"},"small":{"provider":"claude","model":"haiku"},"secondOpinion":{"provider":"codex","model":"gpt-6.1-sol"},"sessionsPerProvider":4,"getSettingsMs":1773}
+repo rp_21b2d106c148 added in 5622 ms
+
+-- open#1 (load 1.84 1.88 2.86)
+   {"httpResponse":20,"wsConnected":35,"ingestReady":7854,"firstCard":27506,"readerDone":51152,"baseDone":53603,"firstFinding":135068,"criticDone":139673,"firstHunkSummary":55763,"hunkPassDone":81740,"conceptsDone":69268,"allIdle":139979}
+
+-- explain effort=high #1 (load 2.53 2.32 2.89)
+   {"httpResponse":2067,"workingVisible":11,"firstContent":28685,"done":29060,"firstTextEvent":21491}
+
+-- explain effort=high #2 (load 3.29 2.57 2.96)
+   {"httpResponse":63,"workingVisible":15,"firstContent":30089,"done":30493,"firstTextEvent":29739}
+
+-- explain effort=high #3 (load 2.34 2.4 2.89)
+   {"httpResponse":49,"workingVisible":12,"firstContent":26141,"done":26511,"firstTextEvent":25050}
+
+-- ask effort=high (load 2.1 2.35 2.86)
+   {"httpResponse":47,"done":16803,"firstTextEvent":9421}
+
+-- explain effort=medium #1 (load 2.51 2.41 2.86)
+   {"httpResponse":43,"workingVisible":9,"firstContent":15019,"done":15425,"firstTextEvent":7933}
+
+-- explain effort=medium #2 (load 2.18 2.35 2.83)
+   {"httpResponse":54,"workingVisible":14,"firstContent":12714,"done":13081,"firstTextEvent":4657}
+
+-- explain effort=medium #3 (load 2.42 2.39 2.84)
+   {"httpResponse":48,"workingVisible":13,"firstContent":19404,"done":20468,"firstTextEvent":9646}
+
+-- ask effort=medium (load 3.25 2.59 2.89)
+   {"httpResponse":57,"done":8967,"firstTextEvent":3947}
+
+-- explain effort=low #1 (load 2.97 2.55 2.88)
+   {"httpResponse":51,"workingVisible":13,"firstContent":19996,"done":20373,"firstTextEvent":12620}
+
+-- explain effort=low #2 (load 2.48 2.47 2.85)
+   {"httpResponse":54,"workingVisible":13,"firstContent":13613,"done":13986,"firstTextEvent":6638}
+
+-- explain effort=low #3 (load 2.32 2.44 2.83)
+   {"httpResponse":5,"workingVisible":-221215,"firstContent":5,"done":5}
+
+-- ask effort=low (load 2.32 2.44 2.83)
+   {"httpResponse":54,"done":5327,"firstTextEvent":1734}
+
+wrote /home/venky/.paseo/worktrees/20ucjyap/spike-latency/spikes/latency/raw/claude-effort-1

@@ -1,0 +1,248 @@
+{
+  "label": "codex-forkmeta-1",
+  "provider": "codex",
+  "pr": 5020,
+  "repo": "https://github.com/urllib3/urllib3",
+  "settings": {
+    "main": {
+      "provider": "codex",
+      "model": "gpt-6.1-sol"
+    },
+    "small": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "secondOpinion": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "sessionsPerProvider": 4,
+    "getSettingsMs": 1371
+  },
+  "flows": [
+    {
+      "name": "open#1",
+      "provider": "codex",
+      "startedAt": 1791858637831,
+      "load": [
+        3.69,
+        2.47,
+        2.97
+      ],
+      "marks": {
+        "httpResponse": 1791858637844,
+        "wsConnected": 1791858637857,
+        "ingestReady": 1791858645555,
+        "firstCard": 1791858711866,
+        "readerDone": 1791858789367,
+        "baseDone": 1791858793984,
+        "firstFinding": 1791858839997,
+        "criticDone": 1791858840068,
+        "firstHunkSummary": 1791858792426,
+        "hunkPassDone": 1791858797670,
+        "conceptsDone": 1791858814107,
+        "allIdle": 1791858840374
+      },
+      "http": {
+        "code": 202,
+        "ms": 13
+      },
+      "reviewId": "rv_c49c58caa0f5",
+      "shape": {
+        "files": 4,
+        "hunks": 8,
+        "rootCards": 6,
+        "pending": 4,
+        "findings": 2,
+        "concepts": 3,
+        "snapshotBytes": 34876,
+        "stages": {
+          "reader": "done",
+          "base": "done",
+          "critic": "done",
+          "concepts": "done",
+          "hunk-pass": "done",
+          "go-deeper": "pending"
+        },
+        "usageTotals": {
+          "inputTokens": 199662,
+          "cachedTokens": 443288,
+          "outputTokens": 13886,
+          "createdAt": 1791858645538,
+          "firstCardAt": 1791858711850,
+          "cacheHitRate": 0.6894595225134147
+        },
+        "ws": {
+          "bytes": {
+            "patch": 48847,
+            "job": 187925,
+            "text": 306254,
+            "other": 0
+          },
+          "counts": {
+            "patch": 42,
+            "job": 73,
+            "text": 3930,
+            "other": 0
+          },
+          "resyncs": 0
+        }
+      },
+      "endedAt": 1791858842875,
+      "rel": {
+        "httpResponse": 13,
+        "wsConnected": 26,
+        "ingestReady": 7724,
+        "firstCard": 74035,
+        "readerDone": 151536,
+        "baseDone": 156153,
+        "firstFinding": 202166,
+        "criticDone": 202237,
+        "firstHunkSummary": 154595,
+        "hunkPassDone": 159839,
+        "conceptsDone": 176276,
+        "allIdle": 202543
+      }
+    },
+    {
+      "name": "explain#1 (first on review)",
+      "provider": "codex",
+      "startedAt": 1791858842876,
+      "load": [
+        2.78,
+        2.47,
+        2.86
+      ],
+      "marks": {
+        "httpResponse": 1791858846809,
+        "workingVisible": 1791858842888,
+        "firstContent": 1791858863880,
+        "done": 1791858864297,
+        "firstTextEvent": 1791858858351
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b1",
+        "quote": "A folded response header could reach"
+      },
+      "http": {
+        "ms": 3932,
+        "jobId": "07c69c7d-28d4-4be7-8e51-f70af74b1d53"
+      },
+      "jobId": "07c69c7d-28d4-4be7-8e51-f70af74b1d53",
+      "endedAt": 1791858866900,
+      "rel": {
+        "httpResponse": 3933,
+        "workingVisible": 12,
+        "firstContent": 21004,
+        "done": 21421,
+        "firstTextEvent": 15475
+      }
+    },
+    {
+      "name": "explain#2",
+      "provider": "codex",
+      "startedAt": 1791858866901,
+      "load": [
+        2.81,
+        2.53,
+        2.87
+      ],
+      "marks": {
+        "httpResponse": 1791858866938,
+        "workingVisible": 1791858866908,
+        "firstContent": 1791858898087,
+        "done": 1791858898460,
+        "firstTextEvent": 1791858872587
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b2",
+        "quote": "The scope is obsolete response-header folding"
+      },
+      "http": {
+        "ms": 37,
+        "jobId": "23225cd4-6e21-4c11-8505-3a952cddd5e8"
+      },
+      "jobId": "23225cd4-6e21-4c11-8505-3a952cddd5e8",
+      "endedAt": 1791858901065,
+      "rel": {
+        "httpResponse": 37,
+        "workingVisible": 7,
+        "firstContent": 31186,
+        "done": 31559,
+        "firstTextEvent": 5686
+      }
+    },
+    {
+      "name": "explain#3",
+      "provider": "codex",
+      "startedAt": 1791858901066,
+      "load": [
+        2.32,
+        2.44,
+        2.83
+      ],
+      "marks": {
+        "httpResponse": 1791858901101,
+        "workingVisible": 1791858901073,
+        "firstContent": 1791858907506,
+        "done": 1791858907912,
+        "firstTextEvent": 1791858906110
+      },
+      "target": {
+        "cardId": "central",
+        "blockId": "b1",
+        "quote": ". That helper applies"
+      },
+      "http": {
+        "ms": 35,
+        "jobId": "f000f518-c1e9-4873-992c-c31e0837b195"
+      },
+      "jobId": "f000f518-c1e9-4873-992c-c31e0837b195",
+      "endedAt": 1791858910517,
+      "rel": {
+        "httpResponse": 35,
+        "workingVisible": 7,
+        "firstContent": 6440,
+        "done": 6846,
+        "firstTextEvent": 5044
+      }
+    },
+    {
+      "name": "explain#4",
+      "provider": "codex",
+      "startedAt": 1791858910518,
+      "load": [
+        2.28,
+        2.42,
+        2.82
+      ],
+      "marks": {
+        "httpResponse": 1791858910551,
+        "workingVisible": 1791858910526,
+        "firstContent": 1791858929493,
+        "done": 1791858929896,
+        "firstTextEvent": 1791858925152
+      },
+      "target": {
+        "cardId": "central",
+        "blockId": "b2",
+        "quote": "returns immediately when there is no"
+      },
+      "http": {
+        "ms": 33,
+        "jobId": "e50c6638-44dd-4585-924f-74b784dc1ba7"
+      },
+      "jobId": "e50c6638-44dd-4585-924f-74b784dc1ba7",
+      "endedAt": 1791858932503,
+      "rel": {
+        "httpResponse": 33,
+        "workingVisible": 8,
+        "firstContent": 18975,
+        "done": 19378,
+        "firstTextEvent": 14634
+      }
+    }
+  ]
+}

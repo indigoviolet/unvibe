@@ -1,0 +1,50 @@
+service pid 3990912 port 4611 data /tmp/unvibe-latency-PTpBit
+settings {"main":{"provider":"claude","model":"opus"},"small":{"provider":"claude","model":"haiku"},"secondOpinion":{"provider":"codex","model":"gpt-6.1-sol"},"sessionsPerProvider":4,"getSettingsMs":1684}
+repo rp_24e732d13fdf added in 5506 ms
+
+-- open#1 (load 8.05 3.69 3.22)
+
+-- explain(early, during pipeline) (load 13.4 5.18 3.72)
+   {"httpResponse":2678,"workingVisible":45,"firstContent":17659,"done":18042,"firstTextEvent":9580}
+   {"httpResponse":26,"wsConnected":43,"ingestReady":7856,"firstCard":21967,"readerDone":44340,"baseDone":24615,"firstFinding":130404,"criticDone":152022,"firstHunkSummary":50156,"hunkPassDone":71807,"conceptsDone":62021,"allIdle":152323}
+
+-- explain#1 (first on review) (load 3.92 4.95 3.89)
+   {"httpResponse":6,"workingVisible":-132811,"firstContent":6,"done":6}
+
+-- explain#2 (load 3.92 4.95 3.89)
+   {"httpResponse":2677,"workingVisible":11,"firstContent":21566,"done":21937,"firstTextEvent":14156}
+
+-- explain#3 (load 3.6 4.78 3.86)
+   {"httpResponse":49,"workingVisible":13,"firstContent":23943,"done":24311,"firstTextEvent":23556}
+
+-- ask (new thread on a card) (load 3.29 4.61 3.82)
+   {"httpResponse":56,"workingVisible":14,"done":10744,"firstTextEvent":7161}
+
+-- reply#1 (existing thread) (load 3.63 4.63 3.84)
+   {"httpResponse":345,"done":4981,"firstTextEvent":4963}
+
+-- reply#2 (existing thread) (load 3.22 4.51 3.81)
+   {"httpResponse":338,"done":3597,"firstTextEvent":3581}
+
+-- generate (Go deeper placeholder) (load 3.04 4.45 3.8)
+   {"httpResponse":23,"done":25071,"firstTextEvent":16187}
+
+-- explain#4 (right after generate) (load 2.51 4.2 3.73)
+   {"httpResponse":2513,"workingVisible":12,"firstContent":20498,"done":24552,"firstTextEvent":13061}
+
+-- explain#5 (load 2.68 4.09 3.71)
+   {"httpResponse":58,"workingVisible":24,"firstContent":12313,"done":13396,"firstTextEvent":6484}
+
+-- depth + (deeper) on the first card (load 2.98 4.08 3.71)
+   {"httpResponse":32,"done":19653,"firstTextEvent":8609}
+
+-- hunk summary#1 (one hunk) (load 2.39 3.86 3.65)
+   {"httpResponse":18,"done":4773}
+
+-- hunk summary#2 (one hunk) (load 2.2 3.8 3.63)
+   {"httpResponse":12,"done":3685}
+
+-- fold all (8 hunks) (load 2.03 3.74 3.61)
+   {"httpResponse":98,"firstSummary":3752,"halfSummaries":4956,"done":11085}
+
+wrote /home/venky/.paseo/worktrees/20ucjyap/spike-latency/spikes/latency/raw/claude-2

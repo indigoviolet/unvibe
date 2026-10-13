@@ -1,0 +1,20 @@
+service pid 3968278 port 4612 data /tmp/unvibe-latency-BxP5nZ
+settings {"main":{"provider":"codex","model":"gpt-6.1-sol"},"small":{"provider":"claude","model":"haiku"},"secondOpinion":{"provider":"claude","model":"opus"},"sessionsPerProvider":4,"getSettingsMs":1371}
+repo rp_705a4c50ec8a added in 5474 ms
+
+-- open#1 (load 3.69 2.47 2.97)
+   {"httpResponse":13,"wsConnected":26,"ingestReady":7724,"firstCard":74035,"readerDone":151536,"baseDone":156153,"firstFinding":202166,"criticDone":202237,"firstHunkSummary":154595,"hunkPassDone":159839,"conceptsDone":176276,"allIdle":202543}
+
+-- explain#1 (first on review) (load 2.78 2.47 2.86)
+   {"httpResponse":3933,"workingVisible":12,"firstContent":21004,"done":21421,"firstTextEvent":15475}
+
+-- explain#2 (load 2.81 2.53 2.87)
+   {"httpResponse":37,"workingVisible":7,"firstContent":31186,"done":31559,"firstTextEvent":5686}
+
+-- explain#3 (load 2.32 2.44 2.83)
+   {"httpResponse":35,"workingVisible":7,"firstContent":6440,"done":6846,"firstTextEvent":5044}
+
+-- explain#4 (load 2.28 2.42 2.82)
+   {"httpResponse":33,"workingVisible":8,"firstContent":18975,"done":19378,"firstTextEvent":14634}
+
+wrote /home/venky/.paseo/worktrees/20ucjyap/spike-latency/spikes/latency/raw/codex-forkmeta-1
