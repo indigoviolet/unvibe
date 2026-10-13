@@ -68,7 +68,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 ### 4.1 Layout
 - **Top bar (app-wide only):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge and Tips where they show, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button).
-- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action.
+- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title, the PR label linking to the PR page on GitHub for PR reviews), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action.
 - **Guide** (left, main column): the current page.
 - **Source pane** (right): tabs for **PR description** and **Diff**. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
@@ -76,10 +76,16 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ### 4.2 Start page
 - A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
 - For the selected repo:
-  - **PRs you're authoring:** `gh search prs --author @me`;
-  - **PRs waiting on your review:** `gh search prs --review-requested @me`;
+  - **PRs you're authoring:** `gh pr list --author @me`;
+  - **PRs waiting on your review:** `gh pr list --search "review-requested:@me"`
+    split into **requested of you** (direct, `user-review-requested:@me`) and
+    **requested of your team** (the rest, with team names), each newest
+    first, with a remembered recency filter (1d, 3d, 1w, 2w, All);
   - **recent branches**, local and remote;
   - **reviews you've opened before**, with their unread and stale state ("new commits · Update").
+- PR rows show the head branch, a relative update time and the diff size
+  (lines added and removed, files changed); where a row names a GitHub PR,
+  its number links to the PR page (new tab) without opening the review.
 - Selections are remembered.
 - The PR and branch lists keep the last successful fetch per repo in the
   web app (`localStorage`, last 10 repos): opening the page, switching

@@ -860,8 +860,9 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 
 ## §15 GitHub/git — all met (audit-10)
 
-- PR lists (`gh search … --author @me / --review-requested`) — met
-  (`repos/changes.ts`, start page).
+- PR lists (`gh pr list --author @me` / `--search
+  "review-requested:@me" + "user-review-requested:@me"`, one call per
+  list) — met (`repos/changes.ts`, start page).
 - `gh pr view --json …` metadata/description/files — met (`ingest/source.ts`).
 - `git diff merge-base...head` locally (not `gh pr diff`) — met
   (`versions/refresh.ts:240`; 300-file ingest ran).
@@ -1433,11 +1434,35 @@ items noticed while passing through (not verified, listed only):
   Errors name the missing piece (base ref vs head commit) plus git stderr.
   Evidence: `test/ingest/pr-merge-base.test.ts` (stacked base, fork fetch,
   default branch, both refresh paths, both error texts).
-- **#91 (start page, §4.2):** PR rows show `#N` when `branch` is unset
-  (`gh search prs` has no head-branch field) — never `#N · undefined`.
-  `RepoChange.branch` was already optional; no `gh` change. Evidence:
+- **#91 (start page, §4.2):** PR rows show `#N` when `branch` is unset —
+  never `#N · undefined`. The `gh pr list` source (#95) returns the head
+  branch, so unset only happens when `gh` omits it. Evidence:
   `StartPage.test.tsx` (`changeHead`), `changes-pr-branch.test.ts`, and one
   branch-less PR row in the web mock.
+- **#95 (start page, §4.2):** "Waiting on your review" splits into
+  requested of you (direct, `user-review-requested:@me`) and requested of
+  your team (`review-requested:@me` minus direct, with team names); both
+  asks show once, as direct. Each group is newest-first with a relative
+  time; the 1d/3d/1w/2w/All recency filter (by last update, remembered)
+  applies to both, with an empty state per section and per filtered-out
+  window. One extra `gh` call per repo at most. Evidence:
+  `test/changes-pr-lists.test.ts` (direct/team/both, sorting, missing
+  fields, call counts), `StartPage.requested.test.tsx`,
+  `e2e/start-lists.spec.ts`.
+- **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
+  in the quiet meta style with the diff add/delete colours, omitted when
+  unknown; thousands separators, "1 file" singular. Evidence:
+  `StartPage.test.tsx` (`diffSizeParts`), `StartPage.requested.test.tsx`
+  (render + omission), `e2e/start-lists.spec.ts`.
+- **#94 (start page + review bar, §4.2):** the PR label links to the PR
+  page (new tab, `rel="noreferrer"`): the review-bar identity and the
+  start-page PR and Reviews rows. The URL is built once in
+  `packages/shared` (`githubPrUrl`, preferring the row's `gh` URL via
+  `changePrUrl`); row clicks still open the review and the label stays
+  keyboard-reachable. Nothing for branch-only reviews or the demo.
+  Evidence: `test/repos.test.ts` (URL helper), `StartPage.requested.test.tsx`
+  (link isolation + session rows), `e2e/start-lists.spec.ts`,
+  `e2e/review-bar.spec.ts`.
 - **#92 (async open, §4.2, §7, §11, §14.1):** `POST /api/reviews` creates
   the row + a loading snapshot (`ingest: {status, step, error}`; placeholder
   version n: 0, empty files) and answers 202 before any fetch; the ingest
