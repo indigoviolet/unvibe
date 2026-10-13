@@ -99,7 +99,8 @@ describe("#123 one fetch at ingest", () => {
             return { stdout: prInfo(head), stderr: "", code: 0 };
           });
         }
-        if (cmd === "git" && opts.args[0] === "fetch") {
+        // #139: fetches carry the credential config ahead of the subcommand.
+        if (cmd === "git" && opts.args.includes("fetch")) {
           fetches.push(opts.args);
         }
         return real.run(cmd, opts);
@@ -123,8 +124,10 @@ describe("#123 one fetch at ingest", () => {
     expect(out.version.headSha).toBe(head);
     expect(out.version.mergeBaseSha).toBe(base);
     expect(out.files.length).toBeGreaterThan(0);
-    // One git fetch, both refspecs.
-    expect(fetches).toEqual([["fetch", "origin", "refs/pull/42/head", "main"]]);
+    // One git fetch, both refspecs (with the #139 gh credential config).
+    expect(fetches).toEqual([
+      ["-c", "credential.https://github.com.helper=!gh auth git-credential", "fetch", "origin", "refs/pull/42/head", "main"],
+    ]);
     // gh and the refresh overlapped (sequentially they would take 600 ms+).
     const gh = spans.find((s) => s.label === "gh")!;
     const rf = spans.find((s) => s.label === "refresh")!;
@@ -148,23 +151,24 @@ describe("#123 one fetch at ingest", () => {
     // returns the same head, so no retry can help).
     fake.enqueue({ ...view });
     fake.enqueue({ ...view });
+    const cred = ["-c", "credential.https://github.com.helper=!gh auth git-credential"];
     fake.enqueue({
       cmd: "git",
-      args: ["fetch", "origin", "refs/pull/42/head", "main"],
+      args: [...cred, "fetch", "origin", "refs/pull/42/head", "main"],
       stdout: "",
       stderr: "fatal: Authentication failed for 'https://github.com/o/r/'",
       code: 1,
     });
     fake.enqueue({
       cmd: "git",
-      args: ["fetch", "origin", "feature"],
+      args: [...cred, "fetch", "origin", "feature"],
       stdout: "",
       stderr: "fatal: Authentication failed for 'https://github.com/o/r/'",
       code: 1,
     });
     fake.enqueue({
       cmd: "git",
-      args: ["fetch", "origin", "main"],
+      args: [...cred, "fetch", "origin", "main"],
       stdout: "",
       stderr: "fatal: Authentication failed for 'https://github.com/o/r/'",
       code: 1,
@@ -185,7 +189,10 @@ describe("#123 one fetch at ingest", () => {
     expect(message).not.toContain("wasn't found in this repo");
     // The view ran twice (initial + re-read); every fetch attempt was kept.
     expect(fake.calls.filter((c) => c.cmd === "gh").length).toBe(2);
-    expect(fake.calls.filter((c) => c.cmd === "git").length).toBe(5);
+    const gitCalls = fake.calls.filter((c) => c.cmd === "git");
+    expect(gitCalls.length).toBe(5);
+    // Fetches run with GITHUB_TOKEN unset, like every `gh` call (PRD §15).
+    for (const c of gitCalls) expect(c.opts.env?.["GITHUB_TOKEN"]).toBeUndefined();
   });
 
   it("#139: a moved head re-reads once and retries", async () => {
@@ -226,7 +233,7 @@ describe("#123 one fetch at ingest", () => {
     const runner: CommandRunner = {
       run: async (cmd: string, opts: RunOptions): Promise<RunResult> => {
         if (cmd === "gh") return { stdout: prInfo(head), stderr: "", code: 0 };
-        if (cmd === "git" && opts.args[0] === "fetch") fetches.push(opts.args);
+        if (cmd === "git" && opts.args.includes("fetch")) fetches.push(opts.args);
         return real.run(cmd, opts);
       },
     };
@@ -235,10 +242,11 @@ describe("#123 one fetch at ingest", () => {
     expect(out.version.mergeBaseSha).toBe(base);
     // Combined attempt first (fails on the pull refspec), then the #93
     // per-refspec fallback: branch head + base.
-    expect(fetches[0]).toEqual(["fetch", "origin", "refs/pull/42/head", "main"]);
+    const cred = ["-c", "credential.https://github.com.helper=!gh auth git-credential"];
+    expect(fetches[0]).toEqual([...cred, "fetch", "origin", "refs/pull/42/head", "main"]);
     expect(fetches.slice(1)).toEqual([
-      ["fetch", "origin", "feature"],
-      ["fetch", "origin", "main"],
+      [...cred, "fetch", "origin", "feature"],
+      [...cred, "fetch", "origin", "main"],
     ]);
   });
 });

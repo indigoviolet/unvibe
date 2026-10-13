@@ -15,7 +15,7 @@
  * fetch failure in plain words instead of "commit not found".
  */
 import type { CommandRunner } from "../exec/index.js";
-import { runGh } from "../exec/index.js";
+import { runGh, runGitFetch } from "../exec/index.js";
 import type { CommitMessage } from "./description.js";
 
 export interface IngestSource {
@@ -78,12 +78,15 @@ export interface FetchAttempt {
   detail: string;
 }
 
-/** Run one `git fetch origin …` and record what happened (never throws). */
+/**
+ * Run one `git fetch origin …` with the user's `gh` login (#139) and record
+ * what happened (never throws). The recorded command omits the per-command
+ * credential config: the user sees which fetch failed, not the plumbing.
+ */
 async function runFetch(runner: CommandRunner, repoPath: string, refspecs: string[]): Promise<FetchAttempt> {
-  const args = ["fetch", "origin", ...refspecs];
-  const command = `git ${args.join(" ")}`;
+  const command = `git fetch origin ${refspecs.join(" ")}`.trim();
   try {
-    const res = await runner.run("git", { args, cwd: repoPath });
+    const res = await runGitFetch(runner, refspecs, { cwd: repoPath });
     return {
       command,
       ok: res.code === 0,
@@ -127,12 +130,9 @@ async function fetchPrHead(
   pr: number,
   headRefName: string,
 ): Promise<void> {
-  try {
-    const res = await runner.run("git", { args: ["fetch", "origin", `refs/pull/${pr}/head`], cwd: repoPath });
-    if (res.code === 0) return;
-  } catch {
-    // Fall through to the branch name.
-  }
+  // #139: same gh-login handling as the ingest fetch (refresh path stays quiet).
+  const first = await runFetch(runner, repoPath, [`refs/pull/${pr}/head`]);
+  if (first.ok) return;
   if (headRefName) {
     await bestEffortFetch(runner, repoPath, headRefName);
   }

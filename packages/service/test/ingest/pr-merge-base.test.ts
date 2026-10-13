@@ -176,10 +176,18 @@ describe("resolveHead (stubbed)", () => {
       stderr: "",
       code: 0,
     });
-    fake.enqueue({ cmd: "git", args: ["fetch", "origin", "refs/pull/7/head"], stdout: "", stderr: "", code: 0 });
+    fake.enqueue({
+      cmd: "git",
+      args: ["-c", "credential.https://github.com.helper=!gh auth git-credential", "fetch", "origin", "refs/pull/7/head"],
+      stdout: "",
+      stderr: "",
+      code: 0,
+    });
     const out = await resolveHead(fake, "/repo", { pr: 7 });
     expect(out).toEqual({ headSha: "abc123", baseRef: "main" });
-    expect(fake.calls.map((c) => `${c.cmd} ${c.opts.args.join(" ")}`)).toContain("git fetch origin refs/pull/7/head");
+    expect(fake.calls.map((c) => `${c.cmd} ${c.opts.args.join(" ")}`)).toContain(
+      "git -c credential.https://github.com.helper=!gh auth git-credential fetch origin refs/pull/7/head",
+    );
   });
 
   it("falls back to the branch-name fetch when the pull ref is missing", async () => {
@@ -201,19 +209,29 @@ describe("resolveHead (stubbed)", () => {
     });
     fake.enqueue({
       cmd: "git",
-      args: ["fetch", "origin", "refs/pull/9/head"],
+      args: ["-c", "credential.https://github.com.helper=!gh auth git-credential", "fetch", "origin", "refs/pull/9/head"],
       stdout: "",
       stderr: "couldn't find remote ref",
       code: 128,
     });
     // fetchPrHead swallows the failure code (best-effort): it still runs
     // the branch-name fallback as a second fetch.
-    fake.enqueue({ cmd: "git", args: ["fetch", "origin", "feature"], stdout: "", stderr: "", code: 0 });
+    fake.enqueue({
+      cmd: "git",
+      args: ["-c", "credential.https://github.com.helper=!gh auth git-credential", "fetch", "origin", "feature"],
+      stdout: "",
+      stderr: "",
+      code: 0,
+    });
     const out = await resolveHead(fake, "/repo", { pr: 9 });
     expect(out.headSha).toBe("abc123");
     const cmds = fake.calls.map((c) => `${c.cmd} ${c.opts.args.join(" ")}`);
-    expect(cmds).toContain("git fetch origin refs/pull/9/head");
-    expect(cmds).toContain("git fetch origin feature");
+    expect(cmds).toContain(
+      "git -c credential.https://github.com.helper=!gh auth git-credential fetch origin refs/pull/9/head",
+    );
+    expect(cmds).toContain(
+      "git -c credential.https://github.com.helper=!gh auth git-credential fetch origin feature",
+    );
   });
 });
 
@@ -235,7 +253,7 @@ describe("ingestReview PR paths (fake gh + real git)", () => {
     const runner: CommandRunner = {
       run: (cmd, opts) => {
         if (cmd === "gh") return fake.run(cmd, opts);
-        if (cmd === "git" && opts.args[0] === "fetch") {
+        if (cmd === "git" && opts.args.includes("fetch")) {
           seenFetches.push(opts.args.join(" "));
           // Offline / no real remote: swallow fetch failures like bestEffortFetch.
           return Promise.resolve({ stdout: "", stderr: "no remote", code: 0 });
@@ -267,7 +285,7 @@ describe("ingestReview PR paths (fake gh + real git)", () => {
     const runner: CommandRunner = {
       run: (cmd, opts) => {
         if (cmd === "gh") return fake.run(cmd, opts);
-        if (cmd === "git" && opts.args[0] === "fetch") {
+        if (cmd === "git" && opts.args.includes("fetch")) {
           seenFetches.push(opts.args.join(" "));
           return Promise.resolve({ stdout: "", stderr: "", code: 0 });
         }
@@ -279,7 +297,10 @@ describe("ingestReview PR paths (fake gh + real git)", () => {
     expect(out.version.headSha).toBe(head);
     // #123: head and base travel in one fetch; the head still goes through
     // refs/pull/<n>/head (branch-name fallback only when that fails).
-    expect(seenFetches[0]).toBe("fetch origin refs/pull/7/head main");
+    // #139: every fetch carries the gh credential config ahead of the fetch.
+    expect(seenFetches[0]).toBe(
+      "-c credential.https://github.com.helper=!gh auth git-credential fetch origin refs/pull/7/head main",
+    );
   });
 
   it("default-branch PR still works", async () => {
@@ -313,7 +334,7 @@ describe("refreshReview PR paths (fake gh + real git)", () => {
     const runner: CommandRunner = {
       run: (cmd, opts) => {
         if (cmd === "gh") return fake.run(cmd, opts);
-        if (cmd === "git" && opts.args[0] === "fetch") {
+        if (cmd === "git" && opts.args.includes("fetch")) {
           return Promise.resolve({ stdout: "", stderr: "", code: 0 });
         }
         return real.run(cmd, opts);
@@ -368,7 +389,7 @@ describe("refreshReview PR paths (fake gh + real git)", () => {
     const runner: CommandRunner = {
       run: (cmd, opts) => {
         if (cmd === "gh") return fake.run(cmd, opts);
-        if (cmd === "git" && opts.args[0] === "fetch") {
+        if (cmd === "git" && opts.args.includes("fetch")) {
           return Promise.resolve({ stdout: "", stderr: "", code: 0 });
         }
         return real.run(cmd, opts);
