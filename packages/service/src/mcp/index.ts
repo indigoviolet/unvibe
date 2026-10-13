@@ -8,6 +8,7 @@ export {
   type McpContribution,
   type PinRecord,
   readCodeSlice,
+  readFileText,
   type ReviewReader,
 } from "./read.js";
 export {

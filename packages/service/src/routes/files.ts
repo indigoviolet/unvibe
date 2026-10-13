@@ -15,6 +15,7 @@ import type { FastifyInstance } from "fastify";
 import fs from "node:fs";
 import path from "node:path";
 import type { FileSliceResponse } from "@unvibe/shared";
+import { sendError } from "../errors.js";
 import { McpRegistry } from "../mcp/registry.js";
 import { readCodeSlice } from "../mcp/read.js";
 import { ingestRefusal } from "../reviews/index.js";
@@ -23,12 +24,12 @@ import type { ServiceContext } from "./context.js";
 /** Lines per file-slice request (a full gap pages through repeats). */
 export const MAX_SLICE_LINES = 200;
 
-function isHexSha(v: string): boolean {
+export function isHexSha(v: string): boolean {
   return /^[0-9a-fA-F]{4,64}$/.test(v);
 }
 
 /** Where `git show <rev>:<path>` runs: the review's worktree, else the repo checkout. */
-function cwdForReview(ctx: ServiceContext, reviewId: string, repoId: string): string | null {
+export function cwdForReview(ctx: ServiceContext, reviewId: string, repoId: string): string | null {
   const wt = path.join(ctx.dataDir, "worktrees", reviewId);
   try {
     if (fs.existsSync(wt)) return wt;
@@ -42,6 +43,21 @@ function cwdForReview(ctx: ServiceContext, reviewId: string, repoId: string): st
     // No readable cwd.
   }
   return null;
+}
+
+/**
+ * True when `commit` resolves in `cwd` (the review carries file content
+ * there). Reviews without any git history behind them (the demo, whose
+ * worktree is an empty directory) fail this — callers answer `no-content`
+ * so the UI hides expansion instead of showing load errors.
+ */
+export async function commitResolves(ctx: ServiceContext, cwd: string, commit: string): Promise<boolean> {
+  try {
+    const res = await ctx.runner.run("git", { args: ["cat-file", "-e", commit], cwd });
+    return res.code === 0;
+  } catch {
+    return false;
+  }
 }
 
 export async function registerFileSlices(app: FastifyInstance, ctx: ServiceContext): Promise<void> {
@@ -77,6 +93,13 @@ export async function registerFileSlices(app: FastifyInstance, ctx: ServiceConte
     const slice = await readCodeSlice(ctx.runner, cwd, commit, relPath, start, end);
     if ("error" in slice) {
       if (slice.error === "not-found") {
+        // Decided by a service-known fact, not by "is demo": when the
+        // commit itself resolves nowhere, the review has no file content
+        // to read (the demo's empty worktree). The UI hides expansion on
+        // `no-content` instead of showing load errors.
+        if (!(await commitResolves(ctx, cwd, commit))) {
+          return sendError(reply, 404, "this review has no file content to read", "no-content");
+        }
         return reply.code(404).send({ error: `no ${relPath} at ${commit}` });
       }
       if (slice.error === "binary") {

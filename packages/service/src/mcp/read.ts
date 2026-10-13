@@ -105,3 +105,30 @@ export async function readCodeSlice(
   if (start < 1 || end > totalLines) return { error: "out-of-range", totalLines };
   return { text: all.slice(start - 1, end).join("\n"), totalLines };
 }
+
+/**
+ * Whole text of `relPath` at `rev`, via the same `git show` source as
+ * `readCodeSlice` above (one content-at-revision family, not a second
+ * reader). The outline route parses file content through this; slices
+ * keep going through `readCodeSlice`. Never throws: same `{ error }`
+ * shapes, without a range to check.
+ */
+export async function readFileText(
+  commands: CommandRunner,
+  cwd: string,
+  rev: string,
+  relPath: string,
+): Promise<{ text: string; totalLines: number } | { error: CodeSliceError }> {
+  let stdout: string;
+  try {
+    const res = await commands.run("git", { args: ["show", `${rev}:${relPath}`], cwd });
+    if (res.code !== 0) return { error: "not-found" };
+    stdout = res.stdout;
+  } catch {
+    return { error: "not-found" };
+  }
+  if (stdout.includes("\0")) return { error: "binary" };
+  const all = stdout.split("\n");
+  if (all.length > 0 && all[all.length - 1] === "") all.pop();
+  return { text: all.join("\n"), totalLines: all.length };
+}

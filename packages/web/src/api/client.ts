@@ -20,6 +20,7 @@ import type {
   DiagramTheme,
   DismissContributionResponse,
   ExistingCommentsResponse,
+  FileOutlineResponse,
   FileSliceResponse,
   HealthResponse,
   Job,
@@ -134,6 +135,7 @@ const API_ERROR_CODES: ReadonlySet<string> = new Set([
   "no-agent",
   "head-moved",
   "not-implemented",
+  "no-content",
 ]);
 
 function validCode(v: unknown): ApiErrorCode | undefined {
@@ -314,6 +316,15 @@ const realApi = {
   ): Promise<FileSliceResponse> =>
     get(
       `/api/reviews/${encodeURIComponent(id)}/file?path=${encodeURIComponent(params.path)}&commit=${encodeURIComponent(params.commit)}&start=${params.start}&end=${params.end}`,
+    ),
+
+  /** Enclosing units of a line range at a commit (issue #133, stage 2). */
+  outline: (
+    id: string,
+    params: { path: string; commit: string; start: number; end: number },
+  ): Promise<FileOutlineResponse> =>
+    get(
+      `/api/reviews/${encodeURIComponent(id)}/outline?path=${encodeURIComponent(params.path)}&commit=${encodeURIComponent(params.commit)}&start=${params.start}&end=${params.end}`,
     ),
 
   createComment: (reviewId: string, body: CreateCommentRequest): Promise<CreateCommentResponse> =>

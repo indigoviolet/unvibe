@@ -344,7 +344,13 @@ export type ApiErrorCode =
   | "invalid-request"
   | "no-agent"
   | "head-moved"
-  | "not-implemented";
+  | "not-implemented"
+  /**
+   * Issue #133: the review has no readable file content (e.g. the demo,
+   * whose worktree carries no git history). The diff expander hides its
+   * controls on this code instead of showing load errors.
+   */
+  | "no-content";
 
 /** The app's usual error body: a human message plus its machine code. */
 export interface ApiErrorBody {
@@ -542,6 +548,56 @@ export interface FileSliceResponse {
 export interface FileSliceRangeError {
   error: string;
   totalLines: number;
+}
+
+// --- outlines (issue #133: expand by enclosing unit) ---------------------
+
+/**
+ * One enclosing unit of a hunk's range: a function, method, class, or
+ * (from the fallback) an indentation block. `kind` is the grammar's node
+ * kind (`function_definition`, `method_declaration`, …) or one of the
+ * synthetic kinds (`callback`, `bound-function`, `object`, `block`).
+ * `start`/`end` are 1-based inclusive lines of the file at `commit`,
+ * leading doc comments and decorators included.
+ */
+export interface EnclosingUnit {
+  kind: string;
+  /** Unit name (at most 60 chars), shown in the hunk header. */
+  name: string;
+  start: number;
+  end: number;
+}
+
+/** How the chain was found: grammar parse, indentation fallback, or neither. */
+export type OutlineHow = "parser" | "heuristic" | "none";
+
+/**
+ * `GET /api/reviews/:id/outline?path=&commit=&start=&end=` — the chain
+ * of units enclosing lines `start` to `end` of `path` at `commit`
+ * (innermost first), for stepping one level out per click. Served from
+ * the review's worktree through the same `git show` source as the
+ * file-slice route, parsed with tree-sitter grammars (indentation
+ * fallback for unknown languages and unreadable files). Parsed trees
+ * cache by file content hash. Never throws: unparseable and oversize
+ * files answer an empty chain with `how` heuristic/none, and the caller
+ * degrades to expand-by-lines.
+ */
+export interface FileOutlineResponse {
+  /** Repo-relative path as requested. */
+  path: string;
+  /** Commit as requested. */
+  commit: string;
+  /** First line of the asked range (1-based). */
+  start: number;
+  /** Last line of the asked range (1-based, inclusive). */
+  end: number;
+  /** Total lines of the file at the commit. */
+  totalLines: number;
+  /** Outline language id (`python`, `typescript`, …), null when unknown. */
+  language: string | null;
+  how: OutlineHow;
+  /** Enclosing units, innermost first; empty when there is none. */
+  chain: EnclosingUnit[];
 }
 
 // --- hunks ---------------------------------------------------------------

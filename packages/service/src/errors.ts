@@ -19,6 +19,7 @@ const CODES: ReadonlySet<string> = new Set([
   "no-agent",
   "head-moved",
   "not-implemented",
+  "no-content",
 ]);
 
 export function isApiErrorCode(v: unknown): v is ApiErrorCode {
