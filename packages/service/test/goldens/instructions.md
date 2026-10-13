@@ -108,8 +108,10 @@ the body, and never repeat a diagram's caption in its walkthrough.
   at most two lines); cite code with
   link: "diff:<fileKey>:<START>-<END>" inline in braces on each
   code-mapped shape or connection (at least 2, never on its own indented
-  line, never `[[ ]]`, never `tooltip:`); `.class: [ok]` / `[bad]` for
-  good/bad states; at most 12 shapes and 16 connections; no
+  line, never `[[ ]]`, never `tooltip:`); `myid.class: [ok]` / `[bad]` on
+  its own line for good/bad states (never inside `{ ... }`); never name a
+  shape `steps`, `layers`, `scenarios` or `boards`; at most 12 shapes and
+  16 connections; no
   icon:, images, imports, markdown labels, layers, vars, `classes:`
   stanzas. A
   `Caption: …` paragraph right after the fence becomes the caption, so
