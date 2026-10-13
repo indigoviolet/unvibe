@@ -154,7 +154,12 @@ export function paragraphIds(blocks: Block[]): string[] {
 
 /** Normalised key for example-dedupe (inner text, whitespace-folded). */
 function exampleKey(inner: Block[]): string {
-  return JSON.stringify(inner)
+  // IDs excluded (#116): inserted asides are restamped with fresh IDs, so
+  // the same example compares equal before and after insertion.
+  return JSON.stringify(
+    inner,
+    (k, v) => (k === "id" ? undefined : v),
+  )
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 2000);
