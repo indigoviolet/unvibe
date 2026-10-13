@@ -22,6 +22,7 @@ import {
   resetManagedCloneStateForTests,
 } from "../src/repos/index.js";
 import { createApp } from "../src/server.js";
+import { isGitFetch } from "./git-args.js";
 
 const real = new RealCommandRunner();
 
@@ -88,9 +89,7 @@ function makeRunner(opts: {
       }
       if (cmd === "git") {
         gitCalls.push(o.args);
-        // #139: fetches carry the per-command gh credential config ahead of
-        // the subcommand, so match "fetch" anywhere in the args.
-        if (o.args.includes("fetch") && opts.gitFetch !== undefined && opts.gitFetch !== "real") {
+        if (isGitFetch(o.args) && opts.gitFetch !== undefined && opts.gitFetch !== "real") {
           return opts.gitFetch;
         }
       }
@@ -388,7 +387,7 @@ describe("refreshManagedCheckout", () => {
     let fetches = 0;
     const runner: CommandRunner = {
       run: async (cmd, o) => {
-        if (cmd === "git" && o.args.includes("fetch")) {
+        if (cmd === "git" && isGitFetch(o.args)) {
           fetches += 1;
           await new Promise((r) => setTimeout(r, 60));
           return { stdout: "", stderr: "", code: 0 };
@@ -453,7 +452,7 @@ describe("GET /api/repos/:id/changes fetch behaviour", () => {
       const body = res.json() as { changes: unknown[]; fetchError?: string };
       expect(body.fetchError).toMatch(/couldn't update Unvibe's clone/);
       expect(body.changes.length).toBeGreaterThan(0);
-      expect(gitCalls.some((a) => a.includes("fetch"))).toBe(true);
+      expect(gitCalls.some((a) => isGitFetch(a))).toBe(true);
     } finally {
       await app.close();
     }
@@ -494,7 +493,7 @@ describe("GET /api/repos/:id/changes fetch behaviour", () => {
       });
       expect(res.statusCode).toBe(200);
       expect((res.json() as { fetchError?: string }).fetchError).toBeUndefined();
-      expect(gitCalls.some((a) => a[0] === "fetch")).toBe(false);
+      expect(gitCalls.some((a) => isGitFetch(a))).toBe(false);
     } finally {
       await app.close();
     }
@@ -522,15 +521,14 @@ describe("GET /api/repos/:id/changes fetch behaviour", () => {
       });
       expect([201, 202]).toContain(created.statusCode);
       // #92: fetch runs after the 202 response (before the ingest) — poll.
-      // #139: the credential config rides ahead of the fetch subcommand.
       const start = Date.now();
       while (
         Date.now() - start < 10000 &&
-        !gitCalls.some((a) => a.includes("fetch") && a.includes("origin"))
+        !gitCalls.some((a) => isGitFetch(a) && a.includes("origin"))
       ) {
         await new Promise((r) => setTimeout(r, 50));
       }
-      expect(gitCalls.some((a) => a.includes("fetch") && a.includes("origin"))).toBe(true);
+      expect(gitCalls.some((a) => isGitFetch(a) && a.includes("origin"))).toBe(true);
     } finally {
       await app.close();
     }

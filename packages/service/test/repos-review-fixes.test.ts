@@ -32,6 +32,7 @@ import {
 } from "../src/repos/index.js";
 import { RepoStore } from "../src/repos/store.js";
 import { createApp } from "../src/server.js";
+import { isGitFetch } from "./git-args.js";
 
 const real = new RealCommandRunner();
 
@@ -84,7 +85,7 @@ function makeRunner(opts: {
       }
       if (cmd === "git") {
         gitCalls.push({ args: o.args, cwd: o.cwd, env: o.env, timeoutMs: o.timeoutMs });
-        if (o.args[0] === "fetch" && opts.gitFetch !== undefined && opts.gitFetch !== "real") {
+        if (isGitFetch(o.args) && opts.gitFetch !== undefined && opts.gitFetch !== "real") {
           return opts.gitFetch;
         }
       }
@@ -295,7 +296,7 @@ describe("fetch notes reach every caller", () => {
     let fetches = 0;
     const runner: CommandRunner = {
       run: async (cmd, o) => {
-        if (cmd === "git" && o.args[0] === "fetch") {
+        if (cmd === "git" && isGitFetch(o.args)) {
           fetches += 1;
           await new Promise((r) => setTimeout(r, 60));
           return { stdout: "", stderr: "offline", code: 1 };
@@ -319,7 +320,7 @@ describe("fetch notes reach every caller", () => {
     let fetches = 0;
     const runner: CommandRunner = {
       run: async (cmd, o) => {
-        if (cmd === "git" && o.args[0] === "fetch") {
+        if (cmd === "git" && isGitFetch(o.args)) {
           fetches += 1;
           return { stdout: "", stderr: "offline", code: 1 };
         }
@@ -362,7 +363,7 @@ describe("bounded, prompt-free subprocess env", () => {
         headers: authed(),
       });
       expect(res.statusCode).toBe(200);
-      const fetch = gitCalls.find((c) => c.args[0] === "fetch");
+      const fetch = gitCalls.find((c) => isGitFetch(c.args));
       expect(fetch).toBeDefined();
       expect(fetch!.timeoutMs).toBe(MANAGED_FETCH_TIMEOUT_MS);
       expect(fetch!.env?.["GIT_TERMINAL_PROMPT"]).toBe("0");
