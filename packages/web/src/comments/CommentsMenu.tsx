@@ -28,7 +28,7 @@ import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { descriptionPaneName } from "../source/description/paneName.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
-import { threadPostText } from "./threads.js";
+import { isCommentThread, threadPostText } from "./threads.js";
 
 const plain = (s: string): string => s.replace(/<[^>]+>/g, "");
 
@@ -181,7 +181,9 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       ) as Annotation[]),
     [snapshot],
   );
-  const forPr = useMemo(() => threads.filter((t) => t.post), [threads]);
+  // Issue #135: the For PR filter shows Comments only — Ask threads are
+  // never submitted, even when an older review still carries the mark.
+  const forPr = useMemo(() => threads.filter((t) => t.post && isCommentThread(t)), [threads]);
   const existing = snapshot?.existingComments ?? fetchedExisting ?? null;
 
   // Fetch read-only GitHub comments once per menu opening when the
@@ -314,7 +316,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             <p className="hint" style={{ margin: 4 }}>
               {filter === "pr"
                 ? "Nothing marked for the PR yet. Use “Mark for the PR” on any comment."
-                : "No comments yet. Select text and choose Ask or Note."}
+                : "No comments yet. Select text and choose Ask or Comment."}
             </p>
           ) : null}
           {filter === "pr" && forPr.length > 0 ? (

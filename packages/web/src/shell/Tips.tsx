@@ -8,7 +8,7 @@ import { Icon } from "../components/Icon.js";
 const TIPS: { title: string; body: string }[] = [
   {
     title: "Using the reader",
-    body: "Select text to Explain it, Ask about it, or add a Note. An explanation is a card: use its controls for examples, diagrams and depth.",
+    body: "Select text to Explain it, Ask about it, or add a Comment. An explanation is a card: use its controls for examples, diagrams and depth.",
   },
   {
     title: "Cards",

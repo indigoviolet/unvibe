@@ -86,6 +86,72 @@ test("selection snaps to whole words and Ask creates a working thread", async ({
   await expect(thread.locator(".msg .av.ai")).toBeVisible();
 });
 
+test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }) => {
+  await gotoReview(page);
+  await selectText(page, "#C-central", "optional");
+  await page.locator('#selbar [data-act="note"]').click();
+  const composer = page.locator("#C-central .ithread[data-pending-thread]");
+  await expect(composer).toBeVisible();
+  await expect(composer.locator("textarea")).toHaveAttribute("placeholder", "Write a comment…");
+  await composer.locator("textarea").fill("A quiet comment");
+  await composer.getByRole("button", { name: "Save" }).click();
+  const thread = page.locator("#C-central .ithread[data-thread]", {
+    hasText: "A quiet comment",
+  });
+  await expect(thread).toBeVisible({ timeout: 5000 });
+  // No agent reply, already marked for the PR.
+  await expect(thread.locator(".working")).toHaveCount(0);
+  await expect(thread.locator(".msg .av.ai")).toHaveCount(0);
+  await thread.getByRole("button", { name: "Close" }).click();
+  await expect(thread).toHaveCount(0);
+});
+
+test("GitHub action links diff lines at the review commit; hidden on the demo", async ({ page }) => {
+  // Demo review: selections offer no GitHub action (no GitHub file view).
+  await gotoReview(page);
+  await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+  await expect(page.locator("#selbar")).toBeVisible();
+  await expect(page.locator('#selbar [data-act="github"]')).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // A GitHub-backed review: the action links the selected lines at the
+  // review's head commit, after Comment in toolbar order.
+  await page.goto("/review/gh-link");
+  await expect(page.locator(`[id="L-${CONN}-91"]`)).toBeVisible({ timeout: 10_000 });
+  await page.evaluate((conn) => {
+    const cell1 = document.querySelector(`[id="L-${conn}-91"] td.c`);
+    const cell2 = document.querySelector(`[id="L-${conn}-92"] td.c`);
+    if (!cell1 || !cell2) throw new Error("diff rows not found");
+    const walker = (root: Element): Text | null => {
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if ((n as Text).data.trim().length > 3) return n as Text;
+      }
+      return null;
+    };
+    const t1 = walker(cell1);
+    const t2 = walker(cell2);
+    if (!t1 || !t2) throw new Error("no text in diff rows");
+    const range = document.createRange();
+    range.setStart(t1, 0);
+    range.setEnd(t2, Math.min(4, t2.data.length));
+    getSelection()?.removeAllRanges();
+    getSelection()?.addRange(range);
+    cell2.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  }, CONN);
+  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
+  const acts = await page.locator("#selbar [data-act]").evaluateAll((els) =>
+    els.map((el) => el.getAttribute("data-act")),
+  );
+  expect(acts).toEqual(["explain", "ask", "note", "github"]);
+  const link = page.locator('#selbar [data-act="github"]');
+  await expect(link).toHaveAttribute(
+    "href",
+    /https:\/\/github\.com\/urllib3\/urllib3\/blob\/bdcc1e493e\/.+#L91-L92/,
+  );
+  await expect(link).toHaveAttribute("target", "_blank");
+});
+
 // DISABLED(#119): subset of interaction.spec.ts test 1 (select, Explain, expansion visible)
 test.skip("Explain creates an expansion without breaking", async ({ page }) => {
   await gotoReview(page);
@@ -102,12 +168,15 @@ test("diff line click starts a comment; close leaves an icon; reopen works", asy
   await line.click();
   const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
   await expect(slot).toBeVisible();
-  await slot.locator("textarea").fill("A diff note");
-  await slot.getByRole("button", { name: "Ask" }).click();
+  await slot.locator("textarea").fill("A diff comment");
+  await slot.getByRole("button", { name: "Save" }).click();
   // Scope to the created thread: the fixture already has open threads on
   // nearby lines in this file.
-  const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`, { hasText: "A diff note" });
+  const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`, { hasText: "A diff comment" });
   await expect(thread).toBeVisible({ timeout: 5000 });
+  // A comment is for the PR by default: no agent reply, already marked.
+  await expect(thread.locator(".working")).toHaveCount(0);
+  await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
   // Close leaves a comment icon on the line number; clicking reopens.
   await thread.getByRole("button", { name: "Close" }).click();
   await expect(thread).toHaveCount(0);
@@ -139,10 +208,10 @@ test("For PR drafts live in the Comments menu and persist", async ({ page }) => 
   await line.click();
   const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
   await slot.locator("textarea").fill("Ship it?");
-  await slot.getByRole("button", { name: "Ask" }).click();
+  await slot.getByRole("button", { name: "Save" }).click();
   const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
   await expect(thread).toContainText("Ship it?", { timeout: 5000 });
-  await thread.getByRole("button", { name: "Mark for the PR" }).click();
+  // Comments are for the PR by default — no explicit mark needed.
   await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
 
   // The Comments menu lists it with a For-PR count; the draft is editable.
@@ -264,10 +333,10 @@ test("submit panel previews and posts For-PR threads", async ({ page }) => {
   await line.click();
   const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
   await slot.locator("textarea").fill("Please add a test");
-  await slot.getByRole("button", { name: "Ask" }).click();
+  await slot.getByRole("button", { name: "Save" }).click();
   const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
   await expect(thread).toContainText("Please add a test", { timeout: 5000 });
-  await thread.getByRole("button", { name: "Mark for the PR" }).click();
+  // Already marked for the PR by default.
 
   await page.locator("#submitSlot [data-submit]").click();
   const panel = page.locator("#submitSlot .submit");

@@ -261,7 +261,12 @@ needed (that deviation is closed, not added).
   (`actions-echo.test.ts`, `content-titles.test.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
-  `actions-m4.test.ts` “depth round-trips”).
+  `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
+  + and − keep their icons and are disabled, with no dots inside the
+  control, in both directions — one shared control for cards and
+  expansions (issue #129; the target-pip pulse was dropped as allowed —
+  `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
+  `depth-principle-service.spec.ts`).
 - Examples / Add diagram inserts, never duplicated — met
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
@@ -342,17 +347,27 @@ needed (that deviation is closed, not added).
 - Works in guide, description, diff code — met (`comments/selection.test.ts`).
 - Snap to words, trim, highlight matches — met (`e2e/comments.spec.ts`
   “selection snaps to whole words”).
-- Toolbar Explain / Ask… / Note; no examples/diagrams there; appears only
-  on selection-finish — met (`comments.spec.ts`). Inside an explanation
-  the same toolbar appears (#116); inside second-opinion reasoning and
-  thread replies it does not (neither is an anchor host —
-  `SelectionToolbar.test.tsx`).
+- Toolbar Explain / Ask… / Comment / GitHub; no examples/diagrams there;
+  appears only on selection-finish — met (`comments.spec.ts` “toolbar
+  Comment creates a quiet thread”, “GitHub action links diff lines”).
+  Inside an explanation the same toolbar appears (#116); inside
+  second-opinion reasoning and thread replies it does not (neither is an
+  anchor host — `SelectionToolbar.test.tsx`).
 - Selections inside an explanation anchor to the expansion's block
-  (`<expansion>#<block>`) for all three actions; the nested explanation,
-  thread or note renders under that block, nests to any depth by the same
-  mechanism, and survives reload with its highlight
+  (`<expansion>#<block>`) for Explain and Ask; a Comment there anchors
+  where the card is anchored and quotes the selection as a Markdown
+  blockquote prefilled in the composer (issue #135). The nested
+  explanation, thread or comment renders under its anchor, nests to any
+  depth by the same mechanism, and survives reload with its highlight
   (`actions-expansion-nesting.test.ts`, `ExpansionNesting.test.tsx`,
   `e2e/expansion-nesting-service.spec.ts`).
+- GitHub action (issue #134): a plain link out opening the selected diff
+  lines in GitHub's file view at the review's commit (head for
+  added/unchanged lines, base for removed-only selections; the viewed
+  version's commits). No job, no pending thread. Hidden for prose,
+  non-GitHub repos and the demo — met (shared `githubFileUrl` +
+  `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
+  `comments.spec.ts` “GitHub action links diff lines”).
 
 ### §4.7 Explanations — all met
 
@@ -391,17 +406,26 @@ needed (that deviation is closed, not added).
 
 ### §4.8 Comments — all met
 
-- Ask… (agent + citations) / Note (no reply) — met (`actions/ask.ts`,
-  `note.ts`, `comments-service.spec.ts` “create a note … survives reload”).
+- Ask… (agent + citations) / Comment (no reply, for the PR by default) —
+  met (`actions/ask.ts`, `note.ts`, `comments-service.spec.ts` “create a
+  comment … survives reload”; `comments-m6.test.ts` “comments for the PR”).
+  Only Ask sends text to the agent; clicking a diff line opens a Comment.
+  Only comments are submitted — Ask threads carry no For-PR control and
+  the submit path skips them (issue #135). A Comment from an agent answer
+  quotes the selection as a Markdown blockquote (replaces promote-to-PR;
+  “Open as page” is a different feature and stays).
 - Ask thread replies never show follow-up suggestions (issue #103) — met:
   the ask prompt no longer asks for them and `replyHtml` drops any
   `follow-up` block (plus a leftover heading or card title) on both the
   initial fill and reply turns, while cards and Explain expansions keep
   their chips (`actions-ask-followups.test.ts`).
-- Thread header (quote/`file:line`, Mark for PR filled when on, Delete,
-  Close) — met (`comments/threads.test.ts`, walk screenshot shows
-  “Agent · suggested comment” threads with Reply/Discard).
-- Reply box always visible, Discard/Reply, typed text survives rerender —
+- Thread header (quote/`file:line`, Mark for PR filled when on for
+  comments, Delete, Close) — met (`comments/threads.test.ts`,
+  `ThreadView.test.tsx` “only comment threads carry the For-PR control”,
+  walk screenshot shows “Agent · suggested comment” threads with
+  Reply/Discard).
+- Reply box always visible, Discard/Reply, typed text survives rerender;
+  Discard stays disabled on an existing thread until there is a draft —
   met (`comments/ThreadView.test.tsx`, `comments.spec.ts`).
 - Placement (guide closed + hover outline; diff under line + line-number
   reopen + click-number starts; description under paragraph) — met
@@ -462,7 +486,9 @@ needed (that deviation is closed, not added).
 
 ### §4.12 Submit review — all met
 
-- Nothing reaches GitHub until Submit — met (`gh-writes.test.ts`).
+- Nothing reaches GitHub until Submit — met (`gh-writes.test.ts`). Only
+  comments are submitted; Ask threads and explanations are never posted
+  (issue #135).
 - Button count, panel (locations + drafts, Cancel, Submit as \<user\>) —
   met (ui-walk opened the panel; `submit-m6.test.ts` preview).
 - One review + description update; branch-without-PR disabled with reason

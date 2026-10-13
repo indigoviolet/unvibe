@@ -243,6 +243,8 @@ export function createThreadInDraft(
   }
   // Guide threads start closed; diff + description threads start open
   // (prototype `threadShown`: `t.file || t.desc ? !collapsed : open`).
+  // Issue #135: a Comment is for the PR by default; an Ask thread never
+  // is (Ask has no "for the PR" control and is never submitted).
   const open = anchor.host.kind === "block" ? false : true;
   const thread: Annotation = {
     id: newAnnotationId(),
@@ -250,7 +252,7 @@ export function createThreadInDraft(
     anchor,
     open,
     messages,
-    post: false,
+    post: note,
     note,
     ...(messages.length === 0 ? { reply: "" } : {}),
   };
@@ -389,12 +391,22 @@ export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, threadId: st
 }
 
 /**
+ * Issue #135: only Comments are submitted. A thread counts as a comment
+ * when it never asks the agent (`note`) or when its first message is an
+ * agent-drafted suggested comment (PRD §4.9 — drafted for the PR, the
+ * reviewer only marks it). Ask threads are never submitted.
+ */
+export function isCommentThread(thread: Annotation): boolean {
+  if (thread.note) return true;
+  return thread.messages.some((m) => m.suggested);
+}
+
+/**
  * Exact text that will be posted for a thread: the For-PR draft when set,
  * else the first user message, else the suggested message (prototype
  * `Comments menu` draft fallback).
  */
-export function threadPostText(thread: Annotation): string {
-  if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
+export function threadPostText(thread: Annotation): string {  if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
   const you = thread.messages.find((m) => m.who === "you" && m.text);
   if (you?.text) return you.text;
   const suggested = thread.messages.find((m) => m.suggested && m.text);

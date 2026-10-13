@@ -5,7 +5,7 @@
  * - works in the guide, the PR description and diff code;
  * - the selection snaps to whole words with leading/trailing spaces
  *   trimmed, and the highlight updates to match;
- * - offers Explain, Ask… and Note;
+ * - offers Explain, Ask… and Comment;
  * - appears only when the user finishes selecting text, never after
  *   clicking a control;
  * - dismisses on scroll, outside press, Escape, blur, resize and selection
@@ -13,18 +13,31 @@
  *
  * Explain calls the `explain` action (accepted by the service; the
  * expansion card itself renders in a later milestone — never a break).
- * Ask… / Note open a pending thread
+ * Ask… / Comment open a pending thread
  * composer at the anchor via the `unvibe:new-thread` event; the host
  * (guide block, description paragraph, diff line) renders it. Selection in
  * a pure-deletion diff row anchors to the nearest row with a new-side
  * line, as the prototype does.
  *
+ * A Comment from a selection inside an agent answer (an expansion card,
+ * issue #135) anchors where the card is anchored — not on the selected
+ * block — and quotes the selection as a Markdown blockquote prefilled in
+ * the composer, so it reads correctly once submitted to GitHub.
+ *
+ * GitHub (issue #134) is a plain link out: on a diff selection it opens
+ * the selected lines in GitHub's file view at the review's commit (head
+ * for added/unchanged lines, base for removed-only selections). It creates
+ * no job and no pending thread, and stays hidden where there is nothing
+ * unambiguous to open (prose, non-GitHub repos, the demo).
+ *
  * The host-resolution + line-id helpers are re-exported for the
  * interaction agent's Explain/expansion cards (`resolveSelectionHost`).
  */
 import { useEffect, useRef, useState } from "react";
-import type { ActionAnchor } from "@unvibe/shared";
-import { apiErrorCode, friendlyError } from "../api/client.js";
+import type { ActionAnchor, ReviewSnapshot } from "@unvibe/shared";
+import { githubFileUrl } from "@unvibe/shared";
+import { api, apiErrorCode, friendlyError } from "../api/client.js";
+import { Icon } from "../components/Icon.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
@@ -37,8 +50,10 @@ export const NEW_THREAD_EVENT = "unvibe:new-thread";
 export interface NewThreadRequest {
   anchor: ActionAnchor;
   quote: string;
-  /** True = Note (no agent reply); false = Ask. */
+  /** True = Comment (no agent reply); false = Ask. */
   note: boolean;
+  /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
+  initialText?: string;
 }
 
 /** Ask a host to open a pending thread composer for this selection. */
@@ -144,14 +159,158 @@ function snapLiveSelection(sel: Selection): void {
 interface Pending {
   quote: string;
   anchor: ActionAnchor;
+  /**
+   * Issue #135: when the selection sits inside an expansion (an agent
+   * answer), a Comment anchors where the card is anchored instead of on
+   * the selected block. Absent for every other host.
+   */
+  commentAnchor?: ActionAnchor;
+  /**
+   * Issue #134: diff rows the selection touches, for the GitHub link.
+   * Absent outside the diff (prose has no lines to open).
+   */
+  diffRange?: DiffRange;
+}
+
+/**
+ * Diff lines behind a selection (issue #134): the file plus the touched
+ * new-side lines and/or old-side (removed) lines. A selection spanning
+ * files has none — there is nothing unambiguous to open.
+ */
+export interface DiffRange {
+  fileKey: string;
+  newLines: number[];
+  oldLines: number[];
+}
+
+/**
+ * Read the diff rows a selection touches. Rows with an id (`L-<fileKey>-<line>`)
+ * carry a new-side line; id-less deleted rows carry the old-side line in
+ * their first number cell. Null when the selection spans files or touches
+ * no code row.
+ */
+export function diffRangeForSelection(sel: Selection): DiffRange | null {
+  if (!sel.rangeCount || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  const rows = document.querySelectorAll("#right table.diff tr");
+  let fileKey: string | null = null;
+  const newLines: number[] = [];
+  const oldLines: number[] = [];
+  for (const row of rows) {
+    let intersects = false;
+    try {
+      intersects = range.intersectsNode(row);
+    } catch {
+      continue;
+    }
+    if (!intersects) continue;
+    const id = (row as HTMLElement).id ?? "";
+    if (id.startsWith("L-")) {
+      const parsed = parseLineElementId(id);
+      if (!parsed) continue;
+      if (fileKey === null) fileKey = parsed.fileKey;
+      if (parsed.fileKey !== fileKey) return null;
+      newLines.push(parsed.line);
+      continue;
+    }
+    // Id-less rows are pure deletions: the old-side line sits in the
+    // first number cell.
+    if (!(row as HTMLElement).className.includes("del")) continue;
+    const section = (row as HTMLElement).closest("[id^='F-']");
+    const sectionKey = section ? (section as HTMLElement).id.slice(2) : "";
+    if (!sectionKey) continue;
+    if (fileKey === null) fileKey = sectionKey;
+    if (sectionKey !== fileKey) return null;
+    const num = (row as HTMLElement).querySelector("td.n")?.textContent?.trim() ?? "";
+    const line = Number(num);
+    if (Number.isSafeInteger(line) && line >= 1) oldLines.push(line);
+  }
+  if (fileKey === null || (newLines.length === 0 && oldLines.length === 0)) return null;
+  return { fileKey, newLines, oldLines };
+}
+
+/**
+ * GitHub file-view URL for a diff selection (issue #134): the review head
+ * commit with new-side lines, or the base commit with old-side lines when
+ * the selection is only on removed lines. The commits are the version's
+ * own, so older versions link their own SHAs. Null when anything needed
+ * is unknown.
+ */
+export function githubHrefForRange(
+  snapshot: ReviewSnapshot | null | undefined,
+  repo: { owner: string; name: string } | null,
+  diffRange: DiffRange,
+): string | null {
+  if (!snapshot || !repo) return null;
+  const file = snapshot.files.find((f) => f.fileKey === diffRange.fileKey);
+  if (!file) return null;
+  const removedOnly = diffRange.newLines.length === 0;
+  const lines = removedOnly ? diffRange.oldLines : diffRange.newLines;
+  if (lines.length === 0) return null;
+  const sha = removedOnly ? snapshot.version.mergeBaseSha : snapshot.version.headSha;
+  if (!sha) return null;
+  const start = Math.min(...lines);
+  const end = Math.max(...lines);
+  return githubFileUrl(repo.owner, repo.name, sha, file.path, start, end === start ? undefined : end);
+}
+
+/** Quote a selection as a Markdown blockquote, so it reads on GitHub. */
+export function blockquoteQuote(quote: string): string {
+  const lines = quote.split("\n").map((l) => `> ${l}`.trimEnd());
+  return `${lines.join("\n")}\n\n`;
+}
+
+/**
+ * Card anchor behind a block anchor that sits inside an expansion (issue
+ * #135): the owner part of `<expansion>#<block>` names the expansion
+ * annotation, whose own anchor is where a Comment from its text belongs.
+ * Null for page-card anchors and anything unresolvable.
+ */
+export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
+  if (anchor.where !== "block") return null;
+  const hash = anchor.blockId.indexOf("#");
+  if (hash < 0) return null;
+  const owner = anchor.blockId.slice(0, hash);
+  const found = useReview.getState().snapshot?.annotations.find((a) => a.id === owner);
+  if (!found || found.type !== "expansion") return null;
+  const host = found.anchor.host;
+  if (host.kind === "block") return { where: "block", blockId: host.blockId };
+  if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
+  return { where: "diff-line", fileKey: host.fileKey, line: host.line };
 }
 
 export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
   const readOnly = useIsReadOnlyVersion();
+  const snapshot = useReview((s) => s.snapshot);
   const barRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<Pending | null>(null);
   pendingRef.current = pending;
+  // Issue #134: the repo behind this review (owner/name for the GitHub
+  // link). Local checkouts (`owner: "local"`), the demo and unknown repos
+  // have no GitHub file view, so the action hides there.
+  const [githubRepo, setGithubRepo] = useState<{ owner: string; name: string } | null>(null);
+  useEffect(() => {
+    const repoId = snapshot?.review.repoId;
+    if (!repoId || repoId === "demo") {
+      setGithubRepo(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .repos()
+      .then((r) => {
+        if (cancelled) return;
+        const found = r.repos.find((x) => x.id === repoId);
+        setGithubRepo(found && found.owner !== "local" ? { owner: found.owner, name: found.name } : null);
+      })
+      .catch(() => {
+        if (!cancelled) setGithubRepo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot?.review.repoId]);
 
   useEffect(() => {
     const bar = (): HTMLElement | null => barRef.current;
@@ -184,7 +343,21 @@ export function SelectionToolbar() {
           hide();
           return;
         }
-        setPending({ quote, anchor: host.anchor });
+        const cardAnchor = commentCardAnchor(host.anchor);
+        // The GitHub link needs the touched rows, not just the anchor
+        // line — but only on the anchor's own file (a cross-file drag has
+        // nothing unambiguous to open).
+        let diffRange: DiffRange | undefined;
+        if (host.anchor.where === "diff-line") {
+          const touched = diffRangeForSelection(sel);
+          if (touched && touched.fileKey === host.anchor.fileKey) diffRange = touched;
+        }
+        setPending({
+          quote,
+          anchor: host.anchor,
+          ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
+          ...(diffRange ? { diffRange } : {}),
+        });
         // Position after render (needs the bar's size).
         window.setTimeout(() => {
           const b = bar();
@@ -268,6 +441,15 @@ export function SelectionToolbar() {
     const current = pendingRef.current;
     if (!current) return;
     dismiss();
+    if (note && current.commentAnchor) {
+      requestNewThread({
+        anchor: current.commentAnchor,
+        quote: current.quote,
+        note,
+        initialText: blockquoteQuote(current.quote),
+      });
+      return;
+    }
     requestNewThread({ anchor: current.anchor, quote: current.quote, note });
   };
 
@@ -281,8 +463,48 @@ export function SelectionToolbar() {
         Ask…
       </button>
       <button type="button" data-act="note" onClick={() => onAskNote(true)}>
-        Note
+        Comment
       </button>
+      {pending?.diffRange ? (
+        <GithubAction snapshot={snapshot} repo={githubRepo} diffRange={pending.diffRange} onOpen={dismiss} />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * Issue #134: plain link out to the selected lines on GitHub. Renders
+ * nothing where there is nothing unambiguous to open (no repo, no file,
+ * no commit). No job, no pending thread — clicking only dismisses the bar.
+ */
+function GithubAction({
+  snapshot,
+  repo,
+  diffRange,
+  onOpen,
+}: {
+  snapshot: ReviewSnapshot | null | undefined;
+  repo: { owner: string; name: string } | null;
+  diffRange: DiffRange;
+  onOpen: () => void;
+}): React.JSX.Element | null {
+  const href = githubHrefForRange(snapshot, repo, diffRange);
+  if (!href) return null;
+  return (
+    <>
+      <span className="sep" />
+      <a
+        data-act="github"
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        data-tip="Open these lines on GitHub"
+        aria-label="Open these lines on GitHub"
+        onClick={onOpen}
+      >
+        <Icon name="open" />
+        GitHub
+      </a>
+    </>
   );
 }

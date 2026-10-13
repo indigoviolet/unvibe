@@ -11,6 +11,7 @@ export {
   createThreadInDraft,
   deleteAnnotation,
   deleteInDraft,
+  isCommentThread,
   newAnnotationId,
   replyInDraft,
   replyToThread,

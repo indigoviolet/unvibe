@@ -87,6 +87,41 @@ describe("ThreadView reply box", () => {
     expect(screen.getByLabelText("Reply")).toHaveValue("");
   });
 
+  test("Discard stays disabled on an existing thread until there is a draft (issue #135)", async () => {
+    const found = useReview.getState().snapshot?.annotations[0] as Annotation;
+    render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
+    // Empty reply box: Discard does nothing, so it is not offered.
+    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Reply"), { target: { value: "hey" } });
+    expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
+  });
+
+  test("a new comment thread offers a comment placeholder, not an Ask one (issue #135)", async () => {
+    const fresh = thread({ messages: [], reply: "" });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [fresh] });
+    render(<ThreadView reviewId={REVIEW_ID} thread={fresh} />);
+    expect(screen.getByLabelText("New comment")).toHaveAttribute("placeholder", "Write a comment…");
+  });
+
+  test("only comment threads carry the For-PR control (issue #135)", async () => {
+    const asking = thread({ note: false, messages: [{ who: "you", text: "Why?" }], post: false });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [asking] });
+    const { unmount } = render(<ThreadView reviewId={REVIEW_ID} thread={asking} />);
+    expect(screen.queryByRole("button", { name: /Mark.*for the PR/ })).toBeNull();
+    unmount();
+    // A comment thread shows it…
+    const commenting = thread({ note: true, messages: [{ who: "you", text: "Nit" }], post: true });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
+    const { unmount: unmount2 } = render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
+    expect(screen.getByRole("button", { name: /Marked for the PR/ })).toBeVisible();
+    unmount2();
+    // …and an Ask thread never does, whatever its stored mark.
+    const legacy = thread({ note: false, messages: [{ who: "you", text: "Old" }], post: true });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [legacy] });
+    render(<ThreadView reviewId={REVIEW_ID} thread={legacy} />);
+    expect(screen.queryByRole("button", { name: /Mark.*for the PR/ })).toBeNull();
+  });
+
   test("a failed reply shows the error with a Retry button wired to the retry action", async () => {
     const failed = thread({
       note: false,
