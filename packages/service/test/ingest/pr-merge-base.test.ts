@@ -277,7 +277,9 @@ describe("ingestReview PR paths (fake gh + real git)", () => {
 
     const out = await ingestReview({ runner, dataDir }, { repoPath: dir, pr: 7 });
     expect(out.version.headSha).toBe(head);
-    expect(seenFetches[0]).toBe("fetch origin refs/pull/7/head");
+    // #123: head and base travel in one fetch; the head still goes through
+    // refs/pull/<n>/head (branch-name fallback only when that fails).
+    expect(seenFetches[0]).toBe("fetch origin refs/pull/7/head main");
   });
 
   it("default-branch PR still works", async () => {

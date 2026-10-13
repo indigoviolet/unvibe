@@ -110,6 +110,34 @@ async function fetchPrHead(
 }
 
 /**
+ * #123: one `git fetch` for the PR head and the base together (was two
+ * sequential fetches). The head keeps its #93 shape — `refs/pull/<n>/head`
+ * with the branch-name fallback — and the base stays best-effort:
+ * `resolvePrMergeBase` names what's missing when it is still gone.
+ */
+async function fetchPrHeadAndBase(
+  runner: CommandRunner,
+  repoPath: string,
+  pr: number,
+  headRefName: string,
+  baseRefName: string,
+): Promise<void> {
+  try {
+    const res = await runner.run(
+      "git",
+      { args: ["fetch", "origin", `refs/pull/${pr}/head`, baseRefName], cwd: repoPath },
+    );
+    if (res.code === 0) return;
+  } catch {
+    // Fall through to per-refspec best effort below.
+  }
+  if (headRefName) {
+    await bestEffortFetch(runner, repoPath, headRefName);
+  }
+  await bestEffortFetch(runner, repoPath, baseRefName);
+}
+
+/**
  * Merge-base against `origin/<base>` first, bare `<base>` second (#93).
  * Shared by the PR path here and `versions/refresh.ts` so stacked-PR
  * bases (and a local default branch behind `origin`) resolve the same way
@@ -302,12 +330,19 @@ export async function ensureWorktree(
   return wt;
 }
 
-/** Resolve a PR or branch source to SHAs + diff text + worktree. */
+/**
+ * Resolve a PR or branch source to SHAs + diff text + worktree.
+ *
+ * `refresh` (PR sources on managed checkouts): the repo-wide `git fetch`
+ * started by the caller. The PR path awaits it alongside `gh pr view`
+ * (#123: API vs git, independent) instead of serially before it.
+ */
 export async function resolveSource(
   runner: CommandRunner,
   source: IngestSource,
   dataDir: string,
   reviewId: string,
+  refresh?: Promise<unknown> | null,
 ): Promise<ResolvedSource> {
   const { repoPath } = source;
   let title: string;
@@ -321,7 +356,7 @@ export async function resolveSource(
   let descriptionState: string | undefined;
 
   if (source.pr !== undefined) {
-    const info = await fetchPrInfo(runner, repoPath, source.pr);
+    const [info] = await Promise.all([fetchPrInfo(runner, repoPath, source.pr), refresh ?? null]);
     prNumber = source.pr;
     title = info.title;
     branch = info.headRefName;
@@ -333,7 +368,7 @@ export async function resolveSource(
     descriptionEditable = info.state === "OPEN";
     descriptionAuthor = info.authorLogin || undefined;
     descriptionState = info.state || undefined;
-    await fetchPrHead(runner, repoPath, source.pr, info.headRefName);
+    await fetchPrHeadAndBase(runner, repoPath, source.pr, info.headRefName, baseRef);
     if (!headSha) {
       const local = await runGit(runner, ["rev-parse", info.headRefName], repoPath);
       if (!local.ok) {
@@ -344,7 +379,6 @@ export async function resolveSource(
       }
       headSha = local.stdout.trim();
     }
-    await bestEffortFetch(runner, repoPath, baseRef);
   } else if (source.branch !== undefined) {
     branch = source.branch;
     title = source.branch;
