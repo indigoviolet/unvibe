@@ -1,8 +1,9 @@
 /**
- * Start page PR lists (#95, #100, #94) in mock mode: the review-request
- * split with its recency filter (persisted), the diff size on PR rows,
- * and the PR label link to GitHub (present on PR rows, never triggering
- * the row; the review-bar label links too).
+ * Start page PR lists (#95, #100, #94, #131) in mock mode: the
+ * review-request split with its recency filter (persisted), the diff size
+ * on PR rows, the PR label link to GitHub (present on PR rows, never
+ * triggering the row; the review-bar label links too), and the branches
+ * filter by last commit date (Reviews stays unfiltered).
  */
 import { test, expect } from "./network-guard.js";
 
@@ -74,4 +75,17 @@ test("the review-bar PR label links to the PR", async ({ page }) => {
   const label = page.locator("#reviewbar").getByRole("link", { name: "urllib3/urllib3#5011" });
   await expect(label).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
   await expect(label).toHaveAttribute("target", "_blank");
+});
+
+test("branches filter by last commit and show ages, Reviews stays unfiltered (#131)", async ({ page }) => {
+  // Branch rows show the commit age, as PR rows do.
+  await expect(page.locator(".ci", { hasText: "experiment/lazy-headers" })).toContainText("3d ago");
+  await page.getByLabel("Updated within").selectOption("1d");
+  // The 3-day-old branch drops out; the fresh branch row stays.
+  await expect(page.getByText("experiment/lazy-headers")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "fix-obs-fold", exact: true })).toBeVisible();
+  // Reviews ignores the window: the recent demo review still lists.
+  await expect(
+    page.locator('div[aria-label="Reviews"]').getByText("Unfold obsolete folded response header values"),
+  ).toBeVisible();
 });
