@@ -226,8 +226,10 @@ export function buildApp(opts: BuildAppOptions): AppContext {
       onEvent: (reviewId, event) => bus.publish(reviewId, event),
     });
   if (!opts.jobs) {
-    const recovered = jobStore.listOpen();
-    if (recovered.length > 0) jobs.recover(recovered);
+    // Issue #117: hydrate every stored job, not just the open ones, so
+    // finished jobs stay on the Debug page's jobs list after a restart.
+    const saved = jobStore.listAll();
+    if (saved.length > 0) jobs.recover(saved);
   }
 
   const promptsDir = opts.promptsDir ?? resolvePromptsDirForBundle();

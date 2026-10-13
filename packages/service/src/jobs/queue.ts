@@ -291,27 +291,34 @@ export class JobQueue {
   // -- restart recovery -------------------------------------------------
 
   /**
-   * Reconcile jobs persisted by a previous process. Every open job —
-   * running, backing off, or still queued — is marked interrupted
+   * Reconcile jobs persisted by a previous process (issue #117: pass every
+   * stored job, so finished jobs stay listed after a restart). Every open
+   * job — running, backing off, or still queued — is marked interrupted
    * (terminal `error`, retryable by re-enqueueing). Queued jobs come back
    * as interrupted rather than orphans: nothing in the service rebinds a
    * persisted job to a fresh `run` (pipeline stages re-enqueue via
    * `resumeReview`, on-demand turns rebuild via the action retry paths),
    * so an orphan could never execute — and worse, its dedupe key would
-   * make a fresh re-enqueue silently attach to the dead job. The Jobs
-   * view keeps the interrupted rows as history.
+   * make a fresh re-enqueue silently attach to the dead job. Finished
+   * jobs (done, error, cancelled) load back unchanged as history: the
+   * Jobs view lists them with their prompts and results. Hydrated entries
+   * carry no `run`, so they never execute, never count as active, and
+   * never block idle exit.
    */
-  recover(open: Job[]): { interrupted: Job[]; orphaned: Job[] } {
+  recover(savedJobs: Job[]): { interrupted: Job[]; orphaned: Job[] } {
     const interrupted: Job[] = [];
     const orphaned: Job[] = [];
-    for (const saved of open) {
+    for (const saved of savedJobs) {
       if (this.entries.has(saved.id)) continue;
-      const job: Job = {
-        ...saved,
-        state: "error",
-        error: INTERRUPTED_MESSAGE,
-        nextRetryAt: undefined,
-      };
+      const open = !isTerminal(saved.state);
+      const job: Job = open
+        ? {
+            ...saved,
+            state: "error",
+            error: INTERRUPTED_MESSAGE,
+            nextRetryAt: undefined,
+          }
+        : { ...saved };
       this.entries.set(job.id, {
         job,
         run: undefined,
@@ -324,7 +331,7 @@ export class JobQueue {
       this.forgetDedupe(entry);
       this.save(entry);
       this.emit(entry);
-      interrupted.push(copy(job));
+      if (open) interrupted.push(copy(job));
     }
     return { interrupted, orphaned };
   }

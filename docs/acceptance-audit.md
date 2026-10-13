@@ -511,7 +511,13 @@ needed (that deviation is closed, not added).
   unchanged from Settings apart from the redundant divider: `e2e/debug.spec.ts`,
   `GET /api/jobs` ran; prompt snapshots now
   served per-job to keep lists small; the per-job prompt toggle lazy-loads
-  as before).
+  as before). Finished jobs stay listed after a restart, with prompts and
+  results (issue #117: the queue used to hydrate only open jobs, so a
+  completed review showed an empty list while every row sat in SQLite;
+  `recover()` now loads all stored jobs and open ones still come back
+  marked interrupted; `threadId` is persisted too. Evidence:
+  `service/test/jobs.test.ts` "finished jobs stay listed after a restart",
+  `scripts/restart-resilience.mjs` step 2b, PRD §4.14 + §16).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log lines
   verbatim in fenced blocks under in-base/ready/waiting headings (issue
@@ -1218,10 +1224,9 @@ every agent action so the same handover runs. Service jobs now carry
  the issue report (before/after for depth, examples, generate,
  follow-up, explain; replay fills run sub-second, captured via CDP
  bursts).
- Open: `threadId` persistence has the same pre-existing gap as `cardId`
- had (not carried through the jobs-store JSON column) — noticed, not
- fixed. Hunk summarize busy never clears on success (#63, adjacent,
- untracked here).
+ Fixed under #117: `threadId` is carried through the jobs-store JSON
+ column like `cardId`. Hunk summarize busy never clears on success (#63,
+ adjacent, untracked here).
 
 ### Reload blank page, part 1: error boundaries (#101, complete)
 

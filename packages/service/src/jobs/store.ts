@@ -21,6 +21,7 @@ interface JobData {
   attempts?: number;
   nextRetryAt?: number;
   cardId?: string;
+  threadId?: string;
 }
 
 export interface JobPersistence {
@@ -29,6 +30,8 @@ export interface JobPersistence {
   listByReview(reviewId: string): Job[];
   /** Every non-terminal job (for startup recovery). */
   listOpen(): Job[];
+  /** Every stored job, oldest first (startup hydration, issue #117). */
+  listAll(): Job[];
 }
 
 function rowToJob(row: {
@@ -59,6 +62,7 @@ function rowToJob(row: {
     ...(data.attempts !== undefined ? { attempts: data.attempts } : {}),
     ...(data.nextRetryAt !== undefined ? { nextRetryAt: data.nextRetryAt } : {}),
     ...(data.cardId !== undefined ? { cardId: data.cardId } : {}),
+    ...(data.threadId !== undefined ? { threadId: data.threadId } : {}),
   };
 }
 
@@ -76,6 +80,7 @@ export class JobStore implements JobPersistence {
       ...(job.attempts !== undefined ? { attempts: job.attempts } : {}),
       ...(job.nextRetryAt !== undefined ? { nextRetryAt: job.nextRetryAt } : {}),
       ...(job.cardId !== undefined ? { cardId: job.cardId } : {}),
+      ...(job.threadId !== undefined ? { threadId: job.threadId } : {}),
     };
     this.db
       .prepare(
@@ -109,6 +114,13 @@ export class JobStore implements JobPersistence {
     const rows = this.db
       .prepare("SELECT * FROM jobs WHERE review_id = ? ORDER BY rowid")
       .all(reviewId) as Parameters<typeof rowToJob>[0][];
+    return rows.map(rowToJob);
+  }
+
+  listAll(): Job[] {
+    const rows = this.db.prepare("SELECT * FROM jobs ORDER BY rowid").all() as Parameters<
+      typeof rowToJob
+    >[0][];
     return rows.map(rowToJob);
   }
 
