@@ -41,13 +41,13 @@ import {
 } from "@unvibe/shared";
 import {
   buildConceptsSection,
-  buildDiffSection,
   buildGuideSection,
   buildHunkSummaries,
   buildL1bPinned,
-  buildL1Source,
-  buildSourceBlurb,
+  buildLadder,
   charTokenEstimator,
+  DEFAULT_BASE_PROMPT_CAP_TOKENS,
+  DEFAULT_LEFTOVER_FLOOR_TOKENS,
   filterChangeList,
   formatChangeList,
   formatHunk,
@@ -400,13 +400,24 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot):
   };
 
   const l0 = render("instructions", {});
-  const blurb = buildSourceBlurb(snapshot);
-  const diff = buildDiffSection(snapshot);
-  const l1full = buildL1Source(snapshot);
+  // One ladder call (issue #107): the preview shows the same capped halves
+  // the pipeline sends, from the same rung.
+  const ladder = buildLadder(snapshot);
+  const blurb = ladder.source;
+  const diff = ladder.diff;
+  const l1full = { text: ladder.text };
   const l1b = buildL1bPinned(snapshot.pinnedCode);
   const guide = buildGuideSection(snapshot);
   const concepts = buildConceptsSection(snapshot);
-  const hunkSummaries = buildHunkSummaries(snapshot);
+  // Same leftover budgeting as the base pack (issue #107): the preview's
+  // L2 span assembles guide + concepts + summaries into one message.
+  const previewUsed =
+    charTokenEstimator.estimateTokens(ladder.text) +
+    charTokenEstimator.estimateTokens(l1b) +
+    charTokenEstimator.estimateTokens(`${guide}\n${concepts}`);
+  const hunkSummaries = buildHunkSummaries(snapshot, {
+    baseCapTokens: Math.max(DEFAULT_LEFTOVER_FLOOR_TOKENS, DEFAULT_BASE_PROMPT_CAP_TOKENS - previewUsed),
+  });
   const changeList = formatChangeList(
     filterChangeList(snapshot.log, { lastSeenSeq: 0 }).slice(-10),
   );

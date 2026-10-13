@@ -58,7 +58,7 @@ import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { buildExcerptMap, readCodeExcerpts } from "./excerpts.js";
-import { buildDiffSection, buildSecondOpinionContext, buildSourceBlurb } from "../context/index.js";
+import { buildLadder, buildSecondOpinionContext } from "../context/index.js";
 import { deriveBlindTopic } from "./topic.js";
 import { forkSecondOpinionBase } from "./base.js";
 import { toPromptSnapshot } from "../routes/prompts.js";
@@ -317,8 +317,11 @@ export async function buildSecondOpinionPrompt(
   const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   // L1 source for the isolated base (instructions + sourceText travel via
   // the base session; only cited excerpts travel in the turn's cited_code).
+  // One ladder call (issue #107): source + diff come from the same rung,
+  // so the prompt stays under the hard cap.
   const promptSnap = toPromptSnapshot(snapshot, { model: settings.secondOpinion.model });
-  const sourceText = [buildSourceBlurb(promptSnap), buildDiffSection(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens }).text].join("\n");
+  const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
+  const sourceText = [ladder.source, ladder.diff.text].join("\n");
   const lib = loadTemplatesDirSync(deps.promptsDir);
   const instructionsTpl = lib.get("instructions");
   const instructions = instructionsTpl ? renderTemplate(instructionsTpl, {}) : "";
