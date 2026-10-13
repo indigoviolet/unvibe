@@ -131,7 +131,7 @@ describe("pipeline demo e2e (replay)", () => {
       expect(sug.length).toBeGreaterThanOrEqual(2);
       for (const a of sug) {
         expect(a.post).toBe(false);
-        expect(a.type).toBe("thread");
+        expect(a.type).toBe("comment");
       }
       // threads.ts assigns `ann_` ids (not the fixture seed ids); match
       // the bare-LF draft by its suggested text instead.
