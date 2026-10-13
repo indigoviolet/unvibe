@@ -84,6 +84,9 @@ not something to paper over.
 - **Trigger:** branch pushes only (`push: branches: ["**"]`). There is no
   `pull_request` trigger on purpose: for a branch with an open PR both
   events fire for the same commit and the workflow would run twice.
+  (The Pages workflow `.github/workflows/pages.yml` is the exception: it
+  deploys `site/` to GitHub Pages and runs only on `main` pushes that
+  touch `site/**`, plus manual dispatch.)
 - **Concurrency:** `ci-${{ github.ref }}` with `cancel-in-progress`, so a
   new push supersedes the previous run on the same branch.
 - **Caches (safe):** the npm cache (`~/.npm`, keyed by

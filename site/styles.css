@@ -1,0 +1,64 @@
+/* Unvibe front-door page. Plain CSS, no build step, no third parties:
+ * system type only, same-site image only, no scripts, no imports.
+ *
+ * Palette values copied from packages/web/src/styles/prototype.css
+ * (light :root, dark prefers-color-scheme block); the variable names are
+ * kept so the page reads as the product.
+ */
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --sunk: #eef0f3; --ink: #1b1f27; --muted: #5c6472; --line: #dde1e7;
+  --accent: #0b6e78; --accent-soft: #e2f1f2;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121519; --surface: #191d23; --sunk: #20252d; --ink: #e5e8ed; --muted: #98a1b0; --line: #2b313b;
+    --accent: #56c2cb; --accent-soft: #15333a;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--sans); line-height: 1.55;
+}
+.wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.25rem; }
+header.wrap { padding-top: 3rem; }
+.kicker { color: var(--muted); font-weight: 600; letter-spacing: .02em; margin: 0 0 .5rem; }
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 1rem; }
+.lede { font-size: 1.1rem; }
+.open { margin: 1.75rem 0 .5rem; }
+.button {
+  display: inline-block; background: var(--accent); color: #fff;
+  font-size: 1.1rem; font-weight: 600; text-decoration: none;
+  padding: .7rem 1.6rem; border-radius: .5rem;
+}
+@media (prefers-color-scheme: dark) {
+  .button { color: #0b1114; }
+}
+.hint { color: var(--muted); font-size: .95rem; }
+.hint a { color: var(--accent); }
+main { padding-bottom: 2rem; }
+figure { margin: 2rem 0; }
+figure img {
+  display: block; max-width: 100%; height: auto;
+  border: 1px solid var(--line); border-radius: .5rem;
+}
+figcaption { color: var(--muted); font-size: .9rem; margin-top: .5rem; }
+h2 { font-size: 1.35rem; margin: 2.25rem 0 .5rem; }
+p { margin: .6rem 0; }
+pre {
+  background: var(--surface); border: 1px solid var(--line); border-radius: .5rem;
+  padding: .8rem 1rem; overflow-x: auto;
+}
+code { font-family: var(--mono); font-size: .88em; }
+pre code { font-size: .92rem; }
+footer { border-top: 1px solid var(--line); padding: 1rem 1.25rem 3rem; color: var(--muted); font-size: .95rem; }
+footer a { color: var(--accent); }
+@media (max-width: 34rem) {
+  header.wrap { padding-top: 2rem; }
+  h1 { font-size: 1.6rem; }
+  .button { display: block; text-align: center; }
+}
