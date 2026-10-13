@@ -6,6 +6,7 @@
  *
  * Real sockets on ephemeral ports (never 4517, never the real data dir).
  */
+import net from "node:net";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -16,6 +17,47 @@ function sockAddr(s: unknown): AddressInfo {
   const addr = (s as { address(): unknown }).address();
   if (typeof addr === "object" && addr !== null) return addr as AddressInfo;
   throw new Error("server is not listening on a socket address");
+}
+
+/** Occupy an address; resolves the held port. Closed by the caller. */
+function occupy(host: string): Promise<{ server: net.Server; port: number }> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer(() => {});
+    server.once("error", reject);
+    server.listen(0, host, () => {
+      server.removeListener("error", reject);
+      resolve({ server, port: (server.address() as AddressInfo).port });
+    });
+  });
+}
+
+function closeServer(s: net.Server): Promise<void> {
+  return new Promise((resolve) => {
+    s.close(() => resolve());
+  });
+}
+
+/**
+ * Raw status line over a socket to `host:port` with an explicit Host
+ * header (`fetch` forbids overriding Host; the gate must see what a
+ * hostile client sends).
+ */
+function rawStatus(host: string, port: number, hostHeader: string, extra = ""): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const sock = net.connect(port, host, () => {
+      sock.write(`GET /api/repos HTTP/1.1\r\nHost: ${hostHeader}\r\nConnection: close\r\n${extra}\r\n`);
+    });
+    let buf = "";
+    sock.on("data", (d) => {
+      buf += String(d);
+    });
+    sock.on("close", () => {
+      const m = buf.match(/^HTTP\/1\.1 (\d{3})/);
+      if (m) resolve(Number(m[1]));
+      else reject(new Error(`no status line in ${JSON.stringify(buf.slice(0, 120))}`));
+    });
+    sock.on("error", reject);
+  });
 }
 
 describe("listen() loopback dual-bind", () => {
@@ -63,6 +105,51 @@ describe("listen() loopback dual-bind", () => {
       socket.close();
     } finally {
       await app.close();
+    }
+  });
+
+  it("applies the gate and token check on the ::1 companion (plain HTTP)", async () => {
+    const { app } = await createApp("tok", {});
+    try {
+      const url = await listen(app, { host: "127.0.0.1", port: 0, dataDir: "", idleMs: 0 });
+      const port = Number(new URL(url).port);
+      // Bad Host on the companion socket: refused before auth.
+      expect(await rawStatus("::1", port, "evil.com", "Authorization: Bearer tok\r\n")).toBe(403);
+      // No token: the 401, not a gate failure.
+      expect(await rawStatus("::1", port, `[::1]:${port}`)).toBe(401);
+      // Token: through.
+      const authed = await fetch(`http://[::1]:${port}/api/repos`, {
+        headers: { authorization: "Bearer tok" },
+      });
+      expect(authed.status).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses to start half-bound when ::1:port is taken (Q3)", async () => {
+    const held = await occupy("::1");
+    const { app } = await createApp("tok", {});
+    try {
+      await expect(
+        listen(app, { host: "127.0.0.1", port: held.port, dataDir: "", idleMs: 0 }),
+      ).rejects.toThrow(/\[::1\].*already in use.*cookie/);
+    } finally {
+      await app.close();
+      await closeServer(held.server);
+    }
+  });
+
+  it("fails loudly when 127.0.0.1:port is taken (names UNVIBE_PORT)", async () => {
+    const held = await occupy("127.0.0.1");
+    const { app } = await createApp("tok", {});
+    try {
+      await expect(
+        listen(app, { host: "127.0.0.1", port: held.port, dataDir: "", idleMs: 0 }),
+      ).rejects.toThrow(/already in use.*UNVIBE_PORT/);
+    } finally {
+      await app.close();
+      await closeServer(held.server);
     }
   });
 });

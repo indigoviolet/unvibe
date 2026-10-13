@@ -363,13 +363,30 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
 export async function listen(app: FastifyInstance, config: ServiceConfig): Promise<string> {
   // Companion socket first: Fastify forbids addHook once listening.
   const v6 = prepareLoopbackV6(app);
-  await app.listen({ host: config.host, port: config.port });
+  try {
+    await app.listen({ host: config.host, port: config.port });
+  } catch (err) {
+    throw new Error(bindErrorMessage(config.host, config.port, err), { cause: err });
+  }
   const addr = app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : config.port;
   await bindLoopbackV6(v6, port);
   // The bookmarkable URL (issue #108): the name browsers resolve to
   // loopback themselves. The 127.0.0.1 URL keeps working (same service).
   return `http://unvibe.localhost:${port}`;
+}
+
+/**
+ * Plain-words bind failure (issue #108 follow-up, Q3): the port is held
+ * by something else — name it and the way out (`UNVIBE_PORT`), never a
+ * stack trace.
+ */
+function bindErrorMessage(host: string, port: number, err: unknown): string {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  if (code === "EADDRINUSE") {
+    return `unvibe: ${host}:${port} is already in use by another program; set UNVIBE_PORT to a free port (then re-run \`unvibe setup\` so login start follows)`;
+  }
+  return `unvibe: could not listen on ${host}:${port} (${err instanceof Error ? err.message : String(err)})`;
 }
 
 /**
@@ -426,6 +443,18 @@ async function bindLoopbackV6(v6: http.Server, port: number): Promise<void> {
       });
     });
   } catch (err) {
+    if ((err as NodeJS.ErrnoException | undefined)?.code === "EADDRINUSE") {
+      // Another program holds [::1]:port while 127.0.0.1:port is free.
+      // Starting v4-only would be a trap: a browser resolving
+      // unvibe.localhost to ::1 first would talk to the other program
+      // with our cookie for that name attached. Fail loudly instead.
+      throw new Error(
+        `unvibe: [::1]:${port} is already in use by another program while 127.0.0.1:${port} is free; ` +
+          `refusing to start half-bound (a browser reaching the other program would send it this site's cookie). ` +
+          `Free the address or set UNVIBE_PORT to a free port (then re-run \`unvibe setup\` so login start follows)`,
+        { cause: err },
+      );
+    }
     // No IPv6 on this machine: stay up on 127.0.0.1 rather than fail start.
     const detail = err instanceof Error ? err.message : String(err);
     console.warn(`unvibe: not listening on [::1]:${port} (${detail}); answering on 127.0.0.1 only`);
