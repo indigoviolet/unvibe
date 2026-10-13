@@ -24,7 +24,7 @@ const TIPS: { title: string; body: string }[] = [
   },
   {
     title: "Diff",
-    body: "Filter files; Hide uninteresting collapses generated, import-only and docs hunks to one line; Fold all summarizes and folds every hunk. Per hunk: fold, summarize, note, mark reviewed. Click a line number to comment.",
+    body: "Filter files; Hide uninteresting collapses generated, import-only and docs hunks to one line; Fold all folds every hunk (on small reviews it also summarizes each one; past the per-hunk summary limit summaries stay on demand). Per hunk: fold, summarize, note, mark reviewed. Click a line number to comment.",
   },
   {
     title: "Comments",

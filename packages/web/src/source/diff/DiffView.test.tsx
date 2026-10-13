@@ -6,7 +6,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
+import { api } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
 import { resetMockState, setMockLatency } from "../../mock/index.js";
 import { DiffView } from "./DiffView.js";
@@ -132,6 +134,84 @@ describe("DiffView", () => {
     expect(await conn.findByText(/Adds `_OBSOLETE_FOLD_RE`/, {}, { timeout: 3000 })).toBeInTheDocument();
   }, 10000);
 
+  it("folds on the deterministic hidden reason with no model summaries (#107)", async () => {
+    // No hunk carries a summary (the hunk pass never ran): hidden runs
+    // must still fold on the ingest hidden reason with sensible copy — no
+    // raw placeholder text, no spinner that never ends — and a folded hunk
+    // without a summary must render its folded row.
+    useReview.getState().setSnapshot(makeNoSummarySnapshot());
+    render(<DiffView reviewId="nosum" />);
+    await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
+    // Hidden run folds on the deterministic reason with its detail copy.
+    expect(screen.getByText(/Hunks 1–2 of 2 hidden · generated/)).toBeInTheDocument();
+    expect(screen.getByText("Generated file; safe to skip.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("(no summary yet)");
+    expect(document.body.textContent).not.toContain("(pending)");
+    expect(screen.queryByLabelText("Summarizing")).toBeNull();
+    // Expanding the run shows the hunks.
+    await fireEvent.click(screen.getByText(/Hunks 1–2 of 2 hidden · generated/));
+    expect(await screen.findByText("Hunk 1 of 2")).toBeInTheDocument();
+    // Folding a hunk with no summary renders the folded row, keeps the
+    // on-demand Summarize action, and never spins.
+    const src = within(document.getElementById("F-src-plain-py") as HTMLElement);
+    await fireEvent.click(src.getAllByRole("button", { name: "Fold code" })[0]);
+    expect(await src.findByText("3 changed lines folded · show")).toBeInTheDocument();
+    expect(src.getByRole("button", { name: "Summarize with agent" })).toBeInTheDocument();
+    expect(src.queryByLabelText("Summarizing")).toBeNull();
+  });
+
+  it("Fold all summarizes under the fan-out limit (#107)", async () => {
+    // makeNoSummarySnapshot: 3 hunks, 2 hidden by Hide-uninteresting, so
+    // the one visible hunk folds and gets exactly one summary request.
+    useReview.getState().setSnapshot(makeNoSummarySnapshot());
+    render(<DiffView reviewId="nosum" />);
+    await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
+    const update = vi.spyOn(api, "updateHunk").mockResolvedValue({ ok: true });
+    const summarize = vi.spyOn(api, "summarizeHunk").mockResolvedValue({ jobId: "j1" });
+    try {
+      expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toContain(
+        "Summarize every hunk",
+      );
+      await fireEvent.click(screen.getByRole("button", { name: "Fold all" }));
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(summarize).toHaveBeenCalledTimes(1));
+    } finally {
+      update.mockRestore();
+      summarize.mockRestore();
+    }
+  });
+
+  it("Fold all folds without summarizing past the fan-out limit (#107)", async () => {
+    // 525 hunks > limit: every hunk folds, no summary is requested (that
+    // would be the per-hunk fan-out the pipeline refuses to run).
+    const RealIO = globalThis.IntersectionObserver;
+    class NeverIO {
+      observe(): void {}
+      disconnect(): void {}
+      unobserve(): void {}
+    }
+    (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = NeverIO;
+    const update = vi.spyOn(api, "updateHunk").mockResolvedValue({ ok: true });
+    const summarize = vi.spyOn(api, "summarizeHunk").mockResolvedValue({ jobId: "j1" });
+    try {
+      expect(HUNK_PASS_FANOUT_LIMIT).toBeLessThan(525);
+      useReview.getState().setSnapshot(makeOverLimitSnapshot());
+      render(<DiffView reviewId="over" />);
+      await screen.findByText("over-0.ts", {}, { timeout: 5000 });
+      expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toContain(
+        "past the per-hunk summary limit",
+      );
+      await fireEvent.click(screen.getByRole("button", { name: "Fold all" }));
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(525), { timeout: 10000 });
+      expect(summarize).not.toHaveBeenCalled();
+    } finally {
+      update.mockRestore();
+      summarize.mockRestore();
+      if (RealIO) globalThis.IntersectionObserver = RealIO;
+      else delete (globalThis as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
+    }
+  }, 20000);
+
   it("revealSource unhides a hidden hunk and highlights the line", async () => {
     await renderDiff();
     expect(revealSource(`diff:${TCONN}:5`)).toBe(true);
@@ -164,3 +244,123 @@ describe("DiffView", () => {
   });
 
 });
+
+/** Review with deterministic hidden reasons and zero model summaries (#107). */
+function makeNoSummarySnapshot(): import("@unvibe/shared").ReviewSnapshot {
+  const genHunk = (n: number) => ({
+    contentHash: `gen${n}`,
+    header: `@@ -${n * 10 + 1},4 +${n * 10 + 1},4 @@`,
+    newStart: n * 10 + 1,
+    newEnd: n * 10 + 4,
+    oldStart: n * 10 + 1,
+    oldEnd: n * 10 + 4,
+    added: 2,
+    removed: 1,
+    hiddenReason: "generated",
+    lines: [
+      { kind: "ctx" as const, oldLine: n * 10 + 1, newLine: n * 10 + 1, text: "a" },
+      { kind: "del" as const, oldLine: n * 10 + 2, text: "b" },
+      { kind: "add" as const, newLine: n * 10 + 2, text: "c" },
+      { kind: "add" as const, newLine: n * 10 + 3, text: "d" },
+      { kind: "ctx" as const, oldLine: n * 10 + 3, newLine: n * 10 + 4, text: "e" },
+    ],
+  });
+  return {
+    review: {
+      id: "nosum",
+      repoId: "urllib3",
+      branch: "nosum",
+      versions: [],
+      currentVersion: 1,
+      createdAt: Date.now(),
+    },
+    version: { n: 1, headSha: "abc1234", mergeBaseSha: "def5678", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    files: [
+      {
+        fileKey: "gen-gen-u1-ts",
+        path: "gen/gen-u1.ts",
+        category: "generated" as const,
+        hunks: [genHunk(0), genHunk(1)],
+      },
+      {
+        fileKey: "src-plain-py",
+        path: "src/plain.py",
+        category: "source" as const,
+        hunks: [
+          {
+            contentHash: "plain0",
+            header: "@@ -1,4 +1,4 @@",
+            newStart: 1,
+            newEnd: 4,
+            oldStart: 1,
+            oldEnd: 4,
+            added: 2,
+            removed: 1,
+            lines: [
+              { kind: "ctx" as const, oldLine: 1, newLine: 1, text: "a" },
+              { kind: "del" as const, oldLine: 2, text: "b" },
+              { kind: "add" as const, newLine: 2, text: "c" },
+              { kind: "add" as const, newLine: 3, text: "d" },
+              { kind: "ctx" as const, oldLine: 3, newLine: 4, text: "e" },
+            ],
+          },
+        ],
+      },
+    ],
+    ingest: { status: "ready" },
+    pages: [],
+    annotations: [],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+  };
+}
+
+/** 21 files x 25 hunks = 525 hunks, past the fan-out limit (#107). */
+function makeOverLimitSnapshot(): import("@unvibe/shared").ReviewSnapshot {
+  const files = Array.from({ length: 21 }, (_, fi) => ({
+    fileKey: `over-${fi}`,
+    path: `src/over-${fi}.ts`,
+    category: "source" as const,
+    hunks: Array.from({ length: 25 }, (_, hi) => {
+      const n = hi * 10;
+      return {
+        contentHash: `over-${fi}-${hi}`,
+        header: `@@ -${n + 1},2 +${n + 1},3 @@`,
+        newStart: n + 1,
+        newEnd: n + 3,
+        oldStart: n + 1,
+        oldEnd: n + 2,
+        added: 1,
+        removed: 0,
+        lines: [
+          { kind: "ctx" as const, oldLine: n + 1, newLine: n + 1, text: "a" },
+          { kind: "add" as const, newLine: n + 2, text: "b" },
+          { kind: "ctx" as const, oldLine: n + 2, newLine: n + 3, text: "c" },
+        ],
+      };
+    }),
+  }));
+  return {
+    review: {
+      id: "over",
+      repoId: "urllib3",
+      branch: "over",
+      versions: [],
+      currentVersion: 1,
+      createdAt: Date.now(),
+    },
+    version: { n: 1, headSha: "abc1234", mergeBaseSha: "def5678", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    files,
+    ingest: { status: "ready" },
+    pages: [],
+    annotations: [],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+  };
+}
