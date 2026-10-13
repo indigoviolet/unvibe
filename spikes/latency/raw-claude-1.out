@@ -1,0 +1,5 @@
+service pid 3910896 port 4611 data /tmp/unvibe-latency-CrCiEu
+settings {"main":{"provider":"claude","model":"opus"},"small":{"provider":"claude","model":"haiku"},"secondOpinion":{"provider":"codex","model":"gpt-6.1-sol"},"sessionsPerProvider":4,"getSettingsMs":1426}
+repo rp_8c3b08931a40 added in 5151 ms
+
+-- open#1 (load 6.51 5.59 4.45)
