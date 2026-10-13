@@ -19,6 +19,7 @@ import type {
   DiagramBlock,
   ReviewSnapshot,
 } from "@unvibe/shared";
+import { freshBlockId } from "@unvibe/shared";
 
 export type CardTarget =
   | { kind: "page-card"; pageId: string; card: Card }
@@ -153,7 +154,12 @@ export function paragraphIds(blocks: Block[]): string[] {
 
 /** Normalised key for example-dedupe (inner text, whitespace-folded). */
 function exampleKey(inner: Block[]): string {
-  return JSON.stringify(inner)
+  // IDs excluded (#116): inserted asides are restamped with fresh IDs, so
+  // the same example compares equal before and after insertion.
+  return JSON.stringify(
+    inner,
+    (k, v) => (k === "id" ? undefined : v),
+  )
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 2000);
@@ -197,11 +203,27 @@ export function insertExamples(blocks: Block[], fresh: Block[]): { blocks: Block
     const at = slot < openSlots.length ? openSlots[slot] + 1 + added : out.length;
     // `added` shifts later indexes by the number already inserted.
     const insertAt = Math.min(at, out.length);
-    out.splice(insertAt, 0, { ...aside, id: `b-ex-${Date.now().toString(36)}-${added}` });
+    // Fresh ID within this body (#116): the timestamp base collides only
+    // across same-millisecond inserts, but the used-set makes it exact.
+    const id = freshBlockId(out, `b-ex-${Date.now().toString(36)}-${added}`);
+    out.splice(insertAt, 0, withFreshAsideId(aside, id));
     added++;
     slot++;
   }
   return { blocks: out, added };
+}
+
+/** Assign a fresh top-level ID, moving aside inner IDs with their parent. */
+export function withFreshAsideId<T extends Block>(block: T, id: string): T {
+  if (block.type !== "aside" || block.id === id) return { ...block, id };
+  const prefix = `${block.id}-`;
+  return {
+    ...block,
+    id,
+    inner: block.inner.map((ib) =>
+      ib.id.startsWith(prefix) ? { ...ib, id: `${id}-${ib.id.slice(prefix.length)}` } : ib,
+    ),
+  };
 }
 
 function diagramKey(b: DiagramBlock | AsideBlock): string {
@@ -250,7 +272,13 @@ export function insertDiagrams(blocks: Block[], fresh: Block[]): { blocks: Block
       break;
     }
   }
-  const stamped = incoming.map((b, i) => ({ ...b, id: `b-dg-${Date.now().toString(36)}-${i}` }));
+  // Fresh IDs within this body (#116): the timestamp base collides only
+  // across same-millisecond inserts, but the used-set makes it exact.
+  const stamped: Block[] = [];
+  for (let i = 0; i < incoming.length; i++) {
+    const id = freshBlockId([...out, ...stamped], `b-dg-${Date.now().toString(36)}-${i}`);
+    stamped.push(withFreshAsideId(incoming[i], id));
+  }
   out.splice(at, 0, ...stamped);
   return { blocks: out, added: stamped.length };
 }

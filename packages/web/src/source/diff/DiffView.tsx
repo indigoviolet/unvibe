@@ -264,19 +264,25 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
 
   // Summarize is async (a job on the service, canned text in mock): the
   // button shows progress until the snapshot actually carries a summary.
+  // Read the snapshot rows directly: any landed summary settles the
+  // request, and the hunk offers Summarize again for unusable text.
   useEffect(() => {
     setBusy((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      const landed = new Set(
+        (snapshot?.hunkStates ?? []).filter((s) => s.summary !== undefined).map((s) => s.contentHash),
+      );
       let changed = false;
       const next = { ...prev };
       for (const k of Object.keys(next)) {
-        if (states.get(k)?.summary) {
+        if (landed.has(k)) {
           delete next[k];
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [states]);
+  }, [snapshot]);
 
   const flash = useCallback((hl: Highlight | null, fileKey: string | null) => {
     window.clearTimeout(hlTimer.current);

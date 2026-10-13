@@ -237,9 +237,15 @@ export function splitAnchorBlockId(blockId: string): { cardId: string | null; bl
   return { cardId: blockId.slice(0, hash), block: blockId.slice(hash + 1) };
 }
 
-/** Does an annotation anchor address this card + block? */
+/** Does an annotation anchor address this card + block?
+ *
+ * Exact on owner AND block (#116): a bare block ID never matches (block
+ * IDs restart at `b1` in every card and expansion, so an unqualified ID
+ * would attach the annotation to every same-numbered block), and there
+ * is no prefix matching (`b1` never matches `b10`). All stored anchors
+ * are qualified `<owner>#<block>` at creation.
+ */
 export function anchorMatchesBlock(anchorBlockId: string, cardId: string, blockId: string): boolean {
-  if (anchorBlockId === blockId) return true;
   const split = splitAnchorBlockId(anchorBlockId);
   return split.cardId === cardId && split.block === blockId;
 }

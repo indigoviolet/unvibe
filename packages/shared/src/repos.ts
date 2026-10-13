@@ -33,6 +33,31 @@ export interface ParsedRepoRef {
   /** Present when the input was a PR URL. */
   prNumber?: number;
 }
+
+/**
+ * Canonical GitHub PR page URL (#94). One place: the review bar and the
+ * start-page rows both link through here (preferring `changePrUrl` when
+ * the row carries the URL `gh` returned).
+ */
+export function githubPrUrl(owner: string, name: string, prNumber: number): string {
+  return `https://github.com/${owner}/${name}/pull/${prNumber}`;
+}
+
+/**
+ * Preferred link target for a start-page change row (#94): the URL `gh`
+ * returned when the row has one, else the canonical URL built from the
+ * row's repo and PR number. Null when the row names no PR (branch-only
+ * rows carry no number).
+ */
+export function changePrUrl(
+  change: { url?: string; prNumber?: number },
+  owner: string,
+  name: string,
+): string | null {
+  if (typeof change.url === "string" && change.url !== "") return change.url;
+  if (typeof change.prNumber === "number") return githubPrUrl(owner, name, change.prNumber);
+  return null;
+}
 /**
  * GitHub login: alphanumerics and hyphens, 1–39 chars, never leading or
  * trailing hyphen (github.com/join rules, lower bound relaxed to 1).

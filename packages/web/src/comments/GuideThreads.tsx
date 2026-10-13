@@ -158,7 +158,10 @@ export function GuideThreadHooks() {
     const onMouseOver = (e: MouseEvent): void => {
       const target = e.target as Element | null;
       if (!target || typeof target.closest !== "function") return;
-      document.querySelectorAll("#page .on").forEach((x) => x.classList.remove("on"));
+      // Clear only the outlines this handler adds (marks + open threads).
+      // A bare `#page .on` would also strip the depth stepper pips
+      // (`.pips i.on`, issue #111), which React owns.
+      document.querySelectorAll("#page mark.on, #page .ithread.on").forEach((x) => x.classList.remove("on"));
       const mark = target.closest("mark[data-thr]");
       if (mark) {
         const id = (mark as HTMLElement).dataset.thr ?? "";
@@ -216,10 +219,19 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   );
 
   // An explain started from a selection on this block shows a
-  // placeholder where the expansion will land (issue #46). Ask turns keep
-  // their composer as the placeholder, so they are skipped here.
+  // placeholder where the expansion will land (issue #46) — until the
+  // expansion itself is in the snapshot (issue #97), so the two never
+  // stack. The card carries the working state from then on. Ask turns
+  // keep their composer as the placeholder, so they are skipped here.
   const incoming = !readOnly ? inflightForBlock(inflight, cardId, blockId) : undefined;
-  const placeholder = incoming?.kind === "explain" ? incoming : undefined;
+  const arrived = (annotations ?? []).some(
+    (a) =>
+      a.type === "expansion" &&
+      a.open &&
+      a.anchor.host.kind === "block" &&
+      anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
+  );
+  const placeholder = incoming?.kind === "explain" && !arrived ? incoming : undefined;
 
   if (!pending && threads.length === 0 && !placeholder) return null;
   return (

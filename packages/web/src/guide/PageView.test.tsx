@@ -122,3 +122,39 @@ describe("PageView card boundaries", () => {
     expect(document.body.textContent).not.toMatch(/TypeError/);
   });
 });
+
+describe("page header bookmark (#118)", () => {
+  test("a page with no type label has no eyebrow row; the bookmark sits on the title line", () => {
+    show({ id: "root", kind: "root", title: "Guide", saved: false, cards: [] } as Page);
+    expect(document.querySelector(".eyebrow")).toBeNull();
+    const row = document.querySelector(".title-row");
+    expect(row).not.toBeNull();
+    expect(row?.querySelector("h1.title")).toHaveTextContent("Guide");
+    const save = screen.getByRole("button", { name: "Save to this repo" });
+    expect(row?.contains(save)).toBe(true);
+    expect(save).toHaveAttribute("aria-pressed", "false");
+    expect(save).toHaveAttribute("data-save", "root");
+  });
+
+  test("a finding page keeps its type label above the title row", () => {
+    show({
+      id: "f-1",
+      kind: "finding",
+      title: "A finding",
+      saved: false,
+      confidence: "medium",
+      cards: [],
+    } as unknown as Page);
+    expect(document.querySelector(".eyebrow")).toHaveTextContent("Agent finding · medium confidence");
+    const row = document.querySelector(".title-row");
+    expect(row?.querySelector("h1.title")).toHaveTextContent("A finding");
+    expect(row?.contains(screen.getByRole("button", { name: "Save to this repo" }))).toBe(true);
+  });
+
+  test("a saved page keeps the pressed bookmark state and label", () => {
+    show({ id: "c-x", kind: "concept", title: "A concept", saved: false, cards: [] } as Page);
+    const save = screen.getByRole("button", { name: "Saved to this repo · click to unsave" });
+    expect(save).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelector(".title-row")?.contains(save)).toBe(true);
+  });
+});

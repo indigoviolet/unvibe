@@ -1,9 +1,11 @@
 /**
  * Guide page (M2, web-guide owner; PRD §4.3, §4.9).
  *
- * Header (type label only where it matters + bookmark + title), trail,
- * collapsible Contents box, cards, and the "Go deeper" divider before
- * pending cards. Finding pages get the rust-accent `.finding` class.
+ * Header (type label only where it matters, then the title with the
+ * bookmark right-aligned on its line — #118, deliberately off-prototype),
+ * trail, collapsible Contents box, cards, and the "Go deeper" divider
+ * before pending cards. Finding pages get the rust-accent `.finding`
+ * class.
  */
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
@@ -151,8 +153,9 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           )}
         </nav>
       ) : null}
-      <div className={`eyebrow${isFinding ? " find" : ""}`}>
-        {eyebrow}
+      {eyebrow ? <div className={`eyebrow${isFinding ? " find" : ""}`}>{eyebrow}</div> : null}
+      <div className="title-row">
+        <h1 className="title">{displayTitle(page.title)}</h1>
         <button
           className="ib save"
           type="button"
@@ -167,7 +170,6 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           <Icon name="bookmark" />
         </button>
       </div>
-      <h1 className="title">{displayTitle(page.title)}</h1>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />
       {conceptWorking ? (

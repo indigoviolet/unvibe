@@ -174,6 +174,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
       <div className="doc" data-testid="review-loading">
         <h1 className="title">Opening {pr}…</h1>
         <p className="hint" data-testid="review-loading-step">
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>{" "}
           {stepLabel}
         </p>
       </div>
@@ -201,6 +206,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
             <>
               <h1 className="title">Building the guide…</h1>
               <p className="hint">
+                <span className="dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>{" "}
                 {emptyLabel ? `${emptyLabel} ` : ""}The diff is ready to read while you wait.
               </p>
             </>
