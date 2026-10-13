@@ -216,16 +216,22 @@ export function anchorBlockType(
   snapshot: ReviewSnapshot | null | undefined,
   anchorBlockId: string,
 ): string | undefined {
-  const bare = anchorBlockId.includes("#") ? anchorBlockId.split("#").pop()! : anchorBlockId;
+  // A qualified anchor addresses one owner's block (#116); only a legacy
+  // bare ID searches every owner.
+  const hash = anchorBlockId.indexOf("#");
+  const owner = hash >= 0 ? anchorBlockId.slice(0, hash) : null;
+  const bare = hash >= 0 ? anchorBlockId.slice(hash + 1) : anchorBlockId;
   const match = (id: string): boolean => id === anchorBlockId || id === bare;
   for (const p of snapshot?.pages ?? []) {
     for (const c of p.cards) {
+      if (owner !== null && c.id !== owner) continue;
       for (const b of c.blocks) {
         if (match(b.id)) return b.type;
       }
     }
   }
   for (const a of snapshot?.annotations ?? []) {
+    if (owner !== null && a.id !== owner) continue;
     const blocks = a.type === "expansion" ? (a.expansion?.blocks ?? []) : [];
     for (const b of blocks as { id: string; type: string }[]) {
       if (match(b.id)) return b.type;

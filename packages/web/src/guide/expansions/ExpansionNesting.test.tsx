@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { Annotation, Card, ReviewSnapshot } from "@unvibe/shared";
+import { dedupeBlockIds, parseCards } from "@unvibe/shared";
 import { NEW_THREAD_EVENT } from "../../floating/SelectionToolbar.js";
 import { useReview } from "../../state/store.js";
 import { CardView } from "../CardView.js";
@@ -162,5 +163,69 @@ describe("annotations inside an expansion (#116)", () => {
     const composer = screen.getByLabelText("New comment");
     expect(composer).not.toBeNull();
     expect(document.querySelector('[data-expansion="ann_parent"] [data-pending-thread]')).not.toBeNull();
+  });
+});
+
+describe("one card per paragraph, from a real multi-card reply (#116)", () => {
+  // The owner's defect: a two-card Explain reply flattened to ["b1","b1"],
+  // so a nested anchor matched two blocks and drew its card twice. The
+  // service now stores deduped IDs; each paragraph hosts exactly one card.
+  const REPLY = `## First part
+
+First paragraph about the folded header.
+
+## Second part
+
+Second paragraph about the folded header.
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+  function parentFromReply(): { card: Card; parent: Annotation; paras: { id: string; quote: string }[] } {
+    const body = dedupeBlockIds(parseCards(REPLY).flatMap((c) => c.blocks));
+    const c = card();
+    const parent = expansion("ann_parent", "c1#b1", "selectable", body);
+    const paras = body
+      .filter((b) => b.type === "paragraph")
+      .map((b) => {
+        const text = (b as { text: { standard: string } }).text.standard.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        return { id: b.id, quote: text.split(" ").slice(0, 3).join(" ") };
+      });
+    return { card: c, parent, paras };
+  }
+
+  test("a nested explanation on each paragraph renders exactly once", () => {
+    const { card: c, parent, paras } = parentFromReply();
+    expect(paras.length).toBeGreaterThanOrEqual(2);
+    const nested = paras.map(
+      (p, i) =>
+        expansion(`ann_nested_${i}`, `ann_parent#${p.id}`, p.quote, [para("b1", `Nested body ${i}.`)]) as Annotation,
+    );
+    seed(c, [parent, ...nested]);
+    show(c);
+    for (const n of nested) {
+      const els = document.querySelectorAll(`[data-expansion="${n.id}"]`);
+      expect(els).toHaveLength(1);
+      // Under the parent card, inside the parent expansion.
+      expect(document.querySelector(`[data-expansion="ann_parent"] [data-expansion="${n.id}"]`)).not.toBeNull();
+    }
+  });
+
+  test("a thread and a note on expansion paragraphs render exactly once each", () => {
+    const { card: c, parent, paras } = parentFromReply();
+    const [first, second] = paras;
+    const asker = thread("ann_ask", `ann_parent#${first.id}`, first.quote);
+    const noter: Annotation = {
+      ...thread("ann_note", `ann_parent#${second.id}`, second.quote),
+      note: true,
+    };
+    seed(c, [parent, asker, noter]);
+    show(c);
+    expect(document.querySelectorAll("#ann_ask")).toHaveLength(1);
+    expect(document.querySelectorAll("#ann_note")).toHaveLength(1);
+    expect(document.querySelector('[data-expansion="ann_parent"] #ann_ask')).not.toBeNull();
+    expect(document.querySelector('[data-expansion="ann_parent"] #ann_note')).not.toBeNull();
   });
 });
