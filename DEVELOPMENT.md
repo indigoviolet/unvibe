@@ -181,7 +181,15 @@ Rules:
 - Run `gh` with `GITHUB_TOKEN` unset (it can override the keyring login).
 - Nothing is posted to GitHub except through `src/submit/` (crash-safe via in-flight leases in `src/submit/lease.ts`); `test/gh-writes.test.ts` enforces the boundary.
 - E2E scripts take a temp port/HOME/data dir so parallel checkouts do not clash.
-- While implementing, run targeted tests: the vitest files for what you changed (`npx vitest run <file>` in the package) and the specific Playwright spec (`mise run test:e2e -- <spec>`).
+- While implementing, run targeted tests — one thing at a time, never two
+  suites in parallel:
+  ```sh
+  cd packages/service && npx vitest run test/reviews.test.ts        # one file, 1 to 3 s
+  cd packages/web && VITE_MOCK=1 npx vitest run src/guide/CardView.test.tsx  # VITE_MOCK=1 is required: without it the mock API is real fetch
+  cd packages/web && npx playwright test e2e/comments.spec.ts       # one spec; *-service specs skip without a build, so `mise run build` first to exercise them
+  ```
+  (`mise run test:e2e -- e2e/<spec>` from the root narrows the same way
+  but rebuilds first.)
 - Which gate when: targeted tests after each change; `mise run check` before each commit and before reporting; `check` plus the Playwright specs for the touched flows before a preview (**not** the full gate); `mise run gate` once per branch with current `main` merged in, before merge or when the machine is free — one full run at a time across the machine (a plain task chain by owner decision, no lock script), never several at once.
 
 ## Environment variables
