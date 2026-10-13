@@ -283,6 +283,9 @@ const realApi = {
   reviews: (): Promise<ReviewsListResponse> => get("/api/reviews"),
   deleteReview: (id: string): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  /** #115: re-do the guide (delete + create in one call); answers with the new loading review. */
+  redoReview: (id: string): Promise<ReviewSnapshot> =>
+    post(`/api/reviews/${encodeURIComponent(id)}/redo`),
   resetData: (): Promise<ResetDataResponse> => post("/api/reset"),
   readiness: (force?: boolean): Promise<ReadinessResponse> =>
     get(`/api/readiness${force ? "?force=1" : ""}`),

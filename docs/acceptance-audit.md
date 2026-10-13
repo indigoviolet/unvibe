@@ -528,6 +528,17 @@ needed (that deviation is closed, not added).
   collapsible with a sticky summary (Base open, the rest closed;
   Expand/Collapse all on Prompts + Shared context; open state survives tab
   switches, job updates and contribution deletes).
+- Re-do guide on the Debug page (issue #115): `POST /api/reviews/:id/redo`
+  deletes + re-creates through the existing paths (shared create helper)
+  and answers 202 with the new review's loading snapshot; the page
+  navigates to it. New id (same as delete + create); running jobs
+  cancelled first; refused with 409 for the demo, while loading/failed,
+  while a submit lease is held for the review, and when the repo is gone.
+  Confirmation states what delete + create discards. Open decisions for
+  the owner: keep the new id vs keep the old one, and keep vs discard
+  user comments/notes (default = delete semantics). Evidence:
+  `service/test/reviews-redo.test.ts`, `RedoGuideSection.test.tsx`,
+  `e2e/debug-redo.spec.ts`, PRD §4.14 + §14.1.
 
 ### §4.15 Conventions — all met
 
