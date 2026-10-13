@@ -613,6 +613,22 @@ export function StartPage(): React.JSX.Element {
     [navigate, loadSessions],
   );
 
+  /**
+   * #149: open a PR/branch row — a row that already has a review opens it
+   * directly (no new review, no repeated agent work); otherwise the review
+   * is created (the service reuses a ready review there too).
+   */
+  const openChange = useCallback(
+    (c: RepoChange, i: number, body: CreateReviewRequest) => {
+      if (c.reviewId) {
+        navigate(`/review/${c.reviewId}`);
+        return;
+      }
+      void openReview(changeKey(c, i), body);
+    },
+    [navigate, openReview],
+  );
+
   const removeSession = useCallback(
     async (id: string) => {
       setDeleting(id);
@@ -1077,7 +1093,7 @@ export function StartPage(): React.JSX.Element {
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
                     onOpen={(c, i) =>
-                      openReview(changeKey(c, i), {
+                      openChange(c, i, {
                         repoId: selectedId,
                         pr: c.prNumber,
                         branch: c.branch,
@@ -1116,7 +1132,7 @@ export function StartPage(): React.JSX.Element {
                         owner={selected?.owner ?? null}
                         name={selected?.name ?? null}
                         onOpen={(row, j) =>
-                          openReview(changeKey(row, j), {
+                          openChange(row, j, {
                             repoId: selectedId,
                             pr: row.prNumber,
                             branch: row.branch,
@@ -1151,7 +1167,7 @@ export function StartPage(): React.JSX.Element {
                         owner={selected?.owner ?? null}
                         name={selected?.name ?? null}
                         onOpen={(row, j) =>
-                          openReview(changeKey(row, j), {
+                          openChange(row, j, {
                             repoId: selectedId,
                             pr: row.prNumber,
                             branch: row.branch,
@@ -1174,7 +1190,7 @@ export function StartPage(): React.JSX.Element {
                     onShowAll={() => selectRecency("all")}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
-                    onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
+                    onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
                   />
                 </>
               )}
@@ -1422,7 +1438,13 @@ function ChangeRow({
           <span className="cx2">{c.title}</span>
         </button>
       </div>
-      {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
+      {c.reviewId || opening === changeKey(c, i) ? (
+        <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+          {c.reviewId ? <span className="prtag">review</span> : null}
+          {c.reviewId && c.stale ? <span className="prtag">new commits</span> : null}
+          {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

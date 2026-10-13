@@ -14,6 +14,7 @@ import type {
   CreateCommentRequest,
   CreateCommentResponse,
   CreateReviewRequest,
+  CreateReviewResponse,
   DeleteContributionResponse,
   DiagnosticsResponse,
   DiagramStatusBody,
@@ -278,7 +279,7 @@ const realApi = {
   repoChanges: (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> =>
     get(`/api/repos/${encodeURIComponent(id)}/changes${filter ? `?filter=${filter}` : ""}`),
 
-  createReview: (body: CreateReviewRequest): Promise<ReviewSnapshot> =>
+  createReview: (body: CreateReviewRequest): Promise<CreateReviewResponse> =>
     post("/api/reviews", body),
   /** #92: re-run a failed ingest (409 when ready/loading, 202 with loading when retried). */
   retryReview: (id: string): Promise<ReviewSnapshot> =>
