@@ -11,22 +11,12 @@
  * - depth on one answer leaves the other answer alone;
  * - a diagram in a follow-up answer renders through the diagrams route.
  */
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, ReviewSnapshot } from "@unvibe/shared";
 import { findDiagramByHash } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { createApp } from "../src/server.js";
 
-const fixturesDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "..",
-  "fixtures",
-  "urllib3-5020",
-);
 const authed = { authorization: "Bearer tok" };
 
 function textEvents(text: string): AgentEvent[] {
