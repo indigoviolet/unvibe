@@ -1,7 +1,14 @@
 import { describe, expect, test } from "vitest";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
-import { blockquoteQuote, commentCardAnchor, resolveSelectionHost } from "./SelectionToolbar.js";
+import {
+  blockquoteQuote,
+  commentCardAnchor,
+  diffRangeForSelection,
+  githubHrefForRange,
+  resolveSelectionHost,
+  type DiffRange,
+} from "./SelectionToolbar.js";
 
 describe("resolveSelectionHost (#78)", () => {
   test("guide blocks are addressed as card#block, expansions by their own id", () => {
@@ -113,5 +120,72 @@ describe("comment from an agent answer (issue #135)", () => {
   test("the selection is quoted as a Markdown blockquote", () => {
     expect(blockquoteQuote("just one line")).toBe("> just one line\n\n");
     expect(blockquoteQuote("first\nsecond")).toBe("> first\n> second\n\n");
+  });
+});
+
+describe("GitHub action range (issue #134)", () => {
+  const HEAD = "bdcc1e493e";
+  const BASE = "443cb01be1";
+
+  function seedDiffTable(): void {
+    document.body.innerHTML =
+      `<div id="right"><div class="dfile" id="F-conn"><table class="diff"><tbody>` +
+      `<tr class="add" id="L-conn-91"><td class="n">90</td><td class="n new">91</td><td class="c"><span>new line one</span></td></tr>` +
+      `<tr class="add" id="L-conn-92"><td class="n"></td><td class="n new">92</td><td class="c"><span>new line two</span></td></tr>` +
+      `<tr class="del"><td class="n">50</td><td class="n"></td><td class="c"><span>old line</span></td></tr>` +
+      `</tbody></table></div></div>`;
+  }
+
+  function selectCellText(cellText: string): Selection {
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    const walker = document.createTreeWalker(document.querySelector("#right table.diff")!, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const at = (node as Text).data.indexOf(cellText);
+      if (at < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + cellText.length);
+      sel.addRange(range);
+      return sel;
+    }
+    throw new Error(`text ${cellText} not found`);
+  }
+
+  function snapshot(): ReviewSnapshot {
+    return {
+      files: [{ fileKey: "conn", path: "src/conn.py", category: "source", hunks: [] }],
+      version: { n: 1, headSha: HEAD, mergeBaseSha: BASE, baseRef: "main", fetchedAt: 0, idMapping: {} },
+    } as unknown as ReviewSnapshot;
+  }
+
+  test("added lines link the head commit with new-side numbers", () => {
+    seedDiffTable();
+    const range = diffRangeForSelection(selectCellText("new line one"));
+    expect(range).toEqual({ fileKey: "conn", newLines: [91], oldLines: [] });
+    const href = githubHrefForRange(snapshot(), { owner: "acme", name: "app" }, range as DiffRange);
+    expect(href).toBe(`https://github.com/acme/app/blob/${HEAD}/src/conn.py#L91`);
+  });
+
+  test("removed-only selections link the base commit with old-side numbers", () => {
+    seedDiffTable();
+    const range = diffRangeForSelection(selectCellText("old line"));
+    expect(range).toEqual({ fileKey: "conn", newLines: [], oldLines: [50] });
+    const href = githubHrefForRange(snapshot(), { owner: "acme", name: "app" }, range as DiffRange);
+    expect(href).toBe(`https://github.com/acme/app/blob/${BASE}/src/conn.py#L50`);
+  });
+
+  test("null when the repo, file or commit is unknown", () => {
+    seedDiffTable();
+    const range = diffRangeForSelection(selectCellText("new line one")) as DiffRange;
+    expect(githubHrefForRange(snapshot(), null, range)).toBeNull();
+    expect(githubHrefForRange({ ...snapshot(), files: [] }, { owner: "acme", name: "app" }, range)).toBeNull();
+    expect(
+      githubHrefForRange(
+        { ...snapshot(), version: { ...snapshot().version, headSha: "" } },
+        { owner: "acme", name: "app" },
+        range,
+      ),
+    ).toBeNull();
   });
 });

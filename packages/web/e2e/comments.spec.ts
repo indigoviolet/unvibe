@@ -106,6 +106,52 @@ test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }
   await expect(thread).toHaveCount(0);
 });
 
+test("GitHub action links diff lines at the review commit; hidden on the demo", async ({ page }) => {
+  // Demo review: selections offer no GitHub action (no GitHub file view).
+  await gotoReview(page);
+  await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+  await expect(page.locator("#selbar")).toBeVisible();
+  await expect(page.locator('#selbar [data-act="github"]')).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // A GitHub-backed review: the action links the selected lines at the
+  // review's head commit, after Comment in toolbar order.
+  await page.goto("/review/gh-link");
+  await expect(page.locator(`[id="L-${CONN}-91"]`)).toBeVisible({ timeout: 10_000 });
+  await page.evaluate((conn) => {
+    const cell1 = document.querySelector(`[id="L-${conn}-91"] td.c`);
+    const cell2 = document.querySelector(`[id="L-${conn}-92"] td.c`);
+    if (!cell1 || !cell2) throw new Error("diff rows not found");
+    const walker = (root: Element): Text | null => {
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if ((n as Text).data.trim().length > 3) return n as Text;
+      }
+      return null;
+    };
+    const t1 = walker(cell1);
+    const t2 = walker(cell2);
+    if (!t1 || !t2) throw new Error("no text in diff rows");
+    const range = document.createRange();
+    range.setStart(t1, 0);
+    range.setEnd(t2, Math.min(4, t2.data.length));
+    getSelection()?.removeAllRanges();
+    getSelection()?.addRange(range);
+    cell2.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  }, CONN);
+  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
+  const acts = await page.locator("#selbar [data-act]").evaluateAll((els) =>
+    els.map((el) => el.getAttribute("data-act")),
+  );
+  expect(acts).toEqual(["explain", "ask", "note", "github"]);
+  const link = page.locator('#selbar [data-act="github"]');
+  await expect(link).toHaveAttribute(
+    "href",
+    /https:\/\/github\.com\/urllib3\/urllib3\/blob\/bdcc1e493e\/.+#L91-L92/,
+  );
+  await expect(link).toHaveAttribute("target", "_blank");
+});
+
 // DISABLED(#119): subset of interaction.spec.ts test 1 (select, Explain, expansion visible)
 test.skip("Explain creates an expansion without breaking", async ({ page }) => {
   await gotoReview(page);
