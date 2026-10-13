@@ -4,7 +4,7 @@ import { PROMPT_TEMPLATE_NAMES } from "../src/prompts.js";
 
 describe("prompt contract (additive, PRD §13)", () => {
   it("names every template in the PRD §13 table", () => {
-    expect(PROMPT_TEMPLATE_NAMES).toHaveLength(18);
+    expect(PROMPT_TEMPLATE_NAMES).toHaveLength(17);
     for (const name of [
       "instructions",
       "reader",
@@ -15,7 +15,6 @@ describe("prompt contract (additive, PRD §13)", () => {
       "concept_page",
       "explain",
       "ask",
-      "note_ack",
       "depth",
       "examples",
       "diagram",

@@ -69,14 +69,18 @@ function renderDiagram(): void {
   );
 }
 
-async function openOverlay(): Promise<HTMLElement> {
+async function openOverlay(): Promise<{ dialog: HTMLElement; expand: HTMLElement }> {
   renderDiagram();
   await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
-  const expand = screen.getByRole("button", { name: "Expand diagram" });
+  // The Expand control only mounts once the diagram reports rendered
+  // (#130): the svg can land a tick before that state flushes, so a
+  // synchronous query right after render loses the race on a loaded
+  // machine. Wait for the control instead.
+  const expand = await screen.findByRole("button", { name: "Expand diagram" });
   expand.focus();
   fireEvent.click(expand);
   const dialog = await screen.findByRole("dialog", { name: "Expanded diagram" });
-  return dialog as HTMLElement;
+  return { dialog: dialog as HTMLElement, expand };
 }
 
 beforeEach(() => {
@@ -151,7 +155,7 @@ describe("naturalSize", () => {
 
 describe("DiagramOverlay open/close", () => {
   it("opens on Expand and moves focus into the dialog", async () => {
-    const dialog = await openOverlay();
+    const { dialog } = await openOverlay();
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(document.activeElement).toBe(dialog);
     // The overlay renders its own copy of the diagram.
@@ -161,8 +165,7 @@ describe("DiagramOverlay open/close", () => {
   });
 
   it("Esc closes and focus returns to the Expand control", async () => {
-    await openOverlay();
-    const expand = screen.getByRole("button", { name: "Expand diagram" });
+    const { expand } = await openOverlay();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(expand);
@@ -177,7 +180,7 @@ describe("DiagramOverlay open/close", () => {
 
 describe("DiagramOverlay zoom/pan", () => {
   it("zoom buttons change the transform and Reset restores it", async () => {
-    const dialog = await openOverlay();
+    const { dialog } = await openOverlay();
     const withinDialog = within(dialog);
     const doc = document.querySelector(".dg-ov-doc") as HTMLElement;
     expect(doc.style.transform).toBe("translate(0px, 0px) scale(1)");

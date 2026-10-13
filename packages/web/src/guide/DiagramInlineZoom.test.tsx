@@ -7,7 +7,7 @@
  * - citation clicks still reveal at any zoom.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, waitFor, act, within, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { DiagramBlock } from "@unvibe/shared";
 import { clearD2SvgCache } from "./D2Diagram.js";
@@ -69,8 +69,12 @@ function inlineDoc(): HTMLElement {
   return document.querySelector(".dg .dg-doc") as HTMLElement;
 }
 
-function inlineBar(): HTMLElement {
-  return document.querySelector(".dg .dg-bar") as HTMLElement;
+// The bar only mounts once the diagram reports rendered (#130): the svg
+// can land a tick before that state flushes, so wait for a bar control
+// instead of querying it synchronously.
+async function barControls(): Promise<ReturnType<typeof within>> {
+  const expand = await screen.findByRole("button", { name: "Expand diagram" });
+  return within(expand.closest(".dg-bar") as HTMLElement);
 }
 
 beforeEach(() => {
@@ -87,7 +91,7 @@ describe("inline zoom controls", () => {
   it("renders zoom controls next to Expand and rests at fit", async () => {
     renderInline();
     await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
-    const bar = within(inlineBar());
+    const bar = await barControls();
     expect(bar.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
     expect(bar.getByRole("button", { name: "Zoom out" })).toBeInTheDocument();
     expect(bar.getByRole("button", { name: "Reset view" })).toBeInTheDocument();
@@ -99,7 +103,7 @@ describe("inline zoom controls", () => {
   it("zoom buttons zoom in place and Reset restores", async () => {
     renderInline();
     await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
-    const bar = within(inlineBar());
+    const bar = await barControls();
     fireEvent.click(bar.getByRole("button", { name: "Zoom in" }));
     expect(inlineDoc().style.transform).toBe("translate(0px, 0px) scale(1.25)");
     expect(bar.getByText("125%")).toBeInTheDocument();
@@ -130,7 +134,7 @@ describe("inline pan and citations", () => {
     firePointer(viewport, "pointerup", { pointerId: 1, clientX: 140, clientY: 120 });
     expect(inlineDoc().style.transform).toBe("translate(0px, 0px) scale(1)");
     // …but zoomed it pans.
-    fireEvent.click(within(inlineBar()).getByRole("button", { name: "Zoom in" }));
+    fireEvent.click((await barControls()).getByRole("button", { name: "Zoom in" }));
     firePointer(viewport, "pointerdown", { pointerId: 1, clientX: 100, clientY: 100, buttons: 1 });
     firePointer(viewport, "pointermove", { pointerId: 1, clientX: 140, clientY: 120, buttons: 1 });
     firePointer(viewport, "pointerup", { pointerId: 1, clientX: 140, clientY: 120 });
@@ -146,7 +150,7 @@ describe("inline pan and citations", () => {
     try {
       renderInline();
       await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
-      fireEvent.click(within(inlineBar()).getByRole("button", { name: "Zoom in" }));
+      fireEvent.click((await barControls()).getByRole("button", { name: "Zoom in" }));
       const viewport = document.querySelector(".dg .dg-view") as HTMLElement;
       const anchor = document.querySelector(".dg .dg-svg a[href]") as HTMLElement;
       firePointer(viewport, "pointerdown", { pointerId: 1, clientX: 100, clientY: 100, buttons: 1 });

@@ -179,9 +179,11 @@ describe("DiagramView failed diagrams (#130)", () => {
         render: { hash: "h-ok", status: "ok" },
       });
       await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
-      expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Reset view" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Expand diagram" })).toBeInTheDocument();
+      // The bar only mounts once the diagram reports rendered (#130): the
+      // svg can land a tick before that state flushes, so wait for it.
+      expect(await screen.findByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Reset view" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Expand diagram" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     } finally {
       spy.mockRestore();
