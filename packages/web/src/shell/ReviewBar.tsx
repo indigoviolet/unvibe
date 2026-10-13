@@ -4,7 +4,8 @@
  * panes; stays in place when the panes scroll.
  *
  * - Left: the review identity (`owner/name#N` + title, truncated with the
- *   full title on hover), a GitHub link-out for PR reviews, and Debug as
+ *   full title on hover), the PR label linking to GitHub for PR reviews
+ *   (#94, new tab) alongside the link-out icon, and Debug as
  *   an icon button (hidden until the review finishes opening, issue #92).
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
  *   its pane (issue #83); `#toggleRight` stays on the Source segment.
@@ -41,7 +42,13 @@ export function ReviewBar({
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">
-        <span className="num">{short}</span>
+        {prUrl ? (
+          <a className="num" href={prUrl} target="_blank" rel="noreferrer" title="Open PR on GitHub">
+            {short}
+          </a>
+        ) : (
+          <span className="num">{short}</span>
+        )}
         <b title={title}>{title}</b>
         {prUrl ? (
           <a className="ib bd" href={prUrl} target="_blank" rel="noreferrer" aria-label="Open PR on GitHub" title="Open PR on GitHub">

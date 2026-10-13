@@ -8,9 +8,9 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import type { Repo, RepoChange } from "@unvibe/shared";
+import type { Repo, RepoChange, ReviewSummary } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { RECENCY_KEY, StartPage, inRecencyWindow, reviewScopeOf } from "./StartPage.js";
 import { __resetKeptForTests } from "./keptChanges.js";
@@ -180,5 +180,69 @@ describe("StartPage requested split and filter (#95)", () => {
     const unsizedMeta = screen.getByText("Unsized PR").closest(".ci")?.querySelector(".cw");
     expect(unsizedMeta?.textContent).not.toContain("+");
     expect(unsizedMeta?.textContent).not.toContain("file");
+  });
+
+  it("links the PR label to GitHub without opening the review (#94)", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([DIRECT_NEW]);
+    renderPage();
+    const createReview = vi.mocked(api.createReview);
+    const link = await screen.findByRole("link", { name: "Open PR #12 on GitHub" });
+    expect(link).toHaveAttribute("href", "https://github.com/acme/app/pull/12");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link.getAttribute("rel")).toContain("noreferrer");
+    // The link sits in the row but outside the row's own button, so both
+    // stay keyboard-reachable and the link never triggers the row.
+    const row = link.closest(".ci");
+    expect(row?.querySelector("button.cj-open")).not.toBeNull();
+    expect(link.closest("button")).toBeNull();
+    fireEvent.click(link);
+    expect(createReview).not.toHaveBeenCalled();
+    // The title button still opens the review.
+    fireEvent.click(row?.querySelector("button.cj-open") as HTMLButtonElement);
+    await waitFor(() => expect(createReview).toHaveBeenCalled());
+  });
+
+  it("prefers the URL gh returned when the row has one (#94)", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([pr(21, "Mirror PR", NOW - HOUR, { reviewScope: "direct", url: "https://example.com/mirror/21" })]);
+    renderPage();
+    const link = await screen.findByRole("link", { name: "Open PR #21 on GitHub" });
+    expect(link).toHaveAttribute("href", "https://example.com/mirror/21");
+  });
+
+  it("links session PR labels and skips branch-only rows (#94)", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([]);
+    const base: ReviewSummary = {
+      id: "s",
+      repoId: "r1",
+      repoOwner: "acme",
+      repoName: "app",
+      title: "t",
+      branch: "b",
+      createdAt: NOW - DAY,
+      lastOpened: NOW - HOUR,
+      versionCount: 1,
+      currentVersion: 1,
+      stale: false,
+      totalHunks: 8,
+      reviewedHunks: 0,
+      pendingComments: 0,
+      guideStatus: "ready",
+    };
+    vi.mocked(api.reviews).mockResolvedValue({
+      reviews: [
+        { ...base, id: "s-pr", title: "PR review", branch: "b12", prNumber: 12 },
+        { ...base, id: "s-branch", title: "Branch review", branch: "feature-x" },
+      ],
+    });
+    renderPage();
+    const link = await screen.findByRole("link", { name: "Open PR #12 on GitHub" });
+    expect(link).toHaveAttribute("href", "https://github.com/acme/app/pull/12");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link.closest("button")).toBeNull();
+    const branchRow = screen.getByText("Branch review").closest(".ci");
+    expect(branchRow?.querySelector("a")).toBeNull();
   });
 });

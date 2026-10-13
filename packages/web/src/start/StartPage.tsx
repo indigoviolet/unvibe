@@ -59,6 +59,7 @@ import type {
   ReviewSummary,
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
+import { changePrUrl, githubPrUrl } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
@@ -998,6 +999,8 @@ export function StartPage(): React.JSX.Element {
                     errorTestId="changes-error-authoring"
                     opening={opening}
                     empty="No open PRs."
+                    owner={selected?.owner ?? null}
+                    name={selected?.name ?? null}
                     onOpen={(c, i) =>
                       openReview(changeKey(c, i), {
                         repoId: selectedId,
@@ -1045,6 +1048,8 @@ export function StartPage(): React.JSX.Element {
                         c={c}
                         i={i}
                         opening={opening}
+                        owner={selected?.owner ?? null}
+                        name={selected?.name ?? null}
                         onOpen={(row, j) =>
                           openReview(changeKey(row, j), {
                             repoId: selectedId,
@@ -1069,6 +1074,8 @@ export function StartPage(): React.JSX.Element {
                         c={c}
                         i={i}
                         opening={opening}
+                        owner={selected?.owner ?? null}
+                        name={selected?.name ?? null}
                         onOpen={(row, j) =>
                           openReview(changeKey(row, j), {
                             repoId: selectedId,
@@ -1088,6 +1095,8 @@ export function StartPage(): React.JSX.Element {
                     errorTestId="changes-error-branches"
                     opening={opening}
                     empty="No branches."
+                    owner={selected?.owner ?? null}
+                    name={selected?.name ?? null}
                     onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
                   />
                 </>
@@ -1122,22 +1131,47 @@ export function SessionRow({
   removeSession: (id: string) => Promise<void>;
   onOpen: () => void;
 }): React.JSX.Element {
+  // #94: where the review names a GitHub PR, the number links to the PR
+  // page (new tab). Branch-only reviews and the demo get no link. The
+  // title button (and the row around it) still opens the review.
+  const prUrl =
+    s.prNumber !== undefined && s.repoId !== "demo"
+      ? githubPrUrl(s.repoOwner, s.repoName, s.prNumber)
+      : null;
+  const canOpen = opening === null && deleting === null;
   return (
     <div key={s.id} className="ci" data-testid={`session-${s.id}`}>
-      <button
-        className="cj"
-        type="button"
-        disabled={opening !== null || deleting !== null}
-        onClick={onOpen}
-        title={`${s.title} (${s.branch})`}
-      >
+      <div className="cj" onClick={canOpen ? onOpen : undefined}>
         <span className="cw">
-          {s.repoOwner}/{s.repoName} · {s.prNumber ? `#${s.prNumber}` : s.branch}
+          {s.repoOwner}/{s.repoName} ·{" "}
+          {prUrl !== null && s.prNumber !== undefined ? (
+            <a
+              href={prUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Open PR #${s.prNumber} on GitHub`}
+            >
+              #{s.prNumber}
+            </a>
+          ) : s.prNumber !== undefined ? (
+            `#${s.prNumber}`
+          ) : (
+            s.branch
+          )}
           {s.currentVersion > 1 ? ` · v${s.currentVersion}` : ""}
           {" · "}
           {timeAgo(s.lastOpened)}
         </span>
-        <span className="cx2">{s.title}</span>
+        <button
+          className="cj-open"
+          type="button"
+          disabled={!canOpen}
+          onClick={onOpen}
+          title={`${s.title} (${s.branch})`}
+        >
+          <span className="cx2">{s.title}</span>
+        </button>
         <span className="hint">
           {s.ingestStatus === "loading" ? (
             <>{ingestStepLabel(s.ingestStep)}</>
@@ -1152,7 +1186,7 @@ export function SessionRow({
             </>
           )}
         </span>
-      </button>
+      </div>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
         {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
         {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
@@ -1242,25 +1276,54 @@ export function diffSizeParts(
  * One PR/branch list row (#95, #100, #94): the head line carries the PR
  * number and branch, author, relative update time, diff size and team
  * names — each omitted when unknown — above the title that opens the
- * review.
+ * review. Where the row names a GitHub PR, the number is a link to the PR
+ * page (new tab); the title button (and the row around it) opens the
+ * review, so the link never triggers the row and both stay
+ * keyboard-reachable.
  */
 function ChangeRow({
   c,
   i,
   opening,
   onOpen,
+  owner,
+  name,
 }: {
   c: RepoChange;
   i: number;
   opening: string | null;
   onOpen: (c: RepoChange, i: number) => void;
+  owner: string | null;
+  name: string | null;
 }): React.JSX.Element {
   const size = diffSizeParts(c);
+  const prLabel = c.kind === "pr" ? (c.prNumber !== undefined ? `#${c.prNumber}` : "PR") : null;
+  const prUrl = prLabel !== null && owner !== null && name !== null ? changePrUrl(c, owner, name) : null;
+  const open = opening === null ? (): void => onOpen(c, i) : undefined;
   return (
     <div className="ci">
-      <button className="cj" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
+      <div className="cj" onClick={open}>
         <span className="cw">
-          {changeHead(c)}
+          {prLabel !== null ? (
+            <>
+              {prUrl !== null ? (
+                <a
+                  href={prUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Open PR ${prLabel} on GitHub`}
+                >
+                  {prLabel}
+                </a>
+              ) : (
+                prLabel
+              )}
+              {c.branch ? ` · ${c.branch}` : ""}
+            </>
+          ) : (
+            (c.branch ?? c.title)
+          )}
           {c.author ? ` · ${c.author}` : ""}
           {c.kind === "pr" && typeof c.updatedAt === "number" ? ` · ${timeAgo(c.updatedAt)}` : ""}
           {size !== null ? (
@@ -1276,8 +1339,10 @@ function ChangeRow({
           ) : null}
           {c.requestedTeams && c.requestedTeams.length > 0 ? ` · via ${c.requestedTeams.join(", ")}` : ""}
         </span>
-        <span className="cx2">{c.title}</span>
-      </button>
+        <button className="cj-open" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
+          <span className="cx2">{c.title}</span>
+        </button>
+      </div>
       {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
     </div>
   );
@@ -1291,6 +1356,8 @@ function ChangeSection({
   opening,
   empty,
   onOpen,
+  owner,
+  name,
 }: {
   title: string;
   changes: RepoChange[];
@@ -1301,6 +1368,8 @@ function ChangeSection({
   opening: string | null;
   empty: string;
   onOpen: (c: RepoChange, i: number) => void;
+  owner: string | null;
+  name: string | null;
 }): React.JSX.Element {
   return (
     <>
@@ -1313,7 +1382,9 @@ function ChangeSection({
       {changes.length === 0 && !error ? (
         <p className="hint">{empty}</p>
       ) : (
-        changes.map((c, i) => <ChangeRow key={changeKey(c, i)} c={c} i={i} opening={opening} onOpen={onOpen} />)
+        changes.map((c, i) => (
+          <ChangeRow key={changeKey(c, i)} c={c} i={i} opening={opening} onOpen={onOpen} owner={owner} name={name} />
+        ))
       )}
     </>
   );
