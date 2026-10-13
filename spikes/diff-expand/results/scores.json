@@ -63,8 +63,8 @@
      "multiOk": 13
     },
     "js": {
-     "exact": 7,
-     "lead": 0,
+     "exact": 4,
+     "lead": 3,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -99,8 +99,8 @@
      "multiOk": 2
     },
     "ALL": {
-     "exact": 107,
-     "lead": 0,
+     "exact": 104,
+     "lead": 3,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -175,8 +175,8 @@
      "multiOk": 13
     },
     "js": {
-     "exact": 7,
-     "lead": 0,
+     "exact": 4,
+     "lead": 3,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -211,8 +211,8 @@
      "multiOk": 2
     },
     "ALL": {
-     "exact": 107,
-     "lead": 0,
+     "exact": 104,
+     "lead": 3,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -511,8 +511,8 @@
      "multiOk": 0
     },
     "js": {
-     "exact": 7,
-     "lead": 0,
+     "exact": 4,
+     "lead": 3,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -547,8 +547,8 @@
      "multiOk": 2
     },
     "ALL": {
-     "exact": 86,
-     "lead": 4,
+     "exact": 83,
+     "lead": 7,
      "wrong": 3,
      "nothing": 2,
      "unsupported": 15,
@@ -9665,22 +9665,22 @@
    ],
    "results": {
     "tree-sitter-wasm": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 805,
+       "start": 819,
        "end": 870
       }
      ],
      "error": null
     },
     "ast-grep napi": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 805,
+       "start": 819,
        "end": 870
       }
      ],
@@ -9699,11 +9699,11 @@
      "error": null
     },
     "lezer": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 805,
+       "start": 819,
        "end": 870
       }
      ],
@@ -10028,22 +10028,22 @@
    ],
    "results": {
     "tree-sitter-wasm": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 505,
+       "start": 522,
        "end": 575
       }
      ],
      "error": null
     },
     "ast-grep napi": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 505,
+       "start": 522,
        "end": 575
       }
      ],
@@ -10062,11 +10062,11 @@
      "error": null
     },
     "lezer": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 505,
+       "start": 522,
        "end": 575
       }
      ],
@@ -10115,22 +10115,22 @@
    ],
    "results": {
     "tree-sitter-wasm": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 324,
+       "start": 365,
        "end": 407
       }
      ],
      "error": null
     },
     "ast-grep napi": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 324,
+       "start": 365,
        "end": 407
       }
      ],
@@ -10149,11 +10149,11 @@
      "error": null
     },
     "lezer": {
-     "verdict": "exact",
+     "verdict": "lead",
      "chainOk": true,
      "got": [
       {
-       "start": 324,
+       "start": 365,
        "end": 407
       }
      ],
