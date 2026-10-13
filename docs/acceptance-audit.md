@@ -498,8 +498,25 @@ needed (that deviation is closed, not added).
   below strip + bar via `diffPinnedHeight(scope)`); z-order file 2 / hunk 1
   (below bar 3 and strip 4, above content, below overlays 6+); hidden-hunk
   rows, folded placeholders, cards and threads scroll under, never pin;
-  controls work while pinned; unified + split, light + dark — met
-  (`e2e/diff-sticky-bar.spec.ts` 12 tests; `docs/screenshots/140-*.png`).
+  controls work while pinned; unified + split, light + dark.
+  Follow-up fix: the first version put the hunk header in a table cell
+  inside the sideways-scroll wrapper (`.dwrap { overflow-x: auto;
+  overflow-y: clip }`). Per the CSS Overflow spec `clip` beside `auto`
+  computes to `hidden`, which makes the wrapper a vertical scroll container
+  and traps the sticky header — forcing `hidden` in Playwright's Chromium
+  reproduces the owner's report exactly (file header, outside the wrapper,
+  keeps pinning; hunk headers scroll away), while that Chromium (156)
+  natively computes `clip` and pins fine, which is why the spec passed here.
+  The owner's Vivaldi build was not directly observed; its exact computed
+  value is still open (worth asking its version), but the restructure below
+  makes the question moot. Each hunk is now its own section (header, card,
+  folded placeholder, code table) with the header outside every horizontal
+  scroller: no vertical scroll container sits between header and pane on any
+  engine (asserted in the spec, plus a forced-`hidden` regression test).
+  Side effect: unified code tables now scroll sideways per hunk instead of
+  per file. Verified by breaking sticky on purpose (`position: static`):
+  exactly the 4 hunk-stickiness tests fail — met
+  (`e2e/diff-sticky-bar.spec.ts` 15 tests; `docs/screenshots/140-*.png`).
   Measured stack 149px (strip 41 + bar 43 + file 34 + hunk 31); no compact
   pinned variant — the hunk header is already one 31px line, pure CSS
   cannot restyle only-while-pinned, and every control must stay usable.

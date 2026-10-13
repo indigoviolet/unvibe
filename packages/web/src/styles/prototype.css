@@ -222,11 +222,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .dfile-h .path b { font-weight: 500; flex: none; }
 .dfile-h .st { flex: none; }
 .revc { font: 11px var(--mono); color: var(--muted); flex: none; }
-/* Diff tables scroll sideways; .pin rows stay the pane's width so their controls never scroll out of view.
-   `overflow-y: clip` (not visible, not a scroll container) lets the hunk
-   header rows stick vertically to `#right` through this wrapper while the
-   sideways scroll keeps working; `auto` would trap the sticky rows here. */
-.dwrap { overflow-x: auto; overflow-y: clip; container-type: inline-size; }
+/* Diff tables scroll sideways per hunk; in-table `.pin` rows stay the
+   pane's width so their controls never scroll out of view. */
+.dwrap { overflow-x: auto; container-type: inline-size; }
 .pin { position: sticky; left: 0; width: 100cqw; box-sizing: border-box; }
 table.diff { border-collapse: collapse; font-family: var(--mono); font-size: 11.5px; line-height: 1.55; min-width: 100%; }
 table.diff td { padding: 0 8px; white-space: pre; vertical-align: top; }
@@ -245,16 +243,20 @@ table.diff td.empty { background: var(--sunk); }
 table.diff .cm { color: var(--muted); font-style: italic; }
 table.diff tr.hl td { background: var(--note-mark) !important; }
 table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans); }
-/* Sticky hunk header (issue #140): the header row's cell pins under the
-   file header while its hunk scrolls; the next hunk's header pushes it out.
-   The cell (not the inner `.pin.hh` div, which is confined to its row)
-   carries the vertical stick; the div keeps its horizontal stick for
-   sideways scrolling. `top` tracks the rows above through `--dhunk-top`
-   (kept by `observeDiffPinned`, fallback below). z-index 1 sits above the
-   diff content but below the file header (2), so an arriving file header
-   slides over the outgoing hunk header, and below every app overlay (6+).
-   Opaque background so code, cards and threads scroll under it. */
-#right tr.ph > td { position: sticky; top: var(--dhunk-top, 117px); z-index: 1; background: var(--sunk); }
+/* Sticky hunk header (issue #140): a plain block between its file's
+   sections, pinning under the file header while its hunk scrolls; the next
+   hunk's header pushes it out. It lives outside every horizontal scroller
+   (no `overflow` ancestor below `#right`), so the stick reaches the pane on
+   every engine — never through a wrapper whose computed overflow could trap
+   it. `top` tracks the rows above through `--dhunk-top` (kept by
+   `observeDiffPinned`, fallback below). z-index 1 sits above the diff
+   content but below the file header (2), so an arriving file header slides
+   over the outgoing hunk header, and below every app overlay (6+). Opaque
+   background so code, cards and threads scroll under it. */
+.dhunk-h { position: sticky; top: var(--dhunk-top, 117px); z-index: 1; background: var(--sunk); }
+/* Hidden-hunk runs are plain blocks between the hunk sections: they scroll
+   under the pinned headers, never pin. The button spans the pane width. */
+.dhid .hid { width: 100%; box-sizing: border-box; }
 .hh { display: flex; align-items: center; gap: 4px; padding: 3px 6px; background: var(--sunk); border-top: 1px solid var(--line); }
 .hh .hl2 { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .hh .hl2 b { color: var(--ink); font-weight: 500; }

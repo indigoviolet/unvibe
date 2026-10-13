@@ -7,8 +7,11 @@
  *   reviewed count, mark-file-reviewed toggle;
  * - hunks render through hidden-run grouping; hunk cards (summary + note)
  *   exist independently of folding; folding only hides code;
- * - unified rows scroll sideways, split rows pair del/add runs in two equal
- *   halves; hunk headers/cards/slot rows are pinned to the pane width.
+ * - each hunk is its own section (header, card, folded placeholder, code
+ *   table), so the hunk header's vertical stick reaches `#right` past every
+ *   horizontal scroller (#140); unified code tables scroll sideways per
+ *   hunk, split rows pair del/add runs in two equal halves; in-table slot
+ *   rows stay pinned to the pane width via `.pin`.
  *
  * Performance: the file header always renders (cheap); the hunk table
  * renders lazily on first intersection with the pane, so a 300-file diff
@@ -357,14 +360,12 @@ function HunkCard({
 function HiddenRow({
   file,
   indices,
-  cols,
   briefs,
   summaries,
   onUnhide,
 }: {
   file: ReviewFile;
   indices: number[];
-  cols: number;
   briefs: Readonly<Record<string, string>> | null;
   summaries: ReadonlyMap<string, { summary?: string }>;
   onUnhide(hashes: string[]): void;
@@ -385,28 +386,28 @@ function HiddenRow({
     .filter(Boolean)
     .join(" ");
   return (
-    <tr className="pr">
-      <td colSpan={cols}>
-        <button
-          className="pin hid"
-          type="button"
-          data-tip="Show these hunks"
-          aria-label={`${hiddenRunLabel(file, indices)} hidden. Show these hunks`}
-          onClick={() => onUnhide(indices.map((i) => file.hunks[i].contentHash))}
-        >
-          <Icon name="right" />
-          <span className="hidl">
-            {hiddenRunLabel(file, indices)} hidden · {reasons} · +{added} −{removed}
-          </span>
-          <span className="hidb">{brief}</span>
-        </button>
-      </td>
-    </tr>
+    // A plain block between hunk sections: never pinned, scrolls under the
+    // file and hunk headers (#140).
+    <div className="dhid">
+      <button
+        className="hid"
+        type="button"
+        data-tip="Show these hunks"
+        aria-label={`${hiddenRunLabel(file, indices)} hidden. Show these hunks`}
+        onClick={() => onUnhide(indices.map((i) => file.hunks[i].contentHash))}
+      >
+        <Icon name="right" />
+        <span className="hidl">
+          {hiddenRunLabel(file, indices)} hidden · {reasons} · +{added} −{removed}
+        </span>
+        <span className="hidb">{brief}</span>
+      </button>
+    </div>
   );
 }
 
-function HunkBlock(props: SectionProps & { index: number; cols: number }): ReactNode {
-  const { file, index, cols } = props;
+function HunkBlock(props: SectionProps & { index: number }): ReactNode {
+  const { file, index } = props;
   const h = file.hunks[index];
   const st = props.states.get(h.contentHash);
   const folded = st?.folded ?? false;
@@ -430,125 +431,124 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
     toks: props.tokens?.get(h.contentHash) ?? null,
   };
   return (
-    <>
-      {/* `ph`: this row's cell pins under the file header while the hunk scrolls (#140). */}
-      <tr className="pr ph">
-        <td colSpan={cols}>
-          <div className={`pin hh${reviewed ? " rev" : ""}`} data-hunk={k}>
-            <button
-              className="ib"
-              type="button"
-              data-tip={folded ? "Show code" : "Fold code"}
-              aria-label={folded ? "Show code" : "Fold code"}
-              onClick={() => props.actions.toggleFold(h.contentHash, folded)}
-            >
-              <Icon name={folded ? "right" : "down"} />
-            </button>
-            <span className="hl2" data-tip={h.header}>
-              <b>
-                Hunk {index + 1} of {file.hunks.length}
-              </b>{" "}
-              · lines {h.newStart}–{h.newEnd}
-              {fn ? ` · in ${fn}` : ""} ·{" "}
-              <span className="st">
-                <span className="a">+{h.added}</span> <span className="d">−{h.removed}</span>
-              </span>
-              {changedSinceReviewed ? <span className="prtag">changed since reviewed</span> : null}
+    // One section per hunk (#140): the header is a direct child of the file
+    // flow, outside any horizontal scroller, so its vertical stick reaches
+    // #right on every engine; only the code table scrolls sideways, per hunk.
+    <div className="dhunk">
+      <div className={`hh dhunk-h${reviewed ? " rev" : ""}`} data-hunk={k}>
+        <button
+          className="ib"
+          type="button"
+          data-tip={folded ? "Show code" : "Fold code"}
+          aria-label={folded ? "Show code" : "Fold code"}
+          onClick={() => props.actions.toggleFold(h.contentHash, folded)}
+        >
+          <Icon name={folded ? "right" : "down"} />
+        </button>
+        <span className="hl2" data-tip={h.header}>
+          <b>
+            Hunk {index + 1} of {file.hunks.length}
+          </b>{" "}
+          · lines {h.newStart}–{h.newEnd}
+          {fn ? ` · in ${fn}` : ""} ·{" "}
+          <span className="st">
+            <span className="a">+{h.added}</span> <span className="d">−{h.removed}</span>
+          </span>
+          {changedSinceReviewed ? <span className="prtag">changed since reviewed</span> : null}
+        </span>
+        {summaryPending && !busy ? (
+          <span className="hint" data-tip="Update rewrites this summary">
+            summary out of date
+          </span>
+        ) : null}
+        {busy ? (
+          <span className="hint" aria-label="Summarizing">
+            <span className="dots">
+              <i />
+              <i />
+              <i />
             </span>
-            {summaryPending && !busy ? (
-              <span className="hint" data-tip="Update rewrites this summary">
-                summary out of date
-              </span>
-            ) : null}
-            {busy ? (
-              <span className="hint" aria-label="Summarizing">
-                <span className="dots">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </span>
-            ) : summary ? null : (
-              <button
-                className="ib"
-                type="button"
-                data-tip="Summarize with agent"
-                aria-label="Summarize with agent"
-                onClick={() => props.actions.summarize(h.contentHash)}
-              >
-                <Icon name="spark" />
-              </button>
-            )}
-            <button
-              className="ib"
-              type="button"
-              data-tip={note ? "Edit note" : "Add note"}
-              aria-label={note ? "Edit note" : "Add note"}
-              onClick={() => props.actions.beginNote(h.contentHash, note)}
-            >
-              <Icon name="note" />
-            </button>
-            <button
-              className="ib"
-              type="button"
-              data-tip={reviewed ? "Mark not reviewed" : "Mark reviewed"}
-              aria-label={reviewed ? "Mark not reviewed" : "Mark reviewed"}
-              aria-pressed={reviewed}
-              onClick={() => props.actions.toggleReviewed(h.contentHash, reviewed)}
-            >
-              <Icon name="check" />
-            </button>
-          </div>
-        </td>
-      </tr>
+          </span>
+        ) : summary ? null : (
+          <button
+            className="ib"
+            type="button"
+            data-tip="Summarize with agent"
+            aria-label="Summarize with agent"
+            onClick={() => props.actions.summarize(h.contentHash)}
+          >
+            <Icon name="spark" />
+          </button>
+        )}
+        <button
+          className="ib"
+          type="button"
+          data-tip={note ? "Edit note" : "Add note"}
+          aria-label={note ? "Edit note" : "Add note"}
+          onClick={() => props.actions.beginNote(h.contentHash, note)}
+        >
+          <Icon name="note" />
+        </button>
+        <button
+          className="ib"
+          type="button"
+          data-tip={reviewed ? "Mark not reviewed" : "Mark reviewed"}
+          aria-label={reviewed ? "Mark not reviewed" : "Mark reviewed"}
+          aria-pressed={reviewed}
+          onClick={() => props.actions.toggleReviewed(h.contentHash, reviewed)}
+        >
+          <Icon name="check" />
+        </button>
+      </div>
       {summary ?? note ?? noteDraft !== undefined ? (
-        <tr className="pr">
-          <td colSpan={cols}>
-            <div className="pin fwrap">
-              <HunkCard
-                reviewed={reviewed}
-                summary={summary}
-                note={note}
-                noteStale={noteStale}
-                noteDraft={noteDraft}
-                hash={h.contentHash}
-                actions={props.actions}
-              />
-            </div>
-          </td>
-        </tr>
+        <div className="fwrap">
+          <HunkCard
+            reviewed={reviewed}
+            summary={summary}
+            note={note}
+            noteStale={noteStale}
+            noteDraft={noteDraft}
+            hash={h.contentHash}
+            actions={props.actions}
+          />
+        </div>
       ) : null}
       {folded ? (
-        <tr className="pr">
-          <td colSpan={cols}>
-            <button
-              className="pin folded"
-              type="button"
-              aria-label={`${h.added + h.removed} changed lines folded. Show`}
-              onClick={() => props.actions.toggleFold(h.contentHash, folded)}
-            >
-              {h.added + h.removed} changed lines folded · show
-            </button>
-          </td>
-        </tr>
-      ) : props.view === "unified" ? (
-        <UnifiedRows {...rowProps} />
+        <button
+          className="folded"
+          type="button"
+          aria-label={`${h.added + h.removed} changed lines folded. Show`}
+          onClick={() => props.actions.toggleFold(h.contentHash, folded)}
+        >
+          {h.added + h.removed} changed lines folded · show
+        </button>
       ) : (
-        <SplitRows {...rowProps} />
+        <div className="dwrap">
+          <table className={`diff ${props.view}`}>
+            {props.view === "split" ? (
+              <colgroup>
+                <col className="cn" />
+                <col />
+                <col className="cn" />
+                <col />
+              </colgroup>
+            ) : null}
+            <tbody>{props.view === "unified" ? <UnifiedRows {...rowProps} /> : <SplitRows {...rowProps} />}</tbody>
+          </table>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
 export function FileSection(props: SectionProps): ReactNode {
-  const { file, view } = props;
+  const { file } = props;
   const [visible, setVisible] = useState(props.eager);
   const bodyRef = useRef<HTMLDivElement>(null);
   const stats = fileStats(file);
   const base = file.path.split("/").pop()!;
   const dir = file.path.slice(0, Math.max(0, file.path.length - base.length));
   const done = props.reviewed === file.hunks.length;
-  const cols = view === "split" ? 4 : 3;
   // Only rendered (unhidden) hunks tokenise; unhiding later picks up the
   // cache or tokenises on demand. Folded files skip entirely (no body).
   const renderedHunks = useMemo(
@@ -624,39 +624,26 @@ export function FileSection(props: SectionProps): ReactNode {
         </button>
       </div>
       {props.folded ? null : (
-        <div className="dwrap" ref={bodyRef}>
+        <div className="dbody" ref={bodyRef}>
           {file.isBinary ? (
             <p className="hint" style={{ padding: "6px 10px" }}>
               Binary file · changes not shown.
             </p>
           ) : visible ? (
-            <table className={`diff ${view}`}>
-              {view === "split" ? (
-                <colgroup>
-                  <col className="cn" />
-                  <col />
-                  <col className="cn" />
-                  <col />
-                </colgroup>
-              ) : null}
-              <tbody>
-                {groupHunks(file.hunks, props.isHidden).map((g) =>
-                  g.type === "hidden" ? (
-                    <HiddenRow
-                      key={`hid-${g.indices.join("-")}`}
-                      file={file}
-                      indices={g.indices}
-                      cols={cols}
-                      briefs={props.briefs}
-                      summaries={props.states}
-                      onUnhide={props.onUnhide}
-                    />
-                  ) : (
-                    <HunkBlock key={`hunk-${file.fileKey}-${g.index}`} index={g.index} cols={cols} {...props} tokens={tokens} />
-                  ),
-                )}
-              </tbody>
-            </table>
+            groupHunks(file.hunks, props.isHidden).map((g) =>
+              g.type === "hidden" ? (
+                <HiddenRow
+                  key={`hid-${g.indices.join("-")}`}
+                  file={file}
+                  indices={g.indices}
+                  briefs={props.briefs}
+                  summaries={props.states}
+                  onUnhide={props.onUnhide}
+                />
+              ) : (
+                <HunkBlock key={`hunk-${file.fileKey}-${g.index}`} index={g.index} {...props} tokens={tokens} />
+              ),
+            )
           ) : (
             <div style={{ minHeight: 28 }} aria-hidden="true" />
           )}

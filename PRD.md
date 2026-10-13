@@ -214,7 +214,7 @@ Every card and every expansion card has the same controls:
 **Fold all and Unfold all:** Fold all summarizes and folds every hunk that isn't hidden. Unfold all shows all code and keeps the summaries.
 
 **Views**
-- **Unified:** long lines scroll sideways.
+- **Unified:** long lines scroll sideways (per hunk: each hunk's code scrolls independently, so its header can pin without sitting inside the scroller).
 - **Split:** always two equal halves with fixed line-number columns; long lines wrap inside their half. Choosing Split widens the pane if it's narrow.
 - **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
 - **Pinned rows (sideways):** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.

@@ -4,7 +4,7 @@
  * Fold all, Unfold all, Refresh) stays pinned directly under the source
  * pane's tab strip while the diff scrolls; below it the current file header
  * (`.dfile-h`) pins while its file scrolls and the current hunk header
- * (`tr.ph`) pins while its hunk scrolls, each replaced by the next file or
+ * (`.dhunk-h`) pins while its hunk scrolls, each replaced by the next file or
  * hunk at the boundary. Reveals and file jumps land below the pinned rows;
  * the Files panel and the filter dropdown open fully visible; the bar spans
  * the full pane width sideways and stays one row at narrow widths.
@@ -87,7 +87,7 @@ async function stack(page: Page): Promise<PinnedStack> {
       stripH: h(".rstick"),
       barH: h(".dtool"),
       fileH: h(".dfile-h"),
-      hunkH: h("tr.ph > td"),
+      hunkH: h(".dhunk-h"),
       fileTop: num(css.getPropertyValue("--dfile-top")),
       hunkTop: num(css.getPropertyValue("--dhunk-top")),
     };
@@ -133,6 +133,21 @@ async function expectPinned(
     .toContain(text);
 }
 
+/**
+ * After `expectPinned`, scroll a little further into the same file/hunk: a
+ * header merely passing through the slot leaves it, a pinned one stays.
+ * (Without this, scrolling a header exactly to its slot would read back
+ * correctly even if nothing stuck.)
+ */
+async function expectStuck(page: Page, kind: "file" | "hunk", text: string): Promise<void> {
+  await page.evaluate(() => document.getElementById("right")?.scrollBy(0, 120));
+  await expect
+    .poll(async () => (kind === "file" ? await pinnedFile(page) : await pinnedHunk(page)) ?? "", {
+      timeout: 5000,
+    })
+    .toContain(text);
+}
+
 /** File name shown by the file header pinned at the file slot (if any).
  * During a replacement two headers share the slot for a frame; the later
  * one in DOM order is the incoming header, so the last match wins. */
@@ -158,7 +173,7 @@ async function pinnedHunk(page: Page): Promise<string | null> {
     const p = pane.getBoundingClientRect();
     const slot = p.top + (Number.parseFloat(getComputedStyle(pane).getPropertyValue("--dhunk-top")) || 0);
     let found: string | null = null;
-    for (const el of pane.querySelectorAll("tr.ph > td")) {
+    for (const el of pane.querySelectorAll(".dhunk-h")) {
       if (Math.abs(el.getBoundingClientRect().top - slot) < 2.5) {
         found = (el.textContent ?? "").replace(/\s+/g, " ").slice(0, 60);
       }
@@ -245,7 +260,7 @@ test("Files panel opened while scrolled is fully visible, with its dropdown", as
 
 test("bar spans the full pane width in split view and after sideways scrolling", async ({ page }) => {
   await page.getByRole("button", { name: "Split" }).click();
-  await expect(page.locator(`${connFile} table.diff.split`)).toBeVisible();
+  await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
   await scrollDiffToBottom(page);
   // Sideways-scroll every file body that can scroll; the bar must not move
   // with the content or leave a gap.
@@ -288,7 +303,8 @@ test("file header pins under the bar while its file scrolls, then the next file 
   const filePos = await page.evaluate(() => getComputedStyle(document.querySelector("#right .dfile-h") as Element).position);
   expect(filePos).toBe("sticky");
   // Midway through the first file: its header is pinned at the file slot.
-  await expectPinned(page, `[id="F-${CONN}"] .dwrap`, s.fileTop + 200, "file", "connection.py");
+  await expectPinned(page, `[id="F-${CONN}"]`, s.fileTop + 400, "file", "connection.py");
+  await expectStuck(page, "file", "connection.py");
   // Scroll on: the second file's header arrives and replaces the first.
   await scrollDiffToBottom(page);
   const name = await pinnedFile(page);
@@ -311,7 +327,7 @@ test("hunk header pins under the file header while its hunk scrolls, then the ne
   page,
 }) => {
   const hunkPos = await page.evaluate(
-    () => getComputedStyle(document.querySelector("#right tr.ph > td") as Element).position,
+    () => getComputedStyle(document.querySelector("#right .dhunk-h") as Element).position,
   );
   expect(hunkPos).toBe("sticky");
   const s = await stack(page);
@@ -319,6 +335,7 @@ test("hunk header pins under the file header while its hunk scrolls, then the ne
   await expectPinned(page, `[data-hunk="${CONN}:0"]`, s.hunkTop, "hunk", "Hunk 1 of");
   // Scroll on: the second hunk's header replaces the first at the slot.
   await expectPinned(page, `[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
+  await expectStuck(page, "hunk", "Hunk 2 of");
 });
 
 test("a revealed line lands below the whole pinned stack, not under a header", async ({ page }) => {
@@ -341,13 +358,13 @@ test("the pinned headers' controls keep working: collapse the file, fold the hun
 }) => {
   const s = await stack(page);
   // Pin the first file's header, then collapse the file through it.
-  await expectPinned(page, `[id="F-${CONN}"] .dwrap`, s.fileTop + 200, "file", "connection.py");
+  await expectPinned(page, `[id="F-${CONN}"]`, s.fileTop + 400, "file", "connection.py");
   await page.locator(`[id="F-${CONN}"] .dfile-h`).getByRole("button", { name: "Collapse file" }).click();
-  await expect(page.locator(`[id="F-${CONN}"] .dwrap`)).toHaveCount(0);
+  await expect(page.locator(`[id="F-${CONN}"] .dbody`)).toHaveCount(0);
   // The collapsed header still pins at the slot.
   expect(await pinnedFile(page)).toContain("connection.py");
   await page.locator(`[id="F-${CONN}"] .dfile-h`).getByRole("button", { name: "Expand file" }).click();
-  await expect(page.locator(`[id="F-${CONN}"] .dwrap`)).toHaveCount(1);
+  await expect(page.locator(`[id="F-${CONN}"] .dbody`)).toHaveCount(1);
   // Fold the first hunk through its pinned header.
   await expectPinned(page, `[data-hunk="${CONN}:0"]`, s.hunkTop, "hunk", "Hunk 1 of");
   await page
@@ -360,7 +377,7 @@ test("the pinned headers' controls keep working: collapse the file, fold the hun
 });
 
 test("hidden-hunk rows scroll under the pinned headers instead of pinning", async ({ page }) => {
-  const hid = page.locator("#right .pin.hid").first();
+  const hid = page.locator("#right .dhid .hid").first();
   await expect(hid).toBeVisible();
   const y0 = (await hid.boundingBox())!.y;
   await page.evaluate(() => document.getElementById("right")?.scrollBy(0, 200));
@@ -371,8 +388,83 @@ test("hidden-hunk rows scroll under the pinned headers instead of pinning", asyn
 
 test("file and hunk headers pin in split view too", async ({ page }) => {
   await page.getByRole("button", { name: "Split" }).click();
-  await expect(page.locator(`${connFile} table.diff.split`)).toBeVisible();
+  await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
   const s = await stack(page);
-  await expectPinned(page, `[id="F-${CONN}"] .dwrap`, s.fileTop + 200, "file", "connection.py");
+  await expectPinned(page, `[id="F-${CONN}"]`, s.fileTop + 400, "file", "connection.py");
   await expectPinned(page, `[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
+  await expectStuck(page, "hunk", "Hunk 2 of");
+});
+
+test("no vertical scroll container sits between a hunk header and the pane", async ({ page }) => {
+  // The invariant the pinning relies on (#140): every ancestor of `.dhunk-h`
+  // up to `#right` leaves vertical overflow visible, so the stick reaches
+  // the pane whatever an engine computes for `clip` beside `auto`. The
+  // sideways scrollers (`.dwrap`) wrap only the code tables, never headers.
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right") as HTMLElement;
+    const bad: string[] = [];
+    for (const h of pane.querySelectorAll(".dhunk-h")) {
+      if ((h as HTMLElement).closest(".dwrap")) bad.push("header-inside-dwrap");
+      let el: HTMLElement | null = h as HTMLElement;
+      while (el && el !== pane) {
+        const oy = getComputedStyle(el).overflowY;
+        if (oy !== "visible") bad.push(`${el.className || el.tagName}: ${oy}`);
+        el = el.parentElement;
+      }
+    }
+    if (pane.querySelectorAll(".dhunk-h").length === 0) bad.push("no-headers");
+    return bad;
+  });
+  expect(bad).toEqual([]);
+});
+
+test("hunk headers pin while their table is scrolled sideways", async ({ page }) => {
+  // A diff that really overflows horizontally (unified): at least one code
+  // table is wider than the pane.
+  const overflow = await page.evaluate(() => {
+    const pane = document.getElementById("right") as HTMLElement;
+    return Math.max(
+      ...[...pane.querySelectorAll(".dwrap")].map((w) => (w as HTMLElement).scrollWidth - (w as HTMLElement).clientWidth),
+    );
+  });
+  expect(overflow).toBeGreaterThan(50);
+  // Scroll every code table fully sideways, then pin a hunk header: the
+  // header is outside the scroller, so sideways position cannot matter.
+  await page.evaluate(() => {
+    for (const w of document.querySelectorAll("#right .dwrap")) w.scrollTo(9999, 0);
+  });
+  const s = await stack(page);
+  await expectPinned(page, `[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
+  await expectStuck(page, "hunk", "Hunk 2 of");
+  // The pinned header still spans the pane width (not scrolled away).
+  const span = await page.evaluate(() => {
+    const pane = document.getElementById("right") as HTMLElement;
+    const p = pane.getBoundingClientRect();
+    const css = getComputedStyle(pane);
+    const slot = p.top + (Number.parseFloat(css.getPropertyValue("--dhunk-top")) || 0);
+    for (const el of pane.querySelectorAll(".dhunk-h")) {
+      const b = el.getBoundingClientRect();
+      if (Math.abs(b.top - slot) < 2.5) return { x: b.x, width: b.width, paneX: p.x, paneWidth: p.width };
+    }
+    return null;
+  });
+  expect(span).not.toBeNull();
+  expect(Math.abs(span!.x - span!.paneX)).toBeLessThan(1.5);
+  expect(Math.abs(span!.width - span!.paneWidth)).toBeLessThan(1.5);
+});
+
+test("hunk headers pin even if the code wrapper computes overflow-y:hidden", async ({ page }) => {
+  // Regression guard for the owner's report (#140): per the CSS Overflow
+  // spec, `overflow-y: clip` beside `overflow-x: auto` computes to `hidden`,
+  // which makes the wrapper a vertical scroll container and traps any sticky
+  // header inside it. Some Chromium builds compute `hidden`; the headers
+  // live outside the wrapper, so pinning must not depend on the outcome.
+  await page.evaluate(() => {
+    for (const w of document.querySelectorAll("#right .dwrap")) {
+      (w as HTMLElement).style.overflowY = "hidden";
+    }
+  });
+  const s = await stack(page);
+  await expectPinned(page, `[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
+  await expectStuck(page, "hunk", "Hunk 2 of");
 });

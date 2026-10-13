@@ -31,7 +31,7 @@ export { parseDiffRef };
  * Four rows stay pinned at the top of `#right` while the diff scrolls: the
  * tab strip (`.rstick`, owned by `SourcePane`), the diff actions bar
  * (`.dtool`, owned by `DiffView`), the current file header (`.dfile-h`) and
- * the current hunk header (`tr.ph`, owned by `FileSection`). Every place
+ * the current hunk header (`.dhunk-h`, owned by `FileSection`). Every place
  * that scrolls a diff line or a file header into view goes through the
  * helpers below so the target lands below the pinned rows — never under
  * them. The one shared mechanism is live measurement from the DOM (no
@@ -82,7 +82,7 @@ export function diffPinnedHeight(scope: RevealScope = "line"): number {
   return (
     top +
     measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK) +
-    measuredHeight(pane.querySelector("tr.ph > td"), DHUNK_FALLBACK)
+    measuredHeight(pane.querySelector(".dhunk-h"), DHUNK_FALLBACK)
   );
 }
 
