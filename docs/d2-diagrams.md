@@ -65,9 +65,16 @@ action). The same finalize covers go-deeper results and concept pages
 (one repair turn on the fill's own session — enqueueing a nested repair
 job could deadlock against the per-provider cap) and diagrams nested in
 asides at any depth (repaired diagrams splice into the failed slots in
-depth-first order, keeping the stored ids). Second-opinion reasoning
-still skips the repair turn (on-demand render only). Ask thread replies are excluded (raw `<pre class="d2">`
-source in message HTML, not blocks — shown as static source text). Hash
+depth-first order, keeping the stored ids). Since #145 it also covers
+diagrams the reader writes inline in guide cards (flattened across the
+reply's cards for one shared repair turn on the reader session, then
+split back across the cards — `splitFinalizedBlocks` in
+`pipeline/apply.ts`) and diagrams in second-opinion reasoning (the
+repair turn runs on the second-opinion session/model, not the main one,
+and finalize never touches the shared log, so the isolation in
+`secondopinion/base.ts` holds). Ask thread replies are excluded (raw `<pre class="d2">`
+source in message HTML, not blocks — shown as static source text; with
+#136). Hash
 lookup covers every live `Block[]` list through one shared walker
 (`packages/shared/src/content/blocks.ts`), so a new container is added
 there, not in the route. Undo-stack revisions are excluded (stale, never
