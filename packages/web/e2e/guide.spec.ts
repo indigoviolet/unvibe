@@ -204,22 +204,16 @@ test("navigation, trail and browser back", async ({ page }) => {
   await expect(page.locator("#page h1.title")).toContainText("Unfold obsolete folded");
 });
 
-test("mark read collapses the card and mutes its links", async ({ page }) => {
+test("collapse chevron hides the card body; contents still lists it", async ({ page }) => {
   await gotoReview(page);
   const card = page.locator("#C-central");
-  await card.getByRole("button", { name: "Mark read" }).click();
-  await expect(card).toHaveClass(/read/);
+  await card.locator("> .chead").getByRole("button", { name: "Collapse" }).click();
   await expect(card).toHaveClass(/collapsed/);
-  // Contents mutes the read card.
+  // Contents still lists the card.
   const item = page.locator("nav.toc li", { has: page.locator('[data-tocard="central"]') });
-  await expect(item).toHaveClass(/done/);
-  // Read the whole concept page: links to it mute with the check mark.
-  await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
-  await page.locator("#C-cc-obs-fold").getByRole("button", { name: "Mark read" }).click();
-  await page.goBack();
-  await expect(page.locator('#page a.cx[data-link="concept:obs-fold"]').first()).toHaveClass(
-    /known/,
-  );
+  await expect(item).toBeVisible();
+  await card.getByRole("button", { name: "Expand" }).click();
+  await expect(card).not.toHaveClass(/collapsed/);
   // Concept pages are saved: the bookmark is pressed.
   await page.goto("/review/demo/page/c-ows-rws");
   await expect(page.locator('#page [data-save="c-ows-rws"]')).toHaveAttribute(
@@ -262,13 +256,13 @@ test("narrow width keeps controls visible", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 900 });
   await gotoReview(page);
   await expect(page.locator("#C-problem > .ctl").first()).toBeVisible();
-  // The problem card seeds an expansion underneath; scope to the card's own
-  // control row so the expansion's Mark read does not match.
-  await expect(page.locator("#C-problem > .ctl").getByRole("button", { name: "Mark read" })).toBeVisible();
+  // The problem card seeds a conversation underneath; scope to the card's
+  // own control row so the answer's controls do not match.
+  await expect(page.locator("#C-problem > .ctl").getByRole("button", { name: "Use examples" })).toBeVisible();
 });
 
 test("control tooltips use the shared Tooltip", async ({ page }) => {
   await gotoReview(page);
-  await hoverFresh(page, page.locator("#C-problem > .ctl").getByRole("button", { name: "Mark read" }));
-  await expect(page.locator("#tip")).toContainText("Mark read", { timeout: 3000 });
+  await hoverFresh(page, page.locator("#C-problem > .ctl").getByRole("button", { name: "Use examples" }));
+  await expect(page.locator("#tip")).toContainText("Use examples", { timeout: 3000 });
 });

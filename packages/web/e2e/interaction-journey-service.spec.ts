@@ -279,11 +279,11 @@ test.describe("reader journey over the real service (replay)", () => {
     await follow.click();
     await expect(page.locator("#page .follow", { hasText: label })).toHaveCount(0, { timeout: 30_000 });
 
-    // Mark cards read; Contents shows them read.
-    await page.locator("#C-central > .ctl").getByRole("button", { name: "Mark read" }).click();
-    await expect(page.locator("#C-central")).toHaveClass(/read/, { timeout: 10_000 });
+    // Collapse the card; Contents still lists it.
+    await page.locator("#C-central > .chead").getByRole("button", { name: "Collapse" }).click();
+    await expect(page.locator("#C-central")).toHaveClass(/collapsed/, { timeout: 10_000 });
     await expect(page.locator('nav.toc li [data-tocard="central"]')).toBeVisible();
     const item = page.locator("nav.toc li", { has: page.locator('[data-tocard="central"]') });
-    await expect(item).toHaveClass(/done/, { timeout: 10_000 });
+    await expect(item).toBeVisible({ timeout: 10_000 });
   });
 });

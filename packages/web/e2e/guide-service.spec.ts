@@ -110,14 +110,13 @@ test.describe("guide over real service", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("card read action applies over the real API", async ({ page }) => {
+  test("card collapse action applies over the real API", async ({ page }) => {
     test.setTimeout(120_000);
     await openSeededReview(page);
-    // M4 implements the actions route: Mark read greys + collapses the card.
-    await page.locator("#C-central").getByRole("button", { name: "Mark read" }).click();
-    await expect(page.locator("#C-central")).toHaveClass(/read/, { timeout: 10_000 });
-    // Unmarking expands it again.
-    await page.locator("#C-central").getByRole("button", { name: "Mark unread" }).click();
-    await expect(page.locator("#C-central")).not.toHaveClass(/read/, { timeout: 10_000 });
+    // The actions route collapses the card to its title row; expanding restores it.
+    await page.locator("#C-central > .chead").getByRole("button", { name: "Collapse" }).click();
+    await expect(page.locator("#C-central")).toHaveClass(/collapsed/, { timeout: 10_000 });
+    await page.locator("#C-central").getByRole("button", { name: "Expand" }).click();
+    await expect(page.locator("#C-central")).not.toHaveClass(/collapsed/, { timeout: 10_000 });
   });
 });

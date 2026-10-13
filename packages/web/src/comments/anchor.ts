@@ -162,15 +162,16 @@ export function highlightAnchorInRoot(
 }
 
 /**
- * Element to search for a `card#block` anchor's host: the card (`C-<id>`)
- * or expansion (`B-<id>`) it names, so a mark never lands on the
- * same-numbered block of another card. Bare ids search all of `root`.
+ * Element to search for a `card#block` anchor's host: the card (`C-<id>`),
+ * the conversation card (`B-<id>`), or one answer (`[data-answer]`, issue
+ * #136) it names, so a mark never lands on the same-numbered block of
+ * another card. Bare ids search all of `root`.
  */
 export function anchorScope(root: ParentNode, anchorBlockId: string): ParentNode {
   const hash = anchorBlockId.indexOf("#");
   if (hash < 0) return root;
   const card = CSS.escape(anchorBlockId.slice(0, hash));
-  return root.querySelector(`#C-${card}, #B-${card}`) ?? root;
+  return root.querySelector(`#C-${card}, #B-${card}, [data-answer="${card}"]`) ?? root;
 }
 
 /** Remove all anchor marks created by `make` (class `anc` by default). */
