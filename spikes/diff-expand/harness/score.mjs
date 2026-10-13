@@ -86,4 +86,5 @@ for (const cand of CANDS) {
   }
 }
 mkdirSync(new URL("../results/", import.meta.url), { recursive: true });
-if (!filter) writeFileSync(new URL("../results/scores.json", import.meta.url), JSON.stringify({ summary, rows }, null, 1));
+const outName = process.env.LOOSE_DOC === "1" ? "scores-loose-doc.json" : "scores.json";
+if (!filter) writeFileSync(new URL(`../results/${outName}`, import.meta.url), JSON.stringify({ summary, rows }, null, 1));
