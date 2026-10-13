@@ -425,12 +425,17 @@ export class Pipeline {
             let repaired = false;
             if (first.validation.needsRepairTurn) {
               repaired = true;
+              const anchorProblem =
+                first.validation.anchor && !first.validation.anchor.ok
+                  ? `\nAnchor problem: ${first.validation.anchor.reason}. Reply with the same content and a corrected anchor host (the host block's ID).\n`
+                  : "";
               const repairPrompt =
                 `Some citations in your previous reply could not be verified:\n` +
                 first.validation.tokens
                   .filter((t) => t.status === "unverified")
                   .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                   .join("\n") +
+                anchorProblem +
                 `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
               const repair = await collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                 ctx.reportText(d),
@@ -1361,12 +1366,17 @@ export class Pipeline {
           let finalBody = body;
           this.throwIfDegradedTurn(reviewId, mcpBefore, data, body);
           if (validation.needsRepairTurn) {
+            const anchorProblem =
+              validation.anchor && !validation.anchor.ok
+                ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
+                : "";
             const repairPrompt =
               `Some citations in your previous reply could not be verified:\n` +
               validation.tokens
                 .filter((t) => t.status === "unverified")
                 .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                 .join("\n") +
+              anchorProblem +
               `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
             const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
               ctx.reportText(d),

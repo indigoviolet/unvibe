@@ -143,4 +143,24 @@ describe("validateReply", () => {
     });
     expect(unknown.anchor?.reason).toMatch(/unknown anchor host/);
   });
+
+  it("rejects a card-only anchor host with a repair turn (#51)", () => {
+    const blocks = parseBlocks("Plain.\n");
+    const cardOnly = validateReply(blocks, lookup, {
+      anchor: { quote: "quick brown", host: "card:central" },
+    });
+    expect(cardOnly.anchor).toMatchObject({ ok: false });
+    expect(cardOnly.anchor?.reason).toMatch(/only the card/);
+    expect(cardOnly.needsRepairTurn).toBe(true);
+    // Other anchor failures stay informational: no repair turn.
+    const mismatch = validateReply(blocks, lookup, {
+      anchor: { quote: "missing words", host: "card:central#b1" },
+    });
+    expect(mismatch.anchor).toMatchObject({ ok: false });
+    expect(mismatch.needsRepairTurn).toBe(false);
+    // An empty quote is not an anchor at all.
+    const empty = validateReply(blocks, lookup, { anchor: { quote: "  ", host: "card:central" } });
+    expect(empty.anchor).toMatchObject({ ok: false });
+    expect(empty.needsRepairTurn).toBe(false);
+  });
 });

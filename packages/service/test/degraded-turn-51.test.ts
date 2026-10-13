@@ -233,3 +233,41 @@ describe("degraded turns (#51)", () => {
     }
   });
 });
+
+describe("card-only anchors (#51 validator)", () => {
+  it("a card-only anchor gets one repair turn with the reason, then lands", { timeout: 90000 }, async () => {
+    const agents = new FakeAgentRunner([
+      {
+        match: "Anchor problem",
+        events: textEvents(
+          `The host block is described here.\n\n\`\`\`json\n{"anchor": {"quote": "problem paragraph", "host": "card:problem#b1"}}\n\`\`\`\n`,
+        ),
+      },
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+      {
+        match: "# Explain",
+        events: textEvents(
+          `The host block is described here.\n\n\`\`\`json\n{"anchor": {"quote": "problem paragraph", "host": "card:central"}}\n\`\`\`\n`,
+        ),
+      },
+    ]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      expect(jobId).toBeTruthy();
+      // The anchor repair turn ran exactly once, carrying the reason.
+      const repairs = agents.prompts.filter((p) => p.text.includes("Anchor problem"));
+      expect(repairs).toHaveLength(1);
+      expect(repairs[0].text).toMatch(/only the card/);
+      // The fixed anchor validates; the job succeeds with content stored.
+      expect(ctx.jobs.get(jobId!)?.state).toBe("done");
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      expect(
+        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+      ).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+});
