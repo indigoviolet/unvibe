@@ -5,7 +5,11 @@
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import { spikeMark } from "../spike/timing.js"; // SPIKE(#114)
+// SPIKE(#114): no import here, this file is also bundled into the update
+// helper (node builtins only). `spike/timing.ts` installs the hook.
+const spikeMark = (name: string, data: Record<string, unknown>): void => {
+  (globalThis as { __unvibeSpikeMark?: (n: string, d: Record<string, unknown>) => void }).__unvibeSpikeMark?.(name, data);
+};
 
 export interface RunOptions {
   args: string[];

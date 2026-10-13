@@ -20,6 +20,9 @@ export function spikeMark(name: string, data: Record<string, unknown> = {}): voi
   }
 }
 
+// Hook for modules that must not import this file (see exec/runner.ts).
+(globalThis as { __unvibeSpikeMark?: typeof spikeMark }).__unvibeSpikeMark = spikeMark;
+
 /** Time an async step; the mark is written when it settles (ok or not). */
 export async function spikeTime<T>(name: string, data: Record<string, unknown>, fn: () => Promise<T>): Promise<T> {
   if (!file) return fn();
