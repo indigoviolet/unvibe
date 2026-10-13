@@ -17,7 +17,7 @@
  * `src/comments/threads.ts`.
  */
 import type { FastifyInstance } from "fastify";
-import type { ActionAnchor, Annotation, CreateCommentRequest, UpdateCommentRequest } from "@unvibe/shared";
+import type { ActionAnchor, CreateCommentRequest, UpdateCommentRequest } from "@unvibe/shared";
 import {
   createSuggestedComment,
   createThread,
