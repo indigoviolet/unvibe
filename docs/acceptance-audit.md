@@ -795,8 +795,9 @@ needed (that deviation is closed, not added).
   #136 slice 1: `ContentBody` (page card or answer), `Turn`
   (`ans_…` + question + answer blocks), `Annotation` type
   `conversation` with turns + one session id; `ExpansionState` and
-  `Card.read` removed;
-  single schema migration (001–005 collapsed under #137) + sessions table;
+  `Card.read` removed; single schema migration (001–005 collapsed under
+  #137; dead `annotations`/`cards`/`blocks`/`hunk_states` tables and the
+  unused `note_ack` prompt removed under #142) + sessions table;
   `store.test.ts`, `state.test.ts`).
 - ID grammar (§7.2 all nine forms) — met (`shared/src/ids.ts`,
   `links.ts`; `ids` unit tests).

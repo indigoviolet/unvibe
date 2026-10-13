@@ -1,8 +1,7 @@
 /**
  * `note` action (PRD §4.8): starts a thread with no agent reply.
  *
- * Delegates to `createNoteThread` (comments/threads.ts); the note_ack
- * template exists for a future contribution pass, but notes start no
+ * Delegates to `createNoteThread` (comments/threads.ts); notes start no
  * agent reply today.
  */
 import { createNoteThread } from "../../comments/threads.js";
