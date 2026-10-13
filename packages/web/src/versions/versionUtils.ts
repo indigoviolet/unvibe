@@ -23,30 +23,38 @@ export function formatCacheRate(rate: number | undefined): string {
   return `${(Math.max(0, Math.min(1, rate)) * 100).toFixed(1)}%`;
 }
 
-/** Weighted cache-hit rate over jobs carrying usage (input-weighted). */
+/**
+ * Read share over jobs carrying usage (#125): read/(input+read+write).
+ * Writes never count as hits: a turn with writes and no reads shows 0 %.
+ */
 export function pooledCacheRate(jobs: Job[]): number | undefined {
   let input = 0;
-  let cached = 0;
+  let read = 0;
+  let write = 0;
   for (const j of jobs) {
     if (!j.usage) continue;
-    input += j.usage.inputTokens;
-    cached += j.usage.cachedTokens;
+    input += j.usage.inputTokens ?? 0;
+    read += j.usage.cachedReadTokens ?? 0;
+    write += j.usage.cachedWriteTokens ?? 0;
   }
-  return input > 0 ? cached / input : undefined;
+  const total = input + read + write;
+  return total > 0 ? read / total : undefined;
 }
 
-/** Total input/output/cached tokens over jobs carrying usage. */
-export function pooledTokens(jobs: Job[]): { input: number; output: number; cached: number } {
+/** Total input/output/cache-read/cache-write tokens over jobs carrying usage. */
+export function pooledTokens(jobs: Job[]): { input: number; output: number; read: number; written: number } {
   let input = 0;
   let output = 0;
-  let cached = 0;
+  let read = 0;
+  let written = 0;
   for (const j of jobs) {
     if (!j.usage) continue;
-    input += j.usage.inputTokens;
-    output += j.usage.outputTokens;
-    cached += j.usage.cachedTokens;
+    input += j.usage.inputTokens ?? 0;
+    output += j.usage.outputTokens ?? 0;
+    read += j.usage.cachedReadTokens ?? 0;
+    written += j.usage.cachedWriteTokens ?? 0;
   }
-  return { input, output, cached };
+  return { input, output, read, written };
 }
 
 /** "retry in 45s" / "retry in 2m" for a backing-off job; "—" when unknown. */

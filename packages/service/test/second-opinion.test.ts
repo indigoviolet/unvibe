@@ -36,7 +36,7 @@ function fakeWithVerdict(verdict = "agrees"): FakeAgentRunner {
       match: "Second opinion",
       events: [
         { type: "text", delta: SECOND_REPLY(verdict) },
-        { type: "usage", inputTokens: 100, cachedTokens: 40, outputTokens: 30 },
+        { type: "usage", inputTokens: 100, cachedReadTokens: 40, cachedWriteTokens: 0, outputTokens: 30 },
         { type: "done", stopReason: "end_turn" },
       ],
     },

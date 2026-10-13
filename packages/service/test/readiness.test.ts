@@ -434,10 +434,49 @@ describe("readiness checks", () => {
       expect(forced.statusCode).toBe(200);
       expect((forced.json() as ReadinessResponse).cached).toBe(false);
       // Nothing real was spawned: only the scripted `git --version` ran.
+      // (The #139 GitHub probe is omitted under vitest: it hits the network
+      // by design. It is covered below with a stubbed runner.)
       expect(runner.calls.map((c) => c.cmd)).toEqual(["git", "git"]);
     } finally {
       await app.close();
       cleanup();
     }
+  });
+});
+
+describe("github fetch probe (#139)", () => {
+  const CRED = ["-c", "credential.https://github.com.helper=!gh auth git-credential"];
+
+  it("ok when ls-remote reaches GitHub; warning otherwise, never error", async () => {
+    const { probeGitHubFetch, gitHubFetchCheck } = await import("../src/readiness/checks.js");
+    const okRunner = new FakeCommandRunner();
+    okRunner.enqueue({
+      cmd: "git",
+      args: [...CRED, "ls-remote", "https://github.com/github/gitignore", "HEAD"],
+      stdout: "abc123\tHEAD\n",
+      stderr: "",
+      code: 0,
+    });
+    const ok = await probeGitHubFetch(okRunner as never);
+    expect(ok).toEqual({ ok: true, detail: "reached https://github.com/github/gitignore" });
+    expect(gitHubFetchCheck(ok)).toMatchObject({ id: "github-fetch", status: "ok" });
+    // Same credential handling as ingest fetches, GITHUB_TOKEN unset.
+    expect(okRunner.calls[0].opts.env?.["GITHUB_TOKEN"]).toBeUndefined();
+
+    const failRunner = new FakeCommandRunner();
+    failRunner.enqueue({
+      cmd: "git",
+      args: [...CRED, "ls-remote", "https://github.com/github/gitignore", "HEAD"],
+      stdout: "",
+      stderr: "fatal: unable to connect to github.com",
+      code: 128,
+    });
+    const failed = await probeGitHubFetch(failRunner as never);
+    expect(failed.ok).toBe(false);
+    expect(failed.detail).toContain("unable to connect");
+    const check = gitHubFetchCheck(failed);
+    expect(check.status).toBe("warning");
+    expect(check.summary).toContain("unable to connect");
+    expect(check.fix).toMatch(/network|gh auth login/i);
   });
 });

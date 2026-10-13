@@ -44,7 +44,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     expect(events).toContainEqual({ type: "text", delta: "there" });
     expect(events).toContainEqual({ type: "tool", name: "mcp__test__get_hunk", status: "end" });
     const usage = events.find((e) => e.type === "usage");
-    expect(usage).toEqual({ type: "usage", inputTokens: 4, cachedTokens: 110, outputTokens: 8 });
+    expect(usage).toEqual({ type: "usage", inputTokens: 4, cachedReadTokens: 100, cachedWriteTokens: 10, outputTokens: 8 });
     expect(events[events.length - 1]).toEqual({ type: "done", stopReason: "end_turn" });
     await runner.dispose();
   });
@@ -65,7 +65,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const events = await collect(runner, s, "bg please");
     const usage = events.find((e) => e.type === "usage");
-    expect(usage).toEqual({ type: "usage", inputTokens: 61604, cachedTokens: 100, outputTokens: 27 });
+    expect(usage).toEqual({ type: "usage", inputTokens: 61604, cachedReadTokens: 100, cachedWriteTokens: 0, outputTokens: 27 });
     await runner.dispose();
   });
 
@@ -172,6 +172,134 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
+  it("#121: a fork denies shell/edits through the permission handler", async () => {
+    // Pre-fix safety question: the fork comes up without the read-only tool
+    // lockdown, so the model MAY attempt Bash/Edit. The deny-by-default
+    // handler must still reject those attempts on the fork's own session.
+    const state = createFakeState([
+      { match: "fork-shell", permissionProbe: { title: "Bash" }, chunks: [{ text: "denied" }] },
+      { match: "fork-edit", permissionProbe: { title: "Edit" }, chunks: [{ text: "denied" }] },
+      { match: "fork-write", permissionProbe: { title: "Write" }, chunks: [{ text: "denied" }] },
+      { match: "fork-web", permissionProbe: { title: "WebFetch" }, chunks: [{ text: "denied" }] },
+      { match: "fork-read", permissionProbe: { title: "Read" }, chunks: [{ text: "ok" }] },
+    ]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp/worktrees/rv_test",
+      systemPrompt: "unvibe-instructions",
+      mcpServers: [{ name: "test", url: "http://127.0.0.1:9/mcp" }],
+    });
+    const fork = await runner.fork(base);
+    // The fork works in the review's working copy.
+    expect(state.sessions.get(fork.id)?.cwd).toBe("/tmp/worktrees/rv_test");
+    await collect(runner, fork, "fork-shell attempt");
+    await collect(runner, fork, "fork-edit attempt");
+    await collect(runner, fork, "fork-write attempt");
+    await collect(runner, fork, "fork-web attempt");
+    await collect(runner, fork, "fork-read attempt");
+    const byTitle = new Map(state.permissionOutcomes.map((o) => [o.title, o]));
+    expect(byTitle.get("Bash")?.optionId).toBe("reject");
+    expect(byTitle.get("Edit")?.optionId).toBe("reject");
+    expect(byTitle.get("Write")?.optionId).toBe("reject");
+    expect(byTitle.get("WebFetch")?.optionId).toBe("reject");
+    expect(byTitle.get("Read")?.optionId).toBe("allow-once");
+    await runner.dispose();
+  });
+
+  it("#121: session/resume and session/load carry the same _meta as session/new", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "unvibe-instructions",
+      mcpServers: [{ name: "test", url: "http://127.0.0.1:9/mcp" }],
+    });
+    const newMeta = state.newMetas.get(base.id);
+    expect(newMeta).toMatchObject({
+      systemPrompt: "unvibe-instructions",
+      claudeCode: { options: { tools: ["Read", "Glob", "Grep"] } },
+    });
+    const fork = await runner.fork(base);
+    expect(state.resumeMetas.length).toBeGreaterThan(0);
+    for (const r of state.resumeMetas) {
+      expect(r.meta).toEqual(newMeta);
+    }
+    // The fork's tool set is the read-only one.
+    const forkResume = state.resumeMetas.find((r) => r.sessionId === fork.id)?.meta as {
+      claudeCode?: { options?: { tools?: string[] } };
+    };
+    expect(forkResume?.claudeCode?.options?.tools).toEqual(["Read", "Glob", "Grep"]);
+    await runner.close(base);
+    await runner.load(base.id);
+    expect(state.loadMetas.length).toBeGreaterThan(0);
+    for (const l of state.loadMetas) {
+      expect(l.meta).toEqual(newMeta);
+    }
+    await runner.dispose();
+  });
+
+  it("#121: codex resume carries the same custom instructions as new", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { codex: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "codex",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "codex-instructions",
+      mcpServers: [{ name: "test", url: "http://127.0.0.1:9/mcp" }],
+    });
+    const newMeta = state.newMetas.get(base.id);
+    expect(newMeta).toEqual({ jetbrains: { air: { version: 1, customInstructions: "codex-instructions" } } });
+    await runner.fork(base);
+    await runner.close(base);
+    await runner.load(base.id);
+    expect(state.loadMetas.length).toBeGreaterThan(0);
+    for (const l of state.loadMetas) {
+      expect(l.meta).toEqual(newMeta);
+    }
+    await runner.dispose();
+  });
+
+  it("#122.3: prompt collects a straggler notification without a fixed sleep", async () => {
+    const state = createFakeState([
+      // The straggler is in flight when the response arrives (the case the
+      // old sleep protected); it lands inside the quiet window.
+      { match: "q", chunks: [{ text: "first " }], straggler: { text: "late", afterMs: 5 } },
+    ]);
+    // Default ceiling (300): the old code always waited the full 300 ms.
+    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
+    const t0 = Date.now();
+    const events = await collect(runner, s, "q please");
+    const ms = Date.now() - t0;
+    const texts = events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("");
+    // The straggler (what the sleep was protecting) is still collected…
+    expect(texts).toContain("late");
+    // …but nothing waits the old fixed 300 ms anymore.
+    expect(ms).toBeLessThan(200);
+    await runner.dispose();
+  });
+
+  it("#122.3: load drains the replay without a fixed sleep", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "fresh" }] }]);
+    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
+    await runner.close(s);
+    const t0 = Date.now();
+    const loaded = await runner.load(s.id);
+    const ms = Date.now() - t0;
+    expect(ms).toBeLessThan(200);
+    const events = await collect(runner, loaded, "q again");
+    const texts = events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta);
+    expect(texts).not.toContain("[replay]");
+    expect(texts).toContain("fresh");
+    await runner.dispose();
+  });
+
   it("correlates empty-title approvals by toolCallId (Codex workspace-write)", async () => {
     const state = createFakeState([
       {
@@ -270,7 +398,8 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     expect(first.find((e) => e.type === "usage")).toEqual({
       type: "usage",
       inputTokens: 2,
-      cachedTokens: 18000,
+      cachedReadTokens: 10000,
+      cachedWriteTokens: 8000,
       outputTokens: 4,
     });
     const second = await collect(runner, s, "turn-two please");
@@ -278,7 +407,8 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     expect(second.find((e) => e.type === "usage")).toEqual({
       type: "usage",
       inputTokens: 0,
-      cachedTokens: 633 + 1352,
+      cachedReadTokens: 633,
+      cachedWriteTokens: 1352,
       outputTokens: 10,
     });
     await runner.dispose();

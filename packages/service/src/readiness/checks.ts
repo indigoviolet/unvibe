@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ReadinessCheck, Settings } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
+import { gitHubCredentialConfig } from "../exec/git.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import type { AgentRunner } from "@unvibe/shared";
 import {
@@ -233,6 +234,72 @@ export function ghCheck(probe: GhProbe): ReadinessCheck {
     status: "ok",
     summary: probe.login ? `gh logged in as ${probe.login}` : "gh logged in",
     fix: "",
+    settingsAnchor: "#environment",
+  };
+}
+
+export interface GitHubFetchProbe {
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * Whether `git` can download from GitHub in the service's environment
+ * (#139): `git ls-remote` against a tiny public repo with the same
+ * credential handling ingest fetches use (`gh` as credential helper,
+ * `GITHUB_TOKEN` unset). Warning, never error: offline use is supported —
+ * this only explains ingest failures before they happen. Stub the runner
+ * in tests; never hit real GitHub there.
+ */
+export async function probeGitHubFetch(
+  runner: CommandRunner,
+  opts: { timeoutMs?: number } = {},
+): Promise<GitHubFetchProbe> {
+  const timeoutMs = opts.timeoutMs ?? 15000;
+  if (!findOnPath("git")) return { ok: false, detail: "git not on PATH" };
+  const remote = "https://github.com/github/gitignore";
+  let res;
+  try {
+    res = await runWithTimeout(
+      runner.run("git", {
+        args: [...gitHubCredentialConfig(), "ls-remote", remote, "HEAD"],
+        env: { GITHUB_TOKEN: undefined, GIT_TERMINAL_PROMPT: "0" },
+      }),
+      timeoutMs,
+      () => ({ stdout: "", stderr: "timed out", code: 1 }),
+    );
+  } catch (e) {
+    return { ok: false, detail: `git ls-remote failed: ${String(e)}` };
+  }
+  if (res.code !== 0) {
+    const detail =
+      (res.stderr.trim() || res.stdout.trim()).split("\n")[0]?.trim() || "git ls-remote failed";
+    return { ok: false, detail: detail.slice(0, 200) };
+  }
+  return { ok: true, detail: `reached ${remote}` };
+}
+
+export function gitHubFetchCheck(probe: GitHubFetchProbe): ReadinessCheck {
+  if (probe.ok) {
+    return {
+      id: "github-fetch",
+      label: "GitHub fetch",
+      status: "ok",
+      summary: "git reaches GitHub",
+      fix: "",
+      settingsAnchor: "#environment",
+    };
+  }
+  const d = probe.detail.toLowerCase();
+  const offline = /timeout|timed out|network|offline|resolve|connect|econn|enotfound|eai_again/.test(d);
+  return {
+    id: "github-fetch",
+    label: "GitHub fetch",
+    status: "warning",
+    summary: `git can't reach GitHub: ${probe.detail}`,
+    fix: offline
+      ? "Check the network, then Re-check. Opening branches still works offline."
+      : "Make sure gh is logged in (gh auth login) so git can download through it, then Re-check. Opening branches still works without it.",
     settingsAnchor: "#environment",
   };
 }
