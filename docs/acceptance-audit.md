@@ -627,7 +627,8 @@ needed (that deviation is closed, not added).
 ## §7 Data model and IDs — all met
 
 - Entities per §7.1 table — met (`shared/src/entities.ts` 699 lines;
-  migrations 001–003 + sessions table; `store.test.ts`, `state.test.ts`).
+  single schema migration (001–005 collapsed under #137) + sessions table;
+  `store.test.ts`, `state.test.ts`).
 - ID grammar (§7.2 all nine forms) — met (`shared/src/ids.ts`,
   `links.ts`; `ids` unit tests).
 - App assigns IDs; agents never invent them — met: every token validated
