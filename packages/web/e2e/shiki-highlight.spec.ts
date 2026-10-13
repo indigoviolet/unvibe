@@ -146,8 +146,13 @@ test("selection across token spans snaps to words and Ask opens a composer", asy
   await expect(composer.locator(".mq")).toContainText("OBSOLETE_FOLD_RE");
   await composer.locator("textarea").fill("Why this regex?");
   await composer.getByRole("button", { name: "Ask" }).click();
-  const thread = page.locator(`${connFile} .ithread[data-thread]`, { hasText: "Why this regex?" });
-  await expect(thread).toBeVisible({ timeout: 5000 });
+  // An Ask on diff code opens the usual conversation card under the line:
+  // working state, then the answer with its question and reply box.
+  const card = page.locator(`${connFile} [data-expansion]`, { hasText: "Why this regex?" });
+  await expect(card).toBeVisible({ timeout: 5000 });
+  await expect(card.locator(".working")).toBeVisible({ timeout: 3000 });
+  await expect(card.locator(".ans-q").first()).toContainText("Why this regex?", { timeout: 8000 });
+  await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 8000 });
 });
 
 test("Explain then Close leaves one flat dotted anchor mark in highlighted code", async ({ page }) => {
