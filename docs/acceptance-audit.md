@@ -104,23 +104,29 @@ UI); nothing below was edited by this pass.
 
 ### §4.1 Layout — all met
 
-- Top bar (app-wide only: Unvibe home link, breadcrumb trail, badge/Tips
-  where shown, gear Settings icon in the same place; Settings screen has
-  none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
-  cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
-  #31/#55 round 2).
-- Review bar (identity + version selector next to it per #120 + GitHub
-  link-out + Debug icon, [ Guide | Source ] pane toggles incl. full-width
-  source per #83, Comments + primary Submit; source tabs keep PR
-  description / Diff only; at narrow widths the title gives way first and
-  the selector never truncates) — met
+- Top bar (app-wide, every screen but reviews: Unvibe home link,
+  breadcrumb trail, badge on start/Settings, gear Settings icon in the same
+  place; Settings screen has none; no Tips anywhere per #141) — met
+  (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb cases,
+  `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues #31/#55
+  round 2, #141).
+- Review bar (the only bar on a review per #141: home control first, then
+  identity + version selector next to it per #120 + GitHub link-out + Debug
+  icon + compact preview marker, [ Guide | Source ] pane toggles incl.
+  full-width source per #83, Comments + primary Submit; at narrow widths
+  the title gives way first and the selector never truncates; no Settings
+  gear) — met
   (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
   `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
   `55-review-800px.png`, `55-review-dark.png`,
   `83-source-full-width.png`, `120-wide-light.png`,
   `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
   `120-narrow-light-readonly.png`,
-  `120-narrow-dark-readonly.png`).
+  `120-narrow-dark-readonly.png`, `141-review-800-light.png`,
+  `141-review-800-dark.png`, `141-review-1440-light.png`,
+  `141-review-1440-dark.png`,
+  `141-review-readonly-800-light.png`,
+  `141-review-readonly-800-dark.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).

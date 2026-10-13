@@ -3,7 +3,7 @@
  * (PRD §4.14, §8): repositories (list + add by path, add by URL with busy
  * and error states, managed marks, remove with confirm copy and the 409
  * refusal), model pickers with adapter errors and the same-model warning,
- * prompt template view, limits persistence, Tips popover, and the
+ * prompt template view, limits persistence, and the
  * stale-review banner with range-diff + version switching. (Jobs, prompt
  * expansions and shared context live on the per-review debug page now:
  * `debug.spec.ts`.)
@@ -279,37 +279,38 @@ test.skip("limits show service validation errors inline", async ({ page }) => {
   await expect(page.getByText("Default 40,000.")).toBeVisible();
 });
 
-test("tips popover opens from the review top bar", async ({ page }) => {
-  await page.goto("/review/demo");
-  await page.getByRole("button", { name: "Usage tips" }).click();
-  await expect(page.getByRole("dialog", { name: "Usage tips" })).toContainText("Select text to Explain it");
-  await expect(page.getByRole("dialog", { name: "Usage tips" })).toContainText("Settings");
-});
-
 test("settings gear opens settings; the breadcrumb marks the page", async ({ page }) => {
-  await page.goto("/review/demo");
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  // Issue #141: Settings is reached from the start page only.
+  await page.goto("/");
+  await page
+    .locator("header.top")
+    .getByRole("link", { name: "Settings", exact: true })
+    .click();
   await expect(page).toHaveURL("/settings");
   const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
   await expect(crumbs.getByText("Settings")).toHaveAttribute("aria-current", "page");
   // The Settings screen itself has no Settings button.
   await expect(page.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
-  // Browser back returns to the review (Settings pushes a history entry).
+  // Browser back returns to the start page (Settings pushes a history entry).
   await page.goBack();
-  await expect(page).toHaveURL("/review/demo");
+  await expect(page).toHaveURL("/");
 });
 
-test("settings gear sits in the review and start top bars", async ({ page }) => {
-  // Review top bar: brand, review breadcrumb, Tips, then the gear.
+test("settings gear sits only in the start top bar; the review bar has home and no gear", async ({
+  page,
+}) => {
+  // Review page: one bar with a home control, no gear, no breadcrumb.
   await page.goto("/review/demo");
-  const gear = page.locator("header.top").getByRole("link", { name: "Settings", exact: true });
-  await expect(gear).toBeVisible();
-  await expect(gear).toHaveAttribute("title", "Settings");
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("urllib3/urllib3#5020");
+  await expect(page.locator("header.top")).toHaveCount(0);
+  const bar = page.locator("#reviewbar");
+  await expect(bar.getByRole("link", { name: "Back to the start page" })).toBeVisible();
+  await expect(bar.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
   // Start page top bar: brand, then the gear.
   await page.goto("/");
   const startGear = page.locator("header.top").getByRole("link", { name: "Settings", exact: true });
   await expect(startGear).toBeVisible();
+  await expect(startGear).toHaveAttribute("title", "Settings");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
 });
 

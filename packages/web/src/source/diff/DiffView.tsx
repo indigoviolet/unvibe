@@ -820,7 +820,7 @@ function FilterDropdown({
   const active = activeCount > 0;
 
   // Close on outside press or Escape, like the other dropdowns
-  // (SecondOpinionControl, Tips, CommentsMenu).
+  // (SecondOpinionControl, CommentsMenu).
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent): void => {
