@@ -10,6 +10,7 @@ import type {
   Annotation,
   Card,
   Contribution,
+  DepthLevel,
   ExistingReviewComment,
   HunkState,
   Job,
@@ -154,14 +155,68 @@ export interface CreateReviewRequest {
    * may be `"demo"`; the demo repo is synthetic and needs no checkout.
    */
   demo?: boolean | string;
+  /**
+   * #92: PR title/number/author already known from the start-page list row.
+   * Passed so the loading review shows them from the first moment; the
+   * first ingest step then confirms them from `gh pr view`.
+   */
+  title?: string;
+  author?: string;
+}
+
+/**
+ * #92: ingest state for async open. A loading review's snapshot has no
+ * `version`, `files` or `description` yet — callers must check `ingest`
+ * first (absent = ready, for reviews stored before this change). Only a
+ * step name, no progress protocol.
+ */
+export interface IngestStatus {
+  status: "ready" | "loading" | "failed";
+  /** What is being done while loading: "fetching" | "reading diff". */
+  step?: string;
+  /** Failure text when status is "failed". */
+  error?: string;
+}
+
+/** #92: ingest status of a snapshot (absent = ready, pre-#92 rows). */
+export function ingestStatusOf(snap: Pick<ReviewSnapshot, "ingest"> | null | undefined): IngestStatus["status"] {
+  return snap?.ingest?.status ?? "ready";
+}
+
+/** #92: true when the ingest has landed (absent status = ready for old rows). */
+export function isReadySnapshot(snap: ReviewSnapshot): boolean {
+  if (ingestStatusOf(snap) !== "ready") return false;
+  // Placeholder versions (n: 0, from loading rows) are not ready even if an
+  // old caller stored them without a status.
+  return snap.version?.n >= 1;
+}
+
+/**
+ * #92: throw a plain error when the snapshot is not ready (routes map it
+ * to 409; internal callers only run after the ingest, so it never fires).
+ */
+export function assertReadySnapshot(snap: ReviewSnapshot): void {
+  if (isReadySnapshot(snap)) return;
+  const st = ingestStatusOf(snap);
+  if (st === "loading") throw new Error("the review is still opening");
+  if (st === "failed") throw new Error(snap.ingest?.error ?? "the review couldn't be opened");
+  throw new Error("the review is still opening");
 }
 
 export interface ReviewSnapshot {
   review: Review;
+  /**
+   * #92: loading/failed reviews carry a placeholder (n: 0, empty SHAs) —
+   * no real version yet. Present once the ingest lands. Callers must check
+   * `ingest` first (absent = ready, for pre-#92 rows).
+   */
   version: Version;
+  /** #92: empty while loading/failed; present once ready. */
   files: ReviewFile[];
-  /** PR description / commit messages; absent only on pre-M1 snapshots. */
+  /** PR description / commit messages; absent while loading and on pre-M1 snapshots. */
   description?: ReviewDescription;
+  /** #92: ingest state; absent (pre-#92 rows) means ready. */
+  ingest?: IngestStatus;
   pages: Page[];
   annotations: Annotation[];
   hunkStates: HunkState[];
@@ -232,10 +287,44 @@ export interface ReviewSummary {
   /** Guide generation state (reader/base/critic pipeline). */
   guideStatus: "ready" | "running" | "error" | "idle" | "disabled";
   guideDetail?: string;
+  /**
+   * #92: ingest state for the front-screen row. Absent (pre-#92 rows and
+   * ready reviews) means ready. Loading/failed rows show their marker,
+   * reopen to the loading/failed page, and can be removed (failed: retry).
+   */
+  ingestStatus?: "ready" | "loading" | "failed";
+  /** #92: loading step ("fetching" | "reading diff") while ingestStatus is loading. */
+  ingestStep?: string;
+  /** #92: failure text while ingestStatus is failed. */
+  ingestError?: string;
 }
 
 export interface ReviewsListResponse {
   reviews: ReviewSummary[];
+}
+
+// --- errors --------------------------------------------------------------
+
+/**
+ * Machine-readable error codes (issue #86, finding 10): behaviour that
+ * used to depend on matching error message text (HTTP status picking in
+ * `pipeline/actions/dispatcher.ts`, web no-agent checks, the Submit
+ * panel's head-moved check) keys off this instead, so wording can change
+ * freely. The human `error` message is unchanged; `code` is optional so
+ * old stored errors without one keep working (every reader falls back to
+ * the previous text match when it is absent).
+ */
+export type ApiErrorCode =
+  | "not-found"
+  | "invalid-request"
+  | "no-agent"
+  | "head-moved"
+  | "not-implemented";
+
+/** The app's usual error body: a human message plus its machine code. */
+export interface ApiErrorBody {
+  error: string;
+  code?: ApiErrorCode;
 }
 
 // --- readiness -----------------------------------------------------------
@@ -361,6 +450,12 @@ export interface ActionResponse {
    * agent call. No job is created and no tokens are spent.
    */
   reused?: boolean;
+  /**
+   * Depth stepper result (issue #65): the card/expansion level after the
+   * action. Lets the client tell a stored-level switch (level changed:
+   * silent) from already-at-the-limit (level unchanged: toast).
+   */
+  level?: DepthLevel;
 }
 
 // --- diagrams (D2 decision addendum) ---------------------------------------
@@ -641,6 +736,13 @@ export interface DiagnosticCandidate {
   symlinkTarget?: string;
   /** Shim manager when detectable: mise/asdf/nvm/homebrew/npm-global. */
   shimManager?: string;
+  /**
+   * Real executable a shim resolves to (issue #105): the version manager's
+   * answer for this tool from a neutral directory, verified to run from a
+   * review copy. Sessions run this path, not the shim. Absent when the
+   * candidate is not a shim, the manager is unknown, or resolution failed.
+   */
+  resolvedPath?: string;
   /** Whether `--version` ran successfully (exit 0 within the timeout). */
   runs: boolean;
   exitCode?: number;

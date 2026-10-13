@@ -20,6 +20,16 @@ normalize: _normalize_header_values { link: "diff:conn:91-110" }
 
 No `[[ ]]` wrapper and no `tooltip:`. The single source of the wording given to models is `prompts/includes/d2-convention.md`. In a 16-generation live run across both providers, every output compiled first try and citations reached the SVG intact in 15 of 16 first try, 16 of 16 after one repair.
 
+## Look (issue #16)
+
+The two renders keep D2's built-in themes (0 light / 200 dark); the web
+app remaps D2's uniform blue to the guide palette with stylesheet rules
+over the classes D2 emits (`prototype.css`, `.dg-d2 …`), so served bytes
+— and the fixture seeds — never change. Agents may mark shapes
+`*.class: [ok]` / `[bad]`: D2 passes unknown classes through and the
+stylesheet paints them with the guide's ok/warn colours. `classes:`
+stanzas stay rejected by the pre-check (they can smuggle fonts).
+
 ## Pipeline (`packages/service/src/diagrams/`)
 
 1. Extract every `link:` value from the source.
@@ -28,6 +38,16 @@ No `[[ ]]` wrapper and no `tooltip:`. The single source of the wording given to 
 4. Check that every validated citation has a matching `href` in the SVG. D2 silently drops a `link:` written on a dedented line under a sequence message, so a clean exit code is not enough.
 5. Any failure in 2 to 4 triggers exactly one repair turn carrying the validator or compiler message.
 6. Render light and dark, rewrite citation anchors to `<a href="#" data-refs data-src>`, strip `<title>` tooltips that contain tokens, sanitise, and cache by content hash. The web app fetches `GET /api/reviews/:id/diagrams/:hash?theme=`.
+
+The sanitiser keeps everything D2 needs for layout: tspan `x`/`dy`
+(multi-line labels) and `dx`, `mask` + `maskUnits` (the gap edges leave
+behind their labels), plus the `url()` references to them through both
+the service and the per-instance web adopt passes. The data-dir cache filenames carry
+`DIAGRAM_POSTPROCESS_VERSION` (`<hash>.v<version>.<theme>.svg`), so
+renders cached by an older sanitiser are never served stale — legacy
+unversioned files are swept on start. Fixture seeds keep the unversioned
+layout; they ship with the code, so re-record them (`mise run
+fixture-snapshot`) whenever the sanitiser keeps more or less.
 
 ## Inline diagrams (issue #71)
 

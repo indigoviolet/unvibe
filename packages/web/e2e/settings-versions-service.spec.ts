@@ -112,7 +112,7 @@ test.describe("settings + versions on the real service", () => {
       await page.getByLabel("Add a repo by path").fill(repoDir);
       await page.getByRole("button", { name: "Add by path" }).click();
       await expect(page.locator('[data-testid^="repo-"]')).toContainText(path.basename(repoDir));
-      await page.getByRole("link", { name: "Back to start page" }).click();
+      await page.getByRole("link", { name: "Unvibe" }).click();
       await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     }
     await page.getByLabel("Repo").selectOption({ label: `local/${path.basename(repoDir)}` });
@@ -137,7 +137,9 @@ test.describe("settings + versions on the real service", () => {
     const input = page.locator("#limit-sessionsPerProvider");
     await input.fill("99");
     await page.getByRole("button", { name: "Save limits" }).click();
-    await expect(page.getByText("sessionsPerProvider must be an integer in [1, 32]")).toBeVisible();
+    await expect(
+      page.getByText("Agent sessions at once, per provider: must be an integer in [1, 32]"),
+    ).toBeVisible();
 
     await input.fill("5");
     await page.getByRole("button", { name: "Save limits" }).click();

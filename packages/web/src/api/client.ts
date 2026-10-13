@@ -3,6 +3,7 @@
  * then persisted in `localStorage` (and mirrored to the `__unvibe_token`
  * cookie so static loads authenticate). Sent as `Authorization: Bearer`.
  */
+import type { ApiErrorCode } from "@unvibe/shared";
 import type {
   AcceptContributionResponse,
   ActionResponse,
@@ -30,6 +31,7 @@ import type {
   ReadinessResponse,
   RefreshResponse,
   ReloadResponse,
+  ResumeReviewResponse,
   RemoveRepoResponse,
   ResetDataResponse,
   ReplyCommentRequest,
@@ -93,6 +95,13 @@ export function friendlyError(err: unknown): string {
     return "the Unvibe service isn't answering — check that it is running, then try again";
   }
   const m = raw.match(/^[A-Z]+ \/\S+: (\d{3})?\s?([\s\S]*)$/);
+  // 401 answers its own copy even when the body is JSON (finding 1): the
+  // token is missing, so the fix is reconnecting — not the body's wording.
+  // (`request` throws 401s with the same status prefix as every other
+  // failure, so this branch runs for real rejections.)
+  if (m?.[1] === "401") {
+    return "this browser isn't connected to Unvibe — run `unvibe open` in a terminal";
+  }
   const body = (m?.[2] ?? raw).trim();
   try {
     const parsed = JSON.parse(body) as { error?: unknown; errors?: unknown };
@@ -106,8 +115,6 @@ export function friendlyError(err: unknown): string {
     // Not JSON: fall through to status-mapped copy.
   }
   switch (m?.[1]) {
-    case "401":
-      return "this browser isn't connected to Unvibe — run `unvibe open` in a terminal";
     case "404":
       return "not found — it may have been removed";
     case "409":
@@ -118,6 +125,52 @@ export function friendlyError(err: unknown): string {
     default:
       return body.slice(0, 220) || "something went wrong — try again";
   }
+}
+
+const API_ERROR_CODES: ReadonlySet<string> = new Set([
+  "not-found",
+  "invalid-request",
+  "no-agent",
+  "head-moved",
+  "not-implemented",
+]);
+
+function validCode(v: unknown): ApiErrorCode | undefined {
+  return typeof v === "string" && API_ERROR_CODES.has(v) ? (v as ApiErrorCode) : undefined;
+}
+
+/**
+ * Machine code + status behind a failed request (issue #86, finding
+ * 10): parses the `METHOD path: STATUS {json}` transport error the
+ * client itself throws. `code` is optional — old responses and stored
+ * errors without one keep working, so every caller falls back to its
+ * previous text match when it is absent.
+ */
+export interface ParsedApiError {
+  status?: number;
+  code?: ApiErrorCode;
+  /** Raw body text after the status (JSON when the service sent one). */
+  bodyText: string;
+}
+
+export function parseApiError(err: unknown): ParsedApiError {
+  const raw = err instanceof Error ? err.message : String(err);
+  const m = raw.match(/^[A-Z]+ \/\S+: (\d{3}) ([\s\S]*)$/);
+  if (!m) return { bodyText: raw };
+  const status = Number(m[1]);
+  const bodyText = (m[2] ?? "").trim();
+  try {
+    const parsed = JSON.parse(bodyText) as { code?: unknown };
+    const code = validCode(parsed.code);
+    return code === undefined ? { status, bodyText } : { status, code, bodyText };
+  } catch {
+    return { status, bodyText };
+  }
+}
+
+/** Error code for a failed request, or undefined when it carries none. */
+export function apiErrorCode(err: unknown): ApiErrorCode | undefined {
+  return parseApiError(err).code;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -134,7 +187,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  if (res.status === 401) throw new Error("this browser isn't connected to Unvibe — run `unvibe open` in a terminal");
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${body}`);
@@ -169,7 +221,6 @@ async function requestText(path: string, init?: RequestInit): Promise<string> {
       ...init?.headers,
     },
   });
-  if (res.status === 401) throw new Error("this browser isn't connected to Unvibe — run `unvibe open` in a terminal");
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${body}`);
@@ -226,6 +277,9 @@ const realApi = {
 
   createReview: (body: CreateReviewRequest): Promise<ReviewSnapshot> =>
     post("/api/reviews", body),
+  /** #92: re-run a failed ingest (409 when ready/loading, 202 with loading when retried). */
+  retryReview: (id: string): Promise<ReviewSnapshot> =>
+    post(`/api/reviews/${encodeURIComponent(id)}/retry`),
   reviews: (): Promise<ReviewsListResponse> => get("/api/reviews"),
   deleteReview: (id: string): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -235,6 +289,8 @@ const realApi = {
   review: (id: string, version?: number): Promise<ReviewSnapshot> =>
     get(`/api/reviews/${encodeURIComponent(id)}${version !== undefined ? `?version=${version}` : ""}`),
   refresh: (id: string): Promise<RefreshResponse> => post(`/api/reviews/${encodeURIComponent(id)}/refresh`),
+  /** Re-enqueue the pipeline stages that never finished (guide error-state Retry). */
+  resume: (id: string): Promise<ResumeReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/resume`),
   update: (id: string): Promise<UpdateReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/update`),
   action: (id: string, action: ReviewAction): Promise<ActionResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/actions`, action),

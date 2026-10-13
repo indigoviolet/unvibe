@@ -38,6 +38,9 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
     const { id } = req.params as { id: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const { ingestRefusal } = await import("../reviews/index.js");
+    const refused = ingestRefusal(snapshot);
+    if (refused) return reply.code(409).send({ error: refused });
 
     // Same effective settings the pipeline runs (issue #88), so the debug
     // page shows the base key and pack the agents actually get.

@@ -241,8 +241,12 @@ test("5. second opinion works on expansions and survives depth", async ({ page }
   await expect(exp).toBeVisible({ timeout: 5000 });
   await exp.getByRole("button", { name: /Second opinion/ }).click();
   await expect(exp.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
-  // Depth on the expansion leaves the result attached.
+  // Depth on the expansion leaves the result attached: wait for the depth
+  // change itself (Undo enables only once the depth action lands — the
+  // block is already visible, so waiting on it would prove nothing), then
+  // check the result survived it.
   await exp.getByRole("button", { name: "Simpler" }).click();
+  await expect(exp.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 5000 });
   await expect(exp.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
 });
 

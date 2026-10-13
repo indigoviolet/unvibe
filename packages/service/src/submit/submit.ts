@@ -28,6 +28,7 @@ import type {
   SubmitPreview,
   SubmitPreviewComment,
 } from "@unvibe/shared";
+import { ingestStatusOf, isReadySnapshot } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
 import { locatePendingThreads, postedThreadIds } from "../comments/location.js";
@@ -129,6 +130,14 @@ export async function runSubmit(
 ): Promise<SubmitResult> {
   const snapshot = ctx.reviews.getSnapshot(reviewId);
   if (!snapshot) return { status: 404, body: { error: "unknown review" } };
+  if (!isReadySnapshot(snapshot)) {
+    const st = ingestStatusOf(snapshot);
+    if (st === "loading") return { status: 409, body: { error: "the review is still opening" } };
+    return {
+      status: 409,
+      body: { error: snapshot.ingest?.error ?? "the review couldn't be opened" },
+    };
+  }
   const row = readReviewRow(ctx.db, reviewId);
   const prNumber = row?.prNumber ?? snapshot.review.prNumber;
   if (prNumber === null || prNumber === undefined) {
@@ -207,6 +216,9 @@ export async function runSubmit(
       status: 409,
       body: {
         error: `the PR has new commits since this review was loaded (${snapshot.version.headSha.slice(0, 7)} → ${view.headRefOid.slice(0, 7)}) — refresh the review, then submit`,
+        // Machine code for the Submit panel (issue #86, finding 10);
+        // `reason` stays for older clients.
+        code: "head-moved",
         reason: "head moved",
         reviewedCommit: snapshot.version.headSha,
         currentHead: view.headRefOid,

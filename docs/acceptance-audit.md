@@ -100,8 +100,17 @@ UI); nothing below was edited by this pass.
 
 ### §4.1 Layout — all met
 
-- Top bar (title, Tips, Submit + count, Source toggle) — met
-  (`e2e/guide.spec.ts`, ui-walk screenshot shows all five).
+- Top bar (app-wide only: Unvibe home link, breadcrumb trail, badge/Tips
+  where shown, gear Settings icon in the same place; Settings screen has
+  none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
+  cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
+  #31/#55 round 2).
+- Review bar (identity + GitHub link-out + Debug icon, [ Guide | Source ]
+  pane toggles incl. full-width source per #83, Comments + primary Submit;
+  source tabs keep PR description / Diff only) — met (`ReviewBar.tsx`,
+  `AppShell.test.tsx`, `e2e/review-bar.spec.ts`;
+  `docs/screenshots/55-review.png`, `55-review-800px.png`,
+  `55-review-dark.png`, `83-source-full-width.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -112,12 +121,13 @@ UI); nothing below was edited by this pass.
 
 ### §4.2 Start page — all met
 
-- Repo selector in the top bar with remembered + detected checkouts —
-  met (`StartPage.tsx` native `<select>` next to the brand: remembered
+- Repo selector centred above Reviews with remembered + detected checkouts —
+  met (`StartPage.tsx` native `<select>`: remembered
   under "Repos", detected under "Detected checkouts" with the local path
   as the title; selection persisted in `unvibe.start.repoId`, demo never
   selectable; `e2e/start.spec.ts` "repo selector lists remembered and
-  detected repos, persisted").
+  detected repos, persisted" + "sits centered above Reviews"; quiet
+  "Ready · gh + agents ok" content line when healthy; issues #31/#55 round 2).
 - Everything follows the chosen repo — met: the Reviews list shows only
   the selected repo's reviews (filtered on `ReviewSummary.repoId`, which
   the service populates from the review row — `reviews/list.ts:151` — so
@@ -253,6 +263,43 @@ needed (that deviation is closed, not added).
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
   `reuse.test.ts`).
+- Diagrams expand (#47) — met: every diagram block carries an Expand
+  control opening a full-window overlay (dialog, focus in/out, Esc/close,
+  page scroll locked) with wheel/pinch zoom, drag pan, +/− buttons and
+  reset-to-fit on a CSS transform (no new dependency, no CSP change);
+  citation hover/click work inside it and a drag never counts as a click
+  (`guide/DiagramOverlay.tsx`, `e2e/d2-diagram-overlay.spec.ts`,
+  `guide/DiagramOverlay.test.tsx`). The overlay opens on the measured
+  fit (whole content incl. badges, equal margins, never above 100%).
+- Diagrams zoom inline (#47, round two) — met: blocks fit by default
+  (no scrollbars, never above natural size) with +/−/Reset beside
+  Expand on the same shared hook (`panZoom.ts`, `usePanZoom.ts`,
+  `ZoomControls.tsx`); trackpad pinch and Ctrl/Cmd+wheel zoom, a plain
+  wheel scrolls the page, drag pans once zoomed. With spare pane room
+  the block breaks out past the text column, centered, up to the usable
+  width (ResizeObserver; caption and citations stay column-aligned;
+  cards and Explain expansions alike). Citations work at any zoom
+  (`e2e/d2-diagram-inline.spec.ts`,
+  `guide/DiagramInlineZoom.test.tsx`).
+- Diagrams stay legible inline (#16) — met: multi-line labels no longer
+  collapse (the service allowlist dropped tspan `x`/`dy`, collapsing
+  every line onto one baseline; `dx` and edge-mask `maskUnits` were
+  dropped too — all kept now, plus `url()` rewrites in every adopted
+  attribute client-side so masks/markers/clips survive namespacing).
+  Data-dir cache filenames carry `DIAGRAM_POSTPROCESS_VERSION` with a
+  legacy sweep, and the demo seeds were re-recorded (`d2-seed-check
+  --strict` green; snapshot hashes unchanged). The uniform D2
+  blue is remapped to the guide palette by stylesheet rules over D2's
+  shape classes, with `.class: [ok]` / `[bad]` for ok/warn states
+  (`e2e/d2-diagrams.spec.ts` "diagram wears
+  the guide palette", `docs/d2-diagrams.md` "Look"). Uneven letter
+  spacing (#16) reproduces identically in headed Chromium, so it is not
+  a session artifact: D2's embedded subset font carries no kerning
+  tables (WOFF has OS/2, cmap, glyf, head, hhea, hmtx, loca, maxp, name,
+  post — no GPOS/GSUB/kern), and neither side's sanitiser touches font
+  bytes. Not fixed in app code (overriding the family would break D2's
+  tight box layout); shorter labels + inline/overlay zoom are the
+  mitigations.
 - Undo (depth/examples/diagram, no redo, comments/expansions survive) —
   met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Mark read (grey + collapse), roll-up to page, muted links — met
@@ -316,6 +363,11 @@ needed (that deviation is closed, not added).
 
 - Ask… (agent + citations) / Note (no reply) — met (`actions/ask.ts`,
   `note.ts`, `comments-service.spec.ts` “create a note … survives reload”).
+- Ask thread replies never show follow-up suggestions (issue #103) — met:
+  the ask prompt no longer asks for them and `replyHtml` drops any
+  `follow-up` block (plus a leftover heading or card title) on both the
+  initial fill and reply turns, while cards and Explain expansions keep
+  their chips (`actions-ask-followups.test.ts`).
 - Thread header (quote/`file:line`, Mark for PR filled when on, Delete,
   Close) — met (`comments/threads.test.ts`, walk screenshot shows
   “Agent · suggested comment” threads with Reply/Discard).
@@ -326,8 +378,10 @@ needed (that deviation is closed, not added).
   (`comments.spec.ts` “diff line click starts a comment; close leaves an
   icon; reopen works”).
 - Comments menu (all comments, jump, For PR filter with editable drafts,
-  never posts) — met (`comments-service.spec.ts` “mark for PR, edit the
-  draft, submit posts exactly one review”).
+  never posts; lives in the review bar next to Submit since round 2, so it
+  opens with the source pane closed) — met (`comments-service.spec.ts`
+  “mark for PR, edit the draft, submit posts exactly one review”;
+  `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
 
 ### §4.9 Findings — all met
 
@@ -353,6 +407,11 @@ needed (that deviation is closed, not added).
   (`second-opinion.spec.ts` “disagrees prominently”,
   `second-opinion-service.spec.ts` “blind … cites code, prompt has no
   guide text” — isolation asserted on the real prompt).
+- Remove while a re-run is in flight stays removed (#76): removal
+  cancels the run (`pipeline/actions/second_opinion.ts`) and a result
+  aborted before storing is dropped (`secondopinion/runner.ts`); the
+  mock mirrors it. Re-run waits on its own working state in
+  `second-opinion.spec.ts`.
 
 ### §4.11 PR description — all met
 
@@ -382,9 +441,13 @@ needed (that deviation is closed, not added).
 
 - Toolbar (Files collapsed, Unified/Split, Hide uninteresting default on,
   Fold/Unfold all) — met (`e2e/diff.spec.ts`, walk shows all controls).
-- Files panel (filter, Source/Tests/Docs/Config/Generated chips, Hide
-  reviewed + hunk progress, compacting tree + counts, click-scroll) — met
-  (`diff.spec.ts`, `source/diff/diffLogic.test.ts` 19 tests).
+- Files panel (name filter + Filter dropdown with per-type counts and a
+  Reviewed row, active count on the button, hunk progress, compacting tree
+  + counts, click-scroll) — met (`diff.spec.ts` "file filter dropdown …",
+  `source/diff/DiffView.test.tsx` stored-prefs + active-state + keyboard
+  cases, `source/diff/diffLogic.test.ts` 19 tests; issues #56/#57: the
+  comments panel keeps a 360–420px min-width anchored to its button so
+  tabs/paths no longer wrap).
 - File header (chevron, path, +/−, reviewed count, toggle) — met.
 - Git's own hunks (≤3 context, merged runs); header format + raw `@@` on
   hover; fold/Summarize/note/reviewed actions; hunk card (summary+note,
@@ -492,6 +555,18 @@ needed (that deviation is closed, not added).
   mid-reply, crash/restart).
 - Usage aggregation incl. background titling models — met
   (`agent/acp/usage.ts`, delta-ized Claude counters, unit-pinned).
+- Version-manager shims + untrusted review configs (#105) — met: agent
+  candidates are probed from a worktree-shaped temp dir and mise/asdf
+  shims resolve to the real executable (`mise which` / `asdf which`
+  from home, cached, refreshed by Reload environment); sessions,
+  readiness and Doctor all use the real path (shown next to the shim);
+  the adapter environment points `MISE_IGNORED_CONFIG_PATHS` at our own
+  worktrees dir (the review copy is never trusted); residual start
+  failures read in plain words with the `UNVIBE_*_BIN` fix
+  (`exec/shim-resolve.ts`, `diagnostics/tools.ts`, `agent/acp/`,
+  `agent-shim-mise.test.ts`, `shim-resolve.test.ts`).
+  Open: same exposure for `git`/`gh`-as-shims (open list); final check
+  needs a Mac with mise (`docs/macos-testing.md` step 10).
 
 ## §7 Data model and IDs — all met
 
@@ -524,7 +599,10 @@ needed (that deviation is closed, not added).
   (tests (b)(c)(e)).
 - Cards stale badge + Update; findings rechecked; pinned code re-pinned;
   threads' change lists — met (`versions/citations.ts`, `update.ts`,
-  `versions-update.test.ts`).
+  `versions-update.test.ts`; #52: pins in files the new diff does not touch
+  are decided by content at the new head — unchanged kept, moved remapped,
+  gone/missing/binary/large/unreadable flagged — `versions/refresh.ts`,
+  `versions-refresh.test.ts` (h)–(m)).
 - Manual update only (fetch/compare free on open/refresh; pass on Update)
   — met (`routes/reviews.ts` refresh vs update; update pass jobs).
 - Table row “Pinned code / Thread in progress” — met
@@ -570,6 +648,18 @@ needed (that deviation is closed, not added).
 - Four MCP tools + reader-only `pin_context` — met (`mcp/tools.ts`,
   `registry.ts:190` refusal; `mcp.test.ts`: surface per role, pin
   attribution, traversal refusal — ran).
+- `desc:` IDs from the review tools — met (#96): `resolve` returns
+  `desc:` candidates when the query matches description text, under the
+  same second-opinion restriction as `search` (description allowed, cards
+  hidden — shared `isRestrictedRole`/`matchDescription` in `registry.ts`);
+  one source of paragraph IDs (`parseDescriptionParagraphs` in
+  `ingest/description.ts` reads the IDs ingest wrote into the stored
+  HTML) used by MCP search/resolve, the citation validator
+  (`pipeline/lookup.ts`), second-opinion excerpts, and comment-anchor
+  text (`comments/threads.ts`, `interaction/l4.ts` — list paragraphs no
+  longer truncate at the first `</li>`). Pending description edits are
+  read (`pendingHtml ?? html`); stored HTML predating stable IDs falls
+  back to positional per-block numbering (`desc-ids.test.ts` — ran).
 - Validation (existence, ranges, anchor substring, hidden concept
   candidates) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair
@@ -669,6 +759,10 @@ needed (that deviation is closed, not added).
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
   SVG sanitisation, `GET /api/reviews/:id/diagrams/:hash?theme=` endpoint;
   Mermaid removed entirely per user direction, PRD §19.4 resolved as D2).
+  Prompt guidance (#16): short labels (at most two lines), `direction:`
+  to suit the flow, cites on each code-mapped shape/connection, `.class:
+  [ok|bad]` for states — mirrored into `diagram.md`, `explain.md`,
+  `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
 
 ## §14 Shell, install, security, storage — all met
 
@@ -1028,7 +1122,8 @@ changed string. Evidence: `mise run check` green (service 651, shared
 105, web 234 unit tests), `mise run --force build` + `mise run test:e2e`
 green; `unvibe --help` output in the issue report.
 Open: the four flagged renames await owner confirmation (each reverts
-independently); non-copy findings from the list are not fixed.
+independently); non-copy findings from the list are fixed separately —
+see "Non-copy findings (#86)" below.
 
 ### Switching reviews in one tab (#70)
 
@@ -1128,6 +1223,141 @@ every agent action so the same handover runs. Service jobs now carry
  fixed. Hunk summarize busy never clears on success (#63, adjacent,
  untracked here).
 
+### Reload blank page, part 1: error boundaries (#101, complete)
+
+ Any render/commit exception used to unmount the whole tree (no boundary
+ anywhere in `web/src`), leaving a white page. One reusable `ErrorBoundary`
+ (`web/src/components/ErrorBoundary.tsx`, renders no wrapper element so
+ prototype.css child selectors keep matching) now sits at five levels:
+ shell (around the route tree in `App.tsx`, catches non-review routes too,
+ resets on navigation), guide page (around `PageView`, resets on
+ review/page change), each card (around `CardView` in `PageView`,
+ resets on review/card/revision change), source pane (around the tab body
+ in `SourcePane`, resets on review/tab change), and each diff file
+ section (around `FileSection` in `DiffView`, resets on review/file
+ change). A boundary around each diff file section fits the card pattern
+ cheaply, so it is in. `AppShell`, `CardView`, `D2Diagram` and
+ `DiagramView` are untouched (zero lines): every boundary wraps from the
+ outside. Fallbacks say something went wrong in plain style with no raw
+ stack (shell: full-page notice plus Reload; the rest: inline card-,
+ pane-, file- or guide-sized notices with Retry that re-renders the part
+ without reloading). Caught errors go through the existing dev-only web
+ reporting path (`reportWebError` in `web/src/sentry.ts`, same
+ DSN-guarded dynamic import as `initSentry`, so the SDK still never
+ enters the built bundle) with the catching boundary named, plus
+ `console.error` locally. New strings (`Something went wrong`,
+ `Couldn't show this page/card/guide/source pane/file: something went
+ wrong`, `Reload`, `Retry`) pass the copy guard and follow the #45
+ failure pattern and button rule.
+ Evidence: `ErrorBoundary.test.tsx` (10: isolation, report-once with
+ boundary name, local log, reset on identity change, Retry, shell
+ fallback + Reload, route reset, reporter no-op), `PageView.test.tsx` (a
+ real `CardView` throw leaves sibling cards rendered),
+ `GuidePage.test.tsx` (page throw + reset on review change),
+ `SourcePane.test.tsx` (diff throw leaves the tab bar),
+ `DiffBoundary.test.tsx` (file throw leaves the other file); `mise run
+ check` + `build` + `test:e2e` (158) green with a fresh `dist/`
+ carrying no `sentry` reference (network guard re-run green).
+ Open: part 2, the `removeChild` crash itself — the boundaries above
+ stand on their own until it reproduces.
+
+### Reload blank page, part 2: the crash (#101, complete)
+
+ Reproduced before fixing, twice, with the exact reported string
+ (`NotFoundError: Failed to execute 'removeChild' on 'Node': The node to
+ be removed is not a child of this node`):
+ - `web/src/source/diff/DiffAnchorCrash.test.tsx` (jsdom, real
+   `FileSection` + real `useDiffExpansionBindings` pass): mark an
+   expansion quote in a diff cell, then land the plain → token-span
+   highlight upgrade — throws, with or without a second marking pass in
+   between (the pass's own leading `normalize()` already merges the
+   cell's React-tracked text nodes away).
+ - `web/e2e/reload-anchored-review.spec.ts` (mock mode, real browser):
+   hold the Shiki chunk requests (service worker blocked so routing can
+   hold them), Explain a diff selection so its quote is marked, release
+   the upgrade onto the marked cells — the page errors with the reported
+   string. Pre-part-1 this blanked the page; the run visibly shows part
+   1 containing it (page stays up, the marked file shows its fallback).
+ Cause: anchor marks wrapped text nodes React rendered (diff `td.c`
+ cells were React children). Rule adopted, per the issue's options, and
+ applied to every site of the pattern (short form in `anchor.ts`):
+ mutate only inside a container React treats as opaque
+ (`dangerouslySetInnerHTML`, never mixed with React children).
+ Changes: diff cells render their content as an HTML string
+ (`highlight/codeHtml.ts`: escaped text, same `shk-*` classes, plain
+ runs spanless — `FileSection.tsx`); guide code blocks render their
+ text as an HTML string too (`BlockView.tsx`, both code paths);
+ description expansions mark only the opaque paragraph body, never the
+ mixed segment div (`DescriptionExpansions.tsx`); the dead
+ `pruneMarkers` (`GuideThreads.tsx`) is deleted — since #72 the bubble
+ lists only unquoted threads so it can never match, and removing
+ React-rendered marker nodes is exactly the crash pattern.
+ Provably safe, unchanged: `D2Diagram` (keyed host states, owns its
+ div), description "Restated →" appends (inside opaque bodies), thread
+ marks in guide prose/list/table/description bodies (all opaque),
+ description markers (filtered at render through React state).
+ The diff-file fallback keeps `id="F-<fileKey>"` so deep links still
+ land (found by the e2e probe).
+ Evidence: both repro suites fail without the `FileSection` change
+ (unit pair re-run against the reverted file; e2e run pre-fix) and pass
+ with it; `mise run check` + `build` + `test:e2e` (159) green, network
+ guard re-run green on the fresh `dist/`. Nothing in this part touches
+ `AppShell`, `CardView`, `D2Diagram` or `DiagramView` either.
+
+### Non-copy findings (#86, branch `fix/86-non-copy-findings`)
+
+One commit per finding. Structural first: thrown route exceptions now
+answer the app's `{ error }` body with the right status (stack logged
+server-side, never sent; `route-errors.test.ts`); then a machine error
+`code` (`shared/src/api.ts`: not-found, invalid-request, no-agent,
+head-moved, not-implemented) set by the service (central
+`service/src/errors.ts` mapping, `NoAgentError`, submit 409
+`code: "head-moved"`, the route error handler) and read code-first by
+the web with text fallback (`parseApiError`/`apiErrorCode` in
+`web/src/api/client.ts`; `error-codes.test.ts`, `apiError.test.ts`).
+Statuses and messages are unchanged. Small fixes: 401s throw
+status-prefixed so `friendlyError`'s 401 branch runs; Limits errors
+show the field label, not the key; correction "cites:" shows resolved
+file:line labels; hunk citations are labelled by file/lines, not hash;
+the guide error state retries via `POST …/resume` (new `api.resume` +
+mock); help documents the no-command foreground start; the unset
+second-opinion copy names the enforced rule (a different model from
+main — PRD §4.10 agrees, so the copy was wrong, not the rule);
+own-avatar reads "You" like the name beside it. Verified already fixed
+(no change): raw transport strings, SubmitPanel location duplication,
+D2 double fallback, `concept`/`concepts` label, no-agent toast
+wording, "Source .py" chip (still stale inside the `ui/31…` branch's
+own CATS — needs a rebase), offline "10 minutes", pre-write fold toast,
+start-page Update-looking tag, Debug tip survival. Left for the owner:
+the Version-tab running-jobs sentence (18), the "PR description" tab on
+branch reviews (22).
+
+### Version-manager shims for git/gh (follow-up to #105, found not fixed)
+
+The service's own `git`/`gh` calls have the same exposure class when
+those tools are manager shims (the command runner spawns whatever
+`cwd` the caller sets, and several callers set a review copy):
+
+- Review-worktree cwd, degrading not fatal: `git show` in
+  `mcp/read.ts` (`get_code` + reader pin excerpts) and
+  `secondopinion/excerpts.ts` — a shim trust failure there yields a
+  missing excerpt (shown dimmed/honestly), never a failed review.
+- Checkout/clone cwd, load-bearing: ingest (`git fetch`,
+  `worktree add/remove`, `gh pr view` — throws), submit (`gh pr …`
+  posts), repos/refresh (`git merge-base`, `rev-list`, `show`,
+  `range-diff`, `gh api`). Unvibe-managed clones
+  (`<dataDir>/repos/<owner>/<name>`) hold the reviewed repo's config,
+  untrusted like the worktree; user checkouts hold the user's own
+  (trusted) config.
+
+Not fixed here on purpose: `git`/`gh` go through `runner.run("git"/"gh",
+…)` PATH-literal lookups at ~20 call sites with fake-runner seams keyed
+on those literals, so "resolve once, call the real path" is not the same
+small shape as the agent-CLI fix (one choice point in `diagnoseTool`
+consumed by adapter startup, readiness and Doctor). No failure of this
+kind has been reported (`git`/`gh`-via-mise is rare; `claude`-via-mise
+is the reported case).
+
 ### Fixed in this branch (done, in `check`)
 
 Stale-dist guard; Host/Origin gate; MCP secret lifecycle; submit crash
@@ -1147,9 +1377,11 @@ Audit-10: §4.4 principle now has an end-to-end drive
 is closed. UI sections were NOT re-audited wholesale per #10; suspicious
 items noticed while passing through (not verified, listed only):
 - Depth + at deepest now toasts via `performAction` `reused` handling
-  (`web/src/guide/actions.ts`) — confirm the copy (“deepest/nothing
-  more”) reads naturally alongside the examples/diagram “Nothing more”
-  toast in `CardView.runInsertAction`.
+  (`web/src/guide/actions.ts`) — settled by #65: the depth response
+  carries the resulting level (`ActionResponse.level`), so a stored-level
+  switch stays silent and only already-at-the-limit toasts (“Already at
+  the deepest level”, “Already at the simplest level” for Simpler —
+  `depthToast.test.ts`, `reuse.test.ts`).
 - `depthViaAgent` normal steps now strip the fixture principle
   (service-only change) — the guide still renders pre-existing principle
   blocks from older snapshots; no migration was added.
@@ -1188,3 +1420,41 @@ items noticed while passing through (not verified, listed only):
    report.
 7. **Diagrams**: D2 decision already noted (§13); PRD text itself still
    contradicts (§13/§19.4) — fixed in #18, not here.
+
+## Addendum: #91 / #92 / #93 (branch `fix/91-92-93-open-pr`)
+
+- **#93 (ingest, §15, §11.1):** PR merge-base is computed against
+  `origin/<base>` first, bare `<base>` second through the shared helper
+  `resolvePrMergeBase` (`ingest/source.ts`, reused by
+  `versions/refresh.ts`); PR heads are fetched via
+  `refs/pull/<n>/head` with a branch-name fallback. All git/gh access
+  assumes the `origin` remote (as do detection and managed clones); a
+  checkout whose GitHub remote has another name is not handled.
+  Errors name the missing piece (base ref vs head commit) plus git stderr.
+  Evidence: `test/ingest/pr-merge-base.test.ts` (stacked base, fork fetch,
+  default branch, both refresh paths, both error texts).
+- **#91 (start page, §4.2):** PR rows show `#N` when `branch` is unset
+  (`gh search prs` has no head-branch field) — never `#N · undefined`.
+  `RepoChange.branch` was already optional; no `gh` change. Evidence:
+  `StartPage.test.tsx` (`changeHead`), `changes-pr-branch.test.ts`, and one
+  branch-less PR row in the web mock.
+- **#92 (async open, §4.2, §7, §11, §14.1):** `POST /api/reviews` creates
+  the row + a loading snapshot (`ingest: {status, step, error}`; placeholder
+  version n: 0, empty files) and answers 202 before any fetch; the ingest
+  runs after the response, steps the snapshot (fetching → reading diff),
+  then fills it to ready in one mutate (one WS patch) and starts the
+  pipeline (demo stays 201 sync). The web navigates at once, shows the step
+  until the patch lands (PR title/number/author rode the create request),
+  lists loading/failed rows in Previous reviews (reopenable), and shows a
+  failed page with the error + Retry (removable; never a normal empty
+  review). Restart resumes loading ingests or marks them failed (the loading
+  snapshot is the durable marker, like the submit lease — no new table; not
+  via the agent job queue, which fits provider/model/prompt work, not
+  git/gh + DB writes). Same PR/branch while loading reuses the review
+  (repo + PR/branch dedupe in the service). Loading/failed refuse Explain,
+  comments, Submit, refresh, update, hunks, description, prompts and debug
+  with 409. Old rows (no `ingest`) load as ready. Evidence:
+  `test/reviews-async.test.ts` (202-before-ingest, loading→ready patch,
+  failed + retry + remove, restart, dedupe, pipeline-after-ingest, old-row
+  ready), `GuideLoading.test.tsx`, `e2e/open-review.spec.ts` (mock loading
+  → guide, failing → Retry).

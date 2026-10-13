@@ -24,7 +24,9 @@ import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { requestGuideBlock } from "../guide/actions.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { revealSource } from "../source/reveal.js";
+import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
+import { descriptionPaneName } from "../source/description/paneName.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
 import { threadPostText } from "./threads.js";
 
@@ -90,7 +92,7 @@ export function whereLabel(snapshot: ReviewSnapshot, thread: Annotation): string
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
     return file?.path ?? host.fileKey;
   }
-  if (host.kind === "description") return "PR description";
+  if (host.kind === "description") return descriptionPaneName(snapshot);
   for (const page of snapshot.pages) {
     for (const card of page.cards) {
       for (const block of card.blocks) {
@@ -233,6 +235,8 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       return;
     }
     // Guide thread: open its page, expand a collapsed card, scroll to it.
+    // The menu now lives in the review bar, so jumping to a guide thread
+    // while only the source pane is showing brings the guide back (#83).
     const holder = snap.pages
       .flatMap((p) => p.cards.map((c) => ({ page: p, card: c })))
       .find(({ card }) =>
@@ -240,6 +244,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       );
     if (!holder) return;
     const go = (): void => {
+      showGuidePane();
       if (holder.card.collapsed) {
         api.action(reviewId, { kind: "collapse", cardId: holder.card.id, collapsed: false }).catch(() => {});
       }

@@ -10,6 +10,8 @@ import { useState } from "react";
 import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { revealSource } from "../../source/reveal.js";
+import { useReview } from "../../state/store.js";
+import { resolveCitation } from "../citations.js";
 
 interface Props {
   reviewId: string;
@@ -27,6 +29,7 @@ function targetMatches(target: string | undefined, cardId: string): string | nul
 
 export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
+  const snapshot = useReview((s) => s.snapshot);
   const pending = contributions.filter((c) => c.status === "pending");
   const matches: { contribution: Contribution; itemIndex: number; block: string | null }[] = [];
   for (const c of pending) {
@@ -70,7 +73,10 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
                     type="button"
                     onClick={() => revealSource(c.target)}
                   >
-                    <span className="loc">{c.target}</span>
+                    {/* Resolved file:line label (finding 12), never the raw id. */}
+                    <span className="loc">
+                      {snapshot ? resolveCitation(snapshot, c).label : c.target}
+                    </span>
                   </button>
                 ))}
               </p>

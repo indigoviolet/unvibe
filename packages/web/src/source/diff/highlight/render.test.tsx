@@ -188,3 +188,101 @@ describe("DiffView live highlight", () => {
     expect(log?.querySelectorAll("td.c [class*='shk-']").length).toBe(0);
   }, 20000);
 });
+
+describe("hostile code text (issue #101)", () => {
+  const EVIL = `<script>alert("x & y")</script></td><td>`;
+  const evilFile = {
+    fileKey: "evil",
+    path: "src/evil.rs", // unknown language: the live hook stays off
+    category: "source",
+    hunks: [
+      {
+        contentHash: "hash-evil-1",
+        header: "@@ -1 +1 @@",
+        newStart: 1,
+        newEnd: 1,
+        oldStart: 1,
+        oldEnd: 1,
+        added: 1,
+        removed: 0,
+        lines: [{ kind: "add", newLine: 1, text: EVIL }],
+      },
+    ],
+  } as const;
+
+  function renderEvil(
+    view: "unified" | "split",
+    tokens?: ReadonlyMap<string, { old: (LineTokens | null)[]; new: (LineTokens | null)[] }>,
+  ): HTMLElement {
+    render(
+      <FileSection
+        file={evilFile as never}
+        view={view}
+        reviewed={0}
+        folded={false}
+        eager
+        busy={{}}
+        editingNote={{}}
+        slots={{}}
+        commentedLines={new Set()}
+        highlight={null}
+        fileHighlighted={false}
+        briefs={null}
+        tokens={tokens}
+        states={new Map()}
+        isHidden={() => false}
+        actions={NO_ACTIONS}
+        onLineClick={undefined}
+        onToggleFileFold={() => {}}
+        onMarkFileReviewed={() => {}}
+        onUnhide={() => {}}
+      />,
+    );
+    const section = document.getElementById("F-evil");
+    expect(section).not.toBeNull();
+    return section!;
+  }
+
+  // The evil string split across a span boundary, so escaping is
+  // exercised inside token spans too, not just in plain runs.
+  function evilTokens(): ReadonlyMap<string, { old: (LineTokens | null)[]; new: (LineTokens | null)[] }> {
+    const at = EVIL.indexOf("alert");
+    return new Map([
+      [
+        "hash-evil-1",
+        {
+          old: [null],
+          new: [
+            [
+              { text: EVIL.slice(0, at), cls: "shk-kw", bold: false, italic: false },
+              { text: EVIL.slice(at), cls: null, bold: false, italic: false },
+            ],
+          ],
+        },
+      ],
+    ]);
+  }
+
+  it.each(["unified", "split"] as const)("renders hostile text inert in %s rows, plain and highlighted", (view) => {
+    for (const tokens of [undefined, evilTokens()]) {
+      cleanup();
+      const section = renderEvil(view, tokens);
+      // Nothing parsed anywhere in the file: no script element…
+      expect(section.querySelector("script")).toBeNull();
+      const evilCells = [...section.querySelectorAll("td.c")].filter((cell) =>
+        cell.textContent?.includes("<script>"),
+      );
+      expect(evilCells.length).toBeGreaterThan(0);
+      for (const cell of evilCells) {
+        // …reads back as the exact raw text (copy-paste intact)…
+        expect(cell.textContent).toContain(EVIL);
+        // …with no smuggled cells inside it.
+        expect(cell.querySelectorAll("td").length).toBe(0);
+      }
+      // The row survived as one row: the `</td><td>` injected no rows
+      // (one hunk-header row plus one code row).
+      expect(section.querySelectorAll("tbody tr").length).toBe(2);
+      if (tokens) expect(section.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
+    }
+  });
+});

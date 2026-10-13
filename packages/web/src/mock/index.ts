@@ -32,6 +32,7 @@ import type {
   RefreshResponse,
   RemoveRepoResponse,
   ResetDataResponse,
+  ResumeReviewResponse,
   Repo,
   RepoChange,
   RepoChangesResponse,
@@ -62,6 +63,7 @@ import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } fr
 import {
   mockAddedD2Block,
   mockDiagramSvg,
+  mockMultilineD2Block,
   mockSeedD2Block,
   mockUnavailableD2Block,
 } from "./d2diagrams.js";
@@ -261,10 +263,18 @@ function mockCardLevel(ref: MockCardRef): import("@unvibe/shared").DepthLevel {
 }
 
 /** Card controls in mock: depth/examples/diagram/undo through the patch path. */
-function mockCardControl(a: { kind: string; cardId: string; direction?: string }): { accepted: boolean; cardId: string; jobId?: string } {
+function mockCardControl(a: { kind: string; cardId: string; direction?: string }): {
+  accepted: boolean;
+  cardId: string;
+  jobId?: string;
+  /** Mirrors the service (issue #65): stored switches and at-the-limit repeats reuse. */
+  reused?: boolean;
+  /** Resulting level for depth actions (issue #65). */
+  level?: import("@unvibe/shared").DepthLevel;
+} {
   const ref = findMockCard(a.cardId);
   if (!ref) throw new Error(`unknown card ${a.cardId}`);
-  const ORDER = ["simple", "standard", "deep"];
+  const ORDER: import("@unvibe/shared").DepthLevel[] = ["simple", "standard", "deep"];
   if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
     const level = mockCardLevel(ref);
     const i = ORDER.indexOf(level);
@@ -285,9 +295,9 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
         }
         emitPages();
         emitAnnotations();
-        return { accepted: true, cardId: a.cardId };
+        return { accepted: true, cardId: a.cardId, level };
       }
-      return { accepted: true, cardId: a.cardId };
+      return { accepted: true, cardId: a.cardId, reused: true, level };
     }
     const from = level;
     const cur = [...blocks];
@@ -302,7 +312,7 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
     }
     emitPages();
     emitAnnotations();
-    return { accepted: true, cardId: a.cardId };
+    return { accepted: true, cardId: a.cardId, reused: true, level: next };
   }
   if (a.kind === "examples" || a.kind === "diagram") {
     const blocks = mockCardBlocks(ref);
@@ -434,9 +444,9 @@ let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
 /**
  * Seed mock D2 edge cases into the go-deeper flow card: the fixture's own
  * diagram block (rendered fixture SVGs served by `diagramSvg` below)
- * covers the ok path; the seeds add an unverified-anchor block and an
- * unavailable block (no binary), so mock-mode tests exercise those
- * branches without touching the fixture.
+ * covers the ok path; the seeds add an unverified-anchor block, an
+ * unavailable block (no binary) and a multi-line-label block, so
+ * mock-mode tests exercise those branches without touching the fixture.
  */
 function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
   const card = pages
@@ -447,6 +457,7 @@ function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
     ...card.blocks,
     mockSeedD2Block() as never,
     mockUnavailableD2Block() as never,
+    mockMultilineD2Block() as never,
   ];
 }
 seedMockD2Diagrams(mockPages);
@@ -695,6 +706,9 @@ export function resetMockState(): void {
   mockContributions = seedContributions();
   mockUpdatePending = null;
   mockUpdateDown = false;
+  mockSoSeq = 0;
+  for (const p of pendingSecondOpinions) window.clearTimeout(p.timer);
+  pendingSecondOpinions = [];
   try {
     localStorage.removeItem(UPDATE_KEY);
   } catch {
@@ -859,6 +873,11 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     review: {
       ...MOCK_REVIEW,
       id: reviewId,
+      // The real demo review uses repoId "demo" (service `pipeline/demo.ts`);
+      // the mock snapshot matches so demo-only rules apply (no GitHub
+      // link-out, no refresh). The summary list keeps its urllib3 row, so
+      // the start-page fixtures are unaffected.
+      repoId: reviewId === "demo" ? "demo" : MOCK_REVIEW.repoId,
       versions: stale ? [MOCK_VERSION, MOCK_VERSION_2] : [MOCK_VERSION],
       currentVersion: stale ? 2 : 1,
     },
@@ -975,6 +994,41 @@ function settleMockJob(jobId: string): void {
   if (!job || job.state === "done") return;
   job.state = "done";
   emitJobs();
+}
+
+/**
+ * Pending mock second-opinion fills (issue #76): like the service, every
+ * run gets its own job id, so a re-run shows its own working state instead
+ * of attaching to the previous run's done job. Deleting the opinion drops
+ * its fill (a late timer must not resurrect the block) and settles the job
+ * cancelled so no working state sticks around.
+ */
+let mockSoSeq = 0;
+
+interface PendingSecondOpinion {
+  cardId: string;
+  mode: string;
+  jobId: string;
+  resultId: string;
+  timer: number;
+}
+
+let pendingSecondOpinions: PendingSecondOpinion[] = [];
+
+/** Drop pending mock second-opinion fills matching `predicate` (issue #76). */
+function cancelPendingSecondOpinions(predicate: (p: PendingSecondOpinion) => boolean): void {
+  const dropped = pendingSecondOpinions.filter(predicate);
+  if (dropped.length === 0) return;
+  pendingSecondOpinions = pendingSecondOpinions.filter((p) => !predicate(p));
+  for (const p of dropped) window.clearTimeout(p.timer);
+  let changed = false;
+  mockJobs = mockJobs.map((j) => {
+    if (j.state !== "running" && j.state !== "queued" && j.state !== "backing-off") return j;
+    if (!dropped.some((p) => p.jobId === j.id)) return j;
+    changed = true;
+    return { ...j, state: "cancelled" as const };
+  });
+  if (changed) emitJobs();
 }
 
 /** Emit contributions (accept/dismiss flips status without a refetch). */
@@ -1252,6 +1306,58 @@ function mockUpdateBuild(): UpdateBuildInfo | null {
   };
 }
 
+/** #92: loading snapshot for a mock loading list entry. */
+function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
+  const now = Date.now();
+  return {
+    review: {
+      id: entry.id,
+      repoId: entry.repoId,
+      branch: entry.branch,
+      ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
+      versions: [],
+      currentVersion: 0,
+      createdAt: entry.createdAt,
+    },
+    version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+    files: [],
+    pages: [],
+    annotations: [],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+    ingest: { status: "loading", step: entry.ingestStep ?? "fetching" },
+  };
+}
+
+/** #92: failed snapshot for a mock failed list entry. */
+function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot {
+  const now = Date.now();
+  return {
+    review: {
+      id: entry.id,
+      repoId: entry.repoId,
+      branch: entry.branch,
+      ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
+      versions: [],
+      currentVersion: 0,
+      createdAt: entry.createdAt,
+    },
+    version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+    files: [],
+    pages: [],
+    annotations: [],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+    ingest: { status: "failed", error },
+  };
+}
+
 export const mockApi = {
   health: async () => {
     if (mockUpdateDown) throw new Error("mock service restarting");
@@ -1373,10 +1479,12 @@ export const mockApi = {
         updatedAt: NOW - 3600000,
       },
       {
+        // #91: `gh search prs` has no head-branch field, so PR rows arrive
+        // without `branch` — keep one branch-less row so the row text
+        // (no "undefined", no dangling separator) stays exercised.
         kind: "pr",
         title: "Fix retry backoff on 429s",
         prNumber: 5011,
-        branch: "fix-retry-backoff",
         author: "you",
         updatedAt: NOW - 86400000 * 2,
       },
@@ -1457,9 +1565,157 @@ export const mockApi = {
   },
 
   createReview: async (body: CreateReviewRequest): Promise<ReviewSnapshot> => {
-    void body;
+    // #92 hooks for Playwright (mock mode):
+    // - `unvibe.mock.createReviewHold`: return a loading snapshot that stays
+    //   loading until the key is removed (then `review()` serves ready).
+    // - `unvibe.mock.createReviewFail`: return a failed snapshot with that
+    //   error text (retry succeeds once the key is removed).
+    let hold = false;
+    let fail: string | null = null;
+    try {
+      hold = localStorage.getItem("unvibe.mock.createReviewHold") !== null;
+      fail = localStorage.getItem("unvibe.mock.createReviewFail");
+      if (fail === "") fail = null;
+    } catch {
+      // Ignore.
+    }
+    if (fail) {
+      const id = `mock-failed-${Date.now().toString(36)}`;
+      const title =
+        typeof body.title === "string" && body.title.trim() !== ""
+          ? body.title
+          : body.pr !== undefined
+            ? `PR #${body.pr}`
+            : (body.branch ?? "review");
+      const branch = body.branch ?? (body.pr !== undefined ? `pr-${body.pr}` : "branch");
+      mockReviewList.unshift({
+        id,
+        repoId: body.repoId,
+        repoOwner: "mock",
+        repoName: "mock",
+        title,
+        branch,
+        ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+        createdAt: Date.now(),
+        lastOpened: Date.now(),
+        versionCount: 0,
+        currentVersion: 0,
+        stale: false,
+        totalHunks: 0,
+        reviewedHunks: 0,
+        pendingComments: 0,
+        guideStatus: "idle",
+        ingestStatus: "failed",
+        ingestError: fail,
+      });
+      const now = Date.now();
+      return {
+        review: {
+          id,
+          repoId: body.repoId,
+          branch,
+          ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+          versions: [],
+          currentVersion: 0,
+          createdAt: now,
+        },
+        version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+        files: [],
+        pages: [],
+        annotations: [],
+        hunkStates: [],
+        jobs: [],
+        contributions: [],
+        logTail: [],
+        rev: 1,
+        ingest: { status: "failed", error: fail },
+      };
+    }
+    if (hold) {
+      const id = `mock-loading-${Date.now().toString(36)}`;
+      const title =
+        typeof body.title === "string" && body.title.trim() !== ""
+          ? body.title
+          : body.pr !== undefined
+            ? `PR #${body.pr}`
+            : (body.branch ?? "review");
+      const branch = body.branch ?? (body.pr !== undefined ? `pr-${body.pr}` : "branch");
+      const step = "fetching";
+      mockReviewList.unshift({
+        id,
+        repoId: body.repoId,
+        repoOwner: "mock",
+        repoName: "mock",
+        title,
+        branch,
+        ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+        createdAt: Date.now(),
+        lastOpened: Date.now(),
+        versionCount: 0,
+        currentVersion: 0,
+        stale: false,
+        totalHunks: 0,
+        reviewedHunks: 0,
+        pendingComments: 0,
+        guideStatus: "idle",
+        ingestStatus: "loading",
+        ingestStep: step,
+      });
+      const now = Date.now();
+      return {
+        review: {
+          id,
+          repoId: body.repoId,
+          branch,
+          ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
+          versions: [],
+          currentVersion: 0,
+          createdAt: now,
+        },
+        version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+        files: [],
+        pages: [],
+        annotations: [],
+        hunkStates: [],
+        jobs: [],
+        contributions: [],
+        logTail: [],
+        rev: 1,
+        ingest: { status: "loading", step },
+      };
+    }
     await wait(150);
     return currentSnapshot("demo");
+  },
+
+  retryReview: async (id: string): Promise<ReviewSnapshot> => {
+    await wait(100);
+    let fail: string | null = null;
+    try {
+      fail = localStorage.getItem("unvibe.mock.createReviewFail");
+      if (fail === "") fail = null;
+    } catch {
+      // Ignore.
+    }
+    const entry = mockReviewList.find((r) => r.id === id);
+    if (!entry) throw new Error(`POST /api/reviews/${id}/retry: 404 {"error":"unknown review"}`);
+    if (entry.ingestStatus === "loading") {
+      // Already running — return the loading snapshot.
+      return mockLoadingSnapshot(entry);
+    }
+    if (fail) {
+      entry.ingestStatus = "failed";
+      entry.ingestError = fail;
+      delete entry.ingestStep;
+      return mockFailedSnapshot(entry, fail);
+    }
+    delete entry.ingestStatus;
+    delete entry.ingestStep;
+    delete entry.ingestError;
+    entry.versionCount = 1;
+    entry.currentVersion = 1;
+    entry.guideStatus = "ready";
+    return currentSnapshot(id);
   },
 
   reviews: async (): Promise<ReviewsListResponse> => {
@@ -1498,6 +1754,99 @@ export const mockApi = {
 
   review: async (id: string, version?: number): Promise<ReviewSnapshot> => {
     await wait(50);
+    // #92: mock loading/failed reviews — stateless by id prefix + hooks so
+    // the status survives SPA navigation even if the list entry is gone.
+    try {
+      if (id.startsWith("mock-loading-")) {
+        const hold = localStorage.getItem("unvibe.mock.createReviewHold") !== null;
+        const entry = mockReviewList.find((r) => r.id === id);
+        if (hold) {
+          if (entry) return mockLoadingSnapshot(entry);
+          const now = Date.now();
+          return {
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+            files: [],
+            pages: [],
+            annotations: [],
+            hunkStates: [],
+            jobs: [],
+            contributions: [],
+            logTail: [],
+            rev: 1,
+            ingest: { status: "loading", step: "fetching" },
+          };
+        }
+        if (entry) {
+          delete entry.ingestStatus;
+          delete entry.ingestStep;
+          entry.versionCount = 1;
+          entry.currentVersion = 1;
+          entry.guideStatus = "ready";
+        }
+        return currentSnapshot(id, version);
+      }
+      if (id.startsWith("mock-failed-")) {
+        const fail = localStorage.getItem("unvibe.mock.createReviewFail");
+        const entry = mockReviewList.find((r) => r.id === id);
+        if (fail) {
+          if (entry) return mockFailedSnapshot(entry, fail);
+          const now = Date.now();
+          return {
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
+            files: [],
+            pages: [],
+            annotations: [],
+            hunkStates: [],
+            jobs: [],
+            contributions: [],
+            logTail: [],
+            rev: 1,
+            ingest: { status: "failed", error: fail },
+          };
+        }
+        if (entry) {
+          delete entry.ingestStatus;
+          delete entry.ingestError;
+          entry.versionCount = 1;
+          entry.currentVersion = 1;
+          entry.guideStatus = "ready";
+        }
+        return currentSnapshot(id, version);
+      }
+    } catch {
+      // Fall through to the list lookup below.
+    }
+    // #92: mock loading/failed reviews (created via the hold/fail hooks).
+    const entry = mockReviewList.find((r) => r.id === id);
+    if (entry?.ingestStatus === "loading") {
+      let hold = false;
+      try {
+        hold = localStorage.getItem("unvibe.mock.createReviewHold") !== null;
+      } catch {
+        // Ignore.
+      }
+      if (hold) return mockLoadingSnapshot(entry);
+      // Hold released: the ingest lands — flip to ready like the service.
+      delete entry.ingestStatus;
+      delete entry.ingestStep;
+      entry.versionCount = 1;
+      entry.currentVersion = 1;
+      entry.guideStatus = "ready";
+      return currentSnapshot(id, version);
+    }
+    if (entry?.ingestStatus === "failed") {
+      let fail: string | null = null;
+      try {
+        fail = localStorage.getItem("unvibe.mock.createReviewFail");
+        if (fail === "") fail = null;
+      } catch {
+        // Ignore.
+      }
+      const error = fail ?? entry.ingestError ?? "mock ingest failed";
+      return mockFailedSnapshot(entry, error);
+    }
     if (isStaleReview(id) && version !== undefined && version !== 1 && version !== 2) {
       throw new Error(`GET /api/reviews/${id}?version=${version}: 404 {"error":"unknown version ${version}"}`);
     }
@@ -1539,18 +1888,24 @@ export const mockApi = {
     return { jobId, toVersion: isStaleReview(id) ? 2 : 1 };
   },
 
+  resume: async (): Promise<ResumeReviewResponse> => {
+    await wait(50);
+    return { resumed: false, jobIds: [], pendingStages: [] };
+  },
+
   action: async (_id: string, a: ReviewAction): Promise<ActionResponse> => {
     // Second opinion (mock): canned verdicts through the patch path so
     // mock-mode e2e exercises the result block, disagreement styling and
     // the mode switch without a service. Blind → partly, check →
     // disagrees (prominent warn styling).
     if (a.kind === "second_opinion") {
-      const jobId = `mock-so-${a.cardId}-${a.mode}`;
+      const jobId = `mock-so-${a.cardId}-${a.mode}-${++mockSoSeq}`;
       const verdict = a.mode === "blind" ? "partly" : "disagrees";
       const missed =
         a.mode === "blind" ? "A lone CR ending is untested too." : "Set-Cookie comma handling is out of scope.";
+      const resultId = `so-${a.cardId}-${a.mode}-mock-second`;
       const result = {
-        id: `so-${a.cardId}-${a.mode}-mock-second`,
+        id: resultId,
         cardId: a.cardId,
         mode: a.mode,
         provider: "codex",
@@ -1576,7 +1931,8 @@ export const mockApi = {
         jobId,
       };
       trackMockJob(jobId, "second-opinion", { cardId: a.cardId });
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
+        pendingSecondOpinions = pendingSecondOpinions.filter((p) => p.jobId !== jobId);
         settleMockJob(jobId);
         // Expansions store the result on the expansion body (survives
         // depth/undo); page cards store on the card.
@@ -1603,12 +1959,21 @@ export const mockApi = {
         mockPages = JSON.parse(JSON.stringify(pages));
         emitPages();
       }, 400);
+      pendingSecondOpinions.push({ cardId: a.cardId, mode: a.mode, jobId, resultId, timer });
       return { accepted: true, jobId };
     }
     if (a.kind === "delete") {
       const target = (a as { targetId?: string }).targetId ?? "";
       const m = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
       if (m) {
+        // Drop the pending fill first (issue #76): a late timer must not
+        // resurrect the removed block.
+        if (m[1].startsWith("so-")) {
+          cancelPendingSecondOpinions((p) => p.resultId === m[1]);
+        } else {
+          const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
+          cancelPendingSecondOpinions((p) => p.cardId === cardId && p.mode === mode);
+        }
         // Expansion results first (stored on the expansion body).
         let removedExp = false;
         for (const ann of annotations) {

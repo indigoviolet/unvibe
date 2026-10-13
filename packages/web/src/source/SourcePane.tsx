@@ -1,5 +1,5 @@
 /**
- * Source pane: `PR description` / `Diff` tabs plus the Comments menu slot.
+ * Source pane: `PR description` / `Diff` tabs.
  * Diff and description bodies live in their own directories for parallel owners.
  *
  * `revealSource` (see `source/diff/revealSource.ts` + `source/reveal.ts`)
@@ -8,12 +8,14 @@
  */
 import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
+import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { performFollowUp } from "../guide/actions.js";
 import { useDiffExpansionBindings } from "../guide/expansions/DiffExpansions.js";
+import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { DescriptionView } from "./description/DescriptionView.js";
+import { descriptionPaneName } from "./description/paneName.js";
 import { DiffView } from "./diff/DiffView.js";
 import { REVEAL_EVENT } from "./diff/revealSource.js";
 
@@ -27,10 +29,14 @@ interface Props {
 
 export function SourcePane({ reviewId, tab, onTab }: Props) {
   const navigate = useNavigate();
+  const ingestStatus = useReview((s) => s.snapshot?.ingest?.status ?? "ready");
   const pages = useReview((s) => s.snapshot?.pages);
   const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
     pages?.find((p) => p.id === id);
   const onOpenPage = (pageId: string): void => {
+    // "Open as page" from a diff expansion navigates to the guide: bring
+    // the guide pane back when only the source pane is showing (#83).
+    showGuidePane();
     navigate(`/review/${reviewId}/page/${encodeURIComponent(pageId)}`);
   };
   const onFollowUp = (cardId: string, blockId: string, index: number): void => {
@@ -45,6 +51,8 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
   // Line-number icons mark comment threads only (expansions use the dotted
   // link); slot rows still render for both via `lineSlots`.
   const commentedLines = diffComments.commentedLines;
+  // Finding 22: branch reviews (no PR) name this tab "Commits".
+  const snapshot = useReview((s) => s.snapshot);
   useEffect(() => {
     const onReveal = (e: Event): void => {
       const ref = (e as CustomEvent<{ ref?: unknown }>).detail?.ref;
@@ -53,6 +61,18 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
     window.addEventListener(REVEAL_EVENT, onReveal);
     return () => window.removeEventListener(REVEAL_EVENT, onReveal);
   }, [onTab]);
+
+  // #92: no diff/description/comments while loading or failed (service also
+  // 409s). After all hooks so the hook order never changes.
+  if (ingestStatus === "loading" || ingestStatus === "failed") {
+    return (
+      <div className="doc">
+        <p className="hint">
+          {ingestStatus === "loading" ? "The diff appears here once the review opens." : "No diff — the review couldn't be opened."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -65,7 +85,7 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
             aria-selected={tab === "desc"}
             onClick={() => onTab("desc")}
           >
-            PR description
+            {descriptionPaneName(snapshot)}
           </button>
           <button
             className="tab"
@@ -76,20 +96,26 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
           >
             Diff
           </button>
-          <span className="sp" />
-          <CommentsMenu reviewId={reviewId} />
         </div>
       </div>
-      {tab === "desc" ? (
-        <DescriptionView reviewId={reviewId} />
-      ) : (
-        <DiffView
-          reviewId={reviewId}
-          lineSlots={lineSlots}
-          commentedLines={commentedLines}
-          onLineClick={diffComments.onLineClick}
-        />
-      )}
+      <ErrorBoundary
+        name="source-pane"
+        resetKey={`${reviewId}:${tab}`}
+        fallback={({ reset }) => (
+          <InlineFallback message="Couldn't show the source pane: something went wrong" onRetry={reset} />
+        )}
+      >
+        {tab === "desc" ? (
+          <DescriptionView reviewId={reviewId} />
+        ) : (
+          <DiffView
+            reviewId={reviewId}
+            lineSlots={lineSlots}
+            commentedLines={commentedLines}
+            onLineClick={diffComments.onLineClick}
+          />
+        )}
+      </ErrorBoundary>
     </>
   );
 }

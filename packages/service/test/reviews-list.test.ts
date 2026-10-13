@@ -38,6 +38,24 @@ async function makeRepo(): Promise<string> {
   return dir;
 }
 
+/** #92: wait for the background ingest (POST answers 202 loading). */
+async function awaitReady(
+  app: Awaited<ReturnType<typeof createApp>>["app"],
+  id: string,
+): Promise<ReviewSnapshot> {
+  const start = Date.now();
+  while (Date.now() - start < 15000) {
+    const res = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+    if (res.statusCode === 200) {
+      const snap = res.json() as ReviewSnapshot;
+      if ((snap.ingest?.status ?? "ready") === "failed") throw new Error(`ingest failed: ${snap.ingest?.error ?? ""}`);
+      if ((snap.ingest?.status ?? "ready") === "ready" && (snap.version?.n ?? 0) >= 1) return snap;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`timed out waiting for ${id}`);
+}
+
 describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
   beforeEach(() => {
     process.env.UNVIBE_REPO_ROOTS = "";
@@ -65,8 +83,9 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         headers: authed,
         payload: { repoId, branch: "feature" },
       });
-      expect(c1.statusCode).toBe(201);
+      expect([201, 202]).toContain(c1.statusCode);
       const id1 = (c1.json() as ReviewSnapshot).review.id;
+      await awaitReady(app, id1);
 
       // Touch ordering: opening the first review bumps its lastOpened.
       await app.inject({ method: "GET", url: `/api/reviews/${id1}`, headers: authed });
@@ -82,6 +101,7 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         payload: { repoId, branch: "feature2" },
       });
       const id2 = (c2.json() as ReviewSnapshot).review.id;
+      await awaitReady(app, id2);
 
       const list = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
       expect(list.statusCode).toBe(200);
@@ -126,8 +146,9 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         headers: authed,
         payload: { repoId, branch: "feature" },
       });
-      const snap = created.json() as ReviewSnapshot;
-      const id = snap.review.id;
+      const loading = created.json() as ReviewSnapshot;
+      const id = loading.review.id;
+      const snap = await awaitReady(app, id);
       const hash = snap.files[0].hunks[0].contentHash;
 
       await app.inject({
@@ -203,6 +224,7 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         payload: { repoId, branch: "feature" },
       });
       const id = (created.json() as ReviewSnapshot).review.id;
+      await awaitReady(app, id);
       const wt = path.join(ctx.dataDir, "worktrees", id);
       expect(fs.existsSync(wt)).toBe(true);
 
@@ -247,6 +269,7 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         payload: { repoId, branch: "feature" },
       });
       const id = (created.json() as ReviewSnapshot).review.id;
+      await awaitReady(app, id);
       const wt = path.join(ctx.dataDir, "worktrees", id);
       expect(fs.existsSync(wt)).toBe(true);
       const settingsBefore = (await app.inject({ method: "GET", url: "/api/settings", headers: authed })).json();
@@ -312,8 +335,10 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
           headers: authed,
           payload: { repoId, branch },
         });
-        expect(created.statusCode).toBe(201);
+        // #92: creation answers before the ingest; wait until ready.
+        expect([201, 202]).toContain(created.statusCode);
         const id = (created.json() as ReviewSnapshot).review.id;
+        await awaitReady(app, id);
         // Simulate stored state: no PR title on the row, chosen root title in the snapshot.
         ctx.db.prepare("UPDATE reviews SET data = ? WHERE id = ?").run(JSON.stringify({ title: "" }), id);
         const snap = ctx.reviews.getSnapshot(id);

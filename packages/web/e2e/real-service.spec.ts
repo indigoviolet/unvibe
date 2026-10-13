@@ -102,7 +102,7 @@ test.describe("real service", () => {
       await page.getByLabel("Add a repo by path").fill(repoDir);
       await page.getByRole("button", { name: "Add by path" }).click();
       await expect(page.locator('[data-testid^="repo-"]')).toContainText(path.basename(repoDir));
-      await page.getByRole("link", { name: "Back to start page" }).click();
+      await page.getByRole("link", { name: "Unvibe" }).click();
       await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     }
     // The start page follows the selected repo: select the added checkout,

@@ -99,6 +99,26 @@ describe("sanitizeD2Svg hostile payloads", () => {
     expect(sanitizeD2Svg("<<<not xml", "t3")).toBeNull();
     expect(sanitizeD2Svg("", "t4")).toBeNull();
   });
+
+  it("rewrites url() references in presentation attributes", () => {
+    // mask / marker / clip-path (and paint servers) arrive as url(#…)
+    // presentation attributes; ids are namespaced per instance, so the
+    // references must follow or they dangle and stop applying.
+    const root = sanitizeD2Svg(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">` +
+        `<defs><mask id="m" maskUnits="userSpaceOnUse"><rect width="10" height="10" fill="white"/></mask>` +
+        `<marker id="mk"><path d="M0 0h4"/></marker>` +
+        `<clipPath id="c"><rect width="5" height="5"/></clipPath></defs>` +
+        `<path d="M0 0H10" mask="url(#m)" marker-end="url(#mk)" clip-path="url(#c)" fill="url(#m)"/></svg>`,
+      "u9",
+    );
+    expect(root).not.toBeNull();
+    const path = root!.querySelector("path[mask]") as SVGPathElement;
+    expect(path.getAttribute("mask")).toBe("url(#u9-m)");
+    expect(path.getAttribute("marker-end")).toBe("url(#u9-mk)");
+    expect(path.getAttribute("clip-path")).toBe("url(#u9-c)");
+    expect(path.getAttribute("fill")).toBe("url(#u9-m)");
+  });
 });
 
 describe("scopeDiagramCss", () => {
@@ -278,5 +298,57 @@ describe("D2Diagram citation clicks", () => {
     } finally {
       window.removeEventListener("unvibe:reveal-source", onReveal);
     }
+  });
+});
+
+describe("D2Diagram capNaturalWidth (round two, item 2)", () => {
+  const WIDE = CITED.replace('viewBox="0 0 200 100"', 'viewBox="0 0 1379 251"');
+
+  it("caps a diagram at its natural width instead of stretching it", async () => {
+    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => CITED} capNaturalWidth />);
+    await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
+    expect((document.querySelector(".dg-svg svg") as SVGSVGElement).style.maxWidth).toBe("200px");
+  });
+
+  it("sets no cap without the flag (overlay sizes from the viewBox)", async () => {
+    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => WIDE} />);
+    await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
+    expect((document.querySelector(".dg-svg svg") as SVGSVGElement).style.maxWidth).toBe("");
+  });
+});
+
+describe("D2Diagram ok/bad classes (#16)", () => {  // D2 passes unknown classes through on the shape group; the app's
+  // stylesheet paints `.ok`/`.bad` in the guide palette (no `classes:`
+  // stanza needed, and those stay rejected by the service pre-check).
+  const CLASSED =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">` +
+    `<g class="YQ== ok"><rect id="a" class="stroke-B1 fill-B6" x="1" y="1" width="10" height="10"/></g>` +
+    `<g class="Yg== bad"><rect id="b" class="stroke-B1 fill-B6" x="20" y="1" width="10" height="10"/></g></svg>`;
+
+  it("keeps ok/bad classes through adoption", async () => {
+    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => CLASSED} />);
+    await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
+    expect(document.querySelector(".dg-svg svg .ok rect")).not.toBeNull();
+    expect(document.querySelector(".dg-svg svg .bad rect")).not.toBeNull();
+  });
+});
+
+describe("D2Diagram multi-line labels (#16)", () => {
+  // The service sanitiser once stripped tspan x/dy and maskUnits,
+  // collapsing every line onto one baseline. The web adopt pass keeps
+  // them; this pins that half of the contract.
+  const LINES =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 140">` +
+    `<defs><mask id="m1" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="140">` +
+    `<rect x="0" y="0" width="300" height="140" fill="white"/></mask></defs>` +
+    `<text x="60" y="40"><tspan x="60" dy="0">first line</tspan><tspan x="60" dy="18.5">second line</tspan></text>` +
+    `<path d="M 0 70 H 300" mask="url(#m1)"/></svg>`;
+
+  it("keeps tspan positioning and mask geometry through adoption", async () => {
+    renderD2(<D2Diagram reviewId="demo" block={d2Block()} fetchSvg={async () => LINES} />);
+    await waitFor(() => expect(document.querySelector(".dg-svg svg")).not.toBeNull());
+    const tspans = [...document.querySelectorAll(".dg-svg svg tspan")];
+    expect(tspans.map((t) => t.getAttribute("dy"))).toEqual(["0", "18.5"]);
+    expect(document.querySelector(".dg-svg svg mask")?.getAttribute("maskUnits")).toBe("userSpaceOnUse");
   });
 });

@@ -44,10 +44,13 @@ already in front of you.
   that were summarized but not inlined (the source layer says so).
 - `get_code(path, lines, sha?)`: code at a commit, returned with a `code:`
   ID. Use it when you need surrounding code beyond the diff.
-- `search_review(query)`: matching cards, annotations and contributions,
-  with IDs. Use it before restating something that may already be covered.
-- `resolve(description)`: candidate IDs for a description of a location.
-  Use it when you know where something is in words but not as an ID.
+- `search_review(query)`: matching cards, annotations, contributions and
+  description paragraphs, with IDs. Use it before restating something that
+  may already be covered. The description in your context shows no IDs:
+  search a paragraph's words to cite it.
+- `resolve(description)`: candidate `h:`, `card:` and `desc:` IDs for a
+  description of a location. Use it when you know where something is in
+  words but not as an ID.
 - `pin_context(path, lines, why)`: keep an excerpt in the shared context.
   Only the reader session has this tool.
 
@@ -99,16 +102,21 @@ the body, and never repeat a diagram's caption in its walkthrough.
   become Example / Diagram / Underlying-principle inserts after the
   paragraph they relate to.
 - Diagrams are fenced `d2` blocks (D2 convention source:
-  prompts/includes/d2-convention.md): first line `direction: right` for
-  flows, `shape: sequence_diagram` for sequences; cite code with
-  link: "diff:<fileKey>:<START>-<END>" directly on 2-3 shapes or
-  connections, inline in braces (never on its own indented line, never
-  `[[ ]]`, never `tooltip:`); at most 12 shapes and 16 connections; no
-  icon:, images, imports, markdown labels, layers, vars, classes. A
+  prompts/includes/d2-convention.md): first line `direction:` to suit the
+  flow (`right` for pipelines, `down` for chains),
+  `shape: sequence_diagram` for sequences; every label short (a few words,
+  at most two lines); cite code with
+  link: "diff:<fileKey>:<START>-<END>" inline in braces on each
+  code-mapped shape or connection (at least 2, never on its own indented
+  line, never `[[ ]]`, never `tooltip:`); `.class: [ok]` / `[bad]` for
+  good/bad states; at most 12 shapes and 16 connections; no
+  icon:, images, imports, markdown labels, layers, vars, `classes:`
+  stanzas. A
   `Caption: …` paragraph right after the fence becomes the caption, so
   never start an ordinary paragraph with `Caption:`.
 - Follow-up suggestions are a `### Follow-ups` heading plus a list. Items
-  are `Label` or `Label | ask: pre-baked question`.
+  are `Label` or `Label | ask: pre-baked question`. Thread answers (ask)
+  never include them.
 - `Finding: [[page:<finding-page>]]` alone on a line renders as the orange
   finding reference card.
 - Tables use GitHub Markdown syntax; lists may be ordered or unordered,

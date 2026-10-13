@@ -21,7 +21,7 @@ import { Link } from "react-router-dom";
 import type { DiagramBlock, DiagramTheme } from "@unvibe/shared";
 import { api, DiagramStatusError, friendlyError } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
-import { adoptD2Svg } from "./d2sanitize.js";
+import { adoptD2Svg, naturalSize } from "./d2sanitize.js";
 
 export type FetchDiagramSvg = (
   reviewId: string,
@@ -76,6 +76,12 @@ interface Props {
   block: DiagramBlock;
   /** Override the fetch (unit tests); defaults to the API client. */
   fetchSvg?: FetchDiagramSvg;
+  /**
+   * Cap the SVG at its natural width inline (round two, item 2): with
+   * `width: 100%` a narrow diagram would stretch past its designed size.
+   * The overlay leaves this off (it sizes from the viewBox itself).
+   */
+  capNaturalWidth?: boolean;
 }
 
 /**
@@ -89,7 +95,7 @@ export function d2SourceOf(block: DiagramBlock): string {
   return typeof legacy === "string" ? legacy : "";
 }
 
-export function D2Diagram({ reviewId, block, fetchSvg }: Props): React.JSX.Element {
+export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth }: Props): React.JSX.Element {
   const theme = usePageTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const render = block.render;
@@ -165,6 +171,10 @@ export function D2Diagram({ reviewId, block, fetchSvg }: Props): React.JSX.Eleme
     host.textContent = "";
     const node = adoptD2Svg(state.svgText);
     if (node) {
+      if (capNaturalWidth) {
+        const natural = naturalSize(node);
+        if (natural) node.style.maxWidth = `${natural.w}px`;
+      }
       host.appendChild(node);
       return () => {
         host.textContent = "";
@@ -176,7 +186,7 @@ export function D2Diagram({ reviewId, block, fetchSvg }: Props): React.JSX.Eleme
       message: "the service returned a file the app couldn't read",
     });
     return undefined;
-  }, [state]);
+  }, [state, capNaturalWidth]);
 
   // Each branch carries a key so React never reuses the adopted-SVG host
   // div for the loading/fallback trees (or vice versa): the adopt effect

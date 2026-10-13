@@ -14,6 +14,7 @@ import type { FastifyInstance } from "fastify";
 import type { UpdateDescriptionRequest } from "@unvibe/shared";
 import { runGh } from "../exec/index.js";
 import { readReviewRow } from "../ingest/index.js";
+import { ingestRefusal } from "../reviews/index.js";
 import {
   buildParagraphSources,
   cleanEditedHtml,
@@ -47,6 +48,8 @@ export async function registerDescription(app: FastifyInstance, ctx?: ServiceCon
     }
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
+    const refused = ingestRefusal(snapshot);
+    if (refused) return reply.code(409).send({ error: refused });
     const row = readReviewRow(ctx.db, id);
     const prNumber = row?.prNumber ?? snapshot.review.prNumber;
     if (prNumber === null || prNumber === undefined) {
@@ -159,6 +162,8 @@ export async function registerDescription(app: FastifyInstance, ctx?: ServiceCon
     if (!ctx) return reply.code(501).send({ error: "not available in this build" });
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: `unknown review ${id}` });
+    const refusedDel = ingestRefusal(snapshot);
+    if (refusedDel) return reply.code(409).send({ error: refusedDel });
     await ctx.reviews.mutate(id, (draft) => {
       if (!draft.description) return;
       delete draft.description.pendingHtml;

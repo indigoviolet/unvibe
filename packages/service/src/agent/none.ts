@@ -14,8 +14,16 @@ import type { AgentRunner, Session } from "@unvibe/shared";
 export const NO_AGENT_MESSAGE =
   "no agent configured: the service was started with UNVIBE_AGENT=none";
 
+/** No-agent failure, carrying its error code (issue #86, finding 10). */
+export class NoAgentError extends Error {
+  readonly code = "no-agent" as const;
+  constructor() {
+    super(NO_AGENT_MESSAGE);
+  }
+}
+
 function fail(): never {
-  throw new Error(NO_AGENT_MESSAGE);
+  throw new NoAgentError();
 }
 
 export class NoAgentRunner implements AgentRunner {

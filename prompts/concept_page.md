@@ -30,8 +30,10 @@ level at a time.
 
 Keep it to what this review needs. If a diagram helps, use a fenced `d2`
 block per the D2 convention (prompts/includes/d2-convention.md):
-`direction: right`, link: "diff:…" cites inline on 2-3 shapes/connections,
-≤12 shapes/16 connections, no icon/imports/markdown labels/layers/vars/
-classes/tooltip:. Never write that a diagram could be added or ask the
+short labels (at most two lines), `direction:` to suit the flow,
+link: "diff:…" cites inline on each code-mapped shape/connection (at
+least 2), `.class: [ok|bad]` for good/bad states, ≤12 shapes/16
+connections, no icon/imports/markdown labels/layers/vars/`classes:`
+stanzas/tooltip:. Never write that a diagram could be added or ask the
 reader to request one. End with the trailing `json` block carrying the
 page `title`.

@@ -220,7 +220,7 @@ test.describe("comments over the real service", () => {
     await expect(thread).toBeVisible({ timeout: 10_000 });
     await thread.getByRole("button", { name: "Mark for the PR" }).click();
     // Edit the For-PR draft in the Comments menu and let it save.
-    await page.locator('#right [data-cm=""]').click();
+    await page.locator('#reviewbar [data-cm=""]').click();
     await page.locator('.cmenu [data-cmf="pr"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     await draft.fill("Why 2 and not 3? Please explain.");

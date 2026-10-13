@@ -60,9 +60,9 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
-import { stageLabel } from "../guide/stageLabels.js";
+import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
-import { PreviewBuildBadge } from "../shell/PreviewBuildBadge.js";
+import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import {
   clearAllKeptLists,
   getKeptLists,
@@ -692,56 +692,43 @@ export function StartPage(): React.JSX.Element {
   return (
     <div className="app">
       <Toast />
-      <header className="top">
-        <div className="pr">
-          <Link className="brand" to="/">
-            Unvibe
-          </Link>
-          {realRepos.length > 0 && selectedId ? (
-            <select
-              aria-label="Repo"
-              className="tbtn"
-              value={selectedId}
-              title={selected?.localPath ?? ""}
-              onChange={(e) => selectRepo(e.target.value)}
-            >
-              {remembered.length > 0 ? (
-                <optgroup label="Repos">
-                  {remembered.map((r) => (
-                    <option key={r.id} value={r.id} title={r.localPath}>
-                      {r.owner}/{r.name}
-                      {r.managed ? " (cloned)" : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-              {detected.length > 0 ? (
-                <optgroup label="Found on this machine">
-                  {detected.map((r) => (
-                    <option key={r.id} value={r.id} title={r.localPath}>
-                      {r.owner}/{r.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-          ) : null}
-          {allReady ? (
-            <span className="hint" data-testid="readiness-ready">
-              Ready
-            </span>
-          ) : null}
-          <PreviewBuildBadge />
-        </div>
-        <Link className="tbtn" to="/settings">
-          Settings
-        </Link>
-      </header>
+      <ScreenTopBar showBadge />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
+          {realRepos.length > 0 && selectedId ? (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
+              <select
+                aria-label="Repo"
+                className="tbtn"
+                value={selectedId}
+                title={selected?.localPath ?? ""}
+                onChange={(e) => selectRepo(e.target.value)}
+              >
+                {remembered.length > 0 ? (
+                  <optgroup label="Repos">
+                    {remembered.map((r) => (
+                      <option key={r.id} value={r.id} title={r.localPath}>
+                        {r.owner}/{r.name}
+                        {r.managed ? " (cloned)" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {detected.length > 0 ? (
+                  <optgroup label="Found on this machine">
+                    {detected.map((r) => (
+                      <option key={r.id} value={r.id} title={r.localPath}>
+                        {r.owner}/{r.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+            </div>
+          ) : null}
           {/* Readiness callouts: one compact row per problem, each linking
               to the relevant Settings section. Nothing when all is well
-              (apart from the small ready indicator above). */}
+              (apart from the quiet ready line at the bottom of the page). */}
           {problems.length > 0 ? (
             <div aria-label="Environment problems" style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
               {problems.map((c) => (
@@ -944,7 +931,13 @@ export function StartPage(): React.JSX.Element {
                     opening={opening}
                     empty="No open PRs."
                     onOpen={(c, i) =>
-                      openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                      openReview(changeKey(c, i), {
+                        repoId: selectedId,
+                        pr: c.prNumber,
+                        branch: c.branch,
+                        title: c.title,
+                        ...(c.author ? { author: c.author } : {}),
+                      })
                     }
                   />
                   <ChangeSection
@@ -955,7 +948,13 @@ export function StartPage(): React.JSX.Element {
                     opening={opening}
                     empty="No PRs waiting."
                     onOpen={(c, i) =>
-                      openReview(changeKey(c, i), { repoId: selectedId, pr: c.prNumber, branch: c.branch })
+                      openReview(changeKey(c, i), {
+                        repoId: selectedId,
+                        pr: c.prNumber,
+                        branch: c.branch,
+                        title: c.title,
+                        ...(c.author ? { author: c.author } : {}),
+                      })
                     }
                   />
                   <ChangeSection
@@ -971,13 +970,18 @@ export function StartPage(): React.JSX.Element {
               )}
             </>
           )}
+          {allReady ? (
+            <p className="hint" data-testid="readiness-ready" style={{ marginTop: 24 }}>
+              Ready
+            </p>
+          ) : null}
         </div>
       </main>
     </div>
   );
 }
 
-function SessionRow({
+export function SessionRow({
   s,
   opening,
   deleting,
@@ -1011,14 +1015,26 @@ function SessionRow({
         </span>
         <span className="cx2">{s.title}</span>
         <span className="hint">
-          {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-          {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
-          {" · "}
-          {guideLabel(s)}
+          {s.ingestStatus === "loading" ? (
+            <>{ingestStepLabel(s.ingestStep)}</>
+          ) : s.ingestStatus === "failed" ? (
+            <>{s.ingestError ? `Couldn't open this review: ${s.ingestError}` : "Couldn't open this review"}</>
+          ) : (
+            <>
+              {s.reviewedHunks}/{s.totalHunks} hunks reviewed
+              {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
+              {" · "}
+              {guideLabel(s)}
+            </>
+          )}
         </span>
       </button>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-        {s.stale ? <span className="prtag">new commits</span> : null}
+        {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
+        {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
+        {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" ? (
+          <span className="prtag">new commits</span>
+        ) : null}
         {confirmDelete === s.id ? (
           <>
             <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>
@@ -1056,6 +1072,20 @@ function SessionRow({
   );
 }
 
+/**
+ * Head line for a start-page change row (#91): PR rows show `#N · branch`
+ * when the branch is known and just `#N` when it is not (`gh search prs`
+ * has no head-branch field, so `branch` is unset for these rows) — never
+ * `#N · undefined` and never a dangling separator.
+ */
+export function changeHead(c: RepoChange): string {
+  if (c.kind === "pr") {
+    const num = c.prNumber !== undefined ? `#${c.prNumber}` : "PR";
+    return c.branch ? `${num} · ${c.branch}` : num;
+  }
+  return c.branch ?? c.title;
+}
+
 function ChangeSection({
   title,
   changes,
@@ -1090,7 +1120,7 @@ function ChangeSection({
           <div key={changeKey(c, i)} className="ci">
             <button className="cj" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
               <span className="cw">
-                {c.kind === "pr" ? `#${c.prNumber} · ${c.branch}` : c.branch}
+                {changeHead(c)}
                 {c.author ? ` · ${c.author}` : ""}
               </span>
               <span className="cx2">{c.title}</span>

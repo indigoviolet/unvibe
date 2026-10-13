@@ -24,9 +24,11 @@ the review. It tells you what the card must cover and why it matters.
 - Every paragraph that states something about the change carries its
   citations. Fetch what you need with `get_hunk` or `get_code` first.
 - If the direction needs a diagram, use a fenced `d2` block per the D2
-  convention (prompts/includes/d2-convention.md): `direction: right`,
-  link: "diff:…" cites inline on 2-3 shapes/connections, ≤12 shapes/16
-  connections, no icon/imports/markdown labels/layers/vars/classes/tooltip:.
+  convention (prompts/includes/d2-convention.md): short labels (at most
+  two lines), `direction:` to suit the flow, link: "diff:…" cites inline
+  on each code-mapped shape/connection (at least 2), `.class: [ok|bad]`
+  for good/bad states, ≤12 shapes/16 connections, no
+  icon/imports/markdown labels/layers/vars/`classes:` stanzas/tooltip:.
 - End with the trailing JSON block carrying the card's `title`.
 - If the direction turns out to need no card (the question answers itself
   in one line), say so in one paragraph instead of padding.

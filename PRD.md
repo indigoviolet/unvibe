@@ -67,13 +67,14 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ## 4. Product behaviour
 
 ### 4.1 Layout
-- **Top bar:** PR or branch title, Tips, **Submit review** with a count of pending changes, and **Source**, which shows or hides the right-hand pane.
+- **Top bar (app-wide only):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge and Tips where they show, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button).
+- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action.
 - **Guide** (left, main column): the current page.
-- **Source pane** (right): tabs for **PR description** and **Diff**, plus the **Comments** menu. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
+- **Source pane** (right): tabs for **PR description** and **Diff**. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
 
 ### 4.2 Start page
-- A repo picker that remembers recent repos and finds local checkouts.
+- A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
 - For the selected repo:
   - **PRs you're authoring:** `gh search prs --author @me`;
   - **PRs waiting on your review:** `gh search prs --review-requested @me`;
@@ -108,6 +109,7 @@ Every card and every expansion card has the same controls:
   - + at the deepest level adds an "Underlying principle" block.
   - Depth versions are generated **on demand** and kept once made.
 - **Use examples** and **Add diagram:** insert example or diagram blocks after the paragraphs they relate to, never duplicating one already there.
+- **Diagrams** render inline in the card at fit: the whole diagram visible, no scrollbars, never above natural size. +/−/Reset zoom in place (trackpad pinch and Ctrl/Cmd+wheel zoom; a plain wheel scrolls the page), drag pans once zoomed. When the guide pane has spare room the block breaks out past the text column, centered, up to the usable width; caption and citations stay column-aligned. **Expand** opens the same diagram out of the column in a full-window view with the same zoom/pan plus reset-to-fit. Esc or the close control shuts it and focus returns to Expand. Citation hover previews and click-to-reveal work the same expanded, inline, and zoomed. Diagrams wear the guide palette in both themes, with `.class: [ok]` / `[bad]` on shapes for good/bad states.
 - **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and expansions attached to the card survive undo.
 - **Mark read:** greys the card and collapses it to its title row. Unmarking expands it.
 - **Read state rolls up:** a page is read when all of its cards are, and links to fully read pages show muted.
@@ -185,9 +187,8 @@ Every card and every expansion card has the same controls:
 **Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**.
 
 **Files panel** (it scrolls with the diff):
-- a filter-as-you-type name box;
-- file-type chips: Source, Tests, Docs, Config, Generated;
-- **Hide reviewed**, and a progress bar of hunks reviewed;
+- a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count) plus a **Reviewed** row; the button shows an active count whenever a non-default filter applies;
+- a progress bar of hunks reviewed;
 - a folder tree that compacts single-child folders, with +/− counts and reviewed/total per file. Clicking a file scrolls to it.
 
 **File header:** collapse chevron, the path (with the file name always visible), +/− counts, the reviewed count, and a mark-file-reviewed toggle.
@@ -525,21 +526,36 @@ A new base is built when any of these happens:
 GET  /api/repos                          recent and detected repos
 POST /api/repos                          add a repo path
 GET  /api/repos/:id/changes?filter=      PRs (authoring | review-requested) and branches
-POST /api/reviews                        { repoId, pr? , branch? } → review
-GET  /api/reviews/:id                    snapshot: version, pages, cards, annotations, hunk state, jobs
-POST /api/reviews/:id/refresh            fetch and compare (no agent)
-POST /api/reviews/:id/update             run the update pass
+POST /api/reviews                        { repoId, pr?, branch?, title?, author? } → 202 loading snapshot at once
+                                         (fetch + ingest run after the response; demo stays 201 sync)
+GET  /api/reviews/:id                    snapshot: ingest status + (once ready) version, pages, cards, annotations, hunk state, jobs
+POST /api/reviews/:id/retry              re-run a failed ingest
+POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
+POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
 POST /api/reviews/:id/actions            { kind: explain|ask|note|depth|examples|diagram|undo|read|
-                                           collapse|generate|second_opinion|promote|close|delete, … }
-PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, note? } ; POST …/summarize
-PATCH /api/reviews/:id/comments/:id      { post?, draft? }
-PUT  /api/reviews/:id/description        local edit (pending until submit)
-POST /api/reviews/:id/submit             one GitHub review plus the description update
+                                           collapse|generate|second_opinion|promote|close|delete, … } (409 while loading/failed)
+PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, note? } ; POST …/summarize (409 while loading/failed)
+PATCH /api/reviews/:id/comments/:id      { post?, draft? } (409 while loading/failed)
+PUT  /api/reviews/:id/description        local edit (pending until submit; 409 while loading/failed)
+POST /api/reviews/:id/submit             one GitHub review plus the description update (409 while loading/failed)
 GET  /api/settings · PUT /api/settings
-GET  /api/prompts?review=:id             templates and expanded text
+GET  /api/prompts?review=:id             templates and expanded text (409 while loading/failed)
 GET  /api/jobs?review=:id
-WS   /api/events?review=:id              job progress, streamed text, state patches
+WS   /api/events?review=:id              job progress, streamed text, state patches (loading→ready arrives as a patch)
 ```
+
+Opening a PR or branch creates the review row + a loading snapshot and
+answers at once; the web navigates immediately and shows what is being
+done (fetching, reading the diff) until the ingest lands, then fills in
+through patch events. The PR title/number/author from the list row ride
+the create request so the loading page shows them at once. A failed
+ingest leaves the review failed with the error and a retry (removable;
+never a normal empty review). A restart resumes loading ingests or marks
+them failed (the loading snapshot is the durable marker, like the submit
+lease). Opening the same PR/branch while loading reuses the review
+(decided by repo + PR/branch in the service). The pipeline starts only
+after the ingest. Start-page PR rows show `#N` when the branch is unknown
+(`gh search prs` has no head-branch field).
 
 ---
 
@@ -549,6 +565,8 @@ WS   /api/events?review=:id              job progress, streamed text, state patc
 |---|---|
 | List PRs | `gh search prs --author @me --repo …`, `gh search prs --review-requested @me --repo …` |
 | PR metadata, description, files | `gh pr view <n> --json title,body,author,state,isDraft,baseRefName,headRefName,headRefOid,files` |
+| PR head fetch | `git fetch origin refs/pull/<n>/head` (fork + same-repo), falling back to the branch name |
+| Merge-base | against `origin/<base>` first, bare `<base>` second (stacked-PR bases live only as `origin/…`; also covers a local default branch behind `origin`) |
 | Diff | `git diff <merge-base>...<head>` locally (more reliable than `gh pr diff` for large PRs, which fails above 300 files) |
 | Existing review threads | `gh api repos/{o}/{r}/pulls/{n}/comments` |
 | Submit review | `gh api repos/{o}/{r}/pulls/{n}/reviews -f event=COMMENT -f body=… -F comments[]=…` (one review, every comment) |

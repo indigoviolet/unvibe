@@ -217,7 +217,13 @@ describe("StartPage kept lists (#90)", () => {
     expect(btn).not.toBeNull();
     fireEvent.click(btn as HTMLButtonElement);
     await waitFor(() =>
-      expect(createReview).toHaveBeenCalledWith({ repoId: "r1", pr: 99, branch: "kept-branch" }),
+      expect(createReview).toHaveBeenCalledWith({
+        repoId: "r1",
+        pr: 99,
+        branch: "kept-branch",
+        title: "Kept PR",
+        author: "you",
+      }),
     );
     gate.resolve({ changes: [] });
   });

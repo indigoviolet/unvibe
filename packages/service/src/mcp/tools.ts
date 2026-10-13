@@ -56,7 +56,9 @@ const SEARCH_REVIEW: McpToolDef = {
   name: "search_review",
   description:
     "Substring search over this review: guide cards, annotations, " +
-    "contributions and the description. Returns matching items with IDs.",
+    "contributions and the PR description paragraphs. Returns matching " +
+    "items with IDs (description hits are desc: IDs). The second-opinion " +
+    "role searches only the description.",
   inputSchema: {
     type: "object",
     properties: {
@@ -71,7 +73,9 @@ const RESOLVE: McpToolDef = {
   name: "resolve",
   description:
     "Map a natural-language location description (file path, line " +
-    "numbers, quoted code, card title) to candidate IDs in this review.",
+    "numbers, quoted code, card title, description text) to candidate IDs " +
+    "in this review (h:, card: and desc: IDs). The second-opinion role " +
+    "gets h: and desc: IDs only, never card: IDs.",
   inputSchema: {
     type: "object",
     properties: {

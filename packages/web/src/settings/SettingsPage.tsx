@@ -13,17 +13,17 @@
  * mounted behind `hidden`, so unsaved form edits survive a tab switch.
  */
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { TabPanel, Tabs, tabIdFromHash, useQueryTab } from "../tabs/Tabs.js";
+import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import { DataSection } from "./DataSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
 import { PromptsSection } from "./PromptsSection.js";
 import { VersionSection } from "./VersionSection.js";
-import { PreviewBuildBadge } from "../shell/PreviewBuildBadge.js";
 import { RepositoriesSection } from "./RepositoriesSection.js";
 import { Toast } from "../floating/Toast.js";
 import "./settings.css";
@@ -87,18 +87,7 @@ export function SettingsPage(): React.JSX.Element {
   return (
     <div className="app">
       <Toast />
-      <header className="top">
-        <Link className="brand" to="/" title="Back to the start page">
-          Unvibe
-        </Link>
-        <div className="pr">
-          <h1>Settings</h1>
-          <PreviewBuildBadge />
-        </div>
-        <Link className="tbtn" to="/">
-          Back to start page
-        </Link>
-      </header>
+      <ScreenTopBar crumbs={[{ label: "Settings" }]} showBadge hideSettings />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
           {error ? (

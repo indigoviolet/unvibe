@@ -10,15 +10,17 @@
  * sent by "Restated →" links in the description tab): opens the block's
  * page, expands its card, scrolls and highlights it.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
+import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
+import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { emptyGuideState } from "./guideUtils.js";
-import { stageLabel } from "./stageLabels.js";
+import { ingestStepLabel, stageLabel } from "./stageLabels.js";
 import { PageView } from "./PageView.js";
 import "./guide-m2.css";
 
@@ -53,6 +55,20 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
 
   const pageId = pageIdFromSplat(splat);
   const pageKey = pageId ?? "root";
+  // Guide error-state retry (issue #86, finding 14): re-enqueue the
+  // unfinished pipeline stages, then converge on the fresh snapshot.
+  const [retrying, setRetrying] = useState(false);
+  const retryGuide = (): void => {
+    setRetrying(true);
+    api
+      .resume(reviewId)
+      .then(() => api.review(reviewId))
+      .then((snap) => setSnapshot(snap))
+      .catch((err: unknown) => {
+        toast(`Couldn't retry the guide: ${friendlyError(err)}`);
+      })
+      .finally(() => setRetrying(false));
+  };
 
   // Reader state (M4): per-page scroll position restored on back/forward.
   // Saved continuously on scroll; restored after the new page renders. The
@@ -146,6 +162,29 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     );
   }
 
+  // #92: async open — loading shows the step, failed shows the error + Retry.
+  // The PR title/number/author rode the create request (TopBar shows them
+  // from the summary); here the step is what matters until the ingest lands
+  // through patch events.
+  const ingestStatus = snapshot.ingest?.status ?? "ready";
+  if (ingestStatus === "loading") {
+    const stepLabel = ingestStepLabel(snapshot.ingest?.step);
+    const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
+    return (
+      <div className="doc" data-testid="review-loading">
+        <h1 className="title">Opening {pr}…</h1>
+        <p className="hint" data-testid="review-loading-step">
+          {stepLabel}
+        </p>
+      </div>
+    );
+  }
+  if (ingestStatus === "failed") {
+    const error = snapshot.ingest?.error ?? "could not open the review";
+    const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
+    return <FailedOpen reviewId={reviewId} prLabel={pr} error={error} />;
+  }
+
   const current = pageId === null ? pages.find((p) => p.kind === "root") ?? pages[0] : lookupPage(pageId);
   // The switcher lives above every branch: reviews whose guide is not
   // built yet have no pages, but their versions still switch.
@@ -169,6 +208,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
             <>
               <h1 className="title">Couldn't build the guide</h1>
               <p className="hint">{empty.detail}</p>
+              <p>
+                <button className="btn" type="button" disabled={retrying} onClick={retryGuide}>
+                  {retrying ? "Retrying…" : "Retry"}
+                </button>
+              </p>
             </>
           ) : (
             <>
@@ -200,13 +244,61 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   return (
     <>
       <VersionSwitcher />
-      <PageView
-        reviewId={reviewId}
-        page={current}
-        lookupPage={lookupPage}
-        onOpenPage={onOpenPage}
-        onJumpToCard={onJumpToCard}
-      />
+      <ErrorBoundary
+        name="guide-page"
+        resetKey={`${reviewId}:${pageKey}`}
+        fallback={({ reset }) => (
+          <div className="doc">
+            <InlineFallback message="Couldn't show the guide: something went wrong" onRetry={reset} />
+          </div>
+        )}
+      >
+        <PageView
+          reviewId={reviewId}
+          page={current}
+          lookupPage={lookupPage}
+          onOpenPage={onOpenPage}
+          onJumpToCard={onJumpToCard}
+        />
+      </ErrorBoundary>
     </>
+  );
+}
+
+/** #92: failed open — the error plus Retry (removing happens in Reviews). */
+export function FailedOpen({ reviewId, prLabel, error }: { reviewId: string; prLabel: string; error: string }) {
+  const setSnapshot = useReview((s) => s.setSnapshot);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const onRetry = useCallback(async () => {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const snap = await api.retryReview(reviewId);
+      setSnapshot(snap);
+    } catch (err) {
+      setRetryError(friendlyError(err));
+    } finally {
+      setRetrying(false);
+    }
+  }, [reviewId, setSnapshot]);
+  return (
+    <div className="doc" data-testid="review-failed">
+      <h1 className="title">Couldn&apos;t open {prLabel}</h1>
+      <p className="hint" data-testid="review-failed-error">
+        {error}
+      </p>
+      <div className="frow" style={{ gap: 8 }}>
+        <button className="btn" type="button" disabled={retrying} onClick={() => void onRetry()}>
+          {retrying ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+      {retryError ? (
+        <p className="hint" role="alert">
+          Couldn&apos;t retry: {retryError}
+        </p>
+      ) : null}
+      <p className="hint">You can remove it from Reviews on the start page.</p>
+    </div>
   );
 }

@@ -30,6 +30,17 @@
  * pattern): when block content changes React wipes the marks and the effect
  * re-applies them; when unrelated store patches leave the blocks alone the
  * idempotent re-mark is a no-op for the DOM the user sees.
+ *
+ * Rule (issue #101): callers may only mark inside containers React treats
+ * as opaque — rendered through `dangerouslySetInnerHTML`, never mixed with
+ * React children. Wrapping or merging React-owned text nodes (`surround`,
+ * `normalize`) detaches nodes React still references, and the next
+ * structural render of that subtree throws `removeChild` NotFoundError,
+ * which used to blank the whole page. Guide code blocks and diff cells
+ * render their text as HTML strings for exactly this reason; description
+ * expansions mark only the paragraph body, never the segment div around
+ * it; and marker buttons are filtered at render time, never pruned from
+ * the DOM.
  */
 
 export interface QuoteSegment {

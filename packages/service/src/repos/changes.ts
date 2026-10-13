@@ -154,10 +154,10 @@ interface ReviewRow {
   id: string;
   branch: string;
   pr_number: number | null;
-  head_sha: string;
+  head_sha: string | null;
 }
 
-/** Reviews opened before, with stale state (head moved since fetch). */
+/** Reviews opened before, with stale state (head moved since fetch). #92: loading reviews (no versions row yet) show too. */
 async function listPreviousReviews(
   runner: CommandRunner,
   db: DatabaseSync,
@@ -168,7 +168,7 @@ async function listPreviousReviews(
     rows = (db
       .prepare(
         `SELECT r.id, r.branch, r.pr_number, v.head_sha
-         FROM reviews r JOIN versions v
+         FROM reviews r LEFT JOIN versions v
            ON v.review_id = r.id AND v.n = r.current_version
          WHERE r.repo_id = ? ORDER BY r.created_at DESC`,
       )
@@ -179,17 +179,27 @@ async function listPreviousReviews(
   const out: RepoChange[] = [];
   for (const row of rows) {
     let stale = false;
-    try {
-      const tip = await runner.run("git", { args: ["rev-parse", row.branch], cwd: repo.localPath });
-      if (tip.code === 0 && tip.stdout.trim() && tip.stdout.trim() !== row.head_sha) {
-        stale = true;
+    if (row.head_sha) {
+      try {
+        const tip = await runner.run("git", { args: ["rev-parse", row.branch], cwd: repo.localPath });
+        if (tip.code === 0 && tip.stdout.trim() && tip.stdout.trim() !== row.head_sha) {
+          stale = true;
+        }
+      } catch {
+        // Unresolvable tip: not stale as far as we know.
       }
-    } catch {
-      // Unresolvable tip: not stale as far as we know.
     }
+    // #92: loading PRs carry a `pr-<n>` branch placeholder until the ingest
+    // confirms the head branch — show just `#N` until then.
+    const title =
+      row.pr_number !== null
+        ? row.branch && !row.branch.startsWith("pr-")
+          ? `#${row.pr_number} · ${row.branch}`
+          : `#${row.pr_number}`
+        : row.branch;
     out.push({
       kind: "review",
-      title: row.pr_number ? `#${row.pr_number} · ${row.branch}` : row.branch,
+      title,
       ...(row.pr_number !== null ? { prNumber: row.pr_number } : {}),
       branch: row.branch,
       reviewId: row.id,

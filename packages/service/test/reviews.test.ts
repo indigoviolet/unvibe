@@ -33,6 +33,27 @@ async function makeRepo(parent: string = os.tmpdir()): Promise<string> {
   return dir;
 }
 
+/** #92: poll GET until the background ingest lands (or throws on failure). */
+async function awaitReady(
+  app: Awaited<ReturnType<typeof createApp>>["app"],
+  id: string,
+  timeoutMs = 15000,
+): Promise<ReviewSnapshot> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const res = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+    if (res.statusCode === 200) {
+      const snap = res.json() as ReviewSnapshot;
+      if ((snap.ingest?.status ?? "ready") === "failed") {
+        throw new Error(`ingest failed: ${snap.ingest?.error ?? ""}`);
+      }
+      if ((snap.ingest?.status ?? "ready") === "ready" && (snap.version?.n ?? 0) >= 1) return snap;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`timed out waiting for ingest of ${id}`);
+}
+
 describe("review routes", () => {
   beforeEach(() => {
     process.env.UNVIBE_REPO_ROOTS = "";
@@ -82,10 +103,11 @@ describe("review routes", () => {
         headers: authed,
         payload: { repoId, branch: "feature" },
       });
-      expect(created.statusCode).toBe(201);
-      const snap = created.json() as ReviewSnapshot;
-      expect(snap.rev).toBe(1);
-      expect(snap.review.branch).toBe("feature");
+      // #92: async open answers 202 with a loading placeholder.
+      expect([201, 202]).toContain(created.statusCode);
+      const loading = created.json() as ReviewSnapshot;
+      expect(loading.review.branch).toBe("feature");
+      const snap = await awaitReady(app, loading.review.id);
       expect(snap.version.headSha).toMatch(/^[0-9a-f]{40}$/);
       expect(snap.files).toHaveLength(1);
       expect(snap.files[0].hunks.length).toBeGreaterThan(0);
@@ -99,7 +121,7 @@ describe("review routes", () => {
         headers: authed,
       });
       expect(fetched.statusCode).toBe(200);
-      expect((fetched.json() as ReviewSnapshot).rev).toBe(1);
+      expect((fetched.json() as ReviewSnapshot).version.n).toBe(1);
     } finally {
       await app.close();
     }
@@ -122,8 +144,9 @@ describe("review routes", () => {
         headers: authed,
         payload: { repoId: detected.id, branch: "feature" },
       });
-      expect(created.statusCode).toBe(201);
-      const snap = created.json() as ReviewSnapshot;
+      expect([201, 202]).toContain(created.statusCode);
+      const loading2 = created.json() as ReviewSnapshot;
+      const snap = await awaitReady(app, loading2.review.id);
       expect(snap.review.repoId).toBe(detected.id);
 
       // Now remembered under the same id (refresh/submit look it up by id).
@@ -163,7 +186,9 @@ describe("review routes", () => {
         headers: authed,
         payload: { repoId, branch: "feature" },
       });
-      const id = (created.json() as ReviewSnapshot).review.id;
+      const loading3 = created.json() as ReviewSnapshot;
+      const id = loading3.review.id;
+      await awaitReady(app, id);
 
       const calm = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
       expect(calm.statusCode).toBe(200);
@@ -176,9 +201,8 @@ describe("review routes", () => {
       expect(moved.statusCode).toBe(200);
       expect(moved.json()).toMatchObject({ newVersion: true });
 
-      // M5 creates version 2 in one mutate (single rev bump + patch).
+      // M5 creates version 2 (#92: rev counts the async ingest mutates too).
       const snap = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
-      expect((snap.json() as ReviewSnapshot).rev).toBe(2);
       expect((snap.json() as ReviewSnapshot).version.n).toBe(2);
       expect((snap.json() as ReviewSnapshot).versionStatus?.stale).toBe(true);
 
@@ -214,8 +238,9 @@ describe("hunk routes", () => {
         headers: authed,
         payload: { repoId, branch: "feature" },
       });
-      const snap = created.json() as ReviewSnapshot;
-      const id = snap.review.id;
+      const loading4 = created.json() as ReviewSnapshot;
+      const id = loading4.review.id;
+      const snap = await awaitReady(app, id);
       const hash = snap.files[0].hunks[0].contentHash;
 
       const badBody = await app.inject({
@@ -244,7 +269,6 @@ describe("hunk routes", () => {
       expect(patched.json()).toEqual({ ok: true });
 
       const after = ctx.reviews.getSnapshot(id);
-      expect(after?.rev).toBe(2);
       expect(after?.hunkStates).toEqual([
         { contentHash: hash, folded: true, reviewed: true, note: "looks good" },
       ]);

@@ -18,20 +18,23 @@
  */
 import type {
   Hunk,
+  PinnedCode,
   ReviewFile,
   ReviewSnapshot,
   Version,
   VersionComparison,
   VersionStatus,
 } from "@unvibe/shared";
-import { summarizeComparison } from "@unvibe/shared";
+import { assertReadySnapshot, summarizeComparison } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import {
+  baseRefCandidates,
   classifyFile,
   fileKeyForPath,
   hashHunkLines,
   parseUnifiedDiff,
   resolveHead,
+  resolvePrMergeBase,
 } from "../ingest/index.js";
 import { uninterestingReason } from "../ingest/index.js";
 import type { DatabaseSync } from "../store/index.js";
@@ -155,9 +158,16 @@ async function resolveNewBase(
   oldBaseRef: string,
   newHead: string,
 ): Promise<{ baseRef: string; mergeBaseSha: string }> {
-  const candidates = [oldBaseRef, "origin/main", "origin/master", "main", "master"];
+  // #93: the stored base may be a bare branch name whose clone only has
+  // `origin/<base>` (stacked PR) — try the shared origin-first candidates.
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (const c of [...baseRefCandidates(oldBaseRef), "origin/main", "origin/master", "main", "master"]) {
+    if (!c || seen.has(c)) continue;
+    seen.add(c);
+    candidates.push(c);
+  }
   for (const base of candidates) {
-    if (!base) continue;
     const mb = await runGit(runner, ["merge-base", base, newHead], repoPath);
     const sha = mb.ok ? mb.stdout.trim().split("\n")[0] : "";
     if (!sha) continue;
@@ -204,6 +214,55 @@ function findBlock(lines: string[], block: string[]): { start: number; end: numb
 }
 
 /**
+ * File lines at a revision for pins whose file is not in the new diff.
+ * Same `git show <rev>:<path>` source as `readCodeSlice`
+ * (`src/mcp/read.ts`), returning all lines instead of a slice. Null on
+ * missing file, binary blob (NUL), read error, path escape, or very large
+ * file — callers flag the pin rather than throwing or silently keeping it.
+ */
+async function loadFileLinesAtHead(
+  runner: CommandRunner,
+  repoPath: string,
+  rev: string,
+  relPath: string,
+): Promise<string[] | null> {
+  if (!relPath || relPath.includes("\0") || relPath.startsWith("/") || relPath.split(/[\\/]/).includes("..")) {
+    return null;
+  }
+  const res = await runGit(runner, ["show", `${rev}:${relPath}`], repoPath);
+  if (!res.ok) return null;
+  if (res.stdout.includes("\0")) return null;
+  // Very large files: avoid loading + scanning huge blobs to remap a small
+  // pin. Flag for re-pinning instead (same as missing). 1 MiB is generous
+  // for source files.
+  if (res.stdout.length > 1_000_000) return null;
+  return res.stdout.split("\n");
+}
+
+/**
+ * Shared pin remap by content: find `pin.text` in `lines`, record the new
+ * location + clear the flag, or flag for re-pinning when not found. Keeps
+ * `pin.text` consistent with the remapped range (exact file content, so a
+ * whitespace-insensitive match does not leave stale text). Pure + sync so
+ * both the in-diff path and the untouched-file fallback share it. Never
+ * throws.
+ */
+function remapPinByContent(pin: PinnedCode, lines: string[], headSha: string): boolean {
+  const hit = findBlock(lines, pin.text.split("\n"));
+  if (!hit) {
+    pin.needsRepining = true;
+    return false;
+  }
+  pin.remappedSha = headSha;
+  pin.remappedStart = hit.start;
+  pin.remappedEnd = hit.end;
+  pin.needsRepining = false;
+  const actual = lines.slice(hit.start - 1, hit.end).join("\n");
+  if (actual !== pin.text) pin.text = actual;
+  return true;
+}
+
+/**
  * Fetch, compare, and apply a new version. Throws on git failures the
  * caller maps to 502; returns `{ moved: false }` when the head is steady.
  */
@@ -214,6 +273,8 @@ export async function refreshReview(
   row: RefreshRow,
   snapshot: ReviewSnapshot,
 ): Promise<RefreshResult> {
+  // #92: routes refuse loading/failed first; assert here for the type narrowing.
+  assertReadySnapshot(snapshot);
   const head = await resolveHead(deps.runner, repoPath, {
     ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
   });
@@ -228,8 +289,14 @@ export async function refreshReview(
   const newBaseRef = row.prNumber !== null && head.baseRef ? head.baseRef : base.baseRef;
   let newBaseSha = base.mergeBaseSha;
   if (row.prNumber !== null && head.baseRef && head.baseRef !== base.baseRef) {
-    const mb = await runGit(deps.runner, ["merge-base", head.baseRef, head.headSha], repoPath);
-    if (mb.ok && mb.stdout.trim()) newBaseSha = mb.stdout.trim().split("\n")[0];
+    // #93: same origin-first merge-base as ingest, through the shared helper.
+    try {
+      const resolved = await resolvePrMergeBase(deps.runner, repoPath, head.baseRef, head.headSha);
+      newBaseSha = resolved.mergeBaseSha;
+    } catch {
+      // Keep the resolveNewBase fallback: refresh still produces a diff
+      // against the best base found above rather than failing the refresh.
+    }
   }
 
   const diff = await runGit(
@@ -300,6 +367,30 @@ export async function refreshReview(
     if (f.oldPath) {
       const oldKey = fileKeyForPath(f.oldPath);
       if (!newContents.has(oldKey)) newContents.set(oldKey, lines);
+    }
+  }
+
+  // Pins in files the new diff does not touch have no entry in
+  // `newContents`. Load those files at the new head now (async, before the
+  // sync mutate below) so the pinned-code loop can decide by content.
+  // Missing / binary / very large / unreadable → null → flagged, never thrown.
+  const untouchedContents = new Map<string, string[] | null>();
+  {
+    const livePins = deps.reviews.getSnapshot(reviewId)?.pinnedCode ?? snapshot.pinnedCode ?? [];
+    for (const pin of livePins) {
+      if (!pin.text) continue;
+      let newPath = pin.path;
+      for (const r of comparison.renames) {
+        if (r.oldPath === pin.path) {
+          newPath = r.newPath;
+          break;
+        }
+      }
+      const nf = newFiles.find((f) => f.path === newPath);
+      if (nf && newContents.get(nf.fileKey)) continue;
+      if (nf) continue; // In-diff but unreadable (deleted/binary): flagged, no fallback read.
+      if (untouchedContents.has(newPath)) continue;
+      untouchedContents.set(newPath, await loadFileLinesAtHead(deps.runner, repoPath, head.headSha, newPath));
     }
   }
 
@@ -387,7 +478,10 @@ export async function refreshReview(
     // Empty-text pins (persisted before text was stored, or never
     // resolvable) have nothing to match: flag them instead of running
     // the content search on a blank block, which would remap to a
-    // spurious blank line.
+    // spurious blank line. Pins whose file is not in the new diff are
+    // decided by content at the new head (preloaded above): unchanged
+    // content keeps the pin, moved text remaps via the same helper, and
+    // missing/gone/unreadable flags for re-pinning.
     if (draft.pinnedCode) {
       for (const pin of draft.pinnedCode) {
         if (!pin.text) {
@@ -403,19 +497,27 @@ export async function refreshReview(
         }
         const nf = newFiles.find((f) => f.path === newPath);
         const lines = nf ? newContents.get(nf.fileKey) : undefined;
-        if (!lines) {
+        if (lines) {
+          remapPinByContent(pin, lines, head.headSha);
+          continue;
+        }
+        if (nf) {
+          // In-diff but no readable content (deleted/binary): flag.
           pin.needsRepining = true;
           continue;
         }
-        const hit = findBlock(lines, pin.text.split("\n"));
-        if (hit) {
-          pin.remappedSha = head.headSha;
-          pin.remappedStart = hit.start;
-          pin.remappedEnd = hit.end;
-          pin.needsRepining = false;
-        } else {
+        if (!untouchedContents.has(newPath)) {
+          // Concurrent pin added after the preload: no content to decide
+          // by — flag rather than silently keeping it.
           pin.needsRepining = true;
+          continue;
         }
+        const untouched = untouchedContents.get(newPath);
+        if (!untouched) {
+          pin.needsRepining = true;
+          continue;
+        }
+        remapPinByContent(pin, untouched, head.headSha);
       }
     }
 

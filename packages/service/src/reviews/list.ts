@@ -147,6 +147,8 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     const stale = snapshot?.versionStatus?.stale ?? false;
     const guide = guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
     const title = titleFor(data.title ?? "", snapshot, row.branch);
+    // #92: ingest state rides the summary so Previous reviews marks loading/failed rows.
+    const ingestStatus = snapshot?.ingest?.status ?? "ready";
     out.push({
       id: row.id,
       repoId: row.repo_id,
@@ -165,6 +167,13 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       pendingComments,
       guideStatus: guide.status,
       ...(guide.detail ? { guideDetail: guide.detail } : {}),
+      ...(ingestStatus !== "ready"
+        ? {
+            ingestStatus,
+            ...(snapshot?.ingest?.step ? { ingestStep: snapshot.ingest.step } : {}),
+            ...(snapshot?.ingest?.error ? { ingestError: snapshot.ingest.error } : {}),
+          }
+        : {}),
     });
   }
   return out;

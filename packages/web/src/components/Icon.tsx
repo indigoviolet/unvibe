@@ -1,6 +1,7 @@
 /**
  * Icon set copied from prototype.html (same names, same 16x16 stroke paths).
- * Usage: `<Icon name="check" />`.
+ * `gear` and `bug` are additions in the same stroke style (the prototype
+ * has no settings/debug icons). Usage: `<Icon name="check" />`.
  */
 import type { JSX } from "react";
 
@@ -48,6 +49,18 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
   hide: (<path d="M4 10l4-4 4 4" />),
+  gear: (
+    <>
+      <circle cx="8" cy="8" r="2.2" />
+      <path d="M8 1.8v1.9M8 12.3v1.9M1.8 8h1.9M12.3 8h1.9M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4" />
+    </>
+  ),
+  bug: (
+    <>
+      <circle cx="8" cy="9" r="3.4" />
+      <path d="M8 5.6V3M5.2 6.6L3.2 5.2M10.8 6.6l2-1.4M4.6 9H2.2M13.8 9h-2.4M5.2 11.2l-2 2M10.8 11.2l2 2" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof PATHS;

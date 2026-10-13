@@ -1,6 +1,6 @@
 /**
  * Per-review debug page (issue #32, tabs + collapsible blocks issue #60)
- * against mock mode: reachable from the review top bar; Jobs / Prompts /
+ * against mock mode: reachable from the review bar; Jobs / Prompts /
  * Shared context tabs with the selected tab in `?tab=`; jobs with prompt
  * links + cancel; prompts with expandable templates and layers; base + log
  * + contributions as collapsible blocks with delete; and the page links
@@ -14,11 +14,13 @@ async function gotoSharedContext(page: Page): Promise<void> {
   await page.getByRole("tab", { name: "Shared context" }).click();
 }
 
-test("top bar links to the debug page, which defaults to the Jobs tab", async ({ page }) => {
+test("review bar links to the debug page, which defaults to the Jobs tab", async ({ page }) => {
   await page.goto("/review/demo");
   await page.getByRole("link", { name: "Debug", exact: true }).click();
   await expect(page).toHaveURL("/review/demo/debug");
-  await expect(page.getByRole("heading", { name: "Debug" })).toBeVisible();
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(crumbs).toContainText("Debug");
+  await expect(crumbs.getByText("Debug")).toHaveAttribute("aria-current", "page");
 
   const tabs = page.getByRole("tablist", { name: "Debug sections" });
   await expect(tabs.getByRole("tab", { name: "Jobs" })).toHaveAttribute("aria-selected", "true");
@@ -186,6 +188,9 @@ test("delete on the debug page removes the contribution without collapsing open 
 
 test("debug page links back to the review", async ({ page }) => {
   await page.goto("/review/demo/debug");
-  await page.getByRole("link", { name: "Back to review" }).click();
+  await page
+    .getByRole("navigation", { name: "Breadcrumb" })
+    .getByRole("link", { name: "urllib3/urllib3#5020" })
+    .click();
   await expect(page).toHaveURL("/review/demo");
 });

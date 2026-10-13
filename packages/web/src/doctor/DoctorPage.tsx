@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { DiagnosticsResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 
 function redactForCopy(text: string): string {
   // Token redaction (defense in depth; the API never sends the token) +
@@ -44,6 +45,7 @@ function formatTextReport(report: DiagnosticsResponse): string {
     t.candidates.forEach((c, i) => {
       lines.push(`  [${i + 1}] ${c.path} (${c.source}; ${c.kind}) runs=${c.runs}${c.exitCode !== undefined ? ` exit=${c.exitCode}` : ""}${c.version ? ` version=${c.version}` : ""}${c.meetsMin !== undefined ? ` meetsMin=${c.meetsMin}` : ""}`);
       if (c.symlinkTarget) lines.push(`      -> ${c.symlinkTarget}`);
+      if (c.resolvedPath) lines.push(`      resolves to ${c.resolvedPath} (what sessions run)`);
       if (c.stdout) lines.push(`      stdout: ${c.stdout.slice(0, 2000)}`);
       if (c.stderr) lines.push(`      stderr: ${c.stderr.slice(0, 2000)}`);
     });
@@ -99,17 +101,9 @@ export function DoctorPage(): React.JSX.Element {
 
   return (
     <div className="app">
-      <header className="top">
-        <Link className="brand" to="/" title="Back to the start page">
-          Unvibe
-        </Link>
-        <div className="pr">
-          <h1>Doctor</h1>
-        </div>
-        <Link className="tbtn" to="/settings?tab=environment">
-          Settings
-        </Link>
-      </header>
+      <ScreenTopBar
+        crumbs={[{ label: "Settings", to: "/settings?tab=environment" }, { label: "Doctor" }]}
+      />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 860 }}>
           <p className="hint">
@@ -211,6 +205,7 @@ export function DoctorPage(): React.JSX.Element {
                           {c.meetsMin !== undefined ? ` meetsMin=${String(c.meetsMin)}` : ""}
                         </div>
                         {c.symlinkTarget ? <div className="hint">→ {c.symlinkTarget}</div> : null}
+                        {c.resolvedPath ? <div className="hint">resolves to {c.resolvedPath} (what sessions run)</div> : null}
                         {c.shimManager ? <div className="hint">manager: {c.shimManager}</div> : null}
                         {c.stdout ? (
                           <pre className="code" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }} data-testid={`doctor-stdout-${t.tool}-${i}`}>

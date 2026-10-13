@@ -19,11 +19,13 @@
  * `override`/`missing-override`).
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { CommandRunner } from "../exec/runner.js";
 import { RealCommandRunner } from "../exec/runner.js";
 import type { DiagnosticCandidate, DiagnosticTool } from "@unvibe/shared";
 import { agentBinSpec, compareVersions, type AgentProvider } from "../exec/agent-bins.js";
+import { isResolvableShim, resolveShimTarget } from "../exec/shim-resolve.js";
 import { D2_MIN } from "../diagrams/bins.js";
 
 export interface ToolSpec {
@@ -38,6 +40,13 @@ export interface ToolSpec {
   versionArgs: string[];
   /** Human install hint for the not-found case. */
   installHint: string;
+  /**
+   * Probe candidates from a directory shaped like a review worktree and
+   * resolve manager shims to the real executable (issue #105). Set for
+   * the agent CLIs only: their sessions run with a review copy as cwd,
+   * so the check must exercise the candidate the way a session will.
+   */
+  probeFromWorktreeLike?: boolean;
 }
 
 export const TOOL_SPECS: ToolSpec[] = [
@@ -62,6 +71,7 @@ export const TOOL_SPECS: ToolSpec[] = [
     minVersion: agentBinSpec("claude").minVersion,
     versionArgs: ["--version"],
     installHint: agentBinSpec("claude").installHint,
+    probeFromWorktreeLike: true,
   },
   {
     tool: "codex",
@@ -70,6 +80,7 @@ export const TOOL_SPECS: ToolSpec[] = [
     minVersion: agentBinSpec("codex").minVersion,
     versionArgs: ["--version"],
     installHint: agentBinSpec("codex").installHint,
+    probeFromWorktreeLike: true,
   },
   {
     tool: "d2",
@@ -199,10 +210,11 @@ async function probeVersion(
   binPath: string,
   args: string[],
   timeoutMs: number,
+  cwd?: string,
 ): Promise<{ runs: boolean; code: number; stdout: string; stderr: string }> {
   try {
     const r = await Promise.race([
-      runner.run(binPath, { args, timeoutMs }),
+      runner.run(binPath, { args, ...(cwd !== undefined ? { cwd } : {}), timeoutMs }),
       new Promise<{ stdout: string; stderr: string; code: number }>((resolve) =>
         setTimeout(() => resolve({ stdout: "", stderr: `timed out after ${timeoutMs}ms`, code: 124 }), timeoutMs + 500),
       ),
@@ -226,6 +238,53 @@ export interface DiagnoseOptions {
 }
 
 /**
+ * A directory shaped like a review worktree (issue #105): it holds the
+ * kind of version-manager config a reviewed repo ships (`.mise.toml`,
+ * `.tool-versions`). Created in the OS temp dir, used as the version-
+ * probe cwd for the agent CLIs so a shim fails here exactly as it would
+ * in a review copy, and removed after. The files are ours and are never
+ * trusted — they only observe shim behaviour.
+ */
+function makeWorktreeLikeDir(): string | undefined {
+  try {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-probe-"));
+    fs.writeFileSync(path.join(dir, ".mise.toml"), '[tools]\nnode = "24"\n');
+    fs.writeFileSync(path.join(dir, ".tool-versions"), "nodejs 24.0.0\n");
+    return dir;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Choice reason naming the shim and the real path sessions run (issue
+ * #105), keeping the established "first that runs / skipped N" shape.
+ */
+function resolutionReason(
+  spec: ToolSpec,
+  candidates: DiagnosticCandidate[],
+  good: { candidate: DiagnosticCandidate; path: string; version: string | null | undefined },
+  skipped: number,
+): string {
+  const c = good.candidate;
+  const versionPart = `(version ${good.version ?? "unknown"})`;
+  if (!c.resolvedPath) {
+    return skipped === 0
+      ? `first on PATH runs ${versionPart}`
+      : `candidate ${skipped + 1} of ${candidates.length} (${good.path}) is the first that runs and meets ≥ ${spec.minVersion}; skipped ${skipped} broken or too old`;
+  }
+  const manager = c.shimManager ? `${c.shimManager} ` : "";
+  if (skipped === 0) {
+    return `first on PATH is a ${manager}shim; the agent runs what it resolves to (${good.path}) ${versionPart}`;
+  }
+  return (
+    `candidate ${skipped + 1} of ${candidates.length} (${c.path}, ${manager}shim) ` +
+    `is the first that runs from a review copy as ${good.path} ${versionPart} and meets ≥ ${spec.minVersion}; ` +
+    `skipped ${skipped} broken, unresolvable or too old`
+  );
+}
+
+/**
  * Diagnose one tool: every candidate + override, version probes, choice.
  * Never throws.
  */
@@ -235,6 +294,16 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
   const timeoutMs = opts.timeoutMs ?? 8000;
   const warnings: string[] = [];
   const candidates: DiagnosticCandidate[] = [];
+
+  // Agent CLIs run their sessions with a review copy as cwd, so their
+  // candidates are probed from a worktree-shaped directory (unless an
+  // explicit override wins, which is honoured unchanged). Other tools
+  // keep today's behaviour.
+  const hasExplicitOverride = spec.overrideEnvs.some((n) => (env[n] ?? "").trim() !== "");
+  const probeCwd = spec.probeFromWorktreeLike === true && !hasExplicitOverride ? makeWorktreeLikeDir() : undefined;
+  // Verified versions of resolved real paths (shim path → real version),
+  // for choice and display. Filled by the resolution pass below.
+  const resolvedVersions = new Map<string, string>();
 
   let overrideEnv: string | undefined;
   let overrideValue: string | undefined;
@@ -335,7 +404,7 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
       for (const p of enumerateCandidates(name, opts.pathValue)) {
         if (candidates.some((c) => c.path === p)) continue;
         const kind = describeKind(p);
-        const probed = await probeVersion(runner, p, spec.versionArgs, timeoutMs);
+        const probed = await probeVersion(runner, p, spec.versionArgs, timeoutMs, probeCwd);
         // Only parse a version from a SUCCESSFUL run (exit 0). A failed
         // `--version` (broken shim) previously leaked mise's version from
         // the error text into the UI; now version is null.
@@ -356,12 +425,56 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
         });
       }
     }
+
+    // Shim resolution (issue #105): a manager shim is never what a session
+    // runs. Ask the manager for the real executable from a neutral
+    // directory and verify it runs from the worktree-shaped directory;
+    // sessions (and the choice below) use the real path instead.
+    if (probeCwd !== undefined) {
+      for (const c of candidates) {
+        if (!isResolvableShim(c) || !c.shimManager) continue;
+        const real = await resolveShimTarget({
+          tool: spec.tool,
+          candidatePath: c.path,
+          manager: c.shimManager,
+          pathValue: opts.pathValue,
+          runner,
+          timeoutMs,
+        });
+        if (!real || real === c.path) continue;
+        const probed = await probeVersion(runner, real, spec.versionArgs, timeoutMs, probeCwd);
+        if (!probed.runs) {
+          warnings.push(
+            `${spec.tool} at ${c.path} is a ${c.shimManager} shim whose real executable (${real}) does not run from a review copy (exit ${probed.code}); the error text is below.`,
+          );
+          continue;
+        }
+        c.resolvedPath = real;
+        const version = parseVersionOnly(`${probed.stdout}\n${probed.stderr}`);
+        if (version) {
+          resolvedVersions.set(real, version);
+          if (spec.minVersion) c.meetsMin = compareVersions(version, spec.minVersion) >= 0;
+        }
+      }
+    }
   }
 
   // Choice: first candidate that runs AND meets the minimum (skip broken
-  // shims and try the next). When none meets the minimum but some run,
-  // choose the first that runs (version warning). When an explicit
-  // override is set, honour it (even when broken) so the error names it.
+  // shims and try the next). A resolved shim counts with its real path
+  // (verified to run from a review copy) at the real binary's version.
+  // When none meets the minimum but some run, choose the first that runs
+  // (version warning). When an explicit override is set, honour it (even
+  // when broken) so the error names it.
+  //
+  // `effective` carries what a session would actually run: the resolved
+  // real path when resolution succeeded, else the candidate itself.
+  const effective = candidates.map((c) => ({
+    candidate: c,
+    path: c.resolvedPath ?? c.path,
+    runs: c.resolvedPath ? true : c.runs,
+    version: (c.resolvedPath ? resolvedVersions.get(c.resolvedPath) : undefined) ?? c.version,
+    meetsMin: c.meetsMin,
+  }));
   let chosen: string | null = null;
   let chosenReason = "";
   if (hasOverride) {
@@ -383,21 +496,18 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
     chosen = null;
     chosenReason = `not found on PATH. ${spec.installHint}`;
   } else {
-    const runnable = candidates.filter((c) => c.runs);
+    const runnable = effective.filter((e) => e.runs);
     if (runnable.length === 0) {
       chosen = null;
       const first = candidates[0];
       chosenReason = `found ${candidates.length} but none runs (first: ${first.path}, exit ${first.exitCode}); the error text is below`;
       warnings.push(`None of the ${candidates.length} copies of ${spec.tool} on PATH runs. The first error below names the problem.`);
     } else if (spec.minVersion) {
-      const good = runnable.find((c) => c.meetsMin !== false);
+      const good = runnable.find((e) => e.meetsMin !== false);
       if (good) {
         chosen = good.path;
-        const skipped = candidates.indexOf(good);
-        chosenReason =
-          skipped === 0
-            ? `first on PATH runs (version ${good.version ?? "unknown"})`
-            : `candidate ${skipped + 1} of ${candidates.length} (${good.path}) is the first that runs and meets ≥ ${spec.minVersion}; skipped ${skipped} broken or too old`;
+        const skipped = effective.indexOf(good);
+        chosenReason = resolutionReason(spec, candidates, good, skipped);
         if (skipped > 0) warnings.push(`Skipped ${skipped} broken or too-old ${spec.tool} before ${good.path}.`);
       } else {
         chosen = runnable[0].path;
@@ -407,7 +517,7 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
     } else {
       const good = runnable[0];
       chosen = good.path;
-      const skipped = candidates.indexOf(good);
+      const skipped = effective.indexOf(good);
       chosenReason =
         skipped === 0 ? `first on PATH runs` : `candidate ${skipped + 1} of ${candidates.length} is the first that runs; skipped ${skipped} broken`;
       if (skipped > 0) warnings.push(`Skipped ${skipped} broken ${spec.tool} before ${good.path}.`);
@@ -415,7 +525,7 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
   }
 
   // Plain-language warnings for anything odd.
-  const runnablePaths = new Set(candidates.filter((c) => c.runs).map((c) => c.path));
+  const runnablePaths = new Set(effective.filter((e) => e.runs).map((e) => e.path));
   if (candidates.length >= 2) {
     const managers = new Set(candidates.map((c) => c.shimManager).filter(Boolean));
     if (managers.size >= 2) warnings.push(`Two installs of ${spec.tool} (${[...managers].join(" + ")}); using ${chosen ?? "none"}.`);
@@ -423,8 +533,19 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
       warnings.push(`Two installs of ${spec.tool}; using ${chosen}.`);
   }
   for (const c of candidates) {
-    if (c.kind.startsWith("shim") && !c.runs)
+    if (c.resolvedPath) {
+      warnings.push(`${spec.tool} at ${c.path} is a ${c.kind}; the agent runs ${c.resolvedPath} instead.`);
+    } else if (c.kind.startsWith("shim") && !c.runs) {
       warnings.push(`A ${c.kind} at ${c.path} does not run (exit ${c.exitCode}) — likely a broken manager shim; the next working entry is used.`);
+    }
+  }
+
+  if (probeCwd !== undefined) {
+    try {
+      fs.rmSync(probeCwd, { recursive: true, force: true });
+    } catch {
+      // best-effort cleanup of our own temp dir
+    }
   }
 
   return {

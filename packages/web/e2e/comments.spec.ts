@@ -146,14 +146,14 @@ test("For PR drafts live in the Comments menu and persist", async ({ page }) => 
   await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
 
   // The Comments menu lists it with a For-PR count; the draft is editable.
-  await page.locator('#right [data-cm=""]').click();
+  await page.locator('#reviewbar [data-cm=""]').click();
   await page.locator('.cmenu [data-cmf="pr"]').click();
   const draft = page.locator(".cmenu textarea[id^='ob-']").first();
   await expect(draft).toBeVisible();
   await draft.fill("Ship it? (edited draft)");
   // The draft survives an unrelated re-render (close + reopen the menu).
   await page.keyboard.press("Escape");
-  await page.locator('#right [data-cm=""]').click();
+  await page.locator('#reviewbar [data-cm=""]').click();
   await page.locator('.cmenu [data-cmf="pr"]').click();
   await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Ship it? (edited draft)");
   // Jump back to the thread in the diff.
@@ -189,9 +189,43 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
 
 test("existing GitHub comments render read-only under their own heading", async ({ page }) => {
   await gotoReview(page);
-  await page.locator('#right [data-cm=""]').click();
+  await page.locator('#reviewbar [data-cm=""]').click();
   await expect(page.locator(".cmenu")).toContainText("Already on GitHub");
   await expect(page.locator(".cmenu")).toContainText("Already on GitHub: consider covering bare LF");
+});
+
+test("comments dropdown is wide enough for tabs, paths and previews", async ({ page }) => {
+  await gotoReview(page);
+  await page.locator('#reviewbar [data-cm=""]').click();
+  const panel = page.locator(".cmenu");
+  await expect(panel).toBeVisible();
+  // Sensible min-width so content doesn't collapse to the button width.
+  const width = await panel.evaluate((el) => el.getBoundingClientRect().width);
+  expect(width).toBeGreaterThanOrEqual(340);
+  // The All / For PR segmented control fits on one line.
+  const all = await page.locator('.cmenu [data-cmf="all"]').boundingBox();
+  const pr = await page.locator('.cmenu [data-cmf="pr"]').boundingBox();
+  expect(all).not.toBeNull();
+  expect(pr).not.toBeNull();
+  expect(Math.abs((all as { y: number }).y - (pr as { y: number }).y)).toBeLessThan(2);
+});
+
+test("comments dropdown stays inside the viewport in a narrow window", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await gotoReview(page);
+  // Below the 900px dock width the source pane starts as a hidden
+  // overlay: open it first so the Comments button is visible.
+  if (!(await page.locator("#right").isVisible())) {
+    await page.locator("#toggleRight").click();
+  }
+  await expect(page.locator("#right")).toBeVisible();
+  await page.locator('#reviewbar [data-cm=""]').click();
+  const panel = page.locator(".cmenu");
+  await expect(panel).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box).not.toBeNull();
+  expect((box as { x: number; width: number }).x).toBeGreaterThanOrEqual(0);
+  expect((box as { x: number; width: number }).x + (box as { width: number }).width).toBeLessThanOrEqual(800);
 });
 
 test("description editing saves locally with revert, then submits", async ({ page }) => {

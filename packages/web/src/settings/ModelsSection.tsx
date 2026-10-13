@@ -169,8 +169,8 @@ function ModelPicker({
       </div>
       {unset ? (
         <p className="hint" role="status" data-testid={`model-${role}-unset`} style={{ margin: "6px 0" }}>
-          Not set — second opinions need a second provider (Codex). Pick one below, or leave this
-          unset; everything else works with one provider.
+          Not set — second opinions need a different model from main. Pick one below, or leave this
+          unset; everything else works without one.
         </p>
       ) : null}
       {offeredMissing ? (

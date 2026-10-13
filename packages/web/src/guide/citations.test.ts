@@ -14,6 +14,8 @@ function snapshot(): ReviewSnapshot {
       id: "demo",
       repoId: "r",
       branch: "b",
+      // The fixture models a PR review (urllib3-5020).
+      prNumber: 5020,
       versions: [],
       currentVersion: 1,
       createdAt: 0,
@@ -86,9 +88,32 @@ describe("resolveCitation", () => {
     expect(r.snippet).toBe("Intro text here.");
   });
 
+  it("labels description citations Commits on a branch review (finding 22)", () => {
+    const snap = snapshot();
+    (snap.review as { prNumber?: number }).prNumber = undefined;
+    const r = resolveCitation(snap, { target: "desc:d-p1" });
+    expect(r.label).toBe("Commits");
+    expect(r.snippet).toBe("Intro text here.");
+  });
+
   it("keeps the unverified flag", () => {
     const r = resolveCitation(snapshot(), { target: "diff:nope:1", unverified: true });
     expect(r.unverified).toBe(true);
+  });
+
+  it("labels a hunk citation by file and lines, never by hash (finding 13)", () => {
+    const r = resolveCitation(snapshot(), { target: `h:${CONN}:abc` });
+    expect(r.label).toBe("connection.py:80–89");
+  });
+
+  it("labels a hunk citation by file when the hunk is gone", () => {
+    const r = resolveCitation(snapshot(), { target: `h:${CONN}:missing` });
+    expect(r.label).toBe("connection.py");
+  });
+
+  it("leaves a hunk citation raw when the file is unknown", () => {
+    const r = resolveCitation(snapshot(), { target: "h:nope:abc" });
+    expect(r.label).toBe("h:nope:abc");
   });
 });
 

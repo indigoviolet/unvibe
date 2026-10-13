@@ -90,7 +90,8 @@ describe("VersionSection switch anyway", () => {
     const panel = await screen.findByTestId("update-blocked");
     expect(panel).toHaveTextContent("2 running jobs — switching stops them");
     expect(panel).toHaveTextContent("show as interrupted");
-    expect(panel).toHaveTextContent("stay with this version");
+    expect(panel).toHaveTextContent("stay with this channel");
+    expect(panel).toHaveTextContent("switch back to resume or retry them");
     expect(screen.getByTestId("update-blocked-jobs")).toHaveTextContent("explain · demo · running");
     expect(updateSwitch).toHaveBeenCalledWith("preview/feat-x", undefined);
 

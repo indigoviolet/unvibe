@@ -267,7 +267,17 @@ export async function runAskFill(
   return {};
 }
 
-/** Render the agent's reply cards to thread HTML (paragraphs joined). */
+/**
+ * Render the agent's reply cards to thread HTML (paragraphs joined).
+ *
+ * Issue #103: thread replies never show follow-up suggestions. `follow-up`
+ * blocks are discarded, as is a bare `Follow-ups` heading the parser left
+ * as plain text (a heading shape outside the `### Follow-ups` convention,
+ * or one with no list under it) — plus a list directly under such a
+ * heading, which can only be orphaned suggestions. A `## Follow-up(s)`
+ * line is a card boundary to the parser, so a card carrying that title is
+ * suggestions too and is skipped whole.
+ */
 function replyHtml(cards: ParsedCard[]): {
   html: string;
   citations: { target: string; unverified?: boolean }[];
@@ -275,7 +285,16 @@ function replyHtml(cards: ParsedCard[]): {
   const parts: string[] = [];
   const citations: { target: string; unverified?: boolean }[] = [];
   for (const card of cards) {
-    for (const b of card.blocks) {
+    if (card.title && isFollowUpsHeading(card.title)) continue;
+    const blocks = card.blocks;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (b.type === "paragraph" && isFollowUpsHeading(b.text.standard)) {
+        // A leftover "Follow-ups" heading: drop it and a list of orphaned
+        // suggestions directly under it.
+        if (blocks[i + 1]?.type === "list") i++;
+        continue;
+      }
       if (b.type === "paragraph") {
         parts.push(`<p>${b.text.standard}</p>`);
         for (const c of b.citations ?? []) citations.push({ ...c });
@@ -296,7 +315,9 @@ function replyHtml(cards: ParsedCard[]): {
         for (const c of innerCites) citations.push(c);
         for (const c of b.citations ?? []) citations.push({ ...c });
       } else if (b.type === "follow-up") {
-        parts.push(`<ul>${b.items.map((it) => `<li>${escapeHtml(it.label)}</li>`).join("")}</ul>`);
+        // Issue #103: thread replies never show follow-up suggestions, even
+        // when the model still sends them.
+        continue;
       }
     }
   }
@@ -305,6 +326,19 @@ function replyHtml(cards: ParsedCard[]): {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** True when rendered inline HTML is just a `Follow-ups` heading line. */
+function isFollowUpsHeading(html: string): boolean {
+  const text = html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&")
+    .trim();
+  return /^(#{1,6}\s*)?follow-?ups?$/i.test(text);
 }
 
 /**

@@ -134,9 +134,12 @@ Caption: Where response headers go after parsing.
 
 Limits: at most 12 shapes and 16 connections; no `icon:`, no
 `shape: image`, no imports, no Markdown/LaTeX/code-block labels, no
-`vars`/`d2-config`/`classes:`, no layers/scenarios/steps/boards, no
-`tooltip:`. Flows open with `direction: right`; sequences use
-`shape: sequence_diagram`. The full convention lives in
+`vars`/`d2-config`, no `classes:` stanzas (mark good/bad states with the
+built-in `*.class: [ok]` / `[bad]`), no layers/scenarios/steps/boards, no
+`tooltip:`. Choose `direction:` to suit the flow (`right` for pipelines,
+`down` for chains); sequences use `shape: sequence_diagram`. Keep every
+label short (a few words, at most two lines); cite each code-mapped
+shape/connection. The full convention lives in
 `prompts/includes/d2-convention.md` (single source; templates copy it).
 
 ## 6. Follow-up suggestions
@@ -150,6 +153,13 @@ suggestions. Each item is `Label` or `Label | ask: pre-baked question`:
 - What happens to a fold that ends in a bare LF? | ask: bare lf
 - Does unfolding change header order?
 ```
+
+Ask thread replies never show follow-up suggestions (issue #103): the
+ask prompt does not ask for them, and the thread renderer
+(`replyHtml` in `packages/service/src/pipeline/actions/ask.ts`) drops
+any `follow-up` block — plus a leftover `Follow-ups` heading or a card
+titled that way — even when a model still sends one. Cards and Explain
+expansions keep their chips.
 
 ## 7. Finding references
 

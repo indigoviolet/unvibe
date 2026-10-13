@@ -32,10 +32,32 @@ Service dependencies (so a global npm install brings the adapters along):
   The service resolves `PATH` from a login shell (`src/exec/shell-path.ts`,
   PRD §14 macOS gotcha) and sets both vars on the adapter subprocess env —
   never hard-coded install paths (works on macOS and Linux).
-  Overrides for unusual installs: `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN`
-  (else the adapter-native vars when pre-set). `NO_BROWSER=1` is always set
-  (safe: stored ChatGPT OAuth login is still used, no browser, no new
-  credentials).
+   Overrides for unusual installs: `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN`
+   (else the adapter-native vars when pre-set). `NO_BROWSER=1` is always set
+   (safe: stored ChatGPT OAuth login is still used, no browser, no new
+   credentials).
+- **Version-manager shims never reach the session (issue #105).** A
+  session's working directory is the review worktree, which holds the
+  reviewed repo's manager config (`.mise.toml`, …) — untrusted, and never
+  trusted (`mise trust` would execute unreviewed code). When the detected
+  `claude`/`codex` is a mise/asdf shim (classified in
+  `diagnostics/tools.ts`), the check resolves it to the real executable
+  (`mise which <tool>` / `asdf which <tool>`, run from the user's home —
+  never the worktree) and verifies the real path runs from a
+  worktree-shaped directory; sessions, readiness and Doctor all use the
+  real path (`DiagnosticCandidate.resolvedPath`, shown next to the shim).
+  Resolution is cached per manager/tool/candidate and refreshed by
+  Reload environment (`POST /api/reload`). Explicit `UNVIBE_*_BIN` /
+  adapter-native overrides win unchanged (never resolved). As a second
+  layer the adapter subprocess gets `MISE_IGNORED_CONFIG_PATHS` pointed
+  at our own worktrees directory, so a stray mise invocation inside the
+  session ignores review copies' configs (verified against the mise
+  settings reference: entries cover everything under them, read before
+  any config file, absolute paths required). A session that still fails
+  to start for this reason reports plain words —
+  `couldn't start a <provider> session: the <cli> command would not run
+  inside the review's working copy — … Set UNVIBE_<…>_BIN to the real
+  path …` — never the raw adapter JSON.
 - **No agent platform binaries, bundled adapters.** The adapters
   (`@agentclientprotocol/claude-agent-acp` 0.89.0,
   `@agentclientprotocol/codex-acp` 2.2.2) are bundled as plain JS into the

@@ -29,7 +29,7 @@ export type SettingsRole = "main" | "small" | "secondOpinion";
 
 const ROLES: SettingsRole[] = ["main", "small", "secondOpinion"];
 
-/** Unset second-opinion marker: no second provider available yet. */
+/** Unset second-opinion marker: no second-opinion model available yet. */
 export function unsetSecondOpinion(): ModelPick {
   return { provider: "codex", model: "" };
 }

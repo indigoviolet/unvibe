@@ -8,6 +8,7 @@
  * comment on a diff line).
  */
 import type { Annotation, Block, DepthLevel, Page } from "@unvibe/shared";
+import { escapeHtml } from "../components/escapeHtml.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { revealSource } from "../source/reveal.js";
@@ -85,10 +86,11 @@ function AsideInner({
         </p>
       );
     case "code":
+      // Opaque by design (issue #101): the code text is an HTML string, so
+      // anchor marks may wrap it freely — the same rule as every other
+      // marked host (RichText, list items, tables, description bodies).
       return (
-        <pre className="code sel" data-top={top}>
-          {inner.code}
-        </pre>
+        <pre className="code sel" data-top={top} dangerouslySetInnerHTML={{ __html: escapeHtml(inner.code) }} />
       );
     case "diagram":
       return <DiagramView reviewId={reviewId} block={inner} onOpenPage={onOpenPage} />;
@@ -204,9 +206,11 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
     case "code":
       return (
         <div className="blk" id={id}>
-          <pre className="code sel" data-top={block.id}>
-            {block.code}
-          </pre>
+          <pre
+            className="code sel"
+            data-top={block.id}
+            dangerouslySetInnerHTML={{ __html: escapeHtml(block.code) }}
+          />
           {(resolved.length > 0 || threads.length > 0 || (footnotes?.length ?? 0) > 0) && (
             <div className="lo-row">
               <BlockMarkers
