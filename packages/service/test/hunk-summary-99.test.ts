@@ -183,7 +183,7 @@ describe("hunk summarize reply shapes (#99, on-demand site)", () => {
   });
 
   it("truncated JSON (genuinely no parse): stores no summary, job still succeeds", async () => {
-    const truncated = `{"hunk": {"summary": "Maps the Nav 2 Conversations item to the label \\"New chat\\" via NAV2_LABEL_OVERRIDES, alongside the existing Knowledge`;
+    const truncated = `{"hunk": {"summary": "Adds a retry around the upload call and logs each atte`;
     const got = await summarizeWith(truncated);
     expect(got.summary).toBeUndefined();
     expect(got.hiddenReason).toBeUndefined();

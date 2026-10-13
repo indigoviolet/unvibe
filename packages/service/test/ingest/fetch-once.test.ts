@@ -139,7 +139,7 @@ describe("#123 one fetch at ingest", () => {
   it("#139: a failed fetch reports the fetch failure, not 'commit not found'", async () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-fetch-fail-"));
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-fetch-data-"));
-    const missing = "a0a6a2d5e3c9e75d0d7a627a9ac95e87e2a733d7";
+    const missing = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
     const view = {
       cmd: "gh",
       stdout: prInfo(missing),
