@@ -139,6 +139,32 @@ describe("d2 precheck", () => {
     const manyEdges = Array.from({ length: 17 }, (_, i) => `a${i} -> b${i}`).join("\n");
     expect(ok(manyEdges)).toBe(false);
   });
+  it("renames an unambiguous reserved-word shape instead of rejecting (#130)", async () => {
+    const { renameReservedShapeKeys } = await import("../src/diagrams/precheck.js");
+    const src = 'direction: right\nsteps: "wait flow"\na -> steps: go\nsteps -> b: done\nb: "end"';
+    const r = renameReservedShapeKeys(src);
+    expect(r.renamed).toEqual(["steps"]);
+    expect(r.source).toContain('steps_box: "wait flow"');
+    expect(r.source).toContain("a -> steps_box: go");
+    expect(r.source).toContain("steps_box -> b: done");
+    expect(r.source).not.toMatch(/(^|\n)steps\s*:/);
+    // The renamed source passes the pre-check.
+    expect(ok(r.source)).toBe(true);
+  });
+  it("leaves board-form reserved words rejected with a rename hint (#130)", () => {
+    const r = precheckD2Source("layers: {x: {}}\na -> b");
+    expect(r.ok).toBe(false);
+    expect(r.ok ? "" : r.reason).toMatch(/rename the shape/);
+    expect(r.ok ? "" : r.reason).not.toMatch(/out of scope/);
+  });
+  it("rejects .class inside braces with an actionable reason (#130)", () => {
+    const bad = precheckD2Source('direction: right\ngone: "x" {.class: [bad]}');
+    expect(bad.ok).toBe(false);
+    expect(bad.ok ? "" : bad.reason).toMatch(/myshape\.class: \[ok\]/);
+    // The legal line form still passes (D2 passes the class through).
+    expect(ok('direction: right\na: "x"\na.class: [ok]')).toBe(true);
+    expect(ok('direction: right\na: "x"\n*.class: [ok]')).toBe(true);
+  });
 });
 
 // --- sanitiser hostile cases -----------------------------------------------
@@ -744,6 +770,109 @@ broken-shape: "x" {link: "diff:nope:999999"}
     } finally {
       if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
       else process.env.UNVIBE_D2_BIN = prev;
+    }
+  });
+});
+
+// --- issue #130: failed on-demand renders answer error, not unavailable ---
+
+/**
+ * Fake `d2` executable (no real binary needed): version ok, every
+ * validate/render fails the way the owner's `.class: [bad]` report did
+ * (compiler error on stderr, exit 1).
+ */
+function writeFailingD2(): { dir: string; bin: string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-faked2-"));
+  const bin = path.join(dir, "d2");
+  fs.writeFileSync(
+    bin,
+    '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "d2 v0.9.0"; exit 0; fi\ncat > /dev/null\n' +
+      'echo "err: failed to compile -: -:7:37: invalid text beginning unquoted key" >&2\nexit 1\n',
+  );
+  fs.chmodSync(bin, 0o755);
+  return { dir, bin };
+}
+
+/** Explain reply carrying the owner's failing shape (inline `.class`). */
+const EXPLAIN_CLASS_DIAGRAM = `An explanation with a diagram.
+
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup" {.class: [bad]}
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+describe("failed on-demand renders (#130)", () => {
+  it("a compile failure answers 409 error, never unavailable", { timeout: 90000 }, async () => {
+    const { dir, bin } = writeFailingD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Explain", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "explain", quote: "q", anchor: { where: "block", blockId: "b1" } },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const annotationId = ((acted.json() ?? {}) as { annotationId?: string }).annotationId!;
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        await waitFor(() => {
+          const s = ctx.reviews.getSnapshot(id);
+          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+        }, 60000);
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const dg = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          render?: { hash: string; status: string };
+        };
+        expect(dg).toBeDefined();
+
+        const got = await app.inject({
+          method: "GET",
+          url: `/api/reviews/${id}/diagrams/${dg.render!.hash}?theme=light`,
+          headers: authed,
+        } as never);
+        expect(got.statusCode).toBe(409);
+        const body = got.json() as { status?: string; error?: string };
+        // d2 ran and failed: the route must say so (the web shows the
+        // install hint only for a truly missing binary).
+        expect(body.status).toBe("error");
+        expect(body.error).toMatch(/not valid D2/);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });
