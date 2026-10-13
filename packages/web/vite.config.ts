@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import type { Plugin } from "vite";
+import { suiteOptions } from "../../vitest.shared.js";
 
 /**
  * Emit `dist/web-meta.json` (issue #14): the esbuild-metafile-shaped module
@@ -53,6 +54,8 @@ export default defineConfig(({ command, mode }) => ({
     environment: "jsdom",
     environmentOptions: { jsdom: { url: "http://localhost/" } },
     setupFiles: ["./vitest.setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}"],
+    // Fast/slow split (issue #119): UNVIBE_TEST_SUITE=fast skips
+    // *.slow.test.*, =slow runs only those; worker caps in vitest.shared.ts.
+    ...suiteOptions(["src/**/*.test.{ts,tsx}"]),
   },
 }));

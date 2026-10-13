@@ -195,7 +195,8 @@ describe("citedHunkHashes", () => {
 });
 
 describe("mock fixture", () => {
-  it("carries the four prototype files with ingest-canonical keys and reasons", () => {
+  // DISABLED(#119): asserts on the mock fixture itself, not product code; DiffView.test.tsx and e2e/diff.spec.ts read the same values through the UI.
+  it.skip("carries the four prototype files with ingest-canonical keys and reasons", () => {
     expect(MOCK_FILES.map((f) => f.fileKey)).toEqual([
       "src-urllib3-connection.py",
       "test-test_connection.py",

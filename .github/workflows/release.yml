@@ -76,7 +76,8 @@ jobs:
         timeout-minutes: 10
 
       # Runs before the build on purpose, from a clean tree with no dist/
-      # (same order as CI): the dist-dependent guards must skip, never fail.
+      # (same order as CI): the dist-dependent guards live in the slow
+      # suite and run after the build, never in check.
       - name: Lint + typecheck + unit tests
         run: mise run check
         timeout-minutes: 20
@@ -103,6 +104,12 @@ jobs:
         env:
           UNVIBE_RELEASE_VERSION: ${{ steps.rel.outputs.version }}
           UNVIBE_RELEASE_BRANCH: ${{ steps.rel.outputs.branch }}
+        timeout-minutes: 10
+
+      # The build-dependent guards (release notices, helper bundle, dist
+      # network scan) run here, after the build.
+      - name: Slow unit tests (need the build)
+        run: mise run test:slow:unit
         timeout-minutes: 10
 
       - name: Verify the release installs with no flags (tarball + git ref)

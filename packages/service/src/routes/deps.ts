@@ -32,6 +32,11 @@ export interface UpdateHooks {
   spawnHelper(argsFile: string): Promise<number>;
   /** Shut the service down cleanly through the normal shutdown path. */
   requestShutdown(): void;
+  /**
+   * Delay between the 202 reply and the shutdown trigger (lets the reply
+   * flush). Defaults to UPDATE_SHUTDOWN_DELAY_MS; tests pass 0.
+   */
+  shutdownDelayMs?: number;
 }
 
 export interface RouteDeps {
@@ -74,5 +79,14 @@ export interface RouteDeps {
   diagnostics?: {
     /** Skips the login-shell probe when present (even null: no shell). */
     pathProbe?: ProbedPaths | null;
+  };
+  /**
+   * Readiness probe overrides (tests only): a pre-resolved login-shell
+   * PATH picture so `GET /api/readiness` skips spawning login shells.
+   * Production omits this (real shell probe).
+   */
+  readiness?: {
+    /** Skips the login-shell probe when present. */
+    loginPathValue?: string;
   };
 }

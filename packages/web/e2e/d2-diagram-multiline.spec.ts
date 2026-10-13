@@ -67,24 +67,21 @@ async function expectMaskIntact(page: Page, scope: string): Promise<void> {
   expect(mask.pathMask).toBe(`url(#${mask.maskId})`);
 }
 
-test("multi-line labels stack inline in light", async ({ page }) => {
+test("multi-line labels stack inline and expanded, in light and dark", async ({ page }) => {
+  // One flow instead of three page loads (issue #119): inline light,
+  // flip to dark, expand, measure dark, flip back, measure light.
   await gotoReview(page);
+  // Inline, light.
   expectStacked(await lineTops(page, BLOCK));
   await expectMaskIntact(page, BLOCK);
-});
-
-test("multi-line labels stack inline in dark", async ({ page }) => {
-  await gotoReview(page);
+  // Inline, dark.
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
   await expect
     .poll(() => page.locator(`${BLOCK} .dg-svg`).innerHTML(), { timeout: 10000 })
     .toContain('data-mock-theme="dark"');
   expectStacked(await lineTops(page, BLOCK));
   await expectMaskIntact(page, BLOCK);
-});
-
-test("multi-line labels stack expanded in light and dark", async ({ page }) => {
-  await gotoReview(page);
+  // Expanded, dark.
   await page.locator(`${BLOCK} .dg-expand`).click();
   await expect(page.locator(DIALOG)).toBeVisible();
   await expect(page.locator(`${DIALOG} .dg-ov-doc .dg-svg > svg`)).toBeVisible({
@@ -92,10 +89,11 @@ test("multi-line labels stack expanded in light and dark", async ({ page }) => {
   });
   expectStacked(await lineTops(page, DIALOG));
   await expectMaskIntact(page, DIALOG);
-  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+  // Expanded, light again.
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
   await expect
     .poll(() => page.locator(`${DIALOG} .dg-ov-doc .dg-svg`).innerHTML(), { timeout: 10000 })
-    .toContain('data-mock-theme="dark"');
+    .not.toContain('data-mock-theme="dark"');
   expectStacked(await lineTops(page, DIALOG));
   await expectMaskIntact(page, DIALOG);
   await page.keyboard.press("Escape");

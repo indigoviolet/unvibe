@@ -1413,9 +1413,9 @@ items noticed while passing through (not verified, listed only):
    thread (no new thread on identical repeat).
 6. **CI**: RESOLVED — workflow exists (`.github/workflows/ci.yml`) and the
    base merge (`2eec7cb`) notes green on macOS and Ubuntu (check +
-   build + `test:e2e`, shell e2e per OS, `check-global-install`,
+   build + `test:slow`, shell e2e per OS, `check-global-install`,
    restart-resilience, strict D2 seed gate). Audit-10 did not re-run CI
-   (runs on push); `mise run check` + `build` + `test:e2e`
+   (runs on push); `mise run check` + `build` + `test:slow`
    (incl. the 2 new principle specs) are green locally — see Done-when
    report.
 7. **Diagrams**: D2 decision already noted (§13); PRD text itself still

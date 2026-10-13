@@ -3,7 +3,7 @@
  * and a citation renders a `<code>` element plus a working citation chip,
  * never literal `<code>` text. Plain captions render unchanged.
  */
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -100,15 +100,20 @@ describe("DiagramView caption (#48)", () => {
     expect(chip).not.toBeNull();
 
     // Click-to-reveal: desc: targets dispatch the reveal event.
+    // Own the reveal timers: flashParagraph schedules a 60 ms setTimeout
+    // that can otherwise fire after this file's jsdom environment is gone.
     const seen: string[] = [];
     const onReveal = (e: Event): void => {
       seen.push((e as CustomEvent).detail.ref as string);
     };
     window.addEventListener(REVEAL_EVENT, onReveal);
+    vi.useFakeTimers();
     try {
       fireEvent.click(chip as Element);
+      vi.advanceTimersByTime(3000);
       expect(seen).toEqual(["desc:p1"]);
     } finally {
+      vi.useRealTimers();
       window.removeEventListener(REVEAL_EVENT, onReveal);
     }
   });

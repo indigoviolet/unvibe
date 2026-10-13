@@ -2,10 +2,10 @@
  * Static network guards (PRD §16 Privacy).
  *
  * 1. Shipped web assets contain no fetchable `http(s)://` URL to a
- *    non-local host: `public/` always, plus `packages/web/dist` after a
- *    build (skipped when dist is absent — run `mise run build` first — or
- *    when dist is older than its sources, i.e. stale after a merge, so
- *    `mise run check` never depends on a stale build).
+ *    non-local host: `public/` always. The built-app check
+ *    (`packages/web/dist`) lives in `network-guards.slow.test.ts`: it
+ *    needs a fresh build, so it runs in the slow suite after
+ *    `mise run build` (issue #119).
  *    Only remote-*load* patterns fail (fetch/WS/script/style/import/CSS
  *    url); data strings (React error URLs, mock GitHub link data shown as
  *    user-clicked navigations) are covered by the Playwright network guard.
@@ -15,7 +15,6 @@
  *    Each entry carries its reason.
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -25,7 +24,6 @@ const serviceRoot = path.resolve(here, "..");
 const srcRoot = path.join(serviceRoot, "src");
 const webRoot = path.resolve(serviceRoot, "..", "web");
 const publicRoot = path.join(webRoot, "public");
-const distRoot = path.join(webRoot, "dist");
 
 function listFiles(dir: string, exts: string[]): string[] {
   const out: string[] = [];
@@ -61,51 +59,6 @@ function remoteLoads(text: string): string[] {
   return REMOTE_LOAD_RES.filter((re) => re.test(text)).map((re) => String(re));
 }
 
-/** Newest mtime (ms) under `dir`, or 0 when unreadable/empty. */
-export function newestMtimeMs(dir: string): number {
-  let newest = 0;
-  const walk = (d: string): void => {
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const full = path.join(d, e.name);
-      try {
-        if (e.isDirectory()) walk(full);
-        else if (e.isFile()) {
-          const t = fs.statSync(full).mtimeMs;
-          if (t > newest) newest = t;
-        }
-      } catch {
-        // unreadable entry: ignore
-      }
-    }
-  };
-  walk(dir);
-  return newest;
-}
-
-/**
- * True when `dist/index.html` is older than the newest web source file
- * (`src/` or `public/`): a merge can leave a `dist/` that no longer
- * reflects the sources, and scanning it would blame the wrong code. Callers
- * skip the dist scan (with a warning) when this returns true, so
- * `mise run check` never depends on a stale build; CI builds first, so the
- * scan still runs on fresh output there.
- */
-export function isDistStale(distIndex: string, srcDir: string, publicDir: string): boolean {
-  let distMtime = 0;
-  try {
-    distMtime = fs.statSync(distIndex).mtimeMs;
-  } catch {
-    return false;
-  }
-  return Math.max(newestMtimeMs(srcDir), newestMtimeMs(publicDir)) > distMtime;
-}
-
 describe("static network guards", () => {
   it("public/ has no remote loads (fonts self-hosted, no CDN)", () => {
     const files = listFiles(publicRoot, [".html", ".js", ".webmanifest", ".svg"]);
@@ -121,32 +74,6 @@ describe("static network guards", () => {
       }
     }
     expect(offenders, "remote loads in packages/web/public").toEqual([]);
-  });
-
-  it("dist/ (when built and fresh) has no remote loads", () => {
-    const indexFile = path.join(distRoot, "index.html");
-    if (!fs.existsSync(indexFile)) {
-      console.warn("skip: web dist not built (run `mise run build` first)");
-      return;
-    }
-    if (isDistStale(indexFile, path.join(webRoot, "src"), publicRoot)) {
-      console.warn("skip: web dist is older than its sources (stale after a merge; rebuild first)");
-      return;
-    }
-    const files = listFiles(distRoot, [".html", ".js", ".css"]);
-    expect(files.length).toBeGreaterThan(0);
-    const offenders: string[] = [];
-    for (const f of files) {
-      const text = fs.readFileSync(f, "utf8");
-      const hits = remoteLoads(text);
-      if (hits.length > 0) offenders.push(`${path.relative(webRoot, f)}: ${hits.join(", ")}`);
-      if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(text)) {
-        offenders.push(`${path.relative(webRoot, f)}: google fonts reference`);
-      }
-      // Sentry is dev-server only (issue #29): neither SDK nor DSN is built in.
-      if (/sentry/i.test(text)) offenders.push(`${path.relative(webRoot, f)}: sentry reference`);
-    }
-    expect(offenders, "remote loads in packages/web/dist").toEqual([]);
   });
 
   it("service src uses network APIs only on the allowlist", () => {    // file (relative to src) → allowed import/use patterns + reason.
@@ -216,32 +143,5 @@ describe("static network guards", () => {
     expect(offenders, "network API use outside the allowlist (see reasons in this test)").toEqual([]);
     // The allowlist itself is the documentation; assert it is non-empty.
     expect(allowlist.length).toBeGreaterThan(0);
-  });
-
-  it("isDistStale detects a dist older than its sources", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-dist-stale-"));
-    try {
-      const src = path.join(root, "src");
-      const pub = path.join(root, "public");
-      const dist = path.join(root, "dist");
-      fs.mkdirSync(src, { recursive: true });
-      fs.mkdirSync(pub, { recursive: true });
-      fs.mkdirSync(dist, { recursive: true });
-      const indexFile = path.join(dist, "index.html");
-      fs.writeFileSync(indexFile, "<html></html>");
-      // Dist newer than everything: fresh.
-      expect(isDistStale(indexFile, src, pub)).toBe(false);
-      // A newer source file makes the dist stale.
-      const later = new Date(Date.now() + 5000);
-      fs.writeFileSync(path.join(src, "app.tsx"), "x");
-      fs.utimesSync(path.join(src, "app.tsx"), later, later);
-      expect(isDistStale(indexFile, src, pub)).toBe(true);
-      // Rebuilt dist (touched newer) is fresh again.
-      const newest = new Date(Date.now() + 10_000);
-      fs.utimesSync(indexFile, newest, newest);
-      expect(isDistStale(indexFile, src, pub)).toBe(false);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
   });
 });

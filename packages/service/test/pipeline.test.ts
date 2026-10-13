@@ -465,13 +465,20 @@ describe("pipeline failure paths (scripted fakes)", () => {
       // Simulate a restart: pipeline started, then stages reset to pending.
       await ctx.pipeline.startReview(id);
       await waitFor(() => ctx.jobs.listByReview(id).some((j) => j.kind === "reader" && j.state === "done"), 30000);
+      // Crash lost the reader's done marker (the completed job row is
+      // history; the stage no longer reads done): resume must name the
+      // missing stage and enqueue a job for it.
+      await ctx.reviews.mutate(id, (draft) => {
+        if (draft.pipeline) draft.pipeline.stages.reader = "pending";
+      });
       const resumed = await app.inject({ method: "POST", url: `/api/reviews/${id}/resume`, headers: authed });
       expect(resumed.statusCode).toBe(200);
-      // Resume is idempotent: done stages are skipped (may enqueue nothing
-      // when the pipeline already finished, or the missing tail).
       const body = resumed.json() as { resumed: boolean; jobIds: string[]; pendingStages: string[] };
-      expect(Array.isArray(body.jobIds)).toBe(true);
-      expect(Array.isArray(body.pendingStages)).toBe(true);
+      expect(body.resumed).toBe(true);
+      expect(body.pendingStages).toContain("reader");
+      expect(body.jobIds.length).toBeGreaterThan(0);
+      const reenqueued = body.jobIds.map((jobId) => ctx.jobs.get(jobId)?.kind);
+      expect(reenqueued).toContain("reader");
     } finally {
       await app.close();
     }

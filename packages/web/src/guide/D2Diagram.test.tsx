@@ -292,9 +292,18 @@ describe("D2Diagram citation clicks", () => {
       await waitFor(() => expect(document.querySelector(".dg-svg a[href]")).not.toBeNull());
       const before = window.location.href;
       const anchor = document.querySelector(".dg-svg a[href]") as HTMLElement;
-      fireEvent.click(anchor);
-      expect(seen).toEqual(["desc:d-p1"]);
-      expect(window.location.href).toBe(before);
+      // Own the reveal timers (issue #119 flake): flashParagraph schedules
+      // a 60 ms setTimeout that can otherwise fire after this file's jsdom
+      // environment is torn down.
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(anchor);
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(seen).toEqual(["desc:d-p1"]);
+        expect(window.location.href).toBe(before);
+      } finally {
+        vi.useRealTimers();
+      }
     } finally {
       window.removeEventListener("unvibe:reveal-source", onReveal);
     }

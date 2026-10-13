@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 import { ADAPTER_FILE, resolveAdapterEntry } from "../src/agent/acp/connection.js";
 
 describe("resolveAdapterEntry", () => {
-  it("maps providers to bundled file names", () => {
+  // DISABLED(#119): restates the ADAPTER_FILE constant; the real files are checked by the global-install gate.
+  it.skip("maps providers to bundled file names", () => {
     expect(ADAPTER_FILE).toEqual({ claude: "claude.js", codex: "codex.js" });
   });
 

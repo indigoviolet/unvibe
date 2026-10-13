@@ -7,8 +7,9 @@
  * a node builtin. This test scans the esbuild metafile
  * (`dist/update-helper-meta.json`, written by `build:helper`) so a future
  * import that drags in fastify, SQLite, or node_modules fails here instead
- * of stranding a switch mid-install. Skipped when dist is absent (`mise
- * run check` passes from a clean tree with no `dist/`).
+ * of stranding a switch mid-install. Slow suite only (issue #119): it
+ * scans `dist/update-helper-meta.json` (written by `build:helper`), so it
+ * runs after `mise run build` and FAILS when the bundle is absent.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -39,9 +40,10 @@ interface Metafile {
 
 describe("update-helper bundle containment", () => {
   it("bundles only the allowlisted sources and node builtins", () => {
+    // The slow suite always builds first: a missing bundle is a failure,
+    // never a skip (issue #119).
     if (!fs.existsSync(metaFile)) {
-      console.warn("skip: helper bundle not built (run `mise run build` first)");
-      return;
+      throw new Error(`helper bundle not built: ${metaFile} missing (run \`mise run build\` first)`);
     }
     const meta = JSON.parse(fs.readFileSync(metaFile, "utf8")) as Metafile;
     const offenders: string[] = [];

@@ -353,7 +353,7 @@ export async function registerUpdate(
       } catch {
         // helper abort path covers this (see above)
       }
-    }, UPDATE_SHUTDOWN_DELAY_MS);
+    }, hooks.shutdownDelayMs ?? UPDATE_SHUTDOWN_DELAY_MS);
     return undefined;
   });
 }
