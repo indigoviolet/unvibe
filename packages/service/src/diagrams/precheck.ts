@@ -16,7 +16,12 @@
  * - `vars:`, `d2-config`, `classes:` with external refs? (vars/d2-config
  *   can smuggle styles; rejected)
  * - layers / scenarios / steps / boards (`layers:`, `scenarios:`, `steps:`,
- *   `boards:`, `...@` board refs) — playground extras, out of scope
+ *   `boards:`, `...@` board refs) — multi-board diagrams, not supported.
+ *   A top-level `steps: "label"` with a scalar value is renamed to
+ *   `steps_box` (renameReservedShapeKeys) instead of rejected; the rest
+ *   fails with a rename hint.
+ * - `.class:` inside `{ … }` and bare `class:` keys (only the dotted
+ *   `shape.class:` line form is valid D2).
  * - http(s) URLs anywhere (image `src:`, `link:` is allowed only for
  *   citation tokens, not URLs — actual URLs are rejected; citations use
  *   bare `diff:`/`code:`/`desc:` tokens which are not URLs)

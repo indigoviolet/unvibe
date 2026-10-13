@@ -266,14 +266,30 @@ needed (that deviation is closed, not added).
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
   `reuse.test.ts`).
-- Diagrams expand (#47) — met: every diagram block carries an Expand
-  control opening a full-window overlay (dialog, focus in/out, Esc/close,
-  page scroll locked) with wheel/pinch zoom, drag pan, +/− buttons and
-  reset-to-fit on a CSS transform (no new dependency, no CSP change);
-  citation hover/click work inside it and a drag never counts as a click
-  (`guide/DiagramOverlay.tsx`, `e2e/d2-diagram-overlay.spec.ts`,
+- Diagrams expand (#47) — met: every rendered diagram block carries an
+  Expand control opening a full-window overlay (dialog, focus in/out,
+  Esc/close, page scroll locked) with wheel/pinch zoom, drag pan, +/−
+  buttons and reset-to-fit on a CSS transform (no new dependency, no CSP
+  change); citation hover/click work inside it and a drag never counts
+  as a click (`guide/DiagramOverlay.tsx`, `e2e/d2-diagram-overlay.spec.ts`,
   `guide/DiagramOverlay.test.tsx`). The overlay opens on the measured
-  fit (whole content incl. badges, equal margins, never above 100%).
+  fit (whole content incl. badges, equal margins, never above 100%). A
+  diagram that did not render carries no zoom, Reset or Expand controls
+  (#130) — only the fallback's own retry.
+- Failed diagrams (#130) — met: the endpoint answers `error` with the
+  compiler message only when `d2` ran and failed, and `unavailable` only
+  when the binary is really missing (never inferred from a stale
+  snapshot; `DiagramStatusBody` contract in `packages/shared/src/api.ts`
+  — `diagrams.test.ts` failing-script cases). Reader-facing text is
+  plain ("Couldn't draw this diagram." + Retry; no compiler quote, no
+  "out of scope"); the raw reason is stored on the block and shown on
+  the Debug Jobs tab. A block with no render result yet shows
+  "Drawing diagram…". Inline Explain diagrams run the same finalize +
+  one repair turn as Add-diagram blocks
+  (`pipeline/actions/diagram-finalize.ts`); unambiguous `steps:`-like
+  shapes are renamed (`steps_box`) and inline `{.class: …}` is rejected
+  with the legal line form named (`myid.class: [ok]`), with the prompts
+  updated to match.
 - Diagrams zoom inline (#47, round two) — met: blocks fit by default
   (no scrollbars, never above natural size) with +/−/Reset beside
   Expand on the same shared hook (`panZoom.ts`, `usePanZoom.ts`,
@@ -828,10 +844,12 @@ needed (that deviation is closed, not added).
   `service/src/diagrams/` stdin-only renders, pre-check denylist, strict
   SVG sanitisation, `GET /api/reviews/:id/diagrams/:hash?theme=` endpoint;
   Mermaid removed entirely per user direction, PRD §19.4 resolved as D2).
-  Prompt guidance (#16): short labels (at most two lines), `direction:`
-  to suit the flow, cites on each code-mapped shape/connection, `.class:
-  [ok|bad]` for states — mirrored into `diagram.md`, `explain.md`,
-  `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
+   Prompt guidance (#16): short labels (at most two lines), `direction:`
+   to suit the flow, cites on each code-mapped shape/connection,
+   `myid.class: [ok|bad]` on its own line for states (never inside
+   `{ … }`), never name a shape steps/layers/scenarios/boards — mirrored
+   into `diagram.md`, `explain.md`,
+   `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
 
 ## §14 Shell, install, security, storage — all met
 
@@ -1225,7 +1243,7 @@ buildAnchor`), and highlight marks search only the named card — met
 `test:e2e` 150 passed). Anchors stored bare before the fix still match
 every card; no migration.
 
-### Expansion diagrams render on demand (#71)
+### Expansion diagrams render on demand (#71) + inline repair (#130)
 
 Inline `d2` blocks in Explain expansions (and go-deeper results, which
 land as ordinary cards) used to 404 on `GET
@@ -1237,9 +1255,14 @@ depth; undo stacks and thread HTML deliberately excluded) — met
 (`diagrams.test.ts` fake-Explain cases: top-level, aside-nested,
 invalid; `shared/test/blocks.test.ts` one case per container;
 `ExpansionDiagram.test.tsx` pins light + dark rendering with no
-component change). An inline diagram with invalid D2 or a bad citation
-resolves to 409 with the source shown and a note, never 404/500, and
-never breaks its card — no validate-and-repair pass by design.
+component change). Since #130, Explain expansions additionally run the
+same finalize + one repair turn as Add-diagram blocks
+(`diagram-finalize.ts`), so a bad inline diagram is repaired before it
+reaches the reader; an unrepairable one resolves to 409 `error` with the
+source shown and a plain note + retry, never 404/500, and never breaks
+its card. Diagrams nested in asides, go-deeper results, concept pages
+and second-opinion reasoning still skip the repair turn (on-demand
+render only).
 Open: ask thread replies still show the raw D2 source (`<pre
 class="d2">`, no fetch). Serving them through the same endpoint would
 need thread replies stored as blocks (a storage change) or parsing the
