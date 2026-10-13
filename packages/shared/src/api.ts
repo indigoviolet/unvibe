@@ -424,11 +424,16 @@ export type ReviewAction =
   | { kind: "explain"; quote: string; anchor: ActionAnchor }
   | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string }
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string }
+  /**
+   * Issue #136: `cardId` is a page-card id or one conversation answer's
+   * `ans_…` id. Depth, examples, diagram, undo and second opinion act on
+   * that unit's own blocks/level/undo stack, so an answer rewrites alone.
+   */
   | { kind: "depth"; cardId: string; direction: "simpler" | "deeper" }
   | { kind: "examples"; cardId: string }
   | { kind: "diagram"; cardId: string }
   | { kind: "undo"; cardId: string }
-  | { kind: "read"; cardId: string; read: boolean }
+  /** Issue #136: `cardId` is a page-card id or a conversation card id. */
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
   | { kind: "bookmark"; pageId: string; saved: boolean }
@@ -437,19 +442,23 @@ export type ReviewAction =
   | { kind: "close"; annotationId: string }
   | { kind: "delete"; targetId: string }
   /**
-   * M4: answer a follow-up suggestion under the block it came from. The
-   * answer is added as an expansion anchored on that block (prototype
-   * `follow`), quoting the suggestion label.
+   * M4: answer a follow-up suggestion under the block it came from.
+   * `cardId` is a page-card id, a conversation card id, or one answer's
+   * `ans_…` id. On a page card the answer arrives as a new conversation
+   * card anchored on that block (prototype `follow`), quoting the
+   * suggestion label; on a conversation card the suggestion is sent as
+   * the next turn in the same conversation (#136).
    */
   | { kind: "followup"; cardId: string; blockId: string; index: number }
   /**
-   * M4: follow-up user message in an existing ask thread. Continues the
-   * thread's conversation session (`Annotation.sessionId`) instead of
-   * forking again.
+   * Issue #136: follow-up user message on a conversation card (added as a
+   * turn on the card's session) or on an Ask thread (slice 1: Ask still
+   * makes threads). Continues the card's conversation session
+   * (`Annotation.sessionId`) instead of forking again.
    */
-  | { kind: "reply"; threadId: string; message: string }
-  /** M4: retry a thread/expansion whose job left a visible error state. */
-  | { kind: "retry"; threadId: string }
+  | { kind: "reply"; annotationId: string; message: string }
+  /** Issue #136: retry the last turn of a conversation card, or a failed Ask thread fill (slice 1). */
+  | { kind: "retry"; annotationId: string }
   /**
    * M4: write a concept page on first open (`ensureConceptPage`). The
    * page shows a working state while its job fills it.
@@ -460,9 +469,9 @@ export type ActionAnchor =
   /**
    * A guide block, addressed `<card>#<block>` (block ids restart at `b1`
    * in every card, so the card qualifier is required). The card part is a
-   * page-card id, or — for a selection inside an explanation (#116) — the
-   * hosting expansion's annotation id, so nested explanations address
-   * `<expansion>#<block>` the same way.
+   * page-card id, or — for a selection inside a conversation answer (#116,
+   * #136) — the hosting answer's `ans_…` id, so nested cards address
+   * `<answer>#<block>` the same way.
    */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
@@ -474,11 +483,13 @@ export interface ActionResponse {
   jobId?: string;
   /** M4: annotation created or targeted by the action (explain/ask/note/followup). */
   annotationId?: string;
-  /** M4: thread id (ask/reply/retry/followup answers). Same as annotationId for threads. */
+  /** M4: thread id (ask/reply/retry on threads, note). Same as annotationId for threads. */
   threadId?: string;
+  /** Issue #136: turn created or targeted by the action (explain/reply/retry/followup on conversations). */
+  turnId?: string;
   /** M4: page created or targeted (promote/concept/bookmark). */
   pageId?: string;
-  /** M4: card created or targeted (depth/examples/diagram/undo/read/collapse/followup). */
+  /** M4: card created or targeted (depth/examples/diagram/undo/collapse/followup). */
   cardId?: string;
   /** M4: true when an identical active request was reused (dedupe, PRD §12). */
   deduplicated?: boolean;
@@ -489,7 +500,7 @@ export interface ActionResponse {
    */
   reused?: boolean;
   /**
-   * Depth stepper result (issue #65): the card/expansion level after the
+   * Depth stepper result (issue #65): the card/answer level after the
    * action. Lets the client tell a stored-level switch (level changed:
    * silent) from already-at-the-limit (level unchanged: toast).
    */

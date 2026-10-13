@@ -2,8 +2,8 @@
  * Walk every live `Block[]` list in a review snapshot (issue #71).
  *
  * Diagram blocks can be stored anywhere the data model holds blocks, not
- * only in page cards: Explain expansions live in
- * `annotations[].expansion.blocks`, and second-opinion reasoning carries
+ * only in page cards: conversation answers live in
+ * `annotations[].turns[].blocks`, and second-opinion reasoning carries
  * its own `blocks`. The diagrams route searches through this module so a
  * new container cannot be missed silently — add its list here.
  *
@@ -11,8 +11,9 @@
  * - `pages[].cards[].blocks` (root / concept / finding / opened-expansion
  *   pages; go-deeper fills land here as ordinary cards)
  * - `pages[].cards[].secondOpinions[].blocks`
- * - `annotations[].expansion.blocks`
- * - `annotations[].expansion.secondOpinions[].blocks`
+ * - `annotations[].turns[].blocks` (issue #136: every turn, so a diagram
+ *   in a follow-up answer renders like any other)
+ * - `annotations[].turns[].secondOpinions[].blocks`
  * - `aside.inner`, recursively, inside any of the above
  *
  * Deliberately excluded:
@@ -35,9 +36,8 @@ export interface BlockSnapshot {
 
 /**
  * Every live `Block[]` list in the snapshot, in a fixed order (card
- * blocks, card second opinions, expansion blocks, expansion second
- * opinions). Recursion into asides happens in {@link walkBlocks}, not
- * here.
+ * blocks, card second opinions, turn blocks, turn second opinions).
+ * Recursion into asides happens in {@link walkBlocks}, not here.
  */
 export function liveBlockLists(snapshot: BlockSnapshot): Block[][] {
   const lists: Block[][] = [];
@@ -50,11 +50,11 @@ export function liveBlockLists(snapshot: BlockSnapshot): Block[][] {
     }
   }
   for (const ann of snapshot.annotations ?? []) {
-    const exp = ann.expansion;
-    if (!exp) continue;
-    if (exp.blocks) lists.push(exp.blocks);
-    for (const so of exp.secondOpinions ?? []) {
-      if (so.blocks) lists.push(so.blocks);
+    for (const turn of ann.turns ?? []) {
+      if (turn.blocks) lists.push(turn.blocks);
+      for (const so of turn.secondOpinions ?? []) {
+        if (so.blocks) lists.push(so.blocks);
+      }
     }
   }
   return lists;
