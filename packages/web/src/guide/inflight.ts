@@ -119,7 +119,9 @@ export function busyForCard(
 /**
  * Busy state for an expansion card: the direct entry first, then a
  * follow-up chip entry addressing its anchor block (the answer renders
- * before the response retargets), then the live job.
+ * before the response retargets), then an anchor-keyed explain entry for
+ * an expansion that landed before its response (issue #97), then the
+ * live job.
  */
 export function busyForExpansion(
   inflight: Record<string, InFlightAction>,
@@ -136,10 +138,65 @@ export function busyForExpansion(
     }
     return direct;
   }
-  if (expansion.type !== "expansion" || expansion.anchor.host.kind !== "block") return null;
-  const entry = followupEntryForAnchorBlock(inflight, expansion.anchor.host.blockId);
-  if (!entry) return null;
-  return { kind: entry.kind, label: inflightLabel(entry.kind), rewriting: false };
+  if (expansion.type === "expansion") {
+    if (expansion.anchor.host.kind === "block") {
+      const chip = followupEntryForAnchorBlock(inflight, expansion.anchor.host.blockId);
+      if (chip) return { kind: chip.kind, label: inflightLabel(chip.kind), rewriting: false };
+    }
+    // The service creates the expansion at once: its patch lands before
+    // the action response retargets the anchor-keyed entry. Carry the
+    // Explain label meanwhile, so the card shows one indicator (never the
+    // generic fallback) and its content controls stay off.
+    const anchorEntry = anchorEntryForExpansion(inflight, expansion);
+    if (anchorEntry) {
+      return { kind: anchorEntry.kind, label: inflightLabel(anchorEntry.kind), rewriting: false };
+    }
+  }
+  return null;
+}
+
+/**
+ * Anchor-keyed explain entry standing in for an expansion that arrived
+ * before its action response retargeted the entry (issue #97). Only
+ * `explain` creates bare expansions; follow-up answers match through
+ * their chip key above, and every other kind addresses its target id
+ * directly. A block entry names the host exactly or by its bare id.
+ */
+export function anchorEntryForExpansion(
+  inflight: Record<string, InFlightAction>,
+  expansion: Annotation,
+): InFlightAction | undefined {
+  if (expansion.type !== "expansion") return undefined;
+  const host = expansion.anchor.host;
+  for (const [key, entry] of Object.entries(inflight)) {
+    if (entry.kind !== "explain") continue;
+    if (host.kind === "block") {
+      if (!key.startsWith("explain:block:")) continue;
+      if (blockIdsMatch(key.slice("explain:block:".length), host.blockId)) return entry;
+    } else if (host.kind === "description") {
+      if (key === `explain:desc:${host.paragraphId}`) return entry;
+    } else if (host.kind === "diff-line") {
+      const anchor = diffAnchorForExplainKey(key);
+      if (anchor && anchor.fileKey === host.fileKey && anchor.line === host.line) return entry;
+    }
+  }
+  return undefined;
+}
+
+function bareBlockId(id: string): string {
+  const hash = id.indexOf("#");
+  return hash >= 0 ? id.slice(hash + 1) : id;
+}
+
+/**
+ * An anchor-keyed entry addresses an expansion host when it names the host
+ * exactly or the host's bare block id (a selection carries the bare id
+ * while the service qualifies it `card#block`). A differently-qualified
+ * entry never matches, so explains on same-named blocks of other cards
+ * stay independent.
+ */
+export function blockIdsMatch(entryBid: string, hostBlockId: string): boolean {
+  return entryBid === hostBlockId || entryBid === bareBlockId(hostBlockId);
 }
 
 /** In-flight entry for a thread (reply/retry ask turns). */

@@ -358,6 +358,16 @@ needed (that deviation is closed, not added).
   back → highlight).
 - Open as page moves content, anchor becomes link — met
   (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
+- One box while working (issue #97) — met: the Explain placeholder gives
+  way as soon as its expansion is in the snapshot (guide, description and
+  diff alike), the card shows the fixed “Writing explanation…” label from
+  the anchor-keyed entry instead of the “Working…” fallback, and
+  content-needing controls (depth, examples, diagram, second opinion) stay
+  off until the text arrives (`guide/inflight.ts` `anchorEntryForExpansion`,
+  `ExpansionCard.tsx`, `comments/doubleIndicator.test.tsx` “Explain”,
+  `guide/inflight.test.ts` anchor-entry cases). First and later Explains
+  take the same code path; the first only looks different because agent
+  session setup stretches the patch-before-response window.
 
 ### §4.8 Comments — all met
 
@@ -376,7 +386,14 @@ needed (that deviation is closed, not added).
 - Placement (guide closed + hover outline; diff under line + line-number
   reopen + click-number starts; description under paragraph) — met
   (`comments.spec.ts` “diff line click starts a comment; close leaves an
-  icon; reopen works”).
+  icon; reopen works”). The hover outline clears only its own marks and
+  cards/threads (issue #111), never the depth stepper pips
+  (`guide/expansions/hoverOutline.test.tsx`).
+- One box while asking (issue #97) — met: the Ask composer hides as soon
+  as its thread is in the snapshot, and the thread's working row uses the
+  fixed Ask label instead of the “Reading the diff…” fallback
+  (`comments/NewThreadComposer.tsx`, `comments/ThreadView.tsx`,
+  `comments/doubleIndicator.test.tsx` “Ask”).
 - Comments menu (all comments, jump, For PR filter with editable drafts,
   never posts; lives in the review bar next to Submit since round 2, so it
   opens with the source pane closed) — met (`comments-service.spec.ts`
@@ -466,6 +483,10 @@ needed (that deviation is closed, not added).
   in the diff pane (Summarize action, never the JSON text).
 - Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
   (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
+  The Summarize dots clear when the summary lands by patch — including a
+  landed JSON-looking summary, which still reads as absent with Summarize
+  re-offered (issue #63; `DiffView.tsx` raw-row effect,
+  `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
   — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
 - Syntax highlighting (issue #23): plain rows first, token colours after

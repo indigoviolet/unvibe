@@ -25,7 +25,7 @@ import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
 import { performAction } from "../guide/actions.js";
-import { busyForThread } from "../guide/inflight.js";
+import { busyForThread, inflightLabel } from "../guide/inflight.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { isAskWorking, markAskSent, useAskWorkingTick } from "./askState.js";
@@ -325,7 +325,11 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
             <i />
             <i />
           </span>
-          <span>{busy?.label ?? "Reading the diff and PR description…"}</span>
+          {/* Ask is the only thread turn that works without a matching
+              entry or job (issue #97): its patch lands before the response
+              retargets the anchor-keyed entry. Reply and retry carry their
+              own entry, so the fallback is always the Ask label. */}
+          <span>{busy?.label ?? inflightLabel("ask")}</span>
         </div>
       ) : null}
       {waiting ? (

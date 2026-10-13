@@ -140,18 +140,25 @@ export function useDiffCommentBindings(reviewId: string): {
     // Explains started from a diff selection show a placeholder under the
     // line until the expansion lands (issue #46). Ask turns keep their
     // composer; retargeted entries vanish from the anchor key, so an
-    // arrived expansion never doubles with its placeholder.
+    // arrived expansion never doubles with its placeholder — and an
+    // expansion that lands before the response hides it too (issue #97).
     if (!readOnly) {
+      const arrived = new Set<string>();
+      for (const a of annotations ?? []) {
+        if (a.type !== "expansion" || !a.open) continue;
+        if (a.anchor.host.kind !== "diff-line") continue;
+        arrived.add(slotKey(a.anchor.host.fileKey, a.anchor.host.line));
+      }
       for (const [key, entry] of Object.entries(inflight)) {
         const anchor = diffAnchorForExplainKey(key);
         if (!anchor) continue;
         const slot = slotKey(anchor.fileKey, anchor.line);
-        if (slots[slot]) continue;
+        if (slots[slot] || arrived.has(slot)) continue;
         slots[slot] = <WorkingPlaceholder key={`inflight-${key}`} label={inflightLabel(entry.kind)} />;
       }
     }
     return slots;
-  }, [byLine, pending, reviewId, readOnly, inflight]);
+  }, [annotations, byLine, pending, reviewId, readOnly, inflight]);
 
   const commentedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 

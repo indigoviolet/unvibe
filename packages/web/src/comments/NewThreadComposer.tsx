@@ -9,11 +9,12 @@
  * patch (or an error with a Retry button when the turn fails). While the
  * request is in flight the composer itself shows the Ask as running.
  */
-import { useState } from "react";
-import type { ActionAnchor } from "@unvibe/shared";
+import { useRef, useState } from "react";
+import type { ActionAnchor, Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { performAction } from "../guide/actions.js";
+import { useReview } from "../state/store.js";
 import { markAskSent } from "./askState.js";
 
 interface Props {
@@ -29,10 +30,34 @@ interface Props {
 export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, onCreated }: Props) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  // Set once the question/note is sent: thread ids already here, so only
+  // a thread created after the send hides the composer.
+  const [sent, setSent] = useState(false);
+  const knownRef = useRef<ReadonlySet<string> | null>(null);
+  const annotations = useReview((s) => s.snapshot?.annotations);
+
+  // The service creates the thread at once: it lands by patch before the
+  // ask/note response returns (issue #97). Hide the composer as soon as
+  // its thread exists, so the question never shows twice; the thread
+  // carries the working state. The component stays mounted (typed text
+  // preserved) until the response settles it through onCreated.
+  if (sent) {
+    const known = knownRef.current ?? new Set<string>();
+    const created = (annotations ?? []).some(
+      (a) => a.type === "thread" && a.open && !known.has(a.id) && threadAnchorMatches(anchor, a),
+    );
+    if (created) return null;
+  }
 
   const send = (): void => {
     const value = text.trim();
     if (!value || sending) return;
+    knownRef.current = new Set(
+      (useReview.getState().snapshot?.annotations ?? [])
+        .filter((a) => a.type === "thread" && threadAnchorMatches(anchor, a))
+        .map((a) => a.id),
+    );
+    setSent(true);
     setSending(true);
     if (!note) {
       performAction(reviewId, { kind: "ask", anchor, quote, message: value }, { toast: false })
@@ -100,4 +125,31 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
       </div>
     </div>
   );
+}
+
+/**
+ * Same-anchor check for a composer and a thread (issue #97): the composer
+ * anchor names the thread host exactly or by its bare block id (a
+ * selection carries the bare id while the service qualifies it
+ * `card#block`). A differently-qualified anchor never matches, so
+ * composers on same-named blocks of other cards stay independent.
+ * Description and diff-line anchors match exactly.
+ */
+function threadAnchorMatches(anchor: ActionAnchor, thread: Annotation): boolean {
+  const host = thread.anchor.host;
+  if (anchor.where === "block" && host.kind === "block") {
+    return anchor.blockId === host.blockId || anchor.blockId === bare(host.blockId);
+  }
+  if (anchor.where === "description" && host.kind === "description") {
+    return anchor.paragraphId === host.paragraphId;
+  }
+  if (anchor.where === "diff-line" && host.kind === "diff-line") {
+    return anchor.fileKey === host.fileKey && anchor.line === host.line;
+  }
+  return false;
+}
+
+function bare(blockId: string): string {
+  const hash = blockId.indexOf("#");
+  return hash >= 0 ? blockId.slice(hash + 1) : blockId;
 }

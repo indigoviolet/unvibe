@@ -24,7 +24,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
 import { performAction, performInsertAction } from "../actions.js";
 import { BlockView } from "../BlockView.js";
-import { busyForExpansion } from "../inflight.js";
+import { busyForExpansion, inflightLabel, isFollowupAnswer } from "../inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
 import { isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
 
@@ -116,11 +116,20 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   const busy = busyForExpansion(inflight, jobs, snapshot, expansion);
   // The service marks the annotation working while its fill runs; that
   // flag (and retry's, before its response lands) is a busy signal too,
-  // but the label stays fixed — never the server's text.
+  // but the label stays fixed — never the server's text. Without an entry
+  // or job, an empty working expansion is still its action (issue #97):
+  // an Explain, or the follow-up answer — never the generic fallback.
   const serverWorking =
     (expansion.working ?? body.working ?? "") !== "" && (expansion.working ?? body.working) !== null;
   const showWorking = !!busy || serverWorking;
-  const workingLabel = busy?.label ?? "Working…";
+  const hasContent = body.blocks.length > 0;
+  const workingLabel =
+    busy?.label ??
+    (isFollowupAnswer(snapshot, expansion)
+      ? inflightLabel("followup")
+      : hasContent
+        ? "Working…"
+        : inflightLabel("explain"));
   const errorText = expansion.error ?? body.error ?? null;
   const noAgent = isNoAgentMessage(errorText);
 
@@ -220,6 +229,9 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   const controlsBusy = busy !== null;
   const busyKind = busy?.kind;
   const depthBusy = busyKind === "depth";
+  // Controls that need the text stay off until it arrives (issue #97):
+  // an empty expansion offers only open/promote/delete/close/read.
+  const contentReady = hasContent && !controlsBusy;
 
   return (
     <section
@@ -242,7 +254,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
             type="button"
             data-tip="Simpler"
             aria-label={depthBusy ? "Working…" : "Simpler"}
-            disabled={safeDepthIndex <= 0 || controlsBusy}
+            disabled={safeDepthIndex <= 0 || !contentReady}
             onClick={() => run({ kind: "depth", cardId: expansion.id, direction: "simpler" })}
           >
             −
@@ -258,7 +270,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
             type="button"
             data-tip={depthBusy ? "Working…" : "Deeper"}
             aria-label={depthBusy ? "Working…" : "Deeper"}
-            disabled={controlsBusy}
+            disabled={!contentReady}
             onClick={() => run({ kind: "depth", cardId: expansion.id, direction: "deeper" })}
           >
             {depthBusy ? (
@@ -276,14 +288,14 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           icon="bulb"
           label="Use examples"
           busy={busyKind === "examples"}
-          disabled={controlsBusy}
+          disabled={!contentReady}
           onClick={() => performInsertAction(reviewId, expansion.id, "examples")}
         />
         <ControlButton
           icon="diagram"
           label="Add diagram"
           busy={busyKind === "diagram"}
-          disabled={controlsBusy}
+          disabled={!contentReady}
           onClick={() => performInsertAction(reviewId, expansion.id, "diagram")}
         />
         <ControlButton
@@ -296,7 +308,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           reviewId={reviewId}
           expansion={expansion}
           lookupPage={lookupPage}
-          disabled={controlsBusy}
+          disabled={!contentReady}
           busy={busyKind === "second_opinion"}
         />
         <span className="sp" />
