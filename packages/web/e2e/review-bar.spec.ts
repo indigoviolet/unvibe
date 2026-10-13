@@ -74,6 +74,28 @@ test("review bar and top bar do not overflow at 800px", async ({ page }) => {
   }
 });
 
+test("older version annotates current and keeps the title at 800px (issue #120)", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto("/review/r-old?version=1");
+  await expect(page.locator("#reviewbar")).toBeVisible();
+  // Rendered once, in the bar: the select shows the older version with
+  // the warning state, current is annotated in the dropdown, and there
+  // is no notice and no back button in the bar.
+  const switcher = page.locator('#reviewbar [data-testid="version-switcher"]');
+  await expect(switcher).toHaveCount(1);
+  await expect(switcher).toHaveAttribute("data-ro", "1");
+  await expect(page.locator("#version-pick option", { hasText: "current" })).toContainText("v2");
+  await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
+  // The title is no longer squeezed out entirely.
+  const titleBox = await page.locator("#reviewbar .rid b").boundingBox();
+  expect(titleBox?.width).toBeGreaterThan(0);
+  const overflow = await page.locator("#reviewbar").evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  // Choosing the annotated current version is the way back.
+  await page.locator("#version-pick").selectOption("2");
+  await expect(page).not.toHaveURL(/version=1/);
+});
+
 test("guide toggle at 1440px: source-only spans the window, then back (issue #83)", async ({
   page,
 }) => {

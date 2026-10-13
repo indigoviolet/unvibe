@@ -1,8 +1,12 @@
 /**
- * Version switcher + read-only notice (PRD §8 "older versions stay
- * viewable"): a compact select of `review.versions`; picking an older one
- * navigates to `?version=n`, picking current clears it. Rendered in the
- * guide column above the page; the diff pane reads the same param.
+ * Version switcher (PRD §8 "older versions stay viewable"): a compact
+ * select of `review.versions`; picking an older one navigates to
+ * `?version=n`, picking the current one clears it. Rendered once in the
+ * review bar next to the review identity (issue #120), so it works with
+ * the guide pane hidden; the diff pane reads the same param. The current
+ * version's option is annotated; an older shown version flags the select
+ * with the warning border (the page's other read-only signs stay as they
+ * are).
  */
 import { useLocation, useNavigate } from "react-router-dom";
 import { useReview } from "../state/store.js";
@@ -28,39 +32,22 @@ export function VersionSwitcher(): React.JSX.Element | null {
   };
 
   return (
-    <div className="frow" style={{ gap: 8, marginBottom: 4 }} data-testid="version-switcher">
-      <label className="hint" htmlFor="version-pick">
-        Version
-      </label>
+    <span className="vs" data-testid="version-switcher" data-ro={readOnly ? "1" : undefined}>
       <select
         id="version-pick"
+        className="tbtn"
         aria-label="View version"
+        title="View version"
         value={value}
         onChange={(e) => pick(Number(e.target.value))}
-        style={{
-          border: "1px solid var(--line)",
-          borderRadius: 6,
-          padding: "2px 6px",
-          background: "var(--surface)",
-          color: "var(--ink)",
-          fontSize: 12.5,
-        }}
       >
         {review.versions.map((v) => (
           <option key={v.n} value={v.n}>
-            v{v.n}
-            {v.n === current ? " (current)" : ""} · {v.headSha.slice(0, 8)}
+            v{v.n} · {v.headSha.slice(0, 8)}
+            {v.n === current ? " · current" : ""}
           </option>
         ))}
       </select>
-      {readOnly ? (
-        <span className="hint" role="status">
-          Viewing v{viewing} · read-only ·{" "}
-          <button type="button" className="x" onClick={() => pick(current)}>
-            Back to current
-          </button>
-        </span>
-      ) : null}
-    </div>
+    </span>
   );
 }

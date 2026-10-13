@@ -105,12 +105,18 @@ UI); nothing below was edited by this pass.
   none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
   cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
   #31/#55 round 2).
-- Review bar (identity + GitHub link-out + Debug icon, [ Guide | Source ]
-  pane toggles incl. full-width source per #83, Comments + primary Submit;
-  source tabs keep PR description / Diff only) — met (`ReviewBar.tsx`,
-  `AppShell.test.tsx`, `e2e/review-bar.spec.ts`;
-  `docs/screenshots/55-review.png`, `55-review-800px.png`,
-  `55-review-dark.png`, `83-source-full-width.png`).
+- Review bar (identity + version selector next to it per #120 + GitHub
+  link-out + Debug icon, [ Guide | Source ] pane toggles incl. full-width
+  source per #83, Comments + primary Submit; source tabs keep PR
+  description / Diff only; at narrow widths the title gives way first and
+  the selector never truncates) — met
+  (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
+  `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
+  `55-review-800px.png`, `55-review-dark.png`,
+  `83-source-full-width.png`, `120-wide-light.png`,
+  `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
+  `120-narrow-light-readonly.png`,
+  `120-narrow-dark-readonly.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -684,8 +690,9 @@ needed (that deviation is closed, not added).
   fixtures).
 - New head SHA → version + ID mapping; old versions viewable — met
   (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
-  `versions-refresh.test.ts`, `settings-versions-service.spec.ts` “v1
-  viewable”).
+  the selector rendered once in the review bar per #120 with the current
+  version annotated in the dropdown, `versions-refresh.test.ts`,
+  `settings-versions-service.spec.ts` “v1 viewable”).
 - Rebase-vs-branch by content hash + `range-diff` — met
   (`versions/compare.ts`, `rangeDiff.ts`; refresh test (a): rebase
   no-conflicts → “no change”, state preserved — ran).
@@ -1579,6 +1586,16 @@ items noticed while passing through (not verified, listed only):
   `test/changes-pr-lists.test.ts` (direct/team/both, sorting, missing
   fields, call counts), `StartPage.requested.test.tsx`,
   `e2e/start-lists.spec.ts`.
+- **#131 (start page, §4.2):** the one recency filter sits below Reviews
+  and applies to every list below it — "Your PRs" (newest first with the
+  same relative time) and Recent branches (by last commit date, newest
+  first with the commit age on each row) as well as both review groups; a
+  list the filter empties names its window with a Show-all way back.
+  Reviews stays unfiltered, ordered by recent activity. No contract change:
+  branch commit dates already rode `updatedAt`. Evidence:
+  `StartPage.requested.test.tsx` (authoring sort, one control below
+  Reviews, filtered-empty with Show all, branch ages, Reviews ignores the
+  window), `e2e/start-lists.spec.ts`.
 - **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
   in the quiet meta style with the diff add/delete colours, omitted when
   unknown; thousands separators, "1 file" singular. Evidence:
