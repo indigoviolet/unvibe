@@ -492,13 +492,6 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot):
   forked("critic", {});
   forked("concept_stub", { concept: conceptText, mentions: PH.mentions });
   forked("concept_page", { concept: conceptText, mentions: PH.mentions });
-  forked("explain", {
-    anchor: { quote: PH.anchorQuote, block: PH.anchorBlock },
-    card: cardText,
-    thread: PH.thread,
-    change_list: changeList,
-    message: PH.message,
-  });
   forked("ask", {
     anchor: { quote: PH.anchorQuote, block: PH.anchorBlock },
     card: cardText,
@@ -506,6 +499,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot):
     change_list: changeList,
     message: PH.message,
   });
+  forked("ask_turn", { change_list: changeList, message: PH.message });
   forked("depth", { card: cardText, level: PH.level });
   forked("examples", { card: cardText, level: PH.level });
   forked("diagram", { card: cardText, level: PH.level });
