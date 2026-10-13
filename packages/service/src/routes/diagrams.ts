@@ -13,7 +13,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { diagramHash, D2_VERSION_UNKNOWN, findDiagramByHash, findDiagramBySource } from "@unvibe/shared";
-import type { DiagramBlock } from "@unvibe/shared";
+import type { DiagramBlock, DiagramStatusBody } from "@unvibe/shared";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
 import { DiagramCache, type DiagramTheme } from "../diagrams/cache.js";
@@ -77,20 +77,22 @@ export async function registerDiagrams(
     // when the binary appears").
     if (block.render?.status !== "ok" || !cached) {
       const onDemand = await tryRenderOnDemand(ctx, deps, id, block, hash, theme, cache);
-      if (onDemand) {
+      if (onDemand.kind === "rendered") {
         return reply
           .code(200)
           .header("content-type", "image/svg+xml")
           .header("cache-control", "public, max-age=31536000, immutable")
-          .send(onDemand);
+          .send(onDemand.svg);
       }
-      // Still not rendered: 409 with status + error (contract).
-      const status = block.render?.status ?? "unavailable";
-      // Re-read (on-demand may have updated the block to error).
-      const live = ctx.reviews.getSnapshot(id);
-      const liveBlock = live ? findDiagramByHash(live, hash) ?? findDiagramBySource(live, block.source) : null;
-      const err = (liveBlock?.render as { error?: string } | undefined)?.error ?? (block.render as { error?: string } | undefined)?.error;
-      return reply.code(409).send({ status, ...(err ? { error: err } : {}) });
+      // Still not rendered: 409 with the on-demand outcome (contract,
+      // issue #130). `error` means d2 ran and the source failed;
+      // `unavailable` means the binary is really missing — the status is
+      // the attempt's result, never inferred from a stale snapshot.
+      const body: DiagramStatusBody =
+        onDemand.status === "error"
+          ? { status: "error", ...(onDemand.error ? { error: onDemand.error } : {}) }
+          : { status: "unavailable" };
+      return reply.code(409).send(body);
     }
 
     // Status ok but cache miss and on-demand failed (no binary): 409.
@@ -99,10 +101,16 @@ export async function registerDiagrams(
 }
 
 /**
- * Try on-demand rendering for one diagram block. Returns the requested
- * theme's SVG on success (after caching + updating the block), else null.
- * Never throws (failures leave the block as-is for the 409 path).
+ * Try on-demand rendering for one diagram block. Returns `{ kind:
+ * "rendered", svg }` on success, else `{ kind: "failed", status }` where
+ * `status` is the attempt's own outcome (issue #130): `"unavailable"`
+ * only when the binary is missing/too old, `"error"` with the compiler
+ * message when d2 ran and the source failed. Never throws.
  */
+type OnDemandResult =
+  | { kind: "rendered"; svg: string }
+  | { kind: "failed"; status: "unavailable" | "error"; error?: string };
+
 async function tryRenderOnDemand(
   ctx: ServiceContext,
   deps: RouteDeps,
@@ -111,12 +119,14 @@ async function tryRenderOnDemand(
   requestedHash: string,
   theme: DiagramTheme,
   cache: DiagramCache,
-): Promise<string | null> {
+): Promise<OnDemandResult> {
+  const fail = (status: "unavailable" | "error", error?: string): OnDemandResult =>
+    error ? { kind: "failed", status, error } : { kind: "failed", status };
   try {
     const bin = resolveD2Bin({});
-    if (!bin) return null;
+    if (!bin) return fail("unavailable");
     const version = await probeD2Version(ctx.runner, bin.path).catch(() => null);
-    if (!version || !meetsD2MinVersion(version)) return null;
+    if (!version || !meetsD2MinVersion(version)) return fail("unavailable");
 
     const source = block.source;
     const newHash = diagramHash(source, version);
@@ -173,7 +183,8 @@ async function tryRenderOnDemand(
       renderD2Theme(source, { runner: ctx.runner, binPath: bin.path, salt: newHash, theme: otherVal }),
     ]);
     if (!r1.ok || !r1.svg || !r2.ok || !r2.svg) {
-      // Record the error on the block (so 409 carries it), but don't fail.
+      // Record the error on the block (so later reads carry it), and
+      // report it as the attempt's outcome.
       const err = (!r1.ok ? r1.error : r2.error) ?? "d2 render failed";
       try {
         await ctx.reviews.mutate(reviewId, (draft) => {
@@ -185,7 +196,7 @@ async function tryRenderOnDemand(
       } catch {
         // ignore
       }
-      return null;
+      return fail("error", err);
     }
 
     const svg1 = postProcessSvg(r1.svg, citations, newHash);
@@ -213,8 +224,8 @@ async function tryRenderOnDemand(
       // ignore (serve anyway)
     }
     void D2_VERSION_UNKNOWN;
-    return svgForTheme;
+    return { kind: "rendered", svg: svgForTheme };
   } catch {
-    return null;
+    return fail("error", "d2 render failed");
   }
 }
