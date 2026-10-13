@@ -30,6 +30,7 @@ import type { CommandRunner } from "../exec/runner.js";
 import type { McpReviewData, PinRecord, ReviewReader } from "./read.js";
 import { readCodeSlice } from "./read.js";
 import { READER_TOOL, toolsForRole } from "./tools.js";
+import { spikeMark, spikeTime } from "../spike/timing.js"; // SPIKE(#114)
 
 export const MCP_SERVICE_NAME = "unvibe";
 export const MCP_SERVICE_VERSION = "0.0.3";
@@ -112,7 +113,10 @@ export class McpRegistry {
     server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const args = (req.params.arguments ?? {}) as Record<string, unknown>;
       try {
-        return await this.dispatch(state, req.params.name, args);
+        // SPIKE(#114): time each MCP tool call.
+        return await spikeTime("mcp.tool", { tool: req.params.name, mcpSession: state.sessionId, role: state.role }, () =>
+          this.dispatch(state, req.params.name, args),
+        );
       } catch (err) {
         return errorResult(err instanceof Error ? err.message : String(err));
       }
@@ -234,7 +238,9 @@ export class McpRegistry {
     if (!state.connected) {
       await state.server.connect(state.transport);
       state.connected = true;
+      spikeMark("mcp.connect", { mcpSession: state.sessionId, role: state.role }); // SPIKE(#114)
     }
+    spikeMark("mcp.http", { mcpSession: state.sessionId, method: (body as { method?: unknown } | null)?.method ?? req.method }); // SPIKE(#114)
     // Newer claude CLIs (≥2.1.296, MCP protocol 2026-07-28) probe
     // `server/discover` before `initialize`; our SDK (1.32.1) predates it and
     // would answer HTTP 500 (fatal, tools unavailable). Answer JSON-RPC

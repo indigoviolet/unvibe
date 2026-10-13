@@ -31,6 +31,7 @@ import { MathRandom, RealClock, type Clock, type RandomSource } from "./clock.js
 import { isAbortError, RetryableError } from "./errors.js";
 import type { JobPersistence } from "./store.js";
 import { reportError } from "../telemetry/sentry.js";
+import { spikeMark } from "../spike/timing.js"; // SPIKE(#114)
 
 export const DEFAULT_CONCURRENCY_CAP = 4;
 export const DEFAULT_MAX_ATTEMPTS = 8;
@@ -166,6 +167,7 @@ export class JobQueue {
     if (dedupeKey) this.dedupe.set(dedupeKey, job.id);
     this.save(entry);
     this.emit(entry);
+    spikeMark("job.enqueue", { jobId: job.id, kind: job.kind, provider: job.provider, model: job.model, priority: job.priority, reviewId: job.reviewId, threadId: job.threadId, cardId: job.cardId }); // SPIKE(#114)
     this.pump();
     return copy(job);
   }
@@ -397,6 +399,7 @@ export class JobQueue {
     entry.abort = controller;
     this.save(entry);
     this.emit(entry);
+    spikeMark("job.start", { jobId: job.id, kind: job.kind, attempts: job.attempts, running: this.runningCount(job.provider ?? "") }); // SPIKE(#114)
 
     const ctx = this.makeContext(entry, controller);
     try {
@@ -422,6 +425,7 @@ export class JobQueue {
     const attemptIndex = (job.attempts ?? 1) - 1;
     const delay = computeBackoffDelay(attemptIndex, this.backoffBaseMs, this.backoffMaxMs, this.random.next());
     job.state = "backing-off";
+    spikeMark("job.backoff", { jobId: job.id, kind: job.kind, delay, error: err.message }); // SPIKE(#114)
     job.error = err.message;
     job.nextRetryAt = this.clock.now() + delay;
     this.save(entry);
@@ -452,6 +456,7 @@ export class JobQueue {
 
   private settle(entry: Entry, controller: AbortController, state: Job["state"]): void {
     if (entry.abort === controller) entry.abort = undefined;
+    spikeMark("job.settle", { jobId: entry.job.id, kind: entry.job.kind, state, sessionId: entry.job.sessionId, usage: entry.job.usage, error: entry.job.error }); // SPIKE(#114)
     entry.job.state = state;
     if (state !== "backing-off") entry.job.nextRetryAt = undefined;
     if (state === "cancelled") entry.job.error = undefined;

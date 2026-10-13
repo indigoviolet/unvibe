@@ -30,6 +30,7 @@ import type { ReviewSnapshot, StatePatchOp } from "@unvibe/shared";
 import type { EventBus } from "../events.js";
 import { transaction, type DatabaseSync } from "../store/index.js";
 import { immerPatchesToOps } from "./patch.js";
+import { spikeMark } from "../spike/timing.js"; // SPIKE(#114)
 
 // Immer's patch plugin is opt-in; every mutate below needs it.
 enablePatches();
@@ -55,12 +56,14 @@ export class ReviewStore {
 
   /** Latest durable snapshot, or null when the review is unknown. */
   getSnapshot(reviewId: string): ReviewSnapshot | null {
+    const tGet = performance.now(); // SPIKE(#114)
     const row = this.db
       .prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?")
       .get(reviewId) as { rev: number; snapshot: string } | undefined;
     if (!row) return null;
     const snapshot = JSON.parse(row.snapshot) as ReviewSnapshot;
     snapshot.rev = row.rev;
+    spikeMark("store.get", { reviewId, bytes: row.snapshot.length, ms: Math.round((performance.now() - tGet) * 100) / 100 }); // SPIKE(#114)
     return snapshot;
   }
 
@@ -102,6 +105,7 @@ export class ReviewStore {
   }
 
   private applyMutate(reviewId: string, recipe: SnapshotRecipe): MutateResult {
+    const tMut = performance.now(); // SPIKE(#114)
     const row = this.db
       .prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?")
       .get(reviewId) as { rev: number; snapshot: string } | undefined;
@@ -125,7 +129,9 @@ export class ReviewStore {
     });
 
     // Publish only after the durable commit.
+    const tPub = performance.now(); // SPIKE(#114)
     this.bus.publish(reviewId, { type: "patch", baseRev, headRev, ops });
+    spikeMark("store.mutate", { reviewId, headRev, bytes: row.snapshot.length, ops: ops.length, ms: Math.round((tPub - tMut) * 100) / 100, publishMs: Math.round((performance.now() - tPub) * 100) / 100 }); // SPIKE(#114)
     return { baseRev, headRev, ops, snapshot };
   }
 }

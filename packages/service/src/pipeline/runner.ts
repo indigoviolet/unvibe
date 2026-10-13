@@ -50,6 +50,7 @@ import { withReplayMark } from "./replayMark.js";
 import { changeListVariable, ingestAgentTurn } from "./sharedctx-wire.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import type { RunInForkOptions, RunInForkResult, RunSmallOptions } from "./types.js";
+import { spikeMark, spikeTime, spikeTimeSync } from "../spike/timing.js"; // SPIKE(#114)
 
 export interface PipelineOptions {
   reviews: ReviewStore;
@@ -245,7 +246,10 @@ export class Pipeline {
    * stored); never writes.
    */
   private effectiveSettings() {
-    return resolveEffectiveSettings({ settings: this.opts.settings, models: this.opts.models ?? null });
+    // SPIKE(#114): timed, the catalog probe behind this can start a session.
+    return spikeTime("pipe.effective-settings", {}, () =>
+      resolveEffectiveSettings({ settings: this.opts.settings, models: this.opts.models ?? null }),
+    );
   }
 
   /** Deps for the shared-context wire module (PRD §9.3–§9.5). */
@@ -308,7 +312,7 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(o.reviewId);
     if (!snapshot) throw new Error(`unknown review ${o.reviewId}`);
     const settings = await this.effectiveSettings();
-    const base = await this.ensureBase(o.reviewId);
+    const base = await spikeTime("pipe.fork.pre-enqueue-base", { kind: o.kind, reviewId: o.reviewId }, () => this.ensureBase(o.reviewId)); // SPIKE(#114)
     const baseLogSeq = this.opts.sessions.baseInfo(base.key)?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
       ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
@@ -346,6 +350,7 @@ export class Pipeline {
             ctx.setPromptSnapshot(prompt);
             const forked = await this.forkFor(o.reviewId);
             ctx.setSessionId(forked.session.id);
+            spikeMark("pipe.fork.session", { kind: o.kind, sessionId: forked.session.id, viaFork: forked.viaFork, attempt, promptChars: prompt.length }); // SPIKE(#114)
             let buffer = "";
             const { text, usage } = await collectStreaming(
               this.opts.runner,
@@ -372,6 +377,7 @@ export class Pipeline {
             let finalData = first.data;
             let finalValidation = first.validation;
             let repaired = false;
+            spikeMark("pipe.validate", { kind: o.kind, sessionId: forked.session.id, tokens: first.validation.tokens.length, unverified: first.validation.unverified, needsRepairTurn: first.validation.needsRepairTurn }); // SPIKE(#114)
             if (first.validation.needsRepairTurn) {
               repaired = true;
               const repairPrompt =
@@ -396,14 +402,17 @@ export class Pipeline {
             }
             ctx.reportUsage(usage);
             await this.recordUsage(o.reviewId, usage);
-            await this.ingestTurn(o.reviewId, {
-              sessionId: forked.session.id,
-              ...(o.threadId ? { threadId: o.threadId } : {}),
-              ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
-              ...(o.cardId ? { cardId: o.cardId } : {}),
-              ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
-              data: finalData,
-            });
+            // SPIKE(#114): post-turn bookkeeping runs before the result is applied.
+            await spikeTime("pipe.ingest-turn", { kind: o.kind, sessionId: forked.session.id }, () =>
+              this.ingestTurn(o.reviewId, {
+                sessionId: forked.session.id,
+                ...(o.threadId ? { threadId: o.threadId } : {}),
+                ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
+                ...(o.cardId ? { cardId: o.cardId } : {}),
+                ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
+                data: finalData,
+              }),
+            );
             if (o.onPartial) {
               try {
                 await o.onPartial(finalCards);
@@ -425,6 +434,7 @@ export class Pipeline {
             return;
           } catch (err) {
             if (err instanceof RetryableError && attempt < 3) {
+              spikeMark("pipe.inner-retry", { kind: o.kind, attempt, error: (err as Error).message }); // SPIKE(#114)
               await sleepMs(50 * (attempt + 1));
               continue;
             }
@@ -826,6 +836,15 @@ export class Pipeline {
     text: string,
     echoCandidates?: string[],
   ): { cards: ParsedCard[]; data: ReplyData | null; validation: ReturnType<typeof validateReply>; body: string } {
+    // SPIKE(#114): time parse + citation validation.
+    return spikeTimeSync("pipe.parse-validate", { chars: text.length }, () => this.parseAndValidateInner(reviewId, text, echoCandidates));
+  }
+
+  private parseAndValidateInner(
+    reviewId: string,
+    text: string,
+    echoCandidates?: string[],
+  ): { cards: ParsedCard[]; data: ReplyData | null; validation: ReturnType<typeof validateReply>; body: string } {
     const split = splitReply(text);
     // Malformed / non-object trailers are job-visible errors (reply-format
     // §10); a missing block is fine (many on-demand replies carry none).
@@ -922,15 +941,18 @@ export class Pipeline {
   }
 
   private async ensureBase(reviewId: string): Promise<{ sessionId: string; key: string }> {
+    const tEnsureBase = performance.now(); // SPIKE(#114)
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
+    const tPack = performance.now(); // SPIKE(#114)
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructionsTpl = lib.get("instructions");
     if (!instructionsTpl) throw new Error("missing instructions template");
     const instructions = renderTemplate(instructionsTpl, {});
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    spikeMark("pipe.base-pack", { where: "ensureBase", packChars: pack.user.length, instructionsChars: instructions.length, packTokens: pack.tokens, ms: Math.round((performance.now() - tPack) * 10) / 10 }); // SPIKE(#114)
     // The base pack instructs the agent to answer "ready" (SessionManager
     // waits for it). buildBasePack's user is L1+L1b+L2; prefix the ready
     // instruction so fakes and real models alike acknowledge.
@@ -965,10 +987,16 @@ export class Pipeline {
       }
     }
     this.setStage(reviewId, "base", "done");
+    spikeMark("pipe.ensure-base", { reviewId, key: handle.key, fresh: handle.fresh, sessionId: handle.session.id, ms: Math.round(performance.now() - tEnsureBase) }); // SPIKE(#114)
     return { sessionId: handle.session.id, key: handle.key };
   }
 
   private async forkFor(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
+    // SPIKE(#114): whole fork step (pack render + base lookup + session/fork).
+    return spikeTime("pipe.fork-for", { reviewId }, () => this.forkForInner(reviewId));
+  }
+
+  private async forkForInner(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
@@ -993,11 +1021,13 @@ export class Pipeline {
       pack: packText,
     });
     const runner = this.opts.runner;
+    spikeMark("pipe.fork-for.base", { reviewId, key: base.key, fresh: base.fresh }); // SPIKE(#114)
     if (typeof runner.fork === "function") {
       try {
         const session = await runner.fork(base.session);
         return { session, viaFork: true };
-      } catch {
+      } catch (e) {
+        spikeMark("pipe.fork-fallback", { reviewId, error: (e as Error).message }); // SPIKE(#114)
         // fall through
       }
     }

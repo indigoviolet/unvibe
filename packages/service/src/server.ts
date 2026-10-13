@@ -38,6 +38,7 @@ import { buildApp, type AppContext as UnifiedContext } from "./app.js";
 import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
 import { reportError } from "./telemetry/sentry.js";
+import { spikeMark } from "./spike/timing.js"; // SPIKE(#114)
 
 export const SERVICE_VERSION = "0.0.3";
 
@@ -268,6 +269,13 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   // Strict CSP on every HTML shell response (PRD §16). API/WS stay JSON;
   // static assets are unaffected (the header is harmless on them, but we
   // scope to HTML to keep the policy tight and the tests precise).
+  // SPIKE(#114): HTTP handling time per API request.
+  app.addHook("onResponse", async (req, reply) => {
+    const url = String(req.url ?? "");
+    if (!url.startsWith("/api/") || url.startsWith("/api/health") || url.startsWith("/api/mcp")) return;
+    spikeMark("http", { method: req.method, url: url.split("?")[0], status: reply.statusCode, ms: Math.round(reply.elapsedTime * 10) / 10 });
+  });
+
   app.addHook("onSend", async (req, reply, payload) => {
     try {
       const ct = String(reply.getHeader("content-type") ?? "");

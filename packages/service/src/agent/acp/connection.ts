@@ -34,6 +34,7 @@ import {
   type PermissionQuery,
 } from "./permissions.js";
 import type { ProviderId } from "./types.js";
+import { spikeMark } from "../../spike/timing.js"; // SPIKE(#114)
 
 export interface SessionPolicy {
   mcpServers: string[];
@@ -222,7 +223,9 @@ export async function spawnAdapterTransport(
   provider: ProviderId,
   opts?: { env?: Record<string, string>; onStderr?: (s: string) => void },
 ): Promise<Transport> {
+  const tSpawn0 = performance.now(); // SPIKE(#114)
   const loginPath = await loginPathEnv();
+  spikeMark("acp.spawn.login-path", { provider, ms: Math.round(performance.now() - tSpawn0) });
   const basePath = process.env.PATH ?? "";
   // Login-shell PATH first (macOS Finder apps miss it), then current PATH,
   // deduplicated. Never hard-code install paths.
@@ -267,6 +270,7 @@ export async function spawnAdapterTransport(
   } catch {
     // ignore: fall back to first-on-PATH
   }
+  spikeMark("acp.spawn.diagnose-tools", { provider, ms: Math.round(performance.now() - tSpawn0) }); // SPIKE(#114): cumulative
   const AutoBins = agentBinEnv({ claude: claudeBin, codex: codexBin }).env;
   const wanted = provider === "claude" ? claudeBin : codexBin;
   const adapterVar = provider === "claude" ? "CLAUDE_CODE_EXECUTABLE" : "CODEX_PATH";
@@ -354,6 +358,7 @@ export async function spawnAdapterTransport(
     throw e;
   }
 
+  spikeMark("acp.spawn.initialized", { provider, ms: Math.round(performance.now() - tSpawn0) }); // SPIKE(#114): cumulative
   // Share policy/queue maps with the runner via the transport handle.
   const transport: Transport & {
     policies: Map<string, SessionPolicy>;

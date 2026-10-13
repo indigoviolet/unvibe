@@ -29,6 +29,7 @@ import { friendlySessionStartError } from "../../exec/shim-resolve.js";
 import { toAcpMcpServers } from "./mcp.js";
 import { aggregateTurnUsage, deltaTurnUsage, type TurnUsage } from "./usage.js";
 import { errorMessage, isCancelError, isRetryableError } from "./errors.js";
+import { spikeMark, spikeOn } from "../../spike/timing.js"; // SPIKE(#114)
 import {
   normalizeProvider,
   type AcpSessionRecord,
@@ -121,11 +122,38 @@ export class AcpAgentRunner implements AgentRunner {
 
   private async ensureCaller(provider: ProviderId): Promise<{ request: (m: string, p: unknown) => Promise<unknown>; notify: (m: string, p: unknown) => Promise<void> }> {
     const c = this.conn(provider);
-    const caller = await c.ensure();
+    // SPIKE(#114): time adapter start-up (only when the transport is cold).
+    const cold = !c.alive;
+    const tEnsure = performance.now();
+    const real = await c.ensure();
+    if (cold) spikeMark("acp.adapter-start", { provider, ms: Math.round(performance.now() - tEnsure) });
     // Reapply canonical policies: a restart drops the per-transport map.
     const all = this.policies.get(provider);
     if (all) c.reapply(all);
     // Re-set this session's policy in case the transport is fresh.
+    if (!spikeOn) return real;
+    // SPIKE(#114): time every ACP request (session/new, fork, prompt, ...).
+    const caller = {
+      request: async (m: string, p: unknown): Promise<unknown> => {
+        const t0 = performance.now();
+        let ok = true;
+        try {
+          return await real.request(m, p);
+        } catch (e) {
+          ok = false;
+          throw e;
+        } finally {
+          spikeMark("acp.request", {
+            provider,
+            method: m,
+            sessionId: (p as { sessionId?: string } | null)?.sessionId,
+            ms: Math.round(performance.now() - t0),
+            ok,
+          });
+        }
+      },
+      notify: (m: string, p: unknown) => real.notify(m, p),
+    };
     return caller;
   }
 
@@ -423,7 +451,32 @@ export class AcpAgentRunner implements AgentRunner {
     // Live streaming: subscribe before sending so early chunks are not lost.
     const pending: unknown[] = [];
     const waker: { fn: (() => void) | null } = { fn: null };
+    // SPIKE(#114): turn timeline (first update, first text, tools, end).
+    const tPrompt = performance.now();
+    const since = (): number => Math.round(performance.now() - tPrompt);
+    let sawUpdate = false;
+    let sawText = false;
+    let textChars = 0;
+    let lastTextAt = 0;
+    spikeMark("acp.turn.start", { provider: rec.provider, sessionId: rec.acpSessionId, promptChars: text.length });
     const onUpdate = (u: unknown): void => {
+      if (spikeOn) {
+        const su = u as { sessionUpdate?: string; content?: { type?: string; text?: string }; title?: string; status?: string; toolCallId?: string };
+        if (!sawUpdate) {
+          sawUpdate = true;
+          spikeMark("acp.turn.first-update", { sessionId: rec.acpSessionId, kind: su?.sessionUpdate, ms: since() });
+        }
+        if (su?.sessionUpdate === "agent_message_chunk" && su.content?.type === "text" && su.content.text) {
+          if (!sawText) {
+            sawText = true;
+            spikeMark("acp.turn.first-text", { sessionId: rec.acpSessionId, ms: since() });
+          }
+          textChars += su.content.text.length;
+          lastTextAt = since();
+        } else if (su?.sessionUpdate === "tool_call" || su?.sessionUpdate === "tool_call_update") {
+          spikeMark("acp.turn.tool", { sessionId: rec.acpSessionId, kind: su.sessionUpdate, title: su.title, status: su.status, toolCallId: su.toolCallId, ms: since() });
+        }
+      }
       pending.push(u);
       waker.fn?.();
     };
@@ -516,6 +569,8 @@ export class AcpAgentRunner implements AgentRunner {
       waker.fn = null;
     }
     for (const e of flush()) yield e;
+    // SPIKE(#114): provider response arrived; what follows is our own wait.
+    spikeMark("acp.turn.response", { provider: rec.provider, sessionId: rec.acpSessionId, ms: since(), textChars, lastTextMs: lastTextAt, failed: failed !== null });
     // Grace period for straggler notifications flushed before the response.
     await sleep(300);
     for (const e of flush()) yield e;
@@ -564,6 +619,19 @@ export class AcpAgentRunner implements AgentRunner {
       report = deltaTurnUsage(this.usageBaseline.get(rec.acpSessionId) ?? null, tu);
       this.usageBaseline.set(rec.acpSessionId, tu);
     }
+    // SPIKE(#114): raw usage with the cache read/write split kept apart.
+    spikeMark("acp.turn.usage", {
+      provider: rec.provider,
+      sessionId: rec.acpSessionId,
+      model: rec.model,
+      input: report.inputTokens,
+      cacheRead: report.cachedReadTokens,
+      cacheWrite: report.cachedWriteTokens,
+      output: report.outputTokens,
+      models: tu.models,
+      stopReason,
+      ms: since(),
+    });
     yield {
       type: "usage",
       inputTokens: report.inputTokens,

@@ -29,6 +29,7 @@ import { RetryableError } from "../jobs/errors.js";
 import type { Clock } from "../jobs/clock.js";
 import { RealClock } from "../jobs/clock.js";
 import type { SessionStore } from "./store.js";
+import { spikeTime } from "../spike/timing.js"; // SPIKE(#114)
 
 /**
  * Base identity: (review, review version, guide revision, model). Per-model
@@ -211,11 +212,14 @@ export class SessionManager {
         await this.closeQuietly(closed.session);
       }
     }
-    const session = await this.openBaseSession(
-      { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
-      build.pack,
-      build.signal,
-      build.key,
+    // SPIKE(#114): a base build = session/new + the whole pack as one turn.
+    const session = await spikeTime("sessions.base-build", { key: baseKeyString(build.key), packChars: build.pack.length, hadClosed: Boolean(closed) }, () =>
+      this.openBaseSession(
+        { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
+        build.pack,
+        build.signal,
+        build.key,
+      ),
     );
     const record: BaseRecord = {
       key: build.key,
@@ -453,7 +457,7 @@ export class SessionManager {
     const keyString = typeof baseKey === "string" ? baseKey : baseKeyString(baseKey);
     const base = this.bases.get(keyString);
     if (!base?.live) throw new Error(`SessionManager: base ${keyString} is not live`);
-    await this.sendText(base.session, batch.text, opts.signal);
+    await spikeTime("sessions.append-log-batch", { key: keyString, chars: batch.text.length }, () => this.sendText(base.session, batch.text, opts.signal)); // SPIKE(#114)
     base.logSeq = Math.max(base.logSeq, batch.seq);
     base.lastUsedAt = this.clock.now();
     this.persistBase(base);

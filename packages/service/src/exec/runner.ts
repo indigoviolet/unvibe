@@ -5,6 +5,7 @@
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { spikeMark } from "../spike/timing.js"; // SPIKE(#114)
 
 export interface RunOptions {
   args: string[];
@@ -43,6 +44,7 @@ export class RealCommandRunner implements CommandRunner {
         throw err;
       }
     }
+    const tCmd = performance.now(); // SPIKE(#114)
     return new Promise((resolve, reject) => {
       const child = spawn(cmd, opts.args, {
         cwd: opts.cwd,
@@ -64,6 +66,7 @@ export class RealCommandRunner implements CommandRunner {
       }
       child.on("close", (code) => {
         clearTimeout(timer);
+        spikeMark("cmd", { cmd, args: opts.args.slice(0, 6).join(" ").slice(0, 160), ms: Math.round(performance.now() - tCmd), code, outBytes: stdout.length }); // SPIKE(#114)
         resolve({ stdout, stderr, code: code ?? 1 });
       });
     });
