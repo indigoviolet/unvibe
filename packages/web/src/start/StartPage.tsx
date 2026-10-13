@@ -1211,6 +1211,34 @@ export function changeHead(c: RepoChange): string {
 }
 
 /**
+ * Diff size for a PR row (#100): formatted add/delete/file parts, or null
+ * when the row carries no size data (the row omits the size then).
+ * Thousands separators per the glossary; "1 file" stays singular.
+ */
+export interface DiffSizeParts {
+  additions: string | null;
+  deletions: string | null;
+  files: string | null;
+}
+
+export function diffSizeParts(
+  c: Pick<RepoChange, "additions" | "deletions" | "changedFiles">,
+): DiffSizeParts | null {
+  const num = (n: number | undefined): string | null =>
+    typeof n === "number" && Number.isFinite(n) && n >= 0 ? n.toLocaleString("en-US") : null;
+  const additions = num(c.additions);
+  const deletions = num(c.deletions);
+  const changed = num(c.changedFiles);
+  if (additions === null && deletions === null && changed === null) return null;
+  return {
+    additions: additions === null ? null : `+${additions}`,
+    // U+2212 minus, as in the diff pane.
+    deletions: deletions === null ? null : `−${deletions}`,
+    files: changed === null ? null : `${changed} ${c.changedFiles === 1 ? "file" : "files"}`,
+  };
+}
+
+/**
  * One PR/branch list row (#95, #100, #94): the head line carries the PR
  * number and branch, author, relative update time, diff size and team
  * names — each omitted when unknown — above the title that opens the
@@ -1227,6 +1255,7 @@ function ChangeRow({
   opening: string | null;
   onOpen: (c: RepoChange, i: number) => void;
 }): React.JSX.Element {
+  const size = diffSizeParts(c);
   return (
     <div className="ci">
       <button className="cj" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
@@ -1234,6 +1263,17 @@ function ChangeRow({
           {changeHead(c)}
           {c.author ? ` · ${c.author}` : ""}
           {c.kind === "pr" && typeof c.updatedAt === "number" ? ` · ${timeAgo(c.updatedAt)}` : ""}
+          {size !== null ? (
+            <>
+              {" · "}
+              {size.additions !== null ? <span className="a">{size.additions}</span> : null}
+              {size.additions !== null && size.deletions !== null ? " " : null}
+              {size.deletions !== null ? <span className="d">{size.deletions}</span> : null}
+              {size.files !== null ? (
+                <>{size.additions !== null || size.deletions !== null ? " · " : ""}{size.files}</>
+              ) : null}
+            </>
+          ) : null}
           {c.requestedTeams && c.requestedTeams.length > 0 ? ` · via ${c.requestedTeams.join(", ")}` : ""}
         </span>
         <span className="cx2">{c.title}</span>

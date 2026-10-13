@@ -39,6 +39,13 @@ const TEAM_OLD = pr(14, "Old team ask", NOW - 20 * DAY, {
   requestedTeams: ["core"],
 });
 const UNSCOPED = pr(15, "Stored before scopes", NOW - 3 * HOUR);
+const SIZED = pr(16, "Sized PR", NOW - 4 * HOUR, {
+  reviewScope: "direct",
+  additions: 1200,
+  deletions: 34,
+  changedFiles: 6,
+});
+const UNSIZED = pr(17, "Unsized PR", NOW - 5 * HOUR, { reviewScope: "direct" });
 
 function mockLists(requested: RepoChange[], authoring: RepoChange[] = []): void {
   vi.spyOn(api, "repos").mockResolvedValue({ repos: [REPO] });
@@ -156,5 +163,22 @@ describe("StartPage requested split and filter (#95)", () => {
     renderPage();
     expect(await screen.findByTestId("requested-direct-empty")).toHaveTextContent("No PRs requested of you.");
     expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs requested of your team.");
+  });
+
+  it("renders the diff size when known and omits it when unknown (#100)", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    mockLists([SIZED, UNSIZED]);
+    renderPage();
+    expect(await screen.findByText("Sized PR")).toBeInTheDocument();
+    const sizedMeta = screen.getByText("Sized PR").closest(".ci")?.querySelector(".cw");
+    expect(sizedMeta?.textContent).toContain("+1,200");
+    expect(sizedMeta?.textContent).toContain("−34");
+    expect(sizedMeta?.textContent).toContain("6 files");
+    expect(sizedMeta?.querySelector(".a")?.textContent).toBe("+1,200");
+    expect(sizedMeta?.querySelector(".d")?.textContent).toBe("−34");
+    // The unsized row carries no size text in its meta line.
+    const unsizedMeta = screen.getByText("Unsized PR").closest(".ci")?.querySelector(".cw");
+    expect(unsizedMeta?.textContent).not.toContain("+");
+    expect(unsizedMeta?.textContent).not.toContain("file");
   });
 });
