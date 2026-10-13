@@ -3,8 +3,7 @@
  *
  * Description paragraphs come from the stored description HTML through the
  * single source (`parseDescriptionParagraphs`, issue #96): the `id="..."`
- * attributes ingest wrote, with a positional per-block fallback for stored
- * HTML that predates stable IDs. File lengths for `code:` ranges are
+ * attributes ingest wrote. File lengths for `code:` ranges are
  * derived from hunk coverage (unknown files return null, so `code:` tokens
  * to outside files validate as unverified rather than crashing). Concepts
  * are the union of reader-declared slugs and existing concept pages. Host
