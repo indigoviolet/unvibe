@@ -2330,7 +2330,6 @@ export const mockApi = {
         open: true,
         messages: [],
         post: false,
-        note: false,
         working: "Thinking…",
         turns: [
           {
@@ -2463,7 +2462,6 @@ export const mockApi = {
         open: true,
         messages: [],
         post: false,
-        note: false,
         working: "Writing answer…",
         turns: [
           { id: turnId, question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer…" },
@@ -3098,12 +3096,19 @@ const MOCK_TEMPLATES: PromptTemplate[] = [
       "Base context pack.\n\n{{source}}\n\n{{diff_inline}}\n\n{{pinned_code}}\n\n{{guide}}\n\n{{concepts}}\n\n{{hunk_summaries}}",
   },
   {
-    name: "explain",
+    name: "ask",
     role: "user",
     tier: "main",
     variables: ["anchor", "card", "thread", "change_list", "message"],
     template:
-      "Explain the quoted text.\n\nQuote: {{anchor.quote}}\n\nCard:\n{{card}}\n\nThread:\n{{thread}}\n\nChanges:\n{{change_list}}\n\nMessage: {{message}}",
+      "Answer the question about the selected text.\n\nQuote: {{anchor.quote}}\n\nCard:\n{{card}}\n\nConversation so far:\n{{thread}}\n\nChanges:\n{{change_list}}\n\nQuestion: {{message}}",
+  },
+  {
+    name: "ask_turn",
+    role: "user",
+    tier: "main",
+    variables: ["change_list", "message"],
+    template: "Answer only what is new.\n\nChanges:\n{{change_list}}\n\nQuestion: {{message}}",
   },
 ];
 
@@ -3120,7 +3125,7 @@ function mockExpanded(name: string): PromptExpanded {
           {
             layer: "L4",
             label: name,
-            text: name === "explain" ? "(no text selected — open this template from Explain/Ask/Note)" : `Task for ${name}.`,
+            text: name === "ask" || name === "ask_turn" ? "(no text selected — open this template from Explain/Ask)" : `Task for ${name}.`,
             cached: false,
           },
         ];

@@ -84,7 +84,6 @@ export async function createConversationCard(
       open: true,
       messages: [],
       post: false,
-      note: false,
       turns: [turn],
       working: workingLabel,
     } as unknown as Annotation);
