@@ -896,7 +896,8 @@ needed (that deviation is closed, not added).
   (49), `subprocess-allowlist.test.ts` (`npm` entry), `gh-writes.test.ts`
   still green. Note: the live database file is `unvibe.db`
   (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
-  and is corrected there — the backup covers both names when present.
+  and is corrected there. The legacy `unvibe.sqlite*` backup was removed
+  under #137 — only `unvibe.db*` is backed up and restored.
 
 ### §14.1 Endpoints — all met (ran)
 

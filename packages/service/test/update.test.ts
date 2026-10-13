@@ -500,13 +500,6 @@ describe("per-channel DB backup/restore", () => {
     );
   });
 
-  it("handles the legacy unvibe.sqlite name when present", () => {
-    const dataDir = tmpDir("unvibe-legacy-");
-    fs.writeFileSync(path.join(dataDir, "unvibe.sqlite"), "legacy");
-    const res = backupChannel(dataDir, "release");
-    expect(res.files).toContain("unvibe.sqlite");
-  });
-
   it("backs up nothing on a fresh machine, without failing", () => {
     const dataDir = tmpDir("unvibe-fresh-");
     const res = backupChannel(dataDir, "release");
