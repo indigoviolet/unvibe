@@ -507,6 +507,33 @@ export interface DiagramStatusBody {
   error?: string;
 }
 
+// --- file slices (issue #133: expand a diff beyond its hunks) -----------
+
+/**
+ * `GET /api/reviews/:id/file?path=&commit=&start=&end=` — raw lines
+ * `start` to `end` (1-based, inclusive) of `path` at `commit`, served
+ * from the review's worktree through the same `git show` source as
+ * `get_code`. General on purpose: the diff expander reads hunk
+ * surroundings through it today, later uses read any range the same way.
+ *
+ * Errors never throw: unknown review → 404, bad range → 400, missing or
+ * binary file → 404/400 with a human message.
+ */
+export interface FileSliceResponse {
+  /** Repo-relative path as requested. */
+  path: string;
+  /** Commit as requested. */
+  commit: string;
+  /** First line returned (1-based). */
+  start: number;
+  /** Last line returned (1-based, inclusive). */
+  end: number;
+  /** Total lines of the file at the commit (for "no more lines" states). */
+  totalLines: number;
+  /** Line texts without numbers, `end - start + 1` entries. */
+  lines: string[];
+}
+
 // --- hunks ---------------------------------------------------------------
 
 export interface UpdateHunkRequest {

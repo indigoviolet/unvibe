@@ -71,9 +71,12 @@ export type CodeSliceError = "not-found" | "out-of-range" | "binary";
 /**
  * Raw text of `relPath` lines [start, end] at `rev`, via
  * `git show <rev>:<relPath>` — the single content-at-revision source the
- * `get_code` tool serves and pin persistence reuses. Never throws: git
- * failures, missing files, past-EOF ranges and binary blobs come back as
- * `{ error }`. Callers check the path stays inside the repo first
+ * `get_code` tool serves, pin persistence reuses, and the file-slice
+ * route (`GET /api/reviews/:id/file`, issue #133) reads through. Never
+ * throws: git failures, missing files, past-EOF ranges and binary blobs
+ * come back as `{ error }` (out-of-range also carries the file's
+ * `totalLines` so callers can clamp without a second read). Callers
+ * check the path stays inside the repo first
  * (`McpRegistry.checkPathInRepo`).
  */
 export async function readCodeSlice(
@@ -83,7 +86,7 @@ export async function readCodeSlice(
   relPath: string,
   start: number,
   end: number,
-): Promise<{ text: string } | { error: CodeSliceError }> {
+): Promise<{ text: string; totalLines: number } | { error: CodeSliceError; totalLines?: number }> {
   let stdout: string;
   try {
     const res = await commands.run("git", { args: ["show", `${rev}:${relPath}`], cwd });
@@ -94,6 +97,11 @@ export async function readCodeSlice(
   }
   if (stdout.includes("\0")) return { error: "binary" };
   const all = stdout.split("\n");
-  if (start < 1 || end > all.length) return { error: "out-of-range" };
-  return { text: all.slice(start - 1, end).join("\n") };
+  // `git show` ends output with a newline: drop the split artifact so a
+  // file of N lines reports N, and drop a lone empty artifact for empty
+  // files (total 0).
+  if (all.length > 0 && all[all.length - 1] === "") all.pop();
+  const totalLines = all.length;
+  if (start < 1 || end > totalLines) return { error: "out-of-range", totalLines };
+  return { text: all.slice(start - 1, end).join("\n"), totalLines };
 }
