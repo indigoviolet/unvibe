@@ -55,6 +55,7 @@ import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
 import { resolveEffectiveSettings } from "../settings/index.js";
 import type { ModelCatalog } from "../settings/index.js";
+import type { Pipeline } from "../pipeline/runner.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { buildExcerptMap, readCodeExcerpts } from "./excerpts.js";
@@ -77,6 +78,15 @@ export interface SecondOpinionDeps {
   promptsDir: string;
   mcpBaseUrl: string;
   fixturesDir?: string;
+  /**
+   * The pipeline, for inline diagram finalize only (#145: diagrams in
+   * second-opinion reasoning go through the same check + one repair turn
+   * as every other fill). Type-only: no runtime import, no cycle. The
+   * repair turn runs on the second-opinion session, and finalize never
+   * touches the shared log, so isolation holds. Absent (some tests) →
+   * reasoning blocks are stored as before.
+   */
+  pipeline?: Pipeline;
 }
 
 export interface SecondOpinionRequest {
@@ -584,9 +594,25 @@ export async function requestSecondOpinion(
         const reasoning = typeof reasoningRaw === "string" ? reasoningRaw : body.trim().slice(0, 2000);
         const missed =
           typeof missedRaw === "string" ? missedRaw : Array.isArray(missedRaw) ? missedRaw.join("\n") : undefined;
+        // #145: diagrams in the reasoning go through the same finalize +
+        // one repair turn as every other fill, on the second-opinion
+        // session (not the main one). finalize never touches the shared
+        // log, so nothing leaks beyond what this job already stores.
+        // A failed repair keeps the error-status blocks; prose unaffected.
+        const diagrammed = deps.pipeline
+          ? await deps.pipeline.finalizeInlineBlocks(
+              req.reviewId,
+              forked.session,
+              req.signal ?? ctx.signal,
+              `Second opinion: ${req.cardId}`,
+              "standard",
+              finalBlocks,
+              (u) => ctx.reportUsage(u),
+            )
+          : finalBlocks;
         // One reasoning body may flatten several reply cards (#116):
         // dedupe repeated block IDs so one anchor matches one block.
-        const fixedBlocks = dedupeBlockIds(withValidation(live, finalBlocks, finalValidation, deps.fixturesDir));
+        const fixedBlocks = dedupeBlockIds(withValidation(live, diagrammed, finalValidation, deps.fixturesDir));
         const now = Date.now();
         const result: SecondOpinionResult = {
           id: secondOpinionId(req.cardId, req.mode, provider, model),

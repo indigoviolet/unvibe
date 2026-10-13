@@ -59,6 +59,24 @@ export function dropReaderPreamble<T extends { title: string | null }>(cards: T[
   return cards;
 }
 
+/**
+ * Split a finalized flat block list back across parsed cards by their
+ * original block counts (#145: the reader finalizes inline diagrams over
+ * the flattened cards so a bad diagram costs one shared repair turn, then
+ * restores the per-card split for `readerApply`). Finalize maps blocks 1:1
+ * except a repair reply's extra diagrams, which append to the last card.
+ */
+export function splitFinalizedBlocks<T extends { blocks: Block[] }>(cards: T[], blocks: Block[]): T[] {
+  let i = 0;
+  return cards.map((c, idx) => {
+    const take = blocks.slice(i, i + c.blocks.length);
+    i += c.blocks.length;
+    const rest = idx === cards.length - 1 ? blocks.slice(i) : [];
+    i += rest.length;
+    return { ...c, blocks: [...take, ...rest] };
+  });
+}
+
 /** Split a reader reply into root cards + placeholders + concepts. */
 export function readerApply(
   parsedCards: { title: string | null; blocks: Block[] }[],

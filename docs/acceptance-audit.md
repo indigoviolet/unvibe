@@ -275,11 +275,20 @@ needed (that deviation is closed, not added).
    facts only: a `degraded` field fails terminally, and a
    process-complaint frame fails when the turn ran without the review
    MCP server or hit a dead MCP URL — tool names and MCP/gh alone never
-   fail a job. Connection-error failures retry once on a fresh session;
-   everything else degraded is terminal. Streamed partials are cleared
-   and the reason lands in the job error on the Debug page
-   (`degraded-turn-51.test.ts`). A reply anchor that names only the card
-   gets one repair turn carrying the reason (`validate.test.ts`).
+   fail a job. Connection-error failures retry once on a fresh session
+   (fork jobs since #51, the reader since #146: fresh per-run secret +
+   session, deterministic provisional ids so the retry overwrites rather
+   than duplicates, each attempt's usage recorded once); everything else
+   degraded is terminal. A twice-failed reader sets a plain-words stage
+   error ("The guide couldn't be started because the review details
+   couldn't be reached. Please retry.") with Retry, the raw reason
+   staying on the job error for the Debug page. Streamed partials are
+   cleared and the reason lands in the job error on the Debug page
+   (`degraded-turn-51.test.ts`, `reader-146-124.test.ts`). A reply anchor
+   that names only the card gets one repair turn carrying the reason
+   (`validate.test.ts`). The reader's citation-repair prompt (naming the
+   failed citations) is kept on the job's stored prompt, so the Debug
+   page shows what failed (#124).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
@@ -749,7 +758,12 @@ needed (that deviation is closed, not added).
 - Interface (`start/fork/load/prompt/close`, event union) — met
   (`shared/src/agent.ts`, `agent/acp/runner.ts`).
 - Fork works both adapters (+Claude resume quirk handled) — met (M0
-  results table 12/12 + 11/12; `runner.ts` fork/resume).
+  results table 12/12 + 11/12; `runner.ts` fork/resume). Forks carry the
+  same `mcpServers` + `_meta` as new/resume/load (#124, fake-transport
+  pinned); live-verified that a Codex fork still comes up with no review
+  tools (zero tool attempts across 7 forks — the drop is inside the
+  adapter/CLI fork path, a bigger fix explicitly deferred), so the live
+  fork-tools check is skipped until then (`test:live:fork-tools`).
 - No-fork fallback (byte-identical first message, caching) — met (M0 §8
   rows; `pipeline/runner.ts:830 forkFor`; `sessions/manager.ts:271
   forkConversation`; fallback test `pipeline.test.ts:444`).
@@ -889,6 +903,14 @@ needed (that deviation is closed, not added).
    streamed, and text before the first `## ` card is dropped — met
    (`pipeline/apply.ts`, `pipeline.test.ts` “stored once”). Reviews
    created before the fix keep their duplicate cards; no migration.
+   Diagrams the reader writes inline in guide cards run the same
+   finalize + one repair turn as every other fill (#145: flattened
+   across cards for one shared repair turn on the reader session, then
+   split back — `splitFinalizedBlocks`); a failed repair keeps
+   error-status blocks, prose unaffected. Extra turns per guide build:
+   at most one citation repair + one diagram repair per reader run, and
+   at most one diagram repair per second-opinion run (each other fill
+   keeps its existing one-repair bound).
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×2 with evidence/assessment/confidence +
    suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
@@ -1384,17 +1406,20 @@ invalid; `shared/test/blocks.test.ts` one case per container;
 component change). Since #130, Explain expansions, go-deeper results,
 concept pages and aside-nested diagrams additionally run the same
 finalize + one repair turn as Add-diagram blocks
-(`diagram-finalize.ts`; go-deeper/concept repair runs on the fill's own
-session, nested repairs splice into the failed slots keeping stored
-ids), so a bad inline diagram is repaired before it reaches the reader;
-an unrepairable one resolves to 409 `error` with the source shown and a
-plain note + retry, never 404/500, and never breaks its card.
-Second-opinion reasoning still skips the repair turn (on-demand render
-only).
-Open: ask thread replies still show the raw D2 source (`<pre
-class="d2">`, no fetch). Serving them through the same endpoint would
-need thread replies stored as blocks (a storage change) or parsing the
-HTML back (fragile); left as static source text with working citations.
+   (`diagram-finalize.ts`; go-deeper/concept repair runs on the fill's own
+   session, nested repairs splice into the failed slots keeping stored
+   ids), so a bad inline diagram is repaired before it reaches the reader;
+   an unrepairable one resolves to 409 `error` with the source shown and a
+   plain note + retry, never 404/500, and never breaks its card. Since
+   #145 the same path covers diagrams written inline in guide (reader)
+   cards and diagrams in second-opinion reasoning (repair on the
+   second-opinion session/model, shared log untouched — isolation holds;
+   `second-opinion.test.ts` reasoning-diagram cases).
+   Open: ask thread replies still show the raw D2 source (`<pre
+   class="d2">`, no fetch). Serving them through the same endpoint would
+   need thread replies stored as blocks (a storage change) or parsing the
+   HTML back (fragile); left as static source text with working citations
+   (with #136).
 
 ### Immediate action feedback (#46, complete)
 

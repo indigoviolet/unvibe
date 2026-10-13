@@ -47,7 +47,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
-import { criticApply, isDefaultReaderCardId, readerApply, readerCardId } from "./apply.js";
+import { criticApply, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
@@ -1020,11 +1020,15 @@ export class Pipeline {
 
   /**
    * Finalize inline diagrams for a fill that already holds its blocks
-   * (#130): pre-check + render, plus exactly one repair turn on the
+   * (#130, #145): pre-check + render, plus exactly one repair turn on the
    * fill's own session when needed. A failed repair keeps the
-   * error-status blocks; the prose is unaffected.
+   * error-status blocks; the prose is unaffected. One place decides "this
+   * block is a diagram that needs finalizing", used by every job kind:
+   * pipeline fills call this directly; second opinions call it through
+   * their deps' pipeline. Never touches the shared log (no ingestTurn),
+   * so second-opinion isolation holds.
    */
-  private async finalizeInlineBlocks(
+  async finalizeInlineBlocks(
     reviewId: string,
     session: Session,
     signal: AbortSignal | undefined,
@@ -1316,106 +1320,152 @@ export class Pipeline {
       dedupe: { anchor: "guide", requestKind: "reader", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
-        const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
         // Card ids present before this turn: a degraded turn removes what
-        // it streamed, never older cards (#51).
+        // it streamed, never older cards (#51). Read once: a retry's own
+        // streamed cards must clear on a terminal failure too (#146).
         const beforeIds = new Set(
           (this.opts.reviews.getSnapshot(reviewId)?.pages.find((p) => p.id === "root")?.cards ?? []).map((c) => c.id),
         );
-        const session = await this.opts.runner.start({
-          provider: settings.main.provider,
-          model: settings.main.model,
-          cwd: this.worktreeOf(reviewId),
-          systemPrompt: instructions,
-          mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
-        });
-        ctx.setSessionId(session.id);
-        try {
-          let buffer = "";
-          const streamed = new Set<number>();
-          const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
-          const { text, usage } = await collectStreaming(
-            this.opts.runner,
-            session,
-            prompt,
-            ctx.signal,
-            (delta) => {
-              ctx.reportText(delta);
-              buffer += delta;
-              try {
-                const partials = parseCardsPartial(buffer);
-                // An untitled first section is held back: it is either
-                // preamble (dropped) or settled by the final apply.
-                const skip = partials[0]?.title === null ? 1 : 0;
-                for (let i = skip; i < partials.length; i++) {
-                  const p = partials[i];
-                  const index = i - skip;
-                  if (streamed.has(index)) continue;
-                  streamed.add(index);
-                  void this.applyReaderCard(reviewId, index, p.title, p.blocks);
+        // #146: the reader retries once on a fresh session when a turn
+        // observably hit a dead review-MCP connection, like fork jobs. The
+        // retry gets a fresh per-run secret and session, never the dead
+        // turn's. Anything else (including a second connection failure) is
+        // terminal.
+        for (let attempt = 0; ; attempt++) {
+          const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
+          const session = await this.opts.runner.start({
+            provider: settings.main.provider,
+            model: settings.main.model,
+            cwd: this.worktreeOf(reviewId),
+            systemPrompt: instructions,
+            mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
+          });
+          ctx.setSessionId(session.id);
+          try {
+            let buffer = "";
+            const streamed = new Set<number>();
+            const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
+            const { text, usage } = await collectStreaming(
+              this.opts.runner,
+              session,
+              prompt,
+              ctx.signal,
+              (delta) => {
+                ctx.reportText(delta);
+                buffer += delta;
+                try {
+                  const partials = parseCardsPartial(buffer);
+                  // An untitled first section is held back: it is either
+                  // preamble (dropped) or settled by the final apply.
+                  const skip = partials[0]?.title === null ? 1 : 0;
+                  for (let i = skip; i < partials.length; i++) {
+                    const p = partials[i];
+                    const index = i - skip;
+                    if (streamed.has(index)) continue;
+                    streamed.add(index);
+                    void this.applyReaderCard(reviewId, index, p.title, p.blocks);
+                  }
+                } catch {
+                  // ignore mid-stream
                 }
-              } catch {
-                // ignore mid-stream
-              }
-            },
-            () => {
-              // Text written before a tool call and before any card heading
-              // is the agent narrating its exploration, not card content.
-              if (!/^## /m.test(buffer)) buffer = "";
-            },
-          );
-          ctx.reportUsage(usage);
-          throwIfMcpRefusal(text);
-          await this.recordUsage(reviewId, usage);
-          // Issue #50: reader cards match their own `##` titles.
-          const { cards, data, validation, body } = this.parseAndValidate(reviewId, buffer, []);
-          let finalCards = cards;
-          let finalData = data;
-          let finalValidation = validation;
-          let finalBody = body;
-          this.throwIfDegradedTurn(reviewId, mcpBefore, data, body);
-          if (validation.needsRepairTurn) {
-            const anchorProblem =
-              validation.anchor && !validation.anchor.ok
-                ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
-                : "";
-            const repairPrompt =
-              `Some citations in your previous reply could not be verified:\n` +
-              validation.tokens
-                .filter((t) => t.status === "unverified")
-                .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
-                .join("\n") +
-              anchorProblem +
-              `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
-            const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
-              ctx.reportText(d),
+              },
+              () => {
+                // Text written before a tool call and before any card heading
+                // is the agent narrating its exploration, not card content.
+                if (!/^## /m.test(buffer)) buffer = "";
+              },
             );
-            usage.inputTokens += repair.usage.inputTokens;
-                usage.cachedReadTokens += repair.usage.cachedReadTokens;
-                usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
-            usage.outputTokens += repair.usage.outputTokens;
-            ctx.reportUsage(repair.usage);
-            throwIfMcpRefusal(repair.text);
-            await this.recordUsage(reviewId, repair.usage);
-            const second = this.parseAndValidate(reviewId, repair.text, []);
-            finalCards = second.cards;
-            finalData = second.data;
-            finalValidation = second.validation;
-            finalBody = second.body;
-          }
-          this.throwIfDegradedTurn(reviewId, mcpBefore, finalData, finalBody);
-          await this.applyReaderResult(reviewId, finalCards, finalData, finalValidation);
-          // #122: the guide cards are already applied above; bookkeeping
-          // joins the per-review chain (still awaited before the job ends).
-          await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: session.id, data: finalData }));
-          this.setStage(reviewId, "reader", "done");
-          // Awaited: the reader job ends with its follow-ups enqueued and
-          // the cited-hunk repair applied (#123), never floating behind it.
-          await this.enqueueAfterReader(reviewId);
-          // #122: the guide just landed — build the base before the next click.
-          this.warmBase(reviewId);
+            ctx.reportUsage(usage);
+            throwIfMcpRefusal(text);
+            await this.recordUsage(reviewId, usage);
+            // Issue #50: reader cards match their own `##` titles.
+            const { cards, data, validation, body } = this.parseAndValidate(reviewId, buffer, []);
+            let finalCards = cards;
+            let finalData = data;
+            let finalValidation = validation;
+            let finalBody = body;
+            this.throwIfDegradedTurn(reviewId, mcpBefore, data, body);
+            if (validation.needsRepairTurn) {
+              const anchorProblem =
+                validation.anchor && !validation.anchor.ok
+                  ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
+                  : "";
+              const repairPrompt =
+                `Some citations in your previous reply could not be verified:\n` +
+                validation.tokens
+                  .filter((t) => t.status === "unverified")
+                  .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
+                  .join("\n") +
+                anchorProblem +
+                `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
+              // #124: the repair prompt names the failed citations, so keep
+              // it on the job's stored prompt — the Debug page then shows
+              // what failed (prompt wording, an ID shape, or the validator).
+              ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
+              const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
+                ctx.reportText(d),
+              );
+              usage.inputTokens += repair.usage.inputTokens;
+              usage.cachedReadTokens += repair.usage.cachedReadTokens;
+              usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
+              usage.outputTokens += repair.usage.outputTokens;
+              ctx.reportUsage(repair.usage);
+              throwIfMcpRefusal(repair.text);
+              await this.recordUsage(reviewId, repair.usage);
+              const second = this.parseAndValidate(reviewId, repair.text, []);
+              finalCards = second.cards;
+              finalData = second.data;
+              finalValidation = second.validation;
+              finalBody = second.body;
+            }
+            this.throwIfDegradedTurn(reviewId, mcpBefore, finalData, finalBody);
+            // #145: diagrams the reader wrote inline in guide cards go
+            // through the same finalize + one repair turn as every other
+            // fill, on the reader's own session. Flattened so a bad
+            // diagram costs one shared repair turn, then split back.
+            const flat = finalCards.flatMap((c) => c.blocks);
+            const finalized = await this.finalizeInlineBlocks(
+              reviewId,
+              session,
+              ctx.signal,
+              `Guide: ${finalCards.map((c) => c.title ?? "(untitled)").join(" / ")}`,
+              "standard",
+              flat,
+              (u) => ctx.reportUsage(u),
+            );
+            const withDiagrams = splitFinalizedBlocks(finalCards, finalized);
+            await this.applyReaderResult(reviewId, withDiagrams, finalData, finalValidation);
+            // #122: the guide cards are already applied above; bookkeeping
+            // joins the per-review chain (still awaited before the job ends).
+            await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: session.id, data: finalData }));
+            this.setStage(reviewId, "reader", "done");
+            // Awaited: the reader job ends with its follow-ups enqueued and
+            // the cited-hunk repair applied (#123), never floating behind it.
+            await this.enqueueAfterReader(reviewId);
+            // #122: the guide just landed — build the base before the next click.
+            this.warmBase(reviewId);
+            return;
         } catch (err) {
-          this.setStage(reviewId, "reader", "error", (err as Error).message);
+          // One retry on a fresh session when the turn observably hit a
+          // dead review-MCP connection (#146, like fork jobs): the loop
+          // re-issues the secret and session above. Provisional ids are
+          // deterministic (`readerCardId`), so the retry's streams overwrite
+          // this attempt's partials instead of duplicating them; the final
+          // apply drops whatever the winning attempt did not reproduce.
+          // Usage already reported + recorded per attempt above lands in the
+          // totals exactly once per attempt — never twice, never lost.
+          if (err instanceof DegradedConnError && attempt < 1) continue;
+          // Terminal. The stage error is reader-facing (plain words, #45:
+          // no MCP, no tool names); the raw reason stays on the job error
+          // for the Debug page. Retry is the guide's Retry control (#86).
+          this.setStage(
+            reviewId,
+            "reader",
+            "error",
+            err instanceof DegradedConnError
+              ? "The guide couldn't be started because the review details couldn't be reached. Please retry."
+              : (err as Error).message,
+          );
           if (err instanceof DegradedTurnError) {
             // A degraded turn must leave no card behind: provisional cards
             // streamed mid-turn may already hold the chatter (#51).
@@ -1433,7 +1483,9 @@ export class Pipeline {
             // ignore
           }
           // The reader session is closed: its MCP secret dies with it.
+          // Per attempt, so a retry never reuses the dead turn's secret.
           this.opts.mcp.revokeSession(mcp.secret);
+          }
         }
       },
     });
