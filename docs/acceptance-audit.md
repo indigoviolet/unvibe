@@ -119,23 +119,29 @@ UI); nothing below was edited by this pass.
 
 ### §4.1 Layout — all met
 
-- Top bar (app-wide only: Unvibe home link, breadcrumb trail, badge/Tips
-  where shown, gear Settings icon in the same place; Settings screen has
-  none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
-  cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
-  #31/#55 round 2).
-- Review bar (identity + version selector next to it per #120 + GitHub
-  link-out + Debug icon, [ Guide | Source ] pane toggles incl. full-width
-  source per #83, Comments + primary Submit; source tabs keep PR
-  description / Diff only; at narrow widths the title gives way first and
-  the selector never truncates) — met
+- Top bar (app-wide, every screen but reviews: Unvibe home link,
+  breadcrumb trail, badge on start/Settings, gear Settings icon in the same
+  place; Settings screen has none; no Tips anywhere per #141) — met
+  (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb cases,
+  `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues #31/#55
+  round 2, #141).
+- Review bar (the only bar on a review per #141: home control first, then
+  identity + version selector next to it per #120 + GitHub link-out + Debug
+  icon + compact preview marker, [ Guide | Source ] pane toggles incl.
+  full-width source per #83, Comments + primary Submit; at narrow widths
+  the title gives way first and the selector never truncates; no Settings
+  gear) — met
   (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
   `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
   `55-review-800px.png`, `55-review-dark.png`,
   `83-source-full-width.png`, `120-wide-light.png`,
   `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
   `120-narrow-light-readonly.png`,
-  `120-narrow-dark-readonly.png`).
+  `120-narrow-dark-readonly.png`, `141-review-800-light.png`,
+  `141-review-800-dark.png`, `141-review-1440-light.png`,
+  `141-review-1440-dark.png`,
+  `141-review-readonly-800-light.png`,
+  `141-review-readonly-800-dark.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -1566,18 +1572,29 @@ every agent action so the same handover runs. Service jobs now carry
  review's jobs is live — `running` counts `running` jobs, `queued`
  counts `queued` + `backing-off` (both wait: for a slot, for a retry);
  terminal states count for neither — linking to the review's Debug jobs
- list. A slow gradient drifts while anything runs; queued-only is quiet;
- nothing renders when idle or while the review is still opening/failed
- (the open is ingest state, never a snapshot job). Plain link text, no
- live region. CSS only, no new dependency, no CSP change.
- Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
- `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
- queued-only, hidden idle, hidden while opening), new
- `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
- after cancelling all live jobs, 800px fit, computed
- `animation-name`/`duration` on the dots, reduced-motion off via
- emulation), `copy-guard` green. Screenshots `docs/screenshots/98-*`.
- Full gates not yet run.
+  list. While anything runs (issue #144) a highlight travels around the
+  pill's border with the inside calm — a masked conic gradient on a
+  pseudo-element, so the box never moves, resizes or shifts its neighbours;
+  queued-only is quiet; nothing renders when idle or while the review is
+  still opening/failed (the open is ingest state, never a snapshot job).
+  Plain link text, no live region. Under `prefers-reduced-motion` the dots
+  take turns fading in place (no rise) and the pill's highlight fades in
+  place (no rotation); the rewriting border keeps its colour-only pulse;
+  the depth stepper's pips never animate in either mode. CSS only, no new
+  dependency, no CSP change.
+  Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
+  `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
+  queued-only, hidden idle, hidden while opening), new
+  `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
+  after cancelling all live jobs, 800px fit, computed
+  `animation-name`/`duration` on the dots and on the pill's border in full
+  motion, pill + Submit boxes identical over a full travel cycle, depth
+  stepper still in both modes, reduced-motion fade animations with no
+  transform via emulation), `copy-guard` green. Screenshots
+  `docs/screenshots/98-*` and `docs/screenshots/144-*` (both pill options
+  tried; the travelling border picked over the stronger gradient: visible
+  without flooding the pill or hurting the numbers' contrast).
+  Full gates not yet run.
 
 ### Reload blank page, part 1: error boundaries (#101, complete)
 

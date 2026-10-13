@@ -1,15 +1,19 @@
 /**
- * Review bar (issue #31 round 2): the second row under the top bar on a
- * review, carrying everything review-specific. Full width above both
- * panes; stays in place when the panes scroll.
+ * Review bar (issue #141): the only bar on a review, carrying everything
+ * review-specific. Full width above both panes; stays in place when the
+ * panes scroll.
  *
- * - Left: the review identity (`owner/name#N` + title, truncated with the
+ * - Left: a home control back to the start page (first in focus order),
+ *   then the review identity (`owner/name#N` + title, truncated with the
  *   full title on hover), the version selector next to it (issue #120;
  *   hidden for single-version reviews, the current version annotated in
  *   the dropdown, an older shown version flagged with a warning border),
  *   the PR label linking to GitHub for PR reviews
  *   (#94, new tab) alongside the link-out icon, and Debug as
  *   an icon button (hidden until the review finishes opening, issue #92).
+ *   A compact preview-build marker (full text on hover) shows while the
+ *   running build is a preview. No Settings gear: Settings is reached
+ *   from the start page.
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
  *   its pane (issue #83); `#toggleRight` stays on the Source segment.
  * - Right: Comments and Submit side by side, Submit as the primary button,
@@ -22,6 +26,7 @@ import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { jobCounts } from "./jobCounts.js";
+import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
 
@@ -58,6 +63,14 @@ export function ReviewBar({
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">
+        <Link
+          className="ib bd"
+          to="/"
+          aria-label="Back to the start page"
+          title="Back to the start page"
+        >
+          <Icon name="home" />
+        </Link>
         {prUrl ? (
           <a className="num" href={prUrl} target="_blank" rel="noreferrer" title="Open PR on GitHub">
             {short}
@@ -82,6 +95,7 @@ export function ReviewBar({
             <Icon name="bug" />
           </Link>
         ) : null}
+        <PreviewBuildBadge compact />
       </div>
       <span className="seg" role="group" aria-label="Panes">
         <button type="button" aria-pressed={guideOpen} onClick={onToggleGuide}>

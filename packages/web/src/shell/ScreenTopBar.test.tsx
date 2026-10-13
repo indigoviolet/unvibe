@@ -47,4 +47,10 @@ describe("ScreenTopBar", () => {
     expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
   });
+
+  it("has no Tips control anywhere (issue #141: removed entirely)", () => {
+    renderBar({ crumbs: [{ label: "Settings" }] });
+    expect(screen.queryByRole("button", { name: "Usage tips" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Usage tips" })).toBeNull();
+  });
 });
