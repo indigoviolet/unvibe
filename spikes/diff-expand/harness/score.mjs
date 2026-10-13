@@ -8,11 +8,12 @@ import { isLeadOrBlank } from "./textlead.mjs";
 import * as wts from "./cand-wts.mjs";
 import * as sgNapi from "./cand-astgrep-napi.mjs";
 import * as sgCli from "./cand-astgrep-cli.mjs";
+import * as sgOutline from "./cand-astgrep-outline.mjs";
 import * as lezer from "./cand-lezer.mjs";
 import * as heur from "./cand-heuristic.mjs";
 import { gitDefault, gitUserdiff } from "./cand-git.mjs";
 
-const CANDS = [wts, sgNapi, sgCli, lezer, gitUserdiff, gitDefault, heur];
+const CANDS = [wts, sgNapi, sgCli, sgOutline, lezer, gitUserdiff, gitDefault, heur];
 const filter = process.argv[2] ?? "";
 
 function judge(exp, got, lines) {

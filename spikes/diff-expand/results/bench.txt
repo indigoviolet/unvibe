@@ -1,0 +1,46 @@
+bare "node -e 0" wall time: 29 ms (included in every cold number's process, not in coldMs itself)
+
+typical .tsx (667 lines, 24 KB)
+  wts        cold     82 ms   warm       5.9 ms   rss    83 MB   answer 282-355
+  napi       cold     40 ms   warm      4.07 ms   rss    61 MB   answer 282-355
+  lezer      cold     90 ms   warm     10.18 ms   rss    73 MB   answer 282-355
+  cli        cold     69 ms   warm     15.04 ms   rss    52 MB   answer 282-355
+  outline    cold     98 ms   warm     47.12 ms   rss    51 MB   answer 282-355
+  git        cold     31 ms   warm      3.92 ms   rss    50 MB   answer none
+  heuristic  cold     31 ms   warm      0.31 ms   rss    51 MB   answer none
+
+typical .py (541 lines, 19 KB)
+  wts        cold     66 ms   warm      5.18 ms   rss    76 MB   answer 154-206
+  napi       cold     41 ms   warm      1.94 ms   rss    57 MB   answer 154-206
+  lezer      cold     90 ms   warm      5.12 ms   rss    77 MB   answer 154-206
+  cli        cold     40 ms   warm     11.77 ms   rss    51 MB   answer 154-206
+  outline    cold    112 ms   warm     46.29 ms   rss    51 MB   answer 154-206
+  git        cold     42 ms   warm       4.2 ms   rss    50 MB   answer none
+  heuristic  cold     26 ms   warm      0.18 ms   rss    50 MB   answer 154-206
+
+frame.py (12.7k lines, 447 KB)
+  wts        cold    131 ms   warm     57.54 ms   rss    77 MB   answer 10813-10846
+  napi       cold     80 ms   warm     39.08 ms   rss   112 MB   answer 10813-10846
+  lezer      cold    154 ms   warm     67.11 ms   rss   124 MB   answer 10813-10846
+  cli        cold    143 ms   warm     117.1 ms   rss   101 MB   answer 10813-10846
+  outline    cold    156 ms   warm    119.34 ms   rss    54 MB   answer 10815-10846
+  git        cold     41 ms   warm     13.06 ms   rss    54 MB   answer none
+  heuristic  cold     39 ms   warm      3.11 ms   rss    60 MB   answer 10813-10846
+
+checker.ts (52.7k lines, 3.1 MB)
+  wts        cold    699 ms   warm    529.09 ms   rss   152 MB   answer 12503-12533
+  napi       cold    399 ms   warm    330.58 ms   rss   565 MB   answer 12503-12533
+  lezer      cold    941 ms   warm    854.71 ms   rss   343 MB   answer 12503-12533
+  cli        cold    731 ms   warm    728.15 ms   rss   219 MB   answer 12503-12533
+  outline    cold    518 ms   warm    416.19 ms   rss    61 MB   answer 1459-52552
+  git        cold    130 ms   warm     56.19 ms   rss    73 MB   answer none
+  heuristic  cold     81 ms   warm     12.52 ms   rss    89 MB   answer 12503-12533
+
+react.min.js (31 lines, 11 KB)
+  wts        cold     65 ms   warm      5.58 ms   rss    80 MB   answer 1-31
+  napi       cold     41 ms   warm      3.48 ms   rss    59 MB   answer 1-31
+  lezer      cold     78 ms   warm      8.65 ms   rss    73 MB   answer 1-31
+  cli        cold     42 ms   warm     15.59 ms   rss    51 MB   answer 1-11
+  outline    cold     79 ms   warm     43.51 ms   rss    50 MB   answer none
+  git        cold     31 ms   warm      3.98 ms   rss    50 MB   answer 1-10
+  heuristic  cold     31 ms   warm      0.01 ms   rss    47 MB   answer none

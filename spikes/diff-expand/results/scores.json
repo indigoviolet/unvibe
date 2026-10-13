@@ -63,8 +63,8 @@
      "multiOk": 13
     },
     "js": {
-     "exact": 4,
-     "lead": 3,
+     "exact": 7,
+     "lead": 0,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -99,8 +99,8 @@
      "multiOk": 2
     },
     "ALL": {
-     "exact": 104,
-     "lead": 3,
+     "exact": 107,
+     "lead": 0,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -175,8 +175,8 @@
      "multiOk": 13
     },
     "js": {
-     "exact": 4,
-     "lead": 3,
+     "exact": 7,
+     "lead": 0,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -211,8 +211,8 @@
      "multiOk": 2
     },
     "ALL": {
-     "exact": 104,
-     "lead": 3,
+     "exact": 107,
+     "lead": 0,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -336,6 +336,118 @@
     }
    }
   },
+  "ast-grep outline": {
+   "perLang": {
+    "py": {
+     "exact": 11,
+     "lead": 4,
+     "wrong": 2,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 17,
+     "chainOk": 15,
+     "multi": 8,
+     "multiOk": 6
+    },
+    "go": {
+     "exact": 5,
+     "lead": 7,
+     "wrong": 0,
+     "nothing": 3,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 12,
+     "multi": 0,
+     "multiOk": 0
+    },
+    "rs": {
+     "exact": 8,
+     "lead": 5,
+     "wrong": 1,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 13,
+     "multi": 6,
+     "multiOk": 5
+    },
+    "jv": {
+     "exact": 6,
+     "lead": 3,
+     "wrong": 4,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 9,
+     "multi": 11,
+     "multiOk": 7
+    },
+    "rb": {
+     "exact": 4,
+     "lead": 1,
+     "wrong": 9,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 3,
+     "multi": 13,
+     "multiOk": 1
+    },
+    "js": {
+     "exact": 1,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 9,
+     "unsupported": 0,
+     "error": 0,
+     "n": 10,
+     "chainOk": 1,
+     "multi": 4,
+     "multiOk": 0
+    },
+    "ts": {
+     "exact": 7,
+     "lead": 1,
+     "wrong": 1,
+     "nothing": 5,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 8,
+     "multi": 7,
+     "multiOk": 3
+    },
+    "tsx": {
+     "exact": 7,
+     "lead": 2,
+     "wrong": 1,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 11,
+     "chainOk": 9,
+     "multi": 2,
+     "multiOk": 1
+    },
+    "ALL": {
+     "exact": 49,
+     "lead": 23,
+     "wrong": 18,
+     "nothing": 20,
+     "unsupported": 0,
+     "error": 0,
+     "n": 110,
+     "chainOk": 70,
+     "multi": 51,
+     "multiOk": 23
+    }
+   }
+  },
   "lezer": {
    "perLang": {
     "py": {
@@ -399,8 +511,8 @@
      "multiOk": 0
     },
     "js": {
-     "exact": 4,
-     "lead": 3,
+     "exact": 7,
+     "lead": 0,
      "wrong": 1,
      "nothing": 2,
      "unsupported": 0,
@@ -435,8 +547,8 @@
      "multiOk": 2
     },
     "ALL": {
-     "exact": 83,
-     "lead": 7,
+     "exact": 86,
+     "lead": 4,
      "wrong": 3,
      "nothing": 2,
      "unsupported": 15,
@@ -831,6 +943,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -924,6 +1047,21 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 676,
+       "end": 679
+      },
+      {
+       "start": 654,
+       "end": 679
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -1037,6 +1175,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 417,
+       "end": 540
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -1108,6 +1257,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -1159,6 +1314,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -1247,6 +1408,21 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1717,
+       "end": 1749
+      },
+      {
+       "start": 1307,
+       "end": 2019
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -1376,6 +1552,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 280,
+       "end": 359
+      },
+      {
+       "start": 279,
+       "end": 406
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -1465,6 +1656,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 566,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -1598,6 +1800,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 476,
+       "end": 495
+      },
+      {
+       "start": 119,
+       "end": 692
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -1712,6 +1929,21 @@
      "got": [
       {
        "start": 27,
+       "end": 30
+      },
+      {
+       "start": 24,
+       "end": 49
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 28,
        "end": 30
       },
       {
@@ -1836,6 +2068,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 259,
+       "end": 514
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -1942,6 +2185,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1588,
+       "end": 1637
+      },
+      {
+       "start": 1320,
+       "end": 2065
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -2031,6 +2289,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 117,
+       "end": 147
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -2140,6 +2409,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 96,
+       "end": 118
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -2206,6 +2486,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -2289,6 +2575,21 @@
      "got": [
       {
        "start": 10813,
+       "end": 10846
+      },
+      {
+       "start": 509,
+       "end": 12664
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 10815,
        "end": 10846
       },
       {
@@ -2397,6 +2698,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -2488,6 +2800,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 111,
+       "end": 125
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -2569,6 +2892,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 309,
+       "end": 567
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -2670,6 +3004,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 730,
+       "end": 912
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -2761,6 +3106,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 703,
+       "end": 950
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -2842,6 +3198,17 @@
      "got": [
       {
        "start": 560,
+       "end": 583
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 566,
        "end": 583
       }
      ],
@@ -2938,6 +3305,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1263,
+       "end": 1314
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -3014,6 +3392,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "nothing",
      "chainOk": false,
      "got": [],
@@ -3100,6 +3484,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -3181,6 +3571,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -3247,6 +3643,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -3308,6 +3710,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -3364,6 +3772,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -3450,6 +3864,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 245,
+       "end": 314
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -3516,6 +3941,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -3597,6 +4028,17 @@
      "got": [
       {
        "start": 49,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
        "end": 259
       }
      ],
@@ -3709,6 +4151,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 349,
+       "end": 366
+      },
+      {
+       "start": 328,
+       "end": 578
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -3808,6 +4265,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 36,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "lead",
      "chainOk": true,
@@ -3874,6 +4342,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -3950,6 +4424,17 @@
      "got": [
       {
        "start": 143,
+       "end": 169
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 156,
        "end": 169
       }
      ],
@@ -4062,6 +4547,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1140,
+       "end": 1146
+      },
+      {
+       "start": 1135,
+       "end": 1307
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -4157,6 +4657,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 618,
+       "end": 634
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -4242,6 +4753,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 473,
+       "end": 530
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -4354,6 +4876,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 181
+      },
+      {
+       "start": 143,
+       "end": 182
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "lead",
      "chainOk": true,
@@ -4455,6 +4992,21 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 497,
+       "end": 565
+      },
+      {
+       "start": 491,
+       "end": 566
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -4580,6 +5132,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 409,
+       "end": 426
+      },
+      {
+       "start": 143,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "lead",
      "chainOk": true,
@@ -4655,6 +5222,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -4711,6 +5284,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -4787,6 +5366,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 788,
+       "end": 894
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -4900,6 +5490,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 2194,
+       "end": 2740
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "wrong",
      "chainOk": false,
@@ -4997,6 +5598,21 @@
       },
       {
        "start": 25,
+       "end": 353
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 297,
+       "end": 300
+      },
+      {
+       "start": 35,
        "end": 353
       }
      ],
@@ -5113,6 +5729,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 415,
+       "end": 418
+      },
+      {
+       "start": 39,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -5214,6 +5845,21 @@
       },
       {
        "start": 30,
+       "end": 1962
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 581,
+       "end": 747
+      },
+      {
+       "start": 211,
        "end": 1962
       }
      ],
@@ -5346,6 +5992,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 375,
+       "end": 409
+      },
+      {
+       "start": 63,
+       "end": 1112
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -5425,6 +6086,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -5491,6 +6158,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "nothing",
      "chainOk": false,
      "got": [],
@@ -5593,6 +6266,21 @@
       },
       {
        "start": 38,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 171,
+       "end": 174
+      },
+      {
+       "start": 49,
        "end": 259
       }
      ],
@@ -5709,6 +6397,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 103,
+       "end": 171
+      },
+      {
+       "start": 45,
+       "end": 442
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -5811,6 +6514,17 @@
      "got": [
       {
        "start": 36,
+       "end": 677
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 43,
        "end": 677
       }
      ],
@@ -5920,6 +6634,17 @@
        "start": 299,
        "end": 324
       },
+      {
+       "start": 28,
+       "end": 325
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
       {
        "start": 28,
        "end": 325
@@ -6042,6 +6767,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 226,
+       "end": 257
+      },
+      {
+       "start": 135,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -6136,6 +6876,17 @@
      "got": [
       {
        "start": 34,
+       "end": 129
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 35,
        "end": 129
       }
      ],
@@ -6243,6 +6994,21 @@
       },
       {
        "start": 59,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 181,
+       "end": 310
+      },
+      {
+       "start": 60,
        "end": 694
       }
      ],
@@ -6366,6 +7132,17 @@
       },
       {
        "start": 53,
+       "end": 451
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 75,
        "end": 451
       }
      ],
@@ -6498,6 +7275,21 @@
       {
        "start": 2098,
        "end": 2127
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 2102,
+       "end": 2115
       },
       {
        "start": 28,
@@ -6639,6 +7431,21 @@
       },
       {
        "start": 972,
+       "end": 2078
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 973,
        "end": 2078
       },
       {
@@ -6794,6 +7601,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 973,
+       "end": 2072
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "unsupported",
      "chainOk": null,
@@ -6862,6 +7684,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -6980,6 +7808,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 386,
+       "end": 406
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "unsupported",
      "chainOk": null,
@@ -7049,6 +7892,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -7164,6 +8013,21 @@
       },
       {
        "start": 971,
+       "end": 2051
+      },
+      {
+       "start": 27,
+       "end": 2146
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 972,
        "end": 2051
       },
       {
@@ -7319,6 +8183,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 16,
+       "end": 891
+      },
+      {
+       "start": 8,
+       "end": 892
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "unsupported",
      "chainOk": null,
@@ -7440,6 +8319,21 @@
       },
       {
        "start": 4,
+       "end": 232
+      },
+      {
+       "start": 3,
+       "end": 233
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 8,
        "end": 232
       },
       {
@@ -7591,6 +8485,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 24,
+       "end": 212
+      },
+      {
+       "start": 11,
+       "end": 213
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "unsupported",
      "chainOk": null,
@@ -7713,6 +8622,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 28,
+       "end": 172
+      },
+      {
+       "start": 11,
+       "end": 173
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "unsupported",
      "chainOk": null,
@@ -7816,6 +8740,17 @@
        "start": 4,
        "end": 693
       },
+      {
+       "start": 3,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
       {
        "start": 3,
        "end": 694
@@ -7961,6 +8896,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 19,
+       "end": 80
+      },
+      {
+       "start": 6,
+       "end": 82
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "unsupported",
      "chainOk": null,
@@ -8066,6 +9016,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "unsupported",
      "chainOk": null,
@@ -8163,6 +9119,21 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 295,
+       "end": 299
+      },
+      {
+       "start": 67,
+       "end": 300
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "unsupported",
      "chainOk": null,
@@ -8238,6 +9209,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "nothing",
      "chainOk": false,
@@ -8299,6 +9276,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "nothing",
      "chainOk": false,
      "got": [],
@@ -8399,6 +9382,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "nothing",
      "chainOk": false,
      "got": [],
@@ -8534,6 +9523,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "wrong",
      "chainOk": false,
@@ -8625,6 +9620,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -8664,22 +9665,22 @@
    ],
    "results": {
     "tree-sitter-wasm": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 819,
+       "start": 805,
        "end": 870
       }
      ],
      "error": null
     },
     "ast-grep napi": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 819,
+       "start": 805,
        "end": 870
       }
      ],
@@ -8691,12 +9692,18 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 819,
+       "start": 805,
        "end": 870
       }
      ],
@@ -8803,6 +9810,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "nothing",
      "chainOk": false,
      "got": [],
@@ -8938,6 +9951,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -9009,22 +10028,22 @@
    ],
    "results": {
     "tree-sitter-wasm": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 522,
+       "start": 505,
        "end": 575
       }
      ],
      "error": null
     },
     "ast-grep napi": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 522,
+       "start": 505,
        "end": 575
       }
      ],
@@ -9036,12 +10055,18 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 522,
+       "start": 505,
        "end": 575
       }
      ],
@@ -9090,22 +10115,22 @@
    ],
    "results": {
     "tree-sitter-wasm": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 365,
+       "start": 324,
        "end": 407
       }
      ],
      "error": null
     },
     "ast-grep napi": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 365,
+       "start": 324,
        "end": 407
       }
      ],
@@ -9117,12 +10142,18 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
-     "verdict": "lead",
+     "verdict": "exact",
      "chainOk": true,
      "got": [
       {
-       "start": 365,
+       "start": 324,
        "end": 407
       }
      ],
@@ -9196,6 +10227,12 @@
        "end": 11
       }
      ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": null,
+     "chainOk": null,
+     "got": [],
      "error": null
     },
     "lezer": {
@@ -9274,6 +10311,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 359
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -9370,6 +10418,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -9458,6 +10512,21 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -9574,6 +10643,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -9654,6 +10729,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "nothing",
      "chainOk": false,
      "got": [],
@@ -9747,6 +10828,21 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1098,
+       "end": 1135
+      },
+      {
+       "start": 206,
+       "end": 2009
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -9856,6 +10952,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
+       "end": 69
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -9922,6 +11029,12 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [],
@@ -9998,6 +11111,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 20,
+       "end": 100
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -10094,6 +11218,17 @@
      "got": [
       {
        "start": 64,
+       "end": 105
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 65,
        "end": 105
       }
      ],
@@ -10202,6 +11337,12 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": false,
@@ -10298,6 +11439,12 @@
        "end": 2527
       }
      ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
      "error": null
     },
     "lezer": {
@@ -10402,6 +11549,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1459,
+       "end": 52552
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -10493,6 +11651,21 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -10614,6 +11787,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 82,
+       "end": 268
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -10699,6 +11883,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 37,
+       "end": 181
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -10800,6 +11995,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 43,
+       "end": 184
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -10881,6 +12087,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 121,
+       "end": 352
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -10982,6 +12199,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 30,
+       "end": 126
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -11063,6 +12291,17 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 31,
+       "end": 235
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [
@@ -11164,6 +12403,17 @@
      ],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 112,
+       "end": 139
+      }
+     ],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -11235,6 +12485,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -11301,6 +12557,17 @@
      "got": [
       {
        "start": 87,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 88,
        "end": 107
       }
      ],
@@ -11392,6 +12659,12 @@
      "got": [],
      "error": null
     },
+    "ast-grep outline": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
     "lezer": {
      "verdict": "exact",
      "chainOk": true,
@@ -11470,6 +12743,21 @@
      "error": null
     },
     "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 61,
+       "end": 75
+      },
+      {
+       "start": 44,
+       "end": 87
+      }
+     ],
+     "error": null
+    },
+    "ast-grep outline": {
      "verdict": "exact",
      "chainOk": true,
      "got": [

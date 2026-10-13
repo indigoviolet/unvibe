@@ -123,6 +123,9 @@ export function chainFrom(cfg, ad, node, rowA, rowB) {
   const raw = [];
   for (let n = node; n; n = ad.parent(n)) {
     const kind = ad.kind(n);
+    // Anything found inside a parse-error region is a guess (seen: JSX read as a
+    // "method" after an unsupported type syntax). Drop it and keep what encloses the error.
+    if (kind === "ERROR" || kind === "\u26a0") { raw.length = 0; continue; }
     if (cfg.units.has(kind)) { raw.push({ node: n, kind, fn: cfg.fnLike.has(kind), named: n }); continue; }
     const isValue = (cfg.values ?? NONE).has(kind), isObject = (cfg.objects ?? NONE).has(kind);
     if (!isValue && !isObject) continue;

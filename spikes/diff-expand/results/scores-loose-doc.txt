@@ -1,0 +1,4 @@
+Innermost unit: exact / off-by-leading / wrong / nothing / unsupported, per language
+candidate           py            go            rs            jv            rb            js            ts            tsx           ALL
+tree-sitter-wasm    17/0/0/0/0    15/0/0/0/0    14/0/0/0/0    14/0/0/0/0    15/0/0/0/0    7/0/1/2/0     14/0/0/0/0    11/0/0/0/0    107/0/1/2/0      of 110; whole chain right 107/110; chains of 2+ levels 50/51
+ast-grep napi       17/0/0/0/0    15/0/0/0/0    14/0/0/0/0    14/0/0/0/0    15/0/0/0/0    7/0/1/2/0     14/0/0/0/0    11/0/0/0/0    107/0/1/2/0      of 110; whole chain right 107/110; chains of 2+ levels 50/51

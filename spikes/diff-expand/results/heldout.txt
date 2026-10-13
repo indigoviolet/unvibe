@@ -1,0 +1,23 @@
+lang  hunks  ts=lezer  ts=heuristic  ts-has-error-node
+py    60     60/60     60/60         0
+go    60     59/60     50/60         0
+  gin 771dcc6476 gin.go 695-698: tree-sitter 690-760 | lezer none | heuristic 690-760
+rs    60     45/60     42/60         0
+  ripgrep 6e527e9202 crates/ignore/src/pathutil.rs 57-57: tree-sitter 57-60 | lezer 41-79 | heuristic 41-79
+  ripgrep cd1f981bea crates/core/flags/lowargs.rs 528-528: tree-sitter 525-543 | lezer none | heuristic none
+  ripgrep bb8172fe9b crates/matcher/src/interpolate.rs 147-147: tree-sitter 145-331 | lezer 146-331 | heuristic none
+  ripgrep f596a5d875 crates/globset/src/glob.rs 1341-1364: tree-sitter 1094-1702 | lezer 1095-1702 | heuristic none
+  ripgrep a6e0be3c90 crates/printer/src/standard.rs 2704-2704: tree-sitter 2700-2797 | lezer 2701-2797 | heuristic 2700-2718
+  ripgrep 119407d0a9 crates/printer/src/hyperlink.rs 1011-1038: tree-sitter 1011-1038 | lezer 867-1039 | heuristic none
+  axum f8b02f22cf axum/src/routing/tests/merge.rs 398-441: tree-sitter 398-441 | lezer none | heuristic none
+  axum bc8d491243 axum/src/routing/url_params.rs 8-14: tree-sitter 6-15 | lezer 7-15 | heuristic 6-15
+  axum 46d4f02ff3 axum/src/serve/mod.rs 756-756: tree-sitter 756-907 | lezer 701-1274 | heuristic none
+  axum 8ef714c12b axum/src/extract/raw_form.rs 96-101: tree-sitter 96-101 | lezer 56-121 | heuristic none
+  axum de9f13d809 axum/src/serve/mod.rs 208-208: tree-sitter 207-305 | lezer 208-305 | heuristic 207-208
+  axum de9f13d809 axum/src/serve/mod.rs 433-433: tree-sitter 432-494 | lezer 433-494 | heuristic 432-433
+jv    60     60/60     9/60          0
+rb    60     n/a       50/60         0
+js    60     60/60     41/60         0
+ts    60     60/60     36/60         7
+tsx   60     59/60     50/60         1
+  unvibe 1cdef41a7f packages/web/src/settings/VersionSection.tsx 305-305: tree-sitter none | lezer 30-331 | heuristic none

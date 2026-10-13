@@ -4,6 +4,7 @@ candidate           py            go            rs            jv            rb  
 tree-sitter-wasm    17/0/0/0/0    15/0/0/0/0    14/0/0/0/0    14/0/0/0/0    15/0/0/0/0    4/3/1/2/0     14/0/0/0/0    11/0/0/0/0    104/3/1/2/0      of 110; whole chain right 107/110; chains of 2+ levels 50/51
 ast-grep napi       17/0/0/0/0    15/0/0/0/0    14/0/0/0/0    14/0/0/0/0    15/0/0/0/0    4/3/1/2/0     14/0/0/0/0    11/0/0/0/0    104/3/1/2/0      of 110; whole chain right 107/110; chains of 2+ levels 50/51
 ast-grep cli        17/0/0/0/0    12/0/0/3/0    13/0/1/0/0    11/0/2/1/0    14/0/0/1/0    1/0/0/9/0     9/0/2/3/0     9/0/1/1/0     86/0/6/18/0      of 110; whole chain right 86/110; chains of 2+ levels 39/51
+ast-grep outline    11/4/2/0/0    5/7/0/3/0     8/5/1/0/0     6/3/4/1/0     4/1/9/1/0     1/0/0/9/0     7/1/1/5/0     7/2/1/1/0     49/23/18/20/0    of 110; whole chain right 70/110; chains of 2+ levels 23/51
 lezer               17/0/0/0/0    15/0/0/0/0    9/4/1/0/0     14/0/0/0/0    0/0/0/0/15    4/3/1/2/0     13/0/1/0/0    11/0/0/0/0    83/7/3/2/15      of 110; whole chain right 88/110; chains of 2+ levels 33/51
 git -W userdiff     8/0/8/1/0     4/0/11/0/0    2/0/12/0/0    1/0/12/1/0    2/0/12/1/0    1/0/9/0/0     4/0/9/1/0     5/0/5/1/0     27/0/78/5/0      of 110; whole chain right 20/110; chains of 2+ levels 0/51
 git -W default      8/0/9/0/0     2/0/13/0/0    3/0/11/0/0    2/0/12/0/0    1/0/14/0/0    1/0/9/0/0     4/0/9/1/0     5/0/5/1/0     26/0/82/2/0      of 110; whole chain right 26/110; chains of 2+ levels 0/51
@@ -51,6 +52,70 @@ Failures (innermost not exact, or chain wrong):
   ts11   wrong       chain BAD want 2343-2349; 1240-2463 | got 1240-2463 | arrow function as object property
   ts12   wrong       chain BAD want 1580-2071; 1293-2527 | got 1293-2527 | arrow function as object property, 490 lines
   tsx01  wrong       chain BAD want 148-162; 82-268 | got 82-268 | arrow function const in a component
+  tsx10  nothing     chain BAD want 192-288 | got none | whole new describe()
+
+## ast-grep outline: 62
+  py09   wrong       chain BAD want 492-493; 475-495; 119-692 | got 476-495; 119-692 | whole nested def inside a decorated method
+  py10   lead        chain ok  want 27-30; 24-49 | got 28-30; 24-49 | decorated property
+  py11   wrong       chain BAD want 394-402; 259-514 | got 259-514 | whole new decorated method
+  py12   lead        chain ok  want 1587-1637; 1320-2065 | got 1588-1637; 1320-2065 | decorator, async, signature line
+  py14   lead        chain ok  want 95-118 | got 96-118 | decorated function
+  py16   lead        chain ok  want 10813-10846; 509-12664 | got 10815-10846; 509-12664 | two decorators, 12.7k-line file
+  go01   lead        chain ok  want 110-125 | got 111-125 | method with receiver
+  go03   lead        chain ok  want 725-912 | got 730-912 | method
+  go04   lead        chain ok  want 702-950 | got 703-950 | labelled loop in a long method
+  go05   lead        chain ok  want 560-583 | got 566-583 | composite literal in method
+  go06   lead        chain ok  want 1260-1314 | got 1263-1314 | func literal in a struct literal in a method
+  go07   nothing     chain BAD want 449-460 | got none | whole new method with doc comment
+  go08   nothing     chain BAD want 149-176 | got none | doc comment plus first half of function
+  go09   nothing     chain BAD want 54-66 | got none | doc comment only
+  go13   lead        chain ok  want 244-314 | got 245-314 | returned closure
+  go15   lead        chain ok  want 49-259 | got 53-259 | struct field
+  rs01   lead        chain ok  want 346-366; 328-578 | got 349-366; 328-578 | method in impl, doc comment
+  rs02   lead        chain ok  want 26-107 | got 36-107 | struct field, doc comment and derive
+  rs04   lead        chain ok  want 143-169 | got 156-169 | enum variant
+  rs08   lead        chain ok  want 146-181; 143-182 | got 147-181; 143-182 | fn with attribute in trait impl
+  rs10   lead        chain ok  want 408-426; 142-447 | got 409-426; 143-447 | test attribute, async fn, mod tests
+  rs14   wrong       chain BAD want 2437-2456; 2193-2740 | got 2194-2740 | whole new test fn with attribute
+  jv01   lead        chain ok  want 286-300; 25-353 | got 297-300; 35-353 | method with javadoc
+  jv04   wrong       chain BAD want 379-398; 375-409; 59-1112 | got 375-409; 63-1112 | method of an anonymous class
+  jv06   nothing     chain BAD want 19-64 | got none | class javadoc only
+  jv08   lead        chain ok  want 96-171; 44-442 | got 103-171; 45-442 | method
+  jv09   wrong       chain BAD want 663-670; 36-677 | got 43-677 | method javadoc only
+  jv10   wrong       chain BAD want 299-324; 28-325 | got 28-325 | header line of a nested class
+  jv12   lead        chain ok  want 34-129 | got 35-129 | spans a new method and a field
+  jv14   wrong       chain BAD want 136-153; 87-216; 53-451 | got 75-451 | javadoc of a method in a nested class
+  rb01   exact       chain BAD want 2102-2115; 2098-2127; 28-2173 | got 2102-2115; 28-2173 | block in a singleton method in a module
+  rb02   wrong       chain BAD want 1778-1784; 1292-1917; 972-2078; 28-2173 | got 973-2078; 28-2173 | method in class << self in class in module
+  rb03   wrong       chain BAD want 1874-1876; 1288-1913; 972-2072; 28-2167 | got 973-2072; 28-2167 | whole new method
+  rb05   lead        chain BAD want 384-406; 285-724; 28-2167 | got 386-406; 28-2167 | method with doc comment
+  rb07   wrong       chain BAD want 1602-1639; 1287-1907; 971-2051; 27-2146 | got 972-2051; 27-2146 | heredoc in a method
+  rb08   wrong       chain BAD want 584-626; 235-887; 16-891; 8-892 | got 16-891; 8-892 | method in module in class in module
+  rb09   wrong       chain BAD want 202-206; 4-232; 3-233 | got 8-232; 3-233 | whole method
+  rb10   wrong       chain BAD want 57-73; 54-81; 24-212; 11-213 | got 24-212; 11-213 | method in nested class
+  rb11   wrong       chain BAD want 57-95; 12-172; 11-173 | got 28-172; 11-173 | method
+  rb12   wrong       chain BAD want 4-693; 3-694 | got 3-694 | hash constant in a module
+  rb13   wrong       chain BAD want 76-79; 8-80; 7-81; 6-82 | got 19-80; 6-82 | method
+  rb14   nothing     chain BAD want 47-60; 3-96 | got none | it block inside a proc assigned to a constant
+  js01   nothing     chain BAD want 488-514 | got none | JSDoc only, blank line before code, double assignment
+  js02   nothing     chain BAD want 330-343 | got none | JSDoc only, function passed to a call
+  js03   nothing     chain BAD want 180-191; 138-205; 11-568 | got none | whole it() in nested describe()
+  js04   nothing     chain BAD want 251-271; 208-291; 9-636 | got none | nested callbacks inside it()
+  js06   nothing     chain BAD want 805-870 | got none | function expression assigned to a property
+  js07   nothing     chain BAD want 12-14; 9-23; 8-142; 7-143 | got none | function assigned inside it()
+  js08   nothing     chain BAD want 442-450; 360-451; 9-547 | got none | first line of it()
+  js09   nothing     chain BAD want 505-575 | got none | function expression assigned to a property
+  js10   nothing     chain BAD want 324-407 | got none | function expression assigned to a property
+  ts02   nothing     chain BAD want 29-36 | got none | whole new function with JSDoc
+  ts04   nothing     chain BAD want 99-111; 58-112 | got none | it() in describe()
+  ts05   nothing     chain BAD want 64-108 | got none | spans several it()
+  ts10   lead        chain ok  want 64-105 | got 65-105 | function with JSDoc
+  ts11   nothing     chain BAD want 2343-2349; 1240-2463 | got none | arrow function as object property
+  ts12   nothing     chain BAD want 1580-2071; 1293-2527 | got none | arrow function as object property, 490 lines
+  ts13   wrong       chain BAD want 12503-12533; 1458-52552 | got 1459-52552 | nested function in a 52.7k-line file
+  tsx01  wrong       chain BAD want 148-162; 82-268 | got 82-268 | arrow function const in a component
+  tsx07  lead        chain ok  want 111-139 | got 112-139 | function with JSDoc
+  tsx09  lead        chain ok  want 87-107 | got 88-107 | function with JSDoc
   tsx10  nothing     chain BAD want 192-288 | got none | whole new describe()
 
 ## lezer: 29
