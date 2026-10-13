@@ -92,7 +92,7 @@ export function DescriptionView({ reviewId, editor }: Props) {
   const descThreads = useMemo(
     () =>
       (annotations ?? []).filter(
-        (a): a is Annotation => a.type === "thread" && a.anchor.host.kind === "description",
+        (a): a is Annotation => a.type === "comment" && a.anchor.host.kind === "description",
       ),
     [annotations],
   );
@@ -454,7 +454,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
                   reviewId={reviewId}
                   anchor={pending.anchor}
                   quote={pending.quote}
-                  note={pending.note}
+                  kind={pending.kind}
                   initialText={pending.initialText}
                   onDiscard={() => setPending(null)}
                   onCreated={() => setPending(null)}

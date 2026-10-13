@@ -132,7 +132,7 @@ function serverIdFor(action: ReviewAction, res: ActionResponse): string | null {
     case "explain":
       return res.annotationId ?? null;
     case "ask":
-      return res.threadId ?? res.annotationId ?? null;
+      return res.annotationId ?? null;
     case "followup":
       return res.annotationId ?? null;
     case "concept":

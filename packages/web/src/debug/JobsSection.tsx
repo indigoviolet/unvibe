@@ -190,7 +190,7 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
 }
 
 /**
- * Raw diagram failure reasons for one job's card or expansion (issue
+ * Raw diagram failure reasons for one job's card or answer (issue
  * #130): reader-facing diagram text stays plain, so the compiler message
  * surfaces here on the Debug page instead. Empty when the snapshot is
  * not loaded or nothing failed.
@@ -214,11 +214,11 @@ function diagramErrorsFor(snapshot: ReviewSnapshot | null, job: Job): string[] {
       }
     }
   }
-  if (job.threadId) {
-    const found = snapshot.annotations.find((a) => a.id === job.threadId) as unknown as
-      | { expansion?: { blocks: Block[] } }
+  if (job.annotationId) {
+    const found = snapshot.annotations.find((a) => a.id === job.annotationId) as unknown as
+      | { turns?: { blocks: Block[] }[] }
       | undefined;
-    if (found?.expansion) walk(found.expansion.blocks);
+    for (const turn of found?.turns ?? []) walk(turn.blocks);
   }
   return out;
 }

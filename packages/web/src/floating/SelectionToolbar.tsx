@@ -50,8 +50,8 @@ export const NEW_THREAD_EVENT = "unvibe:new-thread";
 export interface NewThreadRequest {
   anchor: ActionAnchor;
   quote: string;
-  /** True = Comment (no agent reply); false = Ask. */
-  note: boolean;
+  /** Comment (no agent reply) or Ask (usual conversation card). */
+  kind: "comment" | "ask";
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
 }
@@ -471,20 +471,20 @@ export function SelectionToolbar() {
       });
   };
 
-  const onAskNote = (note: boolean): void => {
+  const onAskNote = (kind: "comment" | "ask"): void => {
     const current = pendingRef.current;
     if (!current) return;
     dismiss();
-    if (note && current.commentAnchor) {
+    if (kind === "comment" && current.commentAnchor) {
       requestNewThread({
         anchor: current.commentAnchor,
         quote: current.quote,
-        note,
+        kind,
         initialText: blockquoteQuote(current.quote),
       });
       return;
     }
-    requestNewThread({ anchor: current.anchor, quote: current.quote, note });
+    requestNewThread({ anchor: current.anchor, quote: current.quote, kind });
   };
 
   return (
@@ -493,11 +493,11 @@ export function SelectionToolbar() {
         Explain
       </button>
       <span className="sep" />
-      <button type="button" data-act="ask" onClick={() => onAskNote(false)}>
+      <button type="button" data-act="ask" onClick={() => onAskNote("ask")}>
         Ask…
       </button>
       {pending?.revealed ? null : (
-        <button type="button" data-act="note" onClick={() => onAskNote(true)}>
+        <button type="button" data-act="note" onClick={() => onAskNote("comment")}>
           Comment
         </button>
       )}

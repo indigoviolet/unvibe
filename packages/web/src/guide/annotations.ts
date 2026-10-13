@@ -26,11 +26,11 @@ export function onOpenBlockThread(fn: OpenThreadHandler): () => void {
 }
 
 /** Default: no full thread UI yet — hovering the marker previews it. */
-export function openBlockThread(threadId: string, blockId: string): void {
-  openHandler?.(threadId, blockId);
+export function openBlockThread(commentId: string, blockId: string): void {
+  openHandler?.(commentId, blockId);
 }
 
-/** All thread annotations anchored on a guide card + block. */
+/** All comment annotations anchored on a guide card + block. */
 export function blockThreads(
   annotations: Annotation[],
   cardId: string,
@@ -38,7 +38,7 @@ export function blockThreads(
 ): Annotation[] {
   return annotations.filter(
     (a) =>
-      a.type === "thread" &&
+      a.type === "comment" &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
   );

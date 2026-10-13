@@ -31,7 +31,7 @@ interface Pending {
   fileKey: string;
   line: number;
   quote: string;
-  note: boolean;
+  kind: "comment" | "ask";
   initialText?: string;
 }
 
@@ -54,7 +54,7 @@ export function useDiffCommentBindings(reviewId: string): {
         fileKey: req.anchor.fileKey,
         line: req.anchor.line,
         quote: req.quote,
-        note: req.note,
+        kind: req.kind,
         ...(req.initialText !== undefined ? { initialText: req.initialText } : {}),
       });
     };
@@ -65,7 +65,7 @@ export function useDiffCommentBindings(reviewId: string): {
   const byLine = useMemo(() => {
     const map = new Map<string, Annotation[]>();
     for (const annotation of annotations ?? []) {
-      if (annotation.type !== "thread") continue;
+      if (annotation.type !== "comment") continue;
       const thread = annotation as Annotation;
       const host = thread.anchor.host;
       if (host.kind !== "diff-line") continue;
@@ -102,7 +102,7 @@ export function useDiffCommentBindings(reviewId: string): {
         }, 60);
         return;
       }
-      setPending({ fileKey, line, quote: "", note: true });
+      setPending({ fileKey, line, quote: "", kind: "comment" });
     },
     [byLine, reviewId],
   );
@@ -123,7 +123,7 @@ export function useDiffCommentBindings(reviewId: string): {
               reviewId={reviewId}
               anchor={{ where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
               quote={pending.quote}
-              note={pending.note}
+              kind={pending.kind}
               initialText={pending.initialText}
               onDiscard={() => setPending(null)}
               onCreated={() => setPending(null)}
@@ -139,7 +139,7 @@ export function useDiffCommentBindings(reviewId: string): {
           reviewId={reviewId}
           anchor={{ where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
           quote={pending.quote}
-          note={pending.note}
+          kind={pending.kind}
           initialText={pending.initialText}
           onDiscard={() => setPending(null)}
           onCreated={() => setPending(null)}
@@ -147,10 +147,10 @@ export function useDiffCommentBindings(reviewId: string): {
       );
     }
     // Explains started from a diff selection show a placeholder under the
-    // line until the expansion lands (issue #46). Ask turns keep their
-    // composer; retargeted entries vanish from the anchor key, so an
-    // arrived expansion never doubles with its placeholder — and an
-    // expansion that lands before the response hides it too (issue #97).
+    // line until the card lands (issue #46). An Ask keeps its composer
+    // until the card arrives; retargeted entries vanish from the anchor
+    // key, so an arrived card never doubles with its placeholder — and a
+    // card that lands before the response hides it too (issue #97).
     if (!readOnly) {
       const arrived = new Set<string>();
       for (const a of annotations ?? []) {

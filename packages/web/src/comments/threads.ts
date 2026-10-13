@@ -27,23 +27,11 @@ export function isPosted(thread: Annotation): boolean {
   return thread.postedAt !== undefined;
 }
 
-/**
- * Issue #135: only Comments are submitted. A thread counts as a comment
- * when it never asks the agent (`note`) or when its first message is an
- * agent-drafted suggested comment (PRD §4.9). Ask threads are never
- * submitted. Mirrors the service's `isCommentThread` so the menu and the
- * Submit count show what will be posted.
- */
-export function isCommentThread(thread: Annotation): boolean {
-  if (thread.note) return true;
-  return thread.messages.some((m) => m.suggested);
-}
-
 /** Comment threads marked For PR that are not yet posted. */
 export function forPrThreads(snapshot: ReviewSnapshot | null): Annotation[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter(
-    (a) => a.type === "thread" && a.post && !isPosted(a as Annotation) && isCommentThread(a as Annotation),
+    (a) => a.type === "comment" && a.post && !isPosted(a as Annotation),
   ) as Annotation[];
 }
 
@@ -55,11 +43,11 @@ export function pendingCount(snapshot: ReviewSnapshot | null): number {
   return comments + desc;
 }
 
-/** All threads with at least one message (the Comments menu lists these). */
+/** All comments with at least one message (the Comments menu lists these). */
 export function listedThreads(snapshot: ReviewSnapshot | null): Annotation[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter(
-    (a) => a.type === "thread" && (a as Annotation).messages.length > 0,
+    (a) => a.type === "comment" && (a as Annotation).messages.length > 0,
   ) as Annotation[];
 }
 

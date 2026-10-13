@@ -57,8 +57,6 @@ export function jobLabel(kind: JobKind): string {
       return inflightLabel("diagram");
     case "go-deeper":
       return inflightLabel("generate");
-    case "explain":
-      return inflightLabel("explain");
     case "ask":
       return inflightLabel("ask");
     case "concept":
@@ -82,14 +80,14 @@ export function isRewriteKind(kind: InFlightKind | JobKind): boolean {
   return kind === "depth" || kind === "examples" || kind === "diagram";
 }
 
-/** Live (queued/running/backing-off) job working on a card, answer or thread. */
+/** Live (queued/running/backing-off) job working on a card or answer. */
 export function liveJobForTarget(
   jobs: Job[],
   targetId: string,
 ): Job | undefined {
   return jobs.find(
     (j) =>
-      (j.cardId === targetId || j.threadId === targetId) && isLiveJobState(j.state),
+      (j.cardId === targetId || j.annotationId === targetId) && isLiveJobState(j.state),
   );
 }
 
@@ -196,23 +194,6 @@ function bareBlockId(id: string): string {
  */
 export function blockIdsMatch(entryBid: string, hostBlockId: string): boolean {
   return entryBid === hostBlockId || entryBid === bareBlockId(hostBlockId);
-}
-
-/** In-flight entry for a thread (reply/retry ask turns). */
-export function busyForThread(
-  inflight: Record<string, InFlightAction>,
-  jobs: Job[],
-  threadId: string,
-): BusyState | null {
-  const entry = inflight[threadId];
-  if (entry) {
-    return { kind: entry.kind, label: inflightLabel(entry.kind), rewriting: false };
-  }
-  const job = liveJobForTarget(jobs, threadId);
-  if (job) {
-    return { kind: job.kind, label: jobLabel(job.kind), rewriting: false };
-  }
-  return null;
 }
 
 // --- entry keys -----------------------------------------------------------
