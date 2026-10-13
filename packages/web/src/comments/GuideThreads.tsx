@@ -158,7 +158,10 @@ export function GuideThreadHooks() {
     const onMouseOver = (e: MouseEvent): void => {
       const target = e.target as Element | null;
       if (!target || typeof target.closest !== "function") return;
-      document.querySelectorAll("#page .on").forEach((x) => x.classList.remove("on"));
+      // Clear only the outlines this handler adds (marks + open threads).
+      // A bare `#page .on` would also strip the depth stepper pips
+      // (`.pips i.on`, issue #111), which React owns.
+      document.querySelectorAll("#page mark.on, #page .ithread.on").forEach((x) => x.classList.remove("on"));
       const mark = target.closest("mark[data-thr]");
       if (mark) {
         const id = (mark as HTMLElement).dataset.thr ?? "";
