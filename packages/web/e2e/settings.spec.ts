@@ -10,12 +10,13 @@
  */
 import { expect, test } from "./network-guard.js";
 
-test.beforeEach(async ({ page }) => {
-  await page.goto("/settings");
+async function gotoSettings(page: import("@playwright/test").Page, url = "/settings"): Promise<void> {
+  await page.goto(url);
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
-});
+}
 
 test("settings default to the Repos tab; tabs switch panels", async ({ page }) => {
+  await gotoSettings(page);
   const tabs = page.getByRole("tablist", { name: "Settings sections" });
   await expect(tabs.getByRole("tab", { name: "Repos" })).toHaveAttribute(
     "aria-selected",
@@ -55,6 +56,7 @@ test("?tab= deep link survives reload", async ({ page }) => {
 });
 
 test("unsaved edits survive a tab switch", async ({ page }) => {
+  await gotoSettings(page);
   await page.getByRole("tab", { name: "Limits" }).click();
   await page.locator("#limit-sessionsPerProvider").fill("9");
   await page.getByRole("tab", { name: "Models" }).click();
@@ -64,6 +66,7 @@ test("unsaved edits survive a tab switch", async ({ page }) => {
 });
 
 test("repositories section lists remembered repos and adds by path", async ({ page }) => {
+  await gotoSettings(page);
   const section = page.locator('[data-testid="repositories-section"]');
   await expect(section).toBeVisible();
   await expect(section.getByText("urllib3/urllib3")).toBeVisible();
@@ -100,6 +103,7 @@ test("older #section links land on the matching tab", async ({ page }) => {
 });
 
 test("repositories add by URL clones with a busy state and marks the clone", async ({ page }) => {
+  await gotoSettings(page);
   const section = page.locator('[data-testid="repositories-section"]');
   await section.getByLabel("Add a repo by URL").fill("https://github.com/acme/app");
   await section.getByRole("button", { name: "Clone and add" }).click();
@@ -130,6 +134,7 @@ test("repositories add by URL shows the clone busy state and disables the contro
 });
 
 test("repositories add by URL rejects invalid input inline without a request", async ({ page }) => {
+  await gotoSettings(page);
   const section = page.locator('[data-testid="repositories-section"]');
   await section.getByLabel("Add a repo by URL").fill("not a repo!!!");
   await section.getByRole("button", { name: "Clone and add" }).click();
@@ -158,6 +163,7 @@ test("repositories add by URL surfaces the service error", async ({ page }) => {
 });
 
 test("repositories remove deletes a managed clone with clear confirm copy", async ({ page }) => {
+  await gotoSettings(page);
   const section = page.locator('[data-testid="repositories-section"]');
   await section.getByLabel("Add a repo by URL").fill("acme/app");
   await section.getByRole("button", { name: "Clone and add" }).click();
@@ -170,6 +176,7 @@ test("repositories remove deletes a managed clone with clear confirm copy", asyn
 });
 
 test("repositories remove only forgets a path checkout", async ({ page }) => {
+  await gotoSettings(page);
   const section = page.locator('[data-testid="repositories-section"]');
   await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
   await section.getByRole("button", { name: "Add by path" }).click();
@@ -183,6 +190,7 @@ test("repositories remove only forgets a path checkout", async ({ page }) => {
 });
 
 test("repositories remove is refused while reviews exist", async ({ page }) => {
+  await gotoSettings(page);
   // The seed urllib3 repo has mock sessions: removing it 409s as is.
   const section = page.locator('[data-testid="repositories-section"]');
   const row = section.locator('[data-testid="repo-urllib3"]');
@@ -198,6 +206,7 @@ test("repositories remove is refused while reviews exist", async ({ page }) => {
 });
 
 test("model pickers list provider models and warn on same-model second opinion", async ({ page }) => {
+  await gotoSettings(page);
   await page.getByRole("tab", { name: "Models" }).click();
   const main = page.locator('[data-testid="model-main"]');
   await expect(main.locator("select").nth(1)).toHaveValue("mock-main");
@@ -232,6 +241,7 @@ test("model pickers list provider models and warn on same-model second opinion",
 });
 
 test("prompts show template variables (expanded text lives on the debug page)", async ({ page }) => {
+  await gotoSettings(page);
   await page.getByRole("tab", { name: "Prompts" }).click();
   const card = page.locator('[data-testid="prompt-reader"]');
   await card.getByRole("button", { name: "Expand reader" }).click();
@@ -244,6 +254,7 @@ test("prompts show template variables (expanded text lives on the debug page)", 
 
 // DISABLED(#119): mock-mode duplicate of the real-service persist test (here persist is the mock writing localStorage)
 test.skip("limits persist across reload", async ({ page }) => {
+  await gotoSettings(page);
   await page.getByRole("tab", { name: "Limits" }).click();
   const input = page.locator("#limit-sessionsPerProvider");
   await input.fill("6");
@@ -260,6 +271,7 @@ test.skip("limits persist across reload", async ({ page }) => {
 
 // DISABLED(#119): body only renders the static hint; inline errors live in settings-versions-service.spec.ts
 test.skip("limits show service validation errors inline", async ({ page }) => {
+  await gotoSettings(page);
   await page.getByRole("tab", { name: "Limits" }).click();
   // Mock accepts anything, so drive the inline-error path through the
   // real-service spec; here just assert the field + hint render.

@@ -37,7 +37,9 @@ async function gotoReview(page: Page): Promise<void> {
 async function hoverFresh(page: Page, locator: Locator): Promise<void> {
   await page.evaluate(() => {
     const w = window as unknown as { __lastScrollAt?: number; __scrollHook?: boolean };
-    w.__lastScrollAt = Date.now();
+    // Start at 0, not now: with no scrolling the quiet wait below passes
+    // at once instead of costing 400 ms + a polling interval (issue #119).
+    if (w.__lastScrollAt === undefined) w.__lastScrollAt = 0;
     if (!w.__scrollHook) {
       w.__scrollHook = true;
       document.addEventListener(
@@ -50,9 +52,13 @@ async function hoverFresh(page: Page, locator: Locator): Promise<void> {
     }
   });
   await locator.scrollIntoViewIfNeeded();
+  // Let a scroll register (two frames) before judging quiet.
+  await page.evaluate(
+    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+  );
   await page.waitForFunction(
     () => Date.now() - ((window as unknown as { __lastScrollAt?: number }).__lastScrollAt ?? 0) > 400,
-    { polling: 250, timeout: 10_000 },
+    { polling: "raf", timeout: 10_000 },
   );
   await page.mouse.move(8, 200);
   const measure = (): Promise<{ x: number; y: number; width: number; height: number }[]> =>

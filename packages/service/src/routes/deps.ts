@@ -32,6 +32,11 @@ export interface UpdateHooks {
   spawnHelper(argsFile: string): Promise<number>;
   /** Shut the service down cleanly through the normal shutdown path. */
   requestShutdown(): void;
+  /**
+   * Delay between the 202 reply and the shutdown trigger (lets the reply
+   * flush). Defaults to UPDATE_SHUTDOWN_DELAY_MS; tests pass 0.
+   */
+  shutdownDelayMs?: number;
 }
 
 export interface RouteDeps {

@@ -32,8 +32,7 @@ async function selectText(
   await page.evaluate((rootSelector) => {
     document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
   }, rootSelector);
-  // Let smooth scrolling settle so the toolbar measures stable rects.
-  await page.waitForTimeout(350);
+  // No settle wait: the app has no smooth scrolling.
   const quote = await page.evaluate(
     ({ rootSelector, text, startIn, endIn }) => {
       const root = document.querySelector(rootSelector);
@@ -168,12 +167,28 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
     "Unfold obsolete folded response headers",
   );
   await expect(page.locator('[data-testid="version-switcher"]').getByText("Viewing v1 · read-only")).toBeVisible();
-  // Selecting guide text offers no toolbar.
-  await page.evaluate(() => {
-    document.querySelector("#C-central")?.scrollIntoView({ block: "center" });
+  // Selecting guide text offers no toolbar. The selection is made inline
+  // (range + mouseup, no waits — the toolbar hides synchronously on
+  // read-only versions); the selected text is asserted first so a missing
+  // selection cannot pass vacuously, then the toolbar must stay hidden.
+  const selected = await page.evaluate(() => {
+    const root = document.querySelector("#C-central");
+    if (!root) throw new Error("no #C-central");
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const at = (node as Text).data.indexOf("optional");
+      if (at < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + "optional".length);
+      getSelection()?.removeAllRanges();
+      getSelection()?.addRange(range);
+      (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      return getSelection()?.toString() ?? "";
+    }
+    throw new Error("text 'optional' not found in #C-central");
   });
-  await page.waitForTimeout(350);
-  await selectText(page, "#C-central", "optional").catch(() => null);
+  expect(selected).toBe("optional");
   await expect(page.locator("#selbar")).toBeHidden();
   // Diff line clicks refuse with a toast and open no composer.
   await page.locator(`[id="L-${CONN}-91"] td.n.new`).click();

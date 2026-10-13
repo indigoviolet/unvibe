@@ -13,6 +13,7 @@
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
+import { waitForDomQuiet } from "./dom-quiet.js";
 
 async function gotoReview(page: Page): Promise<void> {
   await page.goto("/review/demo");
@@ -78,7 +79,10 @@ test("many snapshot patches leave mark depth 1; selection and reply focus surviv
   });
   expect(selected).toBe("fast path");
   await stream();
-  await page.waitForTimeout(1000);
+  // The hook is synchronous: all patches are in the store when evaluate
+  // returns; only the React commit and highlight effects are pending, so
+  // wait for the subtree to go quiet instead of a fixed sleep.
+  await waitForDomQuiet(page, "#page");
   expect(await markDepth(page)).toBe(1);
   expect(await page.evaluate(() => getSelection()?.toString() ?? "")).toBe("fast path");
 
@@ -94,7 +98,7 @@ test("many snapshot patches leave mark depth 1; selection and reply focus surviv
     return ta ? { start: ta.selectionStart, end: ta.selectionEnd } : null;
   });
   await stream();
-  await page.waitForTimeout(1000);
+  await waitForDomQuiet(page, "#page");
 
   // Marks: flat, one per quote, open-expansion style kept.
   expect(await markDepth(page)).toBe(1);

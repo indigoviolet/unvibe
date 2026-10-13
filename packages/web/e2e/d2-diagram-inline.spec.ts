@@ -69,7 +69,8 @@ test("Ctrl+wheel zooms but a plain wheel scrolls the page instead", async ({ pag
   await page.evaluate(() => {
     document.querySelector("#C-g-flow #B-b1")?.scrollIntoView({ block: "center" });
   });
-  await page.waitForTimeout(400);
+  // Instant (no smooth scrolling in the app): one frame, not 400 ms.
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
   const box = await svg.boundingBox();
   if (!box) throw new Error("diagram svg has no box");
   const cx = box.x + box.width / 2;
@@ -77,7 +78,11 @@ test("Ctrl+wheel zooms but a plain wheel scrolls the page instead", async ({ pag
   await page.mouse.move(cx, cy);
   const scrolledFrom = await page.evaluate(() => document.querySelector("#page")?.scrollTop ?? 0);
   await page.mouse.wheel(0, 300);
-  await page.waitForTimeout(300);
+  // The plain wheel scrolls the page (and never zooms): poll the scroll
+  // position instead of sleeping a fixed 300 ms.
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector("#page")?.scrollTop ?? 0), { timeout: 5000 })
+    .toBeGreaterThan(scrolledFrom);
   expect(await inlineTransform(page)).toBe("translate(0px, 0px) scale(1)");
   const scrolledTo = await page.evaluate(() => document.querySelector("#page")?.scrollTop ?? 0);
   expect(scrolledTo).toBeGreaterThan(scrolledFrom);
@@ -87,7 +92,7 @@ test("Ctrl+wheel zooms but a plain wheel scrolls the page instead", async ({ pag
   await page.evaluate(() => {
     document.querySelector("#C-g-flow #B-b1")?.scrollIntoView({ block: "center" });
   });
-  await page.waitForTimeout(400);
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
   const box2 = await svg.boundingBox();
   if (!box2) throw new Error("diagram svg has no box");
   await page.keyboard.down("Control");

@@ -10,10 +10,10 @@ import { expect, test } from "./network-guard.js";
 const CONN = "src-urllib3-connection.py";
 const connFile = `[id="F-${CONN}"]`;
 
-test.beforeEach(async ({ page }) => {
+async function gotoDemo(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/review/demo");
   await expect(page.locator(connFile)).toBeVisible();
-});
+}
 
 // DISABLED(#119): same attributes asserted by the ReviewBar.test.tsx test of the same name
 test.skip("review bar shows identity, GitHub link, Debug, Guide|Source, Comments and Submit", async ({
@@ -42,18 +42,21 @@ test.skip("review bar shows identity, GitHub link, Debug, Guide|Source, Comments
 
 // DISABLED(#119): same as the ReviewBar.test.tsx demo test
 test.skip("demo review shows no GitHub link", async ({ page }) => {
+  await gotoDemo(page);
   const bar = page.locator("#reviewbar");
   await expect(bar.getByText("urllib3/urllib3#5020")).toBeVisible();
   await expect(bar.getByRole("link", { name: "Open PR on GitHub" })).toHaveCount(0);
 });
 
 test("review breadcrumb names the review as the current page", async ({ page }) => {
+  await gotoDemo(page);
   await expect(page.getByRole("link", { name: "Unvibe" })).toHaveAttribute("href", "/");
   const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
   await expect(crumbs.getByText("urllib3/urllib3#5020")).toHaveAttribute("aria-current", "page");
 });
 
 test("comments menu opens with the source pane closed", async ({ page }) => {
+  await gotoDemo(page);
   await page.locator("#toggleRight").click();
   await expect(page.locator("#right")).toHaveClass(/hide/);
   await page.locator('#reviewbar [data-cm=""]').click();

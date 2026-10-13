@@ -65,6 +65,9 @@ describe("HTTP auth gate", () => {
       { method: "POST", url: "/api/reviews/r1/hunks/abc/summarize", status: 404 },
       { method: "PATCH", url: "/api/reviews/r1/hunks/abc", status: 400 },
       { method: "GET", url: "/api/settings", status: 200 },
+      // Merged here from the dropped /api/prompts test (#119): the listing
+      // itself is covered by prompts-route.test.ts + snapshot.test.ts.
+      { method: "GET", url: "/api/prompts", status: 200 },
       { method: "GET", url: "/api/jobs", status: 400 },
       { method: "PATCH", url: "/api/reviews/r1/comments/c1", status: 400 },
       { method: "PUT", url: "/api/reviews/r1/description", status: 400 },
@@ -88,34 +91,6 @@ describe("HTTP auth gate", () => {
         });
         expect(res.statusCode, c.url).toBe(c.status);
       }
-    } finally {
-      await app.close();
-    }
-  });
-
-  it("GET /api/prompts lists templates (implemented, not a stub)", async () => {
-    const { app } = await createApp("test-token", {
-      agents: new FakeAgentRunner(),
-      models: new StaticModelCatalog(),
-    });
-    try {
-      const anon = await app.inject({ method: "GET", url: "/api/prompts" });
-      expect(anon.statusCode).toBe(401);
-      const res = await app.inject({
-        method: "GET",
-        url: "/api/prompts",
-        headers: { authorization: "Bearer test-token" },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as { templates: { name: string }[] };
-      expect(body.templates.length).toBe(18);
-      // Review expansion is wired to the ReviewStore: unknown reviews 404.
-      const review = await app.inject({
-        method: "GET",
-        url: "/api/prompts?review=r1",
-        headers: { authorization: "Bearer test-token" },
-      });
-      expect(review.statusCode).toBe(404);
     } finally {
       await app.close();
     }

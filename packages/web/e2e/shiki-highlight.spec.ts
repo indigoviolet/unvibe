@@ -5,6 +5,7 @@
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
+import { waitForDomQuiet } from "./dom-quiet.js";
 
 declare global {
   interface Window {
@@ -37,7 +38,7 @@ async function selectSpanning(page: Page, rootSelector: string, anchor: string):
   await page.evaluate((rootSelector) => {
     document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
   }, rootSelector);
-  await page.waitForTimeout(350);
+  // No settle wait: the app has no smooth scrolling.
   const ok = await page.evaluate(
     ({ rootSelector, anchor }) => {
       const root = document.querySelector(rootSelector);
@@ -114,11 +115,20 @@ test.skip("Python rows highlight; unshipped languages stay plain; ?nohl=1 stays 
 });
 
 test("?nohl=1 renders the plain first-paint state (no token spans)", async ({ page }) => {
+  // Deterministic escape-hatch check: with ?nohl=1 the Shiki chunk must
+  // never even load (not just "no spans yet", which passes vacuously when
+  // highlighting is merely slow).
+  const shikiRequests: string[] = [];
+  await page.route("**/.vite/deps/shiki*", async (route) => {
+    shikiRequests.push(route.request().url());
+    await route.continue();
+  });
   await gotoReview(page, "?nohl=1");
-  await page.waitForTimeout(2500);
+  await expect(page.locator(connFile)).toBeVisible();
+  await expect(page.locator(`${connFile} table.diff`)).toBeVisible();
+  expect(shikiRequests).toEqual([]);
   await expect(page.locator("table.diff td.c [class*='shk-']")).toHaveCount(0);
   // The pane itself is unaffected: files, hunks and line numbers render.
-  await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`${connFile} table.diff`)).toBeVisible();
 });
 
@@ -156,7 +166,9 @@ test("Explain then Close leaves one flat dotted anchor mark in highlighted code"
   // all flat and sharing one id — whatever order tokens and marks landed in.
   const mark = page.locator(`${connFile} td.c mark.anc.exl`).first();
   await expect(mark).toBeVisible({ timeout: 8000 });
-  await page.waitForTimeout(2000);
+  // Whatever order tokens and marks landed in: wait for the subtree to go
+  // quiet instead of a fixed settle.
+  await waitForDomQuiet(page, "#right");
   const marks = page.locator(`${connFile} td.c mark.anc.exl`);
   expect(await marks.count()).toBeGreaterThanOrEqual(1);
   expect(await page.locator("#right mark.anc mark.anc").count()).toBe(0);
