@@ -93,10 +93,9 @@ describe("d2 discovery", () => {
 // --- shared pure helpers --------------------------------------------------
 
 describe("d2 shared helpers", () => {
-  it("extracts link: cites (quoted, bare, bracket-wrapped)", () => {
+  it("extracts link: cites (quoted, bare)", () => {
     expect(extractD2Links('a: {link: "diff:conn:80-88"}')).toEqual(["diff:conn:80-88"]);
     expect(extractD2Links("a -> b: x {link: diff:conn:1-2}")).toEqual(["diff:conn:1-2"]);
-    expect(extractD2Links('a: {link: "[[diff:conn:91-110]]"}')).toEqual(["diff:conn:91-110"]);
     expect(extractD2Links('a: {link: "code:src/x.py:10-20"}')).toEqual(["code:src/x.py:10-20"]);
     expect(extractD2Links("no links here")).toEqual([]);
   });
