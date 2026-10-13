@@ -26,25 +26,32 @@ export type { RevealTarget };
 export { parseDiffRef };
 
 /**
- * Pinned rows + programmatic scroll (issue #132).
+ * Pinned rows + programmatic scroll (issues #132, #140).
  *
- * Two rows stay pinned at the top of `#right` while the diff scrolls: the
- * tab strip (`.rstick`, owned by `SourcePane`) and the diff actions bar
- * (`.dtool`, owned by `DiffView`). Every place that scrolls a diff line or
- * a file header into view goes through the helpers below so the target
- * lands below the pinned rows — never under them. The one shared value is
- * measured live from the DOM (no copied constants): `diffPinnedHeight()`
- * for scroll offsets, `--diffbar-top` (same measurement, tab strip only)
- * for the bar's sticky `top`.
+ * Four rows stay pinned at the top of `#right` while the diff scrolls: the
+ * tab strip (`.rstick`, owned by `SourcePane`), the diff actions bar
+ * (`.dtool`, owned by `DiffView`), the current file header (`.dfile-h`) and
+ * the current hunk header (`tr.ph`, owned by `FileSection`). Every place
+ * that scrolls a diff line or a file header into view goes through the
+ * helpers below so the target lands below the pinned rows — never under
+ * them. The one shared mechanism is live measurement from the DOM (no
+ * copied constants): `diffPinnedHeight()` for scroll offsets, `--diffbar-top`
+ * / `--dfile-top` / `--dhunk-top` (same measurements) for the sticky `top`s.
  */
 
 /** Gap between the pinned bars and a revealed line, in px. */
 export const DIFF_REVEAL_MARGIN = 8;
 
+/** Reveal scope: a diff line pins file + hunk headers above it, a file jump does not. */
+export type RevealScope = "line" | "file";
+
 // Fallbacks when the pane isn't laid out yet (first paint, jsdom): the
-// tab strip is one row of 13px tabs, the bar one row of pill buttons.
+// tab strip is one row of 13px tabs, the bar one row of pill buttons, and
+// both headers one row each.
 const RSTICK_FALLBACK = 40;
-const DTOOL_FALLBACK = 37;
+const DTOOL_FALLBACK = 43;
+const DFILE_FALLBACK = 34;
+const DHUNK_FALLBACK = 31;
 
 function measuredHeight(el: Element | null, fallback: number): number {
   if (!(el instanceof HTMLElement)) return 0;
@@ -57,58 +64,83 @@ function diffPane(): HTMLElement | null {
   return document.getElementById("right");
 }
 
-/** Height of the pinned tab strip alone: the actions bar's sticky `top`. */
-export function diffTabStripHeight(): number {
-  const pane = diffPane();
-  if (!pane) return 0;
-  return measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
-}
-
 /**
- * Total height of the rows pinned at the top of `#right`: tab strip plus
- * actions bar (0 when the pane isn't mounted, e.g. unit tests).
+ * Total height of the rows pinned at the top of `#right` that sit above a
+ * reveal target (0 when the pane isn't mounted, e.g. unit tests). A `"line"`
+ * target lands below all four rows (a file header and a hunk header pin
+ * above it); a `"file"` target is the file header itself, so it lands below
+ * the tab strip plus actions bar only. Every header kind is a uniform single
+ * row, so sampling the first mounted one stands in for the pinned one.
  */
-export function diffPinnedHeight(): number {
+export function diffPinnedHeight(scope: RevealScope = "line"): number {
   const pane = diffPane();
   if (!pane) return 0;
-  return (
+  const top =
     measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK) +
-    measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK)
+    measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
+  if (scope === "file") return top;
+  return (
+    top +
+    measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK) +
+    measuredHeight(pane.querySelector("tr.ph > td"), DHUNK_FALLBACK)
   );
 }
 
 /**
- * Keep `--diffbar-top` on `#right` equal to the tab strip's live height, so
- * the sticky actions bar pins directly under it without hard-coding a
- * height if the strip ever wraps. A `ResizeObserver`, not a scroll
- * listener: sticky positioning does the pinning. Returns a disconnect
- * function; a no-op when the pane isn't mounted.
+ * Write the pinned rows' live heights onto `#right` as CSS variables, so
+ * each sticky `top` tracks the rows above it without hard-coding a height:
+ * `--diffbar-top` (tab strip), `--dfile-top` (strip + bar), `--dhunk-top`
+ * (strip + bar + file header). No-op when the pane isn't mounted.
  */
-export function observeDiffTabStrip(): () => void {
+export function refreshDiffPinned(): void {
   const pane = diffPane();
-  const stick = pane?.querySelector(".rstick");
-  if (!pane || !(stick instanceof HTMLElement) || typeof ResizeObserver === "undefined") return () => {};
-  const apply = (): void => {
-    pane.style.setProperty("--diffbar-top", `${diffTabStripHeight()}px`);
-  };
-  apply();
-  const ro = new ResizeObserver(apply);
-  ro.observe(stick);
+  if (!pane) return;
+  const strip = measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
+  const bar = measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
+  const file = measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK);
+  pane.style.setProperty("--diffbar-top", `${strip}px`);
+  pane.style.setProperty("--dfile-top", `${strip + bar}px`);
+  pane.style.setProperty("--dhunk-top", `${strip + bar + file}px`);
+}
+
+/**
+ * Keep the pinned-offset variables equal to the rows' live heights (a
+ * `ResizeObserver`, never a scroll listener: sticky positioning does the
+ * pinning). The observer watches the pane plus the two top rows; header
+ * heights are re-sampled on every fire, and `refreshDiffPinned` covers DOM
+ * insertions (snapshot load, view switch) that don't resize the pane.
+ * Returns a disconnect function; a no-op when the pane isn't mounted.
+ */
+export function observeDiffPinned(): () => void {
+  const pane = diffPane();
+  if (!pane || typeof ResizeObserver === "undefined") return () => {};
+  refreshDiffPinned();
+  const ro = new ResizeObserver(refreshDiffPinned);
+  ro.observe(pane);
+  const stick = pane.querySelector(".rstick");
+  const bar = pane.querySelector(".dtool");
+  if (stick instanceof HTMLElement) ro.observe(stick);
+  if (bar instanceof HTMLElement) ro.observe(bar);
+  if (typeof document !== "undefined" && document.fonts) {
+    document.fonts.ready.then(refreshDiffPinned).catch(() => {});
+  }
   return () => ro.disconnect();
 }
 
 /**
  * Scroll `#right` so `el`'s top lands below the pinned rows (plus margin).
- * Falls back to `scrollIntoView` when the pane isn't mounted (unit tests).
+ * `"line"` clears all four rows; `"file"` clears the strip plus bar (the
+ * target is the file header itself). Falls back to `scrollIntoView` when
+ * the pane isn't mounted (unit tests).
  */
-export function revealDiffElement(el: HTMLElement): void {
+export function revealDiffElement(el: HTMLElement, scope: RevealScope = "line"): void {
   const pane = diffPane();
   if (!pane) {
     el.scrollIntoView?.({ block: "center" });
     return;
   }
   const top = el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
-  pane.scrollTop = Math.max(0, top - diffPinnedHeight() - DIFF_REVEAL_MARGIN);
+  pane.scrollTop = Math.max(0, top - diffPinnedHeight(scope) - DIFF_REVEAL_MARGIN);
 }
 
 /**

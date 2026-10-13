@@ -431,7 +431,8 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
   };
   return (
     <>
-      <tr className="pr">
+      {/* `ph`: this row's cell pins under the file header while the hunk scrolls (#140). */}
+      <tr className="pr ph">
         <td colSpan={cols}>
           <div className={`pin hh${reviewed ? " rev" : ""}`} data-hunk={k}>
             <button

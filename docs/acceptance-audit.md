@@ -489,7 +489,20 @@ needed (that deviation is closed, not added).
   `source/diff/revealSource.ts`); opening Files scrolls the pane to top so
   the panel + filter dropdown open fully visible — met
   (`e2e/diff-sticky-bar.spec.ts` 6 tests; `docs/screenshots/132-*.png`).
-  File headers deliberately do not stick (out of scope).
+  The current file header pins under the bar while its file scrolls and
+  the current hunk header pins under that while its hunk scrolls (issue
+  #140): plain CSS sticky inside each header's own container, so the next
+  file/hunk replaces the previous for free; offsets extend the same shared
+  mechanism (`--dfile-top`/`--dhunk-top` kept by `observeDiffPinned`, no
+  copied constants; a line reveal lands below all four rows, a file jump
+  below strip + bar via `diffPinnedHeight(scope)`); z-order file 2 / hunk 1
+  (below bar 3 and strip 4, above content, below overlays 6+); hidden-hunk
+  rows, folded placeholders, cards and threads scroll under, never pin;
+  controls work while pinned; unified + split, light + dark — met
+  (`e2e/diff-sticky-bar.spec.ts` 12 tests; `docs/screenshots/140-*.png`).
+  Measured stack 149px (strip 41 + bar 43 + file 34 + hunk 31); no compact
+  pinned variant — the hunk header is already one 31px line, pure CSS
+  cannot restyle only-while-pinned, and every control must stay usable.
 - Files panel (name filter + Filter dropdown with per-type counts and a
   Reviewed row, active count on the button, hunk progress, compacting tree
   + counts, click-scroll) — met (`diff.spec.ts` "file filter dropdown …",
