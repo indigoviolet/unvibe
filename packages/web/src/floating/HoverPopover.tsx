@@ -37,7 +37,7 @@ function renderMsgs(msgs: Annotation["messages"]): string {
     .map((m) => {
       const who = m.who === "you" ? "You" : m.suggested ? "Agent · suggested comment" : "Agent";
       const av = m.who === "you" ? "you" : "ai";
-      const label = m.who === "you" ? "You" : "AI";
+      const label = m.who === "you" ? "Me" : "AI";
       return `<div class="msg"><span class="av ${av}">${label}</span><div><div class="who">${who}</div><p>${tick(m.text ?? "")}</p></div></div>`;
     })
     .join("");

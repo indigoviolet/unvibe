@@ -187,8 +187,8 @@ function mockExplainBlocks(quote: string): import("@unvibe/shared").Block[] {
       id: `b-mock-exp-${Date.now().toString(36)}`,
       text: {
         simple: `In short: <em>${q}</em> is about unfolding folded header values.`,
-        standard: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value. [[diff:src-urllib3-connection.py:80-82]]`,
-        deep: `Mock deep explanation of <em>${q}</em>: obs-fold handling sits at the recipient per RFC 9112 §5.2, before interpretation or forwarding, so every consumer sees one semantic value. [[diff:src-urllib3-connection.py:80-88]]`,
+        standard: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value.`,
+        deep: `Mock deep explanation of <em>${q}</em>: obs-fold handling sits at the recipient per RFC 9112 §5.2, before interpretation or forwarding, so every consumer sees one semantic value.`,
       },
       citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
     },
@@ -2075,8 +2075,8 @@ export const mockApi = {
             text: {
               standard:
                 verdict === "partly"
-                  ? `Partly — the gap is real but narrow. The helper handles the fold. [[diff:src-urllib3-connection.py:80-82]]`
-                  : `Disagrees — only CRLF-folded values are rewritten. [[diff:src-urllib3-connection.py:80-88]]`,
+                  ? `Partly — the gap is real but narrow. The helper handles the fold.`
+                  : `Disagrees — only CRLF-folded values are rewritten.`,
             },
             citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
           },
@@ -2379,7 +2379,7 @@ export const mockApi = {
           {
             type: "paragraph",
             id: `${card.id}-b1`,
-            text: { standard: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo. [[diff:src-urllib3-connection.py:80-82]]` },
+            text: { standard: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo.` },
             citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
           },
           { type: "follow-up", id: `${card.id}-f1`, items: [{ label: "What happens to a fold that ends in a bare LF?", ask: "bare lf" }], citations: [] },
@@ -2515,7 +2515,7 @@ export const mockApi = {
             collapsed: false,
             revision: 2,
             blocks: [
-              { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open. [[diff:src-urllib3-connection.py:80-82]]` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
+              { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open.` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
             ] as never,
             undoStack: [],
           },

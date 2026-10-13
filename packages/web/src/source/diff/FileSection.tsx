@@ -338,7 +338,7 @@ function HunkCard({
       ) : null}
       {note && noteDraft === undefined ? (
         <div className="fsum">
-          <span className="av you">You</span>
+          <span className="av you">Me</span>
           <div>
             <p style={{ margin: 0 }}>{note}</p>
             {noteStale ? <span className="hint">code changed since this note</span> : null}
