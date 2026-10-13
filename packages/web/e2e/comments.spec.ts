@@ -29,35 +29,50 @@ async function selectText(
   startIn = 0,
   endIn?: number,
 ): Promise<string> {
-  await page.evaluate((rootSelector) => {
-    document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
-  }, rootSelector);
-  // No settle wait: the app has no smooth scrolling.
-  const quote = await page.evaluate(
-    ({ rootSelector, text, startIn, endIn }) => {
-      const root = document.querySelector(rootSelector);
-      if (!root) return null;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const data = (node as Text).data;
-        const at = data.indexOf(text);
-        if (at < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, at + startIn);
-        range.setEnd(node, at + (endIn ?? text.length));
-        const sel = getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        const host = (node as Text).parentElement;
-        host?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return true;
-      }
-      return null;
-    },
-    { rootSelector, text, startIn, endIn },
-  );
-  expect(quote).not.toBeNull();
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
+  // Select and wait in one polled step (same as interaction.spec.ts):
+  // scrollIntoView can deliver its scroll event after the toolbar shows
+  // when the loop is busy, and a late scroll dismisses the bar — so
+  // select-then-assert flakes. Re-select until the bar sticks; a repeated
+  // select is harmless (same range, same mouseup path) and converges once
+  // the scroll lands.
+  await expect
+    .poll(
+      async () => {
+        await page.evaluate((rootSelector) => {
+          document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
+        }, rootSelector);
+        // No settle wait: the app has no smooth scrolling.
+        const quote = await page.evaluate(
+          ({ rootSelector, text, startIn, endIn }) => {
+            const root = document.querySelector(rootSelector);
+            if (!root) return null;
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+              const data = (node as Text).data;
+              const at = data.indexOf(text);
+              if (at < 0) continue;
+              const range = document.createRange();
+              range.setStart(node, at + startIn);
+              range.setEnd(node, at + (endIn ?? text.length));
+              const sel = getSelection();
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+              const host = (node as Text).parentElement;
+              host?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+              return true;
+            }
+            return null;
+          },
+          { rootSelector, text, startIn, endIn },
+        );
+        if (quote === null) return "not-found";
+        // Let a late scroll land before reading the bar.
+        await page.waitForTimeout(150);
+        return (await page.locator("#selbar").isVisible()) ? "shown" : "hidden-again";
+      },
+      { timeout: 15000 },
+    )
+    .toBe("shown");
   // Re-read after the toolbar snapped the live selection to whole words.
   return (
     (await page.evaluate(() =>
