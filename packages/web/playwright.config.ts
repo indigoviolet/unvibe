@@ -31,9 +31,21 @@ function portForCheckout(): number {
 const PORT = portForCheckout();
 const BASE = `http://127.0.0.1:${PORT}`;
 
+// Worker caps (issue #119): at most min(4, cores/2) browsers, so parallel
+// checkouts do not starve each other. Override with UNVIBE_E2E_WORKERS
+// (e.g. =8 when the machine is known to be free). The global timeout ends
+// a hung run on its own; retries stay 0 so flakes surface.
+const e2eCores = os.availableParallelism();
+const e2eWorkers = Number(process.env.UNVIBE_E2E_WORKERS) || Math.min(4, Math.max(1, Math.floor(e2eCores / 2)));
+
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "**/*.disabled.spec.ts",
   timeout: 30_000,
+  workers: e2eWorkers,
+  globalTimeout: 10 * 60_000,
+  retries: 0,
+  forbidOnly: !!process.env.CI,
   use: {
     baseURL: BASE,
     // Keep failure evidence for CI artifacts (uploaded on failure).

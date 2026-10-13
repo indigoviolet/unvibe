@@ -10,7 +10,9 @@
     "test": "VITE_MOCK=1 vitest run",
     "test:e2e": "playwright test",
     "lint": "eslint src test e2e",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:fast": "VITE_MOCK=1 UNVIBE_TEST_SUITE=fast vitest run",
+    "test:slow": "VITE_MOCK=1 UNVIBE_TEST_SUITE=slow vitest run"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
