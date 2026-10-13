@@ -91,7 +91,7 @@ describe("GET /api/reviews/:id/shared-context", () => {
         draft.contributions = [...CONTRIBUTIONS];
       });
       const snap = ctx.reviews.getSnapshot(reviewId)!;
-      const key = `${reviewId}|v${snap.version.n}|${guideRevisionForSnapshot(snap)}|claude|claude-sonnet`;
+      const key = `${reviewId}|v${snap.version.n}|${guideRevisionForSnapshot(snap)}|claude|claude-opus-5-5`;
       ctx.sharedctx.noteBaseBuilt(reviewId, key, 1234);
 
       const res = await app.inject({ method: "GET", url: `/api/reviews/${reviewId}/shared-context`, headers: auth });
@@ -100,7 +100,7 @@ describe("GET /api/reviews/:id/shared-context", () => {
 
       // Base: key parts + stats, then the fenced pack.
       expect(body.base).toContain(key);
-      expect(body.base).toContain("provider/model: `claude/claude-sonnet`");
+      expect(body.base).toContain("provider/model: `claude/claude-opus-5-5`");
       expect(body.base).toContain("base tokens: 1234");
       expect(body.base).toContain("L1 + L1b + L2");
 

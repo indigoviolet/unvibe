@@ -115,6 +115,9 @@ async function makeHarness(opts: {
       requestShutdown: () => {
         shutdowns += 1;
       },
+      // No 500 ms shutdown delay in tests (issue #119): the reply flush
+      // wait is production behaviour, covered by the detached-helper path.
+      shutdownDelayMs: 0,
     },
   });
   return {

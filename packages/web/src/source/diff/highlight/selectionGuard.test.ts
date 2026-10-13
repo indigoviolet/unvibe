@@ -2,7 +2,7 @@
  * Selection-guard tests (issue #23, hardening item 5): highlight upgrades
  * swap text nodes for spans, so they wait while a diff selection is live.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isDiffSelectionActive, waitForSelectionClear } from "./selectionGuard.js";
 
 afterEach(() => {
@@ -56,6 +56,14 @@ describe("isDiffSelectionActive", () => {
 });
 
 describe("waitForSelectionClear", () => {
+  // Fake timers for the 120 ms poll ticks (issue #119).
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("resolves immediately when no diff selection is live", async () => {
     mountDiffCell("hello world");
     await waitForSelectionClear(undefined, undefined, 50);
@@ -66,15 +74,24 @@ describe("waitForSelectionClear", () => {
     select(node, 0, 5);
     const done = waitForSelectionClear(undefined, undefined, 5000);
     window.getSelection()?.removeAllRanges();
+    await vi.advanceTimersByTimeAsync(120);
     await done;
   });
 
   it("is bounded: resolves on timeout when the selection stays", async () => {
     const node = mountDiffCell("hello world");
     select(node, 0, 5);
-    const started = Date.now();
-    await waitForSelectionClear(undefined, undefined, 150);
-    expect(Date.now() - started).toBeLessThan(5000);
+    let resolved = false;
+    const done = waitForSelectionClear(undefined, undefined, 150).then(() => {
+      resolved = true;
+    });
+    // First tick is at 120 ms: not resolved before then…
+    await vi.advanceTimersByTimeAsync(119);
+    expect(resolved).toBe(false);
+    // …tick at 120 re-arms (120 < 150), tick at 240 times out.
+    await vi.advanceTimersByTimeAsync(200);
+    expect(resolved).toBe(true);
+    await done;
     // The selection itself is untouched (the upgrade still lands).
     expect(window.getSelection()?.isCollapsed).toBe(false);
   });
@@ -89,6 +106,7 @@ describe("waitForSelectionClear", () => {
       5000,
     );
     cancelled = true;
+    await vi.advanceTimersByTimeAsync(120);
     await done;
   });
 });

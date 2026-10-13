@@ -11,7 +11,8 @@ function state(over: Partial<{ ws: number; lastHttp: number | null; jobs: boolea
 }
 
 describe("IdleMonitor timing", () => {
-  it("default idle period is 10 minutes", () => {
+  // DISABLED(#119): restates the DEFAULT_IDLE_MS constant; the next test already exercises the default.
+  it.skip("default idle period is 10 minutes", () => {
     expect(DEFAULT_IDLE_MS).toBe(10 * 60 * 1000);
   });
 

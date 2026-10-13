@@ -156,8 +156,45 @@ description = "Check per-package build freshness (issue #64): a web change + sha
 run = "node scripts/build-freshness-check.mjs"
 
 [tasks.test]
-description = "Run vitest across workspaces"
-run = "npm run build --workspace @unvibe/shared && npm run test --workspaces --if-present"
+description = "All automated tests that need no login (fast suite, then slow suite)"
+run = "mise run test:fast && mise run test:slow"
+
+[tasks."test:fast"]
+description = "Fast unit tests: lint/typecheck-fast vitest files, no build, no browser"
+run = "npm run build --workspace @unvibe/shared && npm run test:fast --workspaces --if-present"
+
+[tasks."test:slow:unit"]
+description = "Slow vitest files (*.slow.test.*: need a build or a real binary)"
+depends = ["build"]
+run = "npm run test:slow --workspaces --if-present"
+
+[tasks."test:slow"]
+description = "Slow suite: slow vitest files, then Playwright behaviour tests"
+run = "mise run test:slow:unit && mise run test:e2e"
+
+[tasks.restart-resilience]
+description = "SIGKILL mid-stage, restart, resume against the built service"
+depends = ["build"]
+run = "node scripts/restart-resilience.mjs"
+
+[tasks.gate]
+description = "Pre-merge gate: every gate in sequence (one full run at a time per DEVELOPMENT.md; no lock script by owner decision)"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+mise run check
+mise run build
+mise run test:slow
+mise run build-freshness
+if [[ "$(uname)" == "Darwin" ]]; then
+  mise run e2e:macos
+else
+  mise run e2e
+fi
+mise run restart-resilience
+node scripts/d2-seed-check.mjs --strict
+mise run check-global-install
+'''
 
 [tasks."test:live"]
 description = "Live ACP adapter tests (needs claude/codex logins; small token spend)"
@@ -172,8 +209,9 @@ description = "Typecheck all workspaces"
 run = "npm run build --workspace @unvibe/shared && npm run typecheck --workspaces --if-present"
 
 [tasks.check]
-description = "lint + typecheck + test"
-run = "mise run lint && mise run typecheck && mise run test"
+description = "Fast suite: lint + typecheck in parallel, then fast unit tests"
+depends = ["lint", "typecheck"]
+run = "mise run test:fast"
 
 [tasks.start]
 description = "Run the built service"

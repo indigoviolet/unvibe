@@ -42,6 +42,12 @@ export interface AcpRunnerOptions {
   transportFactory?: TransportFactory;
   /** Override per-provider transports (tests). */
   factories?: Partial<Record<ProviderId, TransportFactory>>;
+  /**
+   * Straggler-notification grace after every prompt, and replay drain in
+   * load() (ms; default 300). Tests pass 0: the fake transports deliver
+   * synchronously, so no grace is needed.
+   */
+  settleMs?: number;
 }
 
 interface PendingPrompt {
@@ -389,7 +395,7 @@ export class AcpAgentRunner implements AgentRunner {
     // replay before the next prompt so stale chunks never leak into it.
     const c = this.conn(known.provider);
     c.drain(known.acpSessionId);
-    await sleep(300);
+    await sleep(this.opts.settleMs ?? 300);
     c.drain(known.acpSessionId);
     const rec: AcpSessionRecord = { ...known };
     this.live.set(rec.acpSessionId, rec);
@@ -517,7 +523,7 @@ export class AcpAgentRunner implements AgentRunner {
     }
     for (const e of flush()) yield e;
     // Grace period for straggler notifications flushed before the response.
-    await sleep(300);
+    await sleep(this.opts.settleMs ?? 300);
     for (const e of flush()) yield e;
     unsub();
     signal?.removeEventListener("abort", onAbort);

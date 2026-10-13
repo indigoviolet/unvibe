@@ -175,7 +175,8 @@ test.describe("ask over the real service", () => {
     expect(seen?.stream).toBe(false);
   });
 
-  test("explain runs without breaking", async ({ page }) => {
+  // DISABLED(#119): same Explain covered by interaction-journey-service.spec.ts and actions-m4.test.ts
+  test.skip("explain runs without breaking", async ({ page }) => {
     test.setTimeout(120_000);
     await openReview(page);
     await selectText(page, "#C-central", "fast path");

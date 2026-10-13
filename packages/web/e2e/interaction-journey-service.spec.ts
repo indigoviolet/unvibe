@@ -36,7 +36,7 @@ async function selectText(page: Page, rootSelector: string, text: string): Promi
   await page.evaluate((sel: string) => {
     document.querySelector(sel)?.scrollIntoView({ block: "center" });
   }, rootSelector);
-  await page.waitForTimeout(350);
+  // No settle wait: the app has no smooth scrolling.
   const found = await page.evaluate(
     ({ rootSelector, text }: { rootSelector: string; text: string }) => {
       const root = document.querySelector(rootSelector);
@@ -172,7 +172,7 @@ test.describe("reader journey over the real service (replay)", () => {
         root?.cards.some((c) => c.id === "central" && c.blocks.length > 0);
       if (ready) break;
       if (Date.now() > deadline) throw new Error("guide did not fill in time");
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 100));
     }
   });
 
@@ -202,32 +202,34 @@ test.describe("reader journey over the real service (replay)", () => {
     await expect(exp).toBeVisible({ timeout: 15_000 });
     await expect(exp.locator(".exp-b")).toContainText(/fold|helper|space/i, { timeout: 60_000 });
 
-    // Depth + on the fresh expansion generates via the agent (the replay
-    // backend answers in milliseconds, so the working state is transient —
-    // observe continuously instead of asserting after the fact).
-    await page.evaluate(() => {
-      (window as unknown as { __seenWorking?: boolean }).__seenWorking = false;
-      const root = document.querySelector('#C-central [data-expansion]');
-      if (!root) return;
-      new MutationObserver(() => {
-        if (root.querySelector(".working")) {
-          (window as unknown as { __seenWorking?: boolean }).__seenWorking = true;
-        }
-      }).observe(root, { childList: true, subtree: true, characterData: true });
-    });
+    // Depth + on the fresh expansion generates via the agent: the body
+    // text is rewritten, so wait for it to change (persistent state, not
+    // the transient working indicator, which a slow round-trip can miss,
+    // and not the pips, which expansions render without i.on).
+    const expBody = exp.locator(".exp-b");
+    const explained = await expBody.innerText();
     await exp.getByRole("button", { name: "Deeper" }).click();
-    await expect(exp.locator(".working").first()).toBeVisible({ timeout: 15_000 }).catch(() => {});
+    await expect.poll(async () => expBody.innerText(), { timeout: 60_000 }).not.toBe(explained);
     await expect(exp.locator(".working")).toHaveCount(0, { timeout: 60_000 });
-    await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 10_000 });
+    await expect(expBody).not.toBeEmpty({ timeout: 10_000 });
+    // Simpler rewrites again: the text changes back (a real check that the
+    // step did something, not just a re-read of a nonempty body).
+    const deepened = await expBody.innerText();
     await exp.getByRole("button", { name: "Simpler" }).click();
-    await page.waitForTimeout(2000);
-    await expect(exp.locator(".exp-b")).not.toBeEmpty();
+    await expect.poll(async () => expBody.innerText(), { timeout: 60_000 }).not.toBe(deepened);
+    await expect(expBody).not.toBeEmpty();
 
     // Use examples, then Undo.
+    // The explain fill already carries an Example aside, so examples is
+    // saturated here (reused, no job): the count must not grow.
+    const asides = exp.locator(".gen-aside");
+    await expect(asides.first()).toBeVisible({ timeout: 30_000 });
+    const asidesBefore = await asides.count();
     await exp.getByRole("button", { name: "Use examples" }).click();
-    await page.waitForTimeout(4000);
+    await expect(asides).toHaveCount(asidesBefore, { timeout: 10_000 });
+    // Undo reverts the Simpler step: the deeper text returns.
     await exp.getByRole("button", { name: "Undo" }).click();
-    await page.waitForTimeout(1500);
+    await expect.poll(async () => expBody.innerText(), { timeout: 30_000 }).toBe(deepened);
 
     // Close → dotted link → hover preview → click re-expands.
     await exp.getByRole("button", { name: "Close" }).click();

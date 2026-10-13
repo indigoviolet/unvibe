@@ -12,6 +12,8 @@ import type {
   Version,
 } from "@unvibe/shared";
 import { FakeCommandRunner } from "../src/exec/index.js";
+import { FakeAgentRunner } from "../src/agent/fake.js";
+import { StaticModelCatalog } from "../src/settings/index.js";
 import { writeReviewRows } from "../src/ingest/index.js";
 import { renderMarkdownBlocks } from "../src/ingest/description.js";
 import { buildParagraphSources } from "../src/submit/description.js";
@@ -118,7 +120,14 @@ export async function setupReview(
   runner: FakeCommandRunner,
   opts: SetupOpts = {},
 ): Promise<AppContext & { reviewId: string }> {
-  const { app, ctx, ...rest } = await createApp("tok", { runner });
+  // Fake agents + static model catalog (issue #119): the shared-context
+  // route resolves effective settings, which must never start the real
+  // adapters. The static main pick (claude/claude-opus-5-5) is the base key.
+  const { app, ctx, ...rest } = await createApp("tok", {
+    runner,
+    agents: new FakeAgentRunner(),
+    models: new StaticModelCatalog(),
+  });
   const repo = repoRow();
   ctx.repos.upsert(repo);
   const reviewId = opts.reviewId ?? "rv_m6";

@@ -71,7 +71,21 @@ import {
 export const MOCK_MODE: boolean =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK === "1";
 
-const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+/**
+ * Opt-in mock latency override for unit tests (issue #119): `setMockLatency(0)`
+ * makes every `wait` below resolve on the next macrotask, so timer-heavy
+ * component tests (DiffView) skip ~1.4 s of deliberate latency without
+ * touching fake timers. Default `null` keeps the real waits (e2e and
+ * timing-dependent unit tests are unaffected). Callers reset to `null`
+ * when done.
+ */
+let mockLatencyMs: number | null = null;
+
+export function setMockLatency(ms: number | null): void {
+  mockLatencyMs = ms;
+}
+
+const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, mockLatencyMs ?? ms));
 
 // --- repos ---------------------------------------------------------------
 

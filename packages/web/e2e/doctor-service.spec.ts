@@ -73,7 +73,8 @@ test.describe("doctor on the real service", () => {
     await expect(main.locator("select").nth(1)).toContainText("Sonnet");
   });
 
-  test("reload flips fake d2 from broken to working", async () => {
+  // DISABLED(#119): API-only; same routes covered by diagnostics-api.test.ts (UI Reload button stays in doctor.spec.ts)
+  test.skip("reload flips fake d2 from broken to working", async () => {
     test.setTimeout(60000);
     if (!svc) throw new Error("service not running");
     const before = (await curlJson(svc.origin, svc.token, "GET", "/api/diagnostics")) as {

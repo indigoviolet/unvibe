@@ -17,9 +17,14 @@ import { REVEAL_EVENT, revealSource as diffReveal } from "./diff/revealSource.js
 
 export { REVEAL_EVENT };
 
+let flashTimer: number | undefined;
+
 function flashParagraph(paragraphId: string): void {
-  // Let the tab switch render first.
-  window.setTimeout(() => {
+  // A newer reveal supersedes the pending flash (and keeps rapid citation
+  // clicks from stacking timers past teardown).
+  window.clearTimeout(flashTimer);
+  flashTimer = window.setTimeout(() => {
+    flashTimer = undefined;
     const el = document.getElementById(paragraphId);
     if (!el) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

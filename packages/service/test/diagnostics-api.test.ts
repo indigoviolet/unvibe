@@ -14,8 +14,8 @@
  * real ACP adapters (`listModels` per provider, ~1.2s each) plus real
  * `--version` probes through mise shims (~0.6s), sitting at ~4-5.6s —
  * right at vitest's 5s timeout under load. Now each runs in milliseconds.
- * The last test keeps the real probe path (explicit timeout) so the live
- * behaviour stays covered somewhere.
+ * (The one test that keeps the real probe path lives in
+ * `diagnostics-api.slow.test.ts`, since it is machine-dependent.)
  */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
@@ -28,7 +28,6 @@ import { SettingsStore } from "../src/settings/index.js";
 import { StaticModelCatalog } from "../src/settings/index.js";
 import { NoAgentRunner } from "../src/agent/none.js";
 import { JobQueue } from "../src/jobs/queue.js";
-import { collectDiagnostics } from "../src/diagnostics/report.js";
 import type { ProbedPaths } from "../src/diagnostics/path-probe.js";
 import { diagnoseTool, TOOL_SPECS } from "../src/diagnostics/tools.js";
 import { FakeCommandRunner } from "../src/exec/runner.js";
@@ -164,55 +163,4 @@ describe("diagnostics endpoints", () => {
     expect(after.chosen).toBe(bin);
     expect(after.candidates[0].version).toBe("0.162.1");
   });
-
-  it(
-    "doctor and service produce identical tool resolution from the same environment",
-    { timeout: 30000 },
-    async () => {
-      // NOTE (issues #35, #40): this is the one test in the file that
-      // keeps the real probe path — real login-shell PATH probe plus real
-      // `--version` probes of the temp-dir scripts below — so the live
-      // behaviour stays covered. It has an explicit generous timeout
-      // instead of stubbing; stubbing it would reduce the test to
-      // comparing stubbed constants.
-      const brokenDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-doc-"));
-      const goodDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-svc-"));
-      // Same PATH layout for both: broken shim first, working binary later.
-      const broken = makeBin(brokenDir, "codex", "#!/bin/sh\nexit 1\n");
-      const good = makeBin(goodDir, "codex", "#!/bin/sh\necho ok\n");
-      const pathValue = `${brokenDir}${path.delimiter}${goodDir}`;
-      const env = {};
-      const mkRunner = (): FakeCommandRunner => {
-        const r = new FakeCommandRunner();
-        r.enqueue({ cmd: broken, args: ["--version"], stdout: "", stderr: "boom", code: 1 });
-        r.enqueue({ cmd: good, args: ["--version"], stdout: "codex 0.162.1", stderr: "", code: 0 });
-        return r;
-      };
-      const spec = TOOL_SPECS.find((s) => s.tool === "codex")!;
-      const doctorView = await diagnoseTool(spec, { pathValue, env, runner: mkRunner() as never, timeoutMs: 2000 });
-      const serviceView = await diagnoseTool(spec, { pathValue, env, runner: mkRunner() as never, timeoutMs: 2000 });
-      expect(doctorView.chosen).toBe(good);
-      expect(serviceView.chosen).toBe(good);
-      expect(doctorView.chosen).toBe(serviceView.chosen);
-
-      // Full reports from the same env agree on tool choices.
-      const mkFullRunner = (): FakeCommandRunner => {
-        const r = new FakeCommandRunner();
-        // collectDiagnostics probes 6 tools; enqueue generic successes for
-        // codex only and let others fall back (they will fail closed, but the
-        // codex choice must still agree). We compare only codex here.
-        return r;
-      };
-      void mkFullRunner;
-      const a = await collectDiagnostics({ inheritedPath: pathValue, env, timeoutMs: 1000 });
-      const b = await collectDiagnostics({ inheritedPath: pathValue, env, timeoutMs: 1000 });
-      const choice = (rep: Awaited<ReturnType<typeof collectDiagnostics>>, tool: string): string | null =>
-        rep.tools.find((t) => t.tool === tool)?.chosen ?? null;
-      // Both runs use live --version probes; they may differ if the machine
-      // lacks tools, but the module is deterministic: same env → same PATH probe
-      // shell. Assert the PATH shells agree.
-      expect(a.path.shell).toBe(b.path.shell);
-      void choice;
-    },
-  );
 });

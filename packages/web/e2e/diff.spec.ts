@@ -38,7 +38,8 @@ async function scrollDiffToBottom(page: Page): Promise<void> {
   await page.evaluate(() => document.querySelector("#right")?.scrollTo(0, 1e9));
 }
 
-test("fold and unfold a hunk", async ({ page }) => {
+// DISABLED(#119): same clicks and assertions as DiffView.test.tsx fold/unfold test
+test.skip("fold and unfold a hunk", async ({ page }) => {
   const conn = page.locator(connFile);
   await conn.getByRole("button", { name: "Fold code" }).first().click();
   await expect(conn.getByText("changed lines folded · show")).toBeVisible();
@@ -46,7 +47,8 @@ test("fold and unfold a hunk", async ({ page }) => {
   await expect(conn.getByText("changed lines folded · show")).toHaveCount(0);
 });
 
-test("mark reviewed advances the hunks-reviewed progress", async ({ page }) => {
+// DISABLED(#119): same as the DiffView.test.tsx progress test (also in real-service.spec.ts)
+test.skip("mark reviewed advances the hunks-reviewed progress", async ({ page }) => {
   await page.getByRole("button", { name: "Show file list" }).click();
   await expect(page.getByText("1/8 hunks reviewed")).toBeVisible();
   await page.locator(connFile).getByRole("button", { name: "Mark reviewed" }).first().click();
@@ -73,7 +75,8 @@ test("split view pairs columns and widens a narrow pane", async ({ page }) => {
   expect(before?.width).toBeLessThan(after?.width ?? 0);
 });
 
-test("files filter narrows the visible files", async ({ page }) => {
+// DISABLED(#119): same as the DiffView.test.tsx files-filter test
+test.skip("files filter narrows the visible files", async ({ page }) => {
   await page.getByRole("button", { name: "Show file list" }).click();
   await page.getByLabel("Filter files by name").fill("socketlevel");
   await expect(page.locator(connFile)).toHaveCount(0);
@@ -137,7 +140,8 @@ test("revealSource unhides a hidden hunk and highlights the line", async ({ page
   await expect(page.getByText("Hunk 1 of 3")).toBeVisible();
 });
 
-test("revealSource unfolds a folded hunk and highlights the range", async ({ page }) => {
+// DISABLED(#119): same as the DiffView.test.tsx revealSource test
+test.skip("revealSource unfolds a folded hunk and highlights the range", async ({ page }) => {
   const conn = page.locator(connFile);
   await conn.getByRole("button", { name: "Fold code" }).nth(1).click();
   await expect(conn.getByText("3 changed lines folded · show")).toBeVisible();
@@ -148,7 +152,8 @@ test("revealSource unfolds a folded hunk and highlights the range", async ({ pag
   await expect(conn.getByText("3 changed lines folded · show")).toHaveCount(0);
 });
 
-test("start page opens a review", async ({ page }) => {
+// DISABLED(#119): not a diff test; repeats start.spec.ts demo-row tests
+test.skip("start page opens a review", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // The page follows the selected repo; the remembered repo is selected.

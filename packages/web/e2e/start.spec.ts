@@ -11,12 +11,13 @@
  */
 import { test, expect } from "./network-guard.js";
 
-test.beforeEach(async ({ page }) => {
+async function gotoStart(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-});
+}
 
 test("repo selector lists remembered and detected repos, persisted", async ({ page }) => {
+  await gotoStart(page);
   const sel = page.getByLabel("Repo");
   await expect(sel).toHaveValue("urllib3");
   await expect(sel.locator('optgroup[label="Repos"] option')).toHaveText(["urllib3/urllib3"]);
@@ -33,6 +34,7 @@ test("repo selector lists remembered and detected repos, persisted", async ({ pa
 });
 
 test("repo selector sits centered above Reviews, outside the top bar", async ({ page }) => {
+  await gotoStart(page);
   await expect(page.locator("header.top").getByLabel("Repo")).toHaveCount(0);
   const sel = page.getByLabel("Repo");
   await expect(sel).toBeVisible();
@@ -51,6 +53,7 @@ test("repo selector sits centered above Reviews, outside the top bar", async ({ 
 });
 
 test("ready indicator shows as a quiet content line, not in the top bar", async ({ page }) => {
+  await gotoStart(page);
   await expect(page.locator("header.top").locator('[data-testid="readiness-ready"]')).toHaveCount(0);
   const ready = page.locator('[data-testid="readiness-ready"]');
   await expect(ready).toBeVisible();
@@ -61,6 +64,7 @@ test("ready indicator shows as a quiet content line, not in the top bar", async 
 });
 
 test("reviews list follows the selected repo; demo row always shows", async ({ page }) => {
+  await gotoStart(page);
   // Default selection (urllib3): both prior sessions, most recent first.
   const sessions = page.locator('[data-testid^="session-"]');
   await expect(sessions).toHaveCount(2);
@@ -99,6 +103,7 @@ test("reviews list follows the selected repo; demo row always shows", async ({ p
 });
 
 test("demo row opens the fixture review", async ({ page }) => {
+  await gotoStart(page);
   await page.locator('[data-testid="demo-entry"] button').click();
   await expect(page).toHaveURL(/\/review\/demo/);
 });
@@ -111,7 +116,6 @@ test("failing lists keep the PR input, show an error with Retry, and recover", a
     );
   });
   // First load for the repo (no kept lists yet): the error shows alone.
-  await page.evaluate(() => localStorage.removeItem("unvibe.start.keptChanges.v1"));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // The PR input does not wait on the lists.
@@ -151,7 +155,6 @@ test("held lists show loading without stale rows and keep the PR input", async (
     localStorage.setItem("unvibe.mock.repoChangesHold", "1");
   });
   // First load for the repo (no kept lists yet): loading, not sections.
-  await page.evaluate(() => localStorage.removeItem("unvibe.start.keptChanges.v1"));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // Reviews and the demo row do not wait on the lists.
@@ -172,6 +175,7 @@ test("held lists show loading without stale rows and keep the PR input", async (
 });
 
 test("re-selecting the current repo reloads its lists", async ({ page }) => {
+  await gotoStart(page);
   await expect(page.getByText("Your PRs")).toBeVisible();
   // Hold live (addInitScript would only apply after a re-navigation).
   await page.evaluate(() => localStorage.setItem("unvibe.mock.repoChangesHold", "1"));
@@ -236,6 +240,7 @@ test("reviews for checkouts no longer listed stay openable and removable", async
 });
 
 test("remove asks to confirm and deletes local data only", async ({ page }) => {
+  await gotoStart(page);
   const old = page.locator('[data-testid="session-r-old"]');
   await old.getByRole("button", { name: /Remove/ }).click();
   await expect(old).toContainText("Remove this review from Unvibe? Nothing changes on GitHub.");
@@ -247,6 +252,7 @@ test("remove asks to confirm and deletes local data only", async ({ page }) => {
 test("PR by number opens a review; a URL for another known repo switches the selector; bad input errors", async ({
   page,
 }) => {
+  await gotoStart(page);
   // The remembered repo is selected by default; a number opens its PR.
   await page.getByLabel("Open a PR by URL or number").fill("5020");
   await page.getByRole("button", { name: "Open PR" }).click();
@@ -268,6 +274,7 @@ test("PR by number opens a review; a URL for another known repo switches the sel
 });
 
 test("healthy readiness shows a ready indicator and no callouts", async ({ page }) => {
+  await gotoStart(page);
   await expect(page.locator('[data-testid="readiness-ready"]')).toBeVisible();
   await expect(page.locator('[data-testid^="readiness-callout-"]')).toHaveCount(0);
   // Model pickers show inline ok status.
@@ -312,6 +319,7 @@ test("failing readiness shows compact callouts linking to Settings", async ({ pa
 test("pasting a PR URL for an unknown repo offers to clone it, then selects the repo and opens the PR", async ({
   page,
 }) => {
+  await gotoStart(page);
   await page.getByLabel("Open a PR by URL or number").fill("https://github.com/acme/app/pull/123");
   await page.getByRole("button", { name: "Open PR" }).click();
   const offer = page.locator('[data-testid="pr-clone-offer"]');
@@ -328,6 +336,7 @@ test("pasting a PR URL for an unknown repo offers to clone it, then selects the 
 });
 
 test("pasting owner/name#N for an unknown repo offers the same clone flow", async ({ page }) => {
+  await gotoStart(page);
   await page.getByLabel("Open a PR by URL or number").fill("acme/app#7");
   await page.getByRole("button", { name: "Open PR" }).click();
   const offer = page.locator('[data-testid="pr-clone-offer"]');
@@ -337,6 +346,7 @@ test("pasting owner/name#N for an unknown repo offers the same clone flow", asyn
 });
 
 test("cancelling the clone offer leaves the input as typed", async ({ page }) => {
+  await gotoStart(page);
   const input = page.getByLabel("Open a PR by URL or number");
   await input.fill("https://github.com/acme/app/pull/123");
   await page.getByRole("button", { name: "Open PR" }).click();
