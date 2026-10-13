@@ -99,7 +99,7 @@ Service dependencies (so a global npm install brings the adapters along):
 | 6 | Codex `read-only` mode refuses MCP tool calls ("I can't access that tool" without attempting) | Restricted Codex sessions use `workspace-write` mode instead (see permission policy) |
 | 7 | Codex `agent` mode runs edits/shell with no permission round-trip (Guardian auto-approves) | Never use `agent` mode for restricted sessions; `workspace-write` prompts on every edit/shell/network action |
 | 8 | Codex workspace-write MCP approvals arrive with an **empty toolCall** (no title/name) | Correlate by `toolCallId` against the preceding `tool_call` update (the adapter always emits it first); `_meta.is_mcp_tool_approval` kept as supporting evidence. Unit test covers the correlation |
-| 9 | `load` replays history as `session/update` notifications | Drain the replay (≈300 ms) before resolving `load()` so stale chunks never leak into the next turn |
+| 9 | `load` replays history as `session/update` notifications | Drain the replay until quiet (one 20 ms window with nothing new, 300 ms ceiling) before resolving `load()` so stale chunks never leak into the next turn (#122: was a fixed 300 ms sleep) |
 | 10 | ACP errors are generic `-32603 Internal error` | Reason is in the message/details (`Session not found`, rate limit, …); `isRetryableError` classifies accordingly |
 
 ## Permission policy
@@ -188,7 +188,7 @@ mise run test:live  # live adapter tests (UNVIBE_LIVE=1)
 provider (~1 min for Claude, ~1 min for Codex; 12 tests total).
 
 - `UNVIBE_LIVE_PROVIDERS=claude|codex` selects providers (default: both).
-- Unit tests (`test/acp-runner.test.ts`, 17 tests) run a scripted fake ACP
+- Unit tests (`test/acp-runner.test.ts`, 19 tests) run a scripted fake ACP
   agent speaking the real protocol over in-memory stream pairs
   (`test/fake-acp.ts` reuses the production `connectClient()`): event
   mapping, usage aggregation incl. background models, fork+resume ordering,

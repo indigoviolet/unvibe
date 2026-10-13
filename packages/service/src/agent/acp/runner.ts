@@ -43,12 +43,20 @@ export interface AcpRunnerOptions {
   /** Override per-provider transports (tests). */
   factories?: Partial<Record<ProviderId, TransportFactory>>;
   /**
-   * Straggler-notification grace after every prompt, and replay drain in
-   * load() (ms; default 300). Tests pass 0: the fake transports deliver
-   * synchronously, so no grace is needed.
+   * Ceiling for notification-settling waits after every prompt and in
+   * load() (ms; default 300). The waits end early once notifications are
+   * quiet for 20 ms; the ceiling only bounds a chatty adapter. Tests pass
+   * 0: the fake transports deliver synchronously, so no wait is needed.
    */
   settleMs?: number;
 }
+
+/**
+ * #122.3: quiet window proving no more notifications are in flight. Both
+ * settling waits (post-turn stragglers, load replay drain) end after one
+ * quiet window instead of a fixed sleep, bounded by the ceiling above.
+ */
+const SETTLE_QUIET_MS = 20;
 
 interface PendingPrompt {
   sessionAcpId: string;
@@ -405,10 +413,18 @@ export class AcpAgentRunner implements AgentRunner {
     }
     // Load replays history as `session/update` notifications; drain the
     // replay before the next prompt so stale chunks never leak into it.
+    // #122.3: drain until quiet (one 20 ms window with nothing new) instead
+    // of a fixed sleep, bounded by the ceiling.
     const c = this.conn(known.provider);
+    const ceiling = this.opts.settleMs ?? 300;
+    const t0 = Date.now();
     c.drain(known.acpSessionId);
-    await sleep(this.opts.settleMs ?? 300);
-    c.drain(known.acpSessionId);
+    for (;;) {
+      const elapsed = Date.now() - t0;
+      if (elapsed >= ceiling) break;
+      await sleep(Math.min(SETTLE_QUIET_MS, ceiling - elapsed));
+      if (c.drain(known.acpSessionId).length === 0) break;
+    }
     const rec: AcpSessionRecord = { ...known };
     this.live.set(rec.acpSessionId, rec);
     if (rec.provider === "codex" && rec.readOnly) {
@@ -536,10 +552,23 @@ export class AcpAgentRunner implements AgentRunner {
       });
       waker.fn = null;
     }
-    for (const e of flush()) yield e;
-    // Grace period for straggler notifications flushed before the response.
-    await sleep(this.opts.settleMs ?? 300);
-    for (const e of flush()) yield e;
+    // #122.3: straggler notifications flushed by the adapter just before
+    // the response may still be in flight. Wait until quiet (one 20 ms
+    // window with nothing new) instead of a fixed sleep, bounded by the
+    // ceiling.
+    {
+      const ceiling = this.opts.settleMs ?? 300;
+      const t0 = Date.now();
+      for (;;) {
+        for (const e of flush()) yield e;
+        const elapsed = Date.now() - t0;
+        if (elapsed >= ceiling) break;
+        if (pending.length === 0) {
+          await sleep(Math.min(SETTLE_QUIET_MS, ceiling - elapsed));
+          if (pending.length === 0) break;
+        }
+      }
+    }
     unsub();
     signal?.removeEventListener("abort", onAbort);
 

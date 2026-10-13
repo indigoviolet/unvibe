@@ -39,6 +39,12 @@ export interface FakeTurn {
   error?: string;
   /** Artificial delay before answering (ms) — used for cancel tests. */
   delayMs?: number;
+  /**
+   * #122.3: a notification arriving after the response (adapter straggler).
+   * Fired fire-and-forget `afterMs` after the turn; the runner's settling
+   * wait must still collect it.
+   */
+  straggler?: { text: string; afterMs: number };
   /** Ask the client for permission mid-turn; records the outcome. */
   permissionProbe?: { title: string; name?: string };
   /**
@@ -306,6 +312,17 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
             },
           });
         }
+      }
+      if (turn.straggler) {
+        const { text: late, afterMs } = turn.straggler;
+        setTimeout(() => {
+          void ctx.client
+            .notify("session/update", {
+              sessionId,
+              update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: late } },
+            })
+            .catch(() => {});
+        }, afterMs);
       }
       const u = turn.usage ?? state.defaultUsage;
       const total =

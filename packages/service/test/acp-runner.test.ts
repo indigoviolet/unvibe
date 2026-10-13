@@ -264,6 +264,42 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
+  it("#122.3: prompt collects a straggler notification without a fixed sleep", async () => {
+    const state = createFakeState([
+      // The straggler is in flight when the response arrives (the case the
+      // old sleep protected); it lands inside the quiet window.
+      { match: "q", chunks: [{ text: "first " }], straggler: { text: "late", afterMs: 5 } },
+    ]);
+    // Default ceiling (300): the old code always waited the full 300 ms.
+    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
+    const t0 = Date.now();
+    const events = await collect(runner, s, "q please");
+    const ms = Date.now() - t0;
+    const texts = events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("");
+    // The straggler (what the sleep was protecting) is still collected…
+    expect(texts).toContain("late");
+    // …but nothing waits the old fixed 300 ms anymore.
+    expect(ms).toBeLessThan(200);
+    await runner.dispose();
+  });
+
+  it("#122.3: load drains the replay without a fixed sleep", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "fresh" }] }]);
+    const runner = new AcpAgentRunner({ factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
+    await runner.close(s);
+    const t0 = Date.now();
+    const loaded = await runner.load(s.id);
+    const ms = Date.now() - t0;
+    expect(ms).toBeLessThan(200);
+    const events = await collect(runner, loaded, "q again");
+    const texts = events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta);
+    expect(texts).not.toContain("[replay]");
+    expect(texts).toContain("fresh");
+    await runner.dispose();
+  });
+
   it("correlates empty-title approvals by toolCallId (Codex workspace-write)", async () => {
     const state = createFakeState([
       {
