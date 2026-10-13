@@ -27,6 +27,19 @@ export class DegradedTurnError extends Error {
   }
 }
 
+/**
+ * Degraded because a review-MCP call observably failed mid-turn (#51):
+ * the failure may be transient, so runInFork retries the turn once on a
+ * fresh session. A second failure is terminal. Subclasses
+ * DegradedTurnError so partial-clearing applies either way.
+ */
+export class DegradedConnError extends DegradedTurnError {
+  constructor(message: string) {
+    super(message);
+    this.name = "DegradedConnError";
+  }
+}
+
 /** True for aborts (`AbortError` DOMExceptions and Node's `AbortError`). */
 export function isAbortError(err: unknown): boolean {
   return (

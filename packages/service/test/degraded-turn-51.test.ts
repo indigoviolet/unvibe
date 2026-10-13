@@ -271,3 +271,134 @@ describe("card-only anchors (#51 validator)", () => {
     }
   });
 });
+
+/** Prose about MCP itself: vocabulary alone never fails a job (#51 review). */
+const MCP_PROSE_REPLY = `The MCP server exposes get_hunk for hunk slices, and most people run gh for everything else.
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+describe("vocabulary is never a fact (#51 review)", () => {
+  it("MCP prose with tool activity succeeds stored unchanged", { timeout: 90000 }, async () => {
+    let reviewId: string | null = null;
+    let mcp: McpRegistry | null = null;
+    class ConnectingFakeRunner extends FakeAgentRunner {
+      override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
+        if (reviewId && mcp && text.includes("# Explain")) {
+          const issued = mcp.issueSession(reviewId, "mid-turn", "session");
+          void mcp.handleRequest(issued.secret, {} as never, {} as never, { method: "ping" }).catch(() => {});
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        yield* super.prompt(session, text);
+      }
+    }
+    const agents = new ConnectingFakeRunner([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+      { match: "# Explain", events: textEvents(MCP_PROSE_REPLY) },
+    ]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      reviewId = id;
+      mcp = ctx.mcp;
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      expect(ctx.jobs.get(jobId!)?.state).toBe("done");
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      const blocks = (ann as unknown as { expansion: { blocks: { type: string }[] } }).expansion.blocks;
+      expect(blocks.length).toBeGreaterThan(0);
+      expect(JSON.stringify(blocks)).toContain("MCP server exposes get_hunk");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("MCP prose with no activity and no complaint frame succeeds", { timeout: 90000 }, async () => {
+    const agents = new FakeAgentRunner([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+      { match: "# Explain", events: textEvents(MCP_PROSE_REPLY) },
+    ]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      expect(ctx.jobs.get(jobId!)?.state).toBe("done");
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      expect(
+        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+      ).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("connection-error retry (#51 review)", () => {
+  const CHATTER = `I could not look up the host block, so this names the card only.\n\n\`\`\`json\n{}\n\`\`\`\n`;
+  const CLEAN = `The host block is described here.\n\n\`\`\`json\n{}\n\`\`\`\n`;
+
+  /** Fake that hits a dead review-MCP URL mid-turn, then answers per attempt. */
+  function hittingRunner(replies: string[]): {
+    agents: FakeAgentRunner & { seen: string[] };
+    mcp: { current: McpRegistry | null };
+  } {
+    const mcp: { current: McpRegistry | null } = { current: null };
+    const scripted = replies.map(textEvents);
+    let calls = 0;
+    class HittingFakeRunner extends FakeAgentRunner {
+      seen: string[] = [];
+      override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
+        this.seen.push(text);
+        if (text.includes("# Explain")) {
+          calls += 1;
+          mcp.current?.noteUnknownHit();
+          yield* scripted[Math.min(calls, scripted.length) - 1]!;
+          return;
+        }
+        yield* super.prompt(session, text);
+      }
+    }
+    const agents = new HittingFakeRunner([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+    ]);
+    return { agents, mcp };
+  }
+
+  it("chatter plus a connection error retries once, then fails", { timeout: 90000 }, async () => {
+    const { agents, mcp } = hittingRunner([CHATTER, CHATTER]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      mcp.current = ctx.mcp;
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      // Exactly two turns: the first attempt plus one retry on a fresh fork.
+      const explains = agents.seen.filter((t) => t.includes("# Explain"));
+      expect(explains).toHaveLength(2);
+      expect(ctx.jobs.get(jobId!)?.state).toBe("error");
+      expect(ctx.jobs.get(jobId!)?.error).toMatch(/could not look up|degraded/i);
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a clean retry recovers and stores", { timeout: 90000 }, async () => {
+    const { agents, mcp } = hittingRunner([CHATTER, CLEAN]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      mcp.current = ctx.mcp;
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      const explains = agents.seen.filter((t) => t.includes("# Explain"));
+      expect(explains).toHaveLength(2);
+      expect(ctx.jobs.get(jobId!)?.state).toBe("done");
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      expect(
+        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+      ).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+});

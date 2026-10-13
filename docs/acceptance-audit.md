@@ -261,12 +261,15 @@ needed (that deviation is closed, not added).
    (`actions-echo.test.ts`, `content-titles.test.ts`). Agent process
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
-   rule); a turn that reports itself `degraded`, or narrates its tooling
-   while running without the review MCP server, fails its job instead of
-   storing a card — streamed partials cleared, reason in the job error
-   on the Debug page (`degraded-turn-51.test.ts`). A reply anchor that
-   names only the card gets one repair turn carrying the reason
-   (`validate.test.ts`).
+   rule; failures go in the trailing `degraded` field). A job fails on
+   facts only: a `degraded` field fails terminally, and a
+   process-complaint frame fails when the turn ran without the review
+   MCP server or hit a dead MCP URL — tool names and MCP/gh alone never
+   fail a job. Connection-error failures retry once on a fresh session;
+   everything else degraded is terminal. Streamed partials are cleared
+   and the reason lands in the job error on the Debug page
+   (`degraded-turn-51.test.ts`). A reply anchor that names only the card
+   gets one repair turn carrying the reason (`validate.test.ts`).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”).

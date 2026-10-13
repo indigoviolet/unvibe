@@ -29,7 +29,7 @@ import type {
 } from "@unvibe/shared";
 import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
-import { DegradedTurnError, RetryableError } from "../jobs/errors.js";
+import { DegradedConnError, DegradedTurnError, RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
@@ -118,15 +118,14 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 /**
- * Tool-chatter patterns, issue #51 — see throwIfDegradedTurn. Literals
- * never belong in reader prose (the review MCP server is internal-only;
- * tool names never render); frames are ordinary words in a
- * process-complaint shape, counted only with no MCP activity.
+ * Tool-chatter frames, issue #51 — see throwIfDegradedTurn. Ordinary
+ * words in a process-complaint shape ("I tried to look it up with gh",
+ * "resolve returned no IDs"). They fail a job only conjoined with a
+ * fact below. Tool names and the words MCP/gh on their own never fail a
+ * job: a PR about MCP legitimately discusses them in prose.
  */
-const DEGRADED_LITERAL_RES = [/\bMCP\b/, /\b(get_hunk|get_code|search_review|pin_context)\b/];
 const DEGRADED_FRAME_RES = [
   /\bi\s+(could\s*not|couldn'?t|tried\s+to|attempted\s+to|was\s+unable\s+to|wasn'?t\s+able\s+to)\b[^.]{0,120}\b(look|cite|connect|access|confirm|verify|fetch|retrieve)\b/i,
-  /\bgh\b/,
   /command\s+was\s+refused|permission\s+(denied|refused)/i,
   /failed\s+to\s+connect/i,
   /resolve\s+returned\s+no\b/i,
@@ -487,6 +486,11 @@ export class Pipeline {
             );
             return;
           } catch (err) {
+            // One retry on a fresh session when the turn observably hit a
+            // dead review-MCP URL (#51: transient, e.g. slow-starting
+            // server): the loop re-forks above. A second failure, and any
+            // other degraded turn, is terminal.
+            if (err instanceof DegradedConnError && attempt < 1) continue;
             if (err instanceof RetryableError && attempt < 3) {
               await sleepMs(50 * (attempt + 1));
               continue;
@@ -961,13 +965,17 @@ export class Pipeline {
   }
 
   /**
-   * Fail a degraded turn instead of storing its reply (#51): the agent
-   * said it could not do what was asked (trailing `degraded` field), or
-   * the body narrates its own tooling while the turn ran without the
-   * review MCP server. Terminal, not retried: the reply is deterministic
-   * for the session, and a retry would likely reproduce it at full token
-   * cost — the reader retries explicitly on a fresh session instead. The
-   * message lands in the job error, shown on the Debug page.
+   * Fail a degraded turn instead of storing its reply (#51). Facts only,
+   * never vocabulary alone:
+   * - the trailing `degraded` field is present → terminal fail: the agent
+   *   says the reply is weakened, deterministically for the session;
+   * - the body matches a process-complaint frame AND the turn ran without
+   *   the review MCP server (no new connection or call) or observably hit
+   *   a dead review-MCP URL → fail: without tools behind it the reply is
+   *   weakened. A connection-error failure throws DegradedConnError, which
+   *   runInFork retries once on a fresh session; anything else here is
+   *   terminal (a retry would likely reproduce it at full token cost).
+   * The message lands in the job error, shown on the Debug page.
    */
   private throwIfDegradedTurn(
     reviewId: string,
@@ -982,14 +990,15 @@ export class Pipeline {
     const after = this.opts.mcp.activitySnapshot(reviewId);
     const noActivity = after.toolCalls <= before.toolCalls && after.connected <= before.connected;
     const connError = after.unknownHits > before.unknownHits;
+    if (!noActivity && !connError) return;
     const stripped = stripCodeForChatter(body);
-    const literal = DEGRADED_LITERAL_RES.find((re) => re.test(stripped));
-    if (literal) {
-      throw new DegradedTurnError(`agent reply mentions its own tooling (${literal.source}); tool chatter is never guide content`);
+    if (!DEGRADED_FRAME_RES.some((re) => re.test(stripped))) return;
+    if (connError) {
+      throw new DegradedConnError(
+        `agent reply reports what it could not look up; a review-MCP call failed this turn`,
+      );
     }
-    if ((noActivity || connError) && DEGRADED_FRAME_RES.some((re) => re.test(stripped))) {
-      throw new DegradedTurnError(`agent reply reports what it could not look up instead of answering`);
-    }
+    throw new DegradedTurnError(`agent reply reports what it could not look up instead of answering`);
   }
 
   /**
