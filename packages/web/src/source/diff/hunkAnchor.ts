@@ -2,7 +2,7 @@
  * Hunk-anchor helpers (issue #138): idle summaries are addressed
  * `h:<fileKey>:<contentHash>` (stable while the hunk's content is).
  *
- * - `parseHunkAttr` reads the `data-hunk` attribute off an idle summary;
+ * - `parseHunkAttr` reads the `data-hunksum` attribute off an idle summary;
  * - `findHunk` resolves it against the snapshot;
  * - `firstChangedLine` is the comment line for a summary: the first added
  *   line on the new side, else the hunk's new-side position (`newStart`,
@@ -19,7 +19,7 @@ export interface HunkRef {
   contentHash: string;
 }
 
-/** Parse `data-hunk="<fileKey>:<contentHash>"` (hashes never hold colons). */
+/** Parse `data-hunksum="<fileKey>:<contentHash>"` (hashes never hold colons). */
 export function parseHunkAttr(value: string | undefined): HunkRef | null {
   if (!value) return null;
   const sep = value.lastIndexOf(":");

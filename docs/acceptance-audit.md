@@ -647,7 +647,18 @@ needed (that deviation is closed, not added).
 - Git's own hunks (≤3 context, merged runs); header format + raw `@@` on
   hover; fold/Summarize/note/reviewed actions; hunk card (summary+note,
   Delete); folding hides code only — met (`shared/src/diff.ts` +
-  `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”).
+  `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”). Summaries are
+  content cards (#138): idle text with one attribute mounts nothing per
+  hunk (large-diff fixture: identical DOM node counts before/after,
+  zero card chrome for idle summaries); selecting in it offers the
+  toolbar on a hunk anchor; the first interaction activates a real
+  conversation card on `h:<fileKey>:<contentHash>` from the stored text
+  with no agent call, then the action runs nested; Comment lands on the
+  first changed line without activating; deleting the card returns the
+  idle text — met (`service/test/hunk-cards.test.ts`,
+  `source/diff/hunkAnchor.test.ts`,
+  `source/diff/HunkCardActivation.test.tsx`,
+  `e2e/hunk-summary.spec.ts`).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
   run with reason, click reveals; one-line never hidden; cited never
   hidden) — met (`ingest/uninteresting.ts` + hunk-pass override

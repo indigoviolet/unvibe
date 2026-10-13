@@ -376,7 +376,7 @@ function HunkCard({
           <span className="av ai" role="img" aria-label="Agent" data-tip="Agent">
             <Icon name="spark" />
           </span>
-          <p data-hunk={`${fileKey}:${hash}`} data-tip="Open as a card" onClick={activate}>
+          <p data-hunksum={`${fileKey}:${hash}`} data-tip="Open as a card" onClick={activate}>
             {summary}
           </p>
           <button

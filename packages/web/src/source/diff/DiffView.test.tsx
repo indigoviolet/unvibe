@@ -128,8 +128,11 @@ describe("DiffView", () => {
   it("summarizes a hunk with canned mock text", async () => {
     await renderDiff();
     const conn = within(connSection());
+    // Hunk 0 already carries the seeded idle summary (#138), so the
+    // first Summarize button belongs to hunk 1 and its canned text. The
+    // matcher avoids "getresponse", which also names hunk 1's header.
     await fireEvent.click(conn.getAllByRole("button", { name: "Summarize with agent" })[0]);
-    expect(await conn.findByText(/Adds `_OBSOLETE_FOLD_RE`/, {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(await conn.findByText(/now builds `HTTPHeaderDict`/, {}, { timeout: 3000 })).toBeInTheDocument();
   }, 10000);
 
   it("revealSource unhides a hidden hunk and highlights the line", async () => {

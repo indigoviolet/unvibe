@@ -167,7 +167,7 @@ describe("hunk summary activation (issue #138)", () => {
     render(<Harness cards={new Map()} />);
     await settle();
     const wrap = fwrap();
-    const p = wrap.querySelector('p[data-hunk="f1:hash-sum-1"]');
+    const p = wrap.querySelector('p[data-hunksum="f1:hash-sum-1"]');
     expect(p?.textContent).toContain("Unfolds folded header values.");
     // Nothing mounted per hunk beyond the text: no card, no controls.
     expect(wrap.querySelector("[data-expansion]")).toBeNull();
@@ -183,7 +183,7 @@ describe("hunk summary activation (issue #138)", () => {
     await settle();
     const wrap = fwrap();
     expect(wrap.querySelector("[data-expansion='ann_hunk']")).not.toBeNull();
-    expect(wrap.querySelector('p[data-hunk="f1:hash-sum-1"]')).toBeNull();
+    expect(wrap.querySelector('p[data-hunksum="f1:hash-sum-1"]')).toBeNull();
     // The card carries its reply box and per-answer controls.
     expect(wrap.querySelector("textarea[aria-label='Ask a follow-up']")).not.toBeNull();
   });
@@ -195,6 +195,6 @@ describe("hunk summary activation (issue #138)", () => {
     await settle();
     const wrap = fwrap();
     expect(wrap.querySelector("[data-expansion='ann_hunk']")).toBeNull();
-    expect(wrap.querySelector('p[data-hunk="f1:hash-sum-1"]')).not.toBeNull();
+    expect(wrap.querySelector('p[data-hunksum="f1:hash-sum-1"]')).not.toBeNull();
   });
 });

@@ -213,6 +213,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover. It stays pinned under the file header while its hunk scrolls.
 - **Actions:** a leading fold chevron, then Summarize (agent), Add or Edit note, and Mark reviewed.
 - **Hunk card:** the agent summary and the user's note, each with Delete. It exists regardless of folding. **Folding only hides code**, replacing it with "N changed lines folded · show".
+- **Summaries are content cards:** an idle summary is plain text — selecting in it offers Explain, Ask…, Comment and GitHub like any other agent text. The first interaction (an action on selected text, or opening the summary) turns it into a real conversation card on the hunk, created from the stored summary text with no agent call, and it stays a card: reply box and per-answer controls included. A Comment attaches to the hunk's first changed line and never activates the summary. Deleting the card returns the hunk to its idle text.
 - **Mark reviewed** greys the hunk and folds its code.
 
 **Hide uninteresting**

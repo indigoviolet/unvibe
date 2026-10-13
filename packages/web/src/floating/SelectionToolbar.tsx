@@ -126,13 +126,15 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   if (descNode && el.closest("#right .desc")) {
     return { anchor: { where: "description", paragraphId: (descNode as HTMLElement).id } };
   }
-  // Issue #138: an idle hunk summary is plain text with a `data-hunk`
+  // Issue #138: an idle hunk summary is plain text with a `data-hunksum`
   // attribute — no component, no listener per hunk. Selecting in it still
   // brings up the toolbar, anchored on the hunk. (Selections inside an
-  // activated card resolve to its answer blocks via the branches above.)
-  const hunkEl = el.closest("[data-hunk]") as HTMLElement | null;
+  // activated card resolve to its answer blocks via the branches above.
+  // The sticky hunk header's `data-hunk` is a different attribute and
+  // never matches here.)
+  const hunkEl = el.closest("[data-hunksum]") as HTMLElement | null;
   if (hunkEl) {
-    const ref = parseHunkAttr(hunkEl.dataset.hunk);
+    const ref = parseHunkAttr(hunkEl.dataset.hunksum);
     if (ref) return { anchor: { where: "hunk", fileKey: ref.fileKey, contentHash: ref.contentHash } };
     return null;
   }

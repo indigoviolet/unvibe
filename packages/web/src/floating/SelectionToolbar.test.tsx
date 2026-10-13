@@ -280,7 +280,7 @@ describe("resolveSelectionHost on idle hunk summaries (issue #138)", () => {
   test("a selection in the summary anchors the hunk", () => {
     document.body.innerHTML =
       `<div id="right"><div class="dhunk"><div class="fwrap"><div class="fcard">` +
-      `<div class="fsum"><p data-hunk="conn:hash1"><span id="in-sum">Unfolds folds</span></p></div>` +
+      `<div class="fsum"><p data-hunksum="conn:hash1"><span id="in-sum">Unfolds folds</span></p></div>` +
       `</div></div></div></div>`;
     expect(resolveSelectionHost(document.getElementById("in-sum")!)).toEqual({
       anchor: { where: "hunk", fileKey: "conn", contentHash: "hash1" },

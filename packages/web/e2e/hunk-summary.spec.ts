@@ -60,7 +60,7 @@ async function selectText(page: Page, rootSelector: string, text: string): Promi
 
 test("select summary text, Explain: the card appears under the hunk", async ({ page }) => {
   await gotoDiff(page);
-  await selectText(page, "p[data-hunk]", "folded header values");
+  await selectText(page, "p[data-hunksum]", "folded header values");
   await page.locator('#selbar [data-act="explain"]').click();
   const card = page.locator(".dhunk [data-expansion]").first();
   await expect(card).toBeVisible({ timeout: 5000 });
@@ -68,12 +68,12 @@ test("select summary text, Explain: the card appears under the hunk", async ({ p
   // summary and the nested reply share the card's `.exp-b` divs).
   await expect(card).toContainText("Mock explanation", { timeout: 8000 });
   // The idle text gave way to the card (it stays a card).
-  await expect(page.locator("p[data-hunk]")).toHaveCount(0);
+  await expect(page.locator("p[data-hunksum]")).toHaveCount(0);
 });
 
 test("clicking the idle summary opens it as a card with no agent call", async ({ page }) => {
   await gotoDiff(page);
-  const idle = page.locator("p[data-hunk]").first();
+  const idle = page.locator("p[data-hunksum]").first();
   await expect(idle).toBeVisible({ timeout: 8000 });
   await idle.click();
   const card = page.locator(".dhunk [data-expansion]").first();
@@ -83,7 +83,7 @@ test("clicking the idle summary opens it as a card with no agent call", async ({
 
 test("a Comment on a summary lands on the line and never activates", async ({ page }) => {
   await gotoDiff(page);
-  await selectText(page, "p[data-hunk]", "folded header values");
+  await selectText(page, "p[data-hunksum]", "folded header values");
   await page.locator('#selbar [data-act="note"]').click();
   const composer = page.locator(".ithread[data-pending-thread]");
   await expect(composer).toBeVisible({ timeout: 5000 });
