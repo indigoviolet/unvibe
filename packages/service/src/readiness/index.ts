@@ -23,8 +23,10 @@ import {
   distinctCheck,
   ghCheck,
   gitCheck,
+  gitHubFetchCheck,
   gitVersion,
   probeGh,
+  probeGitHubFetch,
   ROLE_LABEL,
   type AgentRole,
 } from "./checks.js";
@@ -87,7 +89,13 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       }),
     ]);
 
-  const [gitV, ghProbe] = await Promise.all([
+  // #139: the GitHub reachability probe hits the network by design. Under
+  // vitest it is omitted outright (issue #119: tests never hit real
+  // GitHub; same reason `buildApp` refuses production fallbacks — see
+  // `isTestProcess` in app.ts, inlined here to avoid a module cycle).
+  // `probeGitHubFetch` itself is covered with a stubbed runner.
+  const underTest = process.env.VITEST === "true" || process.env.VITEST === "1" || process.env.NODE_ENV === "test";
+  const [gitV, ghProbe, gitHubFetchProbe] = await Promise.all([
     withTimeout(gitVersion(deps.runner), null),
     withTimeout(probeGh(deps.runner, { pathValue, timeoutMs }), {
       installed: false,
@@ -95,6 +103,12 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       apiReachable: false,
       detail: "the gh check timed out",
     }),
+    underTest
+      ? null
+      : withTimeout(probeGitHubFetch(deps.runner, { timeoutMs }), {
+          ok: false,
+          detail: "the GitHub fetch check timed out",
+        }),
   ]);
 
   const roles: AgentRole[] = ["main", "small", "secondOpinion"];
@@ -140,7 +154,15 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   );
 
   const response: ReadinessResponse = {
-    checks: [gitCheck(gitV), ghCheck(ghProbe), ...agentChecks, distinctCheck(settings), d2],
+    checks: [
+      gitCheck(gitV),
+      ghCheck(ghProbe),
+      // Omitted under vitest (see above): never `undefined` in production.
+      ...(gitHubFetchProbe ? [gitHubFetchCheck(gitHubFetchProbe)] : []),
+      ...agentChecks,
+      distinctCheck(settings),
+      d2,
+    ],
     generatedAt: Date.now(),
     cached: false,
   };
@@ -148,4 +170,4 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   return response;
 }
 
-export { agentCheck, distinctCheck, ghCheck, gitCheck, probeGh } from "./checks.js";
+export { agentCheck, distinctCheck, ghCheck, gitCheck, gitHubFetchCheck, probeGh, probeGitHubFetch } from "./checks.js";

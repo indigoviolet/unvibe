@@ -19,12 +19,16 @@ The service never writes into your checkout; agents read the code in a worktree 
 1. **Ingest** (`src/ingest/`, async open #92): `POST /api/reviews` creates
    the review row + a loading snapshot (`ingest: {status: "loading",
    step: "fetching"}`) and answers 202 at once — before any fetch. The
-   fetch (`git fetch origin`, then PR heads via `refs/pull/<n>/head` with a
-   branch-name fallback) + `gh pr view` + merge-base (against
-   `origin/<base>` first, bare second — stacked PRs, #93) + local diff +
-   worktree run after the response, stepping the snapshot to "reading
+   fetch (repo-wide `git fetch origin` alongside `gh pr view`, then PR
+   heads via `refs/pull/<n>/head` with a branch-name fallback in one fetch
+   with the base — #123) + merge-base (against `origin/<base>` first,
+   bare second — stacked PRs, #93) + local diff + worktree run after the
+   response, stepping the snapshot to "reading
    diff" then filling it to ready in one mutate (one WS patch; the page
-   fills through the usual events). The PR title/number/author from the
+   fills through the usual events). Every fetch authenticates with the
+   user's `gh` login and keeps its result, so a missing PR head reports
+   the fetch failure in plain words instead of "commit not found" (#139).
+   The PR title/number/author from the
    list row ride the create request so the loading page shows them at
    once. Failures mark the snapshot failed with the error + a retry
    (`POST …/retry`); the review never looks like a normal empty review
