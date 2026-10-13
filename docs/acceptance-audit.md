@@ -1223,6 +1223,37 @@ every agent action so the same handover runs. Service jobs now carry
  fixed. Hunk summarize busy never clears on success (#63, adjacent,
  untracked here).
 
+### Progress signs (#98, branch `feat/98-progress-signs`)
+
+ Still dots vs level dots: the owner's still dots were the working
+ indicator's `.dots` — its `blink` (opacity .25↔1 over 1 s) runs in both
+ themes but reads as static at 5px. The depth stepper's `.pips` are a
+ static level display by design and stay unanimated. One shared
+ `dot-pulse` keyframe now bounces each dot up 2.5px and flashes it in
+ turn (staggered .15 s), so every working state animates: cards,
+ expansions, threads, hunk summaries, placeholders, diagram/composer
+ indicators, and the two loading states that had no dots at all (review
+ opening step, guide building). Under `prefers-reduced-motion` the dots
+ are static but solid accent — still distinct from resting text.
+ Running / queued job count: the review bar's right corner (after
+ Submit, so appearing never shifts the title or the buttons; no overflow
+ at 800px) shows `running · queued` (e.g. `1 · 2`) while any of the
+ review's jobs is live — `running` counts `running` jobs, `queued`
+ counts `queued` + `backing-off` (both wait: for a slot, for a retry);
+ terminal states count for neither — linking to the review's Debug jobs
+ list. A slow gradient drifts while anything runs; queued-only is quiet;
+ nothing renders when idle or while the review is still opening/failed
+ (the open is ingest state, never a snapshot job). Plain link text, no
+ live region. CSS only, no new dependency, no CSP change.
+ Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
+ `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
+ queued-only, hidden idle, hidden while opening), new
+ `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
+ after cancelling all live jobs, 800px fit, computed
+ `animation-name`/`duration` on the dots, reduced-motion off via
+ emulation), `copy-guard` green. Screenshots `docs/screenshots/98-*`.
+ Full gates not yet run.
+
 ### Reload blank page, part 1: error boundaries (#101, complete)
 
  Any render/commit exception used to unmount the whole tree (no boundary
