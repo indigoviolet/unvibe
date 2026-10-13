@@ -98,6 +98,7 @@ without touching GitHub (see DEVELOPMENT.md).
 | Directory | Responsibility |
 |---|---|
 | `packages/service/src/routes/` | One module per API area; token gate + loopback checks apply to all |
+| `packages/service/src/routes/files.ts` | Raw file ranges at a commit for diff expansion (issue #133): `GET /api/reviews/:id/file` over the shared `readCodeSlice` source, capped per request |
 | `packages/service/src/ingest/` | PR/branch detection, fetch, diff parse, file classification, worktree |
 | `packages/service/src/pipeline/` | Reader, base build, forks, hunk pass, on-demand actions |
 | `packages/service/src/sessions/` | Base + conversation session lifecycle (fork, idle close, reopen) |
@@ -126,7 +127,7 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/service/src/repos/` + `src/reviews/` | Repo detection/list, review create/list/delete |
 | `packages/web/src/start/` | Front screen: prior reviews, demo, repos, PRs, branches |
 | `packages/web/src/guide/` | Guide pages, cards, citations, hover previews |
-| `packages/web/src/source/` | Source pane: PR description, diff, hunk state. Diff code rows upgrade to Shiki token colours after first paint (`diff/highlight/`: lazy core/engine/grammars, content-hash cache, `?nohl=1` escape hatch) |
+| `packages/web/src/source/` | Source pane: PR description, diff, hunk state. Diff code rows upgrade to Shiki token colours after first paint (`diff/highlight/`: lazy core/engine/grammars, content-hash cache, `?nohl=1` escape hatch). Diff expansion (`diff/FileExpansion.tsx` + `diff/expandLines.ts`): step/show-all controls and tinted revealed context around hunks, served by the file-slice route |
 | `packages/web/src/comments/` | Threads, selection toolbar, comments menu |
 | `packages/web/src/settings/` | Models, prompt templates, limits, environment |
 | `packages/web/src/debug/` | Per-review debug page (jobs, expanded prompts, then base, log, contributions as rendered Markdown + delete) |

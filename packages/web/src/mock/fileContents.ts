@@ -89,6 +89,7 @@ const CONN_HEAD: string[] = [
   "class RefusedConnectionError(NewConnectionError):",
   "    pass",
   "",
+  "",
   "class BaseSSLError(BaseException):  # type: ignore[no-redef]",
 ];
 
@@ -231,9 +232,9 @@ const TCONN_HEAD: string[] = [
   "        assert conn.socket_options == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]",
 ];
 
-function numbered(head: string[], total: number): string[] {
-  // 1-based line array: index 0 unused.
-  const out: string[] = new Array(total + 1).fill("");
+function numbered(head: string[], total: number): (string | undefined)[] {
+  // 1-based line array: index 0 unused, undefined where undrawn.
+  const out: (string | undefined)[] = new Array(total + 1).fill(undefined);
   for (let i = 0; i < head.length && i + 1 <= total; i++) out[i + 1] = head[i];
   return out;
 }
@@ -247,25 +248,26 @@ function buildConn(): { totalLines: number; at: string[] } {
     });
   };
   put(1, CONN_HEAD);
-  // Hunk 0 covers new 77-113: lines 77-79 end the head above (the added
-  // helper block follows at 80-110), then the class after the hunk.
+  // Hunk 0 covers new 77-113: the head ends at 76 with the class line
+  // the hunk opens on; the added helper block follows at 80-110, then
+  // the class after the hunk.
   put(80, CONN_ADDED);
   put(111, CONN_AFTER_HUNK0);
   // Hunk 1 covers new 647-654; surroundings sketch getresponse.
   put(640, CONN_AROUND_HUNK1);
   for (let n = 1; n <= totalLines; n++) {
-    if (at[n] === "") at[n] = `# filler line ${n}`;
+    if (at[n] === undefined) at[n] = `# filler line ${n}`;
   }
-  return { totalLines, at };
+  return { totalLines, at: at as string[] };
 }
 
 function buildTconn(): { totalLines: number; at: string[] } {
   const totalLines = 280;
   const at = numbered(TCONN_HEAD, totalLines);
   for (let n = 1; n <= totalLines; n++) {
-    if (at[n] === "") at[n] = `# filler line ${n}`;
+    if (at[n] === undefined) at[n] = `# filler line ${n}`;
   }
-  return { totalLines, at };
+  return { totalLines, at: at as string[] };
 }
 
 /** File path → full mock text (1-based `at`, `totalLines`). */

@@ -27,7 +27,7 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §4.10 second opinion (4) | 4 | 0 | 0 | 0 |
 | §4.11 PR description (6) | 6 | 0 | 0 | 0 |
 | §4.12 submit (4) | 4 | 0 | 0 | 0 |
-| §4.13 diff (16) | 16 | 0 | 0 | 0 |
+| §4.13 diff (17) | 17 | 0 | 0 | 0 |
 | §4.14 settings (5) | 5 | 0 | 0 | 0 |
 | §4.15 conventions (7) | 7 | 0 | 0 | 0 |
 | §6 agent runner (8) | 8 | 0 | 0 | 0 |
@@ -44,12 +44,14 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §16 non-functional (5) | 5 | 0 | 0 | 0 |
 | §17 M0–M6 done-when (7) | 7 | 0 | 0 | 0 |
 | §18 test kinds (4) | 4 | 0 | 0 | 0 |
-| **Total** | **211** | **0** | **0** | **1** |
+| **Total** | **212** | **0** | **0** | **1** |
 
 (Audit-10 correction: the prior total (204/2) was stale — the row values
 already summed to 208 met + 3 partly + 1 cannot-verify = 212 requirements.
 After closing the three partly items below, the rows sum to 211 met + 0
 partly + 1 cannot-verify = 212.)
+(Issue #133 stage 1 adds one §4.13 requirement — expand beyond hunks —
+so the rows now sum to 212 met + 1 cannot-verify = 213.)
 
 Fixed in this branch (was failing/missing before): stale-dist `check`
 failure; missing Host/Origin gate; MCP secrets never revoked; submit
@@ -525,6 +527,22 @@ needed (that deviation is closed, not added).
   (`source/diff/highlight/*.test.ts(x)`, `e2e/shiki-highlight.spec.ts`).
 - New-commits banner; stale/outdated per §8 — met
   (`settings-versions-service.spec.ts` “refresh banners counts”).
+- Expand beyond hunks, by lines (issue #133, stage 1) — met:
+  `GET /api/reviews/:id/file` serves raw ranges at a commit through the
+  shared `readCodeSlice` source with a per-request cap
+  (`service/src/routes/files.ts`, `service/test/file-slice.test.ts` 4
+  tests); step controls above/below each hunk (20 lines) plus gap
+  show-all with a slim hide when fully revealed, so the hunks read as
+  continuous (`web/src/source/diff/FileExpansion.tsx`,
+  `expandLines.test.ts` 9 tests, `FileExpansion.test.tsx` 5 tests,
+  `e2e/diff-expand.spec.ts` 4 tests); revealed rows are tinted context
+  with Shiki colours in unified and split, both sides aligned
+  (`expand.css`, `highlightLines`); deleted files expand on the old
+  side, new files on the new side, binary files offer nothing, renames
+  read the new path at head — nothing throws; revealed lines offer
+  Explain and Ask on the diff-line anchor (read as
+  `code:<path>:<lines>@<sha>`) while Note stays hidden there
+  (`SelectionToolbar.test.tsx`); `docs/screenshots/133-*.png`.
 
 ### §4.14 Settings — all met
 
