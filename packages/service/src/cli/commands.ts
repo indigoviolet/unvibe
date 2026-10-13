@@ -40,7 +40,14 @@ export const CLI_USAGE = [
 ].join("\n");
 
 export function serviceUrl(port: number, token: string): string {
-  return `http://127.0.0.1:${port}/?token=${token}`;
+  // The bookmarkable name (issue #108): browsers resolve `*.localhost`
+  // to loopback themselves. The 127.0.0.1 URL stays valid (same service).
+  return `http://unvibe.localhost:${port}/?token=${token}`;
+}
+
+/** The plain bookmark URL (no token: the cookie carries it after setup). */
+export function bookmarkUrl(port: number): string {
+  return `http://unvibe.localhost:${port}`;
 }
 
 function cliScriptPath(): string {
@@ -150,7 +157,7 @@ async function cmdStatus(): Promise<number> {
   if (lock && isPidAlive(lock.pid)) {
     const healthy = await isHealthOk(lock.port);
     console.log(
-      `running on http://127.0.0.1:${lock.port} (pid ${lock.pid}, since ${lock.startedAt || "unknown"}${healthy ? "" : "; starting?"})`,
+      `running on http://unvibe.localhost:${lock.port} (pid ${lock.pid}, since ${lock.startedAt || "unknown"}${healthy ? "" : "; starting?"})`,
     );
     return 0;
   }
@@ -172,6 +179,12 @@ async function cmdSetup(args: string[]): Promise<number> {
   const steps = await installSetup(resolveSetupPaths());
   for (const s of steps) console.log(s);
   console.log(`token ready in ${config.dataDir}/token`);
+  // The link with the token, printed once (issue #108): opening it stores
+  // the token in the browser (localStorage + cookie) so that afterwards
+  // the plain bookmark URL just works. Never printed again afterwards —
+  // `unvibe token` re-prints it on demand.
+  console.log(`open once to connect this browser: ${serviceUrl(config.port, token)}`);
+  console.log(`then bookmark: ${bookmarkUrl(config.port)}`);
   console.log("to undo: unvibe setup --uninstall");
   return 0;
 }
