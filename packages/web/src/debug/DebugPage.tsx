@@ -22,6 +22,7 @@ import { useReviewIdentity } from "../shell/reviewIdentity.js";
 import { TabPanel, Tabs, useQueryTab } from "../tabs/Tabs.js";
 import { ExpandedPrompts } from "./ExpandedPrompts.js";
 import { JobsSection } from "./JobsSection.js";
+import { RedoGuideSection } from "./RedoGuideSection.js";
 import { SharedContext } from "./SharedContext.js";
 
 const DEBUG_TABS = [
@@ -98,6 +99,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
             {!doc && !error ? <p className="hint">Loading shared context…</p> : null}
             {doc ? <SharedContext doc={doc} items={items} onDelete={(id) => void remove(id)} /> : null}
           </TabPanel>
+          <RedoGuideSection reviewId={reviewId} />
         </div>
       </main>
     </div>

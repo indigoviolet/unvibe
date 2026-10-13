@@ -229,7 +229,10 @@ needed (that deviation is closed, not added).
 
 - Kinds (root/concept/finding/opened-expansion), root+finding labels only
   — met (walk shows “GUIDED REVIEW”; `reply-format.md` §7 finding refs).
-- Header (label, bookmark, title) — met (`guide.spec.ts`).
+- Header (label only where it matters, bookmark right-aligned on the
+  title line — #118, deliberately off-prototype; no empty label row) —
+  met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header cases,
+  `guide.spec.ts` finding-label + saved-bookmark cases).
 - Trail breadcrumb off-root — met (`guide.spec.ts` “pages navigate”).
 - Contents box (cards jump + linked pages, read muted, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
@@ -340,7 +343,16 @@ needed (that deviation is closed, not added).
 - Snap to words, trim, highlight matches — met (`e2e/comments.spec.ts`
   “selection snaps to whole words”).
 - Toolbar Explain / Ask… / Note; no examples/diagrams there; appears only
-  on selection-finish — met (`comments.spec.ts`).
+  on selection-finish — met (`comments.spec.ts`). Inside an explanation
+  the same toolbar appears (#116); inside second-opinion reasoning and
+  thread replies it does not (neither is an anchor host —
+  `SelectionToolbar.test.tsx`).
+- Selections inside an explanation anchor to the expansion's block
+  (`<expansion>#<block>`) for all three actions; the nested explanation,
+  thread or note renders under that block, nests to any depth by the same
+  mechanism, and survives reload with its highlight
+  (`actions-expansion-nesting.test.ts`, `ExpansionNesting.test.tsx`,
+  `e2e/expansion-nesting-service.spec.ts`).
 
 ### §4.7 Explanations — all met
 
@@ -358,6 +370,24 @@ needed (that deviation is closed, not added).
   back → highlight).
 - Open as page moves content, anchor becomes link — met
   (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
+- One box while working (issue #97) — met: the Explain placeholder gives
+  way as soon as its expansion is in the snapshot (guide, description and
+  diff alike), the card shows the fixed “Writing explanation…” label from
+  the anchor-keyed entry instead of the “Working…” fallback, and
+  content-needing controls (depth, examples, diagram, second opinion) stay
+  off until the text arrives (`guide/inflight.ts` `anchorEntryForExpansion`,
+  `ExpansionCard.tsx`, `comments/doubleIndicator.test.tsx` “Explain”,
+  `guide/inflight.test.ts` anchor-entry cases). First and later Explains
+  take the same code path; the first only looks different because agent
+  session setup stretches the patch-before-response window.
+- Explanations nest (#116): an Explain on text inside an explanation
+  anchors to the expansion's block and renders under it, to any depth;
+  Ask/Note there behave the same. Citations to expansion blocks validate
+  (`card:<expansion>#<block>`). Closed nested explanations and stale
+  anchors use the same footnote chips as card-level ones. Block IDs are
+  unique within each stored body (multi-card replies dedupe to `-c2`…,
+  inserts take fresh IDs; matching is exact on owner + block), so one
+  anchor draws exactly one card.
 
 ### §4.8 Comments — all met
 
@@ -376,7 +406,14 @@ needed (that deviation is closed, not added).
 - Placement (guide closed + hover outline; diff under line + line-number
   reopen + click-number starts; description under paragraph) — met
   (`comments.spec.ts` “diff line click starts a comment; close leaves an
-  icon; reopen works”).
+  icon; reopen works”). The hover outline clears only its own marks and
+  cards/threads (issue #111), never the depth stepper pips
+  (`guide/expansions/hoverOutline.test.tsx`).
+- One box while asking (issue #97) — met: the Ask composer hides as soon
+  as its thread is in the snapshot, and the thread's working row uses the
+  fixed Ask label instead of the “Reading the diff…” fallback
+  (`comments/NewThreadComposer.tsx`, `comments/ThreadView.tsx`,
+  `comments/doubleIndicator.test.tsx` “Ask”).
 - Comments menu (all comments, jump, For PR filter with editable drafts,
   never posts; lives in the review bar next to Submit since round 2, so it
   opens with the source pane closed) — met (`comments-service.spec.ts`
@@ -478,6 +515,10 @@ needed (that deviation is closed, not added).
   in the diff pane (Summarize action, never the JSON text).
 - Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
   (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
+  The Summarize dots clear when the summary lands by patch — including a
+  landed JSON-looking summary, which still reads as absent with Summarize
+  re-offered (issue #63; `DiffView.tsx` raw-row effect,
+  `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
   — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
 - Syntax highlighting (issue #23): plain rows first, token colours after
@@ -523,7 +564,13 @@ needed (that deviation is closed, not added).
   unchanged from Settings apart from the redundant divider: `e2e/debug.spec.ts`,
   `GET /api/jobs` ran; prompt snapshots now
   served per-job to keep lists small; the per-job prompt toggle lazy-loads
-  as before).
+  as before). Finished jobs stay listed after a restart, with prompts and
+  results (issue #117: the queue used to hydrate only open jobs, so a
+  completed review showed an empty list while every row sat in SQLite;
+  `recover()` now loads all stored jobs and open ones still come back
+  marked interrupted; `threadId` is persisted too. Evidence:
+  `service/test/jobs.test.ts` "finished jobs stay listed after a restart",
+  `scripts/restart-resilience.mjs` step 2b, PRD §4.14 + §16).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log lines
   verbatim in fenced blocks under in-base/ready/waiting headings (issue
@@ -534,6 +581,17 @@ needed (that deviation is closed, not added).
   collapsible with a sticky summary (Base open, the rest closed;
   Expand/Collapse all on Prompts + Shared context; open state survives tab
   switches, job updates and contribution deletes).
+- Re-do guide on the Debug page (issue #115): `POST /api/reviews/:id/redo`
+  deletes + re-creates through the existing paths (shared create helper)
+  and answers 202 with the new review's loading snapshot; the page
+  navigates to it. New id (same as delete + create); running jobs
+  cancelled first; refused with 409 for the demo, while loading/failed,
+  while a submit lease is held for the review, and when the repo is gone.
+  Confirmation states what delete + create discards. Open decisions for
+  the owner: keep the new id vs keep the old one, and keep vs discard
+  user comments/notes (default = delete semantics). Evidence:
+  `service/test/reviews-redo.test.ts`, `RedoGuideSection.test.tsx`,
+  `e2e/debug-redo.spec.ts`, PRD §4.14 + §14.1.
 
 ### §4.15 Conventions — all met
 
@@ -872,8 +930,9 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 
 ## §15 GitHub/git — all met (audit-10)
 
-- PR lists (`gh search … --author @me / --review-requested`) — met
-  (`repos/changes.ts`, start page).
+- PR lists (`gh pr list --author @me` / `--search
+  "review-requested:@me" + "user-review-requested:@me"`, one call per
+  list) — met (`repos/changes.ts`, start page).
 - `gh pr view --json …` metadata/description/files — met (`ingest/source.ts`).
 - `git diff merge-base...head` locally (not `gh pr diff`) — met
   (`versions/refresh.ts:240`; 300-file ingest ran).
@@ -1230,10 +1289,40 @@ every agent action so the same handover runs. Service jobs now carry
  the issue report (before/after for depth, examples, generate,
  follow-up, explain; replay fills run sub-second, captured via CDP
  bursts).
- Open: `threadId` persistence has the same pre-existing gap as `cardId`
- had (not carried through the jobs-store JSON column) — noticed, not
- fixed. Hunk summarize busy never clears on success (#63, adjacent,
- untracked here).
+ Fixed under #117: `threadId` is carried through the jobs-store JSON
+ column like `cardId`. Hunk summarize busy never clears on success (#63,
+ adjacent, untracked here).
+
+### Progress signs (#98, branch `feat/98-progress-signs`)
+
+ Still dots vs level dots: the owner's still dots were the working
+ indicator's `.dots` — its `blink` (opacity .25↔1 over 1 s) runs in both
+ themes but reads as static at 5px. The depth stepper's `.pips` are a
+ static level display by design and stay unanimated. One shared
+ `dot-pulse` keyframe now bounces each dot up 2.5px and flashes it in
+ turn (staggered .15 s), so every working state animates: cards,
+ expansions, threads, hunk summaries, placeholders, diagram/composer
+ indicators, and the two loading states that had no dots at all (review
+ opening step, guide building). Under `prefers-reduced-motion` the dots
+ are static but solid accent — still distinct from resting text.
+ Running / queued job count: the review bar's right corner (after
+ Submit, so appearing never shifts the title or the buttons; no overflow
+ at 800px) shows `running · queued` (e.g. `1 · 2`) while any of the
+ review's jobs is live — `running` counts `running` jobs, `queued`
+ counts `queued` + `backing-off` (both wait: for a slot, for a retry);
+ terminal states count for neither — linking to the review's Debug jobs
+ list. A slow gradient drifts while anything runs; queued-only is quiet;
+ nothing renders when idle or while the review is still opening/failed
+ (the open is ingest state, never a snapshot job). Plain link text, no
+ live region. CSS only, no new dependency, no CSP change.
+ Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
+ `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
+ queued-only, hidden idle, hidden while opening), new
+ `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
+ after cancelling all live jobs, 800px fit, computed
+ `animation-name`/`duration` on the dots, reduced-motion off via
+ emulation), `copy-guard` green. Screenshots `docs/screenshots/98-*`.
+ Full gates not yet run.
 
 ### Reload blank page, part 1: error boundaries (#101, complete)
 
@@ -1445,11 +1534,35 @@ items noticed while passing through (not verified, listed only):
   Errors name the missing piece (base ref vs head commit) plus git stderr.
   Evidence: `test/ingest/pr-merge-base.test.ts` (stacked base, fork fetch,
   default branch, both refresh paths, both error texts).
-- **#91 (start page, §4.2):** PR rows show `#N` when `branch` is unset
-  (`gh search prs` has no head-branch field) — never `#N · undefined`.
-  `RepoChange.branch` was already optional; no `gh` change. Evidence:
+- **#91 (start page, §4.2):** PR rows show `#N` when `branch` is unset —
+  never `#N · undefined`. The `gh pr list` source (#95) returns the head
+  branch, so unset only happens when `gh` omits it. Evidence:
   `StartPage.test.tsx` (`changeHead`), `changes-pr-branch.test.ts`, and one
   branch-less PR row in the web mock.
+- **#95 (start page, §4.2):** "Waiting on your review" splits into
+  requested of you (direct, `user-review-requested:@me`) and requested of
+  your team (`review-requested:@me` minus direct, with team names); both
+  asks show once, as direct. Each group is newest-first with a relative
+  time; the 1d/3d/1w/2w/All recency filter (by last update, remembered)
+  applies to both, with an empty state per section and per filtered-out
+  window. One extra `gh` call per repo at most. Evidence:
+  `test/changes-pr-lists.test.ts` (direct/team/both, sorting, missing
+  fields, call counts), `StartPage.requested.test.tsx`,
+  `e2e/start-lists.spec.ts`.
+- **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
+  in the quiet meta style with the diff add/delete colours, omitted when
+  unknown; thousands separators, "1 file" singular. Evidence:
+  `StartPage.test.tsx` (`diffSizeParts`), `StartPage.requested.test.tsx`
+  (render + omission), `e2e/start-lists.spec.ts`.
+- **#94 (start page + review bar, §4.2):** the PR label links to the PR
+  page (new tab, `rel="noreferrer"`): the review-bar identity and the
+  start-page PR and Reviews rows. The URL is built once in
+  `packages/shared` (`githubPrUrl`, preferring the row's `gh` URL via
+  `changePrUrl`); row clicks still open the review and the label stays
+  keyboard-reachable. Nothing for branch-only reviews or the demo.
+  Evidence: `test/repos.test.ts` (URL helper), `StartPage.requested.test.tsx`
+  (link isolation + session rows), `e2e/start-lists.spec.ts`,
+  `e2e/review-bar.spec.ts`.
 - **#92 (async open, §4.2, §7, §11, §14.1):** `POST /api/reviews` creates
   the row + a loading snapshot (`ingest: {status, step, error}`; placeholder
   version n: 0, empty files) and answers 202 before any fetch; the ingest

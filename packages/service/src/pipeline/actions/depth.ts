@@ -10,7 +10,7 @@
  * - Undo is a separate `undo` action (the stack is pushed here).
  */
 import type { Block, DepthLevel, Job } from "@unvibe/shared";
-import { JOB_PRIORITY } from "@unvibe/shared";
+import { JOB_PRIORITY, freshBlockId } from "@unvibe/shared";
 import {
   cardPromptText,
   findCardTargetInDraft,
@@ -22,6 +22,7 @@ import {
   recordInteraction,
   setTargetContent,
   stepLevel,
+  withFreshAsideId,
 } from "../../interaction/index.js";
 import { cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
@@ -155,7 +156,8 @@ async function depthViaAgent(
         // carries one (fixtures include it for the principle path).
         if (addPrinciple && target === "deep" && !hasPrinciple(merged)) {
           const principle = replyBlocks.find((b) => b.type === "aside" && b.kind === "Underlying principle");
-          if (principle) merged = [...merged, { ...principle, id: `b-pr-${Date.now().toString(36)}` }];
+          // Fresh ID within this body (#116), like example/diagram inserts.
+          if (principle) merged = [...merged, withFreshAsideId(principle, freshBlockId(merged, `b-pr-${Date.now().toString(36)}`))];
         }
         setTargetContent(t, merged, target);
         markStaleAnchors(draft, cardId);

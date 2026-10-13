@@ -124,6 +124,33 @@ export interface RepoChange {
   branch?: string;
   author?: string;
   updatedAt?: number;
+  /**
+   * #94: PR page URL as returned by `gh` (the row's preferred link
+   * target; the start page falls back to building it from the repo and
+   * number). Absent when unknown (rows stored before this change).
+   */
+  url?: string;
+  /**
+   * #100: diff size from `gh pr list --json
+   * additions,deletions,changedFiles`. Each absent when unknown; the row
+   * omits the size then.
+   */
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
+  /**
+   * #95: which review request a "review-requested" row answers — a request
+   * made of you by name ("direct") or only of a team you belong to
+   * ("team"). Absent on other rows and on rows stored before this change
+   * (the start page shows those under "Requested of you").
+   */
+  reviewScope?: "direct" | "team";
+  /**
+   * #95: team slugs (or names) from `gh`'s `reviewRequests` that asked for
+   * the review. Shown on team-requested rows when cheap; absent when there
+   * are none or the source did not say.
+   */
+  requestedTeams?: string[];
   /** Set for kind "review": the opened review's id (M1 service addition). */
   reviewId?: string;
   /** Set for kind "review": head moved since the review was fetched. */
@@ -426,6 +453,13 @@ export type ReviewAction =
   | { kind: "concept"; slug: string };
 
 export type ActionAnchor =
+  /**
+   * A guide block, addressed `<card>#<block>` (block ids restart at `b1`
+   * in every card, so the card qualifier is required). The card part is a
+   * page-card id, or — for a selection inside an explanation (#116) — the
+   * hosting expansion's annotation id, so nested explanations address
+   * `<expansion>#<block>` the same way.
+   */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
   | { where: "diff-line"; fileKey: string; line: number };

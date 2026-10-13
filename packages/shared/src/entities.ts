@@ -513,6 +513,13 @@ export interface Annotation {
 
 /** Where an annotation is attached (PRD §7.1). */
 export type AnchorHost =
+  /**
+   * A guide block, stored `<card>#<block>` (block ids repeat across cards,
+   * #78). The card part is a page-card id, or — for an annotation on text
+   * inside an explanation (#116) — the hosting expansion's annotation id.
+   * Hosts nest by the same mechanism to any depth (an annotation per
+   * level; every level stays in the flat annotation list).
+   */
   | { kind: "block"; blockId: string }
   | { kind: "description"; paragraphId: string }
   | { kind: "diff-line"; fileKey: string; line: number; endLine?: number; side?: "LEFT" | "RIGHT" };

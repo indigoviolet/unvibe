@@ -52,8 +52,10 @@ export {
 } from "./d2.js";
 export {
   allDiagramBlocks,
+  dedupeBlockIds,
   findDiagramByHash,
   findDiagramBySource,
+  freshBlockId,
   liveBlockLists,
 } from "./blocks.js";
 export type { BlockSnapshot } from "./blocks.js";

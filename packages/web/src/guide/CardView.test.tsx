@@ -53,7 +53,7 @@ function answerExpansion(): Annotation {
     id: "ann_ans",
     type: "expansion",
     anchor: {
-      host: { kind: "block", blockId: "b-f" },
+      host: { kind: "block", blockId: "c1#b-f" },
       quotedText: "Why?",
       prefix: "",
       suffix: "",

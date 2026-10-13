@@ -98,7 +98,7 @@ test("reviews list follows the selected repo; demo row always shows", async ({ p
   await expect(page.locator('[data-testid^="session-"]')).toHaveCount(2);
 
   // Click resumes the review.
-  await demo.locator("button.cj").click();
+  await demo.locator("button.cj-open").click();
   await expect(page).toHaveURL(/\/review\/demo/);
 });
 
@@ -146,7 +146,7 @@ test("a partial lists failure shows per-section errors while branches still rend
   // Branches are local: they still render, and no whole-load error shows.
   await expect(page.getByText("Recent branches")).toBeVisible();
   await expect(page.locator('[data-testid="lists-error"]')).toHaveCount(0);
-  await page.locator("main .ci button").filter({ hasText: "fix-obs-fold" }).first().click();
+  await page.locator("main .ci", { hasText: "fix-obs-fold" }).first().locator("button.cj-open").click();
   await expect(page).toHaveURL(/\/review\//);
 });
 
@@ -167,7 +167,7 @@ test("held lists show loading without stale rows and keep the PR input", async (
   // Switching repos while held: still loading, never the old repo's rows.
   await page.getByLabel("Repo").selectOption("demo-lib");
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toContainText("Loading you/demo-lib…");
-  await expect(page.getByText("#5020 · fix-obs-fold · you")).toHaveCount(0);
+  await expect(page.locator("main .ci", { hasText: "#5020 · fix-obs-fold" })).toHaveCount(0);
   // Release: the new selection's lists render.
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
   await expect(page.getByText("Your PRs")).toBeVisible();
@@ -226,7 +226,7 @@ test("reviews for checkouts no longer listed stay openable and removable", async
   await expect(row).toContainText("gone/gone");
   await expect(row).toContainText("Work on a removed checkout");
   // Open works.
-  await row.locator("button.cj").click();
+  await row.locator("button.cj-open").click();
   await expect(page).toHaveURL(/\/review\/r-gone/);
   // Remove works.
   await page.goto("/");

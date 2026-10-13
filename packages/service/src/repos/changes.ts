@@ -1,14 +1,19 @@
 /**
  * Start-page changes for one repo (PRD §§4.2/15):
  *
- * - PRs you author: `gh search prs --author @me --repo <o/n>`;
- * - PRs awaiting your review: `gh search prs --review-requested @me --repo …`;
+ * - PRs you author: `gh pr list --author @me --repo <o/n>`;
+ * - PRs awaiting your review: `gh pr list --search
+ *   "review-requested:@me" --repo …` (direct + team) alongside `gh pr
+ *   list --search "user-review-requested:@me" --repo …` (direct only, #95);
  * - recent local and remote branches via git;
  * - reviews opened before, with stale state (head moved since fetch).
  *
- * All commands go through the injectable `CommandRunner`; `gh` runs with
- * `GITHUB_TOKEN` unset. Every external call is best-effort: an offline or
- * logged-out `gh` still yields branches + previous reviews.
+ * `gh pr list --json` returns every PR field the rows need in one call
+ * per list — head branch (#91), diff size (#100), the PR URL (#94) and
+ * review requests (#95) — where `gh search prs` could return none of
+ * them. All commands go through the injectable `CommandRunner`; `gh`
+ * runs with `GITHUB_TOKEN` unset. Every external call is best-effort: an
+ * offline or logged-out `gh` still yields branches + previous reviews.
  */
 import type { ChangesFilter, Repo, RepoChange } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
@@ -23,50 +28,106 @@ export interface ChangesDeps {
 const BRANCH_LIMIT = 30;
 const PR_LIMIT = 30;
 
+interface GhReviewRequest {
+  __typename?: string;
+  login?: string;
+  slug?: string;
+  name?: string;
+}
+
 interface GhPr {
   number: number;
   title: string;
   author?: { login: string };
   updatedAt?: string;
+  headRefName?: string;
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
+  url?: string;
+  reviewRequests?: GhReviewRequest[];
 }
 
-/** `gh search prs … --json number,title,author,updatedAt`, [] on failure. */
-async function searchPrs(
+/**
+ * Every PR field the start-page rows need, in one `gh` call per list.
+ * Fields `gh` cannot return in one call are simply absent (the row omits
+ * that part) — never one call per PR.
+ */
+const PR_FIELDS = "number,title,author,updatedAt,headRefName,additions,deletions,changedFiles,url,reviewRequests";
+
+/** One `gh pr list` call; null on any failure (best-effort listing). */
+async function listPrs(
   runner: CommandRunner,
   repo: Repo,
   extra: string[],
-): Promise<RepoChange[]> {
+): Promise<GhPr[] | null> {
   if (repo.owner === "local") return [];
   const args = [
-    "search",
-    "prs",
+    "pr",
+    "list",
     "--repo",
     `${repo.owner}/${repo.name}`,
     ...extra,
-    "--state",
-    "open",
     "--json",
-    "number,title,author,updatedAt",
+    PR_FIELDS,
     "--limit",
     String(PR_LIMIT),
   ];
   try {
     const res = await runGh(runner, args, { args, cwd: repo.localPath });
-    if (res.code !== 0) return [];
+    if (res.code !== 0) return null;
     const prs = JSON.parse(res.stdout) as GhPr[];
-    if (!Array.isArray(prs)) return [];
-    return prs.map((pr) => ({
-      kind: "pr" as const,
-      title: pr.title || `PR #${pr.number}`,
-      prNumber: pr.number,
-      ...(pr.author?.login ? { author: pr.author.login } : {}),
-      ...(pr.updatedAt
-        ? { updatedAt: Date.parse(pr.updatedAt) || undefined }
-        : {}),
-    }));
+    if (!Array.isArray(prs)) return null;
+    return prs;
   } catch {
-    return [];
+    return null;
   }
+}
+
+function toCount(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
+}
+
+/** Team slugs (or names) from `gh`'s `reviewRequests` (#95). */
+function requestedTeams(pr: GhPr): string[] {
+  const out: string[] = [];
+  for (const r of pr.reviewRequests ?? []) {
+    if (typeof r !== "object" || r === null) continue;
+    // User requests carry `login`; team requests carry `slug` (fall back
+    // to `name` — `gh` has returned both shapes).
+    if (typeof r.login === "string" && r.login !== "") continue;
+    const team = [r.slug, r.name].find((s) => typeof s === "string" && s !== "");
+    if (team && !out.includes(team)) out.push(team);
+  }
+  return out;
+}
+
+function toChange(pr: GhPr): RepoChange {
+  const additions = toCount(pr.additions);
+  const deletions = toCount(pr.deletions);
+  const changedFiles = toCount(pr.changedFiles);
+  const teams = requestedTeams(pr);
+  return {
+    kind: "pr" as const,
+    title: pr.title || `PR #${pr.number}`,
+    prNumber: pr.number,
+    ...(pr.author?.login ? { author: pr.author.login } : {}),
+    ...(pr.updatedAt ? { updatedAt: Date.parse(pr.updatedAt) || undefined } : {}),
+    // #91: the head branch `gh search prs` could never return.
+    ...(typeof pr.headRefName === "string" && pr.headRefName !== "" ? { branch: pr.headRefName } : {}),
+    // #94: prefer the URL `gh` returns; the web falls back to building it.
+    ...(typeof pr.url === "string" && pr.url !== "" ? { url: pr.url } : {}),
+    // #100: diff size; omitted when unknown.
+    ...(additions !== undefined ? { additions } : {}),
+    ...(deletions !== undefined ? { deletions } : {}),
+    ...(changedFiles !== undefined ? { changedFiles } : {}),
+    ...(teams.length > 0 ? { requestedTeams: teams } : {}),
+  };
+}
+
+/** Newest first; rows without a time sort last (stable). */
+function byUpdatedDesc(a: RepoChange, b: RepoChange): number {
+  return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
 }
 
 interface BranchRow {
@@ -210,9 +271,42 @@ async function listPreviousReviews(
 }
 
 /**
+ * PRs awaiting review (#95): direct requests (`user-review-requested:@me`)
+ * plus team requests (`review-requested:@me` minus the direct ones — a PR
+ * asking both shows once, as direct). One `gh` call per list, never per
+ * PR. When the direct call fails the distinction is unknown and rows
+ * carry no scope (the web shows them as direct, as before).
+ */
+async function requestedPrs(runner: CommandRunner, repo: Repo): Promise<RepoChange[]> {
+  const [direct, all] = await Promise.all([
+    listPrs(runner, repo, ["--search", "user-review-requested:@me"]),
+    listPrs(runner, repo, ["--search", "review-requested:@me"]),
+  ]);
+  if (all === null) {
+    // The team-inclusive call failed: fall back to the direct rows alone
+    // (also [] when that call failed) rather than an empty list.
+    return (direct ?? []).map((pr) => ({ ...toChange(pr), reviewScope: "direct" as const })).sort(byUpdatedDesc);
+  }
+  if (direct === null) {
+    // The distinction is unknown: return the rows without a scope (the
+    // web shows unscoped rows as direct, as before) rather than
+    // mislabelled.
+    return all.map(toChange).sort(byUpdatedDesc);
+  }
+  const directNumbers = new Set(direct.map((pr) => pr.number));
+  return all
+    .map((pr) => ({
+      ...toChange(pr),
+      reviewScope: (directNumbers.has(pr.number) ? "direct" : "team") as "direct" | "team",
+    }))
+    .sort(byUpdatedDesc);
+}
+
+/**
  * Changes for the start page. `filter` narrows the sections:
- * `authoring` / `review-requested` (one `gh` call each), `branches`
- * (git only), `recent` (branches + previous reviews), `all` (default).
+ * `authoring` (one `gh` call), `review-requested` (two `gh` calls: direct
+ * + team-inclusive, #95), `branches` (git only), `recent` (branches +
+ * previous reviews), `all` (default).
  */
 export async function repoChanges(
   deps: ChangesDeps,
@@ -221,9 +315,9 @@ export async function repoChanges(
 ): Promise<RepoChange[]> {
   switch (filter) {
     case "authoring":
-      return searchPrs(deps.runner, repo, ["--author", "@me"]);
+      return ((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc);
     case "review-requested":
-      return searchPrs(deps.runner, repo, ["--review-requested", "@me"]);
+      return requestedPrs(deps.runner, repo);
     case "branches":
       return listBranches(deps.runner, repo);
     case "recent":
@@ -234,8 +328,8 @@ export async function repoChanges(
     case "all":
     default:
       return [
-        ...(await searchPrs(deps.runner, repo, ["--author", "@me"])),
-        ...(await searchPrs(deps.runner, repo, ["--review-requested", "@me"])),
+        ...(((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc)),
+        ...(await requestedPrs(deps.runner, repo)),
         ...(await listBranches(deps.runner, repo)),
         ...(await listPreviousReviews(deps.runner, deps.db, repo)),
       ];

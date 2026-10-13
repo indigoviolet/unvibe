@@ -9,7 +9,7 @@
  */
 import type { WritableDraft } from "immer";
 import type { Annotation, Block, FollowUpBlock, Job, ReviewSnapshot } from "@unvibe/shared";
-import { JOB_PRIORITY } from "@unvibe/shared";
+import { JOB_PRIORITY, dedupeBlockIds } from "@unvibe/shared";
 import { l4Variables, recordInteraction } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { newAnnotationId } from "../../comments/threads.js";
@@ -41,8 +41,10 @@ export async function followupAction(
   const item = located.block.items[index];
   const message = item.ask ?? item.label;
   const quote = item.label;
+  // Qualified like every other block anchor (#116): a bare block ID would
+  // match the same-numbered block of every card at render time.
   const anchor = {
-    host: { kind: "block" as const, blockId },
+    host: { kind: "block" as const, blockId: `${cardId}#${located.block.id}` },
     quotedText: quote,
     prefix: "",
     suffix: "",
@@ -116,7 +118,7 @@ export async function followupAction(
         .catch(() => {});
     },
     onPartial: (cards) => {
-      const blocks = cards.flatMap((c) => c.blocks);
+      const blocks = dedupeBlockIds(cards.flatMap((c) => c.blocks));
       if (blocks.length === 0) return;
       void reviews
         .mutate(reviewId, (draft) => {
@@ -133,7 +135,9 @@ export async function followupAction(
     async (res): Promise<string | null> => {
       capture.settled();
       const canon = aliasCanonicalizer(getSnapshotOrThrow(reviews, reviewId), ctx.fixturesDir);
-      const fixed = remapAliasTargets(res.cards.flatMap((c) => c.blocks) as Block[], res.validation.tokens, canon);
+      const fixed = dedupeBlockIds(
+        remapAliasTargets(res.cards.flatMap((c) => c.blocks) as Block[], res.validation.tokens, canon),
+      );
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
         if (!found || found.type !== "expansion" || !found.expansion) return;
