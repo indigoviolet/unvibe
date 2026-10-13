@@ -37,17 +37,17 @@ export async function closeAction(
     // Closing keeps content for the dotted-link preview; a working job
     // that finishes later still fills the (closed) turn.
   });
-  // Close is UI state (never logged). A closed comment settles at once:
-  // one line in the log so other conversations see it (PRD §9.3).
+  // Close is UI state (never logged). A closed comment or card settles
+  // at once: one line in the log so other conversations see it (PRD §9.3).
   if (found.type === "comment") {
     await recordInteraction({ kind: "close", reviewId, annotationId, text: `Closed comment "${annotationId}"` });
-    try {
-      await ctx.sharedctx?.maybeSettleThread(reviewId, annotationId);
-    } catch {
-      // Settling is best-effort; the close itself already applied.
-    }
   } else {
-    await recordInteraction({ kind: "close", reviewId, text: `Closed ${annotationId}` });
+    await recordInteraction({ kind: "close", reviewId, annotationId, text: `Closed ${annotationId}` });
+  }
+  try {
+    await ctx.sharedctx?.maybeSettleThread(reviewId, annotationId);
+  } catch {
+    // Settling is best-effort; the close itself already applied.
   }
   return { annotationId };
 }

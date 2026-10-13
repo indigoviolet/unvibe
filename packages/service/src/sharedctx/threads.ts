@@ -5,6 +5,9 @@
  * - it is closed (`open === false`), or
  * - it has been idle for `settleAfterMs` after the last agent reply.
  *
+ * Conversations settle the same way (#136): their turns render as
+ * reader/agent messages, so a closed card leaves its one-line summary.
+ *
  * "Idle" is measured against the thread's own activity, not wall-clock
  * polling: callers pass `now` (epoch ms, fake-clock friendly) and the thread
  * snapshot. The summary is written by the small model through `runSmall`
@@ -12,7 +15,13 @@
  * pipeline); when no small model is available the fallback is the first line
  * of the last agent reply.
  */
-import type { Annotation } from "@unvibe/shared";
+import type { Annotation, Block } from "@unvibe/shared";
+import { renderMarkdown } from "@unvibe/shared";
+
+/** Rendered answer text for settling (tags stripped downstream). */
+function renderTurnText(blocks: Block[]): string {
+  return renderMarkdown(blocks).trim();
+}
 
 /** Default idle time after an agent reply before a thread counts as settled. */
 export const DEFAULT_THREAD_SETTLE_MS = 5 * 60 * 1000;
@@ -29,9 +38,20 @@ export function toThreadSnapshot(thread: Annotation, lastActivityAt: number | nu
   return {
     id: thread.id,
     open: thread.open,
-    messages: thread.messages.map((m) => ({ who: m.who, ...(m.text !== undefined ? { text: m.text } : {}) })),
+    messages: threadMessages(thread),
     lastActivityAt,
   };
+}
+
+/** Messages for settling: comment messages, or one reader/agent pair per turn. */
+function threadMessages(thread: Annotation): ThreadSnapshot["messages"] {
+  if (thread.type === "conversation") {
+    return (thread.turns ?? []).flatMap((t) => [
+      { who: "you" as const, ...(t.question !== null ? { text: t.question } : {}) },
+      { who: "ai" as const, text: renderTurnText(t.blocks) },
+    ]);
+  }
+  return thread.messages.map((m) => ({ who: m.who, ...(m.text !== undefined ? { text: m.text } : {}) }));
 }
 
 /** True once the thread has settled (closed, or idle past the threshold). */

@@ -329,9 +329,10 @@ export class SharedContextService {
   // -- settled threads ---------------------------------------------------------
 
   /**
-   * Settle check for one comment: closed, or idle past the threshold.
-   * Settled summaries are logged (one line) via the interaction path so
-   * other conversations see them in their change lists.
+   * Settle check for one comment or conversation card: closed, or idle
+   * past the threshold. Settled summaries are logged (one line) via the
+   * interaction path so other conversations see them in their change
+   * lists. Cards settle their turns as reader/agent pairs (#136).
    */
   async maybeSettleThread(
     reviewId: string,
@@ -340,7 +341,9 @@ export class SharedContextService {
   ): Promise<{ settled: boolean; summary?: string }> {
     const snap = this.snapshot(reviewId);
     const thread = snap?.annotations.find((a) => a.id === commentId);
-    if (!snap || !thread || thread.type !== "comment") return { settled: false };
+    if (!snap || !thread || (thread.type !== "comment" && thread.type !== "conversation")) {
+      return { settled: false };
+    }
     const now = opts.now ?? this.clock.now();
     const lastActivity = opts.lastActivityAt ?? threadLastActivity(thread, now);
     const snapThread: ThreadSnapshot = toThreadSnapshot(thread, lastActivity);
