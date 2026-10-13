@@ -99,6 +99,8 @@ without touching GitHub (see DEVELOPMENT.md).
 |---|---|
 | `packages/service/src/routes/` | One module per API area; token gate + loopback checks apply to all |
 | `packages/service/src/routes/files.ts` | Raw file ranges at a commit for diff expansion (issue #133): `GET /api/reviews/:id/file` over the shared `readCodeSlice` source, capped per request |
+| `packages/service/src/routes/outline.ts` | Enclosing units per hunk range (issue #133): `GET /api/reviews/:id/outline` over the shared `git show` source, parsed by `src/outline/` |
+| `packages/service/src/outline/` | Grammar loader (lazy, once; `.wasm` beside the bundle), unit rules per language, indentation fallback, content-hash parse cache |
 | `packages/service/src/ingest/` | PR/branch detection, fetch, diff parse, file classification, worktree |
 | `packages/service/src/pipeline/` | Reader, base build, forks, hunk pass, on-demand actions |
 | `packages/service/src/sessions/` | Base + conversation session lifecycle (fork, idle close, reopen) |

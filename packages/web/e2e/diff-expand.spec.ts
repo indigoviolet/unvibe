@@ -77,3 +77,23 @@ test("revealed lines offer no comment start", async ({ page }) => {
   await page.locator(`[id="L-${CONN}-76"]`).locator("td.n").nth(1).click();
   await expect(page.locator("tr[data-revealed]")).toHaveCount(20);
 });
+
+test("steps from function to class with the unit name in the hunk header", async ({ page }) => {
+  const conn = page.locator(connFile);
+  await conn.getByText("Hunk 2 of 2").scrollIntoViewIfNeeded();
+  await conn.getByRole("button", { name: "Show the enclosing function or class" }).nth(1).click();
+  await expect(conn.locator("tr[data-revealed]")).toHaveCount(18);
+  await expect(page.locator(`[id="L-${CONN}-640"]`)).toBeVisible();
+  await expect(page.locator(`[id="L-${CONN}-665"]`)).toBeVisible();
+  await expect(conn.getByText(/in getresponse/)).toBeVisible();
+  await conn.getByRole("button", { name: "Show enclosing class HTTPConnection" }).click();
+  await expect(conn.getByText(/in HTTPConnection/)).toBeVisible();
+  await expect(conn.getByRole("button", { name: "Show the whole file" })).toBeVisible();
+});
+
+test("hides the unit control when no unit encloses the hunk", async ({ page }) => {
+  const conn = page.locator(connFile);
+  // First hunk spans top-level items: the outline is empty.
+  await conn.getByRole("button", { name: "Show the enclosing function or class" }).first().click();
+  await expect(conn.getByRole("button", { name: "Show the enclosing function or class" })).toHaveCount(1);
+});

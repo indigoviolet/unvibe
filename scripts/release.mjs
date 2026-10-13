@@ -158,6 +158,24 @@ for (const f of needed) {
     process.exit(1);
   }
 }
+// Tree-sitter grammars (issue #133): plain `.wasm` files beside the
+// service bundle. The outline parser refuses to run without them.
+for (const g of [
+  "web-tree-sitter.wasm",
+  "tree-sitter-python.wasm",
+  "tree-sitter-go.wasm",
+  "tree-sitter-rust.wasm",
+  "tree-sitter-java.wasm",
+  "tree-sitter-ruby.wasm",
+  "tree-sitter-javascript.wasm",
+  "tree-sitter-typescript.wasm",
+  "tree-sitter-tsx.wasm",
+]) {
+  if (!existsSync(path.join(ROOT, "packages/service/dist/grammars", g))) {
+    console.error(`release: missing packages/service/dist/grammars/${g} — run \`mise run build\` first`);
+    process.exit(1);
+  }
+}
 
 // `--print-notices`: emit THIRD-PARTY-NOTICES.md to stdout without doing a
 // release (used by the staleness test to verify coverage of the current
@@ -185,6 +203,9 @@ copy("packages/service/dist/adapters/codex.js", "packages/service/dist/adapters/
 // (issue #36): the service copies it to the data dir and spawns the copy,
 // so the global npm swap cannot pull it out from under the helper.
 copy("packages/service/dist/update-helper.js", "packages/service/dist/update-helper.js");
+// Tree-sitter grammars (issue #133): plain `.wasm` files the service
+// loads from beside its bundle — shipped verbatim, no install step.
+copy("packages/service/dist/grammars", "packages/service/dist/grammars");
 copy("packages/web/dist", "packages/web/dist");
 copy("prompts", "prompts");
 copy("fixtures/urllib3-5020", "fixtures/urllib3-5020");
@@ -446,6 +467,7 @@ function buildNotices() {
   lines.push(...webFontNotices(webRows));
   lines.push(...fixtureNotices());
   lines.push(...d2DiagramNotices());
+  lines.push(...grammarNotices());
   lines.push(
     "## Unvibe's own licence",
     "",
@@ -600,6 +622,56 @@ function fixtureNotices() {
     "",
   );
   return lines;
+}
+
+/**
+ * Tree-sitter grammars (issue #133): the `.wasm` files in
+ * `packages/service/dist/grammars/` are build-time copies of the
+ * devDependency sources (no install step, no native code). The runtime
+ * (`web-tree-sitter`, MIT © 2018 Max Brunsfeld) and the eight grammar
+ * files (`@vscode/tree-sitter-wasm`, MIT © Microsoft Corporation) each
+ * ship their licence below as distributed in `node_modules`.
+ */
+function grammarNotices() {
+  const readLicense = (dir) => {
+    try {
+      return readFileSync(path.join(ROOT, "node_modules", dir, "LICENSE"), "utf8").trim();
+    } catch {
+      return null;
+    }
+  };
+  const readVersion = (dir) => {
+    try {
+      return JSON.parse(readFileSync(path.join(ROOT, "node_modules", dir, "package.json"), "utf8")).version ?? "?";
+    } catch {
+      return "?";
+    }
+  };
+  const runtimeLicense = readLicense("web-tree-sitter");
+  const grammarLicense = readLicense("@vscode/tree-sitter-wasm");
+  if (!runtimeLicense || !grammarLicense) return [];
+  const files = listDistFiles("packages/service/dist/grammars", [".wasm"]);
+  return [
+    "## Tree-sitter grammars (enclosing-unit expansion)",
+    "",
+    "The `packages/service/dist/grammars/` directory in this release holds",
+    "plain `.wasm` files copied at build time from two MIT-licensed npm",
+    "packages (dev-only sources; the release has no new dependency):",
+    "",
+    `- web-tree-sitter@${readVersion("web-tree-sitter")}: the WebAssembly`,
+    "  runtime (`web-tree-sitter.wasm`), loaded by the service to find the",
+    "  enclosing function or class of a hunk:",
+    "",
+    runtimeLicense,
+    "",
+    `- @vscode/tree-sitter-wasm@${readVersion("@vscode/tree-sitter-wasm")}:`,
+    "  the prebuilt grammar files:",
+    "",
+    ...files.map((f) => `- packages/service/dist/grammars/${f}`),
+    "",
+    grammarLicense,
+    "",
+  ];
 }
 
 /**

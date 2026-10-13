@@ -27,7 +27,7 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §4.10 second opinion (4) | 4 | 0 | 0 | 0 |
 | §4.11 PR description (6) | 6 | 0 | 0 | 0 |
 | §4.12 submit (4) | 4 | 0 | 0 | 0 |
-| §4.13 diff (17) | 17 | 0 | 0 | 0 |
+| §4.13 diff (19) | 19 | 0 | 0 | 0 |
 | §4.14 settings (5) | 5 | 0 | 0 | 0 |
 | §4.15 conventions (7) | 7 | 0 | 0 | 0 |
 | §6 agent runner (8) | 8 | 0 | 0 | 0 |
@@ -44,7 +44,7 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §16 non-functional (5) | 5 | 0 | 0 | 0 |
 | §17 M0–M6 done-when (7) | 7 | 0 | 0 | 0 |
 | §18 test kinds (4) | 4 | 0 | 0 | 0 |
-| **Total** | **212** | **0** | **0** | **1** |
+| **Total** | **214** | **0** | **0** | **1** |
 
 (Audit-10 correction: the prior total (204/2) was stale — the row values
 already summed to 208 met + 3 partly + 1 cannot-verify = 212 requirements.
@@ -52,6 +52,8 @@ After closing the three partly items below, the rows sum to 211 met + 0
 partly + 1 cannot-verify = 212.)
 (Issue #133 stage 1 adds one §4.13 requirement — expand beyond hunks —
 so the rows now sum to 212 met + 1 cannot-verify = 213.)
+(Issue #133 stage 2 adds two more §4.13 requirements — expand by unit,
+no file content — so the rows now sum to 214 met + 1 cannot-verify = 215.)
 
 Fixed in this branch (was failing/missing before): stale-dist `check`
 failure; missing Host/Origin gate; MCP secrets never revoked; submit
@@ -543,6 +545,24 @@ needed (that deviation is closed, not added).
   Explain and Ask on the diff-line anchor (read as
   `code:<path>:<lines>@<sha>`) while Note stays hidden there
   (`SelectionToolbar.test.tsx`); `docs/screenshots/133-*.png`.
+- Expand beyond hunks, by unit (issue #133, stage 2) — met:
+  `GET /api/reviews/:id/outline` answers the enclosing chain for a hunk
+  range through the same `git show` source (`service/src/routes/outline.ts`,
+  `service/test/outline-route.test.ts` 4 tests), parsed by service-side
+  tree-sitter grammars with the indentation fallback
+  (`service/src/outline/`, `service/test/outline.test.ts` 9 tests);
+  one hunk control steps function, then class, then file with the unit
+  name in the hunk header and an approx marker for fallback ranges
+  (`FileExpansion.test.tsx` 4 unit tests, `e2e/diff-expand.spec.ts` 2
+  unit tests, `docs/screenshots/133-expand-unit.png`); empty chains and
+  unreadable files degrade to expand-by-lines; grammars ship as plain
+  `.wasm` beside the bundle (7.4 MB, 0.79 MB gzipped; no install
+  script), asserted by the release and global-install checks.
+- No file content (issue #133): reviews whose commits resolve nowhere
+  (the demo) answer `no-content`, and the diff hides every expansion
+  control on it instead of showing load errors (service
+  `outline-route.test.ts` no-content case, `FileExpansion.test.tsx`
+  hiding case).
 
 ### §4.14 Settings — all met
 

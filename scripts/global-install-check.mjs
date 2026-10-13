@@ -134,6 +134,27 @@ function checkAdapterBundles(installedPkgDir, label) {
   }
 }
 
+/**
+ * Tree-sitter grammars (issue #133) ship as plain `.wasm` files beside
+ * the service bundle — present in the installed copy with no node_modules
+ * behind them, so the outline parser runs on every platform.
+ */
+function checkGrammarFiles(installedPkgDir, label) {
+  for (const f of [
+    "packages/service/dist/grammars/web-tree-sitter.wasm",
+    "packages/service/dist/grammars/tree-sitter-python.wasm",
+    "packages/service/dist/grammars/tree-sitter-go.wasm",
+    "packages/service/dist/grammars/tree-sitter-rust.wasm",
+    "packages/service/dist/grammars/tree-sitter-java.wasm",
+    "packages/service/dist/grammars/tree-sitter-ruby.wasm",
+    "packages/service/dist/grammars/tree-sitter-javascript.wasm",
+    "packages/service/dist/grammars/tree-sitter-typescript.wasm",
+    "packages/service/dist/grammars/tree-sitter-tsx.wasm",
+  ]) {
+    assert(fs.existsSync(path.join(installedPkgDir, f)), `${label}: ships ${f}`);
+  }
+}
+
 /** No platform-binary tarball may have been fetched into this install's isolated cache. */
 function checkCacheClean(cacheDir, label) {
   let hits = [];
@@ -278,6 +299,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
   }
 
   checkAdapterBundles(installedPkg, label);
+  checkGrammarFiles(installedPkg, label);
   console.log(`${label}: install size ${mb(dirSizeBytes(prefix))} (prefix ${prefix})`);
 
   // Third-party notices (issue #14): the installed package must contain the
@@ -299,6 +321,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
       "urllib3/urllib3/pull/5020",
       "Andrey Petrov",
       "Source Sans Pro",
+      "Tree-sitter grammars",
       "Unvibe's own licence",
     ]) {
       assert(notices.includes(marker), `${label}: notices cover ${marker}`);
