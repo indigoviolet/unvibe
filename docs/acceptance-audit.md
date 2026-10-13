@@ -837,6 +837,29 @@ needed (that deviation is closed, not added).
 
 - Layers L0–L4 ordering + budgets (40k guess, hunk-header fallback) —
   met (`context/layers.ts`, `context.test.ts` header/summary fallback).
+  (#107) L1 is now a ladder with a hard 80k-token cap
+  (`DEFAULT_BASE_PROMPT_CAP_TOKENS`, not a setting so tuning the inline
+  budget can never reintroduce the provider "Prompt is too long"
+  failure): full → budget-limited → no-uninteresting-hunks →
+  files-only → counts-only, guide-cited/pinned hunks inlined wherever
+  they still fit and dropped last with a notice; every rung past full
+  names only real tools (`get_hunk`, `search_review`, `resolve`,
+  `get_code`); `buildHunkSummaries`/`buildHiddenHunksSection` obey the
+  same cap; reader, base, second-opinion, prompt preview and debug page
+  all build from the one ladder call; the update pass caps
+  `changed_hunks`. Under the budgets every builder is byte-identical to
+  before (`prompt-goldens.test.ts` unchanged). Follow-up: the cap holds
+  for the assembled base message, not per section — `buildBasePack`
+  gives hunk summaries only what is left of the cap after L1+L1b+L2
+  (floor 500 tokens so counts always fit) and asserts the total; the
+  prompts preview and `changed_hunks` budget leftovers the same way.
+  Cost: rungs render lazily in order (small reviews pay for the first
+  rung only), token counting is allocation-free (`countCodePoints`),
+  and `capChangedHunks` keeps a running total instead of re-joining per
+  chunk. Provider "prompt is too long" errors are non-retryable (`agent/acp/errors.ts`) so the queue
+  cannot loop on them, and the ladder throws a plain message naming the
+  PR size if even counts-only cannot fit. Deviation from PRD §9.1 noted
+  below.
 - Per-model base cache; base key (review, version, guide rev, model) — met
   (#43: the key had no review id, so reviews shared a base and a removed
   review's session was reused when the change was added again; Remove now
@@ -885,6 +908,10 @@ needed (that deviation is closed, not added).
   longer truncate at the first `</li>`). Pending description edits are
   read (`pendingHtml ?? html`); stored HTML predating stable IDs falls
   back to positional per-block numbering (`desc-ids.test.ts` — ran).
+  (#107) `search_review` also matches changed file paths (one hit per
+  file with hunk IDs; second-opinion isolation unchanged), so the agent
+  can discover files once the L1 ladder leaves the file list out; the
+  tool description change is a deliberate golden update.
 - Validation (existence, ranges, anchor substring, hidden concept
   candidates) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair
@@ -916,6 +943,23 @@ needed (that deviation is closed, not added).
    suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
 5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
    — met (demo 8 summaries — ran from global install).
+   (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no
+   per-hunk fan-out at ingest (no guide exists yet to cite): only
+   guide-cited hunks lacking a stored summary fan out once the reader
+   lands, everything else summarises on demand (`POST
+   …/hunks/:hash/summarize`, Fold-all; jobs dedupe per hunk hash). The
+   stage still reaches done (empty fan-out sets done; completions are
+   counted in the success path, fixing a race where concurrent jobs all
+   saw each other "running" and nobody marked done), and resume reruns
+   the same branch — never the full fan-out. The limit is shared
+   (`HUNK_PASS_FANOUT_LIMIT` in `packages/shared`, read by the pipeline
+   and the web): past it Fold all folds only and requests no summaries
+   (toast, tooltip and Tips copy say so; per-hunk Summarize stays
+   on-demand). Hide-uninteresting folding
+   needs no model summaries: it folds on the deterministic ingest hidden
+   reason, and summary-less rows render the reason copy with no spinner
+   (`DiffView.test.tsx` "folds on the deterministic hidden reason").
+   Deviation from PRD §11 step 5 noted below.
 6. On demand (depth/go-deeper/explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
@@ -1241,6 +1285,14 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
     review, no separate ingest path). The user never edits the managed
     checkout, so fetching is safe; removing the repo deletes the clone
     (managed only), and only while it has no reviews.
+12. Huge-PR prompt tiers (#107): PRD §9.1 says L1 carries "the full
+    handwritten diff" with only the 40k-token header fallback, and §11
+    step 5 says the hunk pass summarises each hunk. Past the inline
+    budget L1 now degrades further (no-uninteresting-hunks → files-only
+    → counts-only, hard-capped at 80k tokens), and past 500 hunks the
+    hunk pass only fans out guide-cited hunks, summarising the rest on
+    demand. Under the budgets every prompt is byte-identical to the
+    PRD shape; only oversized reviews see the degraded tiers.
 
 ## Open list
 

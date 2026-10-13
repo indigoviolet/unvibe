@@ -37,6 +37,12 @@ const NON_RETRYABLE_PATTERNS = [
   /permission denied/i,
   /not found.*model/i,
   /unknown model/i,
+  // Issue #107: a prompt that does not fit is deterministic, not
+  // transient — retrying loops forever on the provider's "Internal error:
+  // Prompt is too long". (Explicit non-retryable wins over the generic
+  // "internal error" retryable pattern below.)
+  /prompt (is )?too (long|large)/i,
+  /input .*too (long|large)/i,
 ];
 
 export function isRetryableError(err: unknown): boolean {

@@ -35,7 +35,7 @@ import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import { NoAgentError } from "../agent/none.js";
-import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildDiffSection, buildSourceBlurb } from "../context/index.js";
+import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildLadder, DEFAULT_HUNK_PASS_FANOUT_LIMIT } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import { baseKeyString } from "../sessions/manager.js";
@@ -237,6 +237,15 @@ export class Pipeline {
   private mcpBaseUrl: string;
   /** #122: reviews with a base rebuild already warming (debounce). */
   private warmInFlight = new Set<string>();
+  /**
+   * Hunk-pass completions since the last fan-out, per review (issue
+   * #107). Counting queue states (`maybeMarkStageDone`) races when jobs
+   * finish together: every job sees its siblings still "running" — the
+   * queue flips them to done only after each `run()` returns — so nobody
+   * marks the stage done. Counting completions in the success path is
+   * exact: each increment runs atomically between awaits.
+   */
+  private hunkPassCompleted = new Map<string, number>();
 
   constructor(private readonly opts: PipelineOptions) {
     this.promptsDir = opts.promptsDir ?? resolvePromptsDir() ?? "prompts";
@@ -1300,8 +1309,11 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
-    const source = buildSourceBlurb(promptSnap);
-    const diff = buildDiffSection(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    // One ladder call for both halves (issue #107): source + diff come
+    // from the same rung, so the reader prompt stays under the hard cap.
+    const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    const source = ladder.source;
+    const diff = ladder.diff;
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderTemplate(lib.get("instructions")!, {});
     let prompt = renderTemplate(lib.get("reader")!, {
@@ -1640,6 +1652,15 @@ export class Pipeline {
     // #123: the hunk pass starts in startReview now (at ingest), not here.
     // Hunks hidden before the guide existed are unhidden when cited.
     await this.unhideCitedHunks(reviewId);
+    // Issue #107: past the fan-out limit the ingest-time pass enqueues
+    // nothing (no guide exists yet to cite), so fan out the guide-cited
+    // hunks now that the reader landed; the rest stay on demand. Under the
+    // limit the ingest pass already covers every hunk.
+    const snapshotNow = this.opts.reviews.getSnapshot(reviewId);
+    const hunkCount = snapshotNow?.files.reduce((n, f) => n + f.hunks.length, 0) ?? 0;
+    if (hunkCount > DEFAULT_HUNK_PASS_FANOUT_LIMIT) {
+      out.push(...(await this.enqueueHunkPass(reviewId)));
+    }
     if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
       out.push(...(await this.enqueueDemoFill(reviewId)));
     }
@@ -1870,54 +1891,103 @@ export class Pipeline {
     this.setStage(reviewId, "hunk-pass", "running");
     const settings = await this.effectiveSettings();
     const hunks = snapshot.files.flatMap((f) => f.hunks.map((h) => ({ file: f, hunk: h })));
-    return hunks.map(({ file, hunk }) => {
-      const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
-      const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
-      const body = cited ? `${hunkText}\n\nCITED-BY-GUIDE` : hunkText;
-      const replayKey = this.replayKeyForHunk(snapshot, file.fileKey, hunk.contentHash);
-      const prompt = withReplayMark(
-        this.render("hunk_pass", { hunk: body, path: file.path }),
-        isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
-      );
-      return this.opts.jobs.enqueue({
-        reviewId,
-        kind: "hunk-pass",
-        provider: settings.small.provider,
-        model: settings.small.model,
-        priority: JOB_PRIORITY.background,
-        dedupe: { anchor: `hunk:${hunk.contentHash}`, requestKind: "hunk-pass", baseVersion: `v${snapshot.version.n}` },
-        run: async (ctx) => {
-          ctx.setPromptSnapshot(prompt);
-          const session = await this.opts.runner.start({
-            provider: settings.small.provider,
-            model: settings.small.model,
-            cwd: this.worktreeOf(reviewId),
-            systemPrompt: "",
-            mcpServers: [],
-          });
-          ctx.setSessionId(session.id);
+    // Issue #107: past the fan-out limit there is no per-hunk fan-out —
+    // only guide-cited hunks lacking a stored summary are enqueued, and
+    // everything else summarises on demand (`POST …/hunks/:hash/summarize`,
+    // Fold-all). At ingest (#123 starts the pass here) no guide exists yet,
+    // so the cited set is empty and the stage reaches done with no jobs;
+    // `enqueueAfterReader` fans out the cited hunks once the reader lands.
+    // Resume re-runs this same branch — never the full fan-out.
+    const overLimit = hunks.length > DEFAULT_HUNK_PASS_FANOUT_LIMIT;
+    const targets = overLimit
+      ? hunks.filter(({ hunk }) => {
+          if (!this.isCitedByGuide(reviewId, hunk.contentHash)) return false;
+          return snapshot.hunkStates.find((s) => s.contentHash === hunk.contentHash)?.summary === undefined;
+        })
+      : hunks;
+    if (targets.length === 0) {
+      this.setStage(reviewId, "hunk-pass", "done");
+      return [];
+    }
+    this.hunkPassCompleted.set(reviewId, 0);
+    return targets.map(({ file, hunk }) =>
+      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length),
+    );
+  }
+
+  private enqueueOneHunkPass(
+    reviewId: string,
+    snapshot: ReviewSnapshot,
+    file: ReviewSnapshot["files"][number],
+    hunk: ReviewSnapshot["files"][number]["hunks"][number],
+    small: { provider: string; model: string },
+    expectedJobs: number,
+  ): Job {
+    const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
+    const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
+    const body = cited ? `${hunkText}\n\nCITED-BY-GUIDE` : hunkText;
+    const replayKey = this.replayKeyForHunk(snapshot, file.fileKey, hunk.contentHash);
+    const prompt = withReplayMark(
+      this.render("hunk_pass", { hunk: body, path: file.path }),
+      isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
+    );
+    return this.opts.jobs.enqueue({
+      reviewId,
+      kind: "hunk-pass",
+      provider: small.provider,
+      model: small.model,
+      priority: JOB_PRIORITY.background,
+      dedupe: { anchor: `hunk:${hunk.contentHash}`, requestKind: "hunk-pass", baseVersion: `v${snapshot.version.n}` },
+      run: async (ctx) => {
+        ctx.setPromptSnapshot(prompt);
+        const session = await this.opts.runner.start({
+          provider: small.provider,
+          model: small.model,
+          cwd: this.worktreeOf(reviewId),
+          systemPrompt: "",
+          mcpServers: [],
+        });
+        ctx.setSessionId(session.id);
+        try {
+          const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
+            ctx.reportText(d),
+          );
+          ctx.reportUsage(usage);
+          await this.recordUsage(reviewId, usage);
+          const { data } = this.parseAndValidate(reviewId, text);
+          await this.applyHunkSummary(reviewId, hunk.contentHash, parseHunkReply(text, data));
+          this.markHunkPassComplete(reviewId, expectedJobs);
+        } catch (err) {
+          this.setStage(reviewId, "hunk-pass", "error", (err as Error).message);
+          throw err;
+        } finally {
           try {
-            const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
-              ctx.reportText(d),
-            );
-            ctx.reportUsage(usage);
-            await this.recordUsage(reviewId, usage);
-            const { data } = this.parseAndValidate(reviewId, text);
-            await this.applyHunkSummary(reviewId, hunk.contentHash, parseHunkReply(text, data));
-            this.maybeMarkStageDone(reviewId, "hunk-pass", hunks.length);
-          } catch (err) {
-            this.setStage(reviewId, "hunk-pass", "error", (err as Error).message);
-            throw err;
-          } finally {
-            try {
-              await this.opts.runner.close(session);
-            } catch {
-              // ignore
-            }
+            await this.opts.runner.close(session);
+          } catch {
+            // ignore
           }
-        },
-      });
+        }
+      },
     });
+  }
+
+  /**
+   * Record one hunk-pass job's success; mark the stage done once every job
+   * of the last fan-out completed. Never overwrites an error set by a
+   * failed sibling (resume retries it).
+   */
+  private markHunkPassComplete(reviewId: string, expectedJobs: number): void {
+    try {
+      const completed = (this.hunkPassCompleted.get(reviewId) ?? 0) + 1;
+      this.hunkPassCompleted.set(reviewId, completed);
+      if (completed < expectedJobs) return;
+      const errored = this.opts.jobs
+        .listByReview(reviewId)
+        .some((j) => j.kind === "hunk-pass" && j.state === "error");
+      if (!errored) this.setStage(reviewId, "hunk-pass", "done");
+    } catch {
+      // ignore
+    }
   }
 
   private async enqueueDemoFill(reviewId: string): Promise<Job[]> {
