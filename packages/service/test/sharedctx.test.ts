@@ -273,7 +273,7 @@ describe("change lists and the seen marker (PRD §9.3)", () => {
         match: "",
         events: [
           { type: "text", delta: forkReply },
-          { type: "usage", inputTokens: 10, cachedTokens: 90, outputTokens: 5 },
+          { type: "usage", inputTokens: 10, cachedReadTokens: 90, cachedWriteTokens: 0, outputTokens: 5 },
           { type: "done", stopReason: "end_turn" },
         ],
       },

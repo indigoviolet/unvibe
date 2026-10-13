@@ -618,7 +618,8 @@ export class AcpAgentRunner implements AgentRunner {
     yield {
       type: "usage",
       inputTokens: report.inputTokens,
-      cachedTokens: report.cachedReadTokens + report.cachedWriteTokens,
+      cachedReadTokens: report.cachedReadTokens,
+      cachedWriteTokens: report.cachedWriteTokens,
       outputTokens: report.outputTokens,
     };
     yield { type: "done", stopReason };

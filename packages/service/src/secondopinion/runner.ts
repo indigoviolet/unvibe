@@ -247,14 +247,15 @@ async function collectStreaming(
   onDelta: (delta: string) => void,
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
-  const usage: TokenUsage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+  const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
   for await (const ev of runner.prompt(session, prompt, signal)) {
     if (ev.type === "text") {
       text += ev.delta;
       onDelta(ev.delta);
     } else if (ev.type === "usage") {
       usage.inputTokens += ev.inputTokens;
-      usage.cachedTokens += ev.cachedTokens;
+      usage.cachedReadTokens += ev.cachedReadTokens;
+      usage.cachedWriteTokens += ev.cachedWriteTokens;
       usage.outputTokens += ev.outputTokens;
     } else if (ev.type === "error") {
       if (ev.retryable) throw new RetryableError(ev.message);
@@ -556,7 +557,8 @@ export async function requestSecondOpinion(
             ctx.reportText(d),
           );
           usage.inputTokens += repair.usage.inputTokens;
-          usage.cachedTokens += repair.usage.cachedTokens;
+          usage.cachedReadTokens += repair.usage.cachedReadTokens;
+          usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
           usage.outputTokens += repair.usage.outputTokens;
           const secondSplit = splitReply(repair.text);
           if (!secondSplit.ok && (secondSplit.error.kind === "malformed" || secondSplit.error.kind === "not-object")) {
@@ -662,12 +664,19 @@ export async function requestSecondOpinion(
         ctx.reportUsage(usage);
         try {
           await deps.reviews.mutate(req.reviewId, (draft) => {
-            const t = draft.usageTotals ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0, createdAt: draft.review.createdAt };
+            const t = draft.usageTotals ?? {
+              inputTokens: 0,
+              cachedReadTokens: 0,
+              cachedWriteTokens: 0,
+              outputTokens: 0,
+              createdAt: draft.review.createdAt,
+            };
             t.inputTokens += usage.inputTokens;
-            t.cachedTokens += usage.cachedTokens;
+            t.cachedReadTokens += usage.cachedReadTokens;
+            t.cachedWriteTokens += usage.cachedWriteTokens;
             t.outputTokens += usage.outputTokens;
-            t.cacheHitRate =
-              t.inputTokens + t.cachedTokens > 0 ? t.cachedTokens / (t.inputTokens + t.cachedTokens) : undefined;
+            const total = t.inputTokens + t.cachedReadTokens + t.cachedWriteTokens;
+            t.cacheHitRate = total > 0 ? t.cachedReadTokens / total : undefined;
             draft.usageTotals = t;
           });
         } catch {

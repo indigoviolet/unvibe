@@ -452,12 +452,13 @@ async function replyOnSession(
       // turn's bookkeeping (base growth) to land first.
       await pipeline.drainBookkeeping(reviewId);
       const send = sessions!.sendOnConversation.bind(sessions);
-      const usage: TokenUsage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+      const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
       const collect = async (text: string): Promise<string> => {
         let out = "";
         const res = await send(sessionId, text, { signal: jobCtx.signal });
         usage.inputTokens += res.usage.inputTokens;
-        usage.cachedTokens += res.usage.cachedTokens;
+        usage.cachedReadTokens += res.usage.cachedReadTokens;
+        usage.cachedWriteTokens += res.usage.cachedWriteTokens;
         usage.outputTokens += res.usage.outputTokens;
         for (const chunk of chunkByWords(res.text, 64)) {
           if (jobCtx.signal.aborted) throw new Error("aborted");
@@ -624,11 +625,19 @@ function parseAndValidateLocal(
 async function recordUsageLocal(ctx: ActionContext, reviewId: string, usage: TokenUsage): Promise<void> {
   try {
     await ctx.reviews.mutate(reviewId, (draft) => {
-      const t = draft.usageTotals ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0, createdAt: draft.review.createdAt };
+      const t = draft.usageTotals ?? {
+        inputTokens: 0,
+        cachedReadTokens: 0,
+        cachedWriteTokens: 0,
+        outputTokens: 0,
+        createdAt: draft.review.createdAt,
+      };
       t.inputTokens += usage.inputTokens;
-      t.cachedTokens += usage.cachedTokens;
+      t.cachedReadTokens += usage.cachedReadTokens;
+      t.cachedWriteTokens += usage.cachedWriteTokens;
       t.outputTokens += usage.outputTokens;
-      t.cacheHitRate = t.inputTokens + t.cachedTokens > 0 ? t.cachedTokens / (t.inputTokens + t.cachedTokens) : undefined;
+      const total = t.inputTokens + t.cachedReadTokens + t.cachedWriteTokens;
+      t.cacheHitRate = total > 0 ? t.cachedReadTokens / total : undefined;
       draft.usageTotals = t;
     });
   } catch {

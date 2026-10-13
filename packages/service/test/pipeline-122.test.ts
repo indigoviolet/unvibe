@@ -122,7 +122,7 @@ describe("#122.2 answer before bookkeeping", () => {
         match: "",
         events: [
           { type: "text", delta: forkReplyWithContribute },
-          { type: "usage", inputTokens: 10, cachedTokens: 90, outputTokens: 5 },
+          { type: "usage", inputTokens: 10, cachedReadTokens: 90, cachedWriteTokens: 0, outputTokens: 5 },
           { type: "done", stopReason: "end_turn" },
         ],
       },
@@ -226,7 +226,7 @@ describe("#123 hunk pass starts at ingest", () => {
         match: "Hunk pass",
         events: [
           { type: "text", delta: 'Other summary\n\n```json\n{"hunk": {"summary": "S", "hiddenReason": "imports"}}\n```\n' },
-          { type: "usage", inputTokens: 5, cachedTokens: 0, outputTokens: 3 },
+          { type: "usage", inputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 3 },
           { type: "done", stopReason: "end_turn" },
         ],
       },
@@ -234,7 +234,7 @@ describe("#123 hunk pass starts at ingest", () => {
         match: "Reader task",
         events: [
           { type: "text", delta: "## T\n\nBody [[h:a-py:h222]].\n\n```json\n{}\n```\n" },
-          { type: "usage", inputTokens: 5, cachedTokens: 0, outputTokens: 3 },
+          { type: "usage", inputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 3 },
           { type: "done", stopReason: "end_turn" },
         ],
       },
@@ -314,7 +314,7 @@ describe("#122.1 enqueue before the base", () => {
         match: "",
         events: [
           { type: "text", delta: FORK_REPLY },
-          { type: "usage", inputTokens: 10, cachedTokens: 90, outputTokens: 5 },
+          { type: "usage", inputTokens: 10, cachedReadTokens: 90, cachedWriteTokens: 0, outputTokens: 5 },
           { type: "done", stopReason: "end_turn" },
         ],
       },
@@ -370,7 +370,7 @@ describe("#122.1 enqueue before the base", () => {
         match: "Go deeper",
         events: [
           { type: "text", delta: `Deep body [[diff:a-py:1-2]]\n\n\`\`\`json\n{"title": "Deep"}\n\`\`\`\n` },
-          { type: "usage", inputTokens: 10, cachedTokens: 90, outputTokens: 5 },
+          { type: "usage", inputTokens: 10, cachedReadTokens: 90, cachedWriteTokens: 0, outputTokens: 5 },
           { type: "done", stopReason: "end_turn" },
         ],
       },

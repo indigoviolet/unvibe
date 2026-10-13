@@ -103,12 +103,13 @@ export function chunkText(text: string, size: number): string[] {
 /** Deterministic fake usage derived from prompt + recording lengths. */
 export function usageFor(promptChars: number, replyChars: number): {
   inputTokens: number;
-  cachedTokens: number;
+  cachedReadTokens: number;
+  cachedWriteTokens: number;
   outputTokens: number;
 } {
   const inputTokens = Math.max(1, Math.ceil(promptChars / 4));
   const outputTokens = Math.max(1, Math.ceil(replyChars / 4));
-  return { inputTokens, cachedTokens: Math.floor(inputTokens / 2), outputTokens };
+  return { inputTokens, cachedReadTokens: Math.floor(inputTokens / 2), cachedWriteTokens: 0, outputTokens };
 }
 
 function sleep(ms: number): Promise<void> {

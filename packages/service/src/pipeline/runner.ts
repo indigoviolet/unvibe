@@ -83,7 +83,7 @@ async function collectStreaming(
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   let afterTool = false;
-  const usage: TokenUsage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+  const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
   for await (const ev of runner.prompt(session, prompt, signal)) {
     if (ev.type === "text") {
       // Text on either side of a tool call arrives with nothing between it
@@ -99,7 +99,8 @@ async function collectStreaming(
       }
     } else if (ev.type === "usage") {
       usage.inputTokens += ev.inputTokens;
-      usage.cachedTokens += ev.cachedTokens;
+      usage.cachedReadTokens += ev.cachedReadTokens;
+      usage.cachedWriteTokens += ev.cachedWriteTokens;
       usage.outputTokens += ev.outputTokens;
     } else if (ev.type === "error") {
       if (ev.retryable) throw new RetryableError(ev.message);
@@ -409,7 +410,8 @@ export class Pipeline {
                 ctx.reportText(d),
               );
               usage.inputTokens += repair.usage.inputTokens;
-              usage.cachedTokens += repair.usage.cachedTokens;
+              usage.cachedReadTokens += repair.usage.cachedReadTokens;
+              usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
               usage.outputTokens += repair.usage.outputTokens;
               throwIfMcpRefusal(repair.text);
               finalText = repair.text;
@@ -532,7 +534,8 @@ export class Pipeline {
                   ctx.reportText(d),
                 );
                 usage.inputTokens += repair.usage.inputTokens;
-                usage.cachedTokens += repair.usage.cachedTokens;
+                usage.cachedReadTokens += repair.usage.cachedReadTokens;
+                usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
                 usage.outputTokens += repair.usage.outputTokens;
                 finalText = repair.text;
                 const second = this.parseAndValidate(o.reviewId, repair.text);
@@ -1216,7 +1219,8 @@ export class Pipeline {
               ctx.reportText(d),
             );
             usage.inputTokens += repair.usage.inputTokens;
-            usage.cachedTokens += repair.usage.cachedTokens;
+                usage.cachedReadTokens += repair.usage.cachedReadTokens;
+                usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
             usage.outputTokens += repair.usage.outputTokens;
             ctx.reportUsage(repair.usage);
             throwIfMcpRefusal(repair.text);
@@ -2001,13 +2005,21 @@ export class Pipeline {
   private async recordUsage(reviewId: string, usage: TokenUsage): Promise<void> {
     try {
       await this.opts.reviews.mutate(reviewId, (draft) => {
-        const t = draft.usageTotals ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0, createdAt: draft.review.createdAt };
+        const t = draft.usageTotals ?? {
+          inputTokens: 0,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
+          outputTokens: 0,
+          createdAt: draft.review.createdAt,
+        };
         t.inputTokens += usage.inputTokens;
-        t.cachedTokens += usage.cachedTokens;
+        t.cachedReadTokens += usage.cachedReadTokens;
+        t.cachedWriteTokens += usage.cachedWriteTokens;
         t.outputTokens += usage.outputTokens;
-        // Read share (M0 pitfall #2): input counts uncached input only.
-        t.cacheHitRate =
-          t.inputTokens + t.cachedTokens > 0 ? t.cachedTokens / (t.inputTokens + t.cachedTokens) : undefined;
+        // Read share (#125, M0 pitfall #2): input counts uncached input
+        // only; writes never count as hits.
+        const total = t.inputTokens + t.cachedReadTokens + t.cachedWriteTokens;
+        t.cacheHitRate = total > 0 ? t.cachedReadTokens / total : undefined;
         draft.usageTotals = t;
       });
     } catch {
@@ -2019,7 +2031,8 @@ export class Pipeline {
     if (!draft.usageTotals?.firstCardAt) {
       draft.usageTotals = {
         inputTokens: draft.usageTotals?.inputTokens ?? 0,
-        cachedTokens: draft.usageTotals?.cachedTokens ?? 0,
+        cachedReadTokens: draft.usageTotals?.cachedReadTokens ?? 0,
+        cachedWriteTokens: draft.usageTotals?.cachedWriteTokens ?? 0,
         outputTokens: draft.usageTotals?.outputTokens ?? 0,
         createdAt: draft.review.createdAt,
         firstCardAt: Date.now(),

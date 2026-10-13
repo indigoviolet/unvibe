@@ -9,9 +9,8 @@
  *   61.6k-input Haiku titling call present only in `_meta.quota.model_usage`).
  *   Always aggregate `_meta.quota.model_usage` when present.
  *
- * AgentEvent carries a single `cachedTokens` field; we report
- * cachedRead + cachedWrite there (both are cache-served input) and keep the
- * split in debug output.
+ * AgentEvent carries `cachedReadTokens` + `cachedWriteTokens` (#125); the
+ * split is preserved end to end so the hit rate counts reads only.
  */
 
 export interface TurnUsage {
@@ -21,7 +20,13 @@ export interface TurnUsage {
   outputTokens: number;
   totalTokens: number;
   /** Per-model breakdown from `_meta.quota.model_usage` (may include titling). */
-  models: Array<{ model: string; inputTokens: number; cachedTokens: number; outputTokens: number }>;
+  models: Array<{
+    model: string;
+    inputTokens: number;
+    cachedReadTokens: number;
+    cachedWriteTokens: number;
+    outputTokens: number;
+  }>;
 }
 
 interface RawCounts {
@@ -84,7 +89,8 @@ export function aggregateTurnUsage(response: { usage?: unknown; _meta?: unknown 
       models.push({
         model: typeof entry.model === "string" ? entry.model : "unknown",
         inputTokens: c.input,
-        cachedTokens: c.cachedRead + c.cachedWrite,
+        cachedReadTokens: c.cachedRead,
+        cachedWriteTokens: c.cachedWrite,
         outputTokens: c.output,
       });
     }

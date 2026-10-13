@@ -50,7 +50,7 @@ async function waitFor(check: () => boolean, timeoutMs = 30000, intervalMs = 50)
 function textEvents(text: string): AgentEvent[] {
   return [
     { type: "text", delta: text },
-    { type: "usage", inputTokens: 10, cachedTokens: 5, outputTokens: 10 },
+    { type: "usage", inputTokens: 10, cachedReadTokens: 5, cachedWriteTokens: 0, outputTokens: 10 },
     { type: "done", stopReason: "end_turn" },
   ];
 }

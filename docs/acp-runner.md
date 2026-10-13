@@ -93,7 +93,7 @@ Service dependencies (so a global npm install brings the adapters along):
 |---|---|---|
 | 1 | Claude 0.89.0 fork needs `session/resume` before first prompt (`Session not found`) | `fork()` resumes automatically; `prompt()` retries resume once on that exact error and asks the caller to retry (retryable error). `session/resume` and `session/load` carry the same `_meta` as `session/new` (#121: one builder, `sessionMeta`), so forks keep the Unvibe system prompt and the read-only tool set instead of the adapter defaults |
 | 2 | Codex silently ignores `_meta.systemPrompt` (spike 1a FAIL) | Codex instructions go as AIR custom instructions (`_meta.jetbrains.air.customInstructions`), forwarded by codex-acp as `developerInstructions` on thread start. Verified live: codename `QUOKKA-X7` recalled. String passed byte-stable across sessions so prefix caching works |
-| 3 | `usage.inputTokens` excludes cached tokens on both adapters | Never compute hit rate as cached/input; read share = `cachedRead/(in+cachedRead+cachedWrite)` (`cacheReadShare`) |
+| 3 | `usage.inputTokens` excludes cached tokens on both adapters | The usage event carries `cachedReadTokens` + `cachedWriteTokens` separately (#125); the hit rate the app shows is the read share `cachedRead/(in+cachedRead+cachedWrite)` (`cacheReadShare`), never cached/input |
 | 4 | **Claude counters are session-cumulative** (`"Total … across all turns"`; verified: turn2 total 21254 > turn1 total 19259) while **Codex counters are per-turn** (verified: 237-input turn after a 5338-input turn) | Runner delta-izes Claude per session (`deltaTurnUsage` + per-session baseline) and passes Codex through, so consumers can sum `usage` events. Unit test pins the delta math |
 | 5 | Turn-level `usage` omits background sub-calls (e.g. session titling) | Always aggregate `_meta.quota.model_usage` when present (`aggregateTurnUsage`); handles both provider field namings (`cachedInputTokens`/`cachedReadTokens`, `cacheWriteInputTokens`/`cachedWriteTokens`) and folds thought/reasoning tokens into output |
 | 6 | Codex `read-only` mode refuses MCP tool calls ("I can't access that tool" without attempting) | Restricted Codex sessions use `workspace-write` mode instead (see permission policy) |
@@ -188,11 +188,11 @@ mise run test:live  # live adapter tests (UNVIBE_LIVE=1)
 provider (~1 min for Claude, ~1 min for Codex; 12 tests total).
 
 - `UNVIBE_LIVE_PROVIDERS=claude|codex` selects providers (default: both).
-- Unit tests (`test/acp-runner.test.ts`, 19 tests) run a scripted fake ACP
+- Unit tests (`test/acp-runner.test.ts`, 21 tests) run a scripted fake ACP
   agent speaking the real protocol over in-memory stream pairs
   (`test/fake-acp.ts` reuses the production `connectClient()`): event
   mapping, usage aggregation incl. background models, fork+resume ordering,
   `atMessage` fork points, resume/load `_meta` parity with new (#121) +
-  fork deny policy, load replay drain, cancel, crash/restart,
-  permission allow/deny + toolCallId correlation, error classification,
-  model listing.
+  fork deny policy, load replay drain, quiet-based settling (#122),
+  cancel, crash/restart, permission allow/deny + toolCallId correlation,
+  error classification, model listing, read/write usage split (#125).

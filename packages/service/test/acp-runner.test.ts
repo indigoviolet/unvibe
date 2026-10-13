@@ -44,7 +44,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     expect(events).toContainEqual({ type: "text", delta: "there" });
     expect(events).toContainEqual({ type: "tool", name: "mcp__test__get_hunk", status: "end" });
     const usage = events.find((e) => e.type === "usage");
-    expect(usage).toEqual({ type: "usage", inputTokens: 4, cachedTokens: 110, outputTokens: 8 });
+    expect(usage).toEqual({ type: "usage", inputTokens: 4, cachedReadTokens: 100, cachedWriteTokens: 10, outputTokens: 8 });
     expect(events[events.length - 1]).toEqual({ type: "done", stopReason: "end_turn" });
     await runner.dispose();
   });
@@ -65,7 +65,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const events = await collect(runner, s, "bg please");
     const usage = events.find((e) => e.type === "usage");
-    expect(usage).toEqual({ type: "usage", inputTokens: 61604, cachedTokens: 100, outputTokens: 27 });
+    expect(usage).toEqual({ type: "usage", inputTokens: 61604, cachedReadTokens: 100, cachedWriteTokens: 0, outputTokens: 27 });
     await runner.dispose();
   });
 
@@ -398,7 +398,8 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     expect(first.find((e) => e.type === "usage")).toEqual({
       type: "usage",
       inputTokens: 2,
-      cachedTokens: 18000,
+      cachedReadTokens: 10000,
+      cachedWriteTokens: 8000,
       outputTokens: 4,
     });
     const second = await collect(runner, s, "turn-two please");
@@ -406,7 +407,8 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     expect(second.find((e) => e.type === "usage")).toEqual({
       type: "usage",
       inputTokens: 0,
-      cachedTokens: 633 + 1352,
+      cachedReadTokens: 633,
+      cachedWriteTokens: 1352,
       outputTokens: 10,
     });
     await runner.dispose();

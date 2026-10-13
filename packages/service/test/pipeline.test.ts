@@ -369,11 +369,11 @@ describe("pipeline failure paths (scripted fakes)", () => {
       void text;
       if (prompts === 1) {
         yield { type: "text", delta: bad };
-        yield { type: "usage", inputTokens: 10, cachedTokens: 0, outputTokens: 5 };
+        yield { type: "usage", inputTokens: 10, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 5 };
         yield { type: "done", stopReason: "end_turn" };
       } else {
         yield { type: "text", delta: good };
-        yield { type: "usage", inputTokens: 10, cachedTokens: 5, outputTokens: 5 };
+        yield { type: "usage", inputTokens: 10, cachedReadTokens: 5, cachedWriteTokens: 0, outputTokens: 5 };
         yield { type: "done", stopReason: "end_turn" };
       }
     };
@@ -405,7 +405,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
         yield { type: "error", message: "rate limited", retryable: true };
       } else {
         yield { type: "text", delta: "Ok [[diff:a-py:1-2]]\n\n```json\n{}\n```\n" };
-        yield { type: "usage", inputTokens: 5, cachedTokens: 0, outputTokens: 3 };
+        yield { type: "usage", inputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 3 };
         yield { type: "done", stopReason: "end_turn" };
       }
     };
@@ -490,7 +490,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
         match: "Hunk pass",
         events: [
           { type: "text", delta: "Summary [[diff:a-py:1-2]]\n\n```json\n{\"hunk\": {\"summary\": \"S\", \"hiddenReason\": \"imports\"}}\n```\n" },
-          { type: "usage", inputTokens: 5, cachedTokens: 0, outputTokens: 3 },
+          { type: "usage", inputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 3 },
           { type: "done", stopReason: "end_turn" },
         ],
       },
@@ -658,7 +658,7 @@ describe("reader pinned code (#37)", () => {
             }
           }
           yield { type: "text", delta: readerReply };
-          yield { type: "usage", inputTokens: 10, cachedTokens: 0, outputTokens: 5 };
+          yield { type: "usage", inputTokens: 10, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 5 };
           yield { type: "done", stopReason: "end_turn" };
           return;
         }
@@ -790,7 +790,7 @@ describe("reader pinned code (#37)", () => {
             }
           }
           yield { type: "text", delta: readerReply };
-          yield { type: "usage", inputTokens: 10, cachedTokens: 0, outputTokens: 5 };
+          yield { type: "usage", inputTokens: 10, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 5 };
           yield { type: "done", stopReason: "end_turn" };
           return;
         }

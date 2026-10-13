@@ -628,9 +628,15 @@ export type JobKind =
 
 export type JobState = "queued" | "running" | "backing-off" | "done" | "error" | "cancelled";
 
+/**
+ * Token usage for one turn or job (#125). Cache reads and writes are split:
+ * `usage.inputTokens` counts UNCACHED input only, and the hit rate the app
+ * shows is the read share `cachedRead/(input+cachedRead+cachedWrite)`.
+ */
 export interface TokenUsage {
   inputTokens: number;
-  cachedTokens: number;
+  cachedReadTokens: number;
+  cachedWriteTokens: number;
   outputTokens: number;
 }
 
@@ -649,7 +655,7 @@ export interface Job {
   /** Snapshot of the exact prompt sent (Settings links to it). */
   promptSnapshot?: string;
   usage?: TokenUsage;
-  /** Cache read share: cached/(input+cached). input counts uncached input only (M0). */
+  /** Cache read share: cachedRead/(input+cachedRead+cachedWrite). input counts uncached input only (M0, #125). */
   cacheHitRate?: number;
   error?: string;
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
