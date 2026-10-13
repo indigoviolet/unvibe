@@ -49,6 +49,24 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
   hide: (<path d="M4 10l4-4 4 4" />),
+  fold: (
+    <>
+      <path d="M4 3.5l4 3.5 4-3.5" />
+      <path d="M4 12.5l4-3.5 4 3.5" />
+    </>
+  ),
+  upUp: (
+    <>
+      <path d="M4 7.5l4-4 4 4" />
+      <path d="M4 12.5l4-4 4 4" />
+    </>
+  ),
+  downDown: (
+    <>
+      <path d="M4 3.5l4 4 4-4" />
+      <path d="M4 8.5l4 4 4-4" />
+    </>
+  ),
   gear: (
     <>
       <circle cx="8" cy="8" r="2.2" />

@@ -69,7 +69,7 @@ describe("DiffView expansion", () => {
     await fireEvent.click(conn.getAllByRole("button", { name: "Show 20 more lines" })[0]);
     await conn.findByText("RefusedConnectionError");
     expect(revealedRows(connSection())).toHaveLength(20);
-    await fireEvent.click(conn.getByRole("button", { name: "Hide shown lines" }));
+    await fireEvent.click(conn.getByRole("button", { name: "Hide 20 lines" }));
     expect(revealedRows(connSection())).toHaveLength(0);
   });
 
@@ -87,9 +87,10 @@ describe("DiffView expansion", () => {
     for (let n = 10; n <= 13; n++) {
       expect(document.getElementById(`L-${TCONN}-${n}`)).not.toBeNull();
     }
-    // Fully revealed: this gap's show-all is gone, only the slim hide.
+    // Fully revealed: this gap's show-all is gone; the quiet Hide icon
+    // sits on the run's first row instead.
     expect(tconn.queryByRole("button", { name: "Show all 4 lines" })).toBeNull();
-    await fireEvent.click(tconn.getByRole("button", { name: "Hide shown lines" }));
+    await fireEvent.click(tconn.getByRole("button", { name: "Hide 4 lines" }));
     expect(revealedRows(section)).toHaveLength(0);
   });
 
@@ -196,6 +197,57 @@ describe("DiffView unit expansion", () => {
       spy.mockRestore();
     }
   });
+
+  it("shows no separator where lines are continuous", async () => {
+    await renderDiff();
+    const section = document.getElementById(`F-${TCONN}`)!;
+    const tconn = within(section);
+    // Unhide the import hunks, then reveal their 4-line gap from below:
+    // the gap is small enough that one step finishes it.
+    await fireEvent.click(screen.getByText(/Hunks 1–2 of 3 hidden · imports/));
+    await screen.findByText("Hunk 1 of 3");
+    const steps = tconn.getAllByRole("button", { name: "Show 4 more lines" });
+    expect(steps).toHaveLength(2);
+    // From below (the lower hunk's step): the 4-line gap finishes at once.
+    await fireEvent.click(steps[1]);
+    await waitForRevealed(section, 4);
+    // No separator between the two hunks: hunk 1's table ends on
+    // revealed line 13, hunk 2's table starts on its code line 14.
+    const [d0, d1] = section.querySelectorAll(".dhunk");
+    const rows0 = [...d0.querySelectorAll("table.diff tbody tr")];
+    expect(rows0[rows0.length - 1].id).toBe(`L-${TCONN}-13`);
+    const rows1 = [...d1.querySelectorAll("table.diff tbody tr")];
+    expect(rows1[0].classList.contains("xsep")).toBe(false);
+    expect(rows1[0].id).toBe(`L-${TCONN}-14`);
+    // The hover Hide sits on the run's first row instead.
+    expect(section.querySelectorAll("button[aria-label='Hide 4 lines']")).toHaveLength(1);
+  });
+
+  it("shrinks one gap run from either end with one remaining count", async () => {
+    await renderDiff();
+    const section = document.getElementById(`F-${TCONN}`)!;
+    const tconn = within(section);
+    await fireEvent.click(screen.getByText(/Hunks 1–2 of 3 hidden · imports/));
+    await screen.findByText("Hunk 1 of 3");
+    // The third hunk starts folded (seeded): unfold it so its lower
+    // step renders — the upper side alone still reaches the whole gap.
+    await fireEvent.click(tconn.getByText("37 changed lines folded · show"));
+    // Big gap (22-210, 189 lines): expand up from the lower hunk.
+    const up = tconn.getAllByRole("button", { name: "Show 20 more lines" });
+    await fireEvent.click(up[up.length - 1]);
+    await waitForRevealed(section, 20);
+    // Both ends share the run's remaining count (189 - 20 = 169).
+    // (The first fetch also teaches the file total, so the bottom
+    // control below the last hunk appears with its own 20-line step.)
+    expect(tconn.getByRole("button", { name: "Show all 169 lines" })).toBeInTheDocument();
+    expect(tconn.getAllByRole("button", { name: "Show 20 more lines" })).toHaveLength(3);
+    // One more step from below shrinks the same run again: the gap's
+    // lower step sits right above the last hunk's code.
+    const upAgain = tconn.getAllByRole("button", { name: "Show 20 more lines" });
+    await fireEvent.click(upAgain[1]);
+    await waitForRevealed(section, 40);
+    expect(tconn.getByRole("button", { name: "Show all 149 lines" })).toBeInTheDocument();
+  });
 });
 
 describe("FileSection number width", () => {
@@ -232,8 +284,7 @@ describe("FileSection number width", () => {
     toggleReviewed: () => {},
   };
 
-  it("widens --lnw when revealed lines carry more digits than the hunks", async () => {
-    const slice = vi.spyOn(api, "fileSlice").mockImplementation(async (_id, params) => ({
+  it("widens --lnw when revealed lines carry more digits than the hunks", async () => {    const slice = vi.spyOn(api, "fileSlice").mockImplementation(async (_id, params) => ({
       path: params.path,
       commit: params.commit,
       start: params.start,
@@ -288,6 +339,137 @@ describe("FileSection number width", () => {
     } finally {
       slice.mockRestore();
       outline.mockRestore();
+    }
+  });
+
+  it("learns the total up front for a single hunk starting at line 1", async () => {
+    const one: Hunk = {
+      contentHash: "one-h",
+      header: "@@ -1,3 +1,3 @@",
+      newStart: 1,
+      newEnd: 3,
+      oldStart: 1,
+      oldEnd: 3,
+      added: 0,
+      removed: 0,
+      lines: [
+        { kind: "ctx", oldLine: 1, newLine: 1, text: "a" },
+        { kind: "ctx", oldLine: 2, newLine: 2, text: "b" },
+        { kind: "ctx", oldLine: 3, newLine: 3, text: "c" },
+      ],
+    };
+    const oneFile: ReviewFile = { fileKey: "one", path: "one.py", category: "source", hunks: [one] };
+    const slice = vi.spyOn(api, "fileSlice").mockImplementation(async (_id, params) => ({
+      path: params.path,
+      commit: params.commit,
+      start: params.start,
+      end: params.end,
+      totalLines: 1200,
+      lines: Array.from({ length: params.end - params.start + 1 }, (_, i) => `line ${params.start + i}`),
+    }));
+    try {
+      render(
+        <FileSection
+          file={oneFile}
+          view="unified"
+          reviewed={0}
+          folded={false}
+          eager
+          busy={{}}
+          editingNote={{}}
+          slots={{}}
+          commentedLines={new Set()}
+          highlight={null}
+          fileHighlighted={false}
+          reviewId="demo"
+          headCommit="abc1234"
+          baseCommit="def5678"
+          contentAvailable
+          briefs={null}
+          states={new Map()}
+          isHidden={() => false}
+          actions={actions}
+          onLineClick={undefined}
+          onToggleFileFold={() => {}}
+          onMarkFileReviewed={() => {}}
+          onUnhide={() => {}}
+        />,
+      );
+      // No clicks: the probe learns the total, the bottom control
+      // appears, and nothing is revealed.
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Show 20 more lines" })).toBeInTheDocument();
+      });
+      expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(0);
+      expect(slice).toHaveBeenCalledWith("demo", { path: "one.py", commit: "abc1234", start: 1, end: 1 });
+    } finally {
+      slice.mockRestore();
+    }
+  });
+
+  it("shows no bottom control when the hunk ends at the file end", async () => {
+    const one: Hunk = {
+      contentHash: "one-h",
+      header: "@@ -1,3 +1,3 @@",
+      newStart: 1,
+      newEnd: 3,
+      oldStart: 1,
+      oldEnd: 3,
+      added: 0,
+      removed: 0,
+      lines: [
+        { kind: "ctx", oldLine: 1, newLine: 1, text: "a" },
+        { kind: "ctx", oldLine: 2, newLine: 2, text: "b" },
+        { kind: "ctx", oldLine: 3, newLine: 3, text: "c" },
+      ],
+    };
+    const oneFile: ReviewFile = { fileKey: "one", path: "one.py", category: "source", hunks: [one] };
+    const slice = vi.spyOn(api, "fileSlice").mockImplementation(async (_id, params) => ({
+      path: params.path,
+      commit: params.commit,
+      start: params.start,
+      end: params.end,
+      totalLines: 3,
+      lines: Array.from({ length: params.end - params.start + 1 }, (_, i) => `line ${params.start + i}`),
+    }));
+    try {
+      render(
+        <FileSection
+          file={oneFile}
+          view="unified"
+          reviewed={0}
+          folded={false}
+          eager
+          busy={{}}
+          editingNote={{}}
+          slots={{}}
+          commentedLines={new Set()}
+          highlight={null}
+          fileHighlighted={false}
+          reviewId="demo"
+          headCommit="abc1234"
+          baseCommit="def5678"
+          contentAvailable
+          briefs={null}
+          states={new Map()}
+          isHidden={() => false}
+          actions={actions}
+          onLineClick={undefined}
+          onToggleFileFold={() => {}}
+          onMarkFileReviewed={() => {}}
+          onUnhide={() => {}}
+        />,
+      );
+      // The probe learns total 3 == hunk end: no separator at all, and
+      // the unit control still offers the file level.
+      await waitFor(() => {
+        expect(slice).toHaveBeenCalled();
+      });
+      await waitFor(() => {
+        expect(document.querySelectorAll("tr.xsep")).toHaveLength(0);
+      });
+    } finally {
+      slice.mockRestore();
     }
   });
 });

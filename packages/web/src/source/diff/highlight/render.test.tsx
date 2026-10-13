@@ -310,9 +310,10 @@ describe("hostile code text (issue #101)", () => {
       const headers = section.querySelectorAll(".dhunk-h");
       expect(headers.length).toBe(1);
       expect(headers[0].closest("table")).toBeNull();
-      // …and no rows, cells or tables were injected anywhere in the section
-      // (one code row plus the expand control row).
-      expect(section.querySelectorAll("tr").length).toBe(2);
+      // …and no rows, cells or tables were injected anywhere in the section.
+      // The hunk starts at line 1 with an unknown total, so no expansion
+      // control renders either: exactly the one code row.
+      expect(section.querySelectorAll("tr").length).toBe(1);
       expect(section.querySelectorAll("table").length).toBe(1);
       if (tokens) expect(section.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     }
@@ -331,6 +332,7 @@ describe("hostile code text (issue #101)", () => {
             tokens={new Map()}
             slots={{}}
             highlight={null}
+            onHideBlock={() => {}}
           />
         </tbody>
       </table>,

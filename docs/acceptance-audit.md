@@ -630,17 +630,21 @@ needed (that deviation is closed, not added).
   `GET /api/reviews/:id/file` serves raw ranges at a commit through the
   shared `readCodeSlice` source with a per-request cap
   (`service/src/routes/files.ts`, `service/test/file-slice.test.ts` 4
-  tests); step controls above/below each hunk (20 lines) plus gap
-  show-all with a slim hide when fully revealed, so the hunks read as
-  continuous (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 9 tests, `FileExpansion.test.tsx` 5 tests,
-  `e2e/diff-expand.spec.ts` 4 tests); revealed rows are tinted context
+  tests); quiet gutter caret icons (single = 20-line step, double =
+  whole run) in thin separator rows frozen left while code scrolls, one
+  hidden run per gap sharing one remaining count from both ends, no
+  controls on continuous boundaries (fully revealed or zero-line gaps,
+  file edges; the total is probed up front for single-hunk files), and a
+  quiet fold icon on each revealed block's first gutter number instead
+  of control rows (`web/src/source/diff/FileExpansion.tsx`,
+  `expandLines.test.ts` 10 tests, `FileExpansion.test.tsx` 14 tests,
+  `e2e/diff-expand.spec.ts` 8 tests); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
   (`expand.css`, `highlightLines`); deleted files expand on the old
   side, new files on the new side, binary files offer nothing, renames
   read the new path at head — nothing throws; revealed lines offer
-  Explain and Ask on the diff-line anchor (read as
-  `code:<path>:<lines>@<sha>`) while Note stays hidden there
+  Explain, Ask and GitHub on the diff-line anchor (read as
+  `code:<path>:<lines>@<sha>`) while Comment stays hidden there
   (`SelectionToolbar.test.tsx`); `docs/screenshots/133-*.png`.
 - Expand beyond hunks, by unit (issue #133, stage 2) — met:
   `GET /api/reviews/:id/outline` answers the enclosing chain for a hunk
