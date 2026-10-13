@@ -1,0 +1,138 @@
+# Corpus for issue #133. One case per line:
+#   id | repo sha path | first-last changed line (new side) | what makes it interesting | expected
+# expected = the enclosing units, innermost first, as start-end (1-based, inclusive; the start
+# includes decorators, attributes and the doc comment), or "none" for top-level code and for
+# a range that crosses definitions, or "unscored".
+# repo "file" = a single file fetched by fetch-corpus.mjs (large, minified, syntax error); the
+# range is then a chosen range, not a commit's hunk. repo "unvibe" = this repository.
+# What counts as a unit: named functions and methods, closures bound to a name, classes and
+# other type definitions (interface, struct, enum, trait, impl, module, namespace), and blocks
+# passed to a call at module/DSL level (describe/it, Sinatra-style DSL). A callback inside a
+# function is not a unit. One-line declarations are not units.
+
+# --- Python
+py01 | flask 06ea505ce2 src/flask/ctx.py | 192-193 | body after a docstring that contains example defs | 154-206
+py02 | flask 7689f98403 src/flask/helpers.py | 679-679 | method in class | 676-679; 654-679
+py03 | flask d318b68347 src/flask/helpers.py | 448-449 | docstring, multi-line signature | 417-540
+py04 | flask d086db856b src/flask/sansio/app.py | 3-3 | top-level import | none
+py05 | httpx ae1b9f6623 httpx/__init__.py | 53-53 | top-level list | none
+py06 | httpx 4189b7f051 httpx/_client.py | 1726-1726 | async method | 1717-1749; 1307-2019
+py07 | httpx 80960fa319 httpx/_transports/default.py | 297-297 | __init__ with multi-line signature | 280-359; 279-406
+py08 | httpx 1805ee0d22 httpx/_client.py | 589-591 | class docstring | 566-1265
+py09 | flask edebd37044 src/flask/sansio/blueprints.py | 492-493 | whole nested def inside a decorated method | 492-493; 475-495; 119-692
+py10 | flask da6d075dfd src/flask/sessions.py | 30-30 | decorated property | 27-30; 24-49
+py11 | flask a411a2434b src/flask/ctx.py | 394-403 | whole new decorated method | 394-402; 259-514
+py12 | httpx 359f77d4f6 httpx/_client.py | 1591-1591 | decorator, async, signature line | 1587-1637; 1320-2065
+py13 | flask c2705ffd9c src/flask/ctx.py | 131-131 | example code inside a docstring | 117-147
+py14 | httpx e9cabc8e1d httpx/_transports/default.py | 97-99 | decorated function | 95-118
+py15 | httpx 7b19cd5f4b httpx/_client.py | 61-92 | spans several top-level functions | none
+py16 | file - frame.py | 10840-10841 | two decorators, 12.7k-line file | 10813-10846; 509-12664
+py17 | file - broken_ctx.py | 192-193 | syntax error (unclosed paren) in an earlier function | 154-206
+
+# --- Go
+go01 | gin d75fcd4c9a response_writer.go | 124-124 | method with receiver | 110-125
+go02 | cobra 8cb30f9ca5 completions.go | 386-386 | method, no doc comment | 309-567
+go03 | cobra 24ada7fe71 completions.go | 744-753 | method | 725-912
+go04 | gin 472d086af2 tree.go | 821-886 | labelled loop in a long method | 702-950
+go05 | gin d8f2d588d7 gin.go | 577-579 | composite literal in method | 560-583
+go06 | cobra 1995054b00 command.go | 1299-1303 | func literal in a struct literal in a method | 1260-1314
+go07 | cobra 611e16c322 command.go | 449-461 | whole new method with doc comment | 449-460
+go08 | gin 64a6ed9a41 recovery.go | 149-168 | doc comment plus first half of function | 149-176
+go09 | gin e318c6add8 routes_test.go | 54-54 | doc comment only | 54-66
+go10 | cobra 6dec1ae266 completions.go | 118-124 | spans a struct's end and a new method | none
+go11 | cobra fc81d20034 command.go | 560-560 | top-level const | none
+go12 | gin e8f24969d5 routergroup.go | 27-27 | top-level var block | none
+go13 | gin db309081bc logger.go | 306-306 | returned closure | 244-314
+go14 | cobra 8cb30f9ca5 completions.go | 120-130 | doc comment plus one-line type alias | none
+go15 | cobra 611e16c322 command.go | 191-191 | struct field | 49-259
+
+# --- Rust
+rs01 | ripgrep 020687a77d crates/ignore/src/gitignore.rs | 362-364 | method in impl, doc comment | 346-366; 328-578
+rs02 | ripgrep 8372866810 crates/core/flags/hiargs.rs | 64-64 | struct field, doc comment and derive | 26-107
+rs03 | ripgrep d99ac34406 crates/core/main.rs | 16-16 | mod declaration | none
+rs04 | ripgrep d958105d41 crates/core/flags/lowargs.rs | 159-160 | enum variant | 143-169
+rs05 | ripgrep f55548ba9f crates/globset/src/lib.rs | 1140-1147 | whole new fn inside mod tests | 1140-1146; 1134-1307
+rs06 | ripgrep 43e2f08ede crates/ignore/src/dir.rs | 619-619 | associated type in trait impl | 618-634
+rs07 | ripgrep b009b5b84b crates/printer/src/util.rs | 517-517 | fn with where clause, inside a closure | 473-530
+rs08 | axum e57b547eb9 axum/src/routing/route.rs | 162-163 | fn with attribute in trait impl | 146-181; 143-182
+rs09 | axum dcfd5e3442 axum/src/extract/ws.rs | 529-529 | async fn in generic impl, inside a closure | 497-565; 491-566
+rs10 | axum 7c3c67879d axum/src/extract/matched_path.rs | 410-410 | test attribute, async fn, mod tests | 408-426; 142-447
+rs11 | axum a2e64a8fc3 axum/src/routing/method_routing.rs | 449-449 | top-level macro call | none
+rs12 | axum bc8d491243 axum/src/extract/path/mod.rs | 596-625 | spans two functions | none
+rs13 | axum 3ea7f31b8e axum/src/serve/mod.rs | 795-795 | signature of async fn with generics | 788-894
+rs14 | ripgrep 435f59fc4b crates/ignore/src/walk.rs | 2437-2457 | whole new test fn with attribute | 2437-2456; 2193-2740
+
+# --- Java
+jv01 | gson 15ca736037 gson/src/main/java/com/google/gson/JsonPrimitive.java | 299-299 | method with javadoc | 286-300; 25-353
+jv02 | gson 61f2c64606 gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java | 415-419 | whole new method with annotation | 415-418; 34-447
+jv03 | gson a3b9f1f737 gson/src/main/java/com/google/gson/stream/JsonReader.java | 624-666 | switch in a long annotated method | 581-747; 30-1962
+jv04 | gson dae37cf0fe gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java | 386-387 | method of an anonymous class | 379-398; 375-409; 59-1112
+jv05 | gson e2292f9c9f gson/src/main/java/com/google/gson/stream/JsonReader.java | 19-19 | import | none
+jv06 | gson 9835b6f901 gson/src/main/java/com/google/gson/JsonParseException.java | 20-21 | class javadoc only | 19-64
+jv07 | gson ff521d70b2 gson/src/main/java/com/google/gson/internal/Excluder.java | 171-174 | whole method | 171-174; 38-259
+jv08 | gson 866bc38923 gson/src/main/java/com/google/gson/internal/ConstructorConstructor.java | 137-137 | method | 96-171; 44-442
+jv09 | gson 9835b6f901 gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java | 666-666 | method javadoc only | 663-670; 36-677
+jv10 | gson ff521d70b2 gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java | 300-300 | header line of a nested class | 299-324; 28-325
+jv11 | gson 8526dbd2f0 gson/src/main/java/com/google/gson/Gson.java | 226-255 | constructor | 226-257; 49-1265
+jv12 | gson ae9604c201 gson/src/main/java/com/google/gson/internal/bind/EnumTypeAdapter.java | 53-62 | spans a new method and a field | 34-129
+jv13 | gson 455ca70ab7 gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java | 221-235 | field of an anonymous class in a method | 181-310; 59-694
+jv14 | gson 9835b6f901 proto/src/main/java/com/google/gson/protobuf/ProtoTypeAdapter.java | 145-145 | javadoc of a method in a nested class | 136-153; 87-216; 53-451
+
+# --- Ruby
+rb01 | sinatra 9e5c4ec8ad lib/sinatra/base.rb | 2104-2105 | block in a singleton method in a module | 2102-2115; 2098-2127; 28-2173
+rb02 | sinatra 2c7f8db854 lib/sinatra/base.rb | 1779-1779 | method in class << self in class in module | 1778-1784; 1292-1917; 972-2078; 28-2173
+rb03 | sinatra cd3e00de20 lib/sinatra/base.rb | 1874-1877 | whole new method | 1874-1876; 1288-1913; 972-2072; 28-2167
+rb04 | sinatra cd3e00de20 lib/sinatra/base.rb | 17-17 | require | none
+rb05 | sinatra 025e8c5ead lib/sinatra/base.rb | 399-399 | method with doc comment | 384-406; 285-724; 28-2167
+rb06 | sinatra cbd733cf1b lib/sinatra/middleware/logger.rb | 1-21 | whole new file | none
+rb07 | sinatra 4a558503a0 lib/sinatra/base.rb | 1608-1608 | heredoc in a method | 1602-1639; 1287-1907; 971-2051; 27-2146
+rb08 | rack 8bf4eb0784 lib/rack/request.rb | 608-609 | method in module in class in module | 584-626; 235-887; 16-891; 8-892
+rb09 | rack ad27aed513 lib/rack/headers.rb | 202-206 | whole method | 202-206; 4-232; 3-233
+rb10 | rack a3a836aa25 lib/rack/directory.rb | 59-59 | method in nested class | 57-73; 54-81; 24-212; 11-213
+rb11 | rack cacb5ae59a lib/rack/deflater.rb | 82-93 | method | 57-95; 12-172; 11-173
+rb12 | rack 3628cea311 lib/rack/mime.rb | 436-436 | hash constant in a module | 4-693; 3-694
+rb13 | rack ad27aed513 lib/rack/multipart/uploaded_file.rb | 77-78 | method | 76-79; 8-80; 7-81; 6-82
+rb14 | sinatra cb22afd790 test/markdown_test.rb | 50-54 | it block inside a proc assigned to a constant | 47-60; 3-96
+rb15 | sinatra 8c4cd0ba05 test/indifferent_hash_test.rb | 298-298 | def closed by "end if ..." | 295-299; 67-300
+
+# --- JavaScript
+js01 | express 9efc29e280 lib/response.js | 491-491 | JSDoc only, blank line before code, double assignment | 488-514
+js02 | express 8c2fcfcb7d lib/request.js | 333-333 | JSDoc only, function passed to a call | 330-343
+js03 | express 55869f49a6 test/res.send.js | 180-192 | whole it() in nested describe() | 180-191; 138-205; 11-568
+js04 | express 41113599af test/Router.js | 254-255 | nested callbacks inside it() | 251-271; 208-291; 9-636
+js05 | express 41113599af lib/express.js | 16-16 | top-level require | none
+js06 | express c5b8d55a6a lib/response.js | 830-841 | function expression assigned to a property | 805-870
+js07 | express 41113599af test/app.request.js | 13-13 | function assigned inside it() | 12-14; 9-23; 8-142; 7-143
+js08 | express dfd1851245 test/express.text.js | 442-442 | first line of it() | 442-450; 360-451; 9-547
+js09 | express c9ecf7b658 lib/application.js | 526-526 | function expression assigned to a property | 505-575
+js10 | express 327af123a1 lib/response.js | 393-394 | function expression assigned to a property | 324-407
+js11 | file - react.production.min.js | 10-10 | minified | unscored
+
+# --- TypeScript
+ts01 | unvibe 66c12e3f4e packages/service/src/routes/update.ts | 356-356 | nested callbacks in a function | 147-359
+ts02 | unvibe cdd2bd7dc3 packages/web/src/guide/stageLabels.ts | 29-37 | whole new function with JSDoc | 29-36
+ts03 | unvibe 66c12e3f4e packages/service/src/agent/acp/runner.ts | 398-398 | async method in class | 381-403; 80-712
+ts04 | unvibe 66c12e3f4e packages/web/src/source/diff/highlight/selectionGuard.test.ts | 109-109 | it() in describe() | 99-111; 58-112
+ts05 | unvibe 41b7d696c6 packages/web/src/guide/citations.test.ts | 93-107 | spans several it() | 64-108
+ts06 | unvibe c98d9d60f0 packages/service/src/pipeline/runner.ts | 1113-1113 | private async method | 1098-1135; 206-2009
+ts07 | unvibe 0d7efd1702 packages/service/src/pipeline/runner.ts | 60-61 | interface member | 53-69
+ts08 | unvibe 8a28230a66 packages/service/src/jobs/queue.ts | 39-39 | top-level const | none
+ts09 | unvibe 8c810fdc65 packages/service/src/routes/hunks.ts | 50-51 | route handler callback in a function | 20-100
+ts10 | unvibe 3f060fa74c packages/service/src/sharedctx/debug.ts | 77-77 | function with JSDoc | 64-105
+ts11 | unvibe c0a3928e81 packages/web/src/mock/index.ts | 2346-2346 | arrow function as object property | 2343-2349; 1240-2463
+ts12 | unvibe ce954dbbbe packages/web/src/mock/index.ts | 1592-1592 | arrow function as object property, 490 lines | 1580-2071; 1293-2527
+ts13 | file - checker.ts | 12505-12506 | nested function in a 52.7k-line file | 12503-12533; 1458-52552
+ts14 | file - broken_runner.ts | 398-398 | syntax error (missing brace) in an earlier method | 381-403; 80-712
+
+# --- TSX
+tsx01 | unvibe 1fa4f306b2 packages/web/src/settings/ModelsSection.tsx | 155-158 | arrow function const in a component | 148-162; 82-268
+tsx02 | unvibe 4aa29b1500 packages/web/src/guide/DiagramOverlay.tsx | 164-169 | JSX attributes | 37-181
+tsx03 | unvibe 2fd5bdd73a packages/web/src/comments/GuideThreads.tsx | 67-68 | comment in a component | 43-184
+tsx04 | unvibe 7eb3c9007e packages/web/src/guide/BlockView.tsx | 209-213 | JSX element | 121-352
+tsx05 | unvibe c3f40ae001 packages/web/src/guide/expansions/CorrectionSuggestion.tsx | 76-79 | JSX inside a map callback | 30-126
+tsx06 | unvibe cdd2bd7dc3 packages/web/src/guide/GuidePage.tsx | 155-155 | component body | 31-235
+tsx07 | unvibe 8282be3fa7 packages/web/src/start/StartPage.tsx | 115-118 | function with JSDoc | 111-139
+tsx08 | unvibe e183adedc1 packages/web/src/source/diff/FileSection.tsx | 31-31 | import | none
+tsx09 | unvibe 874654fe58 packages/web/src/comments/CommentsMenu.tsx | 94-94 | function with JSDoc | 87-107
+tsx10 | unvibe e028d47599 packages/web/src/source/diff/highlight/render.test.tsx | 191-288 | whole new describe() | 192-288
+tsx11 | unvibe ad6e8faeda packages/web/src/components/ErrorBoundary.tsx | 60-70 | method of a class component | 61-75; 44-87

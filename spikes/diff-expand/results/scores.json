@@ -1,0 +1,11542 @@
+{
+ "summary": {
+  "tree-sitter-wasm": {
+   "perLang": {
+    "py": {
+     "exact": 17,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 17,
+     "chainOk": 17,
+     "multi": 8,
+     "multiOk": 8
+    },
+    "go": {
+     "exact": 15,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 15,
+     "multi": 0,
+     "multiOk": 0
+    },
+    "rs": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 14,
+     "multi": 6,
+     "multiOk": 6
+    },
+    "jv": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 14,
+     "multi": 11,
+     "multiOk": 11
+    },
+    "rb": {
+     "exact": 15,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 15,
+     "multi": 13,
+     "multiOk": 13
+    },
+    "js": {
+     "exact": 4,
+     "lead": 3,
+     "wrong": 1,
+     "nothing": 2,
+     "unsupported": 0,
+     "error": 0,
+     "n": 10,
+     "chainOk": 7,
+     "multi": 4,
+     "multiOk": 3
+    },
+    "ts": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 14,
+     "multi": 7,
+     "multiOk": 7
+    },
+    "tsx": {
+     "exact": 11,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 11,
+     "chainOk": 11,
+     "multi": 2,
+     "multiOk": 2
+    },
+    "ALL": {
+     "exact": 104,
+     "lead": 3,
+     "wrong": 1,
+     "nothing": 2,
+     "unsupported": 0,
+     "error": 0,
+     "n": 110,
+     "chainOk": 107,
+     "multi": 51,
+     "multiOk": 50
+    }
+   }
+  },
+  "ast-grep napi": {
+   "perLang": {
+    "py": {
+     "exact": 17,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 17,
+     "chainOk": 17,
+     "multi": 8,
+     "multiOk": 8
+    },
+    "go": {
+     "exact": 15,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 15,
+     "multi": 0,
+     "multiOk": 0
+    },
+    "rs": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 14,
+     "multi": 6,
+     "multiOk": 6
+    },
+    "jv": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 14,
+     "multi": 11,
+     "multiOk": 11
+    },
+    "rb": {
+     "exact": 15,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 15,
+     "multi": 13,
+     "multiOk": 13
+    },
+    "js": {
+     "exact": 4,
+     "lead": 3,
+     "wrong": 1,
+     "nothing": 2,
+     "unsupported": 0,
+     "error": 0,
+     "n": 10,
+     "chainOk": 7,
+     "multi": 4,
+     "multiOk": 3
+    },
+    "ts": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 14,
+     "multi": 7,
+     "multiOk": 7
+    },
+    "tsx": {
+     "exact": 11,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 11,
+     "chainOk": 11,
+     "multi": 2,
+     "multiOk": 2
+    },
+    "ALL": {
+     "exact": 104,
+     "lead": 3,
+     "wrong": 1,
+     "nothing": 2,
+     "unsupported": 0,
+     "error": 0,
+     "n": 110,
+     "chainOk": 107,
+     "multi": 51,
+     "multiOk": 50
+    }
+   }
+  },
+  "ast-grep cli": {
+   "perLang": {
+    "py": {
+     "exact": 17,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 17,
+     "chainOk": 17,
+     "multi": 8,
+     "multiOk": 8
+    },
+    "go": {
+     "exact": 12,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 3,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 12,
+     "multi": 0,
+     "multiOk": 0
+    },
+    "rs": {
+     "exact": 13,
+     "lead": 0,
+     "wrong": 1,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 13,
+     "multi": 6,
+     "multiOk": 5
+    },
+    "jv": {
+     "exact": 11,
+     "lead": 0,
+     "wrong": 2,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 11,
+     "multi": 11,
+     "multiOk": 9
+    },
+    "rb": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 14,
+     "multi": 13,
+     "multiOk": 12
+    },
+    "js": {
+     "exact": 1,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 9,
+     "unsupported": 0,
+     "error": 0,
+     "n": 10,
+     "chainOk": 1,
+     "multi": 4,
+     "multiOk": 0
+    },
+    "ts": {
+     "exact": 9,
+     "lead": 0,
+     "wrong": 2,
+     "nothing": 3,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 9,
+     "multi": 7,
+     "multiOk": 4
+    },
+    "tsx": {
+     "exact": 9,
+     "lead": 0,
+     "wrong": 1,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 11,
+     "chainOk": 9,
+     "multi": 2,
+     "multiOk": 1
+    },
+    "ALL": {
+     "exact": 86,
+     "lead": 0,
+     "wrong": 6,
+     "nothing": 18,
+     "unsupported": 0,
+     "error": 0,
+     "n": 110,
+     "chainOk": 86,
+     "multi": 51,
+     "multiOk": 39
+    }
+   }
+  },
+  "lezer": {
+   "perLang": {
+    "py": {
+     "exact": 17,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 17,
+     "chainOk": 17,
+     "multi": 8,
+     "multiOk": 8
+    },
+    "go": {
+     "exact": 15,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 15,
+     "multi": 0,
+     "multiOk": 0
+    },
+    "rs": {
+     "exact": 9,
+     "lead": 4,
+     "wrong": 1,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 13,
+     "multi": 6,
+     "multiOk": 5
+    },
+    "jv": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 14,
+     "multi": 11,
+     "multiOk": 11
+    },
+    "rb": {
+     "exact": 0,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 15,
+     "error": 0,
+     "n": 15,
+     "chainOk": 0,
+     "multi": 13,
+     "multiOk": 0
+    },
+    "js": {
+     "exact": 4,
+     "lead": 3,
+     "wrong": 1,
+     "nothing": 2,
+     "unsupported": 0,
+     "error": 0,
+     "n": 10,
+     "chainOk": 7,
+     "multi": 4,
+     "multiOk": 3
+    },
+    "ts": {
+     "exact": 13,
+     "lead": 0,
+     "wrong": 1,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 11,
+     "multi": 7,
+     "multiOk": 4
+    },
+    "tsx": {
+     "exact": 11,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 11,
+     "chainOk": 11,
+     "multi": 2,
+     "multiOk": 2
+    },
+    "ALL": {
+     "exact": 83,
+     "lead": 7,
+     "wrong": 3,
+     "nothing": 2,
+     "unsupported": 15,
+     "error": 0,
+     "n": 110,
+     "chainOk": 88,
+     "multi": 51,
+     "multiOk": 33
+    }
+   }
+  },
+  "git -W userdiff": {
+   "perLang": {
+    "py": {
+     "exact": 8,
+     "lead": 0,
+     "wrong": 8,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 17,
+     "chainOk": 3,
+     "multi": 8,
+     "multiOk": 0
+    },
+    "go": {
+     "exact": 4,
+     "lead": 0,
+     "wrong": 11,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 4,
+     "multi": 0,
+     "multiOk": 0
+    },
+    "rs": {
+     "exact": 2,
+     "lead": 0,
+     "wrong": 12,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 2,
+     "multi": 6,
+     "multiOk": 0
+    },
+    "jv": {
+     "exact": 1,
+     "lead": 0,
+     "wrong": 12,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 0,
+     "multi": 11,
+     "multiOk": 0
+    },
+    "rb": {
+     "exact": 2,
+     "lead": 0,
+     "wrong": 12,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 1,
+     "multi": 13,
+     "multiOk": 0
+    },
+    "js": {
+     "exact": 1,
+     "lead": 0,
+     "wrong": 9,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 10,
+     "chainOk": 1,
+     "multi": 4,
+     "multiOk": 0
+    },
+    "ts": {
+     "exact": 4,
+     "lead": 0,
+     "wrong": 9,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 4,
+     "multi": 7,
+     "multiOk": 0
+    },
+    "tsx": {
+     "exact": 5,
+     "lead": 0,
+     "wrong": 5,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 11,
+     "chainOk": 5,
+     "multi": 2,
+     "multiOk": 0
+    },
+    "ALL": {
+     "exact": 27,
+     "lead": 0,
+     "wrong": 78,
+     "nothing": 5,
+     "unsupported": 0,
+     "error": 0,
+     "n": 110,
+     "chainOk": 20,
+     "multi": 51,
+     "multiOk": 0
+    }
+   }
+  },
+  "git -W default": {
+   "perLang": {
+    "py": {
+     "exact": 8,
+     "lead": 0,
+     "wrong": 9,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 17,
+     "chainOk": 8,
+     "multi": 8,
+     "multiOk": 0
+    },
+    "go": {
+     "exact": 2,
+     "lead": 0,
+     "wrong": 13,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 2,
+     "multi": 0,
+     "multiOk": 0
+    },
+    "rs": {
+     "exact": 3,
+     "lead": 0,
+     "wrong": 11,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 3,
+     "multi": 6,
+     "multiOk": 0
+    },
+    "jv": {
+     "exact": 2,
+     "lead": 0,
+     "wrong": 12,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 2,
+     "multi": 11,
+     "multiOk": 0
+    },
+    "rb": {
+     "exact": 1,
+     "lead": 0,
+     "wrong": 14,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 1,
+     "multi": 13,
+     "multiOk": 0
+    },
+    "js": {
+     "exact": 1,
+     "lead": 0,
+     "wrong": 9,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 10,
+     "chainOk": 1,
+     "multi": 4,
+     "multiOk": 0
+    },
+    "ts": {
+     "exact": 4,
+     "lead": 0,
+     "wrong": 9,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 4,
+     "multi": 7,
+     "multiOk": 0
+    },
+    "tsx": {
+     "exact": 5,
+     "lead": 0,
+     "wrong": 5,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 11,
+     "chainOk": 5,
+     "multi": 2,
+     "multiOk": 0
+    },
+    "ALL": {
+     "exact": 26,
+     "lead": 0,
+     "wrong": 82,
+     "nothing": 2,
+     "unsupported": 0,
+     "error": 0,
+     "n": 110,
+     "chainOk": 26,
+     "multi": 51,
+     "multiOk": 0
+    }
+   }
+  },
+  "indent heuristic": {
+   "perLang": {
+    "py": {
+     "exact": 15,
+     "lead": 0,
+     "wrong": 2,
+     "nothing": 0,
+     "unsupported": 0,
+     "error": 0,
+     "n": 17,
+     "chainOk": 15,
+     "multi": 8,
+     "multiOk": 7
+    },
+    "go": {
+     "exact": 9,
+     "lead": 0,
+     "wrong": 1,
+     "nothing": 5,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 9,
+     "multi": 0,
+     "multiOk": 0
+    },
+    "rs": {
+     "exact": 10,
+     "lead": 0,
+     "wrong": 2,
+     "nothing": 2,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 7,
+     "multi": 6,
+     "multiOk": 2
+    },
+    "jv": {
+     "exact": 4,
+     "lead": 0,
+     "wrong": 9,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 4,
+     "multi": 11,
+     "multiOk": 2
+    },
+    "rb": {
+     "exact": 14,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 15,
+     "chainOk": 13,
+     "multi": 13,
+     "multiOk": 11
+    },
+    "js": {
+     "exact": 4,
+     "lead": 0,
+     "wrong": 1,
+     "nothing": 5,
+     "unsupported": 0,
+     "error": 0,
+     "n": 10,
+     "chainOk": 2,
+     "multi": 4,
+     "multiOk": 1
+    },
+    "ts": {
+     "exact": 6,
+     "lead": 0,
+     "wrong": 3,
+     "nothing": 5,
+     "unsupported": 0,
+     "error": 0,
+     "n": 14,
+     "chainOk": 6,
+     "multi": 7,
+     "multiOk": 1
+    },
+    "tsx": {
+     "exact": 10,
+     "lead": 0,
+     "wrong": 0,
+     "nothing": 1,
+     "unsupported": 0,
+     "error": 0,
+     "n": 11,
+     "chainOk": 9,
+     "multi": 2,
+     "multiOk": 1
+    },
+    "ALL": {
+     "exact": 72,
+     "lead": 0,
+     "wrong": 18,
+     "nothing": 20,
+     "unsupported": 0,
+     "error": 0,
+     "n": 110,
+     "chainOk": 65,
+     "multi": 51,
+     "multiOk": 25
+    }
+   }
+  }
+ },
+ "rows": [
+  {
+   "id": "py01",
+   "lang": "py",
+   "note": "body after a docstring that contains example defs",
+   "range": "192-193",
+   "expected": [
+    {
+     "start": 154,
+     "end": 206
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 182,
+       "end": 199
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py02",
+   "lang": "py",
+   "note": "method in class",
+   "range": "679-679",
+   "expected": [
+    {
+     "start": 676,
+     "end": 679
+    },
+    {
+     "start": 654,
+     "end": 679
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 676,
+       "end": 679
+      },
+      {
+       "start": 654,
+       "end": 679
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 676,
+       "end": 679
+      },
+      {
+       "start": 654,
+       "end": 679
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 676,
+       "end": 679
+      },
+      {
+       "start": 654,
+       "end": 679
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 676,
+       "end": 679
+      },
+      {
+       "start": 654,
+       "end": 679
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 676,
+       "end": 679
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 654,
+       "end": 679
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 676,
+       "end": 679
+      },
+      {
+       "start": 654,
+       "end": 679
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py03",
+   "lang": "py",
+   "note": "docstring, multi-line signature",
+   "range": "448-449",
+   "expected": [
+    {
+     "start": 417,
+     "end": 540
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 417,
+       "end": 540
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 417,
+       "end": 540
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 417,
+       "end": 540
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 417,
+       "end": 540
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 417,
+       "end": 540
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 417,
+       "end": 540
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 417,
+       "end": 540
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py04",
+   "lang": "py",
+   "note": "top-level import",
+   "range": "3-3",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1,
+       "end": 50
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py05",
+   "lang": "py",
+   "note": "top-level list",
+   "range": "53-53",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 18,
+       "end": 106
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 29,
+       "end": 100
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py06",
+   "lang": "py",
+   "note": "async method",
+   "range": "1726-1726",
+   "expected": [
+    {
+     "start": 1717,
+     "end": 1749
+    },
+    {
+     "start": 1307,
+     "end": 2019
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1717,
+       "end": 1749
+      },
+      {
+       "start": 1307,
+       "end": 2019
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1717,
+       "end": 1749
+      },
+      {
+       "start": 1307,
+       "end": 2019
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1717,
+       "end": 1749
+      },
+      {
+       "start": 1307,
+       "end": 2019
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1717,
+       "end": 1749
+      },
+      {
+       "start": 1307,
+       "end": 2019
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1717,
+       "end": 1749
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1307,
+       "end": 2019
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1717,
+       "end": 1749
+      },
+      {
+       "start": 1307,
+       "end": 2019
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py07",
+   "lang": "py",
+   "note": "__init__ with multi-line signature",
+   "range": "297-297",
+   "expected": [
+    {
+     "start": 280,
+     "end": 359
+    },
+    {
+     "start": 279,
+     "end": 406
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 280,
+       "end": 359
+      },
+      {
+       "start": 279,
+       "end": 406
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 280,
+       "end": 359
+      },
+      {
+       "start": 279,
+       "end": 406
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 280,
+       "end": 359
+      },
+      {
+       "start": 279,
+       "end": 406
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 280,
+       "end": 359
+      },
+      {
+       "start": 279,
+       "end": 406
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 280,
+       "end": 359
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 279,
+       "end": 406
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 280,
+       "end": 359
+      },
+      {
+       "start": 279,
+       "end": 406
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py08",
+   "lang": "py",
+   "note": "class docstring",
+   "range": "589-591",
+   "expected": [
+    {
+     "start": 566,
+     "end": 1265
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 566,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 566,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 566,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 566,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 566,
+       "end": 611
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 566,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 566,
+       "end": 1265
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py09",
+   "lang": "py",
+   "note": "whole nested def inside a decorated method",
+   "range": "492-493",
+   "expected": [
+    {
+     "start": 492,
+     "end": 493
+    },
+    {
+     "start": 475,
+     "end": 495
+    },
+    {
+     "start": 119,
+     "end": 692
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 492,
+       "end": 493
+      },
+      {
+       "start": 475,
+       "end": 495
+      },
+      {
+       "start": 119,
+       "end": 692
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 492,
+       "end": 493
+      },
+      {
+       "start": 475,
+       "end": 495
+      },
+      {
+       "start": 119,
+       "end": 692
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 492,
+       "end": 493
+      },
+      {
+       "start": 475,
+       "end": 495
+      },
+      {
+       "start": 119,
+       "end": 692
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 492,
+       "end": 493
+      },
+      {
+       "start": 475,
+       "end": 495
+      },
+      {
+       "start": 119,
+       "end": 692
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 492,
+       "end": 497
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 119,
+       "end": 692
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 492,
+       "end": 493
+      },
+      {
+       "start": 475,
+       "end": 495
+      },
+      {
+       "start": 119,
+       "end": 692
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py10",
+   "lang": "py",
+   "note": "decorated property",
+   "range": "30-30",
+   "expected": [
+    {
+     "start": 27,
+     "end": 30
+    },
+    {
+     "start": 24,
+     "end": 49
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 27,
+       "end": 30
+      },
+      {
+       "start": 24,
+       "end": 49
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 27,
+       "end": 30
+      },
+      {
+       "start": 24,
+       "end": 49
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 27,
+       "end": 30
+      },
+      {
+       "start": 24,
+       "end": 49
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 27,
+       "end": 30
+      },
+      {
+       "start": 24,
+       "end": 49
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 27,
+       "end": 32
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 24,
+       "end": 49
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 27,
+       "end": 30
+      },
+      {
+       "start": 24,
+       "end": 49
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py11",
+   "lang": "py",
+   "note": "whole new decorated method",
+   "range": "394-402",
+   "expected": [
+    {
+     "start": 394,
+     "end": 402
+    },
+    {
+     "start": 259,
+     "end": 514
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 394,
+       "end": 402
+      },
+      {
+       "start": 259,
+       "end": 514
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 394,
+       "end": 402
+      },
+      {
+       "start": 259,
+       "end": 514
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 394,
+       "end": 402
+      },
+      {
+       "start": 259,
+       "end": 514
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 394,
+       "end": 402
+      },
+      {
+       "start": 259,
+       "end": 514
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 259,
+       "end": 514
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 259,
+       "end": 514
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py12",
+   "lang": "py",
+   "note": "decorator, async, signature line",
+   "range": "1591-1591",
+   "expected": [
+    {
+     "start": 1587,
+     "end": 1637
+    },
+    {
+     "start": 1320,
+     "end": 2065
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1587,
+       "end": 1637
+      },
+      {
+       "start": 1320,
+       "end": 2065
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1587,
+       "end": 1637
+      },
+      {
+       "start": 1320,
+       "end": 2065
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1587,
+       "end": 1637
+      },
+      {
+       "start": 1320,
+       "end": 2065
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1587,
+       "end": 1637
+      },
+      {
+       "start": 1320,
+       "end": 2065
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1587,
+       "end": 1637
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1320,
+       "end": 2065
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1587,
+       "end": 1637
+      },
+      {
+       "start": 1320,
+       "end": 2065
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py13",
+   "lang": "py",
+   "note": "example code inside a docstring",
+   "range": "131-131",
+   "expected": [
+    {
+     "start": 117,
+     "end": 147
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 117,
+       "end": 147
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 117,
+       "end": 147
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 117,
+       "end": 147
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 117,
+       "end": 147
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 129,
+       "end": 150
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 117,
+       "end": 147
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 129,
+       "end": 132
+      },
+      {
+       "start": 127,
+       "end": 134
+      },
+      {
+       "start": 117,
+       "end": 147
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py14",
+   "lang": "py",
+   "note": "decorated function",
+   "range": "97-99",
+   "expected": [
+    {
+     "start": 95,
+     "end": 118
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 95,
+       "end": 118
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 95,
+       "end": 118
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 95,
+       "end": 118
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 95,
+       "end": 118
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 95,
+       "end": 118
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 95,
+       "end": 118
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 95,
+       "end": 118
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py15",
+   "lang": "py",
+   "note": "spans several top-level functions",
+   "range": "61-90",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py16",
+   "lang": "py",
+   "note": "two decorators, 12.7k-line file",
+   "range": "10840-10841",
+   "expected": [
+    {
+     "start": 10813,
+     "end": 10846
+    },
+    {
+     "start": 509,
+     "end": 12664
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 10813,
+       "end": 10846
+      },
+      {
+       "start": 509,
+       "end": 12664
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 10813,
+       "end": 10846
+      },
+      {
+       "start": 509,
+       "end": 12664
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 10813,
+       "end": 10846
+      },
+      {
+       "start": 509,
+       "end": 12664
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 10813,
+       "end": 10846
+      },
+      {
+       "start": 509,
+       "end": 12664
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 10813,
+       "end": 10846
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 509,
+       "end": 12664
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 10813,
+       "end": 10846
+      },
+      {
+       "start": 509,
+       "end": 12664
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "py17",
+   "lang": "py",
+   "note": "syntax error (unclosed paren) in an earlier function",
+   "range": "192-193",
+   "expected": [
+    {
+     "start": 154,
+     "end": 206
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 182,
+       "end": 199
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 154,
+       "end": 206
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go01",
+   "lang": "go",
+   "note": "method with receiver",
+   "range": "124-124",
+   "expected": [
+    {
+     "start": 110,
+     "end": 125
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 110,
+       "end": 125
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 110,
+       "end": 125
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 110,
+       "end": 125
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 110,
+       "end": 125
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 110,
+       "end": 127
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 110,
+       "end": 127
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 110,
+       "end": 125
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go02",
+   "lang": "go",
+   "note": "method, no doc comment",
+   "range": "386-386",
+   "expected": [
+    {
+     "start": 309,
+     "end": 567
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 309,
+       "end": 567
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 309,
+       "end": 567
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 309,
+       "end": 567
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 309,
+       "end": 567
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 309,
+       "end": 567
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 309,
+       "end": 567
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 309,
+       "end": 567
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go03",
+   "lang": "go",
+   "note": "method",
+   "range": "744-752",
+   "expected": [
+    {
+     "start": 725,
+     "end": 912
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 725,
+       "end": 912
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 725,
+       "end": 912
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 725,
+       "end": 912
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 725,
+       "end": 912
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 725,
+       "end": 912
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 725,
+       "end": 757
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 725,
+       "end": 757
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go04",
+   "lang": "go",
+   "note": "labelled loop in a long method",
+   "range": "821-886",
+   "expected": [
+    {
+     "start": 702,
+     "end": 950
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 702,
+       "end": 950
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 702,
+       "end": 950
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 702,
+       "end": 950
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 702,
+       "end": 950
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 702,
+       "end": 950
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 706,
+       "end": 950
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go05",
+   "lang": "go",
+   "note": "composite literal in method",
+   "range": "577-579",
+   "expected": [
+    {
+     "start": 560,
+     "end": 583
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 560,
+       "end": 583
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 560,
+       "end": 583
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 560,
+       "end": 583
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 560,
+       "end": 583
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 560,
+       "end": 587
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 560,
+       "end": 587
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 560,
+       "end": 583
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go06",
+   "lang": "go",
+   "note": "func literal in a struct literal in a method",
+   "range": "1299-1302",
+   "expected": [
+    {
+     "start": 1260,
+     "end": 1314
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1260,
+       "end": 1314
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1260,
+       "end": 1314
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1260,
+       "end": 1314
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1260,
+       "end": 1314
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1260,
+       "end": 1316
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1268,
+       "end": 1316
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go07",
+   "lang": "go",
+   "note": "whole new method with doc comment",
+   "range": "449-460",
+   "expected": [
+    {
+     "start": 449,
+     "end": 460
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 449,
+       "end": 460
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 449,
+       "end": 460
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 449,
+       "end": 460
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 429,
+       "end": 464
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 429,
+       "end": 464
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go08",
+   "lang": "go",
+   "note": "doc comment plus first half of function",
+   "range": "149-168",
+   "expected": [
+    {
+     "start": 149,
+     "end": 176
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 149,
+       "end": 176
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 149,
+       "end": 176
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 149,
+       "end": 176
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 120,
+       "end": 178
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 120,
+       "end": 178
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go09",
+   "lang": "go",
+   "note": "doc comment only",
+   "range": "54-54",
+   "expected": [
+    {
+     "start": 54,
+     "end": 66
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 54,
+       "end": 66
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 54,
+       "end": 66
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 54,
+       "end": 66
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 35,
+       "end": 54
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 35,
+       "end": 54
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go10",
+   "lang": "go",
+   "note": "spans a struct's end and a new method",
+   "range": "118-124",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 106,
+       "end": 141
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 106,
+       "end": 135
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go11",
+   "lang": "go",
+   "note": "top-level const",
+   "range": "560-560",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 544,
+       "end": 562
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 560,
+       "end": 562
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go12",
+   "lang": "go",
+   "note": "top-level var block",
+   "range": "27-27",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1,
+       "end": 31
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 19,
+       "end": 31
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go13",
+   "lang": "go",
+   "note": "returned closure",
+   "range": "306-306",
+   "expected": [
+    {
+     "start": 244,
+     "end": 314
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 244,
+       "end": 314
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 244,
+       "end": 314
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 244,
+       "end": 314
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 244,
+       "end": 314
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 244,
+       "end": 314
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 244,
+       "end": 314
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 244,
+       "end": 314
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go14",
+   "lang": "go",
+   "note": "doc comment plus one-line type alias",
+   "range": "120-129",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 106,
+       "end": 134
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 106,
+       "end": 131
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "go15",
+   "lang": "go",
+   "note": "struct field",
+   "range": "191-191",
+   "expected": [
+    {
+     "start": 49,
+     "end": 259
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 49,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 49,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 49,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 49,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 49,
+       "end": 267
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 49,
+       "end": 267
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 49,
+       "end": 259
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs01",
+   "lang": "rs",
+   "note": "method in impl, doc comment",
+   "range": "362-364",
+   "expected": [
+    {
+     "start": 346,
+     "end": 366
+    },
+    {
+     "start": 328,
+     "end": 578
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 346,
+       "end": 366
+      },
+      {
+       "start": 328,
+       "end": 578
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 346,
+       "end": 366
+      },
+      {
+       "start": 328,
+       "end": 578
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 346,
+       "end": 366
+      },
+      {
+       "start": 328,
+       "end": 578
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 346,
+       "end": 366
+      },
+      {
+       "start": 328,
+       "end": 578
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 346,
+       "end": 376
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 328,
+       "end": 582
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 346,
+       "end": 366
+      },
+      {
+       "start": 328,
+       "end": 578
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs02",
+   "lang": "rs",
+   "note": "struct field, doc comment and derive",
+   "range": "64-64",
+   "expected": [
+    {
+     "start": 26,
+     "end": 107
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 26,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 26,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 26,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 36,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 26,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 26,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 26,
+       "end": 107
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs03",
+   "lang": "rs",
+   "note": "mod declaration",
+   "range": "16-16",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1,
+       "end": 43
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs04",
+   "lang": "rs",
+   "note": "enum variant",
+   "range": "159-160",
+   "expected": [
+    {
+     "start": 143,
+     "end": 169
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 143,
+       "end": 169
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 143,
+       "end": 169
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 143,
+       "end": 169
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 156,
+       "end": 169
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 143,
+       "end": 169
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 143,
+       "end": 169
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 143,
+       "end": 169
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs05",
+   "lang": "rs",
+   "note": "whole new fn inside mod tests",
+   "range": "1140-1146",
+   "expected": [
+    {
+     "start": 1140,
+     "end": 1146
+    },
+    {
+     "start": 1134,
+     "end": 1307
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1140,
+       "end": 1146
+      },
+      {
+       "start": 1134,
+       "end": 1307
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1140,
+       "end": 1146
+      },
+      {
+       "start": 1134,
+       "end": 1307
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1140,
+       "end": 1146
+      },
+      {
+       "start": 1134,
+       "end": 1307
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1140,
+       "end": 1146
+      },
+      {
+       "start": 1135,
+       "end": 1307
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1134,
+       "end": 1148
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1134,
+       "end": 1307
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1140,
+       "end": 1146
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs06",
+   "lang": "rs",
+   "note": "associated type in trait impl",
+   "range": "619-619",
+   "expected": [
+    {
+     "start": 618,
+     "end": 634
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 618,
+       "end": 634
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 618,
+       "end": 634
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 618,
+       "end": 634
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 618,
+       "end": 634
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 618,
+       "end": 619
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 618,
+       "end": 637
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 619,
+       "end": 619
+      },
+      {
+       "start": 618,
+       "end": 634
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs07",
+   "lang": "rs",
+   "note": "fn with where clause, inside a closure",
+   "range": "517-517",
+   "expected": [
+    {
+     "start": 473,
+     "end": 530
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 473,
+       "end": 530
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 473,
+       "end": 530
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 473,
+       "end": 530
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 473,
+       "end": 530
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 473,
+       "end": 534
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 474,
+       "end": 534
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs08",
+   "lang": "rs",
+   "note": "fn with attribute in trait impl",
+   "range": "162-163",
+   "expected": [
+    {
+     "start": 146,
+     "end": 181
+    },
+    {
+     "start": 143,
+     "end": 182
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 146,
+       "end": 181
+      },
+      {
+       "start": 143,
+       "end": 182
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 146,
+       "end": 181
+      },
+      {
+       "start": 143,
+       "end": 182
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 146,
+       "end": 181
+      },
+      {
+       "start": 143,
+       "end": 182
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 181
+      },
+      {
+       "start": 143,
+       "end": 182
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 146,
+       "end": 182
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 143,
+       "end": 182
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 146,
+       "end": 181
+      },
+      {
+       "start": 143,
+       "end": 182
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs09",
+   "lang": "rs",
+   "note": "async fn in generic impl, inside a closure",
+   "range": "529-529",
+   "expected": [
+    {
+     "start": 497,
+     "end": 565
+    },
+    {
+     "start": 491,
+     "end": 566
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 497,
+       "end": 565
+      },
+      {
+       "start": 491,
+       "end": 566
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 497,
+       "end": 565
+      },
+      {
+       "start": 491,
+       "end": 566
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 497,
+       "end": 565
+      },
+      {
+       "start": 491,
+       "end": 566
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 497,
+       "end": 565
+      },
+      {
+       "start": 491,
+       "end": 566
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 497,
+       "end": 566
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 492,
+       "end": 566
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 497,
+       "end": 565
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs10",
+   "lang": "rs",
+   "note": "test attribute, async fn, mod tests",
+   "range": "410-410",
+   "expected": [
+    {
+     "start": 408,
+     "end": 426
+    },
+    {
+     "start": 142,
+     "end": 447
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 408,
+       "end": 426
+      },
+      {
+       "start": 142,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 408,
+       "end": 426
+      },
+      {
+       "start": 142,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 408,
+       "end": 426
+      },
+      {
+       "start": 142,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 409,
+       "end": 426
+      },
+      {
+       "start": 143,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 408,
+       "end": 428
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 142,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 408,
+       "end": 426
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs11",
+   "lang": "rs",
+   "note": "top-level macro call",
+   "range": "449-449",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 379,
+       "end": 467
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 448,
+       "end": 467
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs12",
+   "lang": "rs",
+   "note": "spans two functions",
+   "range": "596-624",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 585,
+       "end": 626
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 584,
+       "end": 626
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs13",
+   "lang": "rs",
+   "note": "signature of async fn with generics",
+   "range": "795-795",
+   "expected": [
+    {
+     "start": 788,
+     "end": 894
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 788,
+       "end": 894
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 788,
+       "end": 894
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 788,
+       "end": 894
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 788,
+       "end": 894
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 788,
+       "end": 901
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 788,
+       "end": 901
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 788,
+       "end": 796
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rs14",
+   "lang": "rs",
+   "note": "whole new test fn with attribute",
+   "range": "2437-2456",
+   "expected": [
+    {
+     "start": 2437,
+     "end": 2456
+    },
+    {
+     "start": 2193,
+     "end": 2740
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 2437,
+       "end": 2456
+      },
+      {
+       "start": 2193,
+       "end": 2740
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 2437,
+       "end": 2456
+      },
+      {
+       "start": 2193,
+       "end": 2740
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 2193,
+       "end": 2740
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 2194,
+       "end": 2740
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 2413,
+       "end": 2458
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 2193,
+       "end": 2740
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv01",
+   "lang": "jv",
+   "note": "method with javadoc",
+   "range": "299-299",
+   "expected": [
+    {
+     "start": 286,
+     "end": 300
+    },
+    {
+     "start": 25,
+     "end": 353
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 286,
+       "end": 300
+      },
+      {
+       "start": 25,
+       "end": 353
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 286,
+       "end": 300
+      },
+      {
+       "start": 25,
+       "end": 353
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 286,
+       "end": 300
+      },
+      {
+       "start": 25,
+       "end": 353
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 286,
+       "end": 300
+      },
+      {
+       "start": 25,
+       "end": 353
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 286,
+       "end": 306
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 25,
+       "end": 353
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 35,
+       "end": 353
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv02",
+   "lang": "jv",
+   "note": "whole new method with annotation",
+   "range": "415-418",
+   "expected": [
+    {
+     "start": 415,
+     "end": 418
+    },
+    {
+     "start": 34,
+     "end": 447
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 415,
+       "end": 418
+      },
+      {
+       "start": 34,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 415,
+       "end": 418
+      },
+      {
+       "start": 34,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 415,
+       "end": 418
+      },
+      {
+       "start": 34,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 415,
+       "end": 418
+      },
+      {
+       "start": 34,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 34,
+       "end": 447
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 39,
+       "end": 447
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv03",
+   "lang": "jv",
+   "note": "switch in a long annotated method",
+   "range": "624-666",
+   "expected": [
+    {
+     "start": 581,
+     "end": 747
+    },
+    {
+     "start": 30,
+     "end": 1962
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 581,
+       "end": 747
+      },
+      {
+       "start": 30,
+       "end": 1962
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 581,
+       "end": 747
+      },
+      {
+       "start": 30,
+       "end": 1962
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 581,
+       "end": 747
+      },
+      {
+       "start": 30,
+       "end": 1962
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 581,
+       "end": 747
+      },
+      {
+       "start": 30,
+       "end": 1962
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 581,
+       "end": 747
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 30,
+       "end": 1962
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 211,
+       "end": 1962
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv04",
+   "lang": "jv",
+   "note": "method of an anonymous class",
+   "range": "386-387",
+   "expected": [
+    {
+     "start": 379,
+     "end": 398
+    },
+    {
+     "start": 375,
+     "end": 409
+    },
+    {
+     "start": 59,
+     "end": 1112
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 379,
+       "end": 398
+      },
+      {
+       "start": 375,
+       "end": 409
+      },
+      {
+       "start": 59,
+       "end": 1112
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 379,
+       "end": 398
+      },
+      {
+       "start": 375,
+       "end": 409
+      },
+      {
+       "start": 59,
+       "end": 1112
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 379,
+       "end": 398
+      },
+      {
+       "start": 375,
+       "end": 409
+      },
+      {
+       "start": 59,
+       "end": 1112
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 379,
+       "end": 398
+      },
+      {
+       "start": 375,
+       "end": 409
+      },
+      {
+       "start": 59,
+       "end": 1112
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 376,
+       "end": 400
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 59,
+       "end": 1112
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 63,
+       "end": 1112
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv05",
+   "lang": "jv",
+   "note": "import",
+   "range": "19-19",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1,
+       "end": 211
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv06",
+   "lang": "jv",
+   "note": "class javadoc only",
+   "range": "20-21",
+   "expected": [
+    {
+     "start": 19,
+     "end": 64
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 19,
+       "end": 64
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 19,
+       "end": 64
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 19,
+       "end": 64
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1,
+       "end": 31
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 17,
+       "end": 31
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv07",
+   "lang": "jv",
+   "note": "whole method",
+   "range": "171-174",
+   "expected": [
+    {
+     "start": 171,
+     "end": 174
+    },
+    {
+     "start": 38,
+     "end": 259
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 171,
+       "end": 174
+      },
+      {
+       "start": 38,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 171,
+       "end": 174
+      },
+      {
+       "start": 38,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 171,
+       "end": 174
+      },
+      {
+       "start": 38,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 171,
+       "end": 174
+      },
+      {
+       "start": 38,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 167,
+       "end": 174
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 38,
+       "end": 259
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 49,
+       "end": 259
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv08",
+   "lang": "jv",
+   "note": "method",
+   "range": "137-137",
+   "expected": [
+    {
+     "start": 96,
+     "end": 171
+    },
+    {
+     "start": 44,
+     "end": 442
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 96,
+       "end": 171
+      },
+      {
+       "start": 44,
+       "end": 442
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 96,
+       "end": 171
+      },
+      {
+       "start": 44,
+       "end": 442
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 96,
+       "end": 171
+      },
+      {
+       "start": 44,
+       "end": 442
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 96,
+       "end": 171
+      },
+      {
+       "start": 44,
+       "end": 442
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 96,
+       "end": 176
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 44,
+       "end": 442
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 44,
+       "end": 442
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv09",
+   "lang": "jv",
+   "note": "method javadoc only",
+   "range": "666-666",
+   "expected": [
+    {
+     "start": 663,
+     "end": 670
+    },
+    {
+     "start": 36,
+     "end": 677
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 663,
+       "end": 670
+      },
+      {
+       "start": 36,
+       "end": 677
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 663,
+       "end": 670
+      },
+      {
+       "start": 36,
+       "end": 677
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 36,
+       "end": 677
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 663,
+       "end": 670
+      },
+      {
+       "start": 36,
+       "end": 677
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 657,
+       "end": 667
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 36,
+       "end": 677
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 43,
+       "end": 677
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv10",
+   "lang": "jv",
+   "note": "header line of a nested class",
+   "range": "300-300",
+   "expected": [
+    {
+     "start": 299,
+     "end": 324
+    },
+    {
+     "start": 28,
+     "end": 325
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 299,
+       "end": 324
+      },
+      {
+       "start": 28,
+       "end": 325
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 299,
+       "end": 324
+      },
+      {
+       "start": 28,
+       "end": 325
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 299,
+       "end": 324
+      },
+      {
+       "start": 28,
+       "end": 325
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 299,
+       "end": 324
+      },
+      {
+       "start": 28,
+       "end": 325
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 299,
+       "end": 302
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 28,
+       "end": 325
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 299,
+       "end": 324
+      },
+      {
+       "start": 28,
+       "end": 325
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv11",
+   "lang": "jv",
+   "note": "constructor",
+   "range": "226-255",
+   "expected": [
+    {
+     "start": 226,
+     "end": 257
+    },
+    {
+     "start": 49,
+     "end": 1265
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 226,
+       "end": 257
+      },
+      {
+       "start": 49,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 226,
+       "end": 257
+      },
+      {
+       "start": 49,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 226,
+       "end": 257
+      },
+      {
+       "start": 49,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 226,
+       "end": 257
+      },
+      {
+       "start": 49,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 183,
+       "end": 265
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 49,
+       "end": 1265
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 226,
+       "end": 257
+      },
+      {
+       "start": 135,
+       "end": 1265
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv12",
+   "lang": "jv",
+   "note": "spans a new method and a field",
+   "range": "53-62",
+   "expected": [
+    {
+     "start": 34,
+     "end": 129
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 34,
+       "end": 129
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 34,
+       "end": 129
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 34,
+       "end": 129
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 34,
+       "end": 129
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 36,
+       "end": 62
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 34,
+       "end": 129
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 34,
+       "end": 129
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv13",
+   "lang": "jv",
+   "note": "field of an anonymous class in a method",
+   "range": "221-234",
+   "expected": [
+    {
+     "start": 181,
+     "end": 310
+    },
+    {
+     "start": 59,
+     "end": 694
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 181,
+       "end": 310
+      },
+      {
+       "start": 59,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 181,
+       "end": 310
+      },
+      {
+       "start": 59,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 181,
+       "end": 310
+      },
+      {
+       "start": 59,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 181,
+       "end": 310
+      },
+      {
+       "start": 59,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 181,
+       "end": 236
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 59,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 59,
+       "end": 694
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "jv14",
+   "lang": "jv",
+   "note": "javadoc of a method in a nested class",
+   "range": "145-145",
+   "expected": [
+    {
+     "start": 136,
+     "end": 153
+    },
+    {
+     "start": 87,
+     "end": 216
+    },
+    {
+     "start": 53,
+     "end": 451
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 136,
+       "end": 153
+      },
+      {
+       "start": 87,
+       "end": 216
+      },
+      {
+       "start": 53,
+       "end": 451
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 136,
+       "end": 153
+      },
+      {
+       "start": 87,
+       "end": 216
+      },
+      {
+       "start": 53,
+       "end": 451
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 87,
+       "end": 216
+      },
+      {
+       "start": 53,
+       "end": 451
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 136,
+       "end": 153
+      },
+      {
+       "start": 87,
+       "end": 216
+      },
+      {
+       "start": 53,
+       "end": 451
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 113,
+       "end": 148
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 53,
+       "end": 451
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 87,
+       "end": 216
+      },
+      {
+       "start": 75,
+       "end": 451
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb01",
+   "lang": "rb",
+   "note": "block in a singleton method in a module",
+   "range": "2104-2104",
+   "expected": [
+    {
+     "start": 2102,
+     "end": 2115
+    },
+    {
+     "start": 2098,
+     "end": 2127
+    },
+    {
+     "start": 28,
+     "end": 2173
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 2102,
+       "end": 2115
+      },
+      {
+       "start": 2098,
+       "end": 2127
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 2102,
+       "end": 2115
+      },
+      {
+       "start": 2098,
+       "end": 2127
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 2102,
+       "end": 2115
+      },
+      {
+       "start": 2098,
+       "end": 2127
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 2102,
+       "end": 2120
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 28,
+       "end": 2172
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 2102,
+       "end": 2115
+      },
+      {
+       "start": 2098,
+       "end": 2127
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb02",
+   "lang": "rb",
+   "note": "method in class << self in class in module",
+   "range": "1779-1779",
+   "expected": [
+    {
+     "start": 1778,
+     "end": 1784
+    },
+    {
+     "start": 1292,
+     "end": 1917
+    },
+    {
+     "start": 972,
+     "end": 2078
+    },
+    {
+     "start": 28,
+     "end": 2173
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1778,
+       "end": 1784
+      },
+      {
+       "start": 1292,
+       "end": 1917
+      },
+      {
+       "start": 972,
+       "end": 2078
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1778,
+       "end": 1784
+      },
+      {
+       "start": 1292,
+       "end": 1917
+      },
+      {
+       "start": 972,
+       "end": 2078
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1778,
+       "end": 1784
+      },
+      {
+       "start": 1292,
+       "end": 1917
+      },
+      {
+       "start": 972,
+       "end": 2078
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1778,
+       "end": 1784
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 28,
+       "end": 2172
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1778,
+       "end": 1784
+      },
+      {
+       "start": 1292,
+       "end": 1917
+      },
+      {
+       "start": 972,
+       "end": 2078
+      },
+      {
+       "start": 28,
+       "end": 2173
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb03",
+   "lang": "rb",
+   "note": "whole new method",
+   "range": "1874-1876",
+   "expected": [
+    {
+     "start": 1874,
+     "end": 1876
+    },
+    {
+     "start": 1288,
+     "end": 1913
+    },
+    {
+     "start": 972,
+     "end": 2072
+    },
+    {
+     "start": 28,
+     "end": 2167
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1874,
+       "end": 1876
+      },
+      {
+       "start": 1288,
+       "end": 1913
+      },
+      {
+       "start": 972,
+       "end": 2072
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1874,
+       "end": 1876
+      },
+      {
+       "start": 1288,
+       "end": 1913
+      },
+      {
+       "start": 972,
+       "end": 2072
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1874,
+       "end": 1876
+      },
+      {
+       "start": 1288,
+       "end": 1913
+      },
+      {
+       "start": 972,
+       "end": 2072
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 28,
+       "end": 2166
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1874,
+       "end": 1876
+      },
+      {
+       "start": 1288,
+       "end": 1913
+      },
+      {
+       "start": 972,
+       "end": 2072
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb04",
+   "lang": "rb",
+   "note": "require",
+   "range": "17-17",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1,
+       "end": 26
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 16,
+       "end": 17
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb05",
+   "lang": "rb",
+   "note": "method with doc comment",
+   "range": "399-399",
+   "expected": [
+    {
+     "start": 384,
+     "end": 406
+    },
+    {
+     "start": 285,
+     "end": 724
+    },
+    {
+     "start": 28,
+     "end": 2167
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 384,
+       "end": 406
+      },
+      {
+       "start": 285,
+       "end": 724
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 384,
+       "end": 406
+      },
+      {
+       "start": 285,
+       "end": 724
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 384,
+       "end": 406
+      },
+      {
+       "start": 285,
+       "end": 724
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 384,
+       "end": 416
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 28,
+       "end": 2166
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 384,
+       "end": 406
+      },
+      {
+       "start": 285,
+       "end": 724
+      },
+      {
+       "start": 28,
+       "end": 2167
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb06",
+   "lang": "rb",
+   "note": "whole new file",
+   "range": "1-21",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb07",
+   "lang": "rb",
+   "note": "heredoc in a method",
+   "range": "1608-1608",
+   "expected": [
+    {
+     "start": 1602,
+     "end": 1639
+    },
+    {
+     "start": 1287,
+     "end": 1907
+    },
+    {
+     "start": 971,
+     "end": 2051
+    },
+    {
+     "start": 27,
+     "end": 2146
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1602,
+       "end": 1639
+      },
+      {
+       "start": 1287,
+       "end": 1907
+      },
+      {
+       "start": 971,
+       "end": 2051
+      },
+      {
+       "start": 27,
+       "end": 2146
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1602,
+       "end": 1639
+      },
+      {
+       "start": 1287,
+       "end": 1907
+      },
+      {
+       "start": 971,
+       "end": 2051
+      },
+      {
+       "start": 27,
+       "end": 2146
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1602,
+       "end": 1639
+      },
+      {
+       "start": 1287,
+       "end": 1907
+      },
+      {
+       "start": 971,
+       "end": 2051
+      },
+      {
+       "start": 27,
+       "end": 2146
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1602,
+       "end": 1643
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 27,
+       "end": 2145
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1602,
+       "end": 1639
+      },
+      {
+       "start": 1287,
+       "end": 1907
+      },
+      {
+       "start": 971,
+       "end": 2051
+      },
+      {
+       "start": 27,
+       "end": 2146
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb08",
+   "lang": "rb",
+   "note": "method in module in class in module",
+   "range": "608-609",
+   "expected": [
+    {
+     "start": 584,
+     "end": 626
+    },
+    {
+     "start": 235,
+     "end": 887
+    },
+    {
+     "start": 16,
+     "end": 891
+    },
+    {
+     "start": 8,
+     "end": 892
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 584,
+       "end": 626
+      },
+      {
+       "start": 235,
+       "end": 887
+      },
+      {
+       "start": 16,
+       "end": 891
+      },
+      {
+       "start": 8,
+       "end": 892
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 584,
+       "end": 626
+      },
+      {
+       "start": 235,
+       "end": 887
+      },
+      {
+       "start": 16,
+       "end": 891
+      },
+      {
+       "start": 8,
+       "end": 892
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 584,
+       "end": 626
+      },
+      {
+       "start": 235,
+       "end": 887
+      },
+      {
+       "start": 16,
+       "end": 891
+      },
+      {
+       "start": 8,
+       "end": 892
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 584,
+       "end": 631
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 8,
+       "end": 891
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 584,
+       "end": 626
+      },
+      {
+       "start": 235,
+       "end": 887
+      },
+      {
+       "start": 16,
+       "end": 891
+      },
+      {
+       "start": 8,
+       "end": 892
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb09",
+   "lang": "rb",
+   "note": "whole method",
+   "range": "202-206",
+   "expected": [
+    {
+     "start": 202,
+     "end": 206
+    },
+    {
+     "start": 4,
+     "end": 232
+    },
+    {
+     "start": 3,
+     "end": 233
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 202,
+       "end": 206
+      },
+      {
+       "start": 4,
+       "end": 232
+      },
+      {
+       "start": 3,
+       "end": 233
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 202,
+       "end": 206
+      },
+      {
+       "start": 4,
+       "end": 232
+      },
+      {
+       "start": 3,
+       "end": 233
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 202,
+       "end": 206
+      },
+      {
+       "start": 4,
+       "end": 232
+      },
+      {
+       "start": 3,
+       "end": 233
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 198,
+       "end": 206
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 3,
+       "end": 232
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 202,
+       "end": 206
+      },
+      {
+       "start": 4,
+       "end": 232
+      },
+      {
+       "start": 3,
+       "end": 233
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb10",
+   "lang": "rb",
+   "note": "method in nested class",
+   "range": "59-59",
+   "expected": [
+    {
+     "start": 57,
+     "end": 73
+    },
+    {
+     "start": 54,
+     "end": 81
+    },
+    {
+     "start": 24,
+     "end": 212
+    },
+    {
+     "start": 11,
+     "end": 213
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 57,
+       "end": 73
+      },
+      {
+       "start": 54,
+       "end": 81
+      },
+      {
+       "start": 24,
+       "end": 212
+      },
+      {
+       "start": 11,
+       "end": 213
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 57,
+       "end": 73
+      },
+      {
+       "start": 54,
+       "end": 81
+      },
+      {
+       "start": 24,
+       "end": 212
+      },
+      {
+       "start": 11,
+       "end": 213
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 57,
+       "end": 73
+      },
+      {
+       "start": 54,
+       "end": 81
+      },
+      {
+       "start": 24,
+       "end": 212
+      },
+      {
+       "start": 11,
+       "end": 213
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 57,
+       "end": 77
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 24,
+       "end": 212
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 57,
+       "end": 73
+      },
+      {
+       "start": 54,
+       "end": 81
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb11",
+   "lang": "rb",
+   "note": "method",
+   "range": "82-93",
+   "expected": [
+    {
+     "start": 57,
+     "end": 95
+    },
+    {
+     "start": 12,
+     "end": 172
+    },
+    {
+     "start": 11,
+     "end": 173
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 57,
+       "end": 95
+      },
+      {
+       "start": 12,
+       "end": 172
+      },
+      {
+       "start": 11,
+       "end": 173
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 57,
+       "end": 95
+      },
+      {
+       "start": 12,
+       "end": 172
+      },
+      {
+       "start": 11,
+       "end": 173
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 57,
+       "end": 95
+      },
+      {
+       "start": 12,
+       "end": 172
+      },
+      {
+       "start": 11,
+       "end": 173
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 57,
+       "end": 97
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 11,
+       "end": 172
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 57,
+       "end": 95
+      },
+      {
+       "start": 12,
+       "end": 172
+      },
+      {
+       "start": 11,
+       "end": 173
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb12",
+   "lang": "rb",
+   "note": "hash constant in a module",
+   "range": "436-436",
+   "expected": [
+    {
+     "start": 4,
+     "end": 693
+    },
+    {
+     "start": 3,
+     "end": 694
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 4,
+       "end": 693
+      },
+      {
+       "start": 3,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 4,
+       "end": 693
+      },
+      {
+       "start": 3,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 4,
+       "end": 693
+      },
+      {
+       "start": 3,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 30,
+       "end": 694
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 3,
+       "end": 693
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 4,
+       "end": 693
+      },
+      {
+       "start": 3,
+       "end": 694
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb13",
+   "lang": "rb",
+   "note": "method",
+   "range": "77-78",
+   "expected": [
+    {
+     "start": 76,
+     "end": 79
+    },
+    {
+     "start": 8,
+     "end": 80
+    },
+    {
+     "start": 7,
+     "end": 81
+    },
+    {
+     "start": 6,
+     "end": 82
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 76,
+       "end": 79
+      },
+      {
+       "start": 8,
+       "end": 80
+      },
+      {
+       "start": 7,
+       "end": 81
+      },
+      {
+       "start": 6,
+       "end": 82
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 76,
+       "end": 79
+      },
+      {
+       "start": 8,
+       "end": 80
+      },
+      {
+       "start": 7,
+       "end": 81
+      },
+      {
+       "start": 6,
+       "end": 82
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 76,
+       "end": 79
+      },
+      {
+       "start": 8,
+       "end": 80
+      },
+      {
+       "start": 7,
+       "end": 81
+      },
+      {
+       "start": 6,
+       "end": 82
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 76,
+       "end": 82
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 6,
+       "end": 81
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 76,
+       "end": 79
+      },
+      {
+       "start": 8,
+       "end": 80
+      },
+      {
+       "start": 7,
+       "end": 81
+      },
+      {
+       "start": 6,
+       "end": 82
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb14",
+   "lang": "rb",
+   "note": "it block inside a proc assigned to a constant",
+   "range": "50-54",
+   "expected": [
+    {
+     "start": 47,
+     "end": 60
+    },
+    {
+     "start": 3,
+     "end": 96
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 47,
+       "end": 60
+      },
+      {
+       "start": 3,
+       "end": 96
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 47,
+       "end": 60
+      },
+      {
+       "start": 3,
+       "end": 96
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 22,
+       "end": 116
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 3,
+       "end": 95
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "rb15",
+   "lang": "rb",
+   "note": "def closed by \"end if ...\"",
+   "range": "298-298",
+   "expected": [
+    {
+     "start": 295,
+     "end": 299
+    },
+    {
+     "start": 67,
+     "end": 300
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 295,
+       "end": 299
+      },
+      {
+       "start": 67,
+       "end": 300
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 295,
+       "end": 299
+      },
+      {
+       "start": 67,
+       "end": 300
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 295,
+       "end": 299
+      },
+      {
+       "start": 67,
+       "end": 300
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "unsupported",
+     "chainOk": null,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 295,
+       "end": 300
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 67,
+       "end": 299
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 295,
+       "end": 299
+      },
+      {
+       "start": 67,
+       "end": 300
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js01",
+   "lang": "js",
+   "note": "JSDoc only, blank line before code, double assignment",
+   "range": "491-491",
+   "expected": [
+    {
+     "start": 488,
+     "end": 514
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 437,
+       "end": 505
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 437,
+       "end": 505
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js02",
+   "lang": "js",
+   "note": "JSDoc only, function passed to a call",
+   "range": "333-333",
+   "expected": [
+    {
+     "start": 330,
+     "end": 343
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 326,
+       "end": 338
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 326,
+       "end": 338
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js03",
+   "lang": "js",
+   "note": "whole it() in nested describe()",
+   "range": "180-191",
+   "expected": [
+    {
+     "start": 180,
+     "end": 191
+    },
+    {
+     "start": 138,
+     "end": 205
+    },
+    {
+     "start": 11,
+     "end": 568
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 180,
+       "end": 191
+      },
+      {
+       "start": 138,
+       "end": 205
+      },
+      {
+       "start": 11,
+       "end": 568
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 180,
+       "end": 191
+      },
+      {
+       "start": 138,
+       "end": 205
+      },
+      {
+       "start": 11,
+       "end": 568
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 180,
+       "end": 191
+      },
+      {
+       "start": 138,
+       "end": 205
+      },
+      {
+       "start": 11,
+       "end": 568
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 11,
+       "end": 568
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 11,
+       "end": 568
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 180,
+       "end": 191
+      },
+      {
+       "start": 11,
+       "end": 568
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js04",
+   "lang": "js",
+   "note": "nested callbacks inside it()",
+   "range": "254-255",
+   "expected": [
+    {
+     "start": 251,
+     "end": 271
+    },
+    {
+     "start": 208,
+     "end": 291
+    },
+    {
+     "start": 9,
+     "end": 636
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 254,
+       "end": 259
+      },
+      {
+       "start": 251,
+       "end": 271
+      },
+      {
+       "start": 208,
+       "end": 291
+      },
+      {
+       "start": 9,
+       "end": 636
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 254,
+       "end": 259
+      },
+      {
+       "start": 251,
+       "end": 271
+      },
+      {
+       "start": 208,
+       "end": 291
+      },
+      {
+       "start": 9,
+       "end": 636
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 254,
+       "end": 259
+      },
+      {
+       "start": 251,
+       "end": 271
+      },
+      {
+       "start": 208,
+       "end": 291
+      },
+      {
+       "start": 9,
+       "end": 636
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 9,
+       "end": 636
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 9,
+       "end": 636
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 251,
+       "end": 271
+      },
+      {
+       "start": 208,
+       "end": 291
+      },
+      {
+       "start": 9,
+       "end": 636
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js05",
+   "lang": "js",
+   "note": "top-level require",
+   "range": "16-16",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js06",
+   "lang": "js",
+   "note": "function expression assigned to a property",
+   "range": "830-840",
+   "expected": [
+    {
+     "start": 805,
+     "end": 870
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 819,
+       "end": 870
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 819,
+       "end": 870
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 819,
+       "end": 870
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 819,
+       "end": 879
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 819,
+       "end": 879
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js07",
+   "lang": "js",
+   "note": "function assigned inside it()",
+   "range": "13-13",
+   "expected": [
+    {
+     "start": 12,
+     "end": 14
+    },
+    {
+     "start": 9,
+     "end": 23
+    },
+    {
+     "start": 8,
+     "end": 142
+    },
+    {
+     "start": 7,
+     "end": 143
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 12,
+       "end": 14
+      },
+      {
+       "start": 9,
+       "end": 23
+      },
+      {
+       "start": 8,
+       "end": 142
+      },
+      {
+       "start": 7,
+       "end": 143
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 12,
+       "end": 14
+      },
+      {
+       "start": 9,
+       "end": 23
+      },
+      {
+       "start": 8,
+       "end": 142
+      },
+      {
+       "start": 7,
+       "end": 143
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 12,
+       "end": 14
+      },
+      {
+       "start": 9,
+       "end": 23
+      },
+      {
+       "start": 8,
+       "end": 142
+      },
+      {
+       "start": 7,
+       "end": 143
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 7,
+       "end": 143
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 7,
+       "end": 143
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 9,
+       "end": 23
+      },
+      {
+       "start": 8,
+       "end": 142
+      },
+      {
+       "start": 7,
+       "end": 143
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js08",
+   "lang": "js",
+   "note": "first line of it()",
+   "range": "442-442",
+   "expected": [
+    {
+     "start": 442,
+     "end": 450
+    },
+    {
+     "start": 360,
+     "end": 451
+    },
+    {
+     "start": 9,
+     "end": 547
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 442,
+       "end": 450
+      },
+      {
+       "start": 360,
+       "end": 451
+      },
+      {
+       "start": 9,
+       "end": 547
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 442,
+       "end": 450
+      },
+      {
+       "start": 360,
+       "end": 451
+      },
+      {
+       "start": 9,
+       "end": 547
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 442,
+       "end": 450
+      },
+      {
+       "start": 360,
+       "end": 451
+      },
+      {
+       "start": 9,
+       "end": 547
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 9,
+       "end": 547
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 9,
+       "end": 547
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 442,
+       "end": 450
+      },
+      {
+       "start": 360,
+       "end": 451
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js09",
+   "lang": "js",
+   "note": "function expression assigned to a property",
+   "range": "526-526",
+   "expected": [
+    {
+     "start": 505,
+     "end": 575
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 522,
+       "end": 575
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 522,
+       "end": 575
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 522,
+       "end": 575
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 522,
+       "end": 596
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 522,
+       "end": 596
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js10",
+   "lang": "js",
+   "note": "function expression assigned to a property",
+   "range": "393-394",
+   "expected": [
+    {
+     "start": 324,
+     "end": 407
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 365,
+       "end": 407
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 365,
+       "end": 407
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "lead",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 365,
+       "end": 407
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 365,
+       "end": 425
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 365,
+       "end": 425
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "js11",
+   "lang": "js",
+   "note": "minified",
+   "range": "10-10",
+   "expected": null,
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": null,
+     "chainOk": null,
+     "got": [
+      {
+       "start": 1,
+       "end": 31
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": null,
+     "chainOk": null,
+     "got": [
+      {
+       "start": 1,
+       "end": 31
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": null,
+     "chainOk": null,
+     "got": [
+      {
+       "start": 1,
+       "end": 11
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": null,
+     "chainOk": null,
+     "got": [
+      {
+       "start": 1,
+       "end": 31
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": null,
+     "chainOk": null,
+     "got": [
+      {
+       "start": 1,
+       "end": 10
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": null,
+     "chainOk": null,
+     "got": [
+      {
+       "start": 1,
+       "end": 10
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": null,
+     "chainOk": null,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts01",
+   "lang": "ts",
+   "note": "nested callbacks in a function",
+   "range": "356-356",
+   "expected": [
+    {
+     "start": 147,
+     "end": 359
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 359
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 359
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 359
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 359
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 359
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 359
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 147,
+       "end": 359
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts02",
+   "lang": "ts",
+   "note": "whole new function with JSDoc",
+   "range": "29-36",
+   "expected": [
+    {
+     "start": 29,
+     "end": 36
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 29,
+       "end": 36
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 29,
+       "end": 36
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 29,
+       "end": 36
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 8,
+       "end": 41
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 8,
+       "end": 41
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts03",
+   "lang": "ts",
+   "note": "async method in class",
+   "range": "398-398",
+   "expected": [
+    {
+     "start": 381,
+     "end": 403
+    },
+    {
+     "start": 80,
+     "end": 712
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts04",
+   "lang": "ts",
+   "note": "it() in describe()",
+   "range": "109-109",
+   "expected": [
+    {
+     "start": 99,
+     "end": 111
+    },
+    {
+     "start": 58,
+     "end": 112
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 99,
+       "end": 111
+      },
+      {
+       "start": 58,
+       "end": 112
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 99,
+       "end": 111
+      },
+      {
+       "start": 58,
+       "end": 112
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 99,
+       "end": 111
+      },
+      {
+       "start": 58,
+       "end": 112
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 58,
+       "end": 112
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 58,
+       "end": 112
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts05",
+   "lang": "ts",
+   "note": "spans several it()",
+   "range": "94-107",
+   "expected": [
+    {
+     "start": 64,
+     "end": 108
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 108
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 108
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 108
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 108
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 108
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts06",
+   "lang": "ts",
+   "note": "private async method",
+   "range": "1113-1113",
+   "expected": [
+    {
+     "start": 1098,
+     "end": 1135
+    },
+    {
+     "start": 206,
+     "end": 2009
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1098,
+       "end": 1135
+      },
+      {
+       "start": 206,
+       "end": 2009
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1098,
+       "end": 1135
+      },
+      {
+       "start": 206,
+       "end": 2009
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1098,
+       "end": 1135
+      },
+      {
+       "start": 206,
+       "end": 2009
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1098,
+       "end": 1135
+      },
+      {
+       "start": 206,
+       "end": 2009
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 206,
+       "end": 2009
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 206,
+       "end": 2009
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 206,
+       "end": 2009
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts07",
+   "lang": "ts",
+   "note": "interface member",
+   "range": "60-61",
+   "expected": [
+    {
+     "start": 53,
+     "end": 69
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
+       "end": 69
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
+       "end": 69
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
+       "end": 69
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
+       "end": 69
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
+       "end": 69
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
+       "end": 69
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 53,
+       "end": 69
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts08",
+   "lang": "ts",
+   "note": "top-level const",
+   "range": "39-39",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 39,
+       "end": 41
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 39,
+       "end": 41
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts09",
+   "lang": "ts",
+   "note": "route handler callback in a function",
+   "range": "50-51",
+   "expected": [
+    {
+     "start": 20,
+     "end": 100
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 20,
+       "end": 100
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 20,
+       "end": 100
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 20,
+       "end": 100
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 20,
+       "end": 100
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 20,
+       "end": 100
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 20,
+       "end": 100
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 20,
+       "end": 100
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts10",
+   "lang": "ts",
+   "note": "function with JSDoc",
+   "range": "77-77",
+   "expected": [
+    {
+     "start": 64,
+     "end": 105
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 105
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 105
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 105
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 105
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 64,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 64,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 64,
+       "end": 105
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts11",
+   "lang": "ts",
+   "note": "arrow function as object property",
+   "range": "2346-2346",
+   "expected": [
+    {
+     "start": 2343,
+     "end": 2349
+    },
+    {
+     "start": 1240,
+     "end": 2463
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 2343,
+       "end": 2349
+      },
+      {
+       "start": 1240,
+       "end": 2463
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 2343,
+       "end": 2349
+      },
+      {
+       "start": 1240,
+       "end": 2463
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1240,
+       "end": 2463
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 2343,
+       "end": 2349
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1240,
+       "end": 2463
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1240,
+       "end": 2463
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts12",
+   "lang": "ts",
+   "note": "arrow function as object property, 490 lines",
+   "range": "1592-1592",
+   "expected": [
+    {
+     "start": 1580,
+     "end": 2071
+    },
+    {
+     "start": 1293,
+     "end": 2527
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1580,
+       "end": 2071
+      },
+      {
+       "start": 1293,
+       "end": 2527
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 1580,
+       "end": 2071
+      },
+      {
+       "start": 1293,
+       "end": 2527
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1293,
+       "end": 2527
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1580,
+       "end": 2071
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1293,
+       "end": 2527
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1293,
+       "end": 2527
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts13",
+   "lang": "ts",
+   "note": "nested function in a 52.7k-line file",
+   "range": "12505-12506",
+   "expected": [
+    {
+     "start": 12503,
+     "end": 12533
+    },
+    {
+     "start": 1458,
+     "end": 52552
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 12503,
+       "end": 12533
+      },
+      {
+       "start": 1458,
+       "end": 52552
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 12503,
+       "end": 12533
+      },
+      {
+       "start": 1458,
+       "end": 52552
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 12503,
+       "end": 12533
+      },
+      {
+       "start": 1458,
+       "end": 52552
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 12503,
+       "end": 12533
+      },
+      {
+       "start": 1458,
+       "end": 52552
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 12503,
+       "end": 12533
+      },
+      {
+       "start": 1458,
+       "end": 52552
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "ts14",
+   "lang": "ts",
+   "note": "syntax error (missing brace) in an earlier method",
+   "range": "398-398",
+   "expected": [
+    {
+     "start": 381,
+     "end": 403
+    },
+    {
+     "start": 80,
+     "end": 712
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 381,
+       "end": 403
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 307,
+       "end": 670
+      },
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 80,
+       "end": 712
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx01",
+   "lang": "tsx",
+   "note": "arrow function const in a component",
+   "range": "155-158",
+   "expected": [
+    {
+     "start": 148,
+     "end": 162
+    },
+    {
+     "start": 82,
+     "end": 268
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 148,
+       "end": 162
+      },
+      {
+       "start": 82,
+       "end": 268
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 148,
+       "end": 162
+      },
+      {
+       "start": 82,
+       "end": 268
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 82,
+       "end": 268
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 148,
+       "end": 162
+      },
+      {
+       "start": 82,
+       "end": 268
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 82,
+       "end": 268
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 82,
+       "end": 268
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 148,
+       "end": 162
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx02",
+   "lang": "tsx",
+   "note": "JSX attributes",
+   "range": "164-169",
+   "expected": [
+    {
+     "start": 37,
+     "end": 181
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 37,
+       "end": 181
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 37,
+       "end": 181
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 37,
+       "end": 181
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 37,
+       "end": 181
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 37,
+       "end": 181
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 37,
+       "end": 181
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 37,
+       "end": 181
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx03",
+   "lang": "tsx",
+   "note": "comment in a component",
+   "range": "67-68",
+   "expected": [
+    {
+     "start": 43,
+     "end": 184
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 43,
+       "end": 184
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 43,
+       "end": 184
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 43,
+       "end": 184
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 43,
+       "end": 184
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 43,
+       "end": 184
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 43,
+       "end": 184
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 43,
+       "end": 184
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx04",
+   "lang": "tsx",
+   "note": "JSX element",
+   "range": "209-213",
+   "expected": [
+    {
+     "start": 121,
+     "end": 352
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 121,
+       "end": 352
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 121,
+       "end": 352
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 121,
+       "end": 352
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 121,
+       "end": 352
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 121,
+       "end": 352
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 121,
+       "end": 352
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 121,
+       "end": 352
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx05",
+   "lang": "tsx",
+   "note": "JSX inside a map callback",
+   "range": "76-79",
+   "expected": [
+    {
+     "start": 30,
+     "end": 126
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 30,
+       "end": 126
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 30,
+       "end": 126
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 30,
+       "end": 126
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 30,
+       "end": 126
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 30,
+       "end": 126
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 30,
+       "end": 126
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 30,
+       "end": 126
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx06",
+   "lang": "tsx",
+   "note": "component body",
+   "range": "155-155",
+   "expected": [
+    {
+     "start": 31,
+     "end": 235
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 31,
+       "end": 235
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 31,
+       "end": 235
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 31,
+       "end": 235
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 31,
+       "end": 235
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 31,
+       "end": 237
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 31,
+       "end": 237
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 31,
+       "end": 235
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx07",
+   "lang": "tsx",
+   "note": "function with JSDoc",
+   "range": "115-118",
+   "expected": [
+    {
+     "start": 111,
+     "end": 139
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 111,
+       "end": 139
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 111,
+       "end": 139
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 111,
+       "end": 139
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 111,
+       "end": 139
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 111,
+       "end": 141
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 111,
+       "end": 141
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 111,
+       "end": 139
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx08",
+   "lang": "tsx",
+   "note": "import",
+   "range": "31-31",
+   "expected": [],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx09",
+   "lang": "tsx",
+   "note": "function with JSDoc",
+   "range": "94-94",
+   "expected": [
+    {
+     "start": 87,
+     "end": 107
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 87,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 87,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 87,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 87,
+       "end": 107
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 87,
+       "end": 109
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 87,
+       "end": 109
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 87,
+       "end": 107
+      }
+     ],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx10",
+   "lang": "tsx",
+   "note": "whole new describe()",
+   "range": "192-288",
+   "expected": [
+    {
+     "start": 192,
+     "end": 288
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 192,
+       "end": 288
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 192,
+       "end": 288
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 192,
+       "end": 288
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "nothing",
+     "chainOk": false,
+     "got": [],
+     "error": null
+    }
+   }
+  },
+  {
+   "id": "tsx11",
+   "lang": "tsx",
+   "note": "method of a class component",
+   "range": "61-70",
+   "expected": [
+    {
+     "start": 61,
+     "end": 75
+    },
+    {
+     "start": 44,
+     "end": 87
+    }
+   ],
+   "results": {
+    "tree-sitter-wasm": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 61,
+       "end": 75
+      },
+      {
+       "start": 44,
+       "end": 87
+      }
+     ],
+     "error": null
+    },
+    "ast-grep napi": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 61,
+       "end": 75
+      },
+      {
+       "start": 44,
+       "end": 87
+      }
+     ],
+     "error": null
+    },
+    "ast-grep cli": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 61,
+       "end": 75
+      },
+      {
+       "start": 44,
+       "end": 87
+      }
+     ],
+     "error": null
+    },
+    "lezer": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 61,
+       "end": 75
+      },
+      {
+       "start": 44,
+       "end": 87
+      }
+     ],
+     "error": null
+    },
+    "git -W userdiff": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1,
+       "end": 136
+      }
+     ],
+     "error": null
+    },
+    "git -W default": {
+     "verdict": "wrong",
+     "chainOk": false,
+     "got": [
+      {
+       "start": 1,
+       "end": 136
+      }
+     ],
+     "error": null
+    },
+    "indent heuristic": {
+     "verdict": "exact",
+     "chainOk": true,
+     "got": [
+      {
+       "start": 61,
+       "end": 75
+      },
+      {
+       "start": 44,
+       "end": 87
+      }
+     ],
+     "error": null
+    }
+   }
+  }
+ ]
+}
