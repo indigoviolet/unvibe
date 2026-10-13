@@ -25,6 +25,7 @@ function snapshotWith(annotations: Annotation[], files = [sourceFile()], pages: 
     contributions: [],
     logTail: [],
     rev: 1,
+    ingest: { status: "ready" },
   };
 }
 

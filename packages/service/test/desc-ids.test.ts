@@ -77,6 +77,7 @@ function snapshotFor(html: string, extra?: Partial<ReviewSnapshot["description"]
       editable: true,
       ...extra,
     },
+    ingest: { status: "ready" },
     pages: [],
     annotations: [],
     hunkStates: [],

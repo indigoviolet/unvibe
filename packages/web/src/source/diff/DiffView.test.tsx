@@ -185,6 +185,7 @@ function makeJsonSummarySnapshot(): import("@unvibe/shared").ReviewSnapshot {
       createdAt: Date.now(),
     },
     version: { n: 1, headSha: "abc1234", mergeBaseSha: "def5678", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    ingest: { status: "ready" },
     files: [
       {
         fileKey: "a-py",

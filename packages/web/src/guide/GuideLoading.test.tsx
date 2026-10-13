@@ -39,6 +39,7 @@ function summary(over: Partial<ReviewSummary> = {}): ReviewSummary {
     reviewedHunks: 0,
     pendingComments: 0,
     guideStatus: "idle",
+    ingestStatus: "ready",
     ...over,
   };
 }

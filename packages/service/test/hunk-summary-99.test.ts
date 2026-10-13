@@ -111,6 +111,7 @@ async function makeReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"]): Pr
     contributions: [],
     logTail: [],
     rev: 1,
+    ingest: { status: "ready" },
   };
   ctx.reviews.putSnapshot(id, snap);
   return id;

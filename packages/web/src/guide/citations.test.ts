@@ -21,6 +21,7 @@ function snapshot(): ReviewSnapshot {
       createdAt: 0,
     },
     version: { n: 1, headSha: "h", mergeBaseSha: "m", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    ingest: { status: "ready" },
     files: [
       {
         fileKey: CONN,

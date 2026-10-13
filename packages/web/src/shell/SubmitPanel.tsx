@@ -186,7 +186,7 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
 
   // #92: no Submit while loading or failed (service 409s). After all hooks
   // so the hook order never changes.
-  const ingestStatus = snapshot?.ingest?.status ?? "ready";
+  const ingestStatus = snapshot?.ingest.status ?? "ready";
   if (ingestStatus !== "ready") return null;
 
   return (

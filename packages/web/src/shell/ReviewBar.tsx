@@ -37,7 +37,7 @@ export function ReviewBar({
   // stable across the loading → ready transition.
   const snapshot = useReview((s) => s.snapshot);
   const ingestReady =
-    (snapshot?.ingest?.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
+    (snapshot?.ingest.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">

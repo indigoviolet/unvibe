@@ -417,6 +417,7 @@ export async function registerReviews(
         version: ingested.version,
         files: ingested.files,
         description: ingested.description,
+        ingest: { status: "ready" },
         pages: [
           {
             id: "root",

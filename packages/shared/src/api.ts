@@ -167,8 +167,7 @@ export interface CreateReviewRequest {
 /**
  * #92: ingest state for async open. A loading review's snapshot has no
  * `version`, `files` or `description` yet — callers must check `ingest`
- * first (absent = ready, for reviews stored before this change). Only a
- * step name, no progress protocol.
+ * first. Only a step name, no progress protocol.
  */
 export interface IngestStatus {
   status: "ready" | "loading" | "failed";
@@ -178,17 +177,16 @@ export interface IngestStatus {
   error?: string;
 }
 
-/** #92: ingest status of a snapshot (absent = ready, pre-#92 rows). */
+/** #92: ingest status of a snapshot. */
 export function ingestStatusOf(snap: Pick<ReviewSnapshot, "ingest"> | null | undefined): IngestStatus["status"] {
   return snap?.ingest?.status ?? "ready";
 }
 
-/** #92: true when the ingest has landed (absent status = ready for old rows). */
+/** #92: true when the ingest has landed. */
 export function isReadySnapshot(snap: ReviewSnapshot): boolean {
   if (ingestStatusOf(snap) !== "ready") return false;
-  // Placeholder versions (n: 0, from loading rows) are not ready even if an
-  // old caller stored them without a status.
-  return snap.version?.n >= 1;
+  // Placeholder versions (n: 0, from loading rows) are not ready.
+  return snap.version.n >= 1;
 }
 
 /**
@@ -208,15 +206,15 @@ export interface ReviewSnapshot {
   /**
    * #92: loading/failed reviews carry a placeholder (n: 0, empty SHAs) —
    * no real version yet. Present once the ingest lands. Callers must check
-   * `ingest` first (absent = ready, for pre-#92 rows).
+   * `ingest` first.
    */
   version: Version;
   /** #92: empty while loading/failed; present once ready. */
   files: ReviewFile[];
   /** PR description / commit messages; absent while loading and on pre-M1 snapshots. */
   description?: ReviewDescription;
-  /** #92: ingest state; absent (pre-#92 rows) means ready. */
-  ingest?: IngestStatus;
+  /** #92: ingest state. */
+  ingest: IngestStatus;
   pages: Page[];
   annotations: Annotation[];
   hunkStates: HunkState[];
@@ -288,11 +286,11 @@ export interface ReviewSummary {
   guideStatus: "ready" | "running" | "error" | "idle" | "disabled";
   guideDetail?: string;
   /**
-   * #92: ingest state for the front-screen row. Absent (pre-#92 rows and
-   * ready reviews) means ready. Loading/failed rows show their marker,
-   * reopen to the loading/failed page, and can be removed (failed: retry).
+   * #92: ingest state for the front-screen row. Loading/failed rows show
+   * their marker, reopen to the loading/failed page, and can be removed
+   * (failed: retry).
    */
-  ingestStatus?: "ready" | "loading" | "failed";
+  ingestStatus: "ready" | "loading" | "failed";
   /** #92: loading step ("fetching" | "reading diff") while ingestStatus is loading. */
   ingestStep?: string;
   /** #92: failure text while ingestStatus is failed. */
