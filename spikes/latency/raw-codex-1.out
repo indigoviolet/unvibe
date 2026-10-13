@@ -1,0 +1,29 @@
+service pid 3934173 port 4612 data /tmp/unvibe-latency-fw64ty
+settings {"main":{"provider":"codex","model":"gpt-6.1-sol"},"small":{"provider":"claude","model":"haiku"},"secondOpinion":{"provider":"claude","model":"opus"},"sessionsPerProvider":4,"getSettingsMs":1269}
+repo rp_5e28bac23810 added in 5464 ms
+
+-- open#1 (load 1.6 2.45 3.45)
+   {"httpResponse":15,"wsConnected":27,"ingestReady":7970,"firstCard":54733,"readerDone":123930,"baseDone":129185,"firstFinding":160816,"criticDone":173812,"firstHunkSummary":126388,"hunkPassDone":133223,"conceptsDone":142820,"allIdle":174119}
+
+-- explain#1 (first on review) (load 1.97 2.08 3.13)
+   {"httpResponse":5615,"workingVisible":12,"firstContent":21756,"done":22236,"firstTextEvent":17247}
+
+-- explain#2 (load 1.62 1.99 3.07)
+   {"httpResponse":40,"workingVisible":8,"firstContent":10342,"done":10729,"firstTextEvent":5218}
+
+-- explain#3 (load 1.5 1.95 3.03)
+   {"httpResponse":41,"workingVisible":9,"firstContent":21903,"done":22281,"firstTextEvent":13891}
+
+-- ask (new thread on a card) (load 1.72 1.95 3.01)
+   {"httpResponse":48,"workingVisible":11,"done":9559,"firstTextEvent":5402}
+
+-- reply#1 (existing thread) (load 1.62 1.92 2.98)
+   {"httpResponse":380,"done":14818,"firstTextEvent":14805}
+
+-- reply#2 (existing thread) (load 1.67 1.91 2.96)
+   {"httpResponse":403,"done":4006,"firstTextEvent":3984}
+
+-- generate (Go deeper placeholder) (load 1.54 1.88 2.94)
+   {"httpResponse":23,"done":44824,"firstTextEvent":4938}
+
+-- explain#4 (right after generate) (load 1.73 1.86 2.88)

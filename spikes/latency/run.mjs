@@ -484,8 +484,43 @@ async function runActions(client, reviewId) {
   });
 }
 
+const EFFORT_FILE = path.join(OUT, "effort.txt");
+
+/** `--plan effort`: the same actions at each reasoning-effort level (forks only). */
+async function runEffortPlan(client, reviewId) {
+  const levels = arg("levels", "high,medium,low").split(",");
+  let skip = 0;
+  for (const level of levels) {
+    fs.writeFileSync(EFFORT_FILE, level);
+    for (let i = 1; i <= Number(arg("per-level", "3")); i++) {
+      await explainOnce(client, reviewId, `explain effort=${level} #${i}`, skip++);
+    }
+    await flow(`ask effort=${level}`, async (rec) => {
+      const q = pickQuote(client.snapshot, skip++);
+      const res = await action(client, reviewId, {
+        kind: "ask",
+        quote: q.quote,
+        anchor: { where: "block", blockId: `${q.cardId}#${q.blockId}` },
+        message: "Why does this matter for a reviewer? Answer in two or three sentences.",
+      });
+      rec.marks.httpResponse = now();
+      const threadId = res.json.threadId;
+      rec.jobId = res.json.jobId;
+      const th = (s) => (s.annotations ?? []).find((a) => a.id === threadId);
+      rec.marks.done = await client.until((s) => th(s) && !th(s).working && th(s).messages.some((m) => m.who === "ai"));
+      if (rec.jobId) rec.marks.firstTextEvent = client.firstTextAt.get(rec.jobId) ?? null;
+      await client.idle();
+    });
+  }
+  fs.writeFileSync(EFFORT_FILE, "");
+}
+
 const main = async () => {
   const env = { ...process.env, UNVIBE_DATA_DIR: DATA, UNVIBE_PORT: String(PORT), UNVIBE_IDLE_MS: "0", UNVIBE_SPIKE_TIMING: TIMING };
+  if (PLAN === "effort") {
+    fs.writeFileSync(EFFORT_FILE, "");
+    env.UNVIBE_SPIKE_EFFORT_FILE = EFFORT_FILE;
+  }
   delete env.UNVIBE_AGENT; // real agents
   if (REPLAY) env.UNVIBE_AGENT = "replay";
   delete env.GITHUB_TOKEN; // PRD §15: gh uses the keyring login
@@ -559,7 +594,8 @@ const main = async () => {
 
     for (let n = 1; n <= OPENS; n++) {
       const { client, reviewId } = await openReview(repo.id, n, EARLY_EXPLAIN && n === 1);
-      if (n === OPENS && PLAN !== "open" && client) await runActions(client, reviewId);
+      if (n === OPENS && PLAN === "effort" && client) await runEffortPlan(client, reviewId);
+      else if (n === OPENS && PLAN !== "open" && client) await runActions(client, reviewId);
       const jobs = await api("GET", `/api/jobs?review=${reviewId}`);
       fs.writeFileSync(path.join(OUT, `jobs-${n}.json`), JSON.stringify(jobs.json, null, 2));
       client?.close();

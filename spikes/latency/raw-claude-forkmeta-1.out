@@ -1,0 +1,47 @@
+service pid 3932066 port 4611 data /tmp/unvibe-latency-aaipZp
+settings {"main":{"provider":"claude","model":"opus"},"small":{"provider":"claude","model":"haiku"},"secondOpinion":{"provider":"codex","model":"gpt-6.1-sol"},"sessionsPerProvider":4,"getSettingsMs":1441}
+repo rp_940b2ab1e111 added in 5731 ms
+
+-- open#1 (load 1.32 2.45 3.48)
+   {"httpResponse":17,"wsConnected":31,"ingestReady":7871,"firstCard":23225,"readerDone":42358,"baseDone":45452,"firstFinding":113154,"criticDone":134105,"firstHunkSummary":45971,"hunkPassDone":68824,"conceptsDone":62473,"allIdle":134410}
+
+-- explain#1 (first on review) (load 0.89 1.95 3.16)
+   {"httpResponse":2258,"workingVisible":13,"firstContent":17243,"done":17626,"firstTextEvent":10821}
+
+-- explain#2 (load 1.26 1.97 3.14)
+   {"httpResponse":53,"workingVisible":12,"firstContent":12010,"done":12379,"firstTextEvent":6064}
+
+-- explain#3 (load 1.59 2.02 3.14)
+   {"httpResponse":42,"workingVisible":8,"firstContent":12073,"done":12443,"firstTextEvent":5639}
+
+-- ask (new thread on a card) (load 1.89 2.07 3.13)
+   {"httpResponse":48,"workingVisible":15,"done":15378,"firstTextEvent":15004}
+
+-- reply#1 (existing thread) (load 1.98 2.08 3.11)
+   {"httpResponse":1204,"done":6353,"firstTextEvent":6334}
+
+-- reply#2 (existing thread) (load 1.76 2.03 3.08)
+   {"httpResponse":337,"done":3760,"firstTextEvent":3744}
+
+-- generate (Go deeper placeholder) (load 1.62 1.99 3.07)
+   {"httpResponse":18,"done":24914,"firstTextEvent":11250}
+
+-- explain#4 (right after generate) (load 1.48 1.92 3.01)
+   {"httpResponse":2180,"workingVisible":12,"firstContent":15760,"done":16126,"firstTextEvent":8235}
+
+-- explain#5 (load 1.58 1.92 2.99)
+   {"httpResponse":47,"workingVisible":10,"firstContent":12175,"done":16262,"firstTextEvent":5051}
+
+-- depth + (deeper) on the first card (load 1.65 1.91 2.96)
+   {"httpResponse":20,"done":19132,"firstTextEvent":7193}
+
+-- hunk summary#1 (one hunk) (load 1.46 1.85 2.92)
+   {"httpResponse":14,"done":5015}
+
+-- hunk summary#2 (one hunk) (load 1.39 1.82 2.9)
+   {"httpResponse":15,"done":3778}
+
+-- fold all (8 hunks) (load 1.28 1.79 2.88)
+   {"httpResponse":78,"firstSummary":3650,"halfSummaries":4212,"done":7932}
+
+wrote /home/venky/.paseo/worktrees/20ucjyap/spike-latency/spikes/latency/raw/claude-forkmeta-1

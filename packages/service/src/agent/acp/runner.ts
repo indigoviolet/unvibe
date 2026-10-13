@@ -14,6 +14,7 @@
  *   first prompt.
  */
 import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs"; // SPIKE(#114)
 import type {
   AgentEvent,
   AgentRunner,
@@ -408,6 +409,25 @@ export class AcpAgentRunner implements AgentRunner {
     }
     if (parent.provider === "codex" && rec.readOnly) {
       await this.applyCodexRestricted(rec);
+    }
+    // SPIKE(#114) EXPERIMENT, off by default: reasoning effort for forks,
+    // read per fork from a file so the harness can change it between flows.
+    const effortFile = process.env.UNVIBE_SPIKE_EFFORT_FILE;
+    if (effortFile) {
+      let level = "";
+      try {
+        level = readFileSync(effortFile, "utf8").trim();
+      } catch {
+        level = "";
+      }
+      if (level) {
+        try {
+          await this.setThinking({ id: rec.acpSessionId, provider: rec.provider, model: rec.model }, level);
+          spikeMark("acp.fork.effort", { sessionId: rec.acpSessionId, level, ok: true });
+        } catch (e) {
+          spikeMark("acp.fork.effort", { sessionId: rec.acpSessionId, level, ok: false, error: errorMessage(e) });
+        }
+      }
     }
     return { id: rec.acpSessionId, provider: rec.provider, model: rec.model };
   }

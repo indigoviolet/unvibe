@@ -1,0 +1,319 @@
+{
+  "label": "codex-1",
+  "provider": "codex",
+  "pr": 5020,
+  "repo": "https://github.com/urllib3/urllib3",
+  "settings": {
+    "main": {
+      "provider": "codex",
+      "model": "gpt-6.1-sol"
+    },
+    "small": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "secondOpinion": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "sessionsPerProvider": 4,
+    "getSettingsMs": 1269
+  },
+  "flows": [
+    {
+      "name": "open#1",
+      "provider": "codex",
+      "startedAt": 1791858190961,
+      "load": [
+        1.6,
+        2.45,
+        3.45
+      ],
+      "marks": {
+        "httpResponse": 1791858190976,
+        "wsConnected": 1791858190988,
+        "ingestReady": 1791858198931,
+        "firstCard": 1791858245694,
+        "readerDone": 1791858314891,
+        "baseDone": 1791858320146,
+        "firstFinding": 1791858351777,
+        "criticDone": 1791858364773,
+        "firstHunkSummary": 1791858317349,
+        "hunkPassDone": 1791858324184,
+        "conceptsDone": 1791858333781,
+        "allIdle": 1791858365080
+      },
+      "http": {
+        "code": 202,
+        "ms": 14
+      },
+      "reviewId": "rv_7d0f438ba83b",
+      "shape": {
+        "files": 4,
+        "hunks": 8,
+        "rootCards": 5,
+        "pending": 4,
+        "findings": 2,
+        "concepts": 3,
+        "snapshotBytes": 32277,
+        "stages": {
+          "reader": "done",
+          "base": "done",
+          "critic": "done",
+          "concepts": "done",
+          "hunk-pass": "done",
+          "go-deeper": "pending"
+        },
+        "usageTotals": {
+          "inputTokens": 215455,
+          "cachedTokens": 537976,
+          "outputTokens": 15128,
+          "createdAt": 1791858198915,
+          "firstCardAt": 1791858245688,
+          "cacheHitRate": 0.7140348618519812
+        },
+        "ws": {
+          "bytes": {
+            "patch": 45957,
+            "job": 187936,
+            "text": 235519,
+            "other": 0
+          },
+          "counts": {
+            "patch": 42,
+            "job": 73,
+            "text": 3010,
+            "other": 0
+          },
+          "resyncs": 0
+        }
+      },
+      "endedAt": 1791858367580,
+      "rel": {
+        "httpResponse": 15,
+        "wsConnected": 27,
+        "ingestReady": 7970,
+        "firstCard": 54733,
+        "readerDone": 123930,
+        "baseDone": 129185,
+        "firstFinding": 160816,
+        "criticDone": 173812,
+        "firstHunkSummary": 126388,
+        "hunkPassDone": 133223,
+        "conceptsDone": 142820,
+        "allIdle": 174119
+      }
+    },
+    {
+      "name": "explain#1 (first on review)",
+      "provider": "codex",
+      "startedAt": 1791858367581,
+      "load": [
+        1.97,
+        2.08,
+        3.13
+      ],
+      "marks": {
+        "httpResponse": 1791858373196,
+        "workingVisible": 1791858367593,
+        "firstContent": 1791858389337,
+        "done": 1791858389817,
+        "firstTextEvent": 1791858384828
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b1",
+        "quote": ". That helper applies"
+      },
+      "http": {
+        "ms": 5613,
+        "jobId": "411b1449-faeb-42f4-9a39-35ed8f7be5d0"
+      },
+      "jobId": "411b1449-faeb-42f4-9a39-35ed8f7be5d0",
+      "endedAt": 1791858392421,
+      "rel": {
+        "httpResponse": 5615,
+        "workingVisible": 12,
+        "firstContent": 21756,
+        "done": 22236,
+        "firstTextEvent": 17247
+      }
+    },
+    {
+      "name": "explain#2",
+      "provider": "codex",
+      "startedAt": 1791858392422,
+      "load": [
+        1.62,
+        1.99,
+        3.07
+      ],
+      "marks": {
+        "httpResponse": 1791858392462,
+        "workingVisible": 1791858392430,
+        "firstContent": 1791858402764,
+        "done": 1791858403151,
+        "firstTextEvent": 1791858397640
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b2",
+        "quote": "replaces each matched fold with one"
+      },
+      "http": {
+        "ms": 40,
+        "jobId": "9ebe7b87-92a3-47bd-9676-45a163d0f10a"
+      },
+      "jobId": "9ebe7b87-92a3-47bd-9676-45a163d0f10a",
+      "endedAt": 1791858405757,
+      "rel": {
+        "httpResponse": 40,
+        "workingVisible": 8,
+        "firstContent": 10342,
+        "done": 10729,
+        "firstTextEvent": 5218
+      }
+    },
+    {
+      "name": "explain#3",
+      "provider": "codex",
+      "startedAt": 1791858405757,
+      "load": [
+        1.5,
+        1.95,
+        3.03
+      ],
+      "marks": {
+        "httpResponse": 1791858405798,
+        "workingVisible": 1791858405766,
+        "firstContent": 1791858427660,
+        "done": 1791858428038,
+        "firstTextEvent": 1791858419648
+      },
+      "target": {
+        "cardId": "problem",
+        "blockId": "b3",
+        "quote": "The tests cover both the transformation"
+      },
+      "http": {
+        "ms": 40,
+        "jobId": "a58c52c8-fde3-4223-86a1-3e78fe73d3d3"
+      },
+      "jobId": "a58c52c8-fde3-4223-86a1-3e78fe73d3d3",
+      "endedAt": 1791858430643,
+      "rel": {
+        "httpResponse": 41,
+        "workingVisible": 9,
+        "firstContent": 21903,
+        "done": 22281,
+        "firstTextEvent": 13891
+      }
+    },
+    {
+      "name": "ask (new thread on a card)",
+      "provider": "codex",
+      "startedAt": 1791858430644,
+      "load": [
+        1.72,
+        1.95,
+        3.01
+      ],
+      "marks": {
+        "httpResponse": 1791858430692,
+        "workingVisible": 1791858430655,
+        "done": 1791858440203,
+        "firstTextEvent": 1791858436046
+      },
+      "http": {
+        "ms": 48
+      },
+      "jobId": "39d0fb0d-bdd2-4763-8590-4a7e4bc79f0b",
+      "endedAt": 1791858442808,
+      "rel": {
+        "httpResponse": 48,
+        "workingVisible": 11,
+        "done": 9559,
+        "firstTextEvent": 5402
+      }
+    },
+    {
+      "name": "reply#1 (existing thread)",
+      "provider": "codex",
+      "startedAt": 1791858442809,
+      "load": [
+        1.62,
+        1.92,
+        2.98
+      ],
+      "marks": {
+        "httpResponse": 1791858443189,
+        "done": 1791858457627,
+        "firstTextEvent": 1791858457614
+      },
+      "http": {
+        "ms": 380
+      },
+      "jobId": "c63b4ed2-1cf5-4f8b-a3f0-ba81f1ce6470",
+      "endedAt": 1791858460432,
+      "rel": {
+        "httpResponse": 380,
+        "done": 14818,
+        "firstTextEvent": 14805
+      }
+    },
+    {
+      "name": "reply#2 (existing thread)",
+      "provider": "codex",
+      "startedAt": 1791858460433,
+      "load": [
+        1.67,
+        1.91,
+        2.96
+      ],
+      "marks": {
+        "httpResponse": 1791858460836,
+        "done": 1791858464439,
+        "firstTextEvent": 1791858464417
+      },
+      "http": {
+        "ms": 403
+      },
+      "jobId": "f9dbe2b8-7943-4026-a509-8561b4e7aedc",
+      "endedAt": 1791858467244,
+      "rel": {
+        "httpResponse": 403,
+        "done": 4006,
+        "firstTextEvent": 3984
+      }
+    },
+    {
+      "name": "generate (Go deeper placeholder)",
+      "provider": "codex",
+      "startedAt": 1791858467245,
+      "load": [
+        1.54,
+        1.88,
+        2.94
+      ],
+      "marks": {
+        "httpResponse": 1791858467268,
+        "done": 1791858512069,
+        "firstTextEvent": 1791858472183
+      },
+      "target": {
+        "cardId": "g-7v0gaz",
+        "label": "Two paths to response headers"
+      },
+      "http": {
+        "ms": 23
+      },
+      "jobId": "775443f6-3aca-4360-840c-356fed3f91df",
+      "endedAt": 1791858515450,
+      "rel": {
+        "httpResponse": 23,
+        "done": 44824,
+        "firstTextEvent": 4938
+      }
+    }
+  ]
+}
