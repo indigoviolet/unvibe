@@ -90,12 +90,16 @@ jobs:
         run: mise run build
         timeout-minutes: 10
 
+      - name: Build freshness (issue #64)
+        run: mise run build-freshness
+        timeout-minutes: 10
+
       - name: Playwright browsers
         run: mise run playwright-install
         timeout-minutes: 10
 
-      - name: Playwright behaviour tests (mock + real service)
-        run: mise run test:e2e
+      - name: Slow suite (slow vitest files + Playwright behaviour tests)
+        run: mise run test:slow
         timeout-minutes: 30
 
       # Fresh d2 renders must reproduce the pre-rendered fixture SVGs byte
@@ -121,7 +125,7 @@ jobs:
         timeout-minutes: 30
 
       - name: Restart resilience (SIGKILL mid-stage + restart)
-        run: node scripts/restart-resilience.mjs
+        run: mise run restart-resilience
         timeout-minutes: 20
 
       - name: Upload Playwright results on failure
