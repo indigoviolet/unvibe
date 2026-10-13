@@ -94,7 +94,8 @@ async function selectSpanning(page: Page, rootSelector: string, anchor: string):
   return (await page.evaluate(() => (getSelection()?.toString() ?? "").trim().replace(/\s+/g, " "))) ?? "";
 }
 
-test("Python rows highlight; unshipped languages stay plain; ?nohl=1 stays plain", async ({ page }) => {
+// DISABLED(#119): same assertions as render.test.tsx live-highlight test on the same fixture with real Shiki
+test.skip("Python rows highlight; unshipped languages stay plain; ?nohl=1 stays plain", async ({ page }) => {
   await gotoReview(page);
   await waitForHighlight(page);
   // Keyword, string and comment spans in the fixture's Python hunks.

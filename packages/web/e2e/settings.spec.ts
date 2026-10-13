@@ -242,7 +242,8 @@ test("prompts show template variables (expanded text lives on the debug page)", 
   await expect(card.getByRole("button", { name: "Expanded for this review" })).toHaveCount(0);
 });
 
-test("limits persist across reload", async ({ page }) => {
+// DISABLED(#119): mock-mode duplicate of the real-service persist test (here persist is the mock writing localStorage)
+test.skip("limits persist across reload", async ({ page }) => {
   await page.getByRole("tab", { name: "Limits" }).click();
   const input = page.locator("#limit-sessionsPerProvider");
   await input.fill("6");
@@ -257,7 +258,8 @@ test("limits persist across reload", async ({ page }) => {
   await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("6");
 });
 
-test("limits show service validation errors inline", async ({ page }) => {
+// DISABLED(#119): body only renders the static hint; inline errors live in settings-versions-service.spec.ts
+test.skip("limits show service validation errors inline", async ({ page }) => {
   await page.getByRole("tab", { name: "Limits" }).click();
   // Mock accepts anything, so drive the inline-error path through the
   // real-service spec; here just assert the field + hint render.

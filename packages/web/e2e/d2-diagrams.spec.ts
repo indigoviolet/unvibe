@@ -100,7 +100,8 @@ test("unverified citations are dimmed", async ({ page }) => {
   await expect(unverified).toHaveCSS("opacity", "0.55");
 });
 
-test("theme switch refetches the dark render", async ({ page }) => {
+// DISABLED(#119): covered by D2Diagram.test.tsx theme-switch test and the overlay e2e
+test.skip("theme switch refetches the dark render", async ({ page }) => {
   await gotoReview(page);
   const host = page.locator(`${FLOW} .dg-svg`);
   await expect(host.locator(":scope > svg")).toBeVisible({ timeout: 15000 });
@@ -124,7 +125,8 @@ test("hover on a cited shape shows the code preview", async ({ page }) => {
   await expect(page.locator("#pop .cite .snip").first()).not.toBeEmpty();
 });
 
-test("click on a cited shape reveals in the diff without changing the URL", async ({
+// DISABLED(#119): same click/URL/highlight sequence runs in D2Diagram.test.tsx and three other e2e tests
+test.skip("click on a cited shape reveals in the diff without changing the URL", async ({
   page,
 }) => {
   await gotoReview(page);
@@ -239,7 +241,8 @@ test("d2 warning readiness shows a callout linking to Settings → Environment",
   await expect(page.locator('[data-testid="env-d2"]')).toContainText("Diagrams need d2");
 });
 
-test("Add diagram in mock inserts a D2 block with a stand-in render", async ({ page }) => {
+// DISABLED(#119): tests the mock stand-in SVG; the click itself is in interaction.spec.ts test 2
+test.skip("Add diagram in mock inserts a D2 block with a stand-in render", async ({ page }) => {
   await gotoReview(page);
   const card = page.locator("#C-central");
   const before = await card.locator(".dg-svg > svg").count();

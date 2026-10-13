@@ -1,3 +1,4 @@
+// DISABLED(#119): restates the PROMPT_TEMPLATE_NAMES constant; service prompts.test.ts:98 checks templates and names agree.
 import { describe, expect, it } from "vitest";
 import { PROMPT_TEMPLATE_NAMES } from "../src/prompts.js";
 

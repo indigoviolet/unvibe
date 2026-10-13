@@ -49,7 +49,8 @@ test("wide diagram fits the block with no scrollbars, never above natural size",
   await expect(page.locator(`${BLOCK} .dg-bar`)).toContainText("100%");
 });
 
-test("zoom buttons zoom in place and Reset restores", async ({ page }) => {
+// DISABLED(#119): same title and assertions as DiagramInlineZoom.test.tsx (41 ms, no browser needed)
+test.skip("zoom buttons zoom in place and Reset restores", async ({ page }) => {
   await gotoReview(page);
   const bar = page.locator(`${BLOCK} .dg-bar`);
   await bar.getByRole("button", { name: "Zoom in" }).click();

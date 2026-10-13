@@ -87,7 +87,8 @@ test("selection snaps to whole words and Ask creates a working thread", async ({
   await expect(thread.locator(".msg .av.ai")).toBeVisible();
 });
 
-test("Explain creates an expansion without breaking", async ({ page }) => {
+// DISABLED(#119): subset of interaction.spec.ts test 1 (select, Explain, expansion visible)
+test.skip("Explain creates an expansion without breaking", async ({ page }) => {
   await gotoReview(page);
   await selectText(page, "#C-central", "optional");
   await page.locator('#selbar [data-act="explain"]').click();

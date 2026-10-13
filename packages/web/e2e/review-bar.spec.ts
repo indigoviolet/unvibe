@@ -15,7 +15,8 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator(connFile)).toBeVisible();
 });
 
-test("review bar shows identity, GitHub link, Debug, Guide|Source, Comments and Submit", async ({
+// DISABLED(#119): same attributes asserted by the ReviewBar.test.tsx test of the same name
+test.skip("review bar shows identity, GitHub link, Debug, Guide|Source, Comments and Submit", async ({
   page,
 }) => {
   // r-old is a PR review; the demo hides its GitHub link (mock snapshot
@@ -39,7 +40,8 @@ test("review bar shows identity, GitHub link, Debug, Guide|Source, Comments and 
   await expect(bar.locator('#submitSlot [data-submit]')).toHaveClass(/btn/);
 });
 
-test("demo review shows no GitHub link", async ({ page }) => {
+// DISABLED(#119): same as the ReviewBar.test.tsx demo test
+test.skip("demo review shows no GitHub link", async ({ page }) => {
   const bar = page.locator("#reviewbar");
   await expect(bar.getByText("urllib3/urllib3#5020")).toBeVisible();
   await expect(bar.getByRole("link", { name: "Open PR on GitHub" })).toHaveCount(0);
@@ -90,7 +92,8 @@ test("guide toggle at 1440px: source-only spans the window, then back (issue #83
   await expect(page.locator("#handle")).toBeVisible();
 });
 
-test("the panes cannot both be hidden", async ({ page }) => {
+// DISABLED(#119): pane-toggle state machine already in AppShell.test.tsx (class assertions only, no layout)
+test.skip("the panes cannot both be hidden", async ({ page }) => {
   // Source off first: only the guide shows.
   await page.locator("#toggleRight").click();
   await expect(page.locator("#right")).toHaveClass(/hide/);
