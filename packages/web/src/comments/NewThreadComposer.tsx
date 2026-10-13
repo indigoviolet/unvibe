@@ -3,11 +3,12 @@
  *
  * The pending box the selection toolbar and diff line clicks open *before*
  * anything reaches the server: Discard removes it locally (no request).
- * Notes save through `POST …/comments` and stay quiet; Ask sends the
- * `ask` action (thread + agent reply in one round trip) and the thread
- * then shows a plain working state until its reply arrives through a
- * patch (or an error with a Retry button when the turn fails). While the
- * request is in flight the composer itself shows the Ask as running.
+ * Comments save through `POST …/comments` (for the PR by default) and stay
+ * quiet; Ask sends the `ask` action (thread + agent reply in one round
+ * trip) and the thread then shows a plain working state until its reply
+ * arrives through a patch (or an error with a Retry button when the turn
+ * fails). While the request is in flight the composer itself shows the Ask
+ * as running.
  */
 import { useRef, useState } from "react";
 import type { ActionAnchor, Annotation } from "@unvibe/shared";
@@ -21,14 +22,16 @@ interface Props {
   reviewId: string;
   anchor: ActionAnchor;
   quote: string;
-  /** True = Note (no agent reply); false = Ask. */
+  /** True = Comment (no agent reply); false = Ask. */
   note: boolean;
+  /** Prefilled text (issue #135: a Comment from an agent answer quotes the selection). */
+  initialText?: string;
   onDiscard: () => void;
   onCreated: (id: string) => void;
 }
 
-export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, onCreated }: Props) {
-  const [text, setText] = useState("");
+export function NewThreadComposer({ reviewId, anchor, quote, note, initialText, onDiscard, onCreated }: Props) {
+  const [text, setText] = useState(initialText ?? "");
   const [sending, setSending] = useState(false);
   // Set once the question/note is sent: thread ids already here, so only
   // a thread created after the send hides the composer.
@@ -103,7 +106,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, note, onDiscard, on
         <textarea
           rows={3}
           autoFocus
-          placeholder={note ? "Write a note…" : "Ask the agent, or draft a review comment…"}
+          placeholder={note ? "Write a comment…" : "Ask the agent…"}
           aria-label="New comment"
           value={text}
           onChange={(e) => setText(e.target.value)}

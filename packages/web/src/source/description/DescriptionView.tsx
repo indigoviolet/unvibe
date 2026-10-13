@@ -455,6 +455,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
                   anchor={pending.anchor}
                   quote={pending.quote}
                   note={pending.note}
+                  initialText={pending.initialText}
                   onDiscard={() => setPending(null)}
                   onCreated={() => setPending(null)}
                 />

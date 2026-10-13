@@ -69,8 +69,9 @@ test("split view pairs columns and widens a narrow pane", async ({ page }) => {
   const right = page.locator("#right");
   const before = await right.boundingBox();
   await page.getByRole("button", { name: "Split" }).click();
-  await expect(page.locator(`${connFile} table.diff.split`)).toBeVisible();
-  await expect(page.locator(`${connFile} table.diff.split colgroup`)).toHaveCount(1);
+  await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
+  // One table (and colgroup) per hunk: the fixture's first file has two.
+  await expect(page.locator(`${connFile} table.diff.split colgroup`)).toHaveCount(2);
   const after = await right.boundingBox();
   expect(before?.width).toBeLessThan(after?.width ?? 0);
 });

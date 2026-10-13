@@ -13,6 +13,7 @@ import type { Locator, Page } from "@playwright/test";
 const FLOW = "#C-g-flow #B-b1";
 const EDGE = "#B-b-mock-d2-edge";
 const UNAVAILABLE = "#B-b-mock-d2-unavailable";
+const FAILED = "#B-b-mock-d2-error";
 
 async function gotoReview(page: Page): Promise<void> {
   await page.goto("/review/demo");
@@ -187,8 +188,7 @@ test("800px window keeps the diagram readable with scroll, not breakage", async 
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("unavailable binary shows the source with a Settings note", async ({ page }) => {
-  await gotoReview(page);
+test("unavailable binary shows the source with a Settings note", async ({ page }) => {  await gotoReview(page);
   const fallback = page.locator(`${UNAVAILABLE} .dg-fallback`);
   await expect(fallback).toBeVisible();
   await expect(fallback).toContainText("needs-binary");
@@ -198,6 +198,21 @@ test("unavailable binary shows the source with a Settings note", async ({ page }
   await link.click();
   await expect(page).toHaveURL(/\/settings\?tab=environment/);
   await expect(page.locator("#environment")).toBeVisible();
+});
+
+test("failed compile shows a plain note with a retry and no zoom controls (#130)", async ({ page }) => {
+  await gotoReview(page);
+  const fallback = page.locator(`${FAILED} .dg-fallback`);
+  await expect(fallback).toBeVisible();
+  await expect(fallback).toContainText(".class");
+  await expect(fallback).toContainText("Couldn't draw this diagram.");
+  // The raw compiler message never reaches the reader.
+  await expect(fallback).not.toContainText("unquoted key");
+  await expect(fallback).not.toContainText("Diagrams need");
+  // No zoom, Reset or Expand controls under a diagram that did not
+  // render — only the retry.
+  await expect(page.locator(`${FAILED} .dg-bar`)).toHaveCount(0);
+  await expect(fallback.getByRole("button", { name: "Retry" })).toBeVisible();
 });
 
 test("d2 warning readiness shows a callout linking to Settings → Environment", async ({

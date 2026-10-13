@@ -67,6 +67,8 @@ interface SessionState extends IssuedSession {
   server: Server;
   transport: StreamableHTTPServerTransport;
   connected: boolean;
+  /** Tool calls served on this secret (degraded-turn detection, #51). */
+  calls: number;
 }
 
 function textResult(text: string): CallToolResult {
@@ -82,6 +84,12 @@ export class McpRegistry {
   /** Live secrets per review, so a review's secrets die with it. */
   private readonly byReview = new Map<string, Set<string>>();
   private readonly pins: PinRecord[] = [];
+  /**
+   * Calls against unknown/revoked secrets (degraded-turn detection,
+   * #51): a turn whose agent hits a dead URL never connects, and the
+   * model usually reports it in the reply.
+   */
+  private unknownHits = 0;
 
   constructor(private readonly opts: McpRegistryOptions) {}
 
@@ -105,12 +113,14 @@ export class McpRegistry {
       // is an SDK concern; attribution still comes from our URL secret.
       transport: new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() }),
       connected: false,
+      calls: 0,
     };
     server.setRequestHandler(ListToolsRequestSchema, () => ({
       tools: toolsForRole(role),
     }));
     server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+      state.calls += 1;
       try {
         return await this.dispatch(state, req.params.name, args);
       } catch (err) {
@@ -206,6 +216,30 @@ export class McpRegistry {
     return this.sessions.size;
   }
 
+  /** A call hit an unknown/revoked secret (the route counts it, #51). */
+  noteUnknownHit(): void {
+    this.unknownHits += 1;
+  }
+
+  /**
+   * Review-scoped MCP activity for degraded-turn detection (#51): how
+   * many of the review's live secrets ever connected, how many tool
+   * calls they served, and how many calls hit unknown secrets
+   * service-wide. Snapshot before a turn and diff after: no new
+   * connections or calls means the turn ran without its tools.
+   */
+  activitySnapshot(reviewId: string): { connected: number; toolCalls: number; unknownHits: number } {
+    let connected = 0;
+    let toolCalls = 0;
+    for (const secret of this.byReview.get(reviewId) ?? []) {
+      const state = this.sessions.get(secret);
+      if (!state) continue;
+      if (state.connected) connected += 1;
+      toolCalls += state.calls;
+    }
+    return { connected, toolCalls, unknownHits: this.unknownHits };
+  }
+
   hasSession(secret: string): boolean {
     return this.sessions.has(secret);
   }
@@ -227,6 +261,7 @@ export class McpRegistry {
   ): Promise<void> {
     const state = this.sessions.get(secret);
     if (!state) {
+      this.unknownHits += 1;
       res.statusCode = 404;
       res.end("unknown mcp session");
       return;

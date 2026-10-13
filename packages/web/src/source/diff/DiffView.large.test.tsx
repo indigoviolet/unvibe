@@ -39,7 +39,9 @@ describe("DiffView large diff", () => {
       render(<DiffView reviewId="big" />);
       await screen.findByText("file-0.ts", {}, { timeout: 5000 });
       expect(document.querySelectorAll(".dfile").length).toBe(300);
-      expect(document.querySelectorAll("table.diff").length).toBe(3);
+      // One code table per hunk (#140): the 3 eager files × 17 hunks each.
+      // The other 297 files mount headers only (no tables, no hunk bodies).
+      expect(document.querySelectorAll("table.diff").length).toBe(3 * 17);
     } finally {
       if (RealIO) globalThis.IntersectionObserver = RealIO;
       else delete (globalThis as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;

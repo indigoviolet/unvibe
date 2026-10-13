@@ -68,7 +68,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 ### 4.1 Layout
 - **Top bar (app-wide only):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge and Tips where they show, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button).
-- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title, the PR label linking to the PR page on GitHub for PR reviews), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action. While any of the review's jobs is running or queued, a small `running · queued` count sits in the right corner after Submit — a link to the Debug jobs list, with a slow gradient drift while anything runs. It renders nothing when no job is live.
+- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title, the PR label linking to the PR page on GitHub for PR reviews), the version selector next to it (hidden for single-version reviews; the current version annotated in the dropdown, an older shown version flagged with a warning border), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action. While any of the review's jobs is running or queued, a small `running · queued` count sits in the right corner after Submit — a link to the Debug jobs list, with a slow gradient drift while anything runs. It renders nothing when no job is live. At narrow widths the title gives way first; the version selector never truncates away.
 - **Guide** (left, main column): the current page.
 - **Source pane** (right): tabs for **PR description** and **Diff**. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
@@ -76,13 +76,18 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ### 4.2 Start page
 - A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
 - For the selected repo:
-  - **PRs you're authoring:** `gh pr list --author @me`;
+  - **PRs you're authoring:** `gh pr list --author @me`, newest first;
   - **PRs waiting on your review:** `gh pr list --search "review-requested:@me"`
     split into **requested of you** (direct, `user-review-requested:@me`) and
     **requested of your team** (the rest, with team names), each newest
-    first, with a remembered recency filter (1d, 3d, 1w, 2w, All);
-  - **recent branches**, local and remote;
-  - **reviews you've opened before**, with their unread and stale state ("new commits · Update").
+    first;
+  - one remembered recency filter (1d, 3d, 1w, 2w, All) below Reviews
+    applies to every list below it by last update: every PR list and
+    **recent branches** (local and remote, by last commit date, newest
+    first with the commit age on each row); a list the filter empties
+    names its window with a way back to All;
+  - **reviews you've opened before**, with their unread and stale state ("new commits · Update"),
+    ordered by recent activity, unfiltered by the recency filter.
 - PR rows show the head branch, a relative update time and the diff size
   (lines added and removed, files changed); where a row names a GitHub PR,
   its number links to the PR page (new tab) without opening the review.
@@ -109,12 +114,12 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 Every card and every expansion card has the same controls:
 - **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Expansions show the quoted selection as their header instead and get no derived title.
 - **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row.
-- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles.
+- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles. While a depth change runs, both buttons keep their icons and are disabled (one shared control for cards and expansions).
   - Changing depth rewrites the card's paragraphs in place.
   - + at the deepest level adds an "Underlying principle" block.
   - Depth versions are generated **on demand** and kept once made.
 - **Use examples** and **Add diagram:** insert example or diagram blocks after the paragraphs they relate to, never duplicating one already there.
-- **Diagrams** render inline in the card at fit: the whole diagram visible, no scrollbars, never above natural size. +/−/Reset zoom in place (trackpad pinch and Ctrl/Cmd+wheel zoom; a plain wheel scrolls the page), drag pans once zoomed. When the guide pane has spare room the block breaks out past the text column, centered, up to the usable width; caption and citations stay column-aligned. **Expand** opens the same diagram out of the column in a full-window view with the same zoom/pan plus reset-to-fit. Esc or the close control shuts it and focus returns to Expand. Citation hover previews and click-to-reveal work the same expanded, inline, and zoomed. Diagrams wear the guide palette in both themes, with `.class: [ok]` / `[bad]` on shapes for good/bad states.
+- **Diagrams** render inline in the card at fit: the whole diagram visible, no scrollbars, never above natural size. +/−/Reset zoom in place (trackpad pinch and Ctrl/Cmd+wheel zoom; a plain wheel scrolls the page), drag pans once zoomed. When the guide pane has spare room the block breaks out past the text column, centered, up to the usable width; caption and citations stay column-aligned. **Expand** opens the same diagram out of the column in a full-window view with the same zoom/pan plus reset-to-fit. Esc or the close control shuts it and focus returns to Expand. Citation hover previews and click-to-reveal work the same expanded, inline, and zoomed. Diagrams wear the guide palette in both themes, with `myid.class: [ok]` / `[bad]` on its own line for good/bad states. A diagram that did not render shows its source with a plain "Couldn't draw this diagram." note and a retry — no zoom, Reset or Expand controls, no compiler output (the raw reason is on the Debug page).
 - **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and expansions attached to the card survive undo.
 - **Mark read:** greys the card and collapses it to its title row. Unmarking expands it.
 - **Read state rolls up:** a page is read when all of its cards are, and links to fully read pages show muted.
@@ -139,8 +144,9 @@ Every card and every expansion card has the same controls:
 ### 4.6 Selecting text
 - Works in the guide, the PR description, and diff code.
 - A selection snaps to whole words, with leading and trailing spaces trimmed, and the highlight updates to match.
-- The toolbar offers **Explain**, **Ask…** and **Note**. Examples and diagrams come from the explanation card's own controls, not the toolbar.
+- The toolbar offers **Explain**, **Ask…**, **Comment** and **GitHub**. Examples and diagrams come from the explanation card's own controls, not the toolbar.
 - The toolbar appears only when the user finishes selecting text, never after clicking a control.
+- **GitHub** is a plain link out: on a diff selection it opens the selected lines in GitHub's file view at the review's commit (the head commit for added and unchanged lines, the base commit when the selection is only on removed lines). It starts no job and no thread, and is hidden where there is nothing unambiguous to open (prose, non-GitHub repos, the demo).
 
 ### 4.7 Explanations
 - **Explain** creates an expansion card right under the block the text came from: under the paragraph in the description, under the line in the diff. The selected text is highlighted.
@@ -150,11 +156,13 @@ Every card and every expansion card has the same controls:
 - **Open as page** moves the content to a new page titled with the quoted text, and the anchor text becomes a link to that page.
 
 ### 4.8 Comments
-- **Ask…** starts a thread, and the agent replies with citations. **Note** starts a thread with no agent reply.
-- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** (a send icon, filled when on), **Delete** and **Close**.
-- **Reply box:** always visible, with **Discard** and **Reply**.
+- **Ask…** starts a thread, and the agent replies with citations. **Comment** starts a thread with no agent reply. Only Ask sends text to the agent.
+- A **Comment** is for the PR by default and can be switched off to keep it local. An **Ask** thread is never for the PR and carries no For-PR control. Only comments are submitted to GitHub.
+- Selecting text inside an agent answer and choosing **Comment** opens a comment anchored where the card is anchored, with the selection quoted as a Markdown blockquote for the reviewer to write under.
+- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** on comments (a send icon, filled when on), **Delete** and **Close**.
+- **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent); a reply in an Ask thread goes to the agent.
   - Typed text survives anything else on the page re-rendering.
-  - Discard removes a new thread, and clears the box on an existing one.
+  - Discard removes a new thread, and clears the box on an existing one; on an existing thread it stays disabled until there is a draft.
 - **Where threads live:**
   - **Guide:** threads start closed. The anchor text is highlighted; hovering previews the thread, clicking opens it. Hovering an open thread outlines its anchor.
   - **Diff:** threads sit under their line and start open. Closing one leaves a comment icon on the line number, and clicking the number reopens it. Clicking any line number starts a comment.
@@ -184,24 +192,24 @@ Every card and every expansion card has the same controls:
 - **For a branch without a PR:** the tab shows the commit messages instead, read-only.
 
 ### 4.12 Submit review
-- **Nothing reaches GitHub until Submit review**, whether comments or a description edit.
+- **Nothing reaches GitHub until Submit review**, whether comments or a description edit. Only comments are submitted; Ask threads and explanations are never posted.
 - The top-bar button shows how many changes are pending. Its panel lists every comment marked for the PR (location and draft text) and the description change if there is one, with **Cancel** and **Submit as <user>**.
 - Submitting creates **one GitHub review** containing all the comments, and updates the description.
 - For a branch without a PR, Submit is disabled and says why.
 
 ### 4.13 Diff
-**Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**. The toolbar stays pinned directly under the tab strip while the diff scrolls (opaque, one row; narrow panes scroll it sideways instead of wrapping). Revealing a cited line, a comment's jump-to-line, or a file jump from the Files list lands the target below the pinned rows.
+**Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**. The toolbar stays pinned directly under the tab strip while the diff scrolls (opaque, one row; narrow panes scroll it sideways instead of wrapping). Below it pin the current file header and then the current hunk header, each replaced by the next file or hunk at its boundary. Revealing a cited line or a comment's jump-to-line lands the target below all four pinned rows; a file jump from the Files list lands the file header below the toolbar.
 
 **Files panel** (it scrolls with the diff):
 - a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count) plus a **Reviewed** row; the button shows an active count whenever a non-default filter applies;
 - a progress bar of hunks reviewed;
 - a folder tree that compacts single-child folders, with +/− counts and reviewed/total per file. Clicking a file scrolls to it.
 
-**File header:** collapse chevron, the path (with the file name always visible), +/− counts, the reviewed count, and a mark-file-reviewed toggle.
+**File header:** collapse chevron, the path (with the file name always visible), +/− counts, the reviewed count, and a mark-file-reviewed toggle. It stays pinned under the toolbar while its file scrolls.
 
 **Hunks**
 - **Hunks are git's own:** a run of changed lines plus up to 3 unchanged lines of context, with nearby runs merged.
-- **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover.
+- **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover. It stays pinned under the file header while its hunk scrolls.
 - **Actions:** a leading fold chevron, then Summarize (agent), Add or Edit note, and Mark reviewed.
 - **Hunk card:** the agent summary and the user's note, each with Delete. It exists regardless of folding. **Folding only hides code**, replacing it with "N changed lines folded · show".
 - **Mark reviewed** greys the hunk and folds its code.
@@ -211,13 +219,21 @@ Every card and every expansion card has the same controls:
 - Each run of hidden hunks becomes one thin row: "Hunks i–j hidden · <reason> · +x −y", plus a one-line reason why it's skippable. Clicking the row shows those hunks.
 - **One-line changes are never hidden.** A real version should also never hide a hunk that the guide cites.
 
+**Expand beyond hunks**
+- Step controls above and below every hunk reveal context a few lines at a time; the gap between two hunks also offers Show all. A fully revealed gap reads as continuous.
+- Revealed lines are context: visibly apart from the diff's own lines, syntax-coloured like the rest, collapsible back per region.
+- Deleted files expand on the old side, new files on the new side; binary files offer no expansion. Old and new numbers stay aligned in Split.
+- Revealed lines offer Explain and Ask, anchored on the diff line (read as `code:<path>:<lines>@<sha>`). Note is not offered there.
+- Expand by unit: one control per hunk steps from the innermost enclosing function or method to its class and then the file, one level per click, with the unit's name in the hunk header. Units come from tree-sitter grammars (eight languages) with an indentation fallback shown as approximate; hunks with no enclosing unit expand by lines.
+- Where the review has no file content to read, expansion controls hide instead of showing load errors.
+
 **Fold all and Unfold all:** Fold all summarizes and folds every hunk that isn't hidden. Unfold all shows all code and keeps the summaries.
 
 **Views**
-- **Unified:** long lines scroll sideways.
+- **Unified:** long lines scroll sideways (per hunk: each hunk's code scrolls independently, so its header can pin without sitting inside the scroller).
 - **Split:** always two equal halves with fixed line-number columns; long lines wrap inside their half. Choosing Split widens the pane if it's narrow.
 - **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
-- **Pinned rows:** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view.
+- **Pinned rows (sideways):** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.
 
 **New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
 
@@ -604,7 +620,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | **M0** | **ACP spike** (do this first) | In both `claude-agent-acp` and `codex-acp`: start a session with a system prompt plus an MCP server, send a ~30k-token pack, fork it twice, and confirm that (a) each fork answers questions about the pack, (b) usage shows cache reads on the forks, (c) a trailing JSON block parses reliably. Results written up. |
 | M1 | Service, ingest and diff | Start page lists repos, PRs and branches. Opening one ingests it. The diff pane has every §4.13 feature except agent summaries. Token-protected localhost service, installable web app, helper and idle exit. |
 | M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept candidates are hidden. Hunk pass summaries, and Hide uninteresting with reasons. |
-| M3 | Interaction | Explain, Ask and Note on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Expansions close into links; Open as page. Mark read. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
+| M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Expansions close into links; Open as page. Mark read. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
 | M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |

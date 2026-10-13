@@ -6,7 +6,10 @@
  *   guide changes (warmBase after a go-deeper fill).
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Job, ReviewSnapshot } from "@unvibe/shared";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { AgentEvent, Job, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { createApp } from "../src/server.js";
@@ -402,6 +405,168 @@ describe("#122.1 enqueue before the base", () => {
       await waitFor(() => basePacks() >= 2, 8000);
     } finally {
       await app.close();
+    }
+  });
+});
+
+function textEvents(text: string): AgentEvent[] {
+  return [
+    { type: "text", delta: text },
+    { type: "usage", inputTokens: 10, cachedReadTokens: 5, cachedWriteTokens: 0, outputTokens: 10 },
+    { type: "done", stopReason: "end_turn" },
+  ];
+}
+
+/** Fake `d2`: version ok, rejects inline `{.class`, renders the rest. */
+function writeSmartD2(): { dir: string; bin: string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-smartd2-"));
+  const bin = path.join(dir, "d2");
+  fs.writeFileSync(
+    bin,
+    '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "d2 v0.9.0"; exit 0; fi\n' +
+      'src=$(cat)\ncase "$src" in\n"{.class"*|*"{.class"*) echo "err: bad class" >&2; exit 1;;\n' +
+      "esac\n" +
+      'if [ "$1" = "validate" ]; then echo "Success!"; exit 0; fi\n' +
+      'echo \'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text>ok</text></svg>\'\nexit 0\n',
+  );
+  fs.chmodSync(bin, 0o755);
+  return { dir, bin };
+}
+
+const GODEEPER_BROKEN = `Deep body.
+
+\`\`\`d2
+direction: right
+gone: "unmount cleanup" {.class: [bad]}
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{"title": "Deep"}
+\`\`\`
+`;
+
+const GODEEPER_FIXED = `Deep body.
+
+\`\`\`d2
+direction: right
+gone: "unmount cleanup"
+gone.class: [bad]
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{"title": "Deep"}
+\`\`\`
+`;
+
+const GODEEPER_NO_DIAGRAM = `Deep body, no diagram this time.
+
+\`\`\`json
+{"title": "Deep"}
+\`\`\`
+`;
+
+describe("go-deeper inline diagrams (#130)", () => {
+  it("a bad diagram gets exactly one repair turn and lands drawn", { timeout: 60000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const runners = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(GODEEPER_FIXED) },
+        { match: "reply with exactly", events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end_turn" }] },
+        { match: "Go deeper", events: textEvents(GODEEPER_BROKEN) },
+      ]);
+      const { app, ctx } = await demoApp(runners);
+      try {
+        const id = await makeDemoReview(ctx);
+        await ctx.reviews.mutate(id, (draft) => {
+          const root = draft.pages.find((p) => p.id === "root")!;
+          root.cards.push({
+            id: "g-1",
+            pageId: "root",
+            title: null,
+            level: "standard",
+            read: false,
+            collapsed: false,
+            revision: 1,
+            blocks: [],
+            undoStack: [],
+            pending: { label: "Deeper", why: "because" },
+          });
+        });
+        await ctx.pipeline.fillGoDeeper(id, "g-1", undefined, () => {});
+        // Exactly one repair turn, no loop.
+        expect(runners.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const card = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-1")!;
+        expect(card.title).toBe("Deep");
+        const dg = card.blocks.find((b) => b.type === "diagram") as unknown as {
+          source: string;
+          render?: { status: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.render?.status).toBe("ok");
+        expect(dg.source).toContain("gone.class: [bad]");
+        // The prose is unaffected.
+        expect(JSON.stringify(card.blocks)).toContain("Deep body.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("an unrepairable diagram keeps an error block and the prose", { timeout: 60000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const runners = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(GODEEPER_NO_DIAGRAM) },
+        { match: "reply with exactly", events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end_turn" }] },
+        { match: "Go deeper", events: textEvents(GODEEPER_BROKEN) },
+      ]);
+      const { app, ctx } = await demoApp(runners);
+      try {
+        const id = await makeDemoReview(ctx);
+        await ctx.reviews.mutate(id, (draft) => {
+          const root = draft.pages.find((p) => p.id === "root")!;
+          root.cards.push({
+            id: "g-1",
+            pageId: "root",
+            title: null,
+            level: "standard",
+            read: false,
+            collapsed: false,
+            revision: 1,
+            blocks: [],
+            undoStack: [],
+            pending: { label: "Deeper", why: "because" },
+          });
+        });
+        await ctx.pipeline.fillGoDeeper(id, "g-1", undefined, () => {});
+        // Exactly one repair turn even when it fails.
+        expect(runners.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const card = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-1")!;
+        const dg = card.blocks.find((b) => b.type === "diagram") as unknown as {
+          source: string;
+          render?: { status: string; error?: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.render?.status).toBe("error");
+        expect(dg.render?.error).toMatch(/not valid D2/);
+        expect(JSON.stringify(card.blocks)).toContain("Deep body.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

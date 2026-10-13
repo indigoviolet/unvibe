@@ -258,8 +258,21 @@ function normalize(s: string): string {
   return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/** True when the host names only a card (no block): the #51 degraded case. */
+function isCardOnlyHost(host: string): boolean {
+  const parsed = parseId(host);
+  return parsed?.kind === "card" && !parsed.blockId;
+}
+
 /** A quoted anchor must be a real substring of its host (PRD §10). */
 export function validateAnchor(quote: string, host: string, lookup: ReviewLookup): AnchorCheck {
+  // A host that names only the card is degraded, not anchored (issue
+  // #51): the task needs the host block's ID (look it up with the review
+  // tools). It can never pass by matching the whole card.
+  if (isCardOnlyHost(host) && normalize(quote) !== "") {
+    const parsed = parseId(host);
+    return { quote, host, ok: false, reason: `anchor names only the card ${parsed?.kind === "card" ? parsed.cardId : host}; the host block's ID is required` };
+  }
   const text = lookup.hostText(host);
   if (text === null) return { quote, host, ok: false, reason: `unknown anchor host: ${host}` };
   const hay = normalize(text);
@@ -297,12 +310,21 @@ export function validateReply(
   if (opts?.anchor) {
     anchor = validateAnchor(opts.anchor.quote, opts.anchor.host, lookup);
   }
+  // A card-only anchor with a real quote is a degraded answer (issue
+  // #51): retry it with the reason, like an unverifiable citation. Other
+  // anchor failures (unknown host, quote mismatch, empty quote) stay
+  // informational, as before.
+  const anchorCardOnly =
+    anchor !== null &&
+    !anchor.ok &&
+    normalize(opts?.anchor?.quote ?? "") !== "" &&
+    isCardOnlyHost(opts?.anchor?.host ?? "");
   return {
     tokens,
     candidates,
     unverified: unverifiedCount,
     repaired,
-    needsRepairTurn: unverifiedCount >= REPAIR_THRESHOLD,
+    needsRepairTurn: unverifiedCount >= REPAIR_THRESHOLD || anchorCardOnly,
     anchor,
   };
 }

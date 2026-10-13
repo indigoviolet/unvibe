@@ -107,12 +107,42 @@ export type RecencyWindow = "all" | "1d" | "3d" | "1w" | "2w";
 
 export const RECENCY_KEY = "unvibe.start.reviewRecency";
 
-export const RECENCY_WINDOWS: { value: RecencyWindow; label: string; ms: number | null; emptyNote: string }[] = [
-  { value: "all", label: "All", ms: null, emptyNote: "" },
-  { value: "1d", label: "Last day", ms: 86400_000, emptyNote: "No PRs updated in the last day." },
-  { value: "3d", label: "Last 3 days", ms: 3 * 86400_000, emptyNote: "No PRs updated in the last 3 days." },
-  { value: "1w", label: "Last week", ms: 7 * 86400_000, emptyNote: "No PRs updated in the last week." },
-  { value: "2w", label: "Last 2 weeks", ms: 14 * 86400_000, emptyNote: "No PRs updated in the last 2 weeks." },
+export const RECENCY_WINDOWS: {
+  value: RecencyWindow;
+  label: string;
+  ms: number | null;
+  emptyNote: string;
+  branchesNote: string;
+}[] = [
+  { value: "all", label: "All", ms: null, emptyNote: "", branchesNote: "" },
+  {
+    value: "1d",
+    label: "Last day",
+    ms: 86400_000,
+    emptyNote: "No PRs updated in the last day.",
+    branchesNote: "No branches updated in the last day.",
+  },
+  {
+    value: "3d",
+    label: "Last 3 days",
+    ms: 3 * 86400_000,
+    emptyNote: "No PRs updated in the last 3 days.",
+    branchesNote: "No branches updated in the last 3 days.",
+  },
+  {
+    value: "1w",
+    label: "Last week",
+    ms: 7 * 86400_000,
+    emptyNote: "No PRs updated in the last week.",
+    branchesNote: "No branches updated in the last week.",
+  },
+  {
+    value: "2w",
+    label: "Last 2 weeks",
+    ms: 14 * 86400_000,
+    emptyNote: "No PRs updated in the last 2 weeks.",
+    branchesNote: "No branches updated in the last 2 weeks.",
+  },
 ];
 
 function isRecencyWindow(v: unknown): v is RecencyWindow {
@@ -138,6 +168,15 @@ export function inRecencyWindow(c: RepoChange, windowMs: number | null, now = Da
   if (windowMs === null) return true;
   if (typeof c.updatedAt !== "number" || !Number.isFinite(c.updatedAt)) return true;
   return c.updatedAt >= now - windowMs;
+}
+
+/**
+ * Newest first for the authoring list (#131): rows without a time sort
+ * last (stable). Mirrors the service's `byUpdatedDesc`, so kept rows and
+ * any unsorted response still read newest first.
+ */
+export function byUpdatedDesc(a: RepoChange, b: RepoChange): number {
+  return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
 }
 
 function timeAgo(ts: number): string {
@@ -750,13 +789,23 @@ export function StartPage(): React.JSX.Element {
 
   // Review requests, split (#95): asked of you by name vs only of a team
   // you belong to (a PR asking both reads once, as direct). The service
-  // returns both groups newest-first; the recency window only hides rows.
+  // returns every PR list newest-first; the recency window only hides
+  // rows. #131 extends the window (and the newest-first order) to "Your
+  // PRs" and to Recent branches (by last commit date); Reviews stays
+  // unfiltered, ordered by recent activity.
   const directRequested = requested.filter((c) => reviewScopeOf(c) === "direct");
   const teamRequested = requested.filter((c) => reviewScopeOf(c) === "team");
   const windowMs = RECENCY_WINDOWS.find((w) => w.value === recency)?.ms ?? null;
   const windowEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.emptyNote ?? "";
+  const branchesEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.branchesNote ?? "";
   const visibleDirect = directRequested.filter((c) => inRecencyWindow(c, windowMs));
   const visibleTeam = teamRequested.filter((c) => inRecencyWindow(c, windowMs));
+  const visibleAuthoring = [...authoring]
+    .sort(byUpdatedDesc)
+    .filter((c) => inRecencyWindow(c, windowMs));
+  const visibleBranches = [...branches]
+    .sort(byUpdatedDesc)
+    .filter((c) => inRecencyWindow(c, windowMs));
 
   return (
     <div className="app">
@@ -992,31 +1041,10 @@ export function StartPage(): React.JSX.Element {
                   <p className="hint" data-testid="kept-status" style={{ minHeight: "1.2em", margin: 0 }}>
                     {keptStatus ?? " "}
                   </p>
-                  <ChangeSection
-                    title="Your PRs"
-                    changes={authoring}
-                    error={listErrors.authoring}
-                    errorTestId="changes-error-authoring"
-                    opening={opening}
-                    empty="No open PRs."
-                    owner={selected?.owner ?? null}
-                    name={selected?.name ?? null}
-                    onOpen={(c, i) =>
-                      openReview(changeKey(c, i), {
-                        repoId: selectedId,
-                        pr: c.prNumber,
-                        branch: c.branch,
-                        title: c.title,
-                        ...(c.author ? { author: c.author } : {}),
-                      })
-                    }
-                  />
-                  <div className="divider">Waiting on your review</div>
-                  {listErrors.requested ? (
-                    <p className="hint" role="alert" data-testid="changes-error-requested">
-                      {listErrors.requested}
-                    </p>
-                  ) : null}
+                  {/* Recency filter (#95, #131): one control for everything
+                      below it — "Your PRs", both review groups and Recent
+                      branches (by last commit date). Reviews above stays
+                      unfiltered. */}
                   <div className="frow" style={{ gap: 6, alignItems: "center", marginBottom: 2 }}>
                     <label className="hint" htmlFor="review-recency">
                       Updated within
@@ -1036,10 +1064,47 @@ export function StartPage(): React.JSX.Element {
                       ))}
                     </select>
                   </div>
+                  <ChangeSection
+                    title="Your PRs"
+                    changes={visibleAuthoring}
+                    error={listErrors.authoring}
+                    errorTestId="changes-error-authoring"
+                    opening={opening}
+                    empty="No open PRs."
+                    emptyTestId="authoring-empty"
+                    filteredNote={authoring.length > 0 && visibleAuthoring.length === 0 ? windowEmptyNote : null}
+                    onShowAll={() => selectRecency("all")}
+                    owner={selected?.owner ?? null}
+                    name={selected?.name ?? null}
+                    onOpen={(c, i) =>
+                      openReview(changeKey(c, i), {
+                        repoId: selectedId,
+                        pr: c.prNumber,
+                        branch: c.branch,
+                        title: c.title,
+                        ...(c.author ? { author: c.author } : {}),
+                      })
+                    }
+                  />
+                  <div className="divider">Waiting on your review</div>
+                  {listErrors.requested ? (
+                    <p className="hint" role="alert" data-testid="changes-error-requested">
+                      {listErrors.requested}
+                    </p>
+                  ) : null}
                   <div className="subhead">Requested of you</div>
                   {visibleDirect.length === 0 ? (
                     <p className="hint" data-testid="requested-direct-empty">
-                      {directRequested.length === 0 ? "No PRs requested of you." : windowEmptyNote}
+                      {directRequested.length === 0 ? (
+                        "No PRs requested of you."
+                      ) : (
+                        <>
+                          {windowEmptyNote}{" "}
+                          <button type="button" className="mini" onClick={() => selectRecency("all")}>
+                            Show all
+                          </button>
+                        </>
+                      )}
                     </p>
                   ) : (
                     visibleDirect.map((c, i) => (
@@ -1065,7 +1130,16 @@ export function StartPage(): React.JSX.Element {
                   <div className="subhead">Requested of your team</div>
                   {visibleTeam.length === 0 ? (
                     <p className="hint" data-testid="requested-team-empty">
-                      {teamRequested.length === 0 ? "No PRs requested of your team." : windowEmptyNote}
+                      {teamRequested.length === 0 ? (
+                        "No PRs requested of your team."
+                      ) : (
+                        <>
+                          {windowEmptyNote}{" "}
+                          <button type="button" className="mini" onClick={() => selectRecency("all")}>
+                            Show all
+                          </button>
+                        </>
+                      )}
                     </p>
                   ) : (
                     visibleTeam.map((c, i) => (
@@ -1090,11 +1164,14 @@ export function StartPage(): React.JSX.Element {
                   )}
                   <ChangeSection
                     title="Recent branches"
-                    changes={branches}
+                    changes={visibleBranches}
                     error={listErrors.branches}
                     errorTestId="changes-error-branches"
                     opening={opening}
                     empty="No branches."
+                    emptyTestId="branches-empty"
+                    filteredNote={branches.length > 0 && visibleBranches.length === 0 ? branchesEmptyNote : null}
+                    onShowAll={() => selectRecency("all")}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
@@ -1325,7 +1402,9 @@ function ChangeRow({
             (c.branch ?? c.title)
           )}
           {c.author ? ` · ${c.author}` : ""}
-          {c.kind === "pr" && typeof c.updatedAt === "number" ? ` · ${timeAgo(c.updatedAt)}` : ""}
+          {(c.kind === "pr" || c.kind === "branch") && typeof c.updatedAt === "number"
+            ? ` · ${timeAgo(c.updatedAt)}`
+            : ""}
           {size !== null ? (
             <>
               {" · "}
@@ -1355,6 +1434,9 @@ function ChangeSection({
   errorTestId,
   opening,
   empty,
+  emptyTestId,
+  filteredNote,
+  onShowAll,
   onOpen,
   owner,
   name,
@@ -1367,6 +1449,12 @@ function ChangeSection({
   errorTestId: string;
   opening: string | null;
   empty: string;
+  /** #131: test id for the empty state (authoring and branches need one). */
+  emptyTestId?: string;
+  /** #131: when the recency window hides every row, this note replaces the
+      generic empty text, with a way back to All. Null means genuinely empty. */
+  filteredNote?: string | null;
+  onShowAll?: (() => void) | null;
   onOpen: (c: RepoChange, i: number) => void;
   owner: string | null;
   name: string | null;
@@ -1380,7 +1468,18 @@ function ChangeSection({
         </p>
       ) : null}
       {changes.length === 0 && !error ? (
-        <p className="hint">{empty}</p>
+        filteredNote ? (
+          <p className="hint" data-testid={emptyTestId}>
+            {filteredNote}{" "}
+            <button type="button" className="mini" onClick={onShowAll ?? undefined}>
+              Show all
+            </button>
+          </p>
+        ) : (
+          <p className="hint" data-testid={emptyTestId}>
+            {empty}
+          </p>
+        )
       ) : (
         changes.map((c, i) => (
           <ChangeRow key={changeKey(c, i)} c={c} i={i} opening={opening} onOpen={onOpen} owner={owner} name={name} />

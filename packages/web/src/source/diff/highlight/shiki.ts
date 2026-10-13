@@ -15,8 +15,9 @@
  */
 
 import type { HighlighterCore } from "shiki/core";
+import { sha256HexUtf8 } from "@unvibe/shared";
 import { detectLanguage, importLanguage, type ShikiLangId } from "./language.js";
-import { cacheKey, tokenizeHunk, type LineTokens, type RawToken } from "./tokenize.js";
+import { cacheKey, tokenizeHunk, toSegments, MAX_LINE_CHARS, MAX_SIDE_CHARS, type LineTokens, type RawToken } from "./tokenize.js";
 import type { Hunk } from "@unvibe/shared";
 
 const THEME_NAME = "unvibe";
@@ -26,6 +27,7 @@ let highlighterPromise: Promise<HighlighterCore | null> | null = null;
 const loadedLangs = new Set<string>();
 const loadingLangs = new Map<string, Promise<boolean>>();
 const hunkCache = new Map<string, { old: (LineTokens | null)[]; new: (LineTokens | null)[] } | null>();
+const lineCache = new Map<string, (LineTokens | null)[] | null>();
 
 let version = 0;
 const listeners = new Set<() => void>();
@@ -172,14 +174,53 @@ export function cachedHunk(
   return hunkCache.get(cacheKey(contentHash, lang));
 }
 
+/**
+ * Tokenise arbitrary file lines (issue #133: revealed context around
+ * hunks) with the file's grammar, one row per line, in order. Same
+ * never-throw contract as `highlightHunk`: unknown languages, failures
+ * and over-cap inputs resolve null (plain rows). Results cache by
+ * `lang:sha(lines)` so re-renders never recompute.
+ */
+export async function highlightLines(path: string, texts: string[]): Promise<(LineTokens | null)[] | null> {
+  const lang = detectLanguage(path);
+  if (!lang || texts.length === 0) return null;
+  if (texts.reduce((s, t) => s + t.length, 0) > MAX_SIDE_CHARS) return null;
+  const key = cacheKey(sha256HexUtf8(texts.join("\n")).slice(0, 16), lang);
+  const cached = lineCache.get(key);
+  if (cached !== undefined) return cached;
+  const hl = await ensureLang(lang);
+  if (!hl) {
+    lineCache.set(key, null);
+    return null;
+  }
+  try {
+    const rows = await tokenizeSide(hl, lang, texts);
+    const out = rows.map((row, i) => (texts[i].length > MAX_LINE_CHARS ? null : toSegments(row)));
+    lineCache.set(key, out);
+    if (out.some((r) => r !== null)) bump();
+    return out;
+  } catch {
+    lineCache.set(key, null);
+    return null;
+  }
+}
+
+/** Synchronous cache read for revealed lines (null = unknown or plain). */
+export function cachedLines(path: string, texts: string[]): (LineTokens | null)[] | null | undefined {
+  const lang = detectLanguage(path);
+  if (!lang || texts.length === 0) return null;
+  return lineCache.get(cacheKey(sha256HexUtf8(texts.join("\n")).slice(0, 16), lang));
+}
+
 /** Test introspection: cache size and loaded languages. */
 export function highlightStats(): { cached: number; langs: string[] } {
-  return { cached: hunkCache.size, langs: [...loadedLangs] };
+  return { cached: hunkCache.size + lineCache.size, langs: [...loadedLangs] };
 }
 
 /** Clear caches (tests only). */
 export function resetHighlightForTests(): void {
   hunkCache.clear();
+  lineCache.clear();
   loadedLangs.clear();
   loadingLangs.clear();
   highlighter = null;

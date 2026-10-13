@@ -59,10 +59,12 @@ import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
 import { freshBlockId, parseGitHubRepoInput } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
+import { mockFileSlice, mockOutline } from "./fileContents.js";
 import { MOCK_ANNOTATIONS, MOCK_DESCRIPTION as guideDescription, MOCK_PAGES } from "./guide.js";
 import {
   mockAddedD2Block,
   mockDiagramSvg,
+  mockErrorD2Block,
   mockMultilineD2Block,
   mockSeedD2Block,
   mockUnavailableD2Block,
@@ -548,8 +550,9 @@ let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
  * Seed mock D2 edge cases into the go-deeper flow card: the fixture's own
  * diagram block (rendered fixture SVGs served by `diagramSvg` below)
  * covers the ok path; the seeds add an unverified-anchor block, an
- * unavailable block (no binary) and a multi-line-label block, so
- * mock-mode tests exercise those branches without touching the fixture.
+ * unavailable block (no binary), a failed-compile block (plain fallback
+ * + retry, #130) and a multi-line-label block, so mock-mode tests
+ * exercise those branches without touching the fixture.
  */
 function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
   const card = pages
@@ -560,6 +563,7 @@ function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
     ...card.blocks,
     mockSeedD2Block() as never,
     mockUnavailableD2Block() as never,
+    mockErrorD2Block() as never,
     mockMultilineD2Block() as never,
   ];
 }
@@ -1190,8 +1194,12 @@ function mockPostText(thread: import("@unvibe/shared").Annotation): string {
 
 /** Mock Submit preview: same shape as the service `buildPreview`. */
 function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
+  // Mirrors the service's locatePendingThreads (issue #135): only Comments
+  // are submitted, never Ask threads.
+  const isComment = (a: import("@unvibe/shared").Annotation): boolean =>
+    a.note || a.messages.some((m) => m.suggested);
   const pending = annotations.filter(
-    (a) => a.type === "thread" && (a as import("@unvibe/shared").Annotation).post && !(a as import("@unvibe/shared").Annotation).postedAt,
+    (a) => a.type === "thread" && (a as import("@unvibe/shared").Annotation).post && !(a as import("@unvibe/shared").Annotation).postedAt && isComment(a as import("@unvibe/shared").Annotation),
   ) as import("@unvibe/shared").Annotation[];
   const alreadyPosted = annotations
     .filter((a) => a.type === "thread" && a.post && a.postedAt)
@@ -2611,6 +2619,22 @@ export const mockApi = {
     return { jobId: `mock-${hash}` };
   },
 
+  fileSlice: async (
+    id: string,
+    params: { path: string; commit: string; start: number; end: number },
+  ): Promise<import("@unvibe/shared").FileSliceResponse> => {
+    await wait(60);
+    return mockFileSlice(id, params);
+  },
+
+  outline: async (
+    id: string,
+    params: { path: string; commit: string; start: number; end: number },
+  ): Promise<import("@unvibe/shared").FileOutlineResponse> => {
+    await wait(60);
+    return mockOutline(id, params);
+  },
+
   createComment: async (
     _id: string,
     body: import("@unvibe/shared").CreateCommentRequest,
@@ -2635,7 +2659,9 @@ export const mockApi = {
       },
       open: host.kind === "block" ? false : true,
       messages: body.text ? [{ who: "you", text: body.text }] : [],
-      post: false,
+      // Mirrors the service (issue #135): a Comment is for the PR by
+      // default; an Ask thread never is.
+      post: (body.note ?? true) === true,
       note: body.note ?? true,
     };
     if (body.suggested && body.suggestionText) {
@@ -2694,6 +2720,11 @@ export const mockApi = {
       return { ok: true };
     }
     if (thread.type !== "thread") throw new Error("unknown comment");
+    // Mirrors the service PATCH guard (issue #135): `post` is not accepted
+    // on an Ask thread in either direction.
+    if (body.post !== undefined && !thread.note && !thread.messages.some((m) => m.suggested)) {
+      throw new Error("ask threads are never posted to GitHub — write a comment instead");
+    }
     if (body.post !== undefined) {
       thread.post = body.post;
       if (body.post) thread.open = true;

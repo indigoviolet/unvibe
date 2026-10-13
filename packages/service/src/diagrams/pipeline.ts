@@ -21,6 +21,7 @@ import type { ReviewLookup } from "../validate/lookup.js";
 import { validateTarget } from "../validate/index.js";
 import type { ResolvedD2Bin } from "./bins.js";
 import { checkD2Source, renderD2Theme, D2_THEME_DARK, D2_THEME_LIGHT } from "./render.js";
+import { renameReservedShapeKeys } from "./precheck.js";
 import { postProcessSvg, type CitationMap } from "./sanitize.js";
 import { DiagramCache } from "./cache.js";
 
@@ -49,7 +50,10 @@ export interface FinalizedBlock {
  * status).
  */
 export async function finalizeDiagramBlock(source: string, caption: string | undefined, deps: FinalizeDeps): Promise<FinalizedBlock> {
-  const canonSource = canonicalizeD2Source(source);
+  // Unambiguous reserved-word shapes (`steps: "label"`) are renamed before
+  // anything else, so validation, compile-check, render and hash all see
+  // the fixed source (issue #130).
+  const canonSource = renameReservedShapeKeys(canonicalizeD2Source(source)).source;
   const messages: string[] = [];
 
   // --- steps 1–2: validate each link: target ---------------------------

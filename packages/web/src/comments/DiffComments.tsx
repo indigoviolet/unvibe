@@ -32,6 +32,7 @@ interface Pending {
   line: number;
   quote: string;
   note: boolean;
+  initialText?: string;
 }
 
 export function useDiffCommentBindings(reviewId: string): {
@@ -49,7 +50,13 @@ export function useDiffCommentBindings(reviewId: string): {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
       if (req.anchor.where !== "diff-line") return;
       if (isReadOnlyVersionNow()) return;
-      setPending({ fileKey: req.anchor.fileKey, line: req.anchor.line, quote: req.quote, note: req.note });
+      setPending({
+        fileKey: req.anchor.fileKey,
+        line: req.anchor.line,
+        quote: req.quote,
+        note: req.note,
+        ...(req.initialText !== undefined ? { initialText: req.initialText } : {}),
+      });
     };
     window.addEventListener(NEW_THREAD_EVENT, onRequest);
     return () => window.removeEventListener(NEW_THREAD_EVENT, onRequest);
@@ -95,7 +102,7 @@ export function useDiffCommentBindings(reviewId: string): {
         }, 60);
         return;
       }
-      setPending({ fileKey, line, quote: "", note: false });
+      setPending({ fileKey, line, quote: "", note: true });
     },
     [byLine, reviewId],
   );
@@ -117,6 +124,7 @@ export function useDiffCommentBindings(reviewId: string): {
               anchor={{ where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
               quote={pending.quote}
               note={pending.note}
+              initialText={pending.initialText}
               onDiscard={() => setPending(null)}
               onCreated={() => setPending(null)}
             />
@@ -132,6 +140,7 @@ export function useDiffCommentBindings(reviewId: string): {
           anchor={{ where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
           quote={pending.quote}
           note={pending.note}
+          initialText={pending.initialText}
           onDiscard={() => setPending(null)}
           onCreated={() => setPending(null)}
         />

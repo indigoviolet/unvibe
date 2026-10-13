@@ -1,7 +1,7 @@
 /**
  * Guide-page error boundary (issue #101): a throw in the page view shows a
- * guide-sized notice (the version switcher above it survives) and the
- * boundary resets when the review changes.
+ * guide-sized notice and the boundary resets when the review changes.
+ * (The version selector lives in the review bar since #120, not here.)
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";

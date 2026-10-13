@@ -32,6 +32,9 @@ Adds a fast path that skips values without CRLF.
 {"hunk": {"summary": "Adds a fast path that skips values without CRLF.", "hiddenReason": null}}
 ```
 
+Always send the summary line first, then the `json` block — never the
+block on its own.
+
 Set `hiddenReason` to a one-line reason only for generated files,
 import-only changes, or docs/config churn (e.g. `"import-only change"`);
 otherwise null. Never mark uninteresting: a hunk cited by the guide, a

@@ -7,15 +7,18 @@
  *   reviewed count, mark-file-reviewed toggle;
  * - hunks render through hidden-run grouping; hunk cards (summary + note)
  *   exist independently of folding; folding only hides code;
- * - unified rows scroll sideways, split rows pair del/add runs in two equal
- *   halves; hunk headers/cards/slot rows are pinned to the pane width.
+ * - each hunk is its own section (header, card, folded placeholder, code
+ *   table), so the hunk header's vertical stick reaches `#right` past every
+ *   horizontal scroller (#140); unified code tables scroll sideways per
+ *   hunk, split rows pair del/add runs in two equal halves; in-table slot
+ *   rows stay pinned to the pane width via `.pin`.
  *
  * Performance: the file header always renders (cheap); the hunk table
  * renders lazily on first intersection with the pane, so a 300-file diff
  * mounts ~300 headers instead of 5k hunks. `eager` bypasses the lazy gate
  * (above-the-fold files, file jumps, `revealSource` targets).
  */
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Hunk, HunkLine, ReviewFile } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
@@ -31,6 +34,14 @@ import { slotKey, type LineSlots } from "./lineSlots.js";
 import { codeLineHtml } from "./highlight/codeHtml.js";
 import { useFileHighlight } from "./highlight/useFileHighlight.js";
 import type { LineTokens } from "./highlight/tokenize.js";
+import {
+  ExpandEdge,
+  ExpandGap,
+  RevealedRows,
+  useFileExpansion,
+  useRevealedTokens,
+} from "./FileExpansion.js";
+import { maxLineDigits } from "./expandLines.js";
 import "./highlight/highlight.css";
 
 export type DiffViewMode = "unified" | "split";
@@ -80,6 +91,18 @@ interface SectionProps {
   commentedLines: ReadonlySet<string>;
   highlight: LineRange | null;
   fileHighlighted: boolean;
+  /** Review id for file slices (issue #133: diff expansion). */
+  reviewId: string;
+  /** Head commit: the side expanded for every file but deleted ones. */
+  headCommit: string;
+  /** Base commit: the side expanded for deleted files. */
+  baseCommit: string;
+  /**
+   * False when the review has no readable file content (issue #133:
+   * the service answers `no-content`, e.g. the demo). Expansion and
+   * unit controls hide instead of showing load errors.
+   */
+  contentAvailable: boolean;
   /** Brief copy for hidden rows, keyed `fileKey:index` (mock fixture). */
   briefs: Readonly<Record<string, string>> | null;
   /**
@@ -357,14 +380,12 @@ function HunkCard({
 function HiddenRow({
   file,
   indices,
-  cols,
   briefs,
   summaries,
   onUnhide,
 }: {
   file: ReviewFile;
   indices: number[];
-  cols: number;
   briefs: Readonly<Record<string, string>> | null;
   summaries: ReadonlyMap<string, { summary?: string }>;
   onUnhide(hashes: string[]): void;
@@ -385,28 +406,44 @@ function HiddenRow({
     .filter(Boolean)
     .join(" ");
   return (
-    <tr className="pr">
-      <td colSpan={cols}>
-        <button
-          className="pin hid"
-          type="button"
-          data-tip="Show these hunks"
-          aria-label={`${hiddenRunLabel(file, indices)} hidden. Show these hunks`}
-          onClick={() => onUnhide(indices.map((i) => file.hunks[i].contentHash))}
-        >
-          <Icon name="right" />
-          <span className="hidl">
-            {hiddenRunLabel(file, indices)} hidden · {reasons} · +{added} −{removed}
-          </span>
-          <span className="hidb">{brief}</span>
-        </button>
-      </td>
-    </tr>
+    // A plain block between hunk sections: never pinned, scrolls under the
+    // file and hunk headers (#140).
+    <div className="dhid">
+      <button
+        className="hid"
+        type="button"
+        data-tip="Show these hunks"
+        aria-label={`${hiddenRunLabel(file, indices)} hidden. Show these hunks`}
+        onClick={() => onUnhide(indices.map((i) => file.hunks[i].contentHash))}
+      >
+        <Icon name="right" />
+        <span className="hidl">
+          {hiddenRunLabel(file, indices)} hidden · {reasons} · +{added} −{removed}
+        </span>
+        <span className="hidb">{brief}</span>
+      </button>
+    </div>
   );
 }
 
-function HunkBlock(props: SectionProps & { index: number; cols: number }): ReactNode {
-  const { file, index, cols } = props;
+function HunkBlock(
+  props: SectionProps & {
+    index: number;
+    /** Rows above the hunk's own code rows (issue #133: expand controls + revealed context). */
+    beforeRows?: ReactNode;
+    /** Rows below the hunk's own code rows (issue #133). */
+    afterRows?: ReactNode;
+    /** Unit name for the header (`· in <name>`), once a unit level expanded (issue #133). */
+    unitName?: string | null;
+    /** True when the shown unit came from the heuristic fallback. */
+    unitApprox?: boolean;
+    /** Next unit step, null when done or unavailable. */
+    unitNext?: { label: string; tip: string } | null;
+    unitPending?: boolean;
+    onUnitExpand?: () => void;
+  },
+): ReactNode {
+  const { file, index } = props;
   const h = file.hunks[index];
   const st = props.states.get(h.contentHash);
   const folded = st?.folded ?? false;
@@ -420,6 +457,7 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
   const busy = !!props.busy[h.contentHash];
   const k = `${file.fileKey}:${index}`;
   const fn = h.context?.match(/(?:def|class)\s+(\w+)/)?.[1];
+  const inName = props.unitName ?? fn ?? null;
   const rowProps: RowProps = {
     fileKey: file.fileKey,
     hunk: h,
@@ -430,124 +468,165 @@ function HunkBlock(props: SectionProps & { index: number; cols: number }): React
     toks: props.tokens?.get(h.contentHash) ?? null,
   };
   return (
-    <>
-      <tr className="pr">
-        <td colSpan={cols}>
-          <div className={`pin hh${reviewed ? " rev" : ""}`} data-hunk={k}>
-            <button
-              className="ib"
-              type="button"
-              data-tip={folded ? "Show code" : "Fold code"}
-              aria-label={folded ? "Show code" : "Fold code"}
-              onClick={() => props.actions.toggleFold(h.contentHash, folded)}
-            >
-              <Icon name={folded ? "right" : "down"} />
-            </button>
-            <span className="hl2" data-tip={h.header}>
-              <b>
-                Hunk {index + 1} of {file.hunks.length}
-              </b>{" "}
-              · lines {h.newStart}–{h.newEnd}
-              {fn ? ` · in ${fn}` : ""} ·{" "}
-              <span className="st">
-                <span className="a">+{h.added}</span> <span className="d">−{h.removed}</span>
-              </span>
-              {changedSinceReviewed ? <span className="prtag">changed since reviewed</span> : null}
+    // One section per hunk (#140): the header is a direct child of the file
+    // flow, outside any horizontal scroller, so its vertical stick reaches
+    // #right on every engine; only the code table scrolls sideways, per hunk.
+    <div className="dhunk">
+      <div className={`hh dhunk-h${reviewed ? " rev" : ""}`} data-hunk={k}>
+        <button
+          className="ib"
+          type="button"
+          data-tip={folded ? "Show code" : "Fold code"}
+          aria-label={folded ? "Show code" : "Fold code"}
+          onClick={() => props.actions.toggleFold(h.contentHash, folded)}
+        >
+          <Icon name={folded ? "right" : "down"} />
+        </button>
+        <span className="hl2" data-tip={h.header}>
+          <b>
+            Hunk {index + 1} of {file.hunks.length}
+          </b>{" "}
+          · lines {h.newStart}–{h.newEnd}
+          {inName ? ` · in ${inName}` : ""}
+          {props.unitApprox && props.unitName ? (
+            <span className="hint" data-tip="Approximate unit: guessed without a grammar">
+              {" ~"}
             </span>
-            {summaryPending && !busy ? (
-              <span className="hint" data-tip="Update rewrites this summary">
-                summary out of date
-              </span>
-            ) : null}
-            {busy ? (
-              <span className="hint" aria-label="Summarizing">
-                <span className="dots">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </span>
-            ) : summary ? null : (
-              <button
-                className="ib"
-                type="button"
-                data-tip="Summarize with agent"
-                aria-label="Summarize with agent"
-                onClick={() => props.actions.summarize(h.contentHash)}
-              >
-                <Icon name="spark" />
-              </button>
-            )}
-            <button
-              className="ib"
-              type="button"
-              data-tip={note ? "Edit note" : "Add note"}
-              aria-label={note ? "Edit note" : "Add note"}
-              onClick={() => props.actions.beginNote(h.contentHash, note)}
-            >
-              <Icon name="note" />
-            </button>
-            <button
-              className="ib"
-              type="button"
-              data-tip={reviewed ? "Mark not reviewed" : "Mark reviewed"}
-              aria-label={reviewed ? "Mark not reviewed" : "Mark reviewed"}
-              aria-pressed={reviewed}
-              onClick={() => props.actions.toggleReviewed(h.contentHash, reviewed)}
-            >
-              <Icon name="check" />
-            </button>
-          </div>
-        </td>
-      </tr>
+          ) : null}{" "}
+          ·{" "}
+          <span className="st">
+            <span className="a">+{h.added}</span> <span className="d">−{h.removed}</span>
+          </span>
+          {changedSinceReviewed ? <span className="prtag">changed since reviewed</span> : null}
+        </span>
+        {summaryPending && !busy ? (
+          <span className="hint" data-tip="Update rewrites this summary">
+            summary out of date
+          </span>
+        ) : null}
+        {busy ? (
+          <span className="hint" aria-label="Summarizing">
+            <span className="dots">
+              <i />
+              <i />
+              <i />
+            </span>
+          </span>
+        ) : summary ? null : (
+          <button
+            className="ib"
+            type="button"
+            data-tip="Summarize with agent"
+            aria-label="Summarize with agent"
+            onClick={() => props.actions.summarize(h.contentHash)}
+          >
+            <Icon name="spark" />
+          </button>
+        )}
+        {props.unitNext ? (
+          <button
+            className="ib"
+            type="button"
+            data-tip={props.unitNext.tip}
+            aria-label={props.unitNext.tip}
+            disabled={props.unitPending}
+            onClick={props.onUnitExpand}
+          >
+            <Icon name="code" />
+          </button>
+        ) : null}
+        <button
+          className="ib"
+          type="button"
+          data-tip={note ? "Edit note" : "Add note"}
+          aria-label={note ? "Edit note" : "Add note"}
+          onClick={() => props.actions.beginNote(h.contentHash, note)}
+        >
+          <Icon name="note" />
+        </button>
+        <button
+          className="ib"
+          type="button"
+          data-tip={reviewed ? "Mark not reviewed" : "Mark reviewed"}
+          aria-label={reviewed ? "Mark not reviewed" : "Mark reviewed"}
+          aria-pressed={reviewed}
+          onClick={() => props.actions.toggleReviewed(h.contentHash, reviewed)}
+        >
+          <Icon name="check" />
+        </button>
+      </div>
       {summary ?? note ?? noteDraft !== undefined ? (
-        <tr className="pr">
-          <td colSpan={cols}>
-            <div className="pin fwrap">
-              <HunkCard
-                reviewed={reviewed}
-                summary={summary}
-                note={note}
-                noteStale={noteStale}
-                noteDraft={noteDraft}
-                hash={h.contentHash}
-                actions={props.actions}
-              />
-            </div>
-          </td>
-        </tr>
+        <div className="fwrap">
+          <HunkCard
+            reviewed={reviewed}
+            summary={summary}
+            note={note}
+            noteStale={noteStale}
+            noteDraft={noteDraft}
+            hash={h.contentHash}
+            actions={props.actions}
+          />
+        </div>
       ) : null}
       {folded ? (
-        <tr className="pr">
-          <td colSpan={cols}>
-            <button
-              className="pin folded"
-              type="button"
-              aria-label={`${h.added + h.removed} changed lines folded. Show`}
-              onClick={() => props.actions.toggleFold(h.contentHash, folded)}
-            >
-              {h.added + h.removed} changed lines folded · show
-            </button>
-          </td>
-        </tr>
-      ) : props.view === "unified" ? (
-        <UnifiedRows {...rowProps} />
+        <button
+          className="folded"
+          type="button"
+          aria-label={`${h.added + h.removed} changed lines folded. Show`}
+          onClick={() => props.actions.toggleFold(h.contentHash, folded)}
+        >
+          {h.added + h.removed} changed lines folded · show
+        </button>
       ) : (
-        <SplitRows {...rowProps} />
+        <div className="dwrap">
+          <table className={`diff ${props.view}`}>
+            {props.view === "split" ? (
+              <colgroup>
+                <col className="cn" />
+                <col />
+                <col className="cn" />
+                <col />
+              </colgroup>
+            ) : null}
+            <tbody>
+              {props.beforeRows}
+              {props.view === "unified" ? <UnifiedRows {...rowProps} /> : <SplitRows {...rowProps} />}
+              {props.afterRows}
+            </tbody>
+          </table>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
 export function FileSection(props: SectionProps): ReactNode {
-  const { file, view } = props;
+  const { file } = props;
   const [visible, setVisible] = useState(props.eager);
   const bodyRef = useRef<HTMLDivElement>(null);
   const stats = fileStats(file);
   const base = file.path.split("/").pop()!;
   const dir = file.path.slice(0, Math.max(0, file.path.length - base.length));
   const done = props.reviewed === file.hunks.length;
-  const cols = view === "split" ? 4 : 3;
+  // Expand-by-lines state (issue #133): revealed context around hunks.
+  // Binary files never expand (no text to show); reviews without file
+  // content hide every expansion control instead of failing per hunk.
+  const canExpand = props.contentAvailable && !file.isBinary;
+  const expansion = useFileExpansion(file, {
+    reviewId: props.reviewId,
+    headCommit: props.headCommit,
+    baseCommit: props.baseCommit,
+    disabled: !canExpand,
+  });
+  const revealedTokens = useRevealedTokens(file.path, expansion.lines, visible && !props.folded && !file.isBinary);
+  // Widest line number in the file, in digits (see `--lnw` on `.dfile`).
+  // Revealed lines can carry more digits than the hunks (a 4-digit file
+  // with 3-digit hunks), so they widen the shared width too.
+  const lineDigits = Math.max(
+    1,
+    ...file.hunks.flatMap((h) => h.lines.map((l) => String(l.oldLine ?? l.newLine ?? 0).length)),
+    maxLineDigits(expansion.lines),
+  );
   // Only rendered (unhidden) hunks tokenise; unhiding later picks up the
   // cache or tokenises on demand. Folded files skip entirely (no body).
   const renderedHunks = useMemo(
@@ -586,8 +665,139 @@ export function FileSection(props: SectionProps): ReactNode {
     return () => io.disconnect();
   }, [props.eager]);
 
+  // Colspan for control rows inside per-hunk tables (#140 builds one
+  // table per hunk, so the parent scope owns the column count).
+  const cols = props.view === "split" ? 4 : 3;
+
+  /**
+   * File body sections (issue #133 on #140's structure): hidden runs stay
+   * table-free `.dhid` blocks; each shown hunk mounts edge-above /
+   * revealed-above into its section's `beforeRows` and revealed-below /
+   * edge-below / gap into `afterRows`. Folded hunks render no table, so
+   * their expansion rows wait for unfolding.
+   */
+  function buildSections(): ReactNode {
+    const groups = groupHunks(file.hunks, props.isHidden);
+    const shown = new Set(groups.flatMap((g) => (g.type === "show" ? [g.index] : [])));
+    const lastIndex = file.hunks.length - 1;
+    return groups.map((g) => {
+      if (g.type === "hidden") {
+        return (
+          <HiddenRow
+            key={`hid-${g.indices.join("-")}`}
+            file={file}
+            indices={g.indices}
+            briefs={props.briefs}
+            summaries={props.states}
+            onUnhide={props.onUnhide}
+          />
+        );
+      }
+      const i = g.index;
+      const h = file.hunks[i];
+      const u = canExpand ? expansion.unitFor(h) : null;
+      const before: ReactNode[] = [];
+      const after: ReactNode[] = [];
+      if (canExpand) {
+        const above = expansion.regionAbove(i);
+        if (above) {
+          before.push(
+            <ExpandEdge
+              key={`xa-${file.fileKey}-${i}`}
+              hunk={h}
+              index={i}
+              side="above"
+              expansion={expansion}
+              file={file}
+              cols={cols}
+              showHide={i === 0}
+            />,
+          );
+          // Gap lines render once, below the earlier hunk — so only the
+          // top region renders lines above.
+          if (i === 0) {
+            const aboveLines = expansion.lines.filter((l) => l.line >= above.start && l.line <= above.end);
+            if (aboveLines.length > 0) {
+              before.push(
+                <RevealedRows
+                  key={`ra-${file.fileKey}-${i}`}
+                  fileKey={file.fileKey}
+                  lines={aboveLines}
+                  view={props.view}
+                  tokens={revealedTokens}
+                  slots={props.slots}
+                  highlight={props.highlight}
+                />,
+              );
+            }
+          }
+        }
+        const below = expansion.regionBelow(i, file.hunks);
+        if (below) {
+          const belowLines = expansion.lines.filter((l) => l.line >= below.start && l.line <= below.end);
+          if (belowLines.length > 0) {
+            after.push(
+              <RevealedRows
+                key={`rb-${file.fileKey}-${i}`}
+                fileKey={file.fileKey}
+                lines={belowLines}
+                view={props.view}
+                tokens={revealedTokens}
+                slots={props.slots}
+                highlight={props.highlight}
+              />,
+            );
+          }
+        }
+        after.push(
+          <ExpandEdge
+            key={`xb-${file.fileKey}-${i}`}
+            hunk={h}
+            index={i}
+            side="below"
+            expansion={expansion}
+            file={file}
+            cols={cols}
+            showHide={i === lastIndex}
+          />,
+        );
+        // The gap row lives with the earlier hunk, and only while both
+        // sides show: a fully revealed gap then reads as one run of code
+        // lines, closed by the slim hide row, with the next hunk's own
+        // (pinning) header below it.
+        const gap = expansion.regions.find((r) => r.key === `gap-${i}`);
+        if (gap && shown.has(i + 1)) {
+          after.push(<ExpandGap key={`gap-${file.fileKey}-${i}`} region={gap} expansion={expansion} cols={cols} />);
+        }
+      }
+      return (
+        <HunkBlock
+          key={`hunk-${file.fileKey}-${i}`}
+          index={i}
+          {...props}
+          tokens={tokens}
+          beforeRows={before}
+          afterRows={after}
+          unitName={u?.name ?? null}
+          unitApprox={u?.approx ?? false}
+          unitNext={u?.next ?? null}
+          unitPending={u?.pending ?? false}
+          onUnitExpand={u ? () => expansion.expandUnit(h) : undefined}
+        />
+      );
+    });
+  }
+
   return (
-    <div className={`dfile${props.fileHighlighted ? " hl" : ""}`} id={`F-${file.fileKey}`}>
+    <div
+      className={`dfile${props.fileHighlighted ? " hl" : ""}`}
+      id={`F-${file.fileKey}`}
+      // Shared line-number width for the file's hunk tables (#140): every
+      // hunk is its own table, so without this the number columns would size
+      // per hunk (2-digit vs 4-digit) and code columns would start at
+      // different x offsets. Digits come from the data, not the DOM.
+      style={{ "--lnw": `${lineDigits}ch` } as CSSProperties}
+    >
       <div className="dfile-h">
         <button
           className="ib"
@@ -623,39 +833,23 @@ export function FileSection(props: SectionProps): ReactNode {
         </button>
       </div>
       {props.folded ? null : (
-        <div className="dwrap" ref={bodyRef}>
+        <div className="dbody" ref={bodyRef}>
           {file.isBinary ? (
             <p className="hint" style={{ padding: "6px 10px" }}>
               Binary file · changes not shown.
             </p>
           ) : visible ? (
-            <table className={`diff ${view}`}>
-              {view === "split" ? (
-                <colgroup>
-                  <col className="cn" />
-                  <col />
-                  <col className="cn" />
-                  <col />
-                </colgroup>
+            <>
+              {buildSections()}
+              {expansion.error ? (
+                <div className="xerr">
+                  <span>Couldn&apos;t load those lines: {expansion.error}</span>
+                  <button className="tbtn xs" type="button" onClick={expansion.retry}>
+                    Retry
+                  </button>
+                </div>
               ) : null}
-              <tbody>
-                {groupHunks(file.hunks, props.isHidden).map((g) =>
-                  g.type === "hidden" ? (
-                    <HiddenRow
-                      key={`hid-${g.indices.join("-")}`}
-                      file={file}
-                      indices={g.indices}
-                      cols={cols}
-                      briefs={props.briefs}
-                      summaries={props.states}
-                      onUnhide={props.onUnhide}
-                    />
-                  ) : (
-                    <HunkBlock key={`hunk-${file.fileKey}-${g.index}`} index={g.index} cols={cols} {...props} tokens={tokens} />
-                  ),
-                )}
-              </tbody>
-            </table>
+            </>
           ) : (
             <div style={{ minHeight: 28 }} aria-hidden="true" />
           )}

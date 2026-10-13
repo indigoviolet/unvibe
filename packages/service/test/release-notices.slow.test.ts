@@ -138,4 +138,19 @@ describe("third-party notices match the current build", () => {
     expect(text).toContain("Reserved Font Name 'Source'");
     expect(text).toContain("Unvibe's own licence");
   });
+
+  it("lists every shipped grammar file (issue #133)", () => {
+    const dir = path.join(ROOT, "packages", "service", "dist", "grammars");
+    const shipped = fs
+      .readdirSync(dir)
+      .filter((e) => e.endsWith(".wasm"))
+      .sort();
+    expect(shipped.length).toBeGreaterThan(0);
+    for (const f of shipped) {
+      expect(text).toContain(`packages/service/dist/grammars/${f}`);
+    }
+    expect(text).toContain("## Tree-sitter grammars (enclosing-unit expansion)");
+    expect(text).toContain("Copyright (c) 2018 Max Brunsfeld");
+    expect(text).toContain("Copyright (c) Microsoft Corporation.");
+  });
 });

@@ -2,7 +2,7 @@
  * Selecting text inside an explanation (#116): annotations hosted on an
  * expansion block render under that block — open nested explanations as
  * cards, open threads in place, closed ones as footnote chips — and the
- * Ask/Note composer opens there too.
+ * Ask/Comment composer opens there too.
  */
 import { afterEach, describe, expect, test } from "vitest";
 import "@testing-library/jest-dom/vitest";

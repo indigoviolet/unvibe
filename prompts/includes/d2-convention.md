@@ -17,7 +17,10 @@ left-to-right pipelines, `down` for top-down chains); `shape:
 sequence_diagram` for sequences with participants; shapes as `id: "Short
 label"` with every label short (a few words, at most two lines — long
 single-line labels overflow their boxes); edges as `a -> b: label`; mark
-good/bad states with `*.class: [ok]` / `[bad]`.
+a good/bad outcome with `myid.class: [ok]` / `[bad]` on its own line
+(never inside `{ ... }`).
+Never name a shape `steps`, `layers`, `scenarios` or `boards` (those words
+switch on multi-board diagrams): call the box `flow` or `steps_box`.
 Limits: at most 12 shapes and 16 connections; no icon:, no shape: image, no
 imports, no markdown labels, no layers/scenarios/steps/boards, no vars, no
 `classes:` stanzas, no tooltip:. Example:

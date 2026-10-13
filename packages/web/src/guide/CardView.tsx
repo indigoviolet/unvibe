@@ -25,6 +25,7 @@ import { useReview } from "../state/store.js";
 import { performAction, performInsertAction, performUpdate } from "./actions.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
+import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { ExpansionCard } from "./expansions/ExpansionCard.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
@@ -259,45 +260,18 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         </div>
       ) : null}
       <div className="ctl">
-        <span className="depth" role="group" aria-label="Depth" aria-busy={depthBusy || undefined}>
-          <button
-            type="button"
-            data-tip="Simpler"
-            aria-label={depthBusy ? "Working…" : "Simpler"}
-            disabled={depthIndex <= 0 || controlsBusy}
-            onClick={() =>
-              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
-            }
-          >
-            −
-          </button>
-          <span className="dl" data-tip="Depth">
-            <span className="pips" aria-hidden="true">
-              {DEPTH_ORDER.map((_, j) => (
-                <i key={j} className={j <= depthIndex ? "on" : ""} />
-              ))}
-            </span>
-          </span>
-          <button
-            type="button"
-            data-tip={depthBusy ? "Working…" : "Deeper"}
-            aria-label={depthBusy ? "Working…" : "Deeper"}
-            disabled={controlsBusy}
-            onClick={() =>
-              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
-            }
-          >
-            {depthBusy ? (
-              <span className="dots" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-            ) : (
-              "+"
-            )}
-          </button>
-        </span>
+        <DepthControl
+          level={card.level}
+          disabled={controlsBusy}
+          depthBusy={depthBusy}
+          simplerAtLimit={depthIndex <= 0}
+          onSimpler={() =>
+            runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
+          }
+          onDeeper={() =>
+            runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
+          }
+        />
         <ControlButton
           icon="bulb"
           label="Use examples"
