@@ -142,7 +142,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 ### 4.6 Selecting text
 - Works in the guide, the PR description, and diff code.
 - A selection snaps to whole words, with leading and trailing spaces trimmed, and the highlight updates to match.
-- The toolbar offers **Explain**, **Ask…**, **Comment** and **GitHub**. Examples and diagrams come from the explanation card's own controls, not the toolbar.
+- The toolbar offers **Explain**, **Ask…**, **Comment** and **GitHub**. Examples and diagrams come from the conversation card's own controls, not the toolbar.
 - The toolbar appears only when the user finishes selecting text, never after clicking a control.
 - **GitHub** is a plain link out: on a diff selection it opens the selected lines in GitHub's file view at the review's commit (the head commit for added and unchanged lines, the base commit when the selection is only on removed lines). It starts no job and no thread, and is hidden where there is nothing unambiguous to open (prose, non-GitHub repos, the demo).
 
@@ -156,11 +156,12 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - The card is never submitted to GitHub; it carries no For-PR control.
 
 ### 4.8 Comments
-- **Ask…** starts a thread, and the agent replies with citations. **Comment** starts a thread with no agent reply. Only Ask sends text to the agent.
-- A **Comment** is for the PR by default and can be switched off to keep it local. An **Ask** thread is never for the PR and carries no For-PR control. Only comments are submitted to GitHub.
+- **Ask…** opens the conversation card (§4.7) on the selection's anchor, with the question as its first turn. **Comment** starts a comment thread with no agent reply. Only Ask sends text to the agent.
+- A **Comment** is for the PR by default and can be switched off to keep it local. A conversation card is never for the PR and carries no For-PR control. Only comments are submitted to GitHub.
 - Selecting text inside an agent answer and choosing **Comment** opens a comment anchored where the card is anchored, with the selection quoted as a Markdown blockquote for the reviewer to write under.
-- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** on comments (a send icon, filled when on), **Delete** and **Close**.
-- **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent); a reply in an Ask thread goes to the agent.
+- A comment offers **Ask the agent about this**: the usual Ask card on the comment's anchor, quoting the comment. The answer is never submitted; it is the only way a comment leads to an agent reply.
+- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** (a send icon, filled when on), **Delete** and **Close**.
+- **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent).
   - Typed text survives anything else on the page re-rendering.
   - Discard removes a new thread, and clears the box on an existing one; on an existing thread it stays disabled until there is a draft.
 - **Where threads live:**
@@ -179,7 +180,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card.
 
 ### 4.10 Second opinion
-- A **Second opinion** action is available on any card or finding. It asks a *different* model (§12).
+- A **Second opinion** action is available on any card, finding, or conversation answer. It asks a *different* model (§12).
 - **Mode:** **blind** by default for findings, where the model sees only the topic and the cited code. **Check this claim** by default for cards, where it sees the claim. A switch on the action selects the other mode.
 - **Result:** a "Second opinion" block attached to the card, labelled with the model, giving a verdict (agrees / partly / disagrees), reasoning with citations, and anything the card missed. A disagreement is shown prominently.
 
@@ -330,10 +331,10 @@ type AgentEvent =
 | Page | id, kind (root, concept, finding, opened-expansion), title, saved, parent, cards[] |
 | Card | id, page, title, level, collapsed, revision, blocks[], undo stack, second opinions |
 | Block | id, type (paragraph, list, table, code, diagram, finding link, follow-up, aside), text per depth level, citations |
-| Annotation | id, type (conversation, thread, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for threads: messages, `post`, draft, note flag |
+| Annotation | id, type (conversation, comment, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for comments: messages, `post`, draft; plus for links moved mid-fill: the unsettled turns with their page-card mapping until they settle |
 | Anchor | host (block ID, description paragraph, or diff line), quoted text, prefix/suffix, position at creation, version |
 | Contribution | id, source session, items (fact, correction, open question, reader note), citations, replaces, status |
-| Job | id, kind, model, priority, state, session ID, prompt snapshot, usage, error |
+| Job | id, kind, model, priority, state, session ID, prompt snapshot, usage, error, card/annotation address |
 | LogEntry | seq, kind, payload, scope (global, or local to a card) |
 
 ### 7.2 ID grammar
@@ -344,7 +345,7 @@ diff:<fileKey>:<line>[-<line>]@<headSha>   new-side lines in the change
 h:<fileKey>:<contentHash>                  a hunk (stable across versions)
 code:<path>:<line>[-<line>]@<sha>          any code at a commit (pinned or fetched)
 desc:<paragraph>@<rev>                     description paragraph
-card:<cardId>[#<blockId>]                  guide content
+card:<cardId>[#<blockId>]                  guide content (a page card, or one conversation answer `ans_…`)
 page:<pageId>                              a page
 concept:<slug>                             a concept (may be a hidden candidate)
 ann:<id>                                   an annotation
@@ -518,7 +519,8 @@ A new base is built when any of these happens:
 | `critic` | Critic fork | Criteria, the suggested-comment format |
 | `hunk_pass` | Small model | `{{hunk}}`, `{{path}}` |
 | `concept_stub`, `concept_page` | Concept pages | `{{concept}}`, `{{mentions}}` |
-| `explain`, `ask` | Conversations (L4) | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
+| `ask` | Conversation first turns, Explain and Ask alike | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
+| `ask_turn` | Conversation follow-ups on a live session | `{{change_list}}`, `{{message}}` |
 | `depth`, `examples`, `diagram` | Card controls | `{{card}}`, `{{level}}` |
 | `go_deeper` | Placeholder cards | `{{direction}}` |
 | `update_pass` | Update | `{{changed_hunks}}`, `{{stale_cards}}`, `{{findings}}` |
@@ -556,8 +558,8 @@ POST /api/reviews/:id/retry              re-run a failed ingest
 POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot)
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
 POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
-POST /api/reviews/:id/actions            { kind: explain|ask|note|depth|examples|diagram|undo|read|
-                                           collapse|generate|second_opinion|promote|close|delete, … } (409 while loading/failed)
+POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|depth|examples|diagram|undo|
+                                           collapse|generate|second_opinion|promote|close|delete|followup|concept|bookmark, … } (409 while loading/failed)
 PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, note? } ; POST …/summarize (409 while loading/failed)
 PATCH /api/reviews/:id/comments/:id      { post?, draft? } (409 while loading/failed)
 PUT  /api/reviews/:id/description        local edit (pending until submit; 409 while loading/failed)
