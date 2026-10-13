@@ -75,4 +75,13 @@ export interface RouteDeps {
     /** Skips the login-shell probe when present (even null: no shell). */
     pathProbe?: ProbedPaths | null;
   };
+  /**
+   * Readiness probe overrides (tests only): a pre-resolved login-shell
+   * PATH picture so `GET /api/readiness` skips spawning login shells.
+   * Production omits this (real shell probe).
+   */
+  readiness?: {
+    /** Skips the login-shell probe when present. */
+    loginPathValue?: string;
+  };
 }

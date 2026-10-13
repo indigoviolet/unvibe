@@ -55,9 +55,16 @@ export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
   db?: DatabaseSync;
   /** Defaults to a fresh temp dir — production passes the real data dir. */
   dataDir?: string;
-  /** Defaults to the real runner — tests inject fakes. */
+  /**
+   * Defaults to the real runner — tests inject fakes. Under vitest the
+   * backstop is the `TestCommandGuard` (refuses real `gh`/`claude`/`codex`
+   * loudly), never a silent real fallback (issue #119).
+   */
   runner?: CommandRunner;
-  /** Agent runner (replay/fake/ACP). Defaults via factory (UNVIBE_AGENT, else ACP). */
+  /**
+   * Agent runner (replay/fake/ACP). Defaults via factory (UNVIBE_AGENT, else ACP);
+   * under vitest with the default selection, the fake (issue #119).
+   */
   agents?: AgentRunner;
   promptsDir?: string;
   fixturesDir?: string;

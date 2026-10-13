@@ -35,6 +35,9 @@ export async function registerReadiness(
         agents,
         settings: settingsStore as unknown as { get(): import("@unvibe/shared").Settings; savedKeys(): string[] },
         models: full.models ?? null,
+        ...(full.readiness?.loginPathValue !== undefined
+          ? { loginPathValue: full.readiness.loginPathValue }
+          : {}),
       },
       { force },
     );

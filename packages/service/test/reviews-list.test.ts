@@ -12,7 +12,9 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ReviewSummary, ReviewsListResponse, ReviewSnapshot } from "@unvibe/shared";
+import { FakeAgentRunner } from "../src/agent/fake.js";
 import { RealCommandRunner } from "../src/exec/index.js";
+import { StaticModelCatalog } from "../src/settings/index.js";
 import { createApp } from "../src/server.js";
 
 const real = new RealCommandRunner();
@@ -63,7 +65,12 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
 
   it("lists empty, then summaries across repos most-recent-first", async () => {
     const dir = await makeRepo();
-    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+    const { app } = await createApp("tok", {
+      runner: real,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const empty = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
       expect(empty.statusCode).toBe(200);
@@ -131,7 +138,12 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
 
   it("marks reviewed hunks + pending comments + stale in the summary", async () => {
     const dir = await makeRepo();
-    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    const { app, ctx } = await createApp("tok", {
+      runner: real,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const added = await app.inject({
         method: "POST",
@@ -208,7 +220,12 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         return real.run(cmd, opts);
       },
     };
-    const { app, ctx } = await createApp("tok", { runner, autoPipeline: false });
+    const { app, ctx } = await createApp("tok", {
+      runner,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const added = await app.inject({
         method: "POST",
@@ -258,7 +275,12 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         return real.run(cmd, opts);
       },
     };
-    const { app, ctx } = await createApp("tok", { runner, autoPipeline: false });
+    const { app, ctx } = await createApp("tok", {
+      runner,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
       const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
@@ -307,7 +329,12 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
   });
 
   it("DELETE is gated by the token", async () => {
-    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+    const { app } = await createApp("tok", {
+      runner: real,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const anon = await app.inject({ method: "DELETE", url: "/api/reviews/rv_nope" });
       expect(anon.statusCode).toBe(401);
@@ -318,7 +345,12 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
 
   it("legacy and new default root titles both fall back to the branch (#102)", async () => {
     const dir = await makeRepo();
-    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    const { app, ctx } = await createApp("tok", {
+      runner: real,
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const added = await app.inject({
         method: "POST",

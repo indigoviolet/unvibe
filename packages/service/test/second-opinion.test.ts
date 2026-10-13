@@ -23,7 +23,7 @@ import {
 import { removeSecondOpinionAction } from "../src/pipeline/actions/second_opinion.js";
 import { createApp } from "../src/server.js";
 import type { ModelCatalog } from "../src/settings/index.js";
-import { setupReview, sourceFile } from "./m6-helpers.js";
+import { setupReview } from "./m6-helpers.js";
 
 const SECOND_REPLY = (verdict: string): string =>
   `Independent check. The helper handles the fold. [[diff:a-py:1-2]]\n\n` +
@@ -574,12 +574,13 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
   });
 
   it("is cancellable with no stored result", async () => {
-    const runner = new FakeCommandRunner();
-    const s = await setupReview(runner, { pages: cardSnapshot(), files: [sourceFile()] });
+    // Sessions must build on fakes too (issue #119): the app is built on
+    // the slow fake below, so ensureBase answers "ready" without agents.
+    const agents = new FakeAgentRunner([
+      { match: "Read the review source", events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end_turn" }] },
+    ]);
+    const s = await setupWithAgents(agents, cardSnapshot());
     try {
-      const agents = new FakeAgentRunner([
-        { match: "Read the review source", events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end_turn" }] },
-      ]);
       // Slow turn: streams with delays so cancel lands mid-flight.
       agents.prompt = (async function* (session, text, _signal?: AbortSignal) {
         void _signal;

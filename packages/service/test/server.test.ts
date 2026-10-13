@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { FakeAgentRunner } from "../src/agent/fake.js";
+import { StaticModelCatalog } from "../src/settings/index.js";
 import { createApp } from "../src/server.js";
 
 describe("HTTP auth gate", () => {
@@ -7,7 +9,10 @@ describe("HTTP auth gate", () => {
   });
 
   it("/api/health is open; /api/* needs the token", async () => {
-    const { app } = await createApp("test-token");
+    const { app } = await createApp("test-token", {
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+    });
     try {
       const health = await app.inject({ method: "GET", url: "/api/health" });
       expect(health.statusCode).toBe(200);
@@ -37,7 +42,10 @@ describe("HTTP auth gate", () => {
   });
 
   it("every PRD §14.1 endpoint is registered and gated", async () => {
-    const { app } = await createApp("test-token");
+    const { app } = await createApp("test-token", {
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+    });
     const authed = { authorization: "Bearer test-token" };
     // All milestones landed: nothing stays 501 on this branch.
     const stubs: { method: "GET" | "POST" | "PATCH" | "PUT"; url: string }[] = [];
@@ -86,7 +94,10 @@ describe("HTTP auth gate", () => {
   });
 
   it("GET /api/prompts lists templates (implemented, not a stub)", async () => {
-    const { app } = await createApp("test-token");
+    const { app } = await createApp("test-token", {
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+    });
     try {
       const anon = await app.inject({ method: "GET", url: "/api/prompts" });
       expect(anon.statusCode).toBe(401);

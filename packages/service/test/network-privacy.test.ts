@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ReviewSnapshot } from "@unvibe/shared";
 import { CONTENT_SECURITY_POLICY } from "../src/security/csp.js";
+import { FakeAgentRunner } from "../src/agent/fake.js";
+import { StaticModelCatalog } from "../src/settings/index.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
 
@@ -38,7 +40,11 @@ describe("network and privacy", () => {
   });
 
   it("serves a strict CSP on the HTML shell", async () => {
-    const { app } = await createApp("tok", { autoPipeline: false });
+    const { app } = await createApp("tok", {
+      agents: new FakeAgentRunner(),
+      models: new StaticModelCatalog(),
+      autoPipeline: false,
+    });
     try {
       const res = await app.inject({ method: "GET", url: "/?token=tok" });
       // Without a web build the shell is a help page; with a build it is
@@ -81,7 +87,17 @@ describe("network and privacy", () => {
 
   it("demo review with the replay runner makes no non-loopback connections", async () => {
     const replay = new ReplayAgentRunner({ fixturesDir, chunkChars: 256, delayMs: 5 });
-    const { app, ctx } = await createApp("tok", { agents: replay });
+    // Static model catalog + tool-free PATH for the readiness call (issue
+    // #119): gh/d2/agent probes report "not installed" without spawning.
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const emptyBins = mkdtempSync(join(tmpdir(), "unvibe-no-bins-"));
+    const { app, ctx } = await createApp("tok", {
+      agents: replay,
+      models: new StaticModelCatalog(),
+      readiness: { loginPathValue: emptyBins },
+    });
     try {
       const created = await app.inject({
         method: "POST",

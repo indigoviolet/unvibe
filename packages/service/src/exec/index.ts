@@ -1,5 +1,5 @@
 export type { CommandRunner, RunOptions, RunResult } from "./runner.js";
-export { FakeCommandRunner, RealCommandRunner } from "./runner.js";
+export { FakeCommandRunner, RealCommandRunner, TestCommandGuard } from "./runner.js";
 export {
   LOGIN_SHELL_TIMEOUT_MS,
   applyLoginShellPath,

@@ -34,7 +34,7 @@ import type { AgentRunner } from "@unvibe/shared";
 import type { DatabaseSync } from "./store/db.js";
 import { EventBus } from "./events.js";
 import type { CommandRunner } from "./exec/index.js";
-import { RealCommandRunner } from "./exec/runner.js";
+import { RealCommandRunner, TestCommandGuard } from "./exec/runner.js";
 import { JobQueue, JobStore } from "./jobs/index.js";
 import { McpRegistry } from "./mcp/index.js";
 import { StoreReviewReader } from "./mcp/reviewReader.js";
@@ -47,6 +47,7 @@ import { SharedContextService, setInteractionHandler } from "./sharedctx/index.j
 import { SharedContextStore } from "./sharedctx/store.js";
 import { createUpdaterFromEnv, type Updater } from "./update/index.js";
 import { createAgentRunner, resolveFixturesDir } from "./agent/factory.js";
+import { FakeAgentRunner } from "./agent/fake.js";
 import { Pipeline } from "./pipeline/index.js";
 import { resolvePromptsDir } from "./prompts/index.js";
 
@@ -204,9 +205,26 @@ export function resolvePromptsDirForBundle(): string {
   return resolvePromptsDir() ?? path.resolve(process.cwd(), "prompts");
 }
 
+/**
+ * True inside the vitest suite (vitest sets both; either one counts).
+ * The composition root uses this to refuse the production fallbacks —
+ * tests must never silently start real agents or real CLIs (issue #119).
+ */
+export function isTestProcess(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.VITEST === "true" || env.VITEST === "1" || env.NODE_ENV === "test";
+}
+
 export function buildApp(opts: BuildAppOptions): AppContext {
   const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
-  const runner = opts.runner ?? new RealCommandRunner();
+  // Tests never hit real GitHub or real agents (issue #119): under vitest
+  // an app built without explicit fakes gets inert substitutes instead of
+  // silently falling back to the production ones. Explicitly injected
+  // runners are never replaced. `UNVIBE_AGENT=replay|none` keeps the
+  // factory (both are hermetic); only the unset default (real ACP) is
+  // replaced with the fake.
+  const underTest = isTestProcess();
+  const needsTestAgents = underTest && (process.env.UNVIBE_AGENT ?? "") === "";
+  const runner = opts.runner ?? (underTest ? new TestCommandGuard(new RealCommandRunner()) : new RealCommandRunner());
   const bus = opts.bus ?? new EventBus();
   const repos = new RepoStore(opts.db);
   const reviews = new ReviewStore(opts.db, bus);
@@ -243,8 +261,12 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   // Default runner: ACP (real claude/codex subprocesses). Replay only when
   // UNVIBE_AGENT=replay (demo/tests) or when tests inject `agents` directly;
   // UNVIBE_AGENT=none disables the pipeline (comments/diff/versions tests).
-  const agents = opts.agents ?? createAgentRunner({ fixturesDir, delayMs: 5 });
-  const models = opts.models ?? new AcpModelCatalog(agents);
+  // Under vitest with no explicit runner and the default (real) factory
+  // selection, substitute the fake instead of starting real agents (#119).
+  const agents =
+    opts.agents ?? (needsTestAgents ? new FakeAgentRunner() : createAgentRunner({ fixturesDir, delayMs: 5 }));
+  const models =
+    opts.models ?? (needsTestAgents && opts.agents === undefined ? new StaticModelCatalog() : new AcpModelCatalog(agents));
 
   const reader = new StoreReviewReader({ reviews, dataDir });
   const mcp =
