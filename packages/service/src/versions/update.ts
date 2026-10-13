@@ -25,6 +25,12 @@ import type {
   UpdatePassResult,
 } from "@unvibe/shared";
 import { JOB_PRIORITY } from "@unvibe/shared";
+import {
+  charTokenEstimator,
+  countCodePoints,
+  DEFAULT_BASE_PROMPT_CAP_TOKENS,
+  DEFAULT_LEFTOVER_FLOOR_TOKENS,
+} from "../context/tokens.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { ReviewStore } from "../state/store.js";
 
@@ -65,7 +71,10 @@ export function formatChangedHunk(
 }
 
 /** Build the three `update_pass` variables from the current snapshot. */
-export function buildUpdateVariables(snapshot: ReviewSnapshot): {
+export function buildUpdateVariables(
+  snapshot: ReviewSnapshot,
+  opts: { capTokens?: number } = {},
+): {
   changed_hunks: string;
   stale_cards: string;
   findings: string;
@@ -120,10 +129,64 @@ export function buildUpdateVariables(snapshot: ReviewSnapshot): {
     }
   }
   return {
-    changed_hunks: chunks.length > 0 ? chunks.join("\n\n") : "(no changed hunks)",
+    changed_hunks: capChangedHunks(chunks, changedCap(staleCards, findings, opts.capTokens)),
     stale_cards: staleCards.length > 0 ? staleCards.join("\n") : "(no stale cards)",
     findings: findings.length > 0 ? findings.join("\n") : "(no findings to recheck)",
   };
+}
+
+/**
+ * What `{{changed_hunks}}` may spend (issue #107): the cap minus the other
+ * two variables, with a floor so the counts line and its notice always
+ * fit. The stale-cards/findings lists are tiny next to thousands of
+ * hunks, so this is the full cap in practice; it only matters when they
+ * are large.
+ */
+function changedCap(staleCards: string[], findings: string[], capTokens: number | undefined): number {
+  const cap = capTokens ?? DEFAULT_BASE_PROMPT_CAP_TOKENS;
+  const otherPoints = countCodePoints(staleCards.join("\n")) + countCodePoints(findings.join("\n"));
+  const otherTokens = otherPoints === 0 ? 0 : Math.max(1, Math.ceil(otherPoints / 4));
+  return Math.max(DEFAULT_LEFTOVER_FLOOR_TOKENS, cap - otherTokens);
+}
+
+/**
+ * Cap the `{{changed_hunks}}` variable at the same hard cap as L1 (issue
+ * #107): a refresh touching thousands of hunks must not overflow the
+ * update prompt. Keeps the first chunks that fit, in input order, plus a
+ * notice naming what was left out and how to reach it. Pure.
+ */
+function capChangedHunks(chunks: string[], capTokens: number): string {
+  if (chunks.length === 0) return "(no changed hunks)";
+  const full = chunks.join("\n\n");
+  if (charTokenEstimator.estimateTokens(full) <= capTokens) return full;
+  // Running code-point total: re-joining and re-estimating the whole kept
+  // text per chunk is quadratic over thousands of chunks. The "\n\n"
+  // separators contribute 2 code points each, so the probe below estimates
+  // exactly what estimateTokens would return for the join — same kept
+  // set, linear work.
+  const points = chunks.map(countCodePoints);
+  const estimatePoints = (n: number): number => (n === 0 ? 0 : Math.max(1, Math.ceil(n / 4)));
+  const kept: string[] = [];
+  let keptPoints = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const probe = keptPoints + (kept.length > 0 ? 2 : 0) + (points[i] ?? 0);
+    if (estimatePoints(probe) > capTokens) break;
+    kept.push(chunks[i]);
+    keptPoints = probe;
+  }
+  const notice = (omitted: number): string =>
+    `(+${omitted} more changed hunks omitted to fit the ${capTokens}-token prompt cap; ` +
+    "fetch any hunk with `get_hunk`)";
+  // The notice counts too: drop trailing chunks until text + notice fits.
+  let omitted = chunks.length - kept.length;
+  while (kept.length > 0) {
+    const withNotice = keptPoints + 2 + countCodePoints(notice(omitted));
+    if (estimatePoints(withNotice) <= capTokens) break;
+    keptPoints -= (points[kept.length - 1] ?? 0) + (kept.length > 1 ? 2 : 0);
+    kept.pop();
+    omitted = chunks.length - kept.length;
+  }
+  return kept.length > 0 ? [...kept, notice(omitted)].join("\n\n") : notice(omitted);
 }
 
 /** Render `prompts/update_pass.md` with the three variables. Pure I/O: reads one file. */

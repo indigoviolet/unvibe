@@ -3,6 +3,9 @@
  * refusal, storage/replacement, depth+undo survival, dedupe, cancel, and
  * the MCP `search_review` role restriction.
  */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -689,6 +692,199 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
       expect(stored()).toHaveLength(0);
     } finally {
       await s.app.close();
+    }
+  });
+});
+
+/**
+ * Reasoning diagrams go through finalize + one repair turn (issue #145).
+ *
+ * Fake `d2` (no real binary needed): version ok, rejects sources with an
+ * inline `{.class` like the real compiler, renders everything else.
+ */
+function writeSmartD2(): { dir: string; bin: string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-smartd2-"));
+  const bin = path.join(dir, "d2");
+  fs.writeFileSync(
+    bin,
+    '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "d2 v0.9.0"; exit 0; fi\n' +
+      'src=$(cat)\ncase "$src" in\n"{.class"*|*"{.class"*) echo "err: invalid text beginning unquoted key" >&2; exit 1;;\n' +
+      "esac\n" +
+      'if [ "$1" = "validate" ]; then echo "Success!"; exit 0; fi\n' +
+      'echo \'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text>ok</text></svg>\'\nexit 0\n',
+  );
+  fs.chmodSync(bin, 0o755);
+  return { dir, bin };
+}
+
+const SO_BAD_DIAGRAM =
+  `Independent check with a diagram. [[diff:a-py:1-2]]\n\n` +
+  "```d2\ndirection: right\nstart: \"request in\"\ngone: \"unmount cleanup\" {.class: [bad]}\nstart -> gone: finish\n```\n\n" +
+  '```json\n{"secondOpinion": {"verdict": "agrees", "reasoning": "Checked the helper.", "missed": "Nothing."}}\n```\n';
+
+const SO_FIXED_DIAGRAM =
+  `A fixed diagram.\n\n` +
+  "```d2\ndirection: right\nstart: \"request in\"\ngone: \"unmount cleanup\"\ngone.class: [bad]\nstart -> gone: finish\n```\n\n" +
+  "```json\n{}\n```\n";
+
+function soEvents(text: string): { type: string; delta?: string; inputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number; outputTokens?: number; stopReason?: string }[] {
+  return [
+    { type: "text", delta: text },
+    { type: "usage", inputTokens: 100, cachedReadTokens: 40, cachedWriteTokens: 0, outputTokens: 30 },
+    { type: "done", stopReason: "end_turn" },
+  ];
+}
+
+describe("reasoning diagrams (#145)", () => {
+  async function setupWithTurn(
+    turnEvents: { type: string; delta?: string; inputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number; outputTokens?: number; stopReason?: string }[],
+    repairEvents: { type: string; delta?: string; inputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number; outputTokens?: number; stopReason?: string }[],
+  ): Promise<{ s: Awaited<ReturnType<typeof setupReview>>; turnAgents: FakeAgentRunner; appAgents: FakeAgentRunner }> {
+    // Turns run on deps.runner; the base pack and the diagram repair turn
+    // run on the app's (pipeline's) runner — script both. Commands stay
+    // real (no override): the fake `d2` binary must actually execute, as in
+    // the #130 app-level tests (a bare FakeCommandRunner would fail the
+    // version probe and mark diagrams unavailable).
+    const turnAgents = new FakeAgentRunner([{ match: "Second opinion", events: turnEvents as never }]);
+    const appAgents = new FakeAgentRunner([
+      { match: "failed validation", events: repairEvents as never },
+      {
+        match: "Read the review source",
+        events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end_turn" }] as never,
+      },
+    ]);
+    const { app, ctx } = await createApp("tok", { agents: appAgents as unknown as never });
+    const { repoRow, versionRow, descriptionFor, sourceFile } = await import("./m6-helpers.js");
+    const { writeReviewRows } = await import("../src/ingest/index.js");
+    const repo = repoRow();
+    ctx.repos.upsert(repo);
+    const reviewId = `rv_so_${Math.random().toString(36).slice(2, 8)}`;
+    const version = versionRow();
+    const review = {
+      id: reviewId,
+      repoId: repo.id,
+      branch: "feature",
+      prNumber: 7,
+      versions: [version],
+      currentVersion: 1,
+      createdAt: 1,
+    };
+    const files = [sourceFile()];
+    const description = descriptionFor("First para.\n\nSecond para.\n");
+    writeReviewRows(ctx.db, repo.id, { review, version, files, description, worktreePath: "/tmp" });
+    ctx.reviews.putSnapshot(reviewId, {
+      review,
+      version,
+      files,
+      description,
+      ingest: { status: "ready" },
+      pages: cardSnapshot(),
+      annotations: [],
+      hunkStates: [],
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+    });
+    const s = { app, ctx, reviewId } as unknown as Awaited<ReturnType<typeof setupReview>>;
+    return { s, turnAgents, appAgents };
+  }
+
+  function depsForDiagram(s: Awaited<ReturnType<typeof setupReview>>, turnAgents: FakeAgentRunner): Parameters<typeof requestSecondOpinion>[0] {
+    return {
+      reviews: s.ctx.reviews,
+      jobs: s.ctx.jobs,
+      sessions: s.ctx.sessions,
+      runner: turnAgents,
+      mcp: s.ctx.mcp,
+      settings: s.ctx.settings,
+      commands: s.ctx.runner,
+      dataDir: s.ctx.dataDir,
+      promptsDir: s.ctx.promptsDir,
+      mcpBaseUrl: "http://127.0.0.1:4517",
+      pipeline: s.ctx.pipeline,
+    };
+  }
+
+  async function storedOpinion(s: Awaited<ReturnType<typeof setupReview>>): Promise<{
+    verdict: string;
+    blocks: { type: string; render?: { status: string } }[];
+  }> {
+    const snap = s.ctx.reviews.getSnapshot(s.reviewId)!;
+    const card = snap.pages.flatMap((p) => p.cards).find((c) => c.id === "central")!;
+    expect(card.secondOpinions).toHaveLength(1);
+    const so = card.secondOpinions![0];
+    return { verdict: so.verdict, blocks: so.blocks as { type: string; render?: { status: string } }[] };
+  }
+
+  it("a bad diagram gets exactly one repair turn on the second-opinion session and lands drawn", async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const { s, turnAgents, appAgents } = await setupWithTurn(soEvents(SO_BAD_DIAGRAM), soEvents(SO_FIXED_DIAGRAM));
+      try {
+        const deps = depsForDiagram(s, turnAgents);
+        const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+        if (!("id" in job)) throw new Error("expected a job");
+        await s.ctx.jobs.drain(30000);
+        expect(s.ctx.jobs.get(job.id)?.state, `job error: ${s.ctx.jobs.get(job.id)?.error}`).toBe("done");
+        // Exactly one repair turn, and it ran on the second-opinion side
+        // (the app's runner, which also serves the pipeline): the turn
+        // runner never saw the repair prompt.
+        const repairs = (agents: FakeAgentRunner): number =>
+          agents.prompts.filter((p) => p.text.includes("failed validation")).length;
+        expect(repairs(appAgents)).toBe(1);
+        expect(repairs(turnAgents)).toBe(0);
+        const so = await storedOpinion(s);
+        expect(so.verdict).toBe("agrees");
+        const dg = so.blocks.find((b) => b.type === "diagram");
+        expect(dg).toBeDefined();
+        expect(dg!.render?.status).toBe("ok");
+        // Isolation: the repair turn wrote no shared-log entries beyond the
+        // run's own stored result.
+        const snap = s.ctx.reviews.getSnapshot(s.reviewId)!;
+        expect(snap.logTail).toHaveLength(1);
+        expect(snap.logTail[0].kind).toBe("second-opinion");
+      } finally {
+        await s.app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("an unrepairable diagram keeps an error block and the prose", async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const { s, turnAgents, appAgents } = await setupWithTurn(
+        soEvents(SO_BAD_DIAGRAM),
+        soEvents("Still prose, no diagram here.\n\n```json\n{}\n```\n"),
+      );
+      try {
+        const deps = depsForDiagram(s, turnAgents);
+        const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+        if (!("id" in job)) throw new Error("expected a job");
+        await s.ctx.jobs.drain(30000);
+        expect(s.ctx.jobs.get(job.id)?.state, `job error: ${s.ctx.jobs.get(job.id)?.error}`).toBe("done");
+        expect(appAgents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const so = await storedOpinion(s);
+        const dg = so.blocks.find((b) => b.type === "diagram");
+        expect(dg).toBeDefined();
+        expect(dg!.render?.status).toBe("error");
+        // The prose is unaffected.
+        expect(JSON.stringify(so.blocks)).toContain("Independent check with a diagram.");
+      } finally {
+        await s.app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

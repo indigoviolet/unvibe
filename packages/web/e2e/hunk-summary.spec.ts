@@ -7,6 +7,7 @@
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
+import { selectText } from "./select-text.js";
 
 async function gotoDiff(page: Page): Promise<void> {
   await page.goto("/review/demo");
@@ -16,46 +17,6 @@ async function gotoDiff(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await page.locator('#right [role="tab"]').getByText("Diff").click();
   await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 8000 });
-}
-
-async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
-  // Same polled shape as interaction.spec.ts: re-select until the bar
-  // sticks (a late scroll dismisses it under load).
-  await expect
-    .poll(
-      async () => {
-        await page.evaluate((rootSelector) => {
-          document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
-        }, rootSelector);
-        const found = await page.evaluate(
-          ({ rootSelector, text }) => {
-            const root = document.querySelector(rootSelector);
-            if (!root) return false;
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-              const data = (node as Text).data;
-              const at = data.indexOf(text);
-              if (at < 0) continue;
-              const range = document.createRange();
-              range.setStart(node, at);
-              range.setEnd(node, at + text.length);
-              const sel = getSelection();
-              sel?.removeAllRanges();
-              sel?.addRange(range);
-              (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-              return true;
-            }
-            return false;
-          },
-          { rootSelector, text },
-        );
-        if (!found) return "not-found";
-        await page.waitForTimeout(150);
-        return (await page.locator("#selbar").isVisible()) ? "shown" : "hidden-again";
-      },
-      { timeout: 15000 },
-    )
-    .toBe("shown");
 }
 
 test("select summary text, Explain: the card appears under the hunk", async ({ page }) => {
@@ -89,6 +50,19 @@ test("a Comment on a summary lands on the line and never activates", async ({ pa
   await expect(composer).toBeVisible({ timeout: 5000 });
   // No card was activated under any hunk.
   await expect(page.locator(".dhunk [data-expansion]")).toHaveCount(0);
+});
+
+test("an on-demand summary arrives as ordinary idle text and activates", async ({ page }) => {
+  await gotoDiff(page);
+  // One seeded idle summary; summarize the next unsummarized hunk in
+  // the connection file.
+  await expect(page.locator("p[data-hunksum]")).toHaveCount(1);
+  const file = page.locator('[id="F-src-urllib3-connection.py"]');
+  await file.getByRole("button", { name: "Summarize with agent" }).first().click();
+  await expect(page.locator("p[data-hunksum]")).toHaveCount(2, { timeout: 8000 });
+  // The newcomer activates like any idle summary.
+  await page.locator("p[data-hunksum]").nth(1).click();
+  await expect(page.locator(".dhunk [data-expansion]").first()).toBeVisible({ timeout: 5000 });
 });
 
 async function backToDiff(page: Page): Promise<void> {

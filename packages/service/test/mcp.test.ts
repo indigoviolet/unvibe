@@ -201,6 +201,28 @@ describe("tools", () => {
     }
   });
 
+  it("search_review finds changed files with hunk IDs (issue #107)", async () => {
+    const { registry } = makeRegistry();
+    const base = await serve(registry);
+    const client = await connect(base, registry.issueSession("r1", "s", "session"));
+    try {
+      const res = await client.callTool({ name: "search_review", arguments: { query: "conn" } });
+      const text = textOf(res);
+      expect(text).toContain("file src/conn.py (1 hunk): h:conn:9f2c");
+      // Second-opinion isolation still holds: description only, no files.
+      const so = await connect(base, registry.issueSession("r1", "s2", "second-opinion"));
+      try {
+        expect(textOf(await so.callTool({ name: "search_review", arguments: { query: "conn" } }))).toBe(
+          "no matches",
+        );
+      } finally {
+        await so.close();
+      }
+    } finally {
+      await client.close();
+    }
+  });
+
   it("resolve returns candidate IDs", async () => {
     const { registry } = makeRegistry();
     const base = await serve(registry);

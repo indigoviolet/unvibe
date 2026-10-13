@@ -16,11 +16,13 @@
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
+import os from "node:os";
 import { isHealthOk } from "./lock.js";
 import { collectDiagnostics, formatDiagnosticsText } from "../diagnostics/report.js";
 import type { DiagnosticsResponse } from "@unvibe/shared";
 import { ghAuthStatus as sharedGhAuth, gitVersion as sharedGitVersion } from "../readiness/checks.js";
 import { RealCommandRunner } from "../exec/runner.js";
+import { checkLoginUnit } from "../update/service-manager.js";
 
 export interface DoctorCheck {
   name: string;
@@ -210,6 +212,22 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
       status: "warn",
       detail: `${opts.port} is in use by something else; set UNVIBE_PORT to a free port (if you installed Unvibe as a browser app, reinstall it after changing the port)`,
     });
+  }
+
+  // Start-at-login unit (issue #108, Q2): warn when the baked paths went
+  // stale (global reinstall or Node upgrade moved the files). Not
+  // installed is ok — `setup --no-login` is a deliberate choice.
+  const login = checkLoginUnit(os.homedir(), process.platform);
+  if (!login.managed) {
+    checks.push({
+      name: "login start",
+      status: "ok",
+      detail: "not set to start at login (run `unvibe setup` for the bookmark to always answer)",
+    });
+  } else if (login.problems.length === 0) {
+    checks.push({ name: "login start", status: "ok", detail: `starts at login (${login.unitPath})` });
+  } else {
+    checks.push({ name: "login start", status: "warn", detail: login.problems.join(" ") });
   }
 
   return checks;

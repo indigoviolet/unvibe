@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import { HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -552,12 +553,25 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         targets.push({ file: f, hunk: h });
       });
     }
-    // Fold first so the UI settles, then summarize hunks lacking one.
+    // Fold first so the UI settles, then summarize hunks lacking one —
+    // except past the hunk-pass fan-out limit (issue #107), where Fold
+    // all folds only: requesting a summary per hunk would be exactly the
+    // fan-out the pipeline refuses to run, and the per-hunk Summarize
+    // button in the hunk header stays as the on-demand path.
     await Promise.all(targets.map(({ hunk }) => api.updateHunk(reviewId, hunk.contentHash, { folded: true }).catch(() => {})));
-    for (const { hunk } of targets) {
-      if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
+    const totalHunks = snap.files.reduce((n, f) => n + f.hunks.length, 0);
+    const overFanout = totalHunks > HUNK_PASS_FANOUT_LIMIT;
+    if (!overFanout) {
+      for (const { hunk } of targets) {
+        if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
+      }
+      toast(`Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. Summaries appear as they are written.`);
+    } else {
+      toast(
+        `Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. ` +
+          "This review is past the per-hunk summary limit, so summaries stay on demand — use the spark button on any hunk.",
+      );
     }
-    toast(`Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. Summaries appear as they are written.`);
   }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions]);
 
   const unfoldAll = useCallback(async () => {
@@ -600,6 +614,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   const tree: TreeRow[] = prefs.filesOpen ? buildFileTree(visible) : [];
   const catCount = (k: string): number => snapshot.files.filter((f) => f.category === k).length;
+  // Fold-all summarises per hunk only under the fan-out limit (issue
+  // #107): past it the button folds without requesting summaries.
+  const overFanoutLimit = snapshot.files.reduce((n, f) => n + f.hunks.length, 0) > HUNK_PASS_FANOUT_LIMIT;
 
   // Update banner: the local refresh result wins; otherwise the snapshot's
   // own `versionStatus` (set when a refresh created a newer version).
@@ -654,7 +671,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         <button
           className="x"
           type="button"
-          data-tip="Summarize every hunk with the agent, then fold the code"
+          data-tip={
+            overFanoutLimit
+              ? "Fold the code (this review is past the per-hunk summary limit; summaries stay on demand)"
+              : "Summarize every hunk with the agent, then fold the code"
+          }
           aria-label="Fold all"
           onClick={() => void foldAll()}
         >
@@ -863,7 +884,7 @@ function FilterDropdown({
   const active = activeCount > 0;
 
   // Close on outside press or Escape, like the other dropdowns
-  // (SecondOpinionControl, Tips, CommentsMenu).
+  // (SecondOpinionControl, CommentsMenu).
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent): void => {

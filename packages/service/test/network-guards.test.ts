@@ -100,8 +100,8 @@ describe("static network guards", () => {
       },
       {
         file: "server.ts",
-        patterns: [/fastify/, /@fastify\/websocket/],
-        reason: "HTTP+WS server bound to 127.0.0.1 only (listens; no client)",
+        patterns: [/fastify/, /@fastify\/websocket/, /node:http/],
+        reason: "HTTP+WS server bound to loopback only (listens; no client) plus the ::1 companion socket sharing the Fastify router (issue #108; listens, never dials out)",
       },
       {
         file: "agent/acp/connection.ts",

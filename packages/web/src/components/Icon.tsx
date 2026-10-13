@@ -1,8 +1,9 @@
 /**
  * Icon set copied from prototype.html (same names, same 16x16 stroke paths).
  * `gear` and `bug` are additions in the same stroke style (the prototype
- * has no settings/debug icons), as is `person` (author avatar for the
- * reviewer; the agent avatar reuses `spark`). Usage: `<Icon name="check" />`.
+ * has no settings/debug icons), as are `person` (author avatar for the
+ * reviewer; the agent avatar reuses `spark`), `refresh`, `home` and the
+ * gutter caret pairs. Usage: `<Icon name="check" />`.
  */
 import type { JSX } from "react";
 
@@ -50,6 +51,24 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
   hide: (<path d="M4 10l4-4 4 4" />),
+  fold: (
+    <>
+      <path d="M4 3.5l4 3.5 4-3.5" />
+      <path d="M4 12.5l4-3.5 4 3.5" />
+    </>
+  ),
+  upUp: (
+    <>
+      <path d="M4 7.5l4-4 4 4" />
+      <path d="M4 12.5l4-4 4 4" />
+    </>
+  ),
+  downDown: (
+    <>
+      <path d="M4 3.5l4 4 4-4" />
+      <path d="M4 8.5l4 4 4-4" />
+    </>
+  ),
   gear: (
     <>
       <circle cx="8" cy="8" r="2.2" />
@@ -66,6 +85,18 @@ const PATHS: Record<string, JSX.Element> = {
     <>
       <circle cx="8" cy="5.4" r="2.5" />
       <path d="M2.9 13.8a5.1 5.1 0 015.1-4.4 5.1 5.1 0 015.1 4.4" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M13.8 8a5.8 5.8 0 1 1-1.7-4.1" />
+      <path d="M13.8 1.7v3h-3" />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M2.5 7L8 2.5 13.5 7" />
+      <path d="M4 6.5V13.5h8V6.5" />
     </>
   ),
 };

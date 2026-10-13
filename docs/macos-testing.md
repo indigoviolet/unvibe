@@ -3,7 +3,8 @@
 The shell/service was built and verified on Linux; this checklist verifies
 the macOS-specific paths on a real Mac. Total budget: ~15 minutes.
 Conventions: run in Terminal; `$ …` is the command, the block after is the
-expected output. Nothing needs `sudo`. Nothing starts at login.
+expected output. Nothing needs `sudo`. The service starts at login (issue
+#108); a manually started service still idle-exits.
 
 If a step fails: run its **Send back** commands and paste all output.
 
@@ -85,7 +86,7 @@ Checks and why they matter on macOS:
 **Send back:** the full doctor output plus `echo $SHELL` and
 `zsh -lc 'echo $PATH'`.
 
-## 3. Setup — the `unvibe://` helper app (2 min)
+## 3. Setup — the `unvibe://` helper app + start at login (2 min)
 
 ```
 $ mise run setup
@@ -95,8 +96,11 @@ Expected:
 
 ```
 helper app written to /Users/you/Applications/Unvibe.app (handles unvibe://start)
-registered unvibe:// with LaunchServices
+registered unvibe:// links with macOS
+service starts at login (launchd agent at /Users/you/Library/LaunchAgents/com.unvibe.service.plist; never idle-exits there)
 token ready in /Users/you/.local/share/unvibe/token
+open once to connect this browser: http://unvibe.localhost:4517/?token=…
+then bookmark: http://unvibe.localhost:4517
 undo: unvibe setup --uninstall
 ```
 
@@ -116,11 +120,18 @@ Array {
 }
 $ xattr ~/Applications/Unvibe.app
 (empty — locally generated with osacompile, so no quarantine attribute, no signing needed)
-$ ls ~/Library/LaunchAgents | grep -i unvibe
-(empty — nothing starts at login)
+$ cat ~/Library/LaunchAgents/com.unvibe.service.plist
+(Label com.unvibe.service, ProgramArguments <node> <cli> start --foreground,
+EnvironmentVariables UNVIBE_PORT=4517, UNVIBE_DATA_DIR=…,
+UNVIBE_IDLE_MS=0, RunAtLoad true, KeepAlive with SuccessfulExit false —
+restart on crash only, so a deliberate `unvibe stop` is respected)
+$ launchctl print gui/$(id -u)/com.unvibe.service | head -8
+(running service state)
 ```
 
-Re-run `mise run setup` — output identical, exit 0 (idempotent).
+Re-run `mise run setup` — output identical, exit 0 (idempotent; it
+restarts the login instance through the manager, so `unvibe status`
+shows a fresh `since`).
 
 **Send back:** the setup output, the PlistBuddy output, `xcode-select -p`
 (the CLT may be missing if `osacompile` failed), and `ls -la ~/Applications`.
@@ -137,8 +148,8 @@ Within ~5 s the service must be up:
 
 ```
 $ unvibe status
-running on http://127.0.0.1:4517 (pid …)
-$ curl -s http://127.0.0.1:4517/api/health
+running on http://unvibe.localhost:4517 (pid …, since …; starts at login)
+$ curl -s http://unvibe.localhost:4517/api/health
 {"ok":true,"version":"…"}
 ```
 
@@ -158,8 +169,9 @@ $ unvibe open
 ```
 
 The browser URL has `?token=…` once, then drops it (kept in
-`localStorage` + `SameSite=Lax` cookie for asset loads; the token never
-appears in URLs after first load).
+`localStorage` + a year-long `SameSite=Lax` cookie for asset loads; the
+token never appears in URLs after first load, and the plain
+`http://unvibe.localhost:4517` bookmark keeps working across restarts).
 
 1. Chrome → ⋮ → "Install app" (localhost counts as secure). The
    installed app opens standalone with the Unvibe icon.
@@ -208,7 +220,10 @@ lifecycle (verified on Linux; spot-check here with one review).
 **Send back:** whether the guide built, `unvibe status`, and any job
 error text shown in the UI.
 
-## 7. Idle exit (1 min)
+## 7. Idle exit (1 min, manual starts only)
+
+A login-started service never idle-exits (issue #108). This step uses a
+manual foreground start, which keeps the normal idle exit:
 
 ```
 $ UNVIBE_IDLE_MS=15000 unvibe start --foreground &
@@ -261,18 +276,21 @@ reasoned from package metadata, not run here):
 > 404s without auth). Candidates install from `#release-rc`
 > (`v0.0.1-rc.3` verified from GitHub: `--version` matches the tag).
 
-## 9. Uninstall the helper (30 s)
+## 9. Uninstall the helper and login start (30 s)
 
 ```
 $ unvibe setup --uninstall
 removed …/Unvibe.app
-setup removed (token and data kept).
+removed …/Library/LaunchAgents/com.unvibe.service.plist (service no longer starts at login)
+removed the link handler and login start (token and data kept).
 $ ls ~/Applications/Unvibe.app
 ls: /Users/you/Applications/Unvibe.app: No such file or directory
+$ ls ~/Library/LaunchAgents/com.unvibe.service.plist
+ls: …: No such file or directory
 ```
 
-Token and data are kept. Re-run uninstall ⇒ `not present; nothing to
-remove`. Full removal: delete `~/.local/share/unvibe` (see README “Your data
+Token and data are kept. Re-run uninstall ⇒ `nothing to remove` lines.
+Full removal: delete `~/.local/share/unvibe` (see README “Your data
 and the network”).
 
 ## 10. Agent CLI via mise + reviewed repo with a mise config (2 min, issue #105)
@@ -302,6 +320,50 @@ Expected:
 **Send back:** the doctor lines for `claude` (and `codex` if it is also
 a shim), whether the guide built, and any job error text shown in the UI.
 
+## 11. `unvibe.localhost` bookmark, login start, Safari (issue #108, 5 min)
+
+From the preview build (`npm install -g` the preview ref, or the
+checkout's `mise run build` + `node packages/service/dist/index.js`):
+
+```
+$ unvibe setup
+(open the printed token link once, then bookmark the plain URL)
+$ unvibe stop
+$ curl -s --max-time 3 http://unvibe.localhost:4517/api/health || echo STOPPED
+STOPPED
+$ unvibe start
+$ curl -s http://unvibe.localhost:4517/api/health
+{"ok":true,"version":"…"}
+$ unvibe status
+running on http://unvibe.localhost:4517 (pid …, since …; starts at login)
+```
+
+`stop`/`start` go through launchd while the agent is installed (a
+deliberate stop exits 0, so the crash-only restart leaves it down;
+`start` bootstraps it back). If `stop` ever leaves the port answering,
+or `start` reports a conflict, send back the full output.
+
+1. **Chrome (or Vivaldi):** open the bookmark `http://unvibe.localhost:4517`
+   — the app loads with no token in the URL.
+2. **Browser restart:** quit the browser fully, reopen the bookmark — still
+   connected (year-long cookie). Then open `http://127.0.0.1:4517` in the
+   same browser: it shows the "isn't connected" page (separate cookie jar
+   — expected), and `unvibe open` reconnects it.
+3. **Safari:** open the same bookmark. If Safari cannot resolve
+   `*.localhost` (historically it needs a hosts entry — unverified on
+   current Safari), this fails with a DNS error; report your Safari/macOS
+   version and fall back to `http://127.0.0.1:4517` via `unvibe open`.
+4. **Login:** log out and back in — `unvibe status` reports running
+   without you starting anything (the launchd agent). Confirm it never
+   idle-exits: wait past 10 minutes with no window open, `curl` health
+   still answers.
+5. **Uninstall:** `unvibe setup --uninstall` removes the helper and the
+   plist (step 9); after one more logout/login nothing listens on 4517.
+
+**Send back:** Chrome result, Safari result (version + loads or DNS
+error), whether the bookmark survived the browser restart, whether the
+service was running after login, and the uninstall `ls` outputs.
+
 ## CI coverage on macOS (`.github/workflows/ci.yml`, issue #7)
 
 The `macos-latest` leg runs headless on a runner — no GUI session, no
@@ -314,7 +376,10 @@ Keychain logins, no Apple ID. What it genuinely verifies:
   helper-started service using your login) still needs a person.
 - Step 3 (`setup`): covered by `mise run e2e:macos` — real `osacompile`,
   `Info.plist` scheme entries asserted, no quarantine attribute,
-  `lsregister` registration, idempotent uninstall. Gatekeeper behaviour
+  `lsregister` registration, idempotent uninstall — with `--no-login`,
+  so the launchd bootstrap itself stays human (step 11). The agent
+  plist's contents and the bootstrap/bootout commands are pinned by
+  `setup.test.ts` with a fake HOME. Gatekeeper behaviour
   beyond the quarantine flag still needs a person.
 - Step 4 (URL dispatch): **partly**. CI tries `open "unvibe://start"` for
   real; when LaunchServices cannot dispatch headless, `e2e-macos` invokes

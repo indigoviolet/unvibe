@@ -22,7 +22,7 @@ This document is the hand-off for building it. It contains the product behaviour
 **Constraints that apply throughout**
 - **No new logins.** GitHub access goes through the user's existing `gh` login. Agents run through the user's existing Claude Code and Codex logins.- **Nothing is hosted on the public internet.** Everything runs on the user's machine, on localhost.
 - **Nothing is posted to GitHub until the user clicks Submit review** (§4.12).
-- **Nothing starts at login** (§14).
+- **The service starts at login** (§14) so the bookmark always answers; a manually started service still idle-exits.
 
 **Where to start.** Milestone M0 (§17) is a short spike that tests the riskiest assumption, ACP session forking, before anything else is built.
 
@@ -67,27 +67,39 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ## 4. Product behaviour
 
 ### 4.1 Layout
-- **Top bar (app-wide only):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge and Tips where they show, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button).
-- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title, the PR label linking to the PR page on GitHub for PR reviews), the version selector next to it (hidden for single-version reviews; the current version annotated in the dropdown, an older shown version flagged with a warning border), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action. While any of the review's jobs is running or queued, a small `running · queued` count sits in the right corner after Submit — a link to the Debug jobs list, with a slow gradient drift while anything runs. It renders nothing when no job is live. At narrow widths the title gives way first; the version selector never truncates away.
+- **Top bar (app-wide, every screen but reviews):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge on the start page and Settings, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button). There is no Tips control anywhere.
+- **Review bar** (the only bar on a review, above both panes): a home control back to the start page at its left end (first in focus order), then the review identity (`owner/name#N` + title, the PR label linking to the PR page on GitHub for PR reviews), the version selector next to it (hidden for single-version reviews; the current version annotated in the dropdown, an older shown version flagged with a warning border), a GitHub link-out for PR reviews, Debug as an icon button, and a compact preview-build marker while the running build is a preview (one quiet word, full text on hover, hidden at narrow widths). No Settings gear: Settings is reached from the start page. A `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action. While any of the review's jobs is running or queued, a small `running · queued` count sits in the right corner after Submit — a link to the Debug jobs list. While anything runs a highlight travels around the pill's border with the inside calm (the box never moves or resizes); under reduced motion the highlight fades in place instead. It renders nothing when no job is live. At narrow widths the title gives way first; the version selector never truncates away.
 - **Guide** (left, main column): the current page.
 - **Source pane** (right): tabs for **PR description** and **Diff**. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
 
 ### 4.2 Start page
 - A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
-- For the selected repo:
+- For the selected repo, the PR and branch lists form one delineated
+  block ("PRs and branches") whose boundary matches exactly what the
+  recency filter covers:
   - **PRs you're authoring:** `gh pr list --author @me`, newest first;
   - **PRs waiting on your review:** `gh pr list --search "review-requested:@me"`
     split into **requested of you** (direct, `user-review-requested:@me`) and
     **requested of your team** (the rest, with team names), each newest
     first;
-  - one remembered recency filter (1d, 3d, 1w, 2w, All) below Reviews
-    applies to every list below it by last update: every PR list and
-    **recent branches** (local and remote, by last commit date, newest
-    first with the commit age on each row); a list the filter empties
-    names its window with a way back to All;
-  - **reviews you've opened before**, with their stale state ("new commits · Update"),
-    ordered by recent activity, unfiltered by the recency filter.
+  - **recent branches** (local and remote, by last commit date, newest
+    first with the commit age on each row);
+  - one remembered recency filter (1d, 3d, 1w, 2w, All) at the block's
+    top right applies to every list in the block by last update; a list
+    the filter empties names its window with a way back to All;
+  - a refresh icon beside the filter re-fetches the lists (spinning
+    while fetching, still under reduced motion), with the last-fetch
+    time in its tooltip instead of a text line.
+- Opening a PR or branch that already has a review opens that review:
+  one review per PR and one per branch in a repo (a PR review and a
+  branch review of the same branch are different). Rows that already
+  have a review say so, and clicking one opens it rather than starting
+  a new review. When the source has new commits, the existing review
+  opens with the refresh it already offers ("new commits · Update").
+- **reviews you've opened before**, with their stale state ("new commits · Update"),
+  ordered by recent activity, unfiltered by the recency filter, outside
+  the block.
 - PR rows show the head branch, a relative update time and the diff size
   (lines added and removed, files changed); where a row names a GitHub PR,
   its number links to the PR page (new tab) without opening the review.
@@ -222,10 +234,11 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **One-line changes are never hidden.** A real version should also never hide a hunk that the guide cites.
 
 **Expand beyond hunks**
-- Step controls above and below every hunk reveal context a few lines at a time; the gap between two hunks also offers Show all. A fully revealed gap reads as continuous.
-- Revealed lines are context: visibly apart from the diff's own lines, syntax-coloured like the rest, collapsible back per region.
+- Quiet caret icons in the line-number gutter reveal context: a single caret steps a few lines, a double caret shows a whole hidden run; direction follows where lines appear. No text labels, no control rows that read as content.
+- Each gap holds one hidden run with one set of controls sharing its remaining count. Continuous boundaries — fully revealed gaps, adjacent hunks, file edges — show no controls. Revealed blocks collapse back through a quiet fold icon on their first line's gutter.
+- Revealed lines are context: visibly apart from the diff's own lines, syntax-coloured like the rest.
 - Deleted files expand on the old side, new files on the new side; binary files offer no expansion. Old and new numbers stay aligned in Split.
-- Revealed lines offer Explain and Ask, anchored on the diff line (read as `code:<path>:<lines>@<sha>`). Note is not offered there.
+- Revealed lines offer Explain, Ask and GitHub, anchored on the diff line (read as `code:<path>:<lines>@<sha>`). Comment is not offered there.
 - Expand by unit: one control per hunk steps from the innermost enclosing function or method to its class and then the file, one level per click, with the unit's name in the hunk header. Units come from tree-sitter grammars (eight languages) with an indentation fallback shown as approximate; hunks with no enclosing unit expand by lines.
 - Where the review has no file content to read, expansion controls hide instead of showing load errors.
 
@@ -271,8 +284,9 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 ┌───────── Installed web app (Chrome "Install app", served from localhost) ─────────┐
 │  React UI: start page · guide · source pane · settings                            │
 └───────────────▲─────────────────────────────── HTTP + WebSocket (token) ──────────┘
-                │
+                 │
 ┌───────────────┴──────────────── Unvibe service (Node/TypeScript, localhost) ───────┐
+│  Opens at http://unvibe.localhost:4517 (bookmark; starts at login, §14)            │
 │  Review store (SQLite + files) · ingest (git/gh) · context builder · job queue    │
 │  Citation validator · MCP server (HTTP, shared by all sessions)                   │
 │  AgentRunner interface ──► ACP client ──► claude-agent-acp / codex-acp (stdio)    │
@@ -536,12 +550,14 @@ A new base is built when any of these happens:
 
 ## 14. App shell, install and security
 
-- **Service:** Node and TypeScript, listening on `127.0.0.1` only. It requires a **token** (one per install): generated at setup, held by the UI, and checked on every HTTP and WebSocket request.
-- **UI:** a React (Vite) build served by the service, and **installable as a web app** from Chrome (localhost counts as secure). There are no browser extensions.
-- **Nothing starts at login.**
-  - `unvibe setup` writes a small link-handler app to `~/Applications`. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing, and it registers the `unvibe://` URL scheme.
+- **Service:** Node and TypeScript, listening on loopback only (`127.0.0.1` plus a `::1` companion on the same port, so it answers however the browser resolves the name; never a routable address, and no setting can move it there). It requires a **token** (one per install): generated at setup, held by the UI, and checked on every HTTP and WebSocket request. The Host/Origin gate accepts exactly `127.0.0.1`, `localhost`, `unvibe.localhost`, `::1` and `::ffff:127.0.0.1` — never a suffix or substring; the check stays port-agnostic as before (pinning was tried and reverted: it 403s the app's own loads on ephemeral binds).
+- **UI:** a React (Vite) build served by the service at `http://unvibe.localhost:4517` (bookmarkable; the `127.0.0.1` URL is the same service), and **installable as a web app** from Chrome (localhost counts as secure). There are no browser extensions.
+- **The service starts at login.**
+  - `unvibe setup` writes a start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux) running `start --foreground` with the port and data dir baked in, plus the small link-handler app to `~/Applications` (macOS) or the desktop file (Linux) that registers the `unvibe://` URL scheme. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing.
+  - `setup` prints the link with the token once; after that a long-lived cookie (`Max-Age` one year, `SameSite=Lax`, host-only) carries it and the plain URL works as a bookmark. The old `127.0.0.1` URL keeps working because it is the same service; there are no redirects.
   - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The link handler starts the service, and the page reloads.
-  - The service exits after a period with no open window and no running jobs (default 10 minutes).
+  - A login-started service never idle-exits (`UNVIBE_IDLE_MS=0` in the unit). A manually started service exits after a period with no open window and no running jobs (default 10 minutes).
+  - While the unit is installed, `stop`/`start` (and `open`) go through the service manager; otherwise the CLI owns the process directly. The units restart on crash only (launchd `KeepAlive SuccessfulExit:false`, systemd `Restart=on-failure`), so a deliberate stop stays down and an update (`stop` → install → `start`, or the in-app switch) can never race a manager restart. Every update rewrites the unit with the just-installed paths; `doctor` warns when the baked paths go stale.
 - **Install:** `npm install -g github:<org>/unvibe#release`, then `unvibe setup`. Updates use the same install command. The agent CLIs (`claude`/`codex`) are the user's own installs (see `DEVELOPMENT.md` "Releases" and `docs/acceptance-audit.md` "Intentional deviations" item 1).
 - **macOS gotcha:** apps opened from Finder don't inherit the shell's `PATH`. On startup the service must read it from a login shell (`zsh -lc 'echo $PATH'`) so it can find `gh`, `git`, `claude`, `codex` and mise-installed tools.
 - **Storage:** `~/.local/share/unvibe/` holds a SQLite database plus a folder per review (`<owner>/<repo>/<review-id>/`) for the log and snapshots. Nothing is written into the user's checkout, apart from the worktree, which is created alongside it under a managed path.
@@ -602,7 +618,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | Rebase comparison | `git range-diff <old-base>..<old-head> <new-base>..<new-head>` |
 
 - **Description edits** are converted from the edited HTML back to Markdown before `gh pr edit`. Content outside edited paragraphs must round-trip unchanged.
-- **If `GITHUB_TOKEN` is set in the environment** without the needed scopes, it can override the `gh` keyring login. Run `gh` with `GITHUB_TOKEN` unset unless the user configures otherwise.
+- **If `GITHUB_TOKEN` is set in the environment** without the needed scopes, it can override the `gh` keyring login. Run `gh` with `GITHUB_TOKEN` unset unless the user configures otherwise. The start-at-login units (§14) bake in only `UNVIBE_PORT`, `UNVIBE_DATA_DIR` and `UNVIBE_IDLE_MS` — never the whole environment, so a stray `GITHUB_TOKEN` cannot leak into the login-started service.
 
 ---
 

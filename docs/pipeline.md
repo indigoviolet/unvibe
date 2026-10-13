@@ -91,10 +91,18 @@ Stored citation targets are canonical (real file keys): alias-form tokens
 web needs no alias table. Ingest records the PR author/state on the
 description, and the pipeline maintains its `restated` mapping (paragraph
 → guide block ids from `desc:` citations) as the guide grows.
-4. **Hunk pass** (small model, no fork, one prompt per hunk, background).
-   Summary + `hiddenReason` per hunk, replacing the rule-based
-   pre-classification. Never hide a hunk the guide cites (recomputed after
-   the reader) nor a one-line change. `POST …/hunks/:hash/summarize` runs
+4. **Hunk pass** (small model, no fork, one prompt per hunk, background;
+   starts at ingest in its own queue bucket — #123). Summary +
+   `hiddenReason` per hunk, replacing the rule-based pre-classification.
+   Never hide a hunk the guide cites (recomputed after the reader) nor a
+   one-line change. Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks
+   there is no per-hunk fan-out at ingest (issue #107: no guide exists
+   yet to cite, so the stage reaches done with no jobs); only
+   guide-cited hunks lacking a stored summary fan out once the reader
+   lands, everything else summarises on demand, and the stage still
+   reaches done (empty fan-out sets done; completions are counted in the
+   success path) so resume never re-runs
+   the full fan-out. `POST …/hunks/:hash/summarize` runs
    one hunk on demand at user priority (`kind: "summarize"`); **Fold all**
    is the client calling summarize per hunk missing a summary (jobs dedupe
    per hunk hash, so no batch endpoint is needed).
@@ -181,5 +189,10 @@ card) and `logTail` (`new-card` with `unverified` count).
 
 No batch endpoint: the client calls `POST …/hunks/:hash/summarize` per
 hunk missing a summary. Jobs dedupe per hunk hash, run at user priority,
-and never hide cited/one-line hunks. Documented here so web and service
-agree.
+and never hide cited/one-line hunks. Past the shared
+`HUNK_PASS_FANOUT_LIMIT` (500 hunks, `packages/shared/src/budgets.ts` —
+the single number both sides import) Fold all folds only and requests no
+summaries; the per-hunk Summarize button in the hunk header stays as the
+on-demand path (`DiffView.tsx` Fold-all guard, `FileSection.tsx`
+`.dhunk-h` header, Tips copy, `DiffView.test.tsx` both sides).
+Documented here so web and service agree.

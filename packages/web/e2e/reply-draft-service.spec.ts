@@ -14,6 +14,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { selectText } from "./select-text.js";
 
 const exec = promisify(execFile);
 
@@ -39,46 +40,6 @@ async function apiJson(
   if (body !== undefined) args.push("-d", JSON.stringify(body));
   const { stdout } = await exec("curl", args);
   return JSON.parse(stdout);
-}
-
-async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
-  // Same polled shape as interaction.spec.ts: re-select until the bar
-  // sticks (a late scroll dismisses it under load).
-  await expect
-    .poll(
-      async () => {
-        await page.evaluate((rootSelector) => {
-          document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
-        }, rootSelector);
-        const found = await page.evaluate(
-          ({ rootSelector, text }) => {
-            const root = document.querySelector(rootSelector);
-            if (!root) return false;
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-              const data = (node as Text).data;
-              const at = data.indexOf(text);
-              if (at < 0) continue;
-              const range = document.createRange();
-              range.setStart(node, at);
-              range.setEnd(node, at + text.length);
-              const sel = getSelection();
-              sel?.removeAllRanges();
-              sel?.addRange(range);
-              (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-              return true;
-            }
-            return false;
-          },
-          { rootSelector, text },
-        );
-        if (!found) return "not-found";
-        await page.waitForTimeout(150);
-        return (await page.locator("#selbar").isVisible()) ? "shown" : "hidden-again";
-      },
-      { timeout: 15000 },
-    )
-    .toBe("shown");
 }
 
 test.describe("reply drafts over the real service", () => {

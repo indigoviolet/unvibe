@@ -40,6 +40,13 @@ code { font-family: var(--mono); font-size: .86em; }
 .top .pr b, .top .pr h1 { min-width: 0; margin: 0; font-size: inherit; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top .pr .num { font-family: var(--mono); color: var(--muted); font-size: 12px; white-space: nowrap; }
 .pill { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
+/* Compact preview marker in the review bar (issue #141): one quiet word,
+   the full build text on hover. Never shrinks (the title gives way first). */
+.rbar .preview-mini { font-size: 10px; padding: 1px 6px; flex: none; align-self: center; text-decoration: none; }
+.rbar .preview-mini:hover { color: var(--accent); }
+/* Narrow windows give the width to the title; the full build text stays
+   on the start page and Settings → Version. */
+@media (max-width: 1000px) { .rbar .preview-mini { display: none; } }
 .tbtn { border: 1px solid var(--line); background: var(--surface); padding: 3px 10px; border-radius: 6px; font-size: 13px; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; color: inherit; text-decoration: none; cursor: pointer; }
 .tbtn[aria-pressed="true"], .tbtn[aria-expanded="true"] { background: var(--sunk); }
 /* Product home link: same on every top bar, never link-styled. */
@@ -60,8 +67,8 @@ code { font-family: var(--mono); font-size: .86em; }
 /* Review bar (issue #31 round 2): the review-specific second row under the
    top bar — identity left (truncates first), Guide|Source selector, then
    Comments + Submit. Never wraps; the dropdowns anchor inside it. */
-.rbar { display: flex; align-items: center; gap: 10px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
-.rbar .rid { display: flex; gap: 8px; align-items: baseline; min-width: 0; flex: 1 1 auto; }
+.rbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.rbar .rid { display: flex; gap: 6px; align-items: baseline; min-width: 0; flex: 1 1 auto; }
 .rbar .rid .num { font-family: var(--mono); color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; }
 /* Review bar (#94): the PR label links out but keeps its quiet meta look. */
 .rbar .rid a.num { color: inherit; text-decoration: none; }
@@ -79,15 +86,30 @@ code { font-family: var(--mono); font-size: .86em; }
 /* Live job count (issue #98): two numbers (running · queued) in the review
    bar's right corner, after Submit so appearing never shifts the title or
    the buttons. Nothing renders when no job is live, so it reserves no
-   space. The gradient drifts while anything runs; queued-only is quiet. */
+   space. While anything runs (issue #144) a highlight travels around the
+   pill's border with the inside calm; queued-only is quiet. */
 .jcount { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; white-space: nowrap; background: var(--surface); }
 .jcount:hover { border-color: var(--accent); color: var(--accent); }
-.jcount.live { background: linear-gradient(115deg, var(--accent-soft), var(--surface) 40%, var(--accent-soft)); background-size: 220% 100%; animation: jcount-drift 4s ease-in-out infinite alternate; }
-@keyframes jcount-drift { from { background-position: 0% 0; } to { background-position: 100% 0; } }
-/* A review shows two bars (top + review), so the grid needs three rows. */
-.app.with-reviewbar { grid-template-rows: auto auto minmax(0, 1fr); }
-/* The narrow-window overlay floats below both bars. */
-.with-reviewbar .col.overlay { top: 92px; }
+/* Live job count (issue #144, option A): the inside stays calm so the
+   numbers never shift, while a highlight travels around the pill's
+   border. The ring is a masked conic gradient on a pseudo-element, so it
+   never touches layout; only the registered `--jangle` animates. */
+@property --jangle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.jcount.live { position: relative; background: var(--surface); }
+.jcount.live::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 2px;
+  background: conic-gradient(from var(--jangle), var(--accent) 0deg, transparent 120deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: jcount-spin 1.6s linear infinite;
+  pointer-events: none;
+}
+@keyframes jcount-spin { to { --jangle: 360deg; } }
+/* A review shows one bar (the review bar, issue #141), so the grid needs
+   two rows like every other screen. */
+.app.with-reviewbar { grid-template-rows: auto minmax(0, 1fr); }
+/* The narrow-window overlay floats below the single review bar. */
+.with-reviewbar .col.overlay { top: 41px; }
 /* Second-opinion mode menu: one icon button in the row, modes in a popover. */
 .so-ctl { display: inline-flex; align-items: center; gap: 0; position: relative; }
 .so-menu { position: absolute; left: 0; top: calc(100% + 4px); min-width: 220px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 4px; z-index: 30; display: flex; flex-direction: column; gap: 2px; }
@@ -115,7 +137,7 @@ code { font-family: var(--mono); font-size: .86em; }
 .x { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 2px 10px; font-size: 12px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
 .x:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.seg button { border: 0; background: var(--surface); font-size: 12px; padding: 2px 9px; color: var(--muted); }
+.seg button { border: 0; background: var(--surface); font-size: 12px; padding: 2px 7px; color: var(--muted); }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
 .chip { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 0 8px; font-size: 11.5px; color: var(--muted); height: 22px; }
@@ -326,6 +348,23 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
 .divider { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 30px 0 4px; }
 /* Start page (#95): quiet label for the review-request sub-groups under a divider. */
 .subhead { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 10px 0 2px; }
+/* Start page (#148): the PR + branch lists the recency filter governs are
+   one delineated block, with the filter and the refresh icon in its
+   heading row. The heading row is fixed-height with a fixed-size icon
+   button, and the spin is a transform on the icon only, so nothing in the
+   block shifts while fetching. */
+.prblock { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 2px 14px 12px; margin-top: 18px; }
+.prblock .divider { margin-top: 14px; }
+.prblock-head { display: flex; align-items: center; gap: 8px; min-height: 30px; margin-top: 6px; }
+.prblock-title { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prblock-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.prblock-tools select.tbtn { font-size: 12px; padding: 2px 6px; max-width: 160px; }
+.spin { display: inline-grid; place-items: center; animation: prspin 1s linear infinite; }
+@keyframes prspin { to { transform: rotate(360deg); } }
+/* Reduced motion: the refresh icon stays still while fetching (the tooltip
+   still names the state). The working-dots / job-pill rule below is owned
+   by #144 and untouched. */
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 20px; margin: 14px 0; position: relative; }
 .chead { display: flex; align-items: center; gap: 4px; margin-left: -10px; }
 .chead h2.ct { font-family: var(--serif); font-size: 21px; font-weight: 600; margin: 0; text-wrap: balance; flex: 1; min-width: 0; }
@@ -473,7 +512,17 @@ mark.anc.on { outline: 2px solid var(--note); }
 @keyframes rewrite-pulse { 0%, 100% { border-left-color: var(--accent); } 50% { border-left-color: var(--line); } }
 /* Placeholder where agent-started content will land: dashed like a pending card. */
 .card.child.placeholder { border-style: dashed; background: none; }
-@media (prefers-reduced-motion: reduce) { .fresh, .dots i, .card.rewriting, .jcount.live { animation: none; } .dots i { opacity: 1; transform: none; } }
+@keyframes dot-fade { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes jcount-fade { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+/* Reduced motion (issue #144): opacity-only signs of life — the dots take
+   turns fading (no rise), the pill's travelling highlight fades in place
+   (no rotation, no drifting gradient). The rewriting border keeps its
+   colour-only pulse. The depth stepper's pips never animate in any mode. */
+@media (prefers-reduced-motion: reduce) {
+  .fresh { animation: none; }
+  .dots i { animation: dot-fade 1.8s ease-in-out infinite; transform: none; }
+  .jcount.live::before { animation: jcount-fade 2.2s ease-in-out infinite; }
+}
 .dg { margin: 12px 0 4px; }
 /* D2 diagrams (service-rendered SVG, inlined): the svg fills the block
    width up to its natural size (max-width, set per diagram), preserving

@@ -12,8 +12,10 @@
  * `globalThis.__unvibeNonLoopbackAttempts` (asserted empty by the demo
  * end-to-end test) and then fail.
  *
- * Loopback = 127.0.0.1, ::1, ::ffff:127.0.0.1, localhost. Unix-socket
- * connects (no host) are allowed.
+ * Loopback = 127.0.0.1, ::1, ::ffff:127.0.0.1, localhost,
+ * unvibe.localhost (issue #108: the bookmarkable name; browsers resolve
+ * `*.localhost` to loopback themselves, and the service's Host/Origin gate
+ * accepts exactly this name). Unix-socket connects (no host) are allowed.
  */
 import net from "node:net";
 import tls from "node:tls";
@@ -34,12 +36,14 @@ function attempts(): string[] {
 
 function isLoopbackHost(host: string | undefined | null): boolean {
   if (!host) return true; // Unix socket / unspecified: allow.
-  const h = host.toLowerCase();
+  // URL keeps IPv6 brackets on hostname ("[::1]"); strip them.
+  const h = host.toLowerCase().replace(/^\[(.*)\]$/, "$1");
   return (
     h === "127.0.0.1" ||
     h === "::1" ||
     h === "::ffff:127.0.0.1" ||
     h === "localhost" ||
+    h === "unvibe.localhost" ||
     h === "ip6-localhost"
   );
 }

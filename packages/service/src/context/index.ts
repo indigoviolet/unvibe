@@ -28,6 +28,7 @@ export {
   buildL1bPinned,
   buildL1Source,
   buildL2Guide,
+  buildLadder,
   buildSourceBlurb,
   formatDiffLine,
   formatFinding,
@@ -39,8 +40,10 @@ export {
   hunkId,
   pinnedId,
   type DiffSectionResult,
+  type L1Ladder,
   type L1Options,
   type L1Result,
+  type L1Rung,
   type L4Conversation,
 } from "./layers.js";
 export {
@@ -74,7 +77,11 @@ export {
 } from "./secondOpinion.js";
 export {
   charTokenEstimator,
+  countCodePoints,
+  DEFAULT_BASE_PROMPT_CAP_TOKENS,
+  DEFAULT_HUNK_PASS_FANOUT_LIMIT,
   DEFAULT_INLINE_BUDGET_TOKENS,
+  DEFAULT_LEFTOVER_FLOOR_TOKENS,
   DEFAULT_LOG_BATCH_TOKENS,
   DEFAULT_REBUILD_APPENDED_TOKENS,
   DEFAULT_REBUILD_SUPERSEDED_RATIO,

@@ -16,6 +16,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { selectText } from "./select-text.js";
 import type { Page } from "@playwright/test";
 
 const exec = promisify(execFile);
@@ -29,52 +30,6 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
   return JSON.parse(stdout);
 }
 
-/** Select `text` under `rootSelector` and wait for the toolbar. */
-async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
-  // Select and wait in one polled step (same as interaction.spec.ts):
-  // scrollIntoView can deliver its scroll event after the toolbar shows
-  // when the loop is busy, and a late scroll dismisses the bar — so
-  // select-then-assert flakes. Re-select until the bar sticks; a repeated
-  // select is harmless (same range, same mouseup path) and converges once
-  // the scroll lands.
-  await expect
-    .poll(
-      async () => {
-        await page.evaluate((sel: string) => {
-          document.querySelector(sel)?.scrollIntoView({ block: "center" });
-        }, rootSelector);
-        // No settle wait: the app has no smooth scrolling.
-        const found = await page.evaluate(
-          ({ rootSelector, text }: { rootSelector: string; text: string }) => {
-            const root = document.querySelector(rootSelector);
-            if (!root) return false;
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-              const data = (node as Text).data;
-              const at = data.indexOf(text);
-              if (at < 0) continue;
-              const range = document.createRange();
-              range.setStart(node, at);
-              range.setEnd(node, at + text.length);
-              const sel = getSelection();
-              sel?.removeAllRanges();
-              sel?.addRange(range);
-              (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-              return true;
-            }
-            return false;
-          },
-          { rootSelector, text },
-        );
-        if (!found) return "not-found";
-        // Let a late scroll land before reading the bar.
-        await page.waitForTimeout(150);
-        return (await page.locator("#selbar").isVisible()) ? "shown" : "hidden-again";
-      },
-      { timeout: 15000 },
-    )
-    .toBe("shown");
-}
 
 /** First word (≥4 letters) of the parent expansion body, for nesting into. */
 async function firstBodyWord(page: Page, expSelector: string): Promise<string> {

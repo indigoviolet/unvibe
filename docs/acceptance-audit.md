@@ -81,18 +81,33 @@ checkouts; job-list snapshot bloat; doctor port diagnosis; broken
   diagnostics (home+token redacted); Reload everything re-probes PATH,
   restarts adapters (in-flight fail as retryable, jobs retry), clears
   caches, re-checks d2, without restart.
-- **Nothing hosted publicly** — met. Fastify binds `127.0.0.1` only
-  (`server.ts:278`); static network guards (`network-guards.test.ts`,
+- **Nothing hosted publicly** — met. Fastify binds `127.0.0.1` plus a
+  `::1` companion on the same port (issue #108; answers however the
+  browser resolves `unvibe.localhost`, still loopback only, no host
+  setting); static network guards (`network-guards.test.ts`,
   `network-privacy.test.ts`, Playwright `network-privacy.spec.ts`,
   `network-guard.ts` fixture) fail the suite on any non-loopback contact.
 - **Nothing posted until Submit** — met. `gh-writes.test.ts` proves only
   `src/submit/**` + `routes/submit.ts` contain write-shaped `gh` calls;
   this branch adds the submit lease so even a crash cannot double-post
   (`submit/lease.ts`, `submit-m6.test.ts` “crash safety”).
-- **Nothing starts at login** — met. `e2e-linux.mjs` asserts setup writes
-  only the `.desktop` handler; `macos-testing.md` step 3 checks
-  `~/Library/LaunchAgents` is empty; idle exit (10 min default) shuts the
-  service down.
+- **Starts at login, stays local** (issue #108) — met. `setup` writes a
+  launchd agent (macOS) / systemd user unit (Linux) running
+  `start --foreground` with port + data dir baked in and
+  `UNVIBE_IDLE_MS=0`, so the login-started service never idle-exits; a
+  manually started service keeps the 10-minute idle exit. Follow-up:
+  while the unit is installed, `stop`/`start`/`open` go through the
+  service manager (crash-only restart: launchd `KeepAlive
+  SuccessfulExit:false`, systemd `Restart=on-failure` — a deliberate
+  stop stays down, updates can't race a restart); `status` says `starts
+  at login`; failed manager starts unload again (no crash-loop, no port
+  fight) and fall back to a direct spawn with a warning. Both update
+  paths refresh the unit with the just-installed paths; `doctor` warns
+  on stale baked paths; the login-shell PATH probe (headless-safe) is
+  how manager-started services find their tools. `managed-cli` +
+  `service-manager` tests pin the matrix with a stub runner + fake HOME
+  (`e2e-*.mjs` use `--no-login` to stay hermetic). macOS
+  enable + Safari still need a human (see `macos-testing.md`).
 - **New repos under the team org** — cannot verify here (process rule, no
   org access from this machine).
 
@@ -106,23 +121,29 @@ UI); nothing below was edited by this pass.
 
 ### §4.1 Layout — all met
 
-- Top bar (app-wide only: Unvibe home link, breadcrumb trail, badge/Tips
-  where shown, gear Settings icon in the same place; Settings screen has
-  none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
-  cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
-  #31/#55 round 2).
-- Review bar (identity + version selector next to it per #120 + GitHub
-  link-out + Debug icon, [ Guide | Source ] pane toggles incl. full-width
-  source per #83, Comments + primary Submit; source tabs keep PR
-  description / Diff only; at narrow widths the title gives way first and
-  the selector never truncates) — met
+- Top bar (app-wide, every screen but reviews: Unvibe home link,
+  breadcrumb trail, badge on start/Settings, gear Settings icon in the same
+  place; Settings screen has none; no Tips anywhere per #141) — met
+  (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb cases,
+  `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues #31/#55
+  round 2, #141).
+- Review bar (the only bar on a review per #141: home control first, then
+  identity + version selector next to it per #120 + GitHub link-out + Debug
+  icon + compact preview marker, [ Guide | Source ] pane toggles incl.
+  full-width source per #83, Comments + primary Submit; at narrow widths
+  the title gives way first and the selector never truncates; no Settings
+  gear) — met
   (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
   `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
   `55-review-800px.png`, `55-review-dark.png`,
   `83-source-full-width.png`, `120-wide-light.png`,
   `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
   `120-narrow-light-readonly.png`,
-  `120-narrow-dark-readonly.png`).
+  `120-narrow-dark-readonly.png`, `141-review-800-light.png`,
+  `141-review-800-dark.png`, `141-review-1440-light.png`,
+  `141-review-1440-dark.png`,
+  `141-review-readonly-800-light.png`,
+  `141-review-readonly-800-dark.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -277,11 +298,20 @@ needed (that deviation is closed, not added).
    facts only: a `degraded` field fails terminally, and a
    process-complaint frame fails when the turn ran without the review
    MCP server or hit a dead MCP URL — tool names and MCP/gh alone never
-   fail a job. Connection-error failures retry once on a fresh session;
-   everything else degraded is terminal. Streamed partials are cleared
-   and the reason lands in the job error on the Debug page
-   (`degraded-turn-51.test.ts`). A reply anchor that names only the card
-   gets one repair turn carrying the reason (`validate.test.ts`).
+   fail a job. Connection-error failures retry once on a fresh session
+   (fork jobs since #51, the reader since #146: fresh per-run secret +
+   session, deterministic provisional ids so the retry overwrites rather
+   than duplicates, each attempt's usage recorded once); everything else
+   degraded is terminal. A twice-failed reader sets a plain-words stage
+   error ("The guide couldn't be started because the review details
+   couldn't be reached. Please retry.") with Retry, the raw reason
+   staying on the job error for the Debug page. Streamed partials are
+   cleared and the reason lands in the job error on the Debug page
+   (`degraded-turn-51.test.ts`, `reader-146-124.test.ts`). A reply anchor
+   that names only the card gets one repair turn carrying the reason
+   (`validate.test.ts`). The reader's citation-repair prompt (naming the
+   failed citations) is kept on the job's stored prompt, so the Debug
+   page shows what failed (#124).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
@@ -690,17 +720,21 @@ needed (that deviation is closed, not added).
   `GET /api/reviews/:id/file` serves raw ranges at a commit through the
   shared `readCodeSlice` source with a per-request cap
   (`service/src/routes/files.ts`, `service/test/file-slice.test.ts` 4
-  tests); step controls above/below each hunk (20 lines) plus gap
-  show-all with a slim hide when fully revealed, so the hunks read as
-  continuous (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 9 tests, `FileExpansion.test.tsx` 5 tests,
-  `e2e/diff-expand.spec.ts` 4 tests); revealed rows are tinted context
+  tests); quiet gutter caret icons (single = 20-line step, double =
+  whole run) in thin separator rows frozen left while code scrolls, one
+  hidden run per gap sharing one remaining count from both ends, no
+  controls on continuous boundaries (fully revealed or zero-line gaps,
+  file edges; the total is probed up front for single-hunk files), and a
+  quiet fold icon on each revealed block's first gutter number instead
+  of control rows (`web/src/source/diff/FileExpansion.tsx`,
+  `expandLines.test.ts` 10 tests, `FileExpansion.test.tsx` 14 tests,
+  `e2e/diff-expand.spec.ts` 8 tests); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
   (`expand.css`, `highlightLines`); deleted files expand on the old
   side, new files on the new side, binary files offer nothing, renames
   read the new path at head — nothing throws; revealed lines offer
-  Explain and Ask on the diff-line anchor (read as
-  `code:<path>:<lines>@<sha>`) while Note stays hidden there
+  Explain, Ask and GitHub on the diff-line anchor (read as
+  `code:<path>:<lines>@<sha>`) while Comment stays hidden there
   (`SelectionToolbar.test.tsx`); `docs/screenshots/133-*.png`.
 - Expand beyond hunks, by unit (issue #133, stage 2) — met:
   `GET /api/reviews/:id/outline` answers the enclosing chain for a hunk
@@ -808,7 +842,12 @@ needed (that deviation is closed, not added).
 - Interface (`start/fork/load/prompt/close`, event union) — met
   (`shared/src/agent.ts`, `agent/acp/runner.ts`).
 - Fork works both adapters (+Claude resume quirk handled) — met (M0
-  results table 12/12 + 11/12; `runner.ts` fork/resume).
+  results table 12/12 + 11/12; `runner.ts` fork/resume). Forks carry the
+  same `mcpServers` + `_meta` as new/resume/load (#124, fake-transport
+  pinned); live-verified that a Codex fork still comes up with no review
+  tools (zero tool attempts across 7 forks — the drop is inside the
+  adapter/CLI fork path, a bigger fix explicitly deferred), so the live
+  fork-tools check is skipped until then (`test:live:fork-tools`).
 - No-fork fallback (byte-identical first message, caching) — met (M0 §8
   rows; `pipeline/runner.ts:830 forkFor`; `sessions/manager.ts:271
   forkConversation`; fallback test `pipeline.test.ts:444`).
@@ -888,6 +927,29 @@ needed (that deviation is closed, not added).
 
 - Layers L0–L4 ordering + budgets (40k guess, hunk-header fallback) —
   met (`context/layers.ts`, `context.test.ts` header/summary fallback).
+  (#107) L1 is now a ladder with a hard 80k-token cap
+  (`DEFAULT_BASE_PROMPT_CAP_TOKENS`, not a setting so tuning the inline
+  budget can never reintroduce the provider "Prompt is too long"
+  failure): full → budget-limited → no-uninteresting-hunks →
+  files-only → counts-only, guide-cited/pinned hunks inlined wherever
+  they still fit and dropped last with a notice; every rung past full
+  names only real tools (`get_hunk`, `search_review`, `resolve`,
+  `get_code`); `buildHunkSummaries`/`buildHiddenHunksSection` obey the
+  same cap; reader, base, second-opinion, prompt preview and debug page
+  all build from the one ladder call; the update pass caps
+  `changed_hunks`. Under the budgets every builder is byte-identical to
+  before (`prompt-goldens.test.ts` unchanged). Follow-up: the cap holds
+  for the assembled base message, not per section — `buildBasePack`
+  gives hunk summaries only what is left of the cap after L1+L1b+L2
+  (floor 500 tokens so counts always fit) and asserts the total; the
+  prompts preview and `changed_hunks` budget leftovers the same way.
+  Cost: rungs render lazily in order (small reviews pay for the first
+  rung only), token counting is allocation-free (`countCodePoints`),
+  and `capChangedHunks` keeps a running total instead of re-joining per
+  chunk. Provider "prompt is too long" errors are non-retryable (`agent/acp/errors.ts`) so the queue
+  cannot loop on them, and the ladder throws a plain message naming the
+  PR size if even counts-only cannot fit. Deviation from PRD §9.1 noted
+  below.
 - Per-model base cache; base key (review, version, guide rev, model) — met
   (#43: the key had no review id, so reviews shared a base and a removed
   review's session was reused when the change was added again; Remove now
@@ -936,6 +998,10 @@ needed (that deviation is closed, not added).
   longer truncate at the first `</li>`). Pending description edits are
   read (`pendingHtml ?? html`); stored HTML predating stable IDs falls
   back to positional per-block numbering (`desc-ids.test.ts` — ran).
+  (#107) `search_review` also matches changed file paths (one hit per
+  file with hunk IDs; second-opinion isolation unchanged), so the agent
+  can discover files once the L1 ladder leaves the file list out; the
+  tool description change is a deliberate golden update.
 - Validation (existence, ranges, anchor substring, hidden concept
   candidates) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair
@@ -954,11 +1020,36 @@ needed (that deviation is closed, not added).
    streamed, and text before the first `## ` card is dropped — met
    (`pipeline/apply.ts`, `pipeline.test.ts` “stored once”). Reviews
    created before the fix keep their duplicate cards; no migration.
+   Diagrams the reader writes inline in guide cards run the same
+   finalize + one repair turn as every other fill (#145: flattened
+   across cards for one shared repair turn on the reader session, then
+   split back — `splitFinalizedBlocks`); a failed repair keeps
+   error-status blocks, prose unaffected. Extra turns per guide build:
+   at most one citation repair + one diagram repair per reader run, and
+   at most one diagram repair per second-opinion run (each other fill
+   keeps its existing one-repair bound).
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×2 with evidence/assessment/confidence +
    suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
 5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
    — met (demo 8 summaries — ran from global install).
+   (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no
+   per-hunk fan-out at ingest (no guide exists yet to cite): only
+   guide-cited hunks lacking a stored summary fan out once the reader
+   lands, everything else summarises on demand (`POST
+   …/hunks/:hash/summarize`, Fold-all; jobs dedupe per hunk hash). The
+   stage still reaches done (empty fan-out sets done; completions are
+   counted in the success path, fixing a race where concurrent jobs all
+   saw each other "running" and nobody marked done), and resume reruns
+   the same branch — never the full fan-out. The limit is shared
+   (`HUNK_PASS_FANOUT_LIMIT` in `packages/shared`, read by the pipeline
+   and the web): past it Fold all folds only and requests no summaries
+   (toast, tooltip and Tips copy say so; per-hunk Summarize stays
+   on-demand). Hide-uninteresting folding
+   needs no model summaries: it folds on the deterministic ingest hidden
+   reason, and summary-less rows render the reason copy with no spinner
+   (`DiffView.test.tsx` "folds on the deterministic hidden reason").
+   Deviation from PRD §11 step 5 noted below.
 6. On demand (depth/go-deeper/explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
@@ -1045,13 +1136,19 @@ needed (that deviation is closed, not added).
 
 ## §14 Shell, install, security, storage — all met
 
-- Service on 127.0.0.1 + per-install token on every HTTP and WS route —
-  met (enumerated all 30 routes + WS: 401 unauth — ran; `server.ts:169`
-  gate; WS handshake 401 — ran).
-- Token never in URL after first load — met (`web/src/api/client.ts:55`
-  moves URL token to `localStorage` + `SameSite=Lax` cookie; ui-walk).
+- Service on loopback + per-install token on every HTTP and WS route —
+  met (enumerated all 30 routes + WS: 401 unauth — ran; `server.ts`
+  gate; WS handshake 401 — ran). Opens at `http://unvibe.localhost:4517`
+  (issue #108; the `127.0.0.1` URL is the same service).
+- Token never in URL after first load — met (`web/src/api/client.ts`
+  moves URL token to `localStorage` + persistent `SameSite=Lax` cookie
+  (`Max-Age` one year, issue #108); ui-walk).
 - Host/Origin checks (DNS-rebinding, cross-site WS) — met (new
   `security/host.ts`, 403 for evil Host/Origin — ran; `host.test.ts`).
+  Issue #108 accepts exactly `unvibe.localhost` more (no suffix match;
+  look-alikes, trailing dot, userinfo, hex IPv6 all 403 — ran, HTTP and
+  WS; the gate stays port-agnostic by decision: pinning 403s the app's
+  own loads on ephemeral binds).
 - MCP per-session secrets (unguessable 256-bit, scoped per review, expire
   with session/review, pin_context reader-only) — met (`mcp/registry.ts`
   + lifecycle fixes + `mcp.test.ts` “secret lifecycle” — ran).
@@ -1063,7 +1160,9 @@ needed (that deviation is closed, not added).
   (empirical lifecycle on a real repo — ran; `reviews/delete.ts`).
 - Nothing starts at login; idle exit (10 min, no window + no jobs) — met
   (`e2e-linux.mjs` idle-exit; empirical 8 s idle exit + stays up with
-  jobs — ran).
+  jobs — ran). Superseded by issue #108: the service now starts at login
+  (launchd/systemd, `UNVIBE_IDLE_MS=0` there so it never idle-exits);
+  manual starts keep the idle exit. See "Starts at login" above.
 - Install `npm install -g github:<org>/unvibe#release` + `unvibe setup` +
   same command updates — **met**: the `#release` ref serves a
   self-contained tree (built service + web, no build step, no lifecycle
@@ -1285,6 +1384,14 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
     review, no separate ingest path). The user never edits the managed
     checkout, so fetching is safe; removing the repo deletes the clone
     (managed only), and only while it has no reviews.
+12. Huge-PR prompt tiers (#107): PRD §9.1 says L1 carries "the full
+    handwritten diff" with only the 40k-token header fallback, and §11
+    step 5 says the hunk pass summarises each hunk. Past the inline
+    budget L1 now degrades further (no-uninteresting-hunks → files-only
+    → counts-only, hard-capped at 80k tokens), and past 500 hunks the
+    hunk pass only fans out guide-cited hunks, summarising the rest on
+    demand. Under the budgets every prompt is byte-identical to the
+    PRD shape; only oversized reviews see the degraded tiers.
 
 ## Open list
 
@@ -1450,17 +1557,20 @@ invalid; `shared/test/blocks.test.ts` one case per container;
 component change). Since #130, Explain expansions, go-deeper results,
 concept pages and aside-nested diagrams additionally run the same
 finalize + one repair turn as Add-diagram blocks
-(`diagram-finalize.ts`; go-deeper/concept repair runs on the fill's own
-session, nested repairs splice into the failed slots keeping stored
-ids), so a bad inline diagram is repaired before it reaches the reader;
-an unrepairable one resolves to 409 `error` with the source shown and a
-plain note + retry, never 404/500, and never breaks its card.
-Second-opinion reasoning still skips the repair turn (on-demand render
-only).
-Open: ask thread replies still show the raw D2 source (`<pre
-class="d2">`, no fetch). Serving them through the same endpoint would
-need thread replies stored as blocks (a storage change) or parsing the
-HTML back (fragile); left as static source text with working citations.
+   (`diagram-finalize.ts`; go-deeper/concept repair runs on the fill's own
+   session, nested repairs splice into the failed slots keeping stored
+   ids), so a bad inline diagram is repaired before it reaches the reader;
+   an unrepairable one resolves to 409 `error` with the source shown and a
+   plain note + retry, never 404/500, and never breaks its card. Since
+   #145 the same path covers diagrams written inline in guide (reader)
+   cards and diagrams in second-opinion reasoning (repair on the
+   second-opinion session/model, shared log untouched — isolation holds;
+   `second-opinion.test.ts` reasoning-diagram cases).
+   Open: ask thread replies still show the raw D2 source (`<pre
+   class="d2">`, no fetch). Serving them through the same endpoint would
+   need thread replies stored as blocks (a storage change) or parsing the
+   HTML back (fragile); left as static source text with working citations
+   (with #136).
 
 ### Immediate action feedback (#46, complete)
 
@@ -1532,18 +1642,29 @@ every agent action so the same handover runs. Service jobs now carry
  review's jobs is live — `running` counts `running` jobs, `queued`
  counts `queued` + `backing-off` (both wait: for a slot, for a retry);
  terminal states count for neither — linking to the review's Debug jobs
- list. A slow gradient drifts while anything runs; queued-only is quiet;
- nothing renders when idle or while the review is still opening/failed
- (the open is ingest state, never a snapshot job). Plain link text, no
- live region. CSS only, no new dependency, no CSP change.
- Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
- `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
- queued-only, hidden idle, hidden while opening), new
- `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
- after cancelling all live jobs, 800px fit, computed
- `animation-name`/`duration` on the dots, reduced-motion off via
- emulation), `copy-guard` green. Screenshots `docs/screenshots/98-*`.
- Full gates not yet run.
+  list. While anything runs (issue #144) a highlight travels around the
+  pill's border with the inside calm — a masked conic gradient on a
+  pseudo-element, so the box never moves, resizes or shifts its neighbours;
+  queued-only is quiet; nothing renders when idle or while the review is
+  still opening/failed (the open is ingest state, never a snapshot job).
+  Plain link text, no live region. Under `prefers-reduced-motion` the dots
+  take turns fading in place (no rise) and the pill's highlight fades in
+  place (no rotation); the rewriting border keeps its colour-only pulse;
+  the depth stepper's pips never animate in either mode. CSS only, no new
+  dependency, no CSP change.
+  Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
+  `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
+  queued-only, hidden idle, hidden while opening), new
+  `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
+  after cancelling all live jobs, 800px fit, computed
+  `animation-name`/`duration` on the dots and on the pill's border in full
+  motion, pill + Submit boxes identical over a full travel cycle, depth
+  stepper still in both modes, reduced-motion fade animations with no
+  transform via emulation), `copy-guard` green. Screenshots
+  `docs/screenshots/98-*` and `docs/screenshots/144-*` (both pill options
+  tried; the travelling border picked over the stronger gradient: visible
+  without flooding the pill or hurting the numbers' contrast).
+  Full gates not yet run.
 
 ### Reload blank page, part 1: error boundaries (#101, complete)
 
@@ -1780,6 +1901,40 @@ items noticed while passing through (not verified, listed only):
   `StartPage.requested.test.tsx` (authoring sort, one control below
   Reviews, filtered-empty with Show all, branch ages, Reviews ignores the
   window), `e2e/start-lists.spec.ts`.
+- **#148 (start page, §4.2):** the PR and branch lists the filter governs
+  are one delineated block ("PRs and branches": bordered container with a
+  heading row) whose boundary matches exactly what the filter covers;
+  Reviews and the PR opener stay outside it. The recency selector sits at
+  the block's top right, compact (the window alone with an accessible
+  label). The last-fetch time is a refresh icon in the same row — the
+  same load the Retry button triggers — spinning while fetching (still
+  under reduced motion) with the time in its tooltip, so no text line
+  ever shifts the layout. Filtered-empty states with Show all keep
+  working inside the block. Evidence: `e2e/start-block.spec.ts` (block
+  boundary, compact filter, refresh click → spinning → settled tooltip,
+  filtered-empty way back), `StartPage.kept.test.tsx` (tooltip states),
+  `docs/screenshots/148-wide-light.png`,
+  `docs/screenshots/148-wide-dark.png`,
+  `docs/screenshots/148-narrow-light.png`,
+  `docs/screenshots/148-narrow-dark.png` (looked at).
+- **#149 (start page + reviews, §4.2):** one review per PR and one per
+  branch in a repo. `POST /api/reviews` reuses the existing review for
+  the same source (repo + PR number, or repo + branch) whether loading,
+  failed or ready — answering 200 with `reused: true` (new
+  `CreateReviewResponse` contract) instead of creating a second review —
+  and opening it counts as opening (front-screen order). A PR review and
+  a branch review of the same branch are different sources. Stored
+  duplicates resolve to the most recently active review; two concurrent
+  creates for one source share a single insert (per-key in-flight slot
+  over the #92 pending map). New commits still surface through the
+  existing review's refresh ("new commits"), never a fork. PR/branch
+  list rows that already have a review carry its id (service
+  `repoChanges` + mock alike) and show a small "review" marker ("new
+  commits" alongside when stale); clicking the row opens that review
+  directly. Evidence: `test/reviews-async.test.ts` (ready-PR reuse,
+  branch reuse, PR-vs-branch distinct, concurrent creates → one row),
+  `test/changes-pr-branch.test.ts` (row markers, PR review does not
+  mark its branch), `e2e/open-review.spec.ts` (marker + direct open).
 - **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
   in the quiet meta style with the diff add/delete colours, omitted when
   unknown; thousands separators, "1 file" singular. Evidence:

@@ -151,9 +151,18 @@ export interface RepoChange {
    * are none or the source did not say.
    */
   requestedTeams?: string[];
-  /** Set for kind "review": the opened review's id (M1 service addition). */
+  /**
+   * Set for kind "review": the opened review's id (M1 service addition).
+   * #149: also set for kind "pr"/"branch" when that row already has a
+   * review (same repo + PR number, or same repo + branch-only review) —
+   * the row opens that review instead of starting a new one.
+   */
   reviewId?: string;
-  /** Set for kind "review": head moved since the review was fetched. */
+  /**
+   * Set for kind "review": head moved since the review was fetched.
+   * #149: also set for kind "pr"/"branch" alongside `reviewId` when the
+   * linked review has new commits waiting.
+   */
   stale?: boolean;
   /** Set for kind "demo": fixture name, e.g. "urllib3-5020" (M3 pipeline). */
   demo?: string;
@@ -284,6 +293,15 @@ export interface ReviewSnapshot {
 }
 
 export type ReviewResponse = ReviewSnapshot;
+
+/**
+ * #149: `POST /api/reviews` answers with the review snapshot plus whether
+ * it reused an existing review for the same source (repo + PR number, or
+ * repo + branch). New reviews answer 202 without the flag; a reused
+ * review answers 200 with `reused: true`, so the web navigates without a
+ * "created" toast.
+ */
+export type CreateReviewResponse = ReviewSnapshot & { reused?: boolean };
 
 /**
  * Front screen (PRD §4.2): every review opened before, across ALL repos,

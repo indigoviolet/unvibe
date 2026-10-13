@@ -1,14 +1,14 @@
 /**
- * Top bar, shared by every screen (issue #31 round 2): only app-wide
- * things. The "Unvibe" home link, a breadcrumb after it on every screen
- * but the start page, the preview-build badge and Tips where they show
- * today, and Settings as a gear icon button in the same place on every
- * screen. The Settings screen itself renders no Settings button.
+ * Top bar, shared by every screen but reviews (issue #141: a review page
+ * shows only its review bar): only app-wide things. The "Unvibe" home
+ * link, a breadcrumb after it on every screen but the start page, the
+ * preview-build badge where it shows today (start page, Settings), and
+ * Settings as a gear icon button in the same place on every screen. The
+ * Settings screen itself renders no Settings button.
  */
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon.js";
 import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
-import { TipsButton } from "./Tips.js";
 
 export interface Crumb {
   label: string;
@@ -19,13 +19,11 @@ export interface Crumb {
 export function ScreenTopBar({
   crumbs,
   showBadge,
-  showTips,
   hideSettings,
 }: {
   /** Breadcrumb trail after the home link; omit on the start page. */
   crumbs?: Crumb[];
   showBadge?: boolean;
-  showTips?: boolean;
   /** Set on the Settings screen (it needs no Settings button). */
   hideSettings?: boolean;
 }): React.JSX.Element {
@@ -52,7 +50,6 @@ export function ScreenTopBar({
       ) : null}
       <span className="sp" />
       {showBadge ? <PreviewBuildBadge /> : null}
-      {showTips ? <TipsButton /> : null}
       {hideSettings ? null : (
         <Link className="ib bd" to="/settings" aria-label="Settings" title="Settings">
           <Icon name="gear" />

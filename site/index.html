@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Unvibe reads a branch or pull request with you: a guide with links to the exact code, beside the diff. Install it, then open your local instance." />
+<title>Unvibe — understand the change before you review it</title>
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<header class="wrap">
+<p class="kicker">Unvibe</p>
+<h1>Understand the change before you review it</h1>
+<p class="lede">Unvibe reads a branch or pull request with you. It restates the change as a guide with links to the exact code, shows the diff beside it, answers questions anchored to the text, and submits review comments to GitHub when you choose.</p>
+<p class="open"><a class="button" href="http://unvibe.localhost:4517">Open Unvibe</a></p>
+<p class="hint">Opens your Unvibe running on this machine — nothing here talks to it and this page never sees your token. If nothing answers, <a href="#if-nothing-answers">see below</a>.</p>
+</header>
+
+<main class="wrap">
+<figure>
+<img src="./screenshot-guide.png" alt="The Unvibe guide beside the diff: cards restating the change on the left, the pull request diff on the right" width="1096" height="700" />
+<figcaption>The guide beside the diff, on the bundled demo review.</figcaption>
+</figure>
+
+<h2 id="install">Install</h2>
+<p>You need Node 24 or newer, <code>git</code>, and <code>gh</code> logged in (for pull requests and submitting; local branches work without it). For the guide itself, the <code>claude</code> and/or <code>codex</code> command-line tools, installed and logged in. Diagrams need the <code>d2</code> program; without it everything else works. Unvibe runs on macOS and Linux.</p>
+<pre><code>npm install -g github:indigoviolet/unvibe#release
+unvibe setup</code></pre>
+<p><code>setup</code> starts the service at every login and prints a link with your token — open it once to connect the browser, then bookmark the plain address:</p>
+<pre><code>http://unvibe.localhost:4517</code></pre>
+<p>The bookmark keeps working across browser restarts.</p>
+
+<h2 id="if-nothing-answers">If nothing answers</h2>
+<p>The service is not running. Start it with <code>unvibe start</code>, or run <code>unvibe setup</code> so it starts at every login. If the address itself does not resolve — Safari may not turn <code>*.localhost</code> names into addresses — run <code>unvibe open</code> instead, which opens the numeric address. For anything else, run <code>unvibe doctor</code>, or open Settings → Environment in the app.</p>
+
+<h2 id="update">Update</h2>
+<p>Install again, or switch channels from inside the app:</p>
+<pre><code>npm install -g github:indigoviolet/unvibe#release
+unvibe update &lt;channel&gt;</code></pre>
+
+<h2 id="uninstall">Uninstall</h2>
+<pre><code>unvibe stop
+unvibe setup --uninstall
+npm uninstall -g unvibe</code></pre>
+<p>This keeps your reviews on disk. To remove those too, delete the data folder, <code>~/.local/share/unvibe</code>.</p>
+</main>
+
+<footer class="wrap">
+<p>Unvibe is a local reader for code changes. Source and open work: <a href="https://github.com/indigoviolet/unvibe">github.com/indigoviolet/unvibe</a>.</p>
+</footer>
+</body>
+</html>

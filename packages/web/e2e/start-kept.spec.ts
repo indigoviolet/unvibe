@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
 test("reload shows kept rows before the changes request completes, then updates", async ({ page }) => {
   // First load fetches and keeps the lists.
   await expect(page.getByText("Your PRs")).toBeVisible();
-  await expect(page.locator('[data-testid="kept-status"]')).toContainText(/^Updated /);
+  await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /^Updated /);
   await expect(page.getByText("Unfold obsolete folded response header values").first()).toBeVisible();
 
   // Hold every repo-lists response, then reload: the kept rows must render
@@ -24,15 +24,14 @@ test("reload shows kept rows before the changes request completes, then updates"
   await expect(
     page.getByText("Unfold obsolete folded response header values").first(),
   ).toBeVisible();
-  // No loading state for a repo with kept rows; the quiet refresh sign is on.
+  // No loading state for a repo with kept rows; the refresh icon spins.
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="kept-status"]')).toContainText("refreshing");
+  await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /refreshing/);
 
-  // Release: the fresh data lands and the sign settles (same line, no jump).
+  // Release: the fresh data lands and the tooltip settles (no layout jump).
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
   await expect(page.getByText("Your PRs")).toBeVisible();
-  await expect(page.locator('[data-testid="kept-status"]')).toContainText(/^Updated /);
-  await expect(page.locator('[data-testid="kept-status"]')).not.toContainText("refreshing");
+  await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /^Updated /);
   await expect(
     page.getByText("Unfold obsolete folded response header values").first(),
   ).toBeVisible();
