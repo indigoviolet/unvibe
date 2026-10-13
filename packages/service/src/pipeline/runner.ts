@@ -725,6 +725,22 @@ export class Pipeline {
           slug,
         ]);
         const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
+        const blocks = this.withValidation(
+          reviewId,
+          cards.flatMap((c) => c.blocks),
+          validation,
+        );
+        // Inline diagrams go through finalize + one repair turn on the
+        // fill's own session (#130), so stored blocks carry a real status.
+        const stored = await this.finalizeInlineBlocks(
+          reviewId,
+          forked.session,
+          ctx.signal,
+          `Concept page: ${slug}`,
+          "standard",
+          blocks,
+          (u) => ctx.reportUsage(u),
+        );
         await this.opts.reviews.mutate(reviewId, (draft) => {
           let page = draft.pages.find((p) => p.id === `c-${slug}`);
           if (!page) {
@@ -741,11 +757,7 @@ export class Pipeline {
               read: false,
               collapsed: false,
               revision: (page.cards[0]?.revision ?? 0) + 1,
-              blocks: this.withValidation(
-                reviewId,
-                cards.flatMap((c) => c.blocks),
-                validation,
-              ),
+              blocks: stored,
               undoStack: [],
             },
           ];
@@ -933,6 +945,26 @@ export class Pipeline {
       ...(this.opts.fixturesDir ? { fixturesDir: this.opts.fixturesDir } : {}),
       ...(this.promptsDir ? { promptsDir: this.promptsDir } : {}),
     };
+  }
+
+  /**
+   * Finalize inline diagrams for a fill that already holds its blocks
+   * (#130): pre-check + render, plus exactly one repair turn on the
+   * fill's own session when needed. A failed repair keeps the
+   * error-status blocks; the prose is unaffected.
+   */
+  private async finalizeInlineBlocks(
+    reviewId: string,
+    session: Session,
+    signal: AbortSignal | undefined,
+    card: string,
+    level: string,
+    blocks: Block[],
+    onUsage?: (u: TokenUsage) => void,
+  ): Promise<Block[]> {
+    const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
+    if (!first.needsRepair) return first.blocks;
+    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage);
   }
 
   /**
@@ -1803,25 +1835,16 @@ export class Pipeline {
       validation,
     );
     // Inline diagrams go through finalize + one repair turn on the fill's
-    // own session (#130), so stored blocks carry a real status. A failed
-    // repair keeps the error-status blocks; the card prose is unaffected.
-    let stored: Block[];
-    {
-      const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
-      if (first.needsRepair) {
-        stored = await this.repairDiagramsInline(
-          reviewId,
-          forked.session,
-          signal,
-          direction,
-          "standard",
-          first,
-          (u) => ctx?.reportUsage(u),
-        );
-      } else {
-        stored = first.blocks;
-      }
-    }
+    // own session (#130), so stored blocks carry a real status.
+    const stored = await this.finalizeInlineBlocks(
+      reviewId,
+      forked.session,
+      signal,
+      direction,
+      "standard",
+      blocks,
+      (u) => ctx?.reportUsage(u),
+    );
     const title = (data?.["title"] as string | undefined) ?? card.pending.label;
     await this.opts.reviews.mutate(reviewId, (draft) => {
       const r = draft.pages.find((p) => p.id === "root");
@@ -1877,6 +1900,21 @@ export class Pipeline {
       slug,
     ]);
     const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
+    const blocks = this.withValidation(
+      reviewId,
+      cards.flatMap((c) => c.blocks),
+      validation,
+    );
+    // Inline diagrams go through finalize + one repair turn on the fill's
+    // own session (#130), so stored blocks carry a real status.
+    const stored = await this.finalizeInlineBlocks(
+      reviewId,
+      forked.session,
+      undefined,
+      `Concept page: ${slug}`,
+      "standard",
+      blocks,
+    );
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let page = draft.pages.find((p) => p.id === `c-${slug}`);
       if (!page) {
@@ -1893,11 +1931,7 @@ export class Pipeline {
           read: false,
           collapsed: false,
           revision: (page.cards[0]?.revision ?? 0) + 1,
-          blocks: this.withValidation(
-            reviewId,
-            cards.flatMap((c) => c.blocks),
-            validation,
-          ),
+          blocks: stored,
           undoStack: [],
         },
       ];

@@ -1064,8 +1064,147 @@ describe("failed on-demand renders (#130)", () => {
   });
 });
 
-// --- real binary (skipped without d2) ----------------------------------------
+/** Concept reply carrying the owner's failing shape (inline `.class`). */
+const CONCEPT_CLASS_DIAGRAM = `A concept with a diagram.
 
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup" {.class: [bad]}
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{"title": "Flow"}
+\`\`\`
+`;
+
+/** Fixed concept repair reply. */
+const CONCEPT_FIXED_REPAIR = `A concept with a fixed diagram.
+
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup"
+gone.class: [bad]
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{"title": "Flow"}
+\`\`\`
+`;
+
+describe("concept inline diagrams (#130)", () => {
+  it("a bad diagram gets exactly one repair turn and lands drawn", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(CONCEPT_FIXED_REPAIR) },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Concept page", events: textEvents(CONCEPT_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "concept", slug: "flow" },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        // Exactly one repair turn, no loop.
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const page = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "c-flow")!;
+        const dg = page.cards[0].blocks.find((b) => b.type === "diagram") as unknown as {
+          source: string;
+          render?: { status: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.render?.status).toBe("ok");
+        expect(dg.source).toContain("gone.class: [bad]");
+        expect(JSON.stringify(page.cards[0].blocks)).toContain("A concept with a diagram.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("an unrepairable diagram keeps an error block and the prose", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents("Prose without a diagram.\n\n```json\n{}\n```\n") },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Concept page", events: textEvents(CONCEPT_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+
+        const acted = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: authed,
+          payload: { kind: "concept", slug: "flow" },
+        } as never);
+        expect(acted.statusCode).toBe(200);
+        const jobId = ((acted.json() ?? {}) as { jobId?: string }).jobId;
+        if (jobId) {
+          await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""), 60000);
+        }
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const page = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "c-flow")!;
+        const dg = page.cards[0].blocks.find((b) => b.type === "diagram") as unknown as {
+          render?: { status: string; error?: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.render?.status).toBe("error");
+        expect(JSON.stringify(page.cards[0].blocks)).toContain("A concept with a diagram.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// --- real binary (skipped without d2) ----------------------------------------
 function realD2Available(): boolean {
   // Synchronous gate only (async probe happens inside the test, which
   // skips on failure). A shim without an installed version resolves but
