@@ -1,6 +1,6 @@
 /**
  * Default guide title display (issue #102): a root page whose stored title
- * is the legacy "Guided review" shows "Guide", like a new review does.
+ * is the default "Guide" shows "Guide".
  *
  * Card error boundaries (issue #101): a component that throws inside one
  * card shows that card's fallback and leaves the other cards rendered.
@@ -73,12 +73,7 @@ afterEach(() => {
 });
 
 describe("default guide title display", () => {
-  test("legacy stored 'Guided review' shows as 'Guide'", () => {
-    show({ id: "root", kind: "root", title: "Guided review", saved: false, cards: [] } as Page);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guide");
-  });
-
-  test("new stored 'Guide' shows as 'Guide'", () => {
+  test("stored 'Guide' shows as 'Guide'", () => {
     show({ id: "root", kind: "root", title: "Guide", saved: false, cards: [] } as Page);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guide");
   });

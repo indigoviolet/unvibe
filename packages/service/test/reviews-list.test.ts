@@ -386,23 +386,17 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         return id;
       }
 
-      const legacy = await makeReviewWithRoot("feature", "Guided review");
-      const current = await makeReviewWithRoot("main", "Guide");
+      const current = await makeReviewWithRoot("feature", "Guide");
       await git(dir, "checkout", "-b", "feature3");
       const real = await makeReviewWithRoot("feature3", "Unfold obsolete folded response headers");
 
       const list = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
       expect(list.statusCode).toBe(200);
       const reviews = (list.json() as ReviewsListResponse).reviews;
-      // Both default forms mean "no real title": fall back to the branch.
-      expect(reviews.find((r) => r.id === legacy)?.title).toBe("feature");
-      expect(reviews.find((r) => r.id === current)?.title).toBe("main");
+      // The default means "no real title": fall back to the branch.
+      expect(reviews.find((r) => r.id === current)?.title).toBe("feature");
       // A real root title is shown unchanged.
       expect(reviews.find((r) => r.id === real)?.title).toBe("Unfold obsolete folded response headers");
-      // Stored values are untouched: no migration rewrote the legacy row.
-      expect(ctx.reviews.getSnapshot(legacy)?.pages.find((p) => p.id === "root")?.title).toBe(
-        "Guided review",
-      );
     } finally {
       await app.close();
     }

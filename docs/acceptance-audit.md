@@ -1098,7 +1098,8 @@ Skipped entries (with reasons) and the commit hashes are in the
 implementer's report on the issue; glossary item 5 ("Guided review"
 default title) was deliberately not done pending the owner's decision —
 decided 2026-10-12 and renamed to "Guide" under #102 (no data migration:
-stored "Guided review" still counts as the default).
+stored "Guided review" still counts as the default; removed under #137 —
+only "Guide" counts, stored "Guided review" now reads as a real title).
 Small companion code changes the list calls for: shared stage→label map
 (`web/src/guide/stageLabels.ts`, used by the start page and the guide
 empty state, with `stageLabels.test.ts`); one `NO_AGENT_COPY` constant;
