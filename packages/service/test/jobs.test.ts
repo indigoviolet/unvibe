@@ -477,6 +477,56 @@ describe("persistence and restart recovery", () => {
     expect(ran).toBe(true);
   });
 
+  it("finished jobs stay listed after a restart; open ones come back interrupted (issue #117)", async () => {
+    const db = makeDb();
+    seedReview(db, "r1");
+    const store = new JobStore(db);
+    const q1 = new JobQueue({ clock: new ManualClock(), persist: store });
+    const finished = q1.enqueue(
+      spec({ reviewId: "r1", promptSnapshot: "P", threadId: "t-1", run: async () => {} }),
+    );
+    await q1.drain();
+    expect(q1.get(finished.id)?.state).toBe("done");
+    const gateOpen = deferred();
+    const gateCancel = deferred();
+    const open = q1.enqueue(spec({ reviewId: "r1", run: () => gateOpen.promise.then(() => {}) }));
+    const willCancel = q1.enqueue(spec({ reviewId: "r1", run: () => gateCancel.promise.then(() => {}) }));
+    await flush();
+    expect(q1.get(open.id)?.state).toBe("running");
+    q1.cancel(willCancel.id);
+    gateCancel.resolve();
+
+    // SIGKILL: abandon q1; the next queue hydrates every stored job.
+    const q2 = new JobQueue({ clock: new ManualClock(), persist: store });
+    const { interrupted, orphaned } = q2.recover(store.listAll());
+    expect(interrupted.map((j) => j.id)).toEqual([open.id]);
+    expect(interrupted[0].error).toBe(INTERRUPTED_MESSAGE);
+    expect(orphaned).toEqual([]);
+    gateOpen.resolve(); // let the dead process's run go; its queue is gone
+
+    const listed = q2.listByReview("r1");
+    expect(new Map(listed.map((j) => [j.id, j.state]))).toEqual(
+      new Map([
+        [finished.id, "done"],
+        [open.id, "error"],
+        [willCancel.id, "cancelled"],
+      ]),
+    );
+    // Lists stay small (no prompt snapshots); single gets keep them.
+    expect(listed.find((j) => j.id === finished.id)?.promptSnapshot).toBeUndefined();
+    expect(q2.get(finished.id)?.promptSnapshot).toBe("P");
+    // threadId survives, so finished ask/explain jobs still match their threads.
+    expect(q2.get(finished.id)?.threadId).toBe("t-1");
+    // Hydrated jobs never count as active, never execute, never block exit.
+    expect(q2.activeCount()).toBe(0);
+    expect(q2.listActive()).toEqual([]);
+    await q2.drain();
+    // A hydrated finished job retries under the same id with a fresh run.
+    q2.retry(finished.id, async () => {});
+    await q2.drain();
+    expect(q2.get(finished.id)?.state).toBe("done");
+  });
+
   it("listByReview omits prompt snapshots (single get keeps them)", async () => {
     const db = makeDb();
     seedReview(db, "r1");

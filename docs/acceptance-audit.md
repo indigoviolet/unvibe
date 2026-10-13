@@ -532,7 +532,13 @@ needed (that deviation is closed, not added).
   unchanged from Settings apart from the redundant divider: `e2e/debug.spec.ts`,
   `GET /api/jobs` ran; prompt snapshots now
   served per-job to keep lists small; the per-job prompt toggle lazy-loads
-  as before).
+  as before). Finished jobs stay listed after a restart, with prompts and
+  results (issue #117: the queue used to hydrate only open jobs, so a
+  completed review showed an empty list while every row sat in SQLite;
+  `recover()` now loads all stored jobs and open ones still come back
+  marked interrupted; `threadId` is persisted too. Evidence:
+  `service/test/jobs.test.ts` "finished jobs stay listed after a restart",
+  `scripts/restart-resilience.mjs` step 2b, PRD §4.14 + §16).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log lines
   verbatim in fenced blocks under in-base/ready/waiting headings (issue
@@ -543,6 +549,17 @@ needed (that deviation is closed, not added).
   collapsible with a sticky summary (Base open, the rest closed;
   Expand/Collapse all on Prompts + Shared context; open state survives tab
   switches, job updates and contribution deletes).
+- Re-do guide on the Debug page (issue #115): `POST /api/reviews/:id/redo`
+  deletes + re-creates through the existing paths (shared create helper)
+  and answers 202 with the new review's loading snapshot; the page
+  navigates to it. New id (same as delete + create); running jobs
+  cancelled first; refused with 409 for the demo, while loading/failed,
+  while a submit lease is held for the review, and when the repo is gone.
+  Confirmation states what delete + create discards. Open decisions for
+  the owner: keep the new id vs keep the old one, and keep vs discard
+  user comments/notes (default = delete semantics). Evidence:
+  `service/test/reviews-redo.test.ts`, `RedoGuideSection.test.tsx`,
+  `e2e/debug-redo.spec.ts`, PRD §4.14 + §14.1.
 
 ### §4.15 Conventions — all met
 
@@ -1239,10 +1256,9 @@ every agent action so the same handover runs. Service jobs now carry
  the issue report (before/after for depth, examples, generate,
  follow-up, explain; replay fills run sub-second, captured via CDP
  bursts).
- Open: `threadId` persistence has the same pre-existing gap as `cardId`
- had (not carried through the jobs-store JSON column) — noticed, not
- fixed. Hunk summarize busy never clears on success (#63, adjacent,
- untracked here).
+ Fixed under #117: `threadId` is carried through the jobs-store JSON
+ column like `cardId`. Hunk summarize busy never clears on success (#63,
+ adjacent, untracked here).
 
 ### Progress signs (#98, branch `feat/98-progress-signs`)
 

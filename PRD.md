@@ -221,8 +221,9 @@ Every card and every expansion card has the same controls:
 - **Prompts:** each template (Template view): the raw text with its variables marked. View-only to start. The per-review "Expanded for this review" view — the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart — lives on the debug page below.
 - **Limits:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
 - **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
-  - **Jobs:** running and queued jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider.
+  - **Jobs:** running, queued and finished jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider. Finished jobs stay listed after a restart, with their prompts and results.
   - **Shared context** as a rendered Markdown document — the base session(s) with the current base pack, the append-only log (§9.3), and every contribution (§9.5) with the thread it came from — plus delete for any item. No formatting beyond Markdown rendering.
+  - **Re-do guide:** delete the review and open the same PR or branch again in one step, reusing both paths. Confirms first and states what is lost (the guide, comments, notes and jobs; anything already on GitHub stays). The review gets a new id and the page lands on its loading state. Refused while a submit is in flight; never offered for the demo review or while the review is still opening.
 
 ### 4.15 UI conventions
 
@@ -531,6 +532,7 @@ POST /api/reviews                        { repoId, pr?, branch?, title?, author?
                                          (fetch + ingest run after the response; demo stays 201 sync)
 GET  /api/reviews/:id                    snapshot: ingest status + (once ready) version, pages, cards, annotations, hunk state, jobs
 POST /api/reviews/:id/retry              re-run a failed ingest
+POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot)
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
 POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
 POST /api/reviews/:id/actions            { kind: explain|ask|note|depth|examples|diagram|undo|read|
@@ -585,7 +587,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 - **Time to first card:** under about 90 s for a small-to-medium PR such as urllib3#5020 (hunks appear within seconds).
 - **Interactive latency:** an explanation or answer starts streaming within about 5 s when the base is warm.
 - **Cache efficiency:** measure and show the cache-hit rate. Target: most conversation input tokens are cache reads.
-- **Resilience:** a service restart loses no user data. Sessions are reopened with `load`, or rebuilt from the log.
+- **Resilience:** a service restart loses no user data. Sessions are reopened with `load`, or rebuilt from the log. Jobs stay listed with their prompts and results; jobs that were open come back marked as stopped by the restart.
 - **Privacy:** data stays on the machine, apart from agent provider calls made by the user's own CLIs, and GitHub calls made with `gh`.
 
 ---

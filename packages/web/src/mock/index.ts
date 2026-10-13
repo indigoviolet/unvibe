@@ -1731,6 +1731,39 @@ export const mockApi = {
     return { ok: true };
   },
 
+  redoReview: async (id: string): Promise<ReviewSnapshot> => {
+    await wait(50);
+    if (id === "demo")
+      throw new Error(`POST /api/reviews/${id}/redo: 409 {"error":"the demo guide can't be re-done"}`);
+    const i = mockReviewList.findIndex((r) => r.id === id);
+    if (i < 0) throw new Error(`POST /api/reviews/${id}/redo: 404 {"error":"unknown review"}`);
+    const old = mockReviewList[i];
+    if (old.ingestStatus === "loading")
+      throw new Error(`POST /api/reviews/${id}/redo: 409 {"error":"the review is still opening"}`);
+    if (old.ingestStatus === "failed")
+      throw new Error(
+        `POST /api/reviews/${id}/redo: 409 {"error":"${old.ingestError ?? "the review couldn't be opened"}"}`,
+      );
+    // Same as delete + create: the old row goes, a new loading review
+    // takes its source (repo, PR/branch, title).
+    const newId = `mock-loading-${Date.now().toString(36)}`;
+    mockReviewList.splice(i, 1);
+    const entry = {
+      ...old,
+      id: newId,
+      lastOpened: Date.now(),
+      versionCount: 0,
+      currentVersion: 0,
+      stale: false,
+      guideStatus: "idle" as const,
+      ingestStatus: "loading" as const,
+      ingestStep: "fetching" as const,
+    };
+    delete (entry as { ingestError?: string }).ingestError;
+    mockReviewList.unshift(entry);
+    return mockLoadingSnapshot(entry);
+  },
+
   resetData: async (): Promise<ResetDataResponse> => {
     await wait(50);
     const reviewsRemoved = mockReviewList.length;

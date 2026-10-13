@@ -209,6 +209,21 @@ const main = async () => {
   }
   assert(done, "pipeline completes after resume (no work lost, no duplicates)");
 
+  // 2b. Completed jobs survive a restart (issue #117): the Debug page's
+  // jobs endpoint lists the persisted rows, not just recovered open jobs.
+  const jobsBefore = json((await api(token, "GET", `/api/jobs?review=${id}`)).body)?.jobs ?? [];
+  await kill9(svc, "post-complete SIGKILL");
+  svc = await startService("restart after completion");
+  const jobsAfter = json((await api(token, "GET", `/api/jobs?review=${id}`)).body)?.jobs ?? [];
+  const openAfter = jobsAfter.filter((j) => !["done", "error", "cancelled"].includes(j.state));
+  console.log(`  completed then restarted: ${jobsBefore.length} jobs before, ${jobsAfter.length} after`);
+  assert(
+    jobsAfter.length >= jobsBefore.length,
+    `finished jobs still listed after restart (${jobsAfter.length} >= ${jobsBefore.length})`,
+  );
+  assert(jobsAfter.some((j) => j.state === "done"), "finished jobs keep their state after restart");
+  assert(openAfter.length === 0, "no job left running/queued phantom after a completed restart");
+
   // 3. Mid-ask SIGKILL: thread survives, retry answers. ----------------------
   const live = json((await api(token, "GET", `/api/reviews/${id}`)).body);
   const problem = (live?.pages ?? []).find((p) => p.id === "root")?.cards?.[0];
