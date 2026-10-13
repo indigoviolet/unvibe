@@ -530,7 +530,7 @@ A new base is built when any of these happens:
 | `critic` | Critic fork | Criteria, the suggested-comment format |
 | `hunk_pass` | Small model | `{{hunk}}`, `{{path}}` |
 | `concept_stub`, `concept_page` | Concept pages | `{{concept}}`, `{{mentions}}` |
-| `explain`, `ask`, `note_ack` | Conversations (L4) | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
+| `explain`, `ask` | Conversations (L4) | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
 | `depth`, `examples`, `diagram` | Card controls | `{{card}}`, `{{level}}` |
 | `go_deeper` | Placeholder cards | `{{direction}}` |
 | `update_pass` | Update | `{{changed_hunks}}`, `{{stale_cards}}`, `{{findings}}` |

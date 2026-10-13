@@ -774,7 +774,9 @@ needed (that deviation is closed, not added).
 ## §7 Data model and IDs — all met
 
 - Entities per §7.1 table — met (`shared/src/entities.ts` 699 lines;
-  single schema migration (001–005 collapsed under #137) + sessions table;
+  single schema migration (001–005 collapsed under #137; dead
+  `annotations`/`cards`/`blocks`/`hunk_states` tables and the unused
+  `note_ack` prompt removed under #142) + sessions table;
   `store.test.ts`, `state.test.ts`).
 - ID grammar (§7.2 all nine forms) — met (`shared/src/ids.ts`,
   `links.ts`; `ids` unit tests).

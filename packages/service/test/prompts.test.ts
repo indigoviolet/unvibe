@@ -93,7 +93,7 @@ describe("renderTemplate determinism", () => {
 });
 
 describe("repo prompts/ directory", () => {
-  it("loads all 18 PRD §13 templates with valid front matter", () => {
+  it("loads all 17 PRD §13 templates with valid front matter", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     expect([...lib.keys()].sort()).toEqual([...PROMPT_TEMPLATE_NAMES].sort());
     for (const name of PROMPT_TEMPLATE_NAMES) {
