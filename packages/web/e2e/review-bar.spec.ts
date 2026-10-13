@@ -74,6 +74,21 @@ test("review bar and top bar do not overflow at 800px", async ({ page }) => {
   }
 });
 
+test("older version keeps its way back at 800px (issue #120)", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto("/review/r-old?version=1");
+  await expect(page.locator("#reviewbar")).toBeVisible();
+  // Rendered once, in the bar: the select shows the older version and the
+  // way back stays visible while the title gives way first.
+  await expect(page.locator('#reviewbar [data-testid="version-switcher"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Back to current" })).toBeVisible();
+  const overflow = await page.locator("#reviewbar").evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  // The way back returns to current.
+  await page.getByRole("button", { name: "Back to current" }).click();
+  await expect(page).not.toHaveURL(/version=1/);
+});
+
 test("guide toggle at 1440px: source-only spans the window, then back (issue #83)", async ({
   page,
 }) => {

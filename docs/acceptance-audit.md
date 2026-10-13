@@ -105,12 +105,18 @@ UI); nothing below was edited by this pass.
   none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
   cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
   #31/#55 round 2).
-- Review bar (identity + GitHub link-out + Debug icon, [ Guide | Source ]
-  pane toggles incl. full-width source per #83, Comments + primary Submit;
-  source tabs keep PR description / Diff only) — met (`ReviewBar.tsx`,
-  `AppShell.test.tsx`, `e2e/review-bar.spec.ts`;
-  `docs/screenshots/55-review.png`, `55-review-800px.png`,
-  `55-review-dark.png`, `83-source-full-width.png`).
+- Review bar (identity + version selector next to it per #120 + GitHub
+  link-out + Debug icon, [ Guide | Source ] pane toggles incl. full-width
+  source per #83, Comments + primary Submit; source tabs keep PR
+  description / Diff only; at narrow widths the title gives way first and
+  the selector with its read-only way back never truncates) — met
+  (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
+  `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
+  `55-review-800px.png`, `55-review-dark.png`,
+  `83-source-full-width.png`, `120-wide-light.png`,
+  `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
+  `120-narrow-light-readonly.png`,
+  `120-narrow-dark-readonly.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -647,8 +653,9 @@ needed (that deviation is closed, not added).
   fixtures).
 - New head SHA → version + ID mapping; old versions viewable — met
   (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
-  `versions-refresh.test.ts`, `settings-versions-service.spec.ts` “v1
-  viewable”).
+  the selector rendered once in the review bar per #120 with its read-only
+  way back, `versions-refresh.test.ts`,
+  `settings-versions-service.spec.ts` “v1 viewable”).
 - Rebase-vs-branch by content hash + `range-diff` — met
   (`versions/compare.ts`, `rangeDiff.ts`; refresh test (a): rebase
   no-conflicts → “no change”, state preserved — ran).

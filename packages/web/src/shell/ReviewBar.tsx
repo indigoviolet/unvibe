@@ -4,7 +4,9 @@
  * panes; stays in place when the panes scroll.
  *
  * - Left: the review identity (`owner/name#N` + title, truncated with the
- *   full title on hover), the PR label linking to GitHub for PR reviews
+ *   full title on hover), the version selector next to it (issue #120;
+ *   hidden for single-version reviews, with its read-only way back), the
+ *   PR label linking to GitHub for PR reviews
  *   (#94, new tab) alongside the link-out icon, and Debug as
  *   an icon button (hidden until the review finishes opening, issue #92).
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
@@ -17,6 +19,7 @@ import { Link } from "react-router-dom";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
+import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { jobCounts } from "./jobCounts.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
@@ -62,6 +65,7 @@ export function ReviewBar({
           <span className="num">{short}</span>
         )}
         <b title={title}>{title}</b>
+        <VersionSwitcher />
         {prUrl ? (
           <a className="ib bd" href={prUrl} target="_blank" rel="noreferrer" aria-label="Open PR on GitHub" title="Open PR on GitHub">
             <Icon name="open" />

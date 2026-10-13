@@ -1,8 +1,9 @@
 /**
  * Version switcher + read-only notice (PRD §8 "older versions stay
  * viewable"): a compact select of `review.versions`; picking an older one
- * navigates to `?version=n`, picking current clears it. Rendered in the
- * guide column above the page; the diff pane reads the same param.
+ * navigates to `?version=n`, picking current clears it. Rendered once in
+ * the review bar next to the review identity (issue #120), so it works
+ * with the guide pane hidden; the diff pane reads the same param.
  */
 import { useLocation, useNavigate } from "react-router-dom";
 import { useReview } from "../state/store.js";
@@ -28,23 +29,14 @@ export function VersionSwitcher(): React.JSX.Element | null {
   };
 
   return (
-    <div className="frow" style={{ gap: 8, marginBottom: 4 }} data-testid="version-switcher">
-      <label className="hint" htmlFor="version-pick">
-        Version
-      </label>
+    <span className="vs" data-testid="version-switcher" data-ro={readOnly ? "1" : undefined}>
       <select
         id="version-pick"
+        className="tbtn"
         aria-label="View version"
+        title={readOnly ? `Viewing v${viewing} · read-only` : "View version"}
         value={value}
         onChange={(e) => pick(Number(e.target.value))}
-        style={{
-          border: "1px solid var(--line)",
-          borderRadius: 6,
-          padding: "2px 6px",
-          background: "var(--surface)",
-          color: "var(--ink)",
-          fontSize: 12.5,
-        }}
       >
         {review.versions.map((v) => (
           <option key={v.n} value={v.n}>
@@ -54,13 +46,13 @@ export function VersionSwitcher(): React.JSX.Element | null {
         ))}
       </select>
       {readOnly ? (
-        <span className="hint" role="status">
-          Viewing v{viewing} · read-only ·{" "}
+        <span className="hint ro" role="status">
+          <span className="words">Viewing v{viewing} · read-only · </span>
           <button type="button" className="x" onClick={() => pick(current)}>
             Back to current
           </button>
         </span>
       ) : null}
-    </div>
+    </span>
   );
 }

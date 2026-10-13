@@ -1,7 +1,9 @@
 /**
  * ReviewBar tests (issue #31 round 2): review identity, the GitHub
  * link-out (PR reviews only), the Debug icon button, the Guide|Source
- * selector, and Comments + primary Submit side by side.
+ * selector, and Comments + primary Submit side by side. Issue #120: the
+ * version selector lives here next to the identity (rendered once, also
+ * with the guide pane hidden) with its read-only way back.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -207,6 +209,52 @@ describe("ReviewBar", () => {
       } as typeof snap);
       renderCountBar("opening-2");
       expect(screen.queryByRole("link", { name: /running, .* queued/ })).toBeNull();
+    });
+  });
+
+  describe("version selector (#120)", () => {
+    it("renders once in the bar for a multi-version review, hidden for one version", async () => {
+      // r-old carries two versions; the demo only one.
+      await renderBar("r-old", "urllib3/urllib3#5011");
+      const switches = screen.getAllByTestId("version-switcher");
+      expect(switches).toHaveLength(1);
+      expect(document.getElementById("reviewbar")).toContainElement(switches[0]);
+      const pick = screen.getByLabelText("View version") as HTMLSelectElement;
+      expect(pick.value).toBe("2");
+      expect(pick).toHaveClass("tbtn");
+      cleanup();
+      useReview.getState().clear();
+      await renderBar("demo", "urllib3/urllib3#5020");
+      expect(screen.queryByTestId("version-switcher")).toBeNull();
+    });
+
+    it("stays in the bar with the guide pane hidden", async () => {
+      useReview.getState().setSnapshot(await api.review("r-old"));
+      render(
+        <MemoryRouter initialEntries={["/review/r-old"]}>
+          <ReviewBar reviewId="r-old" guideOpen={false} sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+        </MemoryRouter>,
+      );
+      await screen.findByText("urllib3/urllib3#5011", {}, { timeout: 5000 });
+      expect(screen.getByTestId("version-switcher")).toBeInTheDocument();
+    });
+
+    it("shows the read-only state with a way back to current", async () => {
+      window.history.replaceState({}, "", "/review/r-old?version=1");
+      try {
+        useReview.getState().setSnapshot(await api.review("r-old"));
+        render(
+          <MemoryRouter initialEntries={["/review/r-old?version=1"]}>
+            <ReviewBar reviewId="r-old" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+          </MemoryRouter>,
+        );
+        await screen.findByText("urllib3/urllib3#5011", {}, { timeout: 5000 });
+        const notice = screen.getByTestId("version-switcher");
+        expect(notice).toHaveTextContent("Viewing v1 · read-only");
+        expect(screen.getByRole("button", { name: "Back to current" })).toBeInTheDocument();
+      } finally {
+        window.history.replaceState({}, "", "/");
+      }
     });
   });
 });

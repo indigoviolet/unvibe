@@ -16,7 +16,6 @@ import { api, friendlyError } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
-import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { emptyGuideState } from "./guideUtils.js";
@@ -191,8 +190,8 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   }
 
   const current = pageId === null ? pages.find((p) => p.kind === "root") ?? pages[0] : lookupPage(pageId);
-  // The switcher lives above every branch: reviews whose guide is not
-  // built yet have no pages, but their versions still switch.
+  // Reviews whose guide is not built yet have no pages; the version
+  // selector lives in the review bar, so it still switches here.
   if (!current && pageId === null) {
     const empty = emptyGuideState(snapshot.pipeline, snapshot.jobs ?? []);
     // Plain-words label for whatever is running (shared with the start
@@ -200,7 +199,6 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     const emptyLabel = empty.kind === "building" ? stageLabel(empty.detail?.split(",")[0]) : undefined;
     return (
       <>
-        <VersionSwitcher />
         <div className="doc" data-testid="guide-empty" data-state={empty.kind}>
           {empty.kind === "building" ? (
             <>
@@ -237,7 +235,6 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   if (!current) {
     return (
       <>
-        <VersionSwitcher />
         <div className="doc">
           <h1 className="title">Page not found</h1>
           <p className="hint">
@@ -253,7 +250,6 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
 
   return (
     <>
-      <VersionSwitcher />
       <ErrorBoundary
         name="guide-page"
         resetKey={`${reviewId}:${pageKey}`}
