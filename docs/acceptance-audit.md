@@ -1255,14 +1255,16 @@ depth; undo stacks and thread HTML deliberately excluded) — met
 (`diagrams.test.ts` fake-Explain cases: top-level, aside-nested,
 invalid; `shared/test/blocks.test.ts` one case per container;
 `ExpansionDiagram.test.tsx` pins light + dark rendering with no
-component change). Since #130, Explain expansions additionally run the
-same finalize + one repair turn as Add-diagram blocks
-(`diagram-finalize.ts`), so a bad inline diagram is repaired before it
-reaches the reader; an unrepairable one resolves to 409 `error` with the
-source shown and a plain note + retry, never 404/500, and never breaks
-its card. Diagrams nested in asides, go-deeper results, concept pages
-and second-opinion reasoning still skip the repair turn (on-demand
-render only).
+component change). Since #130, Explain expansions, go-deeper results,
+concept pages and aside-nested diagrams additionally run the same
+finalize + one repair turn as Add-diagram blocks
+(`diagram-finalize.ts`; go-deeper/concept repair runs on the fill's own
+session, nested repairs splice into the failed slots keeping stored
+ids), so a bad inline diagram is repaired before it reaches the reader;
+an unrepairable one resolves to 409 `error` with the source shown and a
+plain note + retry, never 404/500, and never breaks its card.
+Second-opinion reasoning still skips the repair turn (on-demand render
+only).
 Open: ask thread replies still show the raw D2 source (`<pre
 class="d2">`, no fetch). Serving them through the same endpoint would
 need thread replies stored as blocks (a storage change) or parsing the

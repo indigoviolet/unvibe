@@ -61,10 +61,12 @@ diagrams written inline in Explain expansions go through the same
 finalize (rename, cite validation, compile-check, render, cache) and get
 exactly one repair turn on failure, so stored blocks carry a real status
 (`pipeline/actions/diagram-finalize.ts`, shared with the Add diagram
-action). Diagrams nested inside asides, go-deeper results, concept pages
-and second-opinion reasoning still skip the repair turn: they render on
-demand through the route below, and a failure is stored as `error` when
-first fetched. Ask thread replies are excluded (raw `<pre class="d2">`
+action). The same finalize covers go-deeper results and concept pages
+(one repair turn on the fill's own session — enqueueing a nested repair
+job could deadlock against the per-provider cap) and diagrams nested in
+asides at any depth (repaired diagrams splice into the failed slots in
+depth-first order, keeping the stored ids). Second-opinion reasoning
+still skips the repair turn (on-demand render only). Ask thread replies are excluded (raw `<pre class="d2">`
 source in message HTML, not blocks — shown as static source text). Hash
 lookup covers every live `Block[]` list through one shared walker
 (`packages/shared/src/content/blocks.ts`), so a new container is added
