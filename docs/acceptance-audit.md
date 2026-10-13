@@ -374,7 +374,10 @@ needed (that deviation is closed, not added).
   anchors to the expansion's block and renders under it, to any depth;
   Ask/Note there behave the same. Citations to expansion blocks validate
   (`card:<expansion>#<block>`). Closed nested explanations and stale
-  anchors use the same footnote chips as card-level ones.
+  anchors use the same footnote chips as card-level ones. Block IDs are
+  unique within each stored body (multi-card replies dedupe to `-c2`…,
+  inserts take fresh IDs; matching is exact on owner + block), so one
+  anchor draws exactly one card.
 
 ### §4.8 Comments — all met
 
