@@ -357,6 +357,12 @@ export class AcpAgentRunner implements AgentRunner {
         },
       };
     }
+    // SPIKE(#114) EXPERIMENT, off by default: codex-acp builds the fork's
+    // config from `request.mcpServers ?? []`, so a fork sent without them has
+    // no MCP server (and a different tool list than the base it forks).
+    if (process.env.UNVIBE_SPIKE_FORK_META === "1" && parent.provider === "codex") {
+      params.mcpServers = toAcpMcpServers(parent.mcpServers);
+    }
     let res: unknown;
     try {
       res = await caller.request("session/fork", params);

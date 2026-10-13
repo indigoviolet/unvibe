@@ -1,0 +1,5 @@
+service pid 3959475 port 4611 data /tmp/unvibe-latency-atcWrr
+settings {"main":{"provider":"claude","model":"opus"},"small":{"provider":"claude","model":"haiku"},"secondOpinion":{"provider":"codex","model":"gpt-6.1-sol"},"sessionsPerProvider":4,"getSettingsMs":1773}
+repo rp_21b2d106c148 added in 5622 ms
+
+-- open#1 (load 1.84 1.88 2.86)

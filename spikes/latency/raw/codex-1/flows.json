@@ -65,12 +65,12 @@
           "go-deeper": "pending"
         },
         "usageTotals": {
-          "inputTokens": 215455,
-          "cachedTokens": 537976,
-          "outputTokens": 15128,
+          "inputTokens": 271049,
+          "cachedTokens": 698066,
+          "outputTokens": 21855,
           "createdAt": 1791858198915,
           "firstCardAt": 1791858245688,
-          "cacheHitRate": 0.7140348618519812
+          "cacheHitRate": 0.7203128627665447
         },
         "ws": {
           "bytes": {
@@ -313,6 +313,186 @@
         "httpResponse": 23,
         "done": 44824,
         "firstTextEvent": 4938
+      }
+    },
+    {
+      "name": "explain#4 (right after generate)",
+      "provider": "codex",
+      "startedAt": 1791858515450,
+      "load": [
+        1.73,
+        1.86,
+        2.88
+      ],
+      "marks": {
+        "httpResponse": 1791858521069,
+        "workingVisible": 1791858515458,
+        "firstContent": 1791858542686,
+        "done": 1791858543185,
+        "firstTextEvent": 1791858533632
+      },
+      "target": {
+        "cardId": "g-7v0gaz",
+        "blockId": "b2",
+        "quote": "is the shared source."
+      },
+      "http": {
+        "ms": 5618,
+        "jobId": "10f46d0c-74cb-4e02-8478-802f8c7c01b3"
+      },
+      "jobId": "10f46d0c-74cb-4e02-8478-802f8c7c01b3",
+      "endedAt": 1791858545790,
+      "rel": {
+        "httpResponse": 5619,
+        "workingVisible": 8,
+        "firstContent": 27236,
+        "done": 27735,
+        "firstTextEvent": 18182
+      }
+    },
+    {
+      "name": "explain#5",
+      "provider": "codex",
+      "startedAt": 1791858545790,
+      "load": [
+        1.87,
+        1.88,
+        2.85
+      ],
+      "marks": {
+        "httpResponse": 1791858545836,
+        "workingVisible": 1791858545803,
+        "firstContent": 1791858564337,
+        "done": 1791858564736,
+        "firstTextEvent": 1791858558377
+      },
+      "target": {
+        "cardId": "g-7v0gaz",
+        "blockId": "b3",
+        "quote": "When at least one value changes,"
+      },
+      "http": {
+        "ms": 46,
+        "jobId": "130448fd-ca7e-46ba-8d75-0c2ede7d0bbe"
+      },
+      "jobId": "130448fd-ca7e-46ba-8d75-0c2ede7d0bbe",
+      "endedAt": 1791858567341,
+      "rel": {
+        "httpResponse": 46,
+        "workingVisible": 13,
+        "firstContent": 18547,
+        "done": 18946,
+        "firstTextEvent": 12587
+      }
+    },
+    {
+      "name": "depth + (deeper) on the first card",
+      "provider": "codex",
+      "startedAt": 1791858567341,
+      "load": [
+        1.48,
+        1.79,
+        2.8
+      ],
+      "marks": {
+        "httpResponse": 1791858567357,
+        "done": null
+      },
+      "target": {
+        "cardId": "problem"
+      },
+      "http": {
+        "ms": 15
+      },
+      "reused": true,
+      "levelAfter": "deep",
+      "endedAt": 1791858574963,
+      "rel": {
+        "httpResponse": 16,
+        "done": null
+      }
+    },
+    {
+      "name": "hunk summary#1 (one hunk)",
+      "provider": "codex",
+      "startedAt": 1791858574973,
+      "load": [
+        1.49,
+        1.78,
+        2.79
+      ],
+      "marks": {
+        "httpResponse": 1791858574988,
+        "done": 1791858579729
+      },
+      "http": {
+        "ms": 15,
+        "code": 202
+      },
+      "endedAt": 1791858582534,
+      "rel": {
+        "httpResponse": 15,
+        "done": 4756
+      }
+    },
+    {
+      "name": "hunk summary#2 (one hunk)",
+      "provider": "codex",
+      "startedAt": 1791858582544,
+      "load": [
+        1.61,
+        1.81,
+        2.79
+      ],
+      "marks": {
+        "httpResponse": 1791858582556,
+        "done": 1791858586075
+      },
+      "http": {
+        "ms": 12,
+        "code": 202
+      },
+      "endedAt": 1791858588879,
+      "rel": {
+        "httpResponse": 12,
+        "done": 3531
+      }
+    },
+    {
+      "name": "fold all (8 hunks)",
+      "provider": "codex",
+      "startedAt": 1791858588946,
+      "load": [
+        2.52,
+        1.99,
+        2.84
+      ],
+      "marks": {
+        "httpResponse": 1791858589038,
+        "firstSummary": 1791858592773,
+        "halfSummaries": 1791858594202,
+        "done": 1791858597678
+      },
+      "hunks": 8,
+      "http": {
+        "maxMs": 88,
+        "codes": [
+          202,
+          202,
+          202,
+          202,
+          202,
+          202,
+          202,
+          202
+        ]
+      },
+      "endedAt": 1791858600483,
+      "rel": {
+        "httpResponse": 92,
+        "firstSummary": 3827,
+        "halfSummaries": 5256,
+        "done": 8732
       }
     }
   ]

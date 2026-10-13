@@ -1,0 +1,569 @@
+{
+  "jobs": [
+    {
+      "id": "4399c0a7-2238-41ee-bee3-9f810e31f2ff",
+      "kind": "reader",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 50,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "guide|reader||v1",
+      "sessionId": "01a13312-49e6-7bd0-8750-2d51f6b495d0",
+      "usage": {
+        "inputTokens": 22116,
+        "cachedTokens": 155520,
+        "outputTokens": 3969
+      },
+      "cacheHitRate": 0.8754982098223333
+    },
+    {
+      "id": "5cf07f45-d1e4-41f2-8d77-fc3c9b78e19d",
+      "kind": "critic",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "finding:f-critic-0|critic||v1",
+      "sessionId": "01a13314-2346-7ac3-b7e7-a5c2e198f087",
+      "usage": {
+        "inputTokens": 23105,
+        "cachedTokens": 73984,
+        "outputTokens": 1078
+      },
+      "cacheHitRate": 0.7620224742246805
+    },
+    {
+      "id": "371fd258-8fba-4030-ab7b-36ec99b02b35",
+      "kind": "critic",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "finding:f-critic-1|critic||v1",
+      "sessionId": "01a13314-23aa-7583-8d71-b7f9cdd9d0de",
+      "usage": {
+        "inputTokens": 22136,
+        "cachedTokens": 42496,
+        "outputTokens": 2201
+      },
+      "cacheHitRate": 0.6575071172174775
+    },
+    {
+      "id": "ad4c5c6c-2c1b-46ba-b0bb-ff01a7940c4b",
+      "kind": "concept",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "concepts|concept-stubs||v1",
+      "sessionId": "01a13314-2408-7ac1-a7b8-b80f6c7f6215",
+      "usage": {
+        "inputTokens": 20503,
+        "cachedTokens": 11008,
+        "outputTokens": 529
+      },
+      "cacheHitRate": 0.34933832629875283
+    },
+    {
+      "id": "ec29b6dd-ac48-498e-813d-d756f99b6716",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|hunk-pass||v1",
+      "sessionId": "011727b4-0a4c-4d39-843a-2bd103ea7d41",
+      "usage": {
+        "inputTokens": 1721,
+        "cachedTokens": 12510,
+        "outputTokens": 103
+      },
+      "cacheHitRate": 0.879066825943363
+    },
+    {
+      "id": "1d85b685-1ebe-4897-9b3a-f4815d10e33d",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|hunk-pass||v1",
+      "sessionId": "84625881-2082-4836-9545-787c832a206b",
+      "usage": {
+        "inputTokens": 2208,
+        "cachedTokens": 12997,
+        "outputTokens": 427
+      },
+      "cacheHitRate": 0.8547846103255508
+    },
+    {
+      "id": "109c4180-3d2e-4852-bd2d-0c4fb68efdd7",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b355d2096d4d7f39|hunk-pass||v1",
+      "sessionId": "7cb68203-4185-4e45-931b-43389418f49b",
+      "usage": {
+        "inputTokens": 1772,
+        "cachedTokens": 12561,
+        "outputTokens": 275
+      },
+      "cacheHitRate": 0.8763692178887881
+    },
+    {
+      "id": "e0c4bbba-2c94-4a10-ba35-db5dbf6a3e26",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:6cfb09ec98cba6ba|hunk-pass||v1",
+      "sessionId": "829389f5-f58a-430c-b9e3-25da37788220",
+      "usage": {
+        "inputTokens": 1701,
+        "cachedTokens": 12490,
+        "outputTokens": 416
+      },
+      "cacheHitRate": 0.8801352970192375
+    },
+    {
+      "id": "dd2f3c5e-2ec2-4c9f-b419-90c5dd2e32fe",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:92cf4ca541bdb0f2|hunk-pass||v1",
+      "sessionId": "de1a91f9-f424-4f97-afd6-0edd2786c65e",
+      "usage": {
+        "inputTokens": 1725,
+        "cachedTokens": 12514,
+        "outputTokens": 502
+      },
+      "cacheHitRate": 0.878853852096355
+    },
+    {
+      "id": "4e6b2fd7-16c3-4883-8f9e-f491d5e34666",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b33779988cee5f8a|hunk-pass||v1",
+      "sessionId": "d7d33f23-3384-4612-b7eb-a054224bda75",
+      "usage": {
+        "inputTokens": 2333,
+        "cachedTokens": 13122,
+        "outputTokens": 553
+      },
+      "cacheHitRate": 0.8490456163054028
+    },
+    {
+      "id": "087efa0c-1c80-4cbc-9d32-a0585a6dabdb",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:29382503b8689e5f|hunk-pass||v1",
+      "sessionId": "f47509fd-8463-4da4-849a-ec9d6e5e9865",
+      "usage": {
+        "inputTokens": 1753,
+        "cachedTokens": 12542,
+        "outputTokens": 385
+      },
+      "cacheHitRate": 0.8773697096887023
+    },
+    {
+      "id": "bde58b3c-3976-4d9a-b55d-0104beb43b37",
+      "kind": "hunk-pass",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 10,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:949dda852e448b55|hunk-pass||v1",
+      "sessionId": "1bbced14-bd79-4962-a224-86f5670b1a21",
+      "usage": {
+        "inputTokens": 2867,
+        "cachedTokens": 13656,
+        "outputTokens": 511
+      },
+      "cacheHitRate": 0.8264842946196211
+    },
+    {
+      "id": "411b1449-faeb-42f4-9a39-35ed8f7be5d0",
+      "kind": "explain",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b1:. That helper applies|explain||v1",
+      "threadId": "ann_27596b79a6c5",
+      "sessionId": "01a13314-f26b-7701-8e9d-a46aa89ae88c",
+      "usage": {
+        "inputTokens": 21245,
+        "cachedTokens": 11008,
+        "outputTokens": 573
+      },
+      "cacheHitRate": 0.34130158434874275
+    },
+    {
+      "id": "9ebe7b87-92a3-47bd-9676-45a163d0f10a",
+      "kind": "explain",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b2:replaces each matched fold with one|explain||v1",
+      "threadId": "ann_1fd20fc1e612",
+      "sessionId": "01a13315-3db1-7022-aa03-84c88e300434",
+      "usage": {
+        "inputTokens": 21397,
+        "cachedTokens": 11008,
+        "outputTokens": 310
+      },
+      "cacheHitRate": 0.3397006634778584
+    },
+    {
+      "id": "a58c52c8-fde3-4223-86a1-3e78fe73d3d3",
+      "kind": "explain",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b3:The tests cover both the transformation|explain||v1",
+      "threadId": "ann_4fec89551998",
+      "sessionId": "01a13315-71c3-7983-b788-af4ebe6192a0",
+      "usage": {
+        "inputTokens": 21569,
+        "cachedTokens": 11008,
+        "outputTokens": 805
+      },
+      "cacheHitRate": 0.33790711237989995
+    },
+    {
+      "id": "39d0fb0d-bdd2-4763-8590-4a7e4bc79f0b",
+      "kind": "ask",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:problem#b1:. That helper applies:Why does this matter for a reviewer? Answer in two or three sentences.|ask||v1",
+      "threadId": "ann_63cc84a9c98e",
+      "sessionId": "01a13315-d309-70d3-b1e6-d0decc15bd98",
+      "usage": {
+        "inputTokens": 21762,
+        "cachedTokens": 11008,
+        "outputTokens": 132
+      },
+      "cacheHitRate": 0.3359169972535856
+    },
+    {
+      "id": "c63b4ed2-1cf5-4f8b-a3f0-ba81f1ce6470",
+      "kind": "ask",
+      "model": "main",
+      "provider": "main",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "thread:ann_63cc84a9c98e:What would break if this were left out? |ask-reply||v1",
+      "threadId": "ann_63cc84a9c98e",
+      "usage": {
+        "inputTokens": 2034,
+        "cachedTokens": 32512,
+        "outputTokens": 490
+      },
+      "cacheHitRate": 0.9411219822844903
+    },
+    {
+      "id": "f9dbe2b8-7943-4026-a509-8561b4e7aedc",
+      "kind": "ask",
+      "model": "main",
+      "provider": "main",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "thread:ann_63cc84a9c98e:Is there a test that covers it? One sent|ask-reply||v1",
+      "threadId": "ann_63cc84a9c98e",
+      "usage": {
+        "inputTokens": 2189,
+        "cachedTokens": 33536,
+        "outputTokens": 79
+      },
+      "cacheHitRate": 0.9387263820853744
+    },
+    {
+      "id": "775443f6-3aca-4360-840c-356fed3f91df",
+      "kind": "go-deeper",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "go-deeper:g-7v0gaz|generate||v1",
+      "cardId": "g-7v0gaz",
+      "sessionId": "01a13316-61e7-7f23-8a2b-f7583226a34d",
+      "usage": {
+        "inputTokens": 21319,
+        "cachedTokens": 42496,
+        "outputTokens": 1790
+      },
+      "cacheHitRate": 0.6659249392775993
+    },
+    {
+      "id": "10f46d0c-74cb-4e02-8478-802f8c7c01b3",
+      "kind": "explain",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:g-7v0gaz#b2:is the shared source.|explain||v1",
+      "threadId": "ann_63dccd826f38",
+      "sessionId": "01a13317-341a-72a3-affe-bbaee51183d8",
+      "usage": {
+        "inputTokens": 12555,
+        "cachedTokens": 21248,
+        "outputTokens": 773
+      },
+      "cacheHitRate": 0.628583261840665
+    },
+    {
+      "id": "130448fd-ca7e-46ba-8d75-0c2ede7d0bbe",
+      "kind": "explain",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "block:g-7v0gaz#b3:When at least one value changes,|explain||v1",
+      "threadId": "ann_fcbea9ab8ffd",
+      "sessionId": "01a13317-94d6-7991-8bbf-8d20cb05b648",
+      "usage": {
+        "inputTokens": 23095,
+        "cachedTokens": 11008,
+        "outputTokens": 623
+      },
+      "cacheHitRate": 0.32278685159663373
+    },
+    {
+      "id": "d9d9d072-583c-4d3e-bdd6-20a5cbfba495",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|summarize||v1",
+      "sessionId": "877548a8-5211-43ff-b66f-8ea71efd4130",
+      "usage": {
+        "inputTokens": 1721,
+        "cachedTokens": 12510,
+        "outputTokens": 818
+      },
+      "cacheHitRate": 0.879066825943363
+    },
+    {
+      "id": "2127c791-2802-406d-9021-8e0471b35600",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|summarize||v1",
+      "sessionId": "8a98644c-66b7-43da-ac85-d71822f9cee3",
+      "usage": {
+        "inputTokens": 2195,
+        "cachedTokens": 12984,
+        "outputTokens": 373
+      },
+      "cacheHitRate": 0.8553923183345411
+    },
+    {
+      "id": "7d3e0990-af4e-459a-a31d-c03608f26d5d",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:d1c6f159e5ffb42d|summarize||v1",
+      "sessionId": "e7790984-746a-4cbd-b7ef-8dc811e070b3",
+      "usage": {
+        "inputTokens": 1721,
+        "cachedTokens": 12510,
+        "outputTokens": 793
+      },
+      "cacheHitRate": 0.879066825943363
+    },
+    {
+      "id": "7ceb2949-2f51-48ff-adfa-4031e13939f5",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:fa60105d7fcbe8fe|summarize||v1",
+      "sessionId": "12939118-6090-4fb3-8fe0-97393352be06",
+      "usage": {
+        "inputTokens": 2195,
+        "cachedTokens": 12984,
+        "outputTokens": 388
+      },
+      "cacheHitRate": 0.8553923183345411
+    },
+    {
+      "id": "75ff0a48-dac5-4919-a603-ea14910f763f",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b355d2096d4d7f39|summarize||v1",
+      "sessionId": "730cc730-4ca8-435f-8e92-b178a094cba5",
+      "usage": {
+        "inputTokens": 1759,
+        "cachedTokens": 12548,
+        "outputTokens": 625
+      },
+      "cacheHitRate": 0.8770531907457888
+    },
+    {
+      "id": "71f5ca5d-7cc4-4966-b017-3699e6e991f7",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:6cfb09ec98cba6ba|summarize||v1",
+      "sessionId": "cc910a9c-aa06-40de-90fd-821fccd5ba99",
+      "usage": {
+        "inputTokens": 1701,
+        "cachedTokens": 12490,
+        "outputTokens": 399
+      },
+      "cacheHitRate": 0.8801352970192375
+    },
+    {
+      "id": "9da7941c-3580-4819-842e-84bb149d1b9b",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:92cf4ca541bdb0f2|summarize||v1",
+      "sessionId": "d81ac524-d891-4904-a7ea-23aafef12a46",
+      "usage": {
+        "inputTokens": 1725,
+        "cachedTokens": 12514,
+        "outputTokens": 458
+      },
+      "cacheHitRate": 0.878853852096355
+    },
+    {
+      "id": "9ff20c2e-a794-4dba-831c-834505992c20",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:b33779988cee5f8a|summarize||v1",
+      "sessionId": "24e4fb4a-209c-46e5-aaf8-781e079bc8c8",
+      "usage": {
+        "inputTokens": 2320,
+        "cachedTokens": 13109,
+        "outputTokens": 762
+      },
+      "cacheHitRate": 0.8496338064683389
+    },
+    {
+      "id": "a37935d4-9e00-4976-ad7b-1a4f2b29c531",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:29382503b8689e5f|summarize||v1",
+      "sessionId": "d846ee04-8b40-4c6b-98e3-e18b58d94f43",
+      "usage": {
+        "inputTokens": 1753,
+        "cachedTokens": 12542,
+        "outputTokens": 383
+      },
+      "cacheHitRate": 0.8773697096887023
+    },
+    {
+      "id": "fcb0d366-e385-4d76-9106-76e5f9c6efc3",
+      "kind": "summarize",
+      "model": "haiku",
+      "provider": "claude",
+      "reviewId": "rv_7d0f438ba83b",
+      "priority": 100,
+      "state": "done",
+      "attempts": 1,
+      "dedupeKey": "hunk:949dda852e448b55|summarize||v1",
+      "sessionId": "89750ca2-668e-46d9-b1b5-c36ad846f16f",
+      "usage": {
+        "inputTokens": 2854,
+        "cachedTokens": 13643,
+        "outputTokens": 332
+      },
+      "cacheHitRate": 0.826998848275444
+    }
+  ]
+}

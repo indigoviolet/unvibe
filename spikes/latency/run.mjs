@@ -373,6 +373,10 @@ async function runActions(client, reviewId) {
   await explainOnce(client, reviewId, "explain#1 (first on review)", 0);
   await explainOnce(client, reviewId, "explain#2", 1);
   await explainOnce(client, reviewId, "explain#3", 2);
+  if (PLAN === "explains") {
+    await explainOnce(client, reviewId, "explain#4", 3);
+    return;
+  }
 
   let threadId = null;
   await flow("ask (new thread on a card)", async (rec) => {

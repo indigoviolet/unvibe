@@ -27,3 +27,21 @@ repo rp_5e28bac23810 added in 5464 ms
    {"httpResponse":23,"done":44824,"firstTextEvent":4938}
 
 -- explain#4 (right after generate) (load 1.73 1.86 2.88)
+   {"httpResponse":5619,"workingVisible":8,"firstContent":27236,"done":27735,"firstTextEvent":18182}
+
+-- explain#5 (load 1.87 1.88 2.85)
+   {"httpResponse":46,"workingVisible":13,"firstContent":18547,"done":18946,"firstTextEvent":12587}
+
+-- depth + (deeper) on the first card (load 1.48 1.79 2.8)
+   {"httpResponse":16,"done":null}
+
+-- hunk summary#1 (one hunk) (load 1.49 1.78 2.79)
+   {"httpResponse":15,"done":4756}
+
+-- hunk summary#2 (one hunk) (load 1.61 1.81 2.79)
+   {"httpResponse":12,"done":3531}
+
+-- fold all (8 hunks) (load 2.52 1.99 2.84)
+   {"httpResponse":92,"firstSummary":3827,"halfSummaries":5256,"done":8732}
+
+wrote /home/venky/.paseo/worktrees/20ucjyap/spike-latency/spikes/latency/raw/codex-1
