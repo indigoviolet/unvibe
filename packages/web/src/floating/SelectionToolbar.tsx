@@ -48,6 +48,13 @@ export function requestNewThread(req: NewThreadRequest): void {
 
 export interface SelectionHost {
   anchor: ActionAnchor;
+  /**
+   * True when the selection sits in revealed context around a hunk
+   * (issue #133): Explain and Ask are offered, anchored on the diff
+   * line, but Note is not — a note there could never land on the diff's
+   * own lines.
+   */
+  revealed: boolean;
 }
 
 function elementOf(node: Node | null): HTMLElement | null {
@@ -73,22 +80,25 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
     // paragraph; in the guide it addresses a block.
     if (top.closest("#right .desc")) {
       const paragraphId = (top as HTMLElement).dataset.top ?? top.id ?? id;
-      return { anchor: { where: "description", paragraphId } };
+      return { anchor: { where: "description", paragraphId }, revealed: false };
     }
     // Block ids repeat across cards (`b1`, `b2`, … in each): qualify with
     // the owning card, or expansion, so the anchor addresses one block.
     const owner = top.closest("section.card[id]")?.id ?? "";
     const cardId = /^[CB]-/.test(owner) ? owner.slice(2) : "";
-    return { anchor: { where: "block", blockId: cardId && !id.includes("#") ? `${cardId}#${id}` : id } };
+    return { anchor: { where: "block", blockId: cardId && !id.includes("#") ? `${cardId}#${id}` : id }, revealed: false };
   }
   // Description paragraphs carry stable `id`s but no `data-top` in live
   // snapshots: fall back to the nearest id under `.desc`.
   const descNode = el.closest("#right .desc [id]");
   if (descNode && el.closest("#right .desc")) {
-    return { anchor: { where: "description", paragraphId: (descNode as HTMLElement).id } };
+    return { anchor: { where: "description", paragraphId: (descNode as HTMLElement).id }, revealed: false };
   }
   const td = el.closest("#right table.diff td.c");
   if (!td) return null;
+  // Revealed context rows (issue #133) carry `data-revealed` on the row:
+  // the anchor stays a diff line, but Note is not offered there.
+  const revealed = (td.closest("tr") as HTMLElement | null)?.dataset?.revealed === "1";
   // Rows without a new-side line number (pure deletions) anchor to the
   // nearest numbered row: forward first, then backward (prototype rule).
   const tr = td.closest("tr");
@@ -101,7 +111,7 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   if (!row?.id) return null;
   const parsed = parseLineElementId(row.id);
   if (!parsed) return null;
-  return { anchor: { where: "diff-line", fileKey: parsed.fileKey, line: parsed.line } };
+  return { anchor: { where: "diff-line", fileKey: parsed.fileKey, line: parsed.line }, revealed };
 }
 
 /** Snap the live selection to whole words (single-range fast path). */
@@ -144,6 +154,7 @@ function snapLiveSelection(sel: Selection): void {
 interface Pending {
   quote: string;
   anchor: ActionAnchor;
+  revealed: boolean;
 }
 
 export function SelectionToolbar() {
@@ -184,7 +195,7 @@ export function SelectionToolbar() {
           hide();
           return;
         }
-        setPending({ quote, anchor: host.anchor });
+        setPending({ quote, anchor: host.anchor, revealed: host.revealed });
         // Position after render (needs the bar's size).
         window.setTimeout(() => {
           const b = bar();
@@ -280,9 +291,11 @@ export function SelectionToolbar() {
       <button type="button" data-act="ask" onClick={() => onAskNote(false)}>
         Ask…
       </button>
-      <button type="button" data-act="note" onClick={() => onAskNote(true)}>
-        Note
-      </button>
+      {pending?.revealed ? null : (
+        <button type="button" data-act="note" onClick={() => onAskNote(true)}>
+          Note
+        </button>
+      )}
     </div>
   );
 }

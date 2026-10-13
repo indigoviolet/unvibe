@@ -718,6 +718,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
               commentedLines={commentedLines ?? new Set()}
               highlight={highlight?.fileKey === f.fileKey ? { start: highlight.start, end: highlight.end } : null}
               fileHighlighted={fileHighlight === f.fileKey}
+              reviewId={reviewId}
+              headCommit={snapshot.version.headSha}
+              baseCommit={snapshot.version.mergeBaseSha}
               briefs={briefs}
               states={states}
               isHidden={isHidden}

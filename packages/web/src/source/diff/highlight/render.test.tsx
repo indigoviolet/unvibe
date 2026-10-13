@@ -77,6 +77,9 @@ describe("FileSection with injected tokens", () => {
         commentedLines={new Set()}
         highlight={null}
         fileHighlighted={false}
+        reviewId="demo"
+        headCommit="bdcc1e493e"
+        baseCommit="443cb01be1"
         briefs={null}
         tokens={byHash}
         states={new Map()}
@@ -91,6 +94,7 @@ describe("FileSection with injected tokens", () => {
     const section = document.getElementById(`F-${file.fileKey}`);
     expect(section).not.toBeNull();
     // Highlighted add-rows carry keyword spans…
+    expect(section!.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     expect(section!.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     // …and no `cm` comment fallback anywhere (tokens own comment colour).
     expect(section!.querySelectorAll("td.c .cm").length).toBe(0);
@@ -114,6 +118,9 @@ describe("FileSection with injected tokens", () => {
         commentedLines={new Set()}
         highlight={null}
         fileHighlighted={false}
+        reviewId="demo"
+        headCommit="bdcc1e493e"
+        baseCommit="443cb01be1"
         briefs={null}
         states={new Map()}
         isHidden={() => false}
@@ -154,6 +161,9 @@ describe("FileSection with injected tokens", () => {
         commentedLines={new Set()}
         highlight={null}
         fileHighlighted={false}
+        reviewId="demo"
+        headCommit="bdcc1e493e"
+        baseCommit="443cb01be1"
         briefs={null}
         tokens={byHash}
         states={new Map()}
@@ -227,6 +237,9 @@ describe("hostile code text (issue #101)", () => {
         commentedLines={new Set()}
         highlight={null}
         fileHighlighted={false}
+        reviewId="demo"
+        headCommit="bdcc1e493e"
+        baseCommit="443cb01be1"
         briefs={null}
         tokens={tokens}
         states={new Map()}
@@ -280,8 +293,8 @@ describe("hostile code text (issue #101)", () => {
         expect(cell.querySelectorAll("td").length).toBe(0);
       }
       // The row survived as one row: the `</td><td>` injected no rows
-      // (one hunk-header row plus one code row).
-      expect(section.querySelectorAll("tbody tr").length).toBe(2);
+      // (one hunk-header row, one code row, one expand control row).
+      expect(section.querySelectorAll("tbody tr").length).toBe(3);
       if (tokens) expect(section.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     }
   });

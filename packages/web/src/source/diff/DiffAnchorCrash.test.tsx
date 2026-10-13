@@ -145,6 +145,9 @@ function Harness({ tokens }: { tokens?: Tokens }): React.JSX.Element {
           commentedLines={new Set()}
           highlight={null}
           fileHighlighted={false}
+          reviewId={REVIEW_ID}
+          headCommit="head"
+          baseCommit="base"
           briefs={null}
           tokens={tokens}
           states={new Map()}

@@ -1,0 +1,54 @@
+/**
+ * Expand-by-lines styles (issue #133, stage 1).
+ *
+ * Revealed context reads as context, not as the diff's own lines: the
+ * code cells sit on the sunk surface while added/deleted rows keep their
+ * green/red wash. Expand controls ride the pinned full-width row so they
+ * never scroll out of view sideways, like hunk headers and hidden rows.
+ */
+
+/* Revealed context rows: sunk code cells, muted numbers. */
+table.diff tr[data-revealed] td.c {
+  background: var(--sunk);
+}
+
+table.diff tr[data-revealed] td.n {
+  opacity: 0.55;
+}
+
+/* Highlighted revealed rows keep the mark wash over the sunk tint. */
+table.diff tr[data-revealed].hl td {
+  background: var(--note-mark) !important;
+}
+
+/* Expand controls: quiet row of small buttons under the hunk edge. */
+.pin.xrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 10px 2px 34px;
+}
+
+.tbtn.xs {
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+.tbtn.xs.ghost {
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.tbtn.xs.ghost:hover {
+  color: var(--ink);
+}
+
+/* Inline load failure for one region. */
+.xerr {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 10px 2px 34px;
+  color: var(--warn);
+  font-size: 12px;
+}

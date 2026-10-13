@@ -31,6 +31,13 @@ import { slotKey, type LineSlots } from "./lineSlots.js";
 import { codeLineHtml } from "./highlight/codeHtml.js";
 import { useFileHighlight } from "./highlight/useFileHighlight.js";
 import type { LineTokens } from "./highlight/tokenize.js";
+import {
+  ExpandEdge,
+  ExpandGap,
+  RevealedRows,
+  useFileExpansion,
+  useRevealedTokens,
+} from "./FileExpansion.js";
 import "./highlight/highlight.css";
 
 export type DiffViewMode = "unified" | "split";
@@ -80,6 +87,12 @@ interface SectionProps {
   commentedLines: ReadonlySet<string>;
   highlight: LineRange | null;
   fileHighlighted: boolean;
+  /** Review id for file slices (issue #133: diff expansion). */
+  reviewId: string;
+  /** Head commit: the side expanded for every file but deleted ones. */
+  headCommit: string;
+  /** Base commit: the side expanded for deleted files. */
+  baseCommit: string;
   /** Brief copy for hidden rows, keyed `fileKey:index` (mock fixture). */
   briefs: Readonly<Record<string, string>> | null;
   /**
@@ -558,6 +571,15 @@ export function FileSection(props: SectionProps): ReactNode {
   // Injected (test) rows win when the hook has nothing yet; otherwise the
   // hook's live rows do.
   const tokens = fileHl.byHash.size > 0 ? fileHl.byHash : (props.tokens ?? EMPTY_TOKENS);
+  // Expand-by-lines state (issue #133): revealed context around hunks.
+  // Binary files never expand (no text to show).
+  const expansion = useFileExpansion(file, {
+    reviewId: props.reviewId,
+    headCommit: props.headCommit,
+    baseCommit: props.baseCommit,
+    disabled: file.isBinary === true,
+  });
+  const revealedTokens = useRevealedTokens(file.path, expansion.lines, visible && !props.folded && !file.isBinary);
 
   useEffect(() => {
     if (props.eager) {
@@ -639,21 +661,119 @@ export function FileSection(props: SectionProps): ReactNode {
                 </colgroup>
               ) : null}
               <tbody>
-                {groupHunks(file.hunks, props.isHidden).map((g) =>
-                  g.type === "hidden" ? (
-                    <HiddenRow
-                      key={`hid-${g.indices.join("-")}`}
-                      file={file}
-                      indices={g.indices}
-                      cols={cols}
-                      briefs={props.briefs}
-                      summaries={props.states}
-                      onUnhide={props.onUnhide}
-                    />
-                  ) : (
-                    <HunkBlock key={`hunk-${file.fileKey}-${g.index}`} index={g.index} cols={cols} {...props} tokens={tokens} />
-                  ),
-                )}
+                {(() => {
+                  const groups = groupHunks(file.hunks, props.isHidden);
+                  const shown = new Set(
+                    groups.flatMap((g) => (g.type === "show" ? [g.index] : [])),
+                  );
+                  const lastIndex = file.hunks.length - 1;
+                  const expandable = !file.isBinary;
+                  return groups.flatMap((g): ReactNode[] => {
+                    if (g.type === "hidden") {
+                      return [
+                        <HiddenRow
+                          key={`hid-${g.indices.join("-")}`}
+                          file={file}
+                          indices={g.indices}
+                          cols={cols}
+                          briefs={props.briefs}
+                          summaries={props.states}
+                          onUnhide={props.onUnhide}
+                        />,
+                      ];
+                    }
+                    const i = g.index;
+                    const h = file.hunks[i];
+                    const nodes: ReactNode[] = [];
+                    if (expandable) {
+                      const above = expansion.regionAbove(i);
+                      if (above) {
+                        nodes.push(
+                          <ExpandEdge
+                            key={`xa-${file.fileKey}-${i}`}
+                            hunk={h}
+                            index={i}
+                            side="above"
+                            expansion={expansion}
+                            file={file}
+                            cols={cols}
+                            showHide={i === 0}
+                          />,
+                        );
+                        // Gap lines render once, below the earlier hunk —
+                        // so only the top region renders lines above.
+                        const aboveLines =
+                          i === 0
+                            ? expansion.lines.filter((l) => l.line >= above.start && l.line <= above.end)
+                            : [];
+                        if (aboveLines.length > 0) {
+                          nodes.push(
+                            <RevealedRows
+                              key={`ra-${file.fileKey}-${i}`}
+                              fileKey={file.fileKey}
+                              lines={aboveLines}
+                              view={view}
+                              tokens={revealedTokens}
+                              slots={props.slots}
+                              highlight={props.highlight}
+                            />,
+                          );
+                        }
+                      }
+                    }
+                    nodes.push(<HunkBlock key={`hunk-${file.fileKey}-${i}`} index={i} cols={cols} {...props} tokens={tokens} />);
+                    if (expandable) {
+                      const below = expansion.regionBelow(i, file.hunks);
+                      if (below) {
+                        const belowLines = expansion.lines.filter(
+                          (l) => l.line >= below.start && l.line <= below.end,
+                        );
+                        if (belowLines.length > 0) {
+                          nodes.push(
+                            <RevealedRows
+                              key={`rb-${file.fileKey}-${i}`}
+                              fileKey={file.fileKey}
+                              lines={belowLines}
+                              view={view}
+                              tokens={revealedTokens}
+                              slots={props.slots}
+                              highlight={props.highlight}
+                            />,
+                          );
+                        }
+                      }
+                      nodes.push(
+                        <ExpandEdge
+                          key={`xb-${file.fileKey}-${i}`}
+                          hunk={h}
+                          index={i}
+                          side="below"
+                          expansion={expansion}
+                          file={file}
+                          cols={cols}
+                          showHide={i === lastIndex}
+                        />,
+                      );
+                      const gap = expansion.regions.find((r) => r.key === `gap-${i}`);
+                      if (gap && shown.has(i + 1)) {
+                        nodes.push(<ExpandGap key={`gap-${file.fileKey}-${i}`} region={gap} expansion={expansion} cols={cols} />);
+                      }
+                    }
+                    return nodes;
+                  });
+                })()}
+                {expansion.error ? (
+                  <tr className="pr">
+                    <td colSpan={cols}>
+                      <div className="pin xerr">
+                        <span>Couldn&apos;t load those lines: {expansion.error}</span>
+                        <button className="tbtn xs" type="button" onClick={expansion.retry}>
+                          Retry
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           ) : (
