@@ -340,7 +340,16 @@ needed (that deviation is closed, not added).
 - Snap to words, trim, highlight matches — met (`e2e/comments.spec.ts`
   “selection snaps to whole words”).
 - Toolbar Explain / Ask… / Note; no examples/diagrams there; appears only
-  on selection-finish — met (`comments.spec.ts`).
+  on selection-finish — met (`comments.spec.ts`). Inside an explanation
+  the same toolbar appears (#116); inside second-opinion reasoning and
+  thread replies it does not (neither is an anchor host —
+  `SelectionToolbar.test.tsx`).
+- Selections inside an explanation anchor to the expansion's block
+  (`<expansion>#<block>`) for all three actions; the nested explanation,
+  thread or note renders under that block, nests to any depth by the same
+  mechanism, and survives reload with its highlight
+  (`actions-expansion-nesting.test.ts`, `ExpansionNesting.test.tsx`,
+  `e2e/expansion-nesting-service.spec.ts`).
 
 ### §4.7 Explanations — all met
 
@@ -358,6 +367,11 @@ needed (that deviation is closed, not added).
   back → highlight).
 - Open as page moves content, anchor becomes link — met
   (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
+- Explanations nest (#116): an Explain on text inside an explanation
+  anchors to the expansion's block and renders under it, to any depth;
+  Ask/Note there behave the same. Citations to expansion blocks validate
+  (`card:<expansion>#<block>`). Closed nested explanations and stale
+  anchors use the same footnote chips as card-level ones.
 
 ### §4.8 Comments — all met
 
