@@ -17,7 +17,7 @@ import { createApp } from "../src/server.js";
 function textEvents(text: string): AgentEvent[] {
   return [
     { type: "text", delta: text },
-    { type: "usage", inputTokens: 5, cachedTokens: 0, outputTokens: 3 },
+    { type: "usage", inputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 3 },
     { type: "done", stopReason: "end_turn" },
   ];
 }

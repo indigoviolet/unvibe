@@ -41,7 +41,7 @@ import type { Repo } from "@unvibe/shared";
 import { parseGitHubRemote } from "./detect.js";
 import { newRepoId, type RepoStore } from "./store.js";
 import type { CommandRunner, RunResult } from "../exec/index.js";
-import { runGh } from "../exec/index.js";
+import { runGh, runGitFetch } from "../exec/index.js";
 
 /** `<dataDir>/repos`: every managed clone lives under here, nothing else. */
 export function managedReposRoot(dataDir: string): string {
@@ -457,12 +457,10 @@ export async function refreshManagedCheckout(
   fetchState.set(repo.id, current);
   current.inflight = (async (): Promise<string | null> => {
     try {
-      const res = await runner.run("git", {
-        args: ["fetch", "origin"],
+      // #139: same gh-login credential handling as ingest fetches.
+      const res = await runGitFetch(runner, [], {
         cwd: repo.localPath,
         timeoutMs: MANAGED_FETCH_TIMEOUT_MS,
-        // No terminal in the service: never block on a credential prompt.
-        env: { GIT_TERMINAL_PROMPT: "0" },
       });
       if (res.code !== 0) return fetchNote();
       return null;

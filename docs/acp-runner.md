@@ -91,15 +91,15 @@ Service dependencies (so a global npm install brings the adapters along):
 
 | # | Quirk | Handling |
 |---|---|---|
-| 1 | Claude 0.89.0 fork needs `session/resume` before first prompt (`Session not found`) | `fork()` resumes automatically; `prompt()` retries resume once on that exact error and asks the caller to retry (retryable error) |
+| 1 | Claude 0.89.0 fork needs `session/resume` before first prompt (`Session not found`) | `fork()` resumes automatically; `prompt()` retries resume once on that exact error and asks the caller to retry (retryable error). `session/resume` and `session/load` carry the same `_meta` as `session/new` (#121: one builder, `sessionMeta`), so forks keep the Unvibe system prompt and the read-only tool set instead of the adapter defaults |
 | 2 | Codex silently ignores `_meta.systemPrompt` (spike 1a FAIL) | Codex instructions go as AIR custom instructions (`_meta.jetbrains.air.customInstructions`), forwarded by codex-acp as `developerInstructions` on thread start. Verified live: codename `QUOKKA-X7` recalled. String passed byte-stable across sessions so prefix caching works |
-| 3 | `usage.inputTokens` excludes cached tokens on both adapters | Never compute hit rate as cached/input; read share = `cachedRead/(in+cachedRead+cachedWrite)` (`cacheReadShare`) |
+| 3 | `usage.inputTokens` excludes cached tokens on both adapters | The usage event carries `cachedReadTokens` + `cachedWriteTokens` separately (#125); the hit rate the app shows is the read share `cachedRead/(in+cachedRead+cachedWrite)` (`cacheReadShare`), never cached/input |
 | 4 | **Claude counters are session-cumulative** (`"Total … across all turns"`; verified: turn2 total 21254 > turn1 total 19259) while **Codex counters are per-turn** (verified: 237-input turn after a 5338-input turn) | Runner delta-izes Claude per session (`deltaTurnUsage` + per-session baseline) and passes Codex through, so consumers can sum `usage` events. Unit test pins the delta math |
 | 5 | Turn-level `usage` omits background sub-calls (e.g. session titling) | Always aggregate `_meta.quota.model_usage` when present (`aggregateTurnUsage`); handles both provider field namings (`cachedInputTokens`/`cachedReadTokens`, `cacheWriteInputTokens`/`cachedWriteTokens`) and folds thought/reasoning tokens into output |
 | 6 | Codex `read-only` mode refuses MCP tool calls ("I can't access that tool" without attempting) | Restricted Codex sessions use `workspace-write` mode instead (see permission policy) |
 | 7 | Codex `agent` mode runs edits/shell with no permission round-trip (Guardian auto-approves) | Never use `agent` mode for restricted sessions; `workspace-write` prompts on every edit/shell/network action |
 | 8 | Codex workspace-write MCP approvals arrive with an **empty toolCall** (no title/name) | Correlate by `toolCallId` against the preceding `tool_call` update (the adapter always emits it first); `_meta.is_mcp_tool_approval` kept as supporting evidence. Unit test covers the correlation |
-| 9 | `load` replays history as `session/update` notifications | Drain the replay (≈300 ms) before resolving `load()` so stale chunks never leak into the next turn |
+| 9 | `load` replays history as `session/update` notifications | Drain the replay until quiet (one 20 ms window with nothing new, 300 ms ceiling) before resolving `load()` so stale chunks never leak into the next turn (#122: was a fixed 300 ms sleep) |
 | 10 | ACP errors are generic `-32603 Internal error` | Reason is in the message/details (`Session not found`, rate limit, …); `isRetryableError` classifies accordingly |
 
 ## Permission policy
@@ -121,7 +121,10 @@ Tightest working configuration per adapter (proven by live tests):
 - **Claude:** `_meta.systemPrompt` + `_meta.claudeCode.options.tools =
   ["Read","Glob","Grep"]` with dangerous tools in `disallowedTools`, default
   (Manual) permission mode, deny-by-default handler. MCP unaffected (separate
-  channel).
+  channel). The same `_meta` is sent on `session/resume` and `session/load`
+  (#121), so forks keep it; before that fix forks ran with the adapter
+  defaults (full tool set, no Unvibe instructions) and only the permission
+  handler stood between them and Bash/Edit.
 - **Codex:** `workspace-write` session mode (set after `session/new`;
   `INITIAL_AGENT_MODE` is process-wide and cannot multiplex) + sandbox
   defaults (workspace-bounded writes, no network) + deny-by-default handler
@@ -185,10 +188,11 @@ mise run test:live  # live adapter tests (UNVIBE_LIVE=1)
 provider (~1 min for Claude, ~1 min for Codex; 12 tests total).
 
 - `UNVIBE_LIVE_PROVIDERS=claude|codex` selects providers (default: both).
-- Unit tests (`test/acp-runner.test.ts`, 14 tests) run a scripted fake ACP
+- Unit tests (`test/acp-runner.test.ts`, 21 tests) run a scripted fake ACP
   agent speaking the real protocol over in-memory stream pairs
   (`test/fake-acp.ts` reuses the production `connectClient()`): event
   mapping, usage aggregation incl. background models, fork+resume ordering,
-  `atMessage` fork points, load replay drain, cancel, crash/restart,
-  permission allow/deny + toolCallId correlation, error classification,
-  model listing.
+  `atMessage` fork points, resume/load `_meta` parity with new (#121) +
+  fork deny policy, load replay drain, quiet-based settling (#122),
+  cancel, crash/restart, permission allow/deny + toolCallId correlation,
+  error classification, model listing, read/write usage split (#125).
