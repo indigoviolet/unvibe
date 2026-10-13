@@ -17,7 +17,7 @@ import type { SharedContextService } from "../../sharedctx/service.js";
 import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import { generateAction } from "./generate.js";
-import { askAction, explainAction, replyAction, retryAction } from "./conversation.js";
+import { askAction, explainAction, hunkCardAction, replyAction, retryAction } from "./conversation.js";
 import { bookmarkAction, collapseAction } from "./read.js";
 import { closeAction, deleteAction } from "./close.js";
 import { conceptAction } from "./concept.js";
@@ -226,6 +226,14 @@ export async function dispatchAction(
         if (typeof action.annotationId !== "string") return bad(reply, "annotationId is required");
         const res = await promoteAction(ctx, action.annotationId);
         return { accepted: true, annotationId: res.annotationId, pageId: res.pageId } satisfies ActionResponse;
+      }
+      case "hunk_card": {
+        need(ctx);
+        if (typeof action.fileKey !== "string" || typeof action.contentHash !== "string") {
+          return bad(reply, "fileKey and contentHash are required");
+        }
+        const res = await hunkCardAction(ctx, action.fileKey, action.contentHash);
+        return { accepted: true, annotationId: res.annotationId, turnId: res.turnId } satisfies ActionResponse;
       }
       case "close": {
         need(ctx);

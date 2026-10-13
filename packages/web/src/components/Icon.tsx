@@ -1,7 +1,9 @@
 /**
  * Icon set copied from prototype.html (same names, same 16x16 stroke paths).
  * `gear` and `bug` are additions in the same stroke style (the prototype
- * has no settings/debug icons). Usage: `<Icon name="check" />`.
+ * has no settings/debug icons), as are `person` (author avatar for the
+ * reviewer; the agent avatar reuses `spark`), `refresh`, `home` and the
+ * gutter caret pairs. Usage: `<Icon name="check" />`.
  */
 import type { JSX } from "react";
 
@@ -79,6 +81,12 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M8 5.6V3M5.2 6.6L3.2 5.2M10.8 6.6l2-1.4M4.6 9H2.2M13.8 9h-2.4M5.2 11.2l-2 2M10.8 11.2l2 2" />
     </>
   ),
+  person: (
+    <>
+      <circle cx="8" cy="5.4" r="2.5" />
+      <path d="M2.9 13.8a5.1 5.1 0 015.1-4.4 5.1 5.1 0 015.1 4.4" />
+    </>
+  ),
   refresh: (
     <>
       <path d="M13.8 8a5.8 5.8 0 1 1-1.7-4.1" />
@@ -92,6 +100,18 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
 };
+
+/**
+ * Raw inner-SVG markup for the author avatars in string-rendered contexts
+ * (`floating/HoverPopover.tsx`). Same shapes as `person` / `spark` above —
+ * keep them in sync. (String form trips the copy guard's milestone
+ * pattern on path data; like the `d` attributes above it lives here under
+ * the Icon.tsx allowlist entry, never rendered as text.)
+ */
+export const PERSON_SVG_INNER =
+  '<circle cx="8" cy="5.4" r="2.5"/><path d="M2.9 13.8a5.1 5.1 0 015.1-4.4 5.1 5.1 0 015.1 4.4"/>';
+export const SPARK_SVG_INNER =
+  '<path d="M8 2l1.4 4.6L14 8l-4.6 1.4L8 14l-1.4-4.6L2 8l4.6-1.4z"/>';
 
 export type IconName = keyof typeof PATHS;
 

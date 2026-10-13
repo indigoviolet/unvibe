@@ -120,6 +120,9 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
             lineSlots={lineSlots}
             commentedLines={commentedLines}
             onLineClick={diffComments.onLineClick}
+            lookupPage={lookupPage}
+            onOpenPage={onOpenPage}
+            onFollowUp={onFollowUp}
           />
         )}
       </ErrorBoundary>

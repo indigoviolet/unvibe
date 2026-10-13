@@ -243,6 +243,9 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     // Guide thread: open its page, expand a collapsed card, scroll to it.
     // The menu now lives in the review bar, so jumping to a guide thread
     // while only the source pane is showing brings the guide back (#83).
+    // Comments never anchor hunks (the service rejects them); anything
+    // else here is a corrupt snapshot, not a jump target.
+    if (host.kind !== "block") return;
     const holder = snap.pages
       .flatMap((p) => p.cards.map((c) => ({ page: p, card: c })))
       .find(({ card }) =>

@@ -44,6 +44,7 @@ import {
   splitReply,
 } from "@unvibe/shared";
 import { RetryableError } from "../jobs/errors.js";
+import { mirrorPromotedAnswer } from "../interaction/index.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
 import { isReplayRunner } from "../agent/factory.js";
@@ -212,7 +213,10 @@ export function resolveTarget(snapshot: ReviewSnapshot, cardId: string): Resolve
   // depth/undo (stored on the turn, outside the revisable blocks). For an
   // answer to a typed question the claim includes the question.
   for (const ann of snapshot.annotations) {
-    if (ann.type !== "conversation") continue;
+    // Promoted links still holding turns keep their answers addressable
+    // (issue #152): an in-flight second opinion settles onto the turn
+    // and mirrors to the page.
+    if (ann.type !== "conversation" && !(ann.type === "link" && (ann.turns?.length ?? 0) > 0)) continue;
     const turn = (ann.turns ?? []).find((t) => t.id === cardId);
     if (!turn) continue;
     const blocks = turn.blocks;
@@ -650,12 +654,16 @@ export async function requestSecondOpinion(
             const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
               (a) => a.id === target.annotationId,
             );
-            const turn = ann?.type === "conversation" ? (ann.turns ?? []).find((t) => t.id === target.answerId) : undefined;
+            const turn =
+              ann && (ann.type === "conversation" || (ann.type === "link" && (ann.turns?.length ?? 0) > 0))
+                ? (ann.turns ?? []).find((t) => t.id === target.answerId)
+                : undefined;
             if (!ann || !turn) {
               throw new Error(`unknown card ${req.cardId}`);
             }
             const rest = (turn.secondOpinions ?? []).filter((s) => s.mode !== req.mode);
             turn.secondOpinions = [...rest, { ...result, cardId: turn.id }];
+            mirrorPromotedAnswer(draft, turn.id);
             const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
             draft.logTail.push({
               seq,

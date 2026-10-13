@@ -19,6 +19,7 @@ import {
   hasPrinciple,
   markStaleAnchors,
   mergeDepthText,
+  mirrorPromotedAnswer,
   pushUndo,
   recordInteraction,
   setTargetContent,
@@ -74,6 +75,7 @@ export async function depthAction(
       const current = targetBlocks(t);
       setTargetContent(t, current, next);
       markStaleAnchors(draft, cardId);
+      mirrorPromotedAnswer(draft, cardId);
     });
     await recordInteraction({ kind: "depth-state", reviewId, cardId, text: `Depth ${next}: "${cardTitle(getSnapshotOrThrow(reviews, reviewId), cardId)}"` });
     return { cardId, level: next, reused: true };
@@ -157,6 +159,7 @@ async function depthViaAgent(
         }
         setTargetContent(t, merged, target);
         markStaleAnchors(draft, cardId);
+        mirrorPromotedAnswer(draft, cardId);
       });
       // The rewritten text is card-local shared knowledge (PRD §9.3).
       // Awaited so tests observe the entry once the rewrite settles.

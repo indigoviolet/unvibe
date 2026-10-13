@@ -166,6 +166,15 @@ function seedHunkStates(): Map<string, HunkState> {
           note: "Only call site; everything else is the helper.",
         });
       }
+      // Issue #138: one idle hunk summary to activate in tests.
+      if (f.path === "src/urllib3/connection.py" && i === 0) {
+        map.set(h.contentHash, {
+          contentHash: h.contentHash,
+          folded: false,
+          reviewed: false,
+          summary: "Unfolds folded header values before reading.",
+        });
+      }
     });
   }
   return map;
@@ -188,8 +197,8 @@ function mockExplainBlocks(quote: string): import("@unvibe/shared").Block[] {
       id: `b-mock-exp-${Date.now().toString(36)}`,
       text: {
         simple: `In short: <em>${q}</em> is about unfolding folded header values.`,
-        standard: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value. [[diff:src-urllib3-connection.py:80-82]]`,
-        deep: `Mock deep explanation of <em>${q}</em>: obs-fold handling sits at the recipient per RFC 9112 §5.2, before interpretation or forwarding, so every consumer sees one semantic value. [[diff:src-urllib3-connection.py:80-88]]`,
+        standard: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value.`,
+        deep: `Mock deep explanation of <em>${q}</em>: obs-fold handling sits at the recipient per RFC 9112 §5.2, before interpretation or forwarding, so every consumer sees one semantic value.`,
       },
       citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
     },
@@ -451,6 +460,23 @@ async function awaitAddRelease(): Promise<void> {
   for (let i = 0; i < 400; i++) {
     try {
       if (!localStorage.getItem("unvibe.mock.addRepoHold")) return;
+    } catch {
+      return;
+    }
+    await wait(50);
+  }
+}
+
+/**
+ * Resolve once the `unvibe.mock.turnFillHold` key is gone (or soon
+ * anyway). Holds conversation turn fills (ask/reply/retry answers) so
+ * mid-fill sequences — e.g. Open as page while the answer is still
+ * being written (issue #152) — are deterministic in tests.
+ */
+async function awaitTurnFillRelease(): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    try {
+      if (!localStorage.getItem("unvibe.mock.turnFillHold")) return;
     } catch {
       return;
     }
@@ -1061,6 +1087,125 @@ function settleMockJob(jobId: string): void {
   if (!job || job.state === "done") return;
   job.state = "done";
   emitJobs();
+}
+
+/**
+ * Re-target a mock job at a page card (issue #152: like the service's
+ * queue retarget, the moved fill's job addresses its new card so the
+ * page shows the working state).
+ */
+function retargetMockJob(jobId: string, cardId: string): void {
+  const job = mockJobs.find((j) => j.id === jobId);
+  if (!job) return;
+  job.cardId = cardId;
+  emitJobs();
+}
+
+/**
+ * Mirror a promoted turn's content onto its page card (issue #152: the
+ * mock keeps the service's shape — turns stay on the link while
+ * unsettled, the page card is the visible copy).
+ */
+function mirrorMockPromotedTurn(tid: string, turnId: string): void {
+  const link = annotations.find((x) => x.id === tid);
+  if (!link || link.type !== "link") return;
+  const mapping = ((link as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns ?? []).find(
+    (m) => m.turnId === turnId,
+  );
+  if (!mapping) return;
+  const turn = (link.turns ?? []).find((t) => t.id === turnId);
+  if (!turn) return;
+  for (const p of mockPages) {
+    const card = p.cards.find((c) => c.id === mapping.cardId);
+    if (!card) continue;
+    card.blocks = JSON.parse(JSON.stringify(turn.blocks));
+    card.level = turn.level;
+    card.revision = turn.revision;
+    card.undoStack = JSON.parse(JSON.stringify(turn.undoStack));
+    if (turn.secondOpinions) card.secondOpinions = JSON.parse(JSON.stringify(turn.secondOpinions));
+    emitPages();
+    return;
+  }
+}
+
+/**
+ * Drop a promoted link's turns once every moved turn has settled
+ * (issue #152, mirrors the service: the page holds the content).
+ */
+function dropSettledMockPromotedTurns(tid: string): void {  const link = annotations.find((x) => x.id === tid);
+  if (!link || link.type !== "link" || (link.turns?.length ?? 0) === 0) return;
+  const unsettled = (link.turns ?? []).some(
+    (t) => ((t.working ?? "") !== "" && t.working !== null) || ((t.error ?? "") !== "" && t.error !== null) || t.jobId !== undefined,
+  );
+  if (unsettled) return;
+  delete (link as { turns?: unknown }).turns;
+  delete (link as { promotedTurns?: unknown }).promotedTurns;
+  emitAnnotations();
+}
+
+/**
+ * Ensure the hunk's conversation card in mock mode (issue #138, mirrors
+ * the service): created from the stored summary text with no job — the
+ * first turn carries the summary as a paragraph block. Reuses and
+ * reopens the stored card when already activated.
+ */
+function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string; turnId: string; blockId: string } {
+  const file = MOCK_FILES.find((f) => f.fileKey === fileKey);
+  if (!file?.hunks.some((h) => h.contentHash === contentHash)) {
+    throw new Error(`unknown hunk ${fileKey}:${contentHash}`);
+  }
+  const summary = hunkStates.get(contentHash)?.summary?.trim();
+  if (!summary) throw new Error(`hunk ${fileKey}:${contentHash} has no summary yet`);
+  const existing = annotations.find(
+    (x) =>
+      x.type === "conversation" &&
+      (x.anchor.host as { kind?: string }).kind === "hunk" &&
+      (x.anchor.host as { fileKey?: string }).fileKey === fileKey &&
+      (x.anchor.host as { contentHash?: string }).contentHash === contentHash,
+  );
+  if (existing) {
+    if (!existing.open) {
+      existing.open = true;
+      emitAnnotations();
+    }
+    const first = (existing.turns ?? [])[0] as unknown as { id: string; blocks: { id: string }[] } | undefined;
+    if (!first) throw new Error(`hunk card ${existing.id} has no turns`);
+    return { id: existing.id, turnId: first.id, blockId: first.blocks[0].id };
+  }
+  const stamp = Date.now().toString(36);
+  const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${stamp}`;
+  const turnId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${stamp}`;
+  const blockId = `b-hunk-${stamp}`;
+  const safe = summary.replace(/</g, "&lt;");
+  annotations.push({
+    id,
+    type: "conversation",
+    anchor: {
+      host: { kind: "hunk", fileKey, contentHash },
+      quotedText: "",
+      prefix: "",
+      suffix: "",
+      position: 0,
+      version: 1,
+    },
+    open: true,
+    messages: [],
+    post: false,
+    working: null,
+    turns: [
+      {
+        id: turnId,
+        question: null,
+        blocks: [{ type: "paragraph", id: blockId, text: { standard: safe }, citations: [] }],
+        level: "standard",
+        revision: 1,
+        undoStack: [],
+        working: null,
+      },
+    ],
+  } as unknown as import("@unvibe/shared").Annotation);
+  emitAnnotations();
+  return { id, turnId, blockId };
 }
 
 /**
@@ -2099,6 +2244,33 @@ export const mockApi = {
   },
 
   action: async (_id: string, a: ReviewAction): Promise<ActionResponse> => {
+    // Fill one conversation turn after a delay, like the service seam.
+    // Held while `unvibe.mock.turnFillHold` is set (issue #152), and
+    // mirrored onto the promoted page card when the turn moved (issue
+    // #152: Open as page mid-fill keeps filling the page).
+    const answerTurnLater = (tid: string, turnId: string, text: string, jobId: string): void => {
+      window.setTimeout(() => {
+        void (async () => {
+          await awaitTurnFillRelease();
+          settleMockJob(jobId);
+          const live = annotations.find((x) => x.id === tid);
+          const turn = live && (live.type === "conversation" || live.type === "link") ? (live.turns ?? []).find((t) => t.id === turnId) : undefined;
+          if (!live || !turn) return;
+          turn.blocks = mockExplainBlocks(text || live.anchor.quotedText) as never;
+          turn.revision += 1;
+          turn.working = null;
+          turn.error = null;
+          turn.jobId = undefined;
+          live.working = null;
+          live.error = null;
+          live.jobId = undefined;
+          delete live.reply;
+          mirrorMockPromotedTurn(tid, turnId);
+          dropSettledMockPromotedTurns(tid);
+          emitAnnotations();
+        })();
+      }, 700);
+    };
     // Second opinion (mock): canned verdicts through the patch path so
     // mock-mode e2e exercises the result block, disagreement styling and
     // the mode switch without a service. Blind → partly, check →
@@ -2124,8 +2296,8 @@ export const mockApi = {
             text: {
               standard:
                 verdict === "partly"
-                  ? `Partly — the gap is real but narrow. The helper handles the fold. [[diff:src-urllib3-connection.py:80-82]]`
-                  : `Disagrees — only CRLF-folded values are rewritten. [[diff:src-urllib3-connection.py:80-88]]`,
+                  ? `Partly — the gap is real but narrow. The helper handles the fold.`
+                  : `Disagrees — only CRLF-folded values are rewritten.`,
             },
             citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
           },
@@ -2240,29 +2412,18 @@ export const mockApi = {
     // delivery). Ask creates the card; reply adds a turn; retry refills
     // the last turn in place.
     if (a.kind === "ask" || a.kind === "reply" || a.kind === "retry") {
-      // Fill one conversation turn after a delay, like the service seam.
-      const answerTurnLater = (tid: string, turnId: string, text: string, jobId: string): void => {
-        window.setTimeout(() => {
-          settleMockJob(jobId);
-          const live = annotations.find((x) => x.id === tid);
-          const turn = live?.type === "conversation" ? (live.turns ?? []).find((t) => t.id === turnId) : undefined;
-          if (!live || !turn) return;
-          turn.blocks = mockExplainBlocks(text || live.anchor.quotedText) as never;
-          turn.revision += 1;
-          turn.working = null;
-          turn.error = null;
-          turn.jobId = undefined;
-          live.working = null;
-          live.error = null;
-          live.jobId = undefined;
-          delete live.reply;
-          emitAnnotations();
-        }, 700);
-      };
       const newTurnId = (): string =>
         `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       if (a.kind === "ask") {
-        const anchor = a.anchor;
+        // Issue #138: a hunk anchor activates the summary into its card,
+        // then this same Ask runs nested on the summary block.
+        const anchor: import("@unvibe/shared").ActionAnchor =
+          a.anchor.where === "hunk"
+            ? (() => {
+                const ensured = ensureMockHunkCard(a.anchor.fileKey, a.anchor.contentHash);
+                return { where: "block", blockId: `${ensured.turnId}#${ensured.blockId}` };
+              })()
+            : a.anchor;
         const host =
           anchor.where === "block"
             ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
@@ -2289,6 +2450,7 @@ export const mockApi = {
           messages: [],
           post: false,
           working: "Thinking…",
+          jobId: askJobId,
           turns: [
             {
               id: turnId,
@@ -2298,6 +2460,7 @@ export const mockApi = {
               revision: 1,
               undoStack: [],
               working: "Thinking…",
+              jobId: askJobId,
             },
           ],
         } as unknown as import("@unvibe/shared").Annotation);
@@ -2308,8 +2471,12 @@ export const mockApi = {
       }
       const annotationId = (a as { annotationId: string }).annotationId;
       const found = annotations.find((x) => x.id === annotationId);
-      if (!found || found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
+      // Retry also runs on promoted links still holding turns (issue #152);
+      // reply stays conversation-only (pages have no reply box).
+      const fillable = found && (found.type === "conversation" || (found.type === "link" && (found.turns?.length ?? 0) > 0));
+      if (!fillable || !found) throw new Error(`unknown conversation ${annotationId}`);
       if (a.kind === "reply") {
+        if (found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
         const lastTurn = (found.turns ?? [])[(found.turns ?? []).length - 1];
         // Mirrors the service: a failed turn must be retried explicitly.
         if (lastTurn?.error) throw new Error(`conversation ${found.id} has a failed turn; retry it first`);
@@ -2322,10 +2489,12 @@ export const mockApi = {
           revision: 1,
           undoStack: [],
           working: "Writing reply…",
+          jobId: `mock-reply-${found.id}-${turnId}`,
         } as never);
         found.working = "Writing reply…";
         found.error = null;
         found.open = true;
+        found.jobId = `mock-reply-${found.id}-${turnId}`;
         delete found.reply;
         emitAnnotations();
         const replyJobId = `mock-reply-${found.id}-${turnId}`;
@@ -2342,10 +2511,19 @@ export const mockApi = {
       found.error = null;
       last.working = "Thinking…";
       found.working = "Thinking…";
-      found.open = true;
-      emitAnnotations();
+      if (found.type === "conversation") found.open = true;
       const retryJobId = `mock-retry-${found.id}`;
+      last.jobId = retryJobId;
+      found.jobId = retryJobId;
+      emitAnnotations();
       trackMockJob(retryJobId, "ask", { annotationId: found.id });
+      // A retry on a promoted link refills the page (issue #152).
+      if (found.type === "link") {
+        const cardId = ((found as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns ?? []).find(
+          (m) => m.turnId === last.id,
+        )?.cardId;
+        if (cardId) retargetMockJob(retryJobId, cardId);
+      }
       answerTurnLater(found.id, last.id, last.question ?? found.anchor.quotedText, retryJobId);
       return { accepted: true, annotationId: found.id, turnId: last.id, jobId: retryJobId };
     }
@@ -2355,7 +2533,15 @@ export const mockApi = {
     // the real shapes (working → streamed text → blocks, error + retry via
     // `retry`, anchor-stale fallback, dotted-link close).
     if (a.kind === "explain") {
-      const anchor = a.anchor;
+      // Issue #138: a hunk anchor activates the summary into its card,
+      // then this same Explain runs nested on the summary block.
+      const anchor: import("@unvibe/shared").ActionAnchor =
+        a.anchor.where === "hunk"
+          ? (() => {
+              const ensured = ensureMockHunkCard(a.anchor.fileKey, a.anchor.contentHash);
+              return { where: "block", blockId: `${ensured.turnId}#${ensured.blockId}` };
+            })()
+          : a.anchor;
       const host =
         anchor.where === "block"
           ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
@@ -2380,6 +2566,7 @@ export const mockApi = {
         messages: [],
         post: false,
         working: "Thinking…",
+        jobId,
         turns: [
           {
             id: turnId,
@@ -2389,24 +2576,13 @@ export const mockApi = {
             revision: 1,
             undoStack: [],
             working: "Thinking…",
+            jobId,
           },
         ],
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
       trackMockJob(jobId, "ask", { annotationId: id });
-      window.setTimeout(() => {
-        settleMockJob(jobId);
-        const found = annotations.find((x) => x.id === id);
-        const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
-        if (!found || !turn) return;
-        turn.blocks = mockExplainBlocks(a.quote) as never;
-        turn.revision += 1;
-        turn.working = null;
-        turn.error = null;
-        found.working = null;
-        found.error = null;
-        emitAnnotations();
-      }, 700);
+      answerTurnLater(id, turnId, a.quote, jobId);
       return { accepted: true, annotationId: id, turnId, jobId };
     }
     if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
@@ -2428,7 +2604,7 @@ export const mockApi = {
           {
             type: "paragraph",
             id: `${card.id}-b1`,
-            text: { standard: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo. [[diff:src-urllib3-connection.py:80-82]]` },
+            text: { standard: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo.` },
             citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
           },
           { type: "follow-up", id: `${card.id}-f1`, items: [{ label: "What happens to a fold that ends in a bare LF?", ask: "bare lf" }], citations: [] },
@@ -2564,7 +2740,7 @@ export const mockApi = {
             collapsed: false,
             revision: 2,
             blocks: [
-              { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open. [[diff:src-urllib3-connection.py:80-82]]` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
+              { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open.` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
             ] as never,
             undoStack: [],
           },
@@ -2573,16 +2749,26 @@ export const mockApi = {
       }, 700);
       return { accepted: true, pageId, jobId };
     }
+    if (a.kind === "hunk_card") {
+      // Issue #138: the explicit hunk control. Activates (or reopens)
+      // the summary card with no job.
+      const ensured = ensureMockHunkCard(a.fileKey, a.contentHash);
+      return { accepted: true, annotationId: ensured.id, turnId: ensured.turnId };
+    }
     if (a.kind === "promote") {
       const annId = (a as { annotationId: string }).annotationId;
       const found = annotations.find((x) => x.id === annId);
       if (!found || found.type !== "conversation" || !found.turns) {
         throw new Error(`annotation ${annId} is not a conversation`);
       }
+      // Like the service (issue #152): no cancel — an unsettled turn
+      // keeps filling and mirrors onto its page card; second opinions
+      // move with the content.
       const quote = found.anchor.quotedText;
       const title = quote.length > 60 ? `${quote.slice(0, 58)}…` : quote || "(untitled)";
       const pageId = `p-mock-${Date.now().toString(36)}`;
       const stamp = Date.now().toString(36);
+      const cardIds = (found.turns as unknown[]).map((_, i) => `c-mock-${stamp}-${i}`);
       mockPages.push({
         id: pageId,
         kind: "opened-expansion",
@@ -2592,24 +2778,37 @@ export const mockApi = {
         cards: (found.turns as never[]).map((t, i) => {
           const turn = t as unknown as import("@unvibe/shared").Turn;
           return {
-            id: `c-mock-${stamp}-${i}`,
+            id: cardIds[i],
             pageId,
             title: i === 0 ? quote || null : (turn.question ?? null),
             level: turn.level,
             collapsed: false,
             revision: turn.revision,
             blocks: JSON.parse(JSON.stringify(turn.blocks)),
-            undoStack: [],
+            undoStack: JSON.parse(JSON.stringify(turn.undoStack)),
+            ...(turn.secondOpinions ? { secondOpinions: JSON.parse(JSON.stringify(turn.secondOpinions)) } : {}),
           };
         }),
       });
+      const unsettled = (found.turns as unknown as import("@unvibe/shared").Turn[]).some(
+        (t) => ((t.working ?? "") !== "" && t.working !== null) || ((t.error ?? "") !== "" && t.error !== null) || t.jobId !== undefined,
+      );
+      const fillingIndex = (found.turns as unknown as import("@unvibe/shared").Turn[]).findIndex((t) => t.jobId !== undefined);
+      const fillingJob = fillingIndex >= 0 ? (found.turns as unknown as import("@unvibe/shared").Turn[])[fillingIndex].jobId : undefined;
       found.type = "link" as never;
       found.open = false;
-      found.working = null;
-      found.error = null;
-      found.jobId = undefined;
+      if (unsettled) {
+        (found as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns = (
+          found.turns as unknown as import("@unvibe/shared").Turn[]
+        ).map((turn, i) => ({ turnId: turn.id, cardId: cardIds[i] }));
+      } else {
+        found.working = null;
+        found.error = null;
+        found.jobId = undefined;
+        delete (found as { turns?: unknown }).turns;
+      }
       (found as { promotedToPage?: string }).promotedToPage = pageId;
-      delete (found as { turns?: unknown }).turns;
+      if (fillingJob && fillingIndex >= 0) retargetMockJob(fillingJob, cardIds[fillingIndex]);
       emitPages();
       emitAnnotations();
       return { accepted: true, annotationId: annId, pageId };
@@ -2620,7 +2819,7 @@ export const mockApi = {
       if (!found) throw new Error(`unknown annotation ${annId}`);
       found.open = false;
       found.working = null;
-      if (found.type === "conversation") {
+      if (found.type === "conversation" || (found.type === "link" && (found.turns?.length ?? 0) > 0)) {
         for (const t of found.turns ?? []) t.working = null;
       }
       emitAnnotations();
@@ -2714,6 +2913,11 @@ export const mockApi = {
     body: import("@unvibe/shared").CreateCommentRequest,
   ): Promise<{ id: string }> => {
     const anchor = body.anchor;
+    // Issue #138: comments never anchor hunks (the client maps summary
+    // Comments to the hunk's first changed line), mirroring the service.
+    if (anchor.where === "hunk") {
+      throw new Error("a comment on a hunk summary goes to the hunk's first changed line, not the hunk");
+    }
     const host =
       anchor.where === "block"
         ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }

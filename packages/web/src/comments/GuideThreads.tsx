@@ -19,6 +19,7 @@
  *   newly created ones are opened so the author sees the working state.
  */
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -43,6 +44,11 @@ function makeMark(commentId: string): HTMLElement {
 export function GuideThreadHooks() {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const pages = useReview((s) => s.snapshot?.pages);
+  // The guide page remounts with clean DOM on navigation while this
+  // component stays mounted: re-run the pass on the route too, or marks
+  // drawn before leaving never come back (same staleness as
+  // ExpansionHighlights had).
+  const pathname = useLocation().pathname;
 
   // Open-thread registration for the guide's comment markers.
   useEffect(
@@ -116,7 +122,7 @@ export function GuideThreadHooks() {
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [annotations, pages]);
+  }, [annotations, pages, pathname]);
 
   // Mark clicks toggle; hovering outlines anchors <-> threads.
   useEffect(() => {

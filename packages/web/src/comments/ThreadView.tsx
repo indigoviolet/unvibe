@@ -56,7 +56,9 @@ function commentActionAnchor(thread: Annotation): ActionAnchor {
   const host = thread.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
-  return { where: "diff-line", fileKey: host.fileKey, line: host.line };
+  if (host.kind === "diff-line") return { where: "diff-line", fileKey: host.fileKey, line: host.line };
+  // Comments never anchor hunks (the service rejects them).
+  throw new Error("a comment cannot lead from a hunk anchor");
 }
 
 interface Props {
@@ -192,9 +194,15 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
       ) : null}
       {messages.map((m, i) => (
         <div className="msg" key={i}>
-          <span className={`av ${m.who === "you" ? "you" : "ai"}`}>{m.who === "you" ? "You" : "AI"}</span>
+          <span
+            className={`av ${m.who === "you" ? "you" : "ai"}`}
+            role="img"
+            aria-label={m.who === "you" ? "You" : "Agent"}
+            data-tip={m.who === "you" ? "You" : "Agent"}
+          >
+            <Icon name={m.who === "you" ? "person" : "spark"} />
+          </span>
           <div>
-            <div className="who">{m.who === "you" ? "You" : m.suggested ? "Agent · suggested comment" : "Agent"}</div>
             <p dangerouslySetInnerHTML={{ __html: tick(m.text ?? "") }} />
           </div>
         </div>

@@ -19,9 +19,13 @@
  * (above-the-fold files, file jumps, `revealSource` targets).
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { Hunk, HunkLine, ReviewFile } from "@unvibe/shared";
+import type { Annotation, Hunk, HunkLine, Page, ReviewFile } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
+import { friendlyError } from "../../api/client.js";
+import { toast } from "../../floating/Toast.js";
+import { performAction } from "../../guide/actions.js";
+import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
 import {
   fileStats,
   groupHunks,
@@ -111,6 +115,22 @@ interface SectionProps {
    */
   tokens?: ReadonlyMap<string, { old: (LineTokens | null)[]; new: (LineTokens | null)[] }>;
   states: ReadonlyMap<string, HunkUiState>;
+  /**
+   * Activated hunk summaries (issue #138): content hash → conversation
+   * card hosted on the hunk. The hunk's section draws the card in place
+   * of the idle summary text. Optional (defaults to none) so sections
+   * stay usable standalone in tests.
+   */
+  hunkCards?: ReadonlyMap<string, Annotation>;
+  /**
+   * Promoted hunk discussions (issue #138 follow-up): content hash →
+   * page id. The hunk keeps its summary text plus a page-link chip.
+   */
+  promotedHunks?: ReadonlyMap<string, string>;
+  /** Page lookup + navigation + follow-ups for activated hunk cards. */
+  lookupPage?: (pageId: string) => Page | undefined;
+  onOpenPage?: (pageId: string) => void;
+  onFollowUp?: (cardId: string, blockId: string, index: number) => void;
   isHidden: (hunk: Hunk) => boolean;
   actions: HunkActions;
   onLineClick: ((fileKey: string, line: number) => void) | undefined;
@@ -309,7 +329,14 @@ function HunkCard({
   noteStale,
   noteDraft,
   hash,
+  fileKey,
   actions,
+  hunkCard,
+  promotedPageId,
+  reviewId,
+  lookupPage,
+  onOpenPage,
+  onFollowUp,
 }: {
   reviewed: boolean;
   summary: string | undefined;
@@ -317,14 +344,73 @@ function HunkCard({
   noteStale: boolean;
   noteDraft: string | undefined;
   hash: string;
+  fileKey: string;
   actions: HunkActions;
+  /** Activated conversation card hosted on this hunk, if any (#138). */
+  hunkCard: Annotation | undefined;
+  /** Page a hunk discussion moved to, if any (#138 follow-up). */
+  promotedPageId: string | undefined;
+  reviewId: string;
+  lookupPage: (pageId: string) => Page | undefined;
+  onOpenPage: (pageId: string) => void;
+  onFollowUp: (cardId: string, blockId: string, index: number) => void;
 }): ReactNode {
+  // A promoted discussion whose page is gone reads as ordinary idle
+  // (the page cannot be deleted today; defensive only).
+  const promotedPage = promotedPageId ? lookupPage(promotedPageId) : undefined;
+  const showPromoted = !hunkCard && promotedPage !== undefined && summary !== undefined;
+  const activate = (): void => {
+    // Drag-selects carry a live range and fall through to the selection
+    // toolbar instead (Explain/Ask there open the page too while
+    // promoted, via the toolbar's own check).
+    if (!window.getSelection()?.isCollapsed) return;
+    if (showPromoted && promotedPageId) {
+      onOpenPage(promotedPageId);
+      return;
+    }
+    // The explicit hunk control (issue #138): a click with no selection
+    // turns the idle summary into its card (or reopens it) with no agent
+    // call.
+    void performAction(reviewId, { kind: "hunk_card", fileKey, contentHash: hash }, { toast: false })
+      .then((res) => {
+        if (!res.accepted) toast("Not available with mock data");
+      })
+      .catch((err: unknown) => {
+        toast(`Couldn't open the summary: ${friendlyError(err)}`);
+      });
+  };
   return (
     <div className={`fcard${reviewed ? " rev" : ""}`}>
-      {summary ? (
+      {hunkCard && hunkCard.open ? (
+        <ExpansionCard
+          reviewId={reviewId}
+          expansion={hunkCard}
+          lookupPage={lookupPage}
+          onOpenPage={onOpenPage}
+          onFollowUp={onFollowUp}
+        />
+      ) : summary ? (
         <div className="fsum">
-          <span className="av ai">AI</span>
-          <p>{summary}</p>
+          <span className="av ai" role="img" aria-label="Agent" data-tip="Agent">
+            <Icon name="spark" />
+          </span>
+          <p
+            data-hunksum={`${fileKey}:${hash}`}
+            data-tip={showPromoted ? "Open the page" : "Open as a card"}
+            onClick={activate}
+          >
+            {summary}
+          </p>
+          {showPromoted && promotedPageId && promotedPage ? (
+            <a
+              className="cx pg"
+              data-node={promotedPageId}
+              title={promotedPage.title}
+              aria-label={`Open page: ${promotedPage.title}`}
+            >
+              {promotedPage.title}
+            </a>
+          ) : null}
           <button
             className="ib"
             type="button"
@@ -335,10 +421,18 @@ function HunkCard({
             <Icon name="trash" />
           </button>
         </div>
+      ) : hunkCard && !hunkCard.open ? (
+        <div className="fsum">
+          <button className="tbtn xs" type="button" onClick={activate}>
+            Reopen summary card
+          </button>
+        </div>
       ) : null}
       {note && noteDraft === undefined ? (
         <div className="fsum">
-          <span className="av you">You</span>
+          <span className="av you" role="img" aria-label="You" data-tip="You">
+            <Icon name="person" />
+          </span>
           <div>
             <p style={{ margin: 0 }}>{note}</p>
             {noteStale ? <span className="hint">code changed since this note</span> : null}
@@ -555,7 +649,7 @@ function HunkBlock(
           <Icon name="check" />
         </button>
       </div>
-      {summary ?? note ?? noteDraft !== undefined ? (
+      {summary !== undefined || note !== undefined || noteDraft !== undefined || props.hunkCards?.get(h.contentHash) !== undefined ? (
         <div className="fwrap">
           <HunkCard
             reviewed={reviewed}
@@ -564,7 +658,14 @@ function HunkBlock(
             noteStale={noteStale}
             noteDraft={noteDraft}
             hash={h.contentHash}
+            fileKey={file.fileKey}
             actions={props.actions}
+            hunkCard={props.hunkCards?.get(h.contentHash)}
+            promotedPageId={props.promotedHunks?.get(h.contentHash)}
+            reviewId={props.reviewId}
+            lookupPage={props.lookupPage ?? (() => undefined)}
+            onOpenPage={props.onOpenPage ?? (() => {})}
+            onFollowUp={props.onFollowUp ?? (() => {})}
           />
         </div>
       ) : null}

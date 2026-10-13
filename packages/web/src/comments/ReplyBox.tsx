@@ -5,6 +5,10 @@
  * - Typed text survives any re-render elsewhere (local state keyed by
  *   annotation id, debounced through `PATCH …/comments/:id` `reply`);
  *   unsent text flushes on unmount so it is never lost.
+ * - A successful send or discard empties the box and clears the stored
+ *   draft, and a debounce tick scheduled before it can never write the
+ *   sent text back (keystroke generations: a tick is stale once a newer
+ *   send/discard settled). A failed send keeps the text.
  * - Discard clears the box (the caller decides what else that means);
  *   Cmd/Ctrl+Enter sends.
  * - What Send does is the caller's `onSend` (agent `reply` action on Ask
@@ -57,6 +61,12 @@ export function ReplyBox({
   const [draft, setDraft] = useState(serverReply ?? "");
   const [sending, setSending] = useState(false);
   const saveTimer = useRef<number | undefined>(undefined);
+  // Keystroke generation: bumped on every change; a successful send or
+  // discard records the generation it settled, and a debounce tick from
+  // an earlier generation is stale and must not persist (it would write
+  // the just-sent text back over the cleared box and stored draft).
+  const seqRef = useRef(0);
+  const clearedSeqRef = useRef(-1);
   const mountedId = useRef(annotationId);
   if (mountedId.current !== annotationId) {
     mountedId.current = annotationId;
@@ -93,9 +103,12 @@ export function ReplyBox({
     onSendingChange?.(b);
   };
 
-  const persistReply = (value: string): void => {
+  const persistReply = (value: string, seq: number): void => {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
+      // A send or discard settled after this keystroke: the text is
+      // consumed, never persist it back.
+      if (seq <= clearedSeqRef.current) return;
       api.updateComment(reviewId, annotationId, { reply: value }).catch(() => {
         // Local draft stays; a toast on every keystroke would be noise.
       });
@@ -108,6 +121,7 @@ export function ReplyBox({
     setSendingBoth(true);
     onDiscard()
       .then(() => {
+        clearedSeqRef.current = seqRef.current;
         setDraft("");
       })
       .catch((err: unknown) => {
@@ -122,6 +136,7 @@ export function ReplyBox({
     setSendingBoth(true);
     onSend(text)
       .then(() => {
+        clearedSeqRef.current = seqRef.current;
         setDraft("");
       })
       .catch((err: unknown) => {
@@ -142,8 +157,9 @@ export function ReplyBox({
         aria-label={ariaLabel}
         value={draft}
         onChange={(e) => {
+          seqRef.current += 1;
           setDraft(e.target.value);
-          persistReply(e.target.value);
+          persistReply(e.target.value, seqRef.current);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {

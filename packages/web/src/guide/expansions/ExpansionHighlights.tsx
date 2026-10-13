@@ -14,8 +14,14 @@
  * the pass reveals it when the highlight lands nowhere and hides it again
  * when the phrase returns. Thread chips (`[data-tfallback]`) belong to
  * `GuideThreads` and are never touched here.
+ *
+ * The pass re-runs on the route as well as the snapshot (issue #152):
+ * the guide page remounts with clean DOM on navigation while this
+ * component stays mounted, so without the route trigger a mark drawn
+ * before leaving would never come back.
  */
 import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
@@ -41,6 +47,7 @@ function makePageLink(pageId: string): HTMLElement {
 export function ExpansionHighlights() {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const pages = useReview((s) => s.snapshot?.pages);
+  const pathname = useLocation().pathname;
 
   useEffect(() => {
     const root = document.getElementById("page");
@@ -104,7 +111,7 @@ export function ExpansionHighlights() {
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [annotations, pages]);
+  }, [annotations, pages, pathname]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent): void => {

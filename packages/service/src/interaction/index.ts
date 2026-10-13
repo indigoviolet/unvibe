@@ -19,6 +19,7 @@ export {
   findCardTarget,
   findCardTargetInDraft,
   conversationForAnswer,
+  mirrorPromotedAnswer,
   targetLevel,
   targetBlocks,
   targetRevision,

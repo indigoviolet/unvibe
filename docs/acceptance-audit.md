@@ -441,12 +441,12 @@ needed (that deviation is closed, not added).
   `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
   `comments.spec.ts` “GitHub action links diff lines”).
 
-### §4.7 Explanations — all met (#136 slice 1)
+### §4.7 Explanations — all met (#136 slices 1+2, #152)
 
 - Conversation card under the source block, highlight; header (quote,
   Open as page, Delete, Close) + one answer view per turn, each with the
   card controls acting on that answer alone, plus a reply box answered in
-  the same conversation — met (`actions/explain.ts` + `conversation.ts`,
+  the same conversation — met (`actions/conversation.ts`,
   `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
   `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
@@ -460,7 +460,18 @@ needed (that deviation is closed, not added).
   back → highlight).
 - Open as page moves content (one page card per answer, first titled
   with the quote, later ones with their questions), anchor becomes link
-  — met (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
+  at once in the guide, the description and the diff — met
+  (`actions/promote.ts`, `actions-m4.test.ts` “promote”,
+  `source/diff/DiffPromotedLink.test.tsx`). Opening as a page never
+  discards work (issue #152): a still-running fill keeps running and
+  lands on the page card (turns stay on the link as the fill's state
+  owner with the card's session, mirrored per partial; the job is
+  re-targeted at the page card so the page shows the working state; the
+  turns drop off the link and the session closes once everything has
+  settled), a failed fill shows the error with Retry on the page, and
+  second opinions move to the page with the answers — met
+  (`conversation.test.ts` “promote mid-fill”, `guide/CardViewPromoted.test.tsx`,
+  `e2e/promote-midfill.spec.ts`).
 - One box while working (issue #97) — met: the Explain placeholder gives
   way as soon as its expansion is in the snapshot (guide, description and
   diff alike), the card shows the fixed “Writing explanation…” label from
@@ -486,30 +497,47 @@ needed (that deviation is closed, not added).
   unique within each stored body (multi-card replies dedupe to `-c2`…,
   inserts take fresh IDs; matching is exact on owner + block), so one
   anchor draws exactly one card.
+- Deliberately off-prototype (`prototype.html` is look-and-behaviour
+  reference, not code): Explain and Ask share one teal conversation
+  card — the prototype's separate sand Ask thread (`.ithread`) is gone;
+  comments keep the sand thread look so the two stay easy to tell apart
+  (owner decisions on #136). Per-answer controls show on the latest
+  answer, on hover/focus for earlier ones. Follow-up chips send the next
+  turn and stay (they are not consumed). “Ask the agent about this” on
+  comments and keep-filling open-as-page have no prototype counterpart.
+  Author markers are icons, not text — a person icon for the reviewer,
+  the spark for the agent, with screen-reader names (“You” / “Agent”)
+  and tooltips — where the prototype prints “Me”/“You”/“AI” plus a name
+  line (owner decision; the second-opinion model label stays, since it
+  is information, not an author label).
 
-### §4.8 Comments — all met
+### §4.8 Comments — all met (#136 slice 2: threads are comments only)
 
-- Ask… (agent + citations) / Comment (no reply, for the PR by default) —
-  met (`actions/ask.ts`, `note.ts`, `comments-service.spec.ts` “create a
-  comment … survives reload”; `comments-m6.test.ts` “comments for the PR”).
-  Only Ask sends text to the agent; clicking a diff line opens a Comment.
-  Only comments are submitted — Ask threads carry no For-PR control and
-  the submit path skips them (issue #135). A Comment from an agent answer
-  quotes the selection as a Markdown blockquote (replaces promote-to-PR;
-  “Open as page” is a different feature and stays).
-- Ask thread replies never show follow-up suggestions (issue #103) — met:
-  the ask prompt no longer asks for them and `replyHtml` drops any
-  `follow-up` block (plus a leftover heading or card title) on both the
-  initial fill and reply turns, while cards and Explain expansions keep
-  their chips (`actions-ask-followups.test.ts`).
-- Thread header (quote/`file:line`, Mark for PR filled when on for
-  comments, Delete, Close) — met (`comments/threads.test.ts`,
-  `ThreadView.test.tsx` “only comment threads carry the For-PR control”,
-  walk screenshot shows “Agent · suggested comment” threads with
-  Reply/Discard).
+- Ask… opens the conversation card (§4.7) on the selection's anchor,
+  with the question as its first turn; Comment starts a comment thread
+  with no agent reply — met (the old `ask.ts`/`explain.ts` are merged
+  into `actions/conversation.ts`, `NewThreadComposer.tsx`,
+  `ask-service.spec.ts`). Only Ask sends text to the agent; clicking a
+  diff line opens a Comment. Only comments are submitted — conversation
+  cards carry no For-PR control and the submit path skips them (issue
+  #135). A Comment from an agent answer quotes the selection as a
+  Markdown blockquote. A comment offers “Ask the agent about this”: the
+  usual Ask card on the comment's anchor, quoting the comment — the only
+  way a comment leads to an agent reply, and the answer is never
+  submitted.
+- Follow-up suggestions live on conversation answers, never in comment
+  threads: one behaviour for every answer — the model may end any answer
+  with suggestions, they render as chips on that answer, and clicking one
+  sends it as the next turn in the same conversation (`actions-ask-followups.test.ts`,
+  `ConversationCard.test.tsx` suggestion case).
+- Thread header (quote/`file:line`, Mark for PR filled when on,
+  Delete, Close) — met (`comments/threads.test.ts`,
+  `ThreadView.test.tsx`, walk screenshot shows “Agent · suggested
+  comment” threads with Reply/Discard).
 - Reply box always visible, Discard/Reply, typed text survives rerender;
   Discard stays disabled on an existing thread until there is a draft —
-  met (`comments/ThreadView.test.tsx`, `comments.spec.ts`).
+  met (`comments/ThreadView.test.tsx`, `comments.spec.ts`). Replies are
+  reviewer-written only, never agent answers.
 - Placement (guide closed + hover outline; diff under line + line-number
   reopen + click-number starts; description under paragraph) — met
   (`comments.spec.ts` “diff line click starts a comment; close leaves an
@@ -517,9 +545,10 @@ needed (that deviation is closed, not added).
   cards/threads (issue #111), never the depth stepper pips
   (`guide/expansions/hoverOutline.test.tsx`).
 - One box while asking (issue #97) — met: the Ask composer hides as soon
-  as its thread is in the snapshot, and the thread's working row uses the
+  as its card is in the snapshot, and the card's working row uses the
   fixed Ask label instead of the “Reading the diff…” fallback
-  (`comments/NewThreadComposer.tsx`, `comments/ThreadView.tsx`,
+  (`comments/NewThreadComposer.tsx`,
+  `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
 - Comments menu (all comments, jump, For PR filter with editable drafts,
   never posts; lives in the review bar next to Submit since round 2, so it
@@ -570,7 +599,7 @@ needed (that deviation is closed, not added).
 ### §4.12 Submit review — all met
 
 - Nothing reaches GitHub until Submit — met (`gh-writes.test.ts`). Only
-  comments are submitted; Ask threads and explanations are never posted
+  comments are submitted; conversation cards are never posted
   (issue #135).
 - Button count, panel (locations + drafts, Cancel, Submit as \<user\>) —
   met (ui-walk opened the panel; `submit-m6.test.ts` preview).
@@ -648,7 +677,22 @@ needed (that deviation is closed, not added).
 - Git's own hunks (≤3 context, merged runs); header format + raw `@@` on
   hover; fold/Summarize/note/reviewed actions; hunk card (summary+note,
   Delete); folding hides code only — met (`shared/src/diff.ts` +
-  `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”).
+  `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”). Summaries are
+  content cards (#138): idle text with one attribute mounts nothing per
+  hunk (large-diff fixture: identical DOM node counts before/after,
+  zero card chrome for idle summaries); selecting in it offers the
+  toolbar on a hunk anchor; the first interaction activates a real
+  conversation card on `h:<fileKey>:<contentHash>` from the stored text
+  with no agent call, then the action runs nested; Comment lands on the
+  first changed line without activating; deleting the card returns the
+  idle text — met (`service/test/hunk-cards.test.ts`,
+  `source/diff/hunkAnchor.test.ts`,
+  `source/diff/HunkCardActivation.test.tsx`,
+  `e2e/hunk-summary.spec.ts`). A hunk card opened as a page keeps its
+  summary text plus a page-link chip; the summary's click/Explain/Ask
+  open that page instead of a second card, and a hunk whose page is gone
+  reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
+  cases, `hunk-summary.spec.ts` promoted flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
   run with reason, click reveals; one-line never hidden; cited never
   hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
@@ -751,7 +795,8 @@ needed (that deviation is closed, not added).
   results (issue #117: the queue used to hydrate only open jobs, so a
   completed review showed an empty list while every row sat in SQLite;
   `recover()` now loads all stored jobs and open ones still come back
-  marked interrupted; `threadId` is persisted too. Evidence:
+  marked interrupted; `annotationId` is persisted too (#136 slice 2
+  renamed the old `threadId`). Evidence:
   `service/test/jobs.test.ts` "finished jobs stay listed after a restart",
   `scripts/restart-resilience.mjs` step 2b, PRD §4.14 + §16).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
@@ -831,15 +876,18 @@ needed (that deviation is closed, not added).
 ## §7 Data model and IDs — all met
 
 - Entities per §7.1 table — met (`shared/src/entities.ts`;
-  #136 slice 1: `ContentBody` (page card or answer), `Turn`
-  (`ans_…` + question + answer blocks), `Annotation` type
-  `conversation` with turns + one session id; `ExpansionState` and
-  `Card.read` removed; single schema migration (001–005 collapsed under
+  #136 slices 1+2: `ContentBody` (page card or answer), `Turn`
+  (`ans_…` + question + answer blocks), `Annotation` types
+  `conversation` (turns + one session id), `comment` (messages, `post`,
+  draft) and `link` (plus `promotedTurns` mapping moved turns to page
+  cards while unsettled, #152); `ExpansionState` and `Card.read`
+  removed; single schema migration (001–005 collapsed under
   #137; dead `annotations`/`cards`/`blocks`/`hunk_states` tables and the
   unused `note_ack` prompt removed under #142) + sessions table;
   `store.test.ts`, `state.test.ts`).
-- ID grammar (§7.2 all nine forms) — met (`shared/src/ids.ts`,
-  `links.ts`; `ids` unit tests).
+- ID grammar (§7.2 all eight forms) — met (`shared/src/ids.ts`,
+  `links.ts`; `ids` unit tests). `card:` addresses a page card or one
+  conversation answer (`ans_…`).
 - App assigns IDs; agents never invent them — met: every token validated
   (`validate/*`); unknown IDs fail/repair/unverified; unknown `concept:`
   slugs become hidden candidates (`validate/validate.ts`, `validate.test.ts`).
@@ -1062,12 +1110,13 @@ needed (that deviation is closed, not added).
 
 ## §13 Prompts — all met
 
-- Files with front matter (role/tier/variables) — met (`prompts/*.md` 18
-  templates; `prompts/loader.ts`).
+- Files with front matter (role/tier/variables) — met (`prompts/*.md` 17
+  templates: `ask.md` first turns, `ask_turn.md` follow-ups, `explain.md`
+  deleted under #136 slice 2; `prompts/loader.ts`).
 - Deterministic rendering (stable order, no timestamps, golden files) —
-  met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens refreshed
-  for the #49/#50 template edits (`instructions`, `explain`).
-- All 14 template rows present — met (18 files cover every row;
+  met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens cover
+  `ask` + `ask_turn` (the old `explain` golden went with the template).
+- All 17 template rows present — met (17 files cover every row;
   `routes/prompts.ts` serves template + expanded).
 - Settings shows the template; the debug page shows the per-review
   expanded text with L0–L4 marks, tokens, cache part — met
@@ -1082,7 +1131,7 @@ needed (that deviation is closed, not added).
    to suit the flow, cites on each code-mapped shape/connection,
    `myid.class: [ok|bad]` on its own line for states (never inside
    `{ … }`), never name a shape steps/layers/scenarios/boards — mirrored
-   into `diagram.md`, `explain.md`,
+   into `diagram.md`, `ask.md`,
    `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
 
 ## §14 Shell, install, security, storage — all met
@@ -1571,8 +1620,8 @@ every agent action so the same handover runs. Service jobs now carry
  the issue report (before/after for depth, examples, generate,
  follow-up, explain; replay fills run sub-second, captured via CDP
  bursts).
- Fixed under #117: `threadId` is carried through the jobs-store JSON
- column like `cardId`. Hunk summarize busy never clears on success (#63,
+  Fixed under #117: `annotationId` is carried through the jobs-store JSON
+  column like `cardId` (#136 slice 2 renamed the old `threadId`). Hunk summarize busy never clears on success (#63,
  adjacent, untracked here).
 
 ### Progress signs (#98, branch `feat/98-progress-signs`)

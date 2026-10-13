@@ -21,6 +21,7 @@ import { diffAnchorForExplainKey, inflightLabel } from "../guide/inflight.js";
 import { slotKey, type LineSlots } from "../source/diff/lineSlots.js";
 import { useReview } from "../state/store.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
+import { hunkCommentAnchor } from "../source/diff/hunkAnchor.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
 import { ThreadView } from "./ThreadView.js";
@@ -33,6 +34,13 @@ interface Pending {
   quote: string;
   kind: "comment" | "ask";
   initialText?: string;
+  /**
+   * Issue #138: an Ask on a hunk summary keeps its hunk anchor for the
+   * send (the service activates the summary, then nests the question),
+   * while the composer sits on the hunk's first changed line. A Comment
+   * on a summary arrives already mapped to a diff-line anchor.
+   */
+  hunkAnchor?: { where: "hunk"; fileKey: string; contentHash: string };
 }
 
 export function useDiffCommentBindings(reviewId: string): {
@@ -48,6 +56,25 @@ export function useDiffCommentBindings(reviewId: string): {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      if (req.anchor.where === "hunk") {
+        // Issue #138: Ask on a hunk summary. The composer sits on the
+        // hunk's first changed line; the send keeps the hunk anchor.
+        if (req.kind !== "ask" || isReadOnlyVersionNow()) return;
+        const mapped = hunkCommentAnchor(useReview.getState().snapshot, {
+          fileKey: req.anchor.fileKey,
+          contentHash: req.anchor.contentHash,
+        });
+        if (!mapped || mapped.where !== "diff-line") return;
+        setPending({
+          fileKey: mapped.fileKey,
+          line: mapped.line,
+          quote: req.quote,
+          kind: req.kind,
+          ...(req.initialText !== undefined ? { initialText: req.initialText } : {}),
+          hunkAnchor: req.anchor,
+        });
+        return;
+      }
       if (req.anchor.where !== "diff-line") return;
       if (isReadOnlyVersionNow()) return;
       setPending({
@@ -121,7 +148,7 @@ export function useDiffCommentBindings(reviewId: string): {
             <NewThreadComposer
               key="pending"
               reviewId={reviewId}
-              anchor={{ where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
+              anchor={pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
               quote={pending.quote}
               kind={pending.kind}
               initialText={pending.initialText}
@@ -137,7 +164,7 @@ export function useDiffCommentBindings(reviewId: string): {
         <NewThreadComposer
               key="pending"
           reviewId={reviewId}
-          anchor={{ where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
+          anchor={pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
           quote={pending.quote}
           kind={pending.kind}
           initialText={pending.initialText}

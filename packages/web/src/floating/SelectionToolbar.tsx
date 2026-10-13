@@ -41,6 +41,7 @@
  * interaction agent's Explain/expansion cards (`resolveSelectionHost`).
  */
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { ActionAnchor, ReviewSnapshot } from "@unvibe/shared";
 import { githubFileUrl } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
@@ -49,6 +50,8 @@ import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
+import { showGuidePane } from "../shell/panes.js";
+import { hunkCommentAnchor, hunkDiffRange, parseHunkAttr, promotedPageForHunk } from "../source/diff/hunkAnchor.js";
 import { toast } from "./Toast.js";
 import { useReview } from "../state/store.js";
 
@@ -131,6 +134,18 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   const descNode = el.closest("#right .desc [id]");
   if (descNode && el.closest("#right .desc")) {
     return { anchor: { where: "description", paragraphId: (descNode as HTMLElement).id } };
+  }
+  // Issue #138: an idle hunk summary is plain text with a `data-hunksum`
+  // attribute — no component, no listener per hunk. Selecting in it still
+  // brings up the toolbar, anchored on the hunk. (Selections inside an
+  // activated card resolve to its answer blocks via the branches above.
+  // The sticky hunk header's `data-hunk` is a different attribute and
+  // never matches here.)
+  const hunkEl = el.closest("[data-hunksum]") as HTMLElement | null;
+  if (hunkEl) {
+    const ref = parseHunkAttr(hunkEl.dataset.hunksum);
+    if (ref) return { anchor: { where: "hunk", fileKey: ref.fileKey, contentHash: ref.contentHash } };
+    return null;
   }
   const td = el.closest("#right table.diff td.c");
   if (!td) return null;
@@ -302,6 +317,8 @@ export function blockquoteQuote(quote: string): string {
  * answer (issue #135): the owner part of `<answer>#<block>` names the
  * answer, whose card's own anchor is where a Comment from its text
  * belongs. Null for page-card anchors and anything unresolvable.
+ * Issue #138: an answer on a hunk card comments on the hunk's first
+ * changed line (never the hunk — comments live on lines).
  */
 export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   if (anchor.where !== "block") return null;
@@ -316,6 +333,12 @@ export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
+  if (host.kind === "hunk") {
+    return (
+      hunkCommentAnchor(useReview.getState().snapshot, { fileKey: host.fileKey, contentHash: host.contentHash }) ??
+      null
+    );
+  }
   return { where: "diff-line", fileKey: host.fileKey, line: host.line };
 }
 
@@ -330,6 +353,7 @@ export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
   const readOnly = useIsReadOnlyVersion();
   const snapshot = useReview((s) => s.snapshot);
+  const navigate = useNavigate();
   const barRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<Pending | null>(null);
   pendingRef.current = pending;
@@ -367,7 +391,7 @@ export function SelectionToolbar() {
     const onMouseUp = (e: MouseEvent): void => {
       if ((e.target as Element | null)?.closest?.("#selbar")) return;
       const scope = (e.target as Element | null)?.closest?.(
-        "#page, #right .desc:not(.editing), #right table.diff",
+        "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk .fwrap",
       );
       if (
         !scope ||
@@ -392,6 +416,18 @@ export function SelectionToolbar() {
           return;
         }
         const cardAnchor = commentCardAnchor(host.anchor);
+        // Issue #138: a hunk anchor needs the touched rows mapped from
+        // the hunk itself (the summary is no table row): Comment lands on
+        // the hunk's first changed line without activating the summary,
+        // and GitHub opens the hunk's line range.
+        let hunkComment: ActionAnchor | undefined;
+        let hunkRange: DiffRange | undefined;
+        if (host.anchor.where === "hunk") {
+          const snap = useReview.getState().snapshot;
+          const ref = { fileKey: host.anchor.fileKey, contentHash: host.anchor.contentHash };
+          hunkComment = hunkCommentAnchor(snap, ref) ?? undefined;
+          hunkRange = hunkDiffRange(snap, ref) ?? undefined;
+        }
         // The GitHub link needs the touched rows, not just the anchor
         // line — but only on the anchor's own file (a cross-file drag has
         // nothing unambiguous to open).
@@ -405,7 +441,9 @@ export function SelectionToolbar() {
           anchor: host.anchor,
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
+          ...(hunkComment ? { commentAnchor: hunkComment } : {}),
           ...(diffRange ? { diffRange } : {}),
+          ...(hunkRange ? { diffRange: hunkRange } : {}),
         });
         shownAt.current = Date.now();
         // Position after render (needs the bar's size).
@@ -468,9 +506,36 @@ export function SelectionToolbar() {
     window.getSelection()?.removeAllRanges();
   };
 
+  /**
+   * Page a hunk-anchored action belongs to when the hunk's discussion
+   * already moved there (issue #138 follow-up): Explain/Ask open the
+   * page instead of activating a fresh card. Null otherwise (the action
+   * runs normally, activating the summary first).
+   */
+  const promotedTarget = (anchor: ActionAnchor): { pageId: string; reviewId: string } | null => {
+    if (anchor.where !== "hunk") return null;
+    const snap = useReview.getState().snapshot;
+    const pageId = promotedPageForHunk(snap, { fileKey: anchor.fileKey, contentHash: anchor.contentHash });
+    const reviewId = snap?.review.id;
+    if (!pageId || !reviewId) return null;
+    if (!snap?.pages.some((p) => p.id === pageId)) return null;
+    return { pageId, reviewId };
+  };
+
+  const openPromotedPage = (target: { pageId: string; reviewId: string }): void => {
+    dismiss();
+    showGuidePane();
+    navigate(`/review/${target.reviewId}/page/${encodeURIComponent(target.pageId)}`);
+  };
+
   const onExplain = (): void => {
     const current = pendingRef.current;
     if (!current) return;
+    const promoted = promotedTarget(current.anchor);
+    if (promoted) {
+      openPromotedPage(promoted);
+      return;
+    }
     const reviewId = useReview.getState().snapshot?.review.id;
     dismiss();
     if (!reviewId) {
@@ -501,6 +566,13 @@ export function SelectionToolbar() {
   const onAskNote = (kind: "comment" | "ask"): void => {
     const current = pendingRef.current;
     if (!current) return;
+    if (kind === "ask") {
+      const promoted = promotedTarget(current.anchor);
+      if (promoted) {
+        openPromotedPage(promoted);
+        return;
+      }
+    }
     dismiss();
     if (kind === "comment" && current.commentAnchor) {
       requestNewThread({

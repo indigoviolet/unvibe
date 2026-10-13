@@ -43,6 +43,8 @@ export function anchorKey(anchor: ActionAnchor): string {
       return `desc:${anchor.paragraphId}`;
     case "diff-line":
       return `diff:${anchor.fileKey}:${anchor.line}`;
+    case "hunk":
+      return `h:${anchor.fileKey}:${anchor.contentHash}`;
   }
 }
 
@@ -195,12 +197,15 @@ export function normalizeBlockAnchor(snapshot: ReviewSnapshot, anchor: ActionAnc
  * True when a fill failure must NOT leave a visible error: the annotation
  * was closed or deleted while its job ran (cancel-on-close, PRD §12), or
  * its job was cancelled. Clears the working state and returns true.
+ * Promoted links (issue #152) are exempt: opened as a page mid-fill, the
+ * failure belongs on the page with its Retry path.
  */
 export async function suppressFillError(ctx: ActionContext, annotationId: string): Promise<boolean> {
   const { jobs, reviews, reviewId } = ctx;
   const snapshot = reviews.getSnapshot(reviewId);
   const found = snapshot?.annotations.find((a) => a.id === annotationId);
-  if (!found || !found.open) {
+  const promoted = found?.type === "link" && !!found?.promotedToPage;
+  if ((!found || !found.open) && !promoted) {
     // Deleted or closed while filling: clear any working flag, no error.
     try {
       await reviews.mutate(reviewId, (draft) => {

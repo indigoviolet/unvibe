@@ -275,3 +275,26 @@ describe("revealed context (issue #133)", () => {
     });
   });
 });
+
+describe("resolveSelectionHost on idle hunk summaries (issue #138)", () => {
+  test("a selection in the summary anchors the hunk", () => {
+    document.body.innerHTML =
+      `<div id="right"><div class="dhunk"><div class="fwrap"><div class="fcard">` +
+      `<div class="fsum"><p data-hunksum="conn:hash1"><span id="in-sum">Unfolds folds</span></p></div>` +
+      `</div></div></div></div>`;
+    expect(resolveSelectionHost(document.getElementById("in-sum")!)).toEqual({
+      anchor: { where: "hunk", fileKey: "conn", contentHash: "hash1" },
+    });
+  });
+
+  test("a selection inside an activated hunk card still addresses its answer blocks", () => {
+    document.body.innerHTML =
+      `<div id="right"><div class="dhunk"><div class="fwrap"><div class="fcard">` +
+      `<section class="card child" data-expansion="ann_h"><div class="ans" data-answer="ans_1">` +
+      `<div class="exp-b"><p class="prose sel" data-top="b1"><span id="in-ans">Unfolds folds</span></p></div>` +
+      `</div></section></div></div></div></div>`;
+    expect(resolveSelectionHost(document.getElementById("in-ans")!)).toEqual({
+      anchor: { where: "block", blockId: "ans_1#b1" },
+    });
+  });
+});

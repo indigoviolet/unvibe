@@ -10,5 +10,8 @@ export function anchorSameHost(a: Annotation["anchor"], b: Annotation["anchor"])
   if (a.host.kind === "diff-line" && b.host.kind === "diff-line") {
     return a.host.fileKey === b.host.fileKey && a.host.line === b.host.line;
   }
+  if (a.host.kind === "hunk" && b.host.kind === "hunk") {
+    return a.host.fileKey === b.host.fileKey && a.host.contentHash === b.host.contentHash;
+  }
   return false;
 }
