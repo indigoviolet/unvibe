@@ -74,7 +74,7 @@ describe("comment from an agent answer (issue #135)", () => {
   function seedWithExpansion(): void {
     const expansion: Annotation = {
       id: "ann_1",
-      type: "expansion",
+      type: "conversation",
       anchor: {
         host: { kind: "diff-line", fileKey: "conn", line: 91 },
         quotedText: "code",

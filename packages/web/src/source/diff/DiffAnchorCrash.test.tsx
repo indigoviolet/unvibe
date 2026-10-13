@@ -59,7 +59,7 @@ function file(): ReviewFile {
 function expansion(): Annotation {
   return {
     id: "ann_crash",
-    type: "expansion",
+    type: "conversation",
     anchor: {
       host: { kind: "diff-line", fileKey: FILE_KEY, line: 2 },
       quotedText: "computeTotal",

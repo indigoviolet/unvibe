@@ -226,7 +226,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   const incoming = !readOnly ? inflightForBlock(inflight, cardId, blockId) : undefined;
   const arrived = (annotations ?? []).some(
     (a) =>
-      a.type === "expansion" &&
+      a.type === "conversation" &&
       a.open &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),

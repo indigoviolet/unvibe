@@ -435,7 +435,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
               if (incoming?.kind !== "explain") return null;
               const arrived = (snapshot?.annotations ?? []).some(
                 (a) =>
-                  a.type === "expansion" &&
+                  a.type === "conversation" &&
                   a.open &&
                   a.anchor.host.kind === "description" &&
                   a.anchor.host.paragraphId === seg.id,

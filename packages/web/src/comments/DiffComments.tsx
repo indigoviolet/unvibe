@@ -154,7 +154,7 @@ export function useDiffCommentBindings(reviewId: string): {
     if (!readOnly) {
       const arrived = new Set<string>();
       for (const a of annotations ?? []) {
-        if (a.type !== "expansion" || !a.open) continue;
+        if (a.type !== "conversation" || !a.open) continue;
         if (a.anchor.host.kind !== "diff-line") continue;
         arrived.add(slotKey(a.anchor.host.fileKey, a.anchor.host.line));
       }

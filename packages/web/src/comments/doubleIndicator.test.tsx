@@ -54,7 +54,7 @@ function seedSnapshot(): void {
 function workingExpansion(): Annotation {
   return {
     id: "ann_x",
-    type: "expansion",
+    type: "conversation",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Some text.",
@@ -68,15 +68,17 @@ function workingExpansion(): Annotation {
     post: false,
     note: false,
     working: "Thinking…",
-    expansion: {
-      blocks: [],
-      level: "standard",
-      read: false,
-      collapsed: false,
-      revision: 1,
-      undoStack: [],
-      working: "Thinking…",
-    },
+    turns: [
+      {
+        id: "ans_x1",
+        question: null,
+        blocks: [],
+        level: "standard",
+        revision: 1,
+        undoStack: [],
+        working: "Thinking…",
+      },
+    ],
   } as unknown as Annotation;
 }
 

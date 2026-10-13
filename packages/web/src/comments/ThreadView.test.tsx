@@ -135,7 +135,7 @@ describe("ThreadView reply box", () => {
     try {
       expect(screen.getByRole("alert")).toHaveTextContent(/rate limited/);
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "retry", threadId: failed.id });
+      expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "retry", annotationId: failed.id });
     } finally {
       spy.mockRestore();
     }
@@ -153,7 +153,7 @@ describe("ThreadView reply box", () => {
       fireEvent.click(screen.getByRole("button", { name: "Reply" }));
       expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
         kind: "reply",
-        threadId: asking.id,
+        annotationId: asking.id,
         message: "And then?",
       });
       expect(replySpy).not.toHaveBeenCalled();
@@ -167,7 +167,7 @@ describe("ThreadView reply box", () => {
     const asking = thread({ note: false, messages: [{ who: "you", text: "Why?" }] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [asking] });
     // Hold the request open: the immediate state must show before it returns.
-    let resolveAction!: (res: { accepted: boolean; threadId: string; jobId: string }) => void;
+    let resolveAction!: (res: { accepted: boolean; annotationId: string; jobId: string }) => void;
     const actionSpy = vi.spyOn(api, "action").mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -182,7 +182,7 @@ describe("ThreadView reply box", () => {
       expect(screen.getByRole("status")).toHaveTextContent("Writing reply…");
       expect(document.querySelector(".working .stream")).toBeNull();
       // Still showing while the request is in flight (no flicker gap).
-      resolveAction({ accepted: true, threadId: asking.id, jobId: "job-unseen" });
+      resolveAction({ accepted: true, annotationId: asking.id, jobId: "job-unseen" });
       await Promise.resolve();
       expect(screen.getByRole("status")).toHaveTextContent("Writing reply…");
     } finally {
