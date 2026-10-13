@@ -1,6 +1,6 @@
 /**
- * Conversation cards, issue #136 slice 1 (Explain on the new model, with
- * a reply box).
+ * Conversation cards, issue #136 (Explain is Ask with a default
+ * question).
  *
  * With the scripted fake runner over HTTP (`POST
  * /api/reviews/:id/actions`) on the demo review:
@@ -9,7 +9,9 @@
  *   from the base with the stored turns as the transcript, and the card
  *   stores the new session id;
  * - depth on one answer leaves the other answer alone;
- * - a diagram in a follow-up answer renders through the diagrams route.
+ * - a diagram in a follow-up answer renders through the diagrams route;
+ * - a diagram in an Ask answer renders (#106: answers are blocks now,
+ *   never flattened to thread HTML).
  */
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, ReviewSnapshot } from "@unvibe/shared";
@@ -66,6 +68,18 @@ const ASK_WITH_DIAGRAM = `Follow-up answer with a diagram.
 \`\`\`d2
 direction: right
 reply-demo-a -> reply-demo-b: hello
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+const ASK_FIRST_WITH_DIAGRAM = `Answer with a diagram.
+
+\`\`\`d2
+direction: right
+ask-demo-a -> ask-demo-b: hello
 \`\`\`
 
 \`\`\`json
@@ -161,7 +175,7 @@ function fakeAgents(askReply: string): FakeAgentRunner {
   ]);
 }
 
-describe("conversation cards (#136 slice 1)", () => {
+describe("conversation cards (#136)", () => {
   it("a follow-up turn reuses the card's session", { timeout: 90000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const agents = fakeAgents(SECOND_ANSWER);
@@ -303,6 +317,58 @@ describe("conversation cards (#136 slice 1)", () => {
         // The turn walker finds it (liveBlockLists covers every turn).
         expect(findDiagramByHash(snap, dg.render!.hash)?.source).toBe(dg.source);
         // No d2 binary: found but unrendered → 409, never 404.
+        const got = await app.inject({
+          method: "GET",
+          url: `/api/reviews/${id}/diagrams/${dg.render!.hash}?theme=light`,
+          headers: authed,
+        } as never);
+        expect(got.statusCode).toBe(409);
+        expect((got.json() as { status?: string }).status).toBe("unavailable");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+    }
+  });
+
+  it("a diagram in an Ask answer renders instead of raw source (#106)", { timeout: 90000 }, async () => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = "/nonexistent/d2-for-test";
+    try {
+      const agents = fakeAgents(ASK_FIRST_WITH_DIAGRAM);
+      const { app, ctx, id } = await openDemo(agents);
+      try {
+        const res = await postAction(app, id, {
+          kind: "ask",
+          quote: "raw CRLF",
+          anchor: { where: "block", blockId: "b1" },
+          message: "Can you draw the fold?",
+        });
+        expect(res.status).toBe(200);
+        const annotationId = res.json.annotationId as string;
+        const turnId = res.json.turnId as string;
+        if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
+        await waitFor(() => {
+          const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId);
+          const turn = (a?.turns ?? []).find((t) => t.id === turnId);
+          return !!turn && turn.blocks.length > 0 && turn.working == null;
+        });
+        const snap = ctx.reviews.getSnapshot(id)!;
+        const dg = snap.annotations
+          .find((a) => a.id === annotationId)!
+          .turns!.find((t) => t.id === turnId)!.blocks.find((b) => b.type === "diagram") as unknown as {
+          source: string;
+          render?: { hash: string; status: string };
+        };
+        expect(dg).toBeDefined();
+        expect(dg.source).toContain("ask-demo-a -> ask-demo-b");
+        expect(dg.render?.hash).toMatch(/^[0-9a-f]{16}$/);
+        expect(findDiagramByHash(snap, dg.render!.hash)?.source).toBe(dg.source);
+        // No d2 binary: found but unrendered → 409, never the raw-source
+        // <pre> the old thread HTML served (#106).
         const got = await app.inject({
           method: "GET",
           url: `/api/reviews/${id}/diagrams/${dg.render!.hash}?theme=light`,
