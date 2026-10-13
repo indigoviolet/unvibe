@@ -60,6 +60,20 @@ function isRepoChange(v: unknown): v is RepoChange {
   if (c.reviewId !== undefined && typeof c.reviewId !== "string") return false;
   if (c.stale !== undefined && typeof c.stale !== "boolean") return false;
   if (c.demo !== undefined && typeof c.demo !== "string") return false;
+  // #94/#95/#100 row fields: optional, so rows stored before them still
+  // read (they render without the link, scope or size — upgraded, never
+  // thrown on). Unknown shapes still drop the entry via isChangeList.
+  if (c.url !== undefined && typeof c.url !== "string") return false;
+  if (c.additions !== undefined && typeof c.additions !== "number") return false;
+  if (c.deletions !== undefined && typeof c.deletions !== "number") return false;
+  if (c.changedFiles !== undefined && typeof c.changedFiles !== "number") return false;
+  if (c.reviewScope !== undefined && c.reviewScope !== "direct" && c.reviewScope !== "team") return false;
+  if (
+    c.requestedTeams !== undefined &&
+    (!Array.isArray(c.requestedTeams) || !c.requestedTeams.every((t) => typeof t === "string"))
+  ) {
+    return false;
+  }
   return true;
 }
 

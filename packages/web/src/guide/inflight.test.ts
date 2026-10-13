@@ -7,7 +7,9 @@ import type { Job } from "@unvibe/shared";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import {
   anchorBlockType,
+  anchorEntryForExpansion,
   askKey,
+  blockIdsMatch,
   busyForCard,
   busyForExpansion,
   busyForThread,
@@ -218,5 +220,73 @@ describe("entry keys", () => {
     expect(diffAnchorForExplainKey("ask:diff:src-conn.py:80")).toBeNull();
     expect(diffAnchorForExplainKey("explain:block:b1")).toBeNull();
     expect(diffAnchorForExplainKey("explain:diff:no-line")).toBeNull();
+  });
+
+  test("block ids match exactly or by the host's bare id", () => {
+    expect(blockIdsMatch("b1", "b1")).toBe(true);
+    expect(blockIdsMatch("b1", "c1#b1")).toBe(true);
+    expect(blockIdsMatch("c1#b1", "c1#b1")).toBe(true);
+    // A differently-qualified entry never matches: same-named blocks of
+    // other cards stay independent.
+    expect(blockIdsMatch("c2#b1", "c1#b1")).toBe(false);
+    expect(blockIdsMatch("b2", "c1#b1")).toBe(false);
+    expect(blockIdsMatch("b1", "b2")).toBe(false);
+  });
+
+  test("an explain entry stands in for its not-yet-retargeted expansion (#97)", () => {
+    const expansion = {
+      id: "ann_x",
+      type: "expansion",
+      anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "Some text." },
+    } as unknown as Annotation;
+    // Bare and qualified spellings both match.
+    expect(
+      anchorEntryForExpansion({ "explain:block:b1": entry("explain", "explain:block:b1") }, expansion)?.kind,
+    ).toBe("explain");
+    expect(
+      anchorEntryForExpansion({ "explain:block:c1#b1": entry("explain", "explain:block:c1#b1") }, expansion)?.kind,
+    ).toBe("explain");
+    // Other blocks, other kinds, and threads never match.
+    expect(anchorEntryForExpansion({ "explain:block:b2": entry("explain", "explain:block:b2") }, expansion)).toBeUndefined();
+    expect(anchorEntryForExpansion({ "ask:block:b1": entry("ask", "ask:block:b1") }, expansion)).toBeUndefined();
+    expect(anchorEntryForExpansion({}, expansion)).toBeUndefined();
+    const thread = { ...expansion, type: "thread" } as unknown as Annotation;
+    expect(
+      anchorEntryForExpansion({ "explain:block:b1": entry("explain", "explain:block:b1") }, thread),
+    ).toBeUndefined();
+    // Description and diff anchors match exactly.
+    const desc = {
+      ...expansion,
+      anchor: { host: { kind: "description", paragraphId: "p1" }, quotedText: "q" },
+    } as unknown as Annotation;
+    expect(
+      anchorEntryForExpansion({ "explain:desc:p1": entry("explain", "explain:desc:p1") }, desc)?.kind,
+    ).toBe("explain");
+    expect(anchorEntryForExpansion({ "explain:desc:p2": entry("explain", "explain:desc:p2") }, desc)).toBeUndefined();
+    const diff = {
+      ...expansion,
+      anchor: { host: { kind: "diff-line", fileKey: "a.py", line: 7 }, quotedText: "q" },
+    } as unknown as Annotation;
+    expect(
+      anchorEntryForExpansion({ "explain:diff:a.py:7": entry("explain", "explain:diff:a.py:7") }, diff)?.kind,
+    ).toBe("explain");
+    expect(anchorEntryForExpansion({ "explain:diff:a.py:8": entry("explain", "explain:diff:a.py:8") }, diff)).toBeUndefined();
+  });
+
+  test("busyForExpansion falls back to the anchor entry with the Explain label (#97)", () => {
+    const expansion = {
+      id: "ann_x",
+      type: "expansion",
+      anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "Some text." },
+    } as unknown as Annotation;
+    const snap = { pages: [], annotations: [] } as unknown as ReviewSnapshot;
+    const inflight = { "explain:block:b1": entry("explain", "explain:block:b1") };
+    expect(busyForExpansion(inflight, [], snap, expansion)).toMatchObject({
+      label: "Writing explanation…",
+      rewriting: false,
+    });
+    // A direct entry still wins.
+    const direct = { ann_x: entry("retry", "ann_x") };
+    expect(busyForExpansion(direct, [], snap, expansion)).toMatchObject({ label: "Retrying…" });
   });
 });

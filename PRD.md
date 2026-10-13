@@ -68,7 +68,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 ### 4.1 Layout
 - **Top bar (app-wide only):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge and Tips where they show, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button).
-- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action.
+- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title, the PR label linking to the PR page on GitHub for PR reviews), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action. While any of the review's jobs is running or queued, a small `running · queued` count sits in the right corner after Submit — a link to the Debug jobs list, with a slow gradient drift while anything runs. It renders nothing when no job is live.
 - **Guide** (left, main column): the current page.
 - **Source pane** (right): tabs for **PR description** and **Diff**. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
@@ -76,10 +76,16 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ### 4.2 Start page
 - A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
 - For the selected repo:
-  - **PRs you're authoring:** `gh search prs --author @me`;
-  - **PRs waiting on your review:** `gh search prs --review-requested @me`;
+  - **PRs you're authoring:** `gh pr list --author @me`;
+  - **PRs waiting on your review:** `gh pr list --search "review-requested:@me"`
+    split into **requested of you** (direct, `user-review-requested:@me`) and
+    **requested of your team** (the rest, with team names), each newest
+    first, with a remembered recency filter (1d, 3d, 1w, 2w, All);
   - **recent branches**, local and remote;
   - **reviews you've opened before**, with their unread and stale state ("new commits · Update").
+- PR rows show the head branch, a relative update time and the diff size
+  (lines added and removed, files changed); where a row names a GitHub PR,
+  its number links to the PR page (new tab) without opening the review.
 - Selections are remembered.
 - The PR and branch lists keep the last successful fetch per repo in the
   web app (`localStorage`, last 10 repos): opening the page, switching
@@ -92,9 +98,8 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ### 4.3 Pages
 - **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
-  - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page;
-  - a **bookmark** icon (save or unsave the page);
-  - the title.
+  - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page (no label row at all on pages with no label);
+  - the title, with the **bookmark** icon (save or unsave the page) on the title line, right-aligned.
 - **Trail:** a breadcrumb back to the root, on every page except the root.
 - **Contents:** a collapsible box listing this page's cards (click to jump, expanding the card if needed) and the pages it links to. Read items are muted. There are no other status labels.
 - **Go deeper:** the root page ends with placeholder cards for the directions the agent picked for this change. **Generate** shows progress and fills the card. A generated card may end with follow-up suggestions; clicking one adds its answer.
@@ -113,6 +118,7 @@ Every card and every expansion card has the same controls:
 - **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and expansions attached to the card survive undo.
 - **Mark read:** greys the card and collapses it to its title row. Unmarking expands it.
 - **Read state rolls up:** a page is read when all of its cards are, and links to fully read pages show muted.
+- **While the agent works:** the card (likewise threads, hunk summaries, placeholders and the loading states) shows a fixed plain label with three dots bouncing in sequence — never streamed agent text. Under the OS reduced-motion setting the dots stay still but solid.
 
 ### 4.5 Links and citations
 - **Dotted links** all behave the same way: hover shows a preview card, click acts.
@@ -220,8 +226,9 @@ Every card and every expansion card has the same controls:
 - **Prompts:** each template (Template view): the raw text with its variables marked. View-only to start. The per-review "Expanded for this review" view — the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart — lives on the debug page below.
 - **Limits:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
 - **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
-  - **Jobs:** running and queued jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider.
+  - **Jobs:** running, queued and finished jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider. Finished jobs stay listed after a restart, with their prompts and results.
   - **Shared context** as a rendered Markdown document — the base session(s) with the current base pack, the append-only log (§9.3), and every contribution (§9.5) with the thread it came from — plus delete for any item. No formatting beyond Markdown rendering.
+  - **Re-do guide:** delete the review and open the same PR or branch again in one step, reusing both paths. Confirms first and states what is lost (the guide, comments, notes and jobs; anything already on GitHub stays). The review gets a new id and the page lands on its loading state. Refused while a submit is in flight; never offered for the demo review or while the review is still opening.
 
 ### 4.15 UI conventions
 
@@ -530,6 +537,7 @@ POST /api/reviews                        { repoId, pr?, branch?, title?, author?
                                          (fetch + ingest run after the response; demo stays 201 sync)
 GET  /api/reviews/:id                    snapshot: ingest status + (once ready) version, pages, cards, annotations, hunk state, jobs
 POST /api/reviews/:id/retry              re-run a failed ingest
+POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot)
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
 POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
 POST /api/reviews/:id/actions            { kind: explain|ask|note|depth|examples|diagram|undo|read|
@@ -584,7 +592,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 - **Time to first card:** under about 90 s for a small-to-medium PR such as urllib3#5020 (hunks appear within seconds).
 - **Interactive latency:** an explanation or answer starts streaming within about 5 s when the base is warm.
 - **Cache efficiency:** measure and show the cache-hit rate. Target: most conversation input tokens are cache reads.
-- **Resilience:** a service restart loses no user data. Sessions are reopened with `load`, or rebuilt from the log.
+- **Resilience:** a service restart loses no user data. Sessions are reopened with `load`, or rebuilt from the log. Jobs stay listed with their prompts and results; jobs that were open come back marked as stopped by the restart.
 - **Privacy:** data stays on the machine, apart from agent provider calls made by the user's own CLIs, and GitHub calls made with `gh`.
 
 ---

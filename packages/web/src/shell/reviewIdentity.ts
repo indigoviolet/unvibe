@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ReviewSummary } from "@unvibe/shared";
-import { isDefaultGuideTitle } from "@unvibe/shared";
+import { githubPrUrl, isDefaultGuideTitle } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 
@@ -63,7 +63,7 @@ export function useReviewIdentity(reviewId: string): ReviewIdentity {
         : branch || reviewId;
   const prUrl =
     prNumber !== undefined && owner && name && repoId !== "demo"
-      ? `https://github.com/${owner}/${name}/pull/${prNumber}`
+      ? githubPrUrl(owner, name, prNumber)
       : null;
   return { short, title, prUrl };
 }

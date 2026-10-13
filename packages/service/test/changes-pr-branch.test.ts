@@ -1,9 +1,8 @@
 /**
- * #91: `searchPrs` (`gh search prs` for number,title,author,updatedAt only)
- * yields PR rows with no `branch` — the start page must cope (no
- * "undefined", no dangling separator). The row-text half lives in the web
- * (`changeHead`, tested in `StartPage.test.tsx`); here the service half:
- * the rows really arrive without `branch`.
+ * #91: PR rows carry the head branch from `gh pr list --json headRefName`
+ * (the old `gh search prs` source had no head-branch field). Rows where
+ * `gh` omits the branch still render without one — the start page shows
+ * `#N`, never `#N · undefined` (row-text half in `StartPage.test.tsx`).
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -25,20 +24,26 @@ async function makeGitRepo(dir: string): Promise<void> {
   fs.writeFileSync(path.join(dir, "f.txt"), "x\n");
   await git("add", ".");
   await git("commit", "-m", "init");
-  // A GitHub `origin` so `searchPrs` runs (local-only repos skip gh).
+  // A GitHub `origin` so the `gh` lists run (local-only repos skip gh).
   await git("remote", "add", "origin", "https://github.com/acme/app.git");
 }
 
-describe("repoChanges PR rows carry no branch (#91)", () => {
-  it("authoring PR rows omit branch (gh has no head-branch field)", async () => {
+describe("repoChanges PR rows carry the head branch (#91)", () => {
+  it("authoring PR rows carry branch from headRefName; omitted when gh omits it", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-ch91-"));
     await makeGitRepo(dir);
     const fake = new FakeCommandRunner();
-    // `gh search prs` JSON has no branch field — mirror the real shape.
     fake.enqueue({
       cmd: "gh",
       stdout: JSON.stringify([
-        { number: 5011, title: "Fix retry backoff", author: { login: "you" }, updatedAt: "2026-10-01T00:00:00Z" },
+        {
+          number: 5011,
+          title: "Fix retry backoff",
+          author: { login: "you" },
+          updatedAt: "2026-10-01T00:00:00Z",
+          headRefName: "fix-retry-backoff",
+        },
+        { number: 5012, title: "Branch unknown to gh" },
       ]),
       stderr: "",
       code: 0,
@@ -65,10 +70,10 @@ describe("repoChanges PR rows carry no branch (#91)", () => {
       });
       expect(res.statusCode).toBe(200);
       const changes = (res.json() as { changes: { kind: string; prNumber?: number; branch?: string }[] }).changes;
-      expect(changes).toHaveLength(1);
-      expect(changes[0].kind).toBe("pr");
-      expect(changes[0].prNumber).toBe(5011);
-      expect(changes[0].branch).toBeUndefined();
+      expect(changes).toHaveLength(2);
+      const byNumber = new Map(changes.map((c) => [c.prNumber, c]));
+      expect(byNumber.get(5011)?.branch).toBe("fix-retry-backoff");
+      expect(byNumber.get(5012)?.branch).toBeUndefined();
     } finally {
       await app.close();
     }
