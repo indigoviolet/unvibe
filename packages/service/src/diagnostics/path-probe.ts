@@ -91,17 +91,9 @@ export function buildScrubbedEnv(opts: { home?: string; shell?: string } = {}): 
 function extractDelimitedPath(stdout: string): string | null {
   const re = new RegExp(`${START_MARK}(.*?)${END_MARK}`, "s");
   const m = stdout.match(re);
-  if (m) {
-    const p = (m[1] ?? "").trim();
-    return p || null;
-  }
-  // Backwards compat: fake shells in older tests just `echo /path` without
-  // delimiters. Accept the trimmed stdout when it looks like a PATH.
-  const trimmed = stdout.trim();
-  if (!trimmed) return null;
-  const lastLine = trimmed.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "";
-  if (lastLine.includes("/") || lastLine.includes(":")) return lastLine;
-  return null;
+  if (!m) return null;
+  const p = (m[1] ?? "").trim();
+  return p || null;
 }
 
 function probeOneShell(
