@@ -190,7 +190,7 @@ Every card and every expansion card has the same controls:
 - For a branch without a PR, Submit is disabled and says why.
 
 ### 4.13 Diff
-**Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**.
+**Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**. The toolbar stays pinned directly under the tab strip while the diff scrolls (opaque, one row; narrow panes scroll it sideways instead of wrapping). Revealing a cited line, a comment's jump-to-line, or a file jump from the Files list lands the target below the pinned rows.
 
 **Files panel** (it scrolls with the diff):
 - a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count) plus a **Reviewed** row; the button shows an active count whenever a non-default filter applies;

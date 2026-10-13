@@ -25,6 +25,112 @@ export const REVEAL_EVENT = "unvibe:reveal-source";
 export type { RevealTarget };
 export { parseDiffRef };
 
+/**
+ * Pinned rows + programmatic scroll (issue #132).
+ *
+ * Two rows stay pinned at the top of `#right` while the diff scrolls: the
+ * tab strip (`.rstick`, owned by `SourcePane`) and the diff actions bar
+ * (`.dtool`, owned by `DiffView`). Every place that scrolls a diff line or
+ * a file header into view goes through the helpers below so the target
+ * lands below the pinned rows — never under them. The one shared value is
+ * measured live from the DOM (no copied constants): `diffPinnedHeight()`
+ * for scroll offsets, `--diffbar-top` (same measurement, tab strip only)
+ * for the bar's sticky `top`.
+ */
+
+/** Gap between the pinned bars and a revealed line, in px. */
+export const DIFF_REVEAL_MARGIN = 8;
+
+// Fallbacks when the pane isn't laid out yet (first paint, jsdom): the
+// tab strip is one row of 13px tabs, the bar one row of pill buttons.
+const RSTICK_FALLBACK = 40;
+const DTOOL_FALLBACK = 37;
+
+function measuredHeight(el: Element | null, fallback: number): number {
+  if (!(el instanceof HTMLElement)) return 0;
+  const h = el.offsetHeight;
+  return h > 0 ? h : fallback;
+}
+
+function diffPane(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  return document.getElementById("right");
+}
+
+/** Height of the pinned tab strip alone: the actions bar's sticky `top`. */
+export function diffTabStripHeight(): number {
+  const pane = diffPane();
+  if (!pane) return 0;
+  return measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
+}
+
+/**
+ * Total height of the rows pinned at the top of `#right`: tab strip plus
+ * actions bar (0 when the pane isn't mounted, e.g. unit tests).
+ */
+export function diffPinnedHeight(): number {
+  const pane = diffPane();
+  if (!pane) return 0;
+  return (
+    measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK) +
+    measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK)
+  );
+}
+
+/**
+ * Keep `--diffbar-top` on `#right` equal to the tab strip's live height, so
+ * the sticky actions bar pins directly under it without hard-coding a
+ * height if the strip ever wraps. A `ResizeObserver`, not a scroll
+ * listener: sticky positioning does the pinning. Returns a disconnect
+ * function; a no-op when the pane isn't mounted.
+ */
+export function observeDiffTabStrip(): () => void {
+  const pane = diffPane();
+  const stick = pane?.querySelector(".rstick");
+  if (!pane || !(stick instanceof HTMLElement) || typeof ResizeObserver === "undefined") return () => {};
+  const apply = (): void => {
+    pane.style.setProperty("--diffbar-top", `${diffTabStripHeight()}px`);
+  };
+  apply();
+  const ro = new ResizeObserver(apply);
+  ro.observe(stick);
+  return () => ro.disconnect();
+}
+
+/**
+ * Scroll `#right` so `el`'s top lands below the pinned rows (plus margin).
+ * Falls back to `scrollIntoView` when the pane isn't mounted (unit tests).
+ */
+export function revealDiffElement(el: HTMLElement): void {
+  const pane = diffPane();
+  if (!pane) {
+    el.scrollIntoView?.({ block: "center" });
+    return;
+  }
+  const top = el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
+  pane.scrollTop = Math.max(0, top - diffPinnedHeight() - DIFF_REVEAL_MARGIN);
+}
+
+/**
+ * Ensure `el` is visible in `#right` without hiding it behind the pinned
+ * rows: scrolls only when the element is under the bars or out of view.
+ */
+export function ensureDiffVisible(el: HTMLElement): void {
+  const pane = diffPane();
+  if (!pane) {
+    el.scrollIntoView?.({ block: "nearest" });
+    return;
+  }
+  const pinned = diffPinnedHeight() + DIFF_REVEAL_MARGIN;
+  const box = el.getBoundingClientRect();
+  const view = pane.getBoundingClientRect();
+  if (box.top < view.top + pinned) {
+    pane.scrollTop = Math.max(0, pane.scrollTop + (box.top - view.top - pinned));
+  } else if (box.bottom > view.bottom) {
+    pane.scrollTop += box.bottom - view.bottom + DIFF_REVEAL_MARGIN;
+  }
+}
+
 type Listener = (ref: string, target: RevealTarget) => void;
 
 const listeners = new Set<Listener>();

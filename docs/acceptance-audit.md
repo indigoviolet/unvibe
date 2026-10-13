@@ -478,6 +478,18 @@ needed (that deviation is closed, not added).
 
 - Toolbar (Files collapsed, Unified/Split, Hide uninteresting default on,
   Fold/Unfold all) — met (`e2e/diff.spec.ts`, walk shows all controls).
+  The bar stays pinned under the tab strip while the diff scrolls (issue
+  #132): `position: sticky` with `top` tracking the live strip height
+  through `--diffbar-top` (no copied constant), z-index 3 (below the strip
+  at 4, above diff content, below app overlays at 25+), opaque with a
+  hairline; one row at narrow widths (sideways scroll inside the bar, never
+  wrap); full pane width sideways (`left: 0`); reveals, comment jumps and
+  file jumps land below the pinned rows through one shared helper
+  (`revealDiffElement`/`ensureDiffVisible` over `diffPinnedHeight()` in
+  `source/diff/revealSource.ts`); opening Files scrolls the pane to top so
+  the panel + filter dropdown open fully visible — met
+  (`e2e/diff-sticky-bar.spec.ts` 6 tests; `docs/screenshots/132-*.png`).
+  File headers deliberately do not stick (out of scope).
 - Files panel (name filter + Filter dropdown with per-type counts and a
   Reviewed row, active count on the button, hunk progress, compacting tree
   + counts, click-scroll) — met (`diff.spec.ts` "file filter dropdown …",
