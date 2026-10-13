@@ -224,12 +224,12 @@ const main = async () => {
   assert(jobsAfter.some((j) => j.state === "done"), "finished jobs keep their state after restart");
   assert(openAfter.length === 0, "no job left running/queued phantom after a completed restart");
 
-  // 3. Mid-ask SIGKILL: thread survives, retry answers. ----------------------
+  // 3. Mid-ask SIGKILL: card survives, reply answers. ------------------------
   const live = json((await api(token, "GET", `/api/reviews/${id}`)).body);
   const problem = (live?.pages ?? []).find((p) => p.id === "root")?.cards?.[0];
   const blockId = problem?.blocks?.[0]?.id ? `${problem.id}#${problem.blocks[0].id}` : undefined;
   assert(!!blockId, "guide has an anchored block for ask");
-  let threadId = null;
+  let askId = null;
   if (blockId) {
     const ask = await api(token, "POST", `/api/reviews/${id}/actions`, {
       kind: "ask",
@@ -238,42 +238,44 @@ const main = async () => {
       message: "What does this mean?",
     });
     assert(ask.code === 200, `ask accepted (${ask.code})`);
-    threadId = json(ask.body)?.threadId ?? null;
+    askId = json(ask.body)?.annotationId ?? null;
     await sleep(400); // agent turn streaming
     await kill9(svc, "mid-ask SIGKILL");
     svc = await startService("restart after mid-ask SIGKILL");
-    const t = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === threadId);
-    assert(!!t, "ask thread survives SIGKILL");
-    console.log(`  thread after restart: working=${t?.working ?? null} error=${(t?.error ?? "").slice(0, 60) || null}`);
+    const t = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === askId);
+    assert(!!t, "ask card survives SIGKILL");
+    console.log(`  card after restart: turns=${(t?.turns ?? []).length} working=${t?.working ?? null} error=${(t?.error ?? "").slice(0, 60) || null}`);
     // Retry the failed fill (or reply when it already answered).
-    const hasAnswer = (t?.messages ?? []).some((m) => m.who === "ai");
+    const hasAnswer = ((t?.turns ?? [])[0]?.blocks ?? []).length > 0;
     const path = hasAnswer ? "reply" : "retry";
     const again = await api(
       token,
       "POST",
       `/api/reviews/${id}/actions`,
-      // Slice 1 contract (#136): reply/retry take annotationId.
       hasAnswer
-        ? { kind: "reply", annotationId: threadId, message: "And why?" }
-        : { kind: "retry", annotationId: threadId },
+        ? { kind: "reply", annotationId: askId, message: "And why?" }
+        : { kind: "retry", annotationId: askId },
     );
     assert(again.code === 200, `${path} after restart accepted (${again.code})`);
     let answered = false;
     for (let i = 0; i < 45 && !answered; i++) {
       await sleep(1000);
-      const cur = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === threadId);
-      answered = (cur?.messages ?? []).filter((m) => m.who === "ai").length >= (hasAnswer ? 2 : 1) && !cur?.working;
+      const cur = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === askId);
+      const turns = cur?.turns ?? [];
+      answered = turns.length >= (hasAnswer ? 2 : 1) && turns.every((x) => (x.blocks ?? []).length > 0) && !cur?.working;
     }
-    assert(answered, "conversation recovers after restart (no lost thread)");
+    assert(answered, "conversation recovers after restart (no lost card)");
   }
 
   // 3b. Conversation card (issue #136 slice 1): Explain, follow up,
   // SIGKILL mid-follow-up, restart, reply again on the same card. The
   // card's session rebuilds from the stored turns; no turn is lost. -----
   if (blockId) {
+    // A different quote from section 3's ask: identical quote+anchor
+    // would (correctly, PRD §12) reopen that card instead of a new one.
     const explain = await api(token, "POST", `/api/reviews/${id}/actions`, {
       kind: "explain",
-      quote: "test",
+      quote: "test conversation",
       anchor: { where: "block", blockId },
     });
     assert(explain.code === 200, `explain accepted (${explain.code})`);
@@ -297,7 +299,7 @@ const main = async () => {
     const c = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === cardId);
     assert(!!c && (c.turns ?? []).length >= 1, "conversation card survives SIGKILL");
     console.log(
-      `  card after restart: turns=${(c?.turns ?? []).length} working=${c?.working ?? null} error=${(c?.error ?? "").slice(0, 60) || null} session=${c?.sessionId ? "yes" : "no"}`,
+      `  card after restart: turns=${(c?.turns ?? []).length} working=${c?.working ?? null} error=${(c?.error ?? "").slice(0, 60) || null} session=${c?.sessionId ? "yes" : "no"} questions=${JSON.stringify((c?.turns ?? []).map((t) => t.question))}`,
     );
     // Reply again on the same card: the session rebuilds from the stored turns.
     const again2 = await api(token, "POST", `/api/reviews/${id}/actions`, {
