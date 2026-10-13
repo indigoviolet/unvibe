@@ -1186,8 +1186,12 @@ function mockPostText(thread: import("@unvibe/shared").Annotation): string {
 
 /** Mock Submit preview: same shape as the service `buildPreview`. */
 function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
+  // Mirrors the service's locatePendingThreads (issue #135): only Comments
+  // are submitted, never Ask threads.
+  const isComment = (a: import("@unvibe/shared").Annotation): boolean =>
+    a.note || a.messages.some((m) => m.suggested);
   const pending = annotations.filter(
-    (a) => a.type === "thread" && (a as import("@unvibe/shared").Annotation).post && !(a as import("@unvibe/shared").Annotation).postedAt,
+    (a) => a.type === "thread" && (a as import("@unvibe/shared").Annotation).post && !(a as import("@unvibe/shared").Annotation).postedAt && isComment(a as import("@unvibe/shared").Annotation),
   ) as import("@unvibe/shared").Annotation[];
   const alreadyPosted = annotations
     .filter((a) => a.type === "thread" && a.post && a.postedAt)
@@ -2631,7 +2635,9 @@ export const mockApi = {
       },
       open: host.kind === "block" ? false : true,
       messages: body.text ? [{ who: "you", text: body.text }] : [],
-      post: false,
+      // Mirrors the service (issue #135): a Comment is for the PR by
+      // default; an Ask thread never is.
+      post: (body.note ?? true) === true,
       note: body.note ?? true,
     };
     if (body.suggested && body.suggestionText) {
@@ -2690,6 +2696,11 @@ export const mockApi = {
       return { ok: true };
     }
     if (thread.type !== "thread") throw new Error("unknown comment");
+    // Mirrors the service PATCH guard (issue #135): only Comments can be
+    // marked for the PR. Unmarking stays allowed.
+    if (body.post === true && !thread.note && !thread.messages.some((m) => m.suggested)) {
+      throw new Error("ask threads are never posted to GitHub — write a comment instead");
+    }
     if (body.post !== undefined) {
       thread.post = body.post;
       if (body.post) thread.open = true;

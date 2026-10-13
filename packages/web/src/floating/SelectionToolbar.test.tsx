@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { resolveSelectionHost } from "./SelectionToolbar.js";
+import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import { useReview } from "../state/store.js";
+import { blockquoteQuote, commentCardAnchor, resolveSelectionHost } from "./SelectionToolbar.js";
 
 describe("resolveSelectionHost (#78)", () => {
   test("guide blocks are addressed as card#block, expansions by their own id", () => {
@@ -57,5 +59,59 @@ describe("resolveSelectionHost inside other hosts (#116)", () => {
     expect(resolveSelectionHost(document.getElementById("in-aside")!)).toEqual({
       anchor: { where: "block", blockId: "c1#b2" },
     });
+  });
+});
+
+describe("comment from an agent answer (issue #135)", () => {
+  function seedWithExpansion(): void {
+    const expansion: Annotation = {
+      id: "ann_1",
+      type: "expansion",
+      anchor: {
+        host: { kind: "diff-line", fileKey: "conn", line: 91 },
+        quotedText: "code",
+        prefix: "",
+        suffix: "",
+        position: 91,
+        version: 1,
+      },
+      open: true,
+      messages: [],
+      post: false,
+      note: false,
+    };
+    useReview.getState().clear();
+    useReview.getState().setSnapshot({
+      review: { id: "r", repoId: "x", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+      version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
+      files: [],
+      pages: [],
+      annotations: [expansion],
+      hunkStates: [],
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+    } as unknown as ReviewSnapshot);
+  }
+
+  test("a block anchor inside an expansion maps to the card anchor", () => {
+    seedWithExpansion();
+    expect(commentCardAnchor({ where: "block", blockId: "ann_1#b2" })).toEqual({
+      where: "diff-line",
+      fileKey: "conn",
+      line: 91,
+    });
+  });
+
+  test("a page-card anchor maps nowhere", () => {
+    seedWithExpansion();
+    expect(commentCardAnchor({ where: "block", blockId: "central#b2" })).toBeNull();
+    expect(commentCardAnchor({ where: "diff-line", fileKey: "conn", line: 91 })).toBeNull();
+  });
+
+  test("the selection is quoted as a Markdown blockquote", () => {
+    expect(blockquoteQuote("just one line")).toBe("> just one line\n\n");
+    expect(blockquoteQuote("first\nsecond")).toBe("> first\n> second\n\n");
   });
 });

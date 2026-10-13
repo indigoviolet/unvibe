@@ -8,10 +8,11 @@
  *   icon, filled when on), Delete, Close.
  * - Reply box always visible with Discard and Reply; typed text survives
  *   any re-render elsewhere (local state keyed by thread id, debounced
- *   through `PATCH …/comments/:id` `reply`); Discard removes a new empty
- *   thread and clears the box on an existing one; Cmd/Ctrl+Enter sends.
+ *   through `PATCH …/comments/:id` `reply`); Discard removes a new thread
+ *   and clears the box on an existing one, staying disabled there until
+ *   there is a draft; Cmd/Ctrl+Enter sends.
  * - Ask threads show a plain working indicator until the reply arrives
- *   through a patch (fixed label, never streamed text); Note threads never
+ *   through a patch (fixed label, never streamed text); Comment threads never
  *   do. A failed reply shows the error with a Retry button (the `retry`
  *   action rebuilds on the same thread). Agent-suggested first messages
  *   render as "Agent · suggested comment" and start unmarked for the PR.
@@ -29,6 +30,7 @@ import { busyForThread, inflightLabel } from "../guide/inflight.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { isAskWorking, markAskSent, useAskWorkingTick } from "./askState.js";
+import { isCommentThread } from "./threads.js";
 
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -245,12 +247,16 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   };
 
   const footnoted = !!thread.anchorStale;
+  // Issue #135: only Comments carry the For-PR control. An Ask thread from
+  // an older review may still carry the mark; it keeps the control so the
+  // mark can be cleared (unmarking hides it again).
+  const showPostControl = !isNew && (isCommentThread(thread) || thread.post);
   return (
     <div className="ithread" id={thread.id} data-thread={thread.id}>
       <div className="thd">
         <span className="mq">{headerLabel(file, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
-        {isNew ? null : (
+        {showPostControl ? (
           <button
             className="ib pr"
             type="button"
@@ -269,7 +275,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
           >
             <Icon name="send" />
           </button>
-        )}
+        ) : null}
         <button
           className="ib"
           type="button"
@@ -371,7 +377,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
           <textarea
             id={`ta-${thread.id}`}
             rows={isNew ? 3 : 1}
-            placeholder={isNew ? (thread.note ? "Write a note…" : "Ask the agent, or draft a review comment…") : "Reply…"}
+            placeholder={isNew ? (thread.note ? "Write a comment…" : "Ask the agent…") : "Reply…"}
             aria-label={isNew ? "New comment" : "Reply"}
             value={draft}
             onChange={(e) => {
@@ -391,6 +397,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
               type="button"
               data-discard={thread.id}
               data-tip={isNew ? "Discard this comment" : "Clear the reply"}
+              disabled={!isNew && draft.trim() === ""}
               onClick={onDiscard}
             >
               Discard

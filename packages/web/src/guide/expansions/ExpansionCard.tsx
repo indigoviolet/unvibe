@@ -356,7 +356,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         {body.blocks.map((block) => {
           // Annotations on text inside this expansion (#116) render under
           // their block exactly like page-card annotations do: threads
-          // (open ones plus the pending Ask/Note composer) via
+          // (open ones plus the pending Ask/Comment composer) via
           // GuideBlockThreads, open explanations as nested cards. Closed
           // explanations and promoted links become footnote chips on the
           // citations line through BlockView. Recursion nests to any

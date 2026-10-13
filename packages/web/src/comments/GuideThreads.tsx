@@ -247,6 +247,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
           anchor={pending.anchor}
           quote={pending.quote}
           note={pending.note}
+          initialText={pending.initialText}
           onDiscard={() => setPending(null)}
           onCreated={(id) => {
             setPending(null);
