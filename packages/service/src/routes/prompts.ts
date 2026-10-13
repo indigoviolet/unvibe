@@ -17,7 +17,7 @@
  *   update_pass, consolidate, second_opinion_*) expand against real review
  *   data: source blurb, diff section (with the same budget fallback the
  *   pipeline uses), pinned code, guide, concepts, hunk summaries, the log.
- * - Turn templates (explain, ask, note_ack, depth, examples, diagram,
+ * - Turn templates (explain, ask, depth, examples, diagram,
  *   go_deeper) have no live anchor "now": their L4 renders with the
  *   review's real change list plus clearly-marked `(…)` placeholders for
  *   the anchor quote, thread, card-under-edit and user message.
@@ -505,12 +505,6 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot):
     thread: PH.thread,
     change_list: changeList,
     message: PH.message,
-  });
-  forked("note_ack", {
-    anchor: { quote: PH.anchorQuote, block: PH.anchorBlock },
-    card: cardText,
-    thread: PH.thread,
-    change_list: changeList,
   });
   forked("depth", { card: cardText, level: PH.level });
   forked("examples", { card: cardText, level: PH.level });

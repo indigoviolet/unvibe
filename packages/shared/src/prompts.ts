@@ -18,7 +18,6 @@ export const PROMPT_TEMPLATE_NAMES = [
   "concept_page",
   "explain",
   "ask",
-  "note_ack",
   "depth",
   "examples",
   "diagram",
