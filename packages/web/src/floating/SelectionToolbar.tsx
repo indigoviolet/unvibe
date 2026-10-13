@@ -34,6 +34,7 @@
  * interaction agent's Explain/expansion cards (`resolveSelectionHost`).
  */
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { ActionAnchor, ReviewSnapshot } from "@unvibe/shared";
 import { githubFileUrl } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
@@ -42,7 +43,8 @@ import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
-import { hunkCommentAnchor, hunkDiffRange, parseHunkAttr } from "../source/diff/hunkAnchor.js";
+import { showGuidePane } from "../shell/panes.js";
+import { hunkCommentAnchor, hunkDiffRange, parseHunkAttr, promotedPageForHunk } from "../source/diff/hunkAnchor.js";
 import { toast } from "./Toast.js";
 import { useReview } from "../state/store.js";
 
@@ -337,6 +339,7 @@ export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
   const readOnly = useIsReadOnlyVersion();
   const snapshot = useReview((s) => s.snapshot);
+  const navigate = useNavigate();
   const barRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<Pending | null>(null);
   pendingRef.current = pending;
@@ -476,9 +479,36 @@ export function SelectionToolbar() {
     window.getSelection()?.removeAllRanges();
   };
 
+  /**
+   * Page a hunk-anchored action belongs to when the hunk's discussion
+   * already moved there (issue #138 follow-up): Explain/Ask open the
+   * page instead of activating a fresh card. Null otherwise (the action
+   * runs normally, activating the summary first).
+   */
+  const promotedTarget = (anchor: ActionAnchor): { pageId: string; reviewId: string } | null => {
+    if (anchor.where !== "hunk") return null;
+    const snap = useReview.getState().snapshot;
+    const pageId = promotedPageForHunk(snap, { fileKey: anchor.fileKey, contentHash: anchor.contentHash });
+    const reviewId = snap?.review.id;
+    if (!pageId || !reviewId) return null;
+    if (!snap?.pages.some((p) => p.id === pageId)) return null;
+    return { pageId, reviewId };
+  };
+
+  const openPromotedPage = (target: { pageId: string; reviewId: string }): void => {
+    dismiss();
+    showGuidePane();
+    navigate(`/review/${target.reviewId}/page/${encodeURIComponent(target.pageId)}`);
+  };
+
   const onExplain = (): void => {
     const current = pendingRef.current;
     if (!current) return;
+    const promoted = promotedTarget(current.anchor);
+    if (promoted) {
+      openPromotedPage(promoted);
+      return;
+    }
     const reviewId = useReview.getState().snapshot?.review.id;
     dismiss();
     if (!reviewId) {
@@ -509,6 +539,13 @@ export function SelectionToolbar() {
   const onAskNote = (kind: "comment" | "ask"): void => {
     const current = pendingRef.current;
     if (!current) return;
+    if (kind === "ask") {
+      const promoted = promotedTarget(current.anchor);
+      if (promoted) {
+        openPromotedPage(promoted);
+        return;
+      }
+    }
     dismiss();
     if (kind === "comment" && current.commentAnchor) {
       requestNewThread({

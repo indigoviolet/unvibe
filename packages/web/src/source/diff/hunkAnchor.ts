@@ -80,3 +80,24 @@ export function hunkDiffRange(
   if (newLines.length === 0 && oldLines.length === 0) return null;
   return { fileKey: file.fileKey, newLines, oldLines };
 }
+
+/**
+ * Page a hunk's discussion moved to (issue #138 follow-up): the `link`
+ * annotation hosted on this hunk with a `promotedToPage`, if any. While
+ * it exists, summary interactions open that page instead of activating
+ * a fresh card — the conversation continues there.
+ */
+export function promotedPageForHunk(
+  snapshot: ReviewSnapshot | null | undefined,
+  ref: HunkRef,
+): string | null {
+  const link = (snapshot?.annotations ?? []).find(
+    (a) =>
+      a.type === "link" &&
+      a.anchor.host.kind === "hunk" &&
+      a.anchor.host.fileKey === ref.fileKey &&
+      a.anchor.host.contentHash === ref.contentHash &&
+      !!a.promotedToPage,
+  );
+  return link?.promotedToPage ?? null;
+}

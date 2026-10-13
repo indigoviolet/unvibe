@@ -10,6 +10,7 @@ import {
   hunkCommentAnchor,
   hunkDiffRange,
   parseHunkAttr,
+  promotedPageForHunk,
 } from "./hunkAnchor.js";
 
 function hunk(over: Partial<Hunk> = {}): Hunk {
@@ -87,5 +88,29 @@ describe("hunkAnchor", () => {
       newLines: [10, 11, 12],
       oldLines: [8, 9],
     });
+  });
+
+  test("promotedPageForHunk finds the moved discussion, if any", () => {
+    const ref = { fileKey: "conn", contentHash: "hash1" };
+    expect(promotedPageForHunk(snapshot([hunk()]), ref)).toBeNull();
+    const snap = snapshot([hunk()]);
+    (snap.annotations as import("@unvibe/shared").Annotation[]).push({
+      id: "ann_link",
+      type: "link",
+      anchor: {
+        host: { kind: "hunk", fileKey: "conn", contentHash: "hash1" },
+        quotedText: "",
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version: 1,
+      },
+      open: false,
+      messages: [],
+      post: false,
+      promotedToPage: "p-9",
+    } as unknown as import("@unvibe/shared").Annotation);
+    expect(promotedPageForHunk(snap, ref)).toBe("p-9");
+    expect(promotedPageForHunk(snap, { fileKey: "conn", contentHash: "other" })).toBeNull();
   });
 });

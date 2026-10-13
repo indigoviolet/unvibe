@@ -90,3 +90,41 @@ test("a Comment on a summary lands on the line and never activates", async ({ pa
   // No card was activated under any hunk.
   await expect(page.locator(".dhunk [data-expansion]")).toHaveCount(0);
 });
+
+async function backToDiff(page: Page): Promise<void> {
+  await page.goBack();
+  await page.locator('#right [role="tab"]').getByText("Diff").click();
+  await expect(page.locator("p[data-hunksum]").first()).toBeVisible({ timeout: 8000 });
+}
+
+test("promoted hunk keeps summary plus chip; the summary opens the page, never a second card", async ({
+  page,
+}) => {
+  await gotoDiff(page);
+  // Activate through the explicit control, then open as a page.
+  await page.locator("p[data-hunksum]").first().click();
+  const card = page.locator(".dhunk [data-expansion]").first();
+  await expect(card).toBeVisible({ timeout: 5000 });
+  await card.getByRole("button", { name: "Open as page" }).click();
+  await expect(page).toHaveURL(/\/review\/demo\/page\/p-mock-/, { timeout: 5000 });
+
+  // Back on the diff: the summary text stays, plus the chip, no card.
+  await backToDiff(page);
+  await expect(page.locator(".dhunk [data-expansion]")).toHaveCount(0);
+  const chip = page.locator(".dhunk a.cx.pg").first();
+  await expect(chip).toBeVisible({ timeout: 5000 });
+
+  // The chip opens the page.
+  await chip.click();
+  await expect(page).toHaveURL(/\/review\/demo\/page\/p-mock-/, { timeout: 5000 });
+
+  // Selecting in the summary and choosing Explain opens the same page
+  // instead of activating a second card.
+  await backToDiff(page);
+  await selectText(page, "p[data-hunksum]", "folded header values");
+  await page.locator('#selbar [data-act="explain"]').click();
+  await expect(page).toHaveURL(/\/review\/demo\/page\/p-mock-/, { timeout: 5000 });
+  await backToDiff(page);
+  await expect(page.locator(".dhunk [data-expansion]")).toHaveCount(0);
+  await expect(page.locator(".dhunk a.cx.pg").first()).toBeVisible({ timeout: 5000 });
+});

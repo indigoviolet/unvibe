@@ -281,6 +281,21 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     return map;
   }, [snapshot]);
 
+  // Promoted hunk discussions (issue #138 follow-up): content hash →
+  // page id. The hunk keeps its summary text plus a page-link chip; its
+  // interactions open the page instead of activating a fresh card.
+  const promotedHunks = useMemo(() => {
+    const files = snapshot?.files ?? [];
+    const current = new Set(files.flatMap((f) => f.hunks.map((h) => h.contentHash)));
+    const map = new Map<string, string>();
+    for (const a of snapshot?.annotations ?? []) {
+      if (a.type !== "link" || a.anchor.host.kind !== "hunk" || !a.promotedToPage) continue;
+      if (!current.has(a.anchor.host.contentHash) || map.has(a.anchor.host.contentHash)) continue;
+      map.set(a.anchor.host.contentHash, a.promotedToPage);
+    }
+    return map;
+  }, [snapshot]);
+
   const reviewedCount = useCallback(
     (f: ReviewFile) => f.hunks.filter((h) => states.get(h.contentHash)?.reviewed).length,
     [states],
@@ -785,6 +800,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               briefs={briefs}
               states={states}
               hunkCards={hunkCards}
+              promotedHunks={promotedHunks}
               lookupPage={lookupPage ?? (() => undefined)}
               onOpenPage={onOpenPage ?? (() => {})}
               onFollowUp={onFollowUp ?? (() => {})}

@@ -658,7 +658,11 @@ needed (that deviation is closed, not added).
   idle text — met (`service/test/hunk-cards.test.ts`,
   `source/diff/hunkAnchor.test.ts`,
   `source/diff/HunkCardActivation.test.tsx`,
-  `e2e/hunk-summary.spec.ts`).
+  `e2e/hunk-summary.spec.ts`). A hunk card opened as a page keeps its
+  summary text plus a page-link chip; the summary's click/Explain/Ask
+  open that page instead of a second card, and a hunk whose page is gone
+  reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
+  cases, `hunk-summary.spec.ts` promoted flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
   run with reason, click reveals; one-line never hidden; cited never
   hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
