@@ -566,9 +566,9 @@ let existingComments: import("@unvibe/shared").ExistingReviewComment[] = [
 const SETTINGS_KEY = "unvibe.mock.settings";
 
 const DEFAULT_MOCK_SETTINGS: Settings = {
-  main: { provider: "claude", model: "mock-main" },
-  small: { provider: "claude", model: "mock-small" },
-  secondOpinion: { provider: "codex", model: "mock-second" },
+  main: { provider: "claude", model: "mock-main", effort: "" },
+  small: { provider: "claude", model: "mock-small", effort: "" },
+  secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
   sessionsPerProvider: 4,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -3093,6 +3093,17 @@ export const mockApi = {
     }
     return { provider, models };
   },
+
+  thinking: async (provider: string): Promise<import("@unvibe/shared").ThinkingResponse> => ({
+    provider,
+    label: "Effort",
+    options: [
+      { value: "low", name: "Low" },
+      { value: "medium", name: "Medium" },
+      { value: "high", name: "High" },
+    ],
+    current: "medium",
+  }),
 
   prompts: async (reviewId?: string): Promise<PromptsResponse> => {
     const templates: PromptTemplate[] = MOCK_TEMPLATES;

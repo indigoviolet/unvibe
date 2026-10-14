@@ -49,6 +49,7 @@ import type {
   SubmitReviewRequest,
   SubmitReviewResponse,
   SummarizeHunkResponse,
+  ThinkingResponse,
   UpdateChannelsResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
@@ -380,6 +381,9 @@ const realApi = {
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
   models: (provider: string): Promise<ModelsResponse> =>
     get(`/api/models?provider=${encodeURIComponent(provider)}`),
+  /** Thinking levels the provider's adapter offers (Default when none). */
+  thinking: (provider: string): Promise<ThinkingResponse> =>
+    get(`/api/thinking?provider=${encodeURIComponent(provider)}`),
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
 

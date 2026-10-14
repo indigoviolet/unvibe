@@ -7,7 +7,7 @@
  * different one).
  */
 import { useEffect, useRef, useState } from "react";
-import type { ModelInfo, ModelPick, ReadinessCheck, Settings } from "@unvibe/shared";
+import type { ModelInfo, ModelPick, ReadinessCheck, Settings, ThinkingResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 
 /** Display label the same way everywhere (#21): name beside the id. */
@@ -98,8 +98,11 @@ function ModelPicker({
   const [provider, setProvider] = useState(pick.provider);
   const [models, setModels] = useState<ModelInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [thinking, setThinking] = useState<ThinkingResponse | null>(null);
+  const [thinkingError, setThinkingError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [effortReset, setEffortReset] = useState<string | null>(null);
 
   // Keep the provider select in sync when settings arrive late / change,
   // but never snap it back while the user is browsing another provider's
@@ -120,6 +123,8 @@ function ModelPicker({
     let cancelled = false;
     setModels(null);
     setError(null);
+    setThinking(null);
+    setThinkingError(null);
     api
       .models(provider)
       .then((r) => {
@@ -127,6 +132,17 @@ function ModelPicker({
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(friendlyError(err));
+      });
+    // Thinking levels come from the same provider's adapter (#172): the
+    // values it offers, with Default first (leave its own setting alone).
+    // No options (not installed, offline) is fine — Default still stands.
+    api
+      .thinking(provider)
+      .then((r) => {
+        if (!cancelled) setThinking(r);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setThinkingError(friendlyError(err));
       });
     return () => {
       cancelled = true;
@@ -145,11 +161,32 @@ function ModelPicker({
     !browsing && modelIds !== null && error === null && pick.model !== "" && !modelIds.includes(pick.model);
   const unset = role === "secondOpinion" && pick.model === "";
 
+  // The saved effort may no longer be offered (model changed elsewhere,
+  // values renamed): flag it plainly; picking a value below fixes it.
+  const savedEffort = pick.effort ?? "";
+  const effortValues = !browsing && thinkingError === null ? (thinking?.options.map((o) => o.value) ?? null) : null;
+  const effortMissing =
+    !browsing && effortValues !== null && savedEffort !== "" && !effortValues.includes(savedEffort);
+
   const save = async (next: ModelPick): Promise<void> => {
     setSaving(true);
     setSaveError(null);
+    setEffortReset(null);
     try {
-      onSaved(await api.saveSettings({ [role]: next }));
+      const payload: ModelPick = { ...next };
+      if (next.effort === undefined && savedEffort !== "") {
+        // Saving a new model: keep the saved effort when the new provider
+        // offers it, else fall back to Default and say so (#172). Unknown
+        // offerings (still loading, fetch failed) keep the saved value;
+        // the service skips validation then, and the warning above flags
+        // it once the list is known.
+        const values = thinkingError !== null ? null : (thinking?.options.map((o) => o.value) ?? null);
+        if (values !== null && !values.includes(savedEffort)) {
+          payload.effort = "";
+          setEffortReset(`“${savedEffort}” isn't available for ${next.provider} — reset to Default.`);
+        }
+      }
+      onSaved(await api.saveSettings({ [role]: payload }));
     } catch (err) {
       setSaveError(friendlyError(err));
       // The saved pick is unchanged: return both selects to it (#87).
@@ -186,6 +223,7 @@ function ModelPicker({
           value={provider}
           onChange={(e) => {
             setSaveError(null);
+            setEffortReset(null);
             setProvider(e.target.value);
           }}
         >
@@ -259,6 +297,66 @@ function ModelPicker({
           {status?.status === "ok" ? (
             <span className="hint" data-testid={`model-${role}-status`}>
               {status.summary}
+            </span>
+          ) : null}
+        </div>
+        <label htmlFor={`effort-${role}`}>{thinking?.label ?? "Effort"}</label>
+        <div className="fld">
+          {thinkingError ? (
+            <span className="hint" role="status">
+              Couldn't load thinking levels ({thinkingError}) — Default stands.
+            </span>
+          ) : thinking === null ? (
+            <span className="hint">Loading thinking levels…</span>
+          ) : (
+            <>
+              <select
+                id={`effort-${role}`}
+                value={browsing ? "" : savedEffort}
+                onChange={(e) =>
+                  void save({ provider: pick.provider, model: pick.model, effort: e.target.value })
+                }
+                disabled={saving || browsing}
+                title="How hard the model thinks. Default leaves the provider's own setting alone."
+              >
+                {browsing ? (
+                  <option value="" disabled>
+                    Pick a {provider} model first…
+                  </option>
+                ) : (
+                  <option value="">Default</option>
+                )}
+                {thinking.options.map((o) => (
+                  <option key={o.value} value={o.value} title={o.description ?? undefined}>
+                    {o.name ? `${o.name} (${o.value})` : o.value}
+                  </option>
+                ))}
+              </select>
+              {(() => {
+                const current = browsing ? undefined : thinking.options.find((o) => o.value === savedEffort);
+                if (current?.description) {
+                  return (
+                    <span className="hint" data-testid={`model-${role}-effort-desc`}>
+                      {current.description}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+            </>
+          )}
+          {browsing && thinking !== null && thinkingError === null ? (
+            <span className="hint">Pick a {provider} model first, then set its effort.</span>
+          ) : null}
+          {effortMissing ? (
+            <span className="err" role="alert" data-testid={`model-${role}-effort-missing`}>
+              Saved effort “{savedEffort}” is no longer offered by {pick.provider} — pick one of the values
+              above.
+            </span>
+          ) : null}
+          {effortReset ? (
+            <span className="warnline" role="status" data-testid={`model-${role}-effort-reset`}>
+              {effortReset}
             </span>
           ) : null}
         </div>
