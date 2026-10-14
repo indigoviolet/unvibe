@@ -298,3 +298,24 @@ describe("resolveSelectionHost on idle hunk summaries (issue #138)", () => {
     });
   });
 });
+
+describe("resolveSelectionHost inside read-only GitHub threads (issue #168)", () => {
+  test("a selection in the thread body anchors the thread's diff line", () => {
+    document.body.innerHTML =
+      `<div id="right"><table class="diff"><tbody><tr class="pr"><td colspan="3">` +
+      `<div class="pin"><div class="ithread gh" data-gh-thread="conn:82">` +
+      `<div class="msg"><div><div class="ghbody"><p><span id="in-gh">bare LF</span> here too</p></div></div></div>` +
+      `</div></div></td></tr></tbody></table></div>`;
+    expect(resolveSelectionHost(document.getElementById("in-gh")!)).toEqual({
+      anchor: { where: "diff-line", fileKey: "conn", line: 82 },
+    });
+  });
+
+  test("an outdated thread (no line target) offers no toolbar", () => {
+    document.body.innerHTML =
+      `<div id="right"><div class="ghfile"><div class="ithread gh">` +
+      `<div class="msg"><div><div class="ghbody"><p><span id="in-gh-old">old remark</span></p></div></div></div>` +
+      `</div></div></div>`;
+    expect(resolveSelectionHost(document.getElementById("in-gh-old")!)).toBeNull();
+  });
+});

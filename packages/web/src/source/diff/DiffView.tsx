@@ -15,7 +15,7 @@
  * - line-number clicks emit `onLineClick` ("start a comment" hook);
  * - the guide agent jumps here via `revealSource("diff:…")`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
 import { HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
@@ -40,6 +40,7 @@ import {
   shouldHideHunk,
   type TreeRow,
 } from "./diffLogic.js";
+import { useGithubThreads } from "../../comments/GithubThreads.js";
 import { useLineSlots, type LineSlots } from "./lineSlots.js";
 import {
   observeDiffPinned,
@@ -143,7 +144,24 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const [briefs, setBriefs] = useState<Record<string, string> | null>(null);
   const hlTimer = useRef<number | undefined>(undefined);
   const ctxSlots = useLineSlots();
-  const slots = useMemo(() => ({ ...ctxSlots, ...lineSlots }), [ctxSlots, lineSlots]);
+  const gh = useGithubThreads();
+  // A user thread and a GitHub thread share a line's slot row: merge
+  // the content instead of letting one map overwrite the other.
+  const slots = useMemo(() => {
+    const merged: LineSlots = { ...ctxSlots, ...lineSlots };
+    for (const [key, node] of Object.entries(gh.lineSlots)) {
+      const prev = merged[key];
+      merged[key] = prev ? (
+        <Fragment key={key}>
+          {prev}
+          {node}
+        </Fragment>
+      ) : (
+        node
+      );
+    }
+    return merged;
+  }, [ctxSlots, lineSlots, gh.lineSlots]);
 
   useEffect(() => {
     try {
@@ -605,6 +623,16 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [reviewId, readOnly],
   );
 
+  // Issue #168: one show/hide control for existing GitHub comments,
+  // remembered with the review. Hiding never removes them from the
+  // agents' context; the comments menu always lists every thread.
+  const toggleGithubComments = useCallback(() => {
+    const current = useReview.getState().snapshot?.viewPrefs.showExistingComments ?? true;
+    api.updateView(reviewId, { showExistingComments: !current }).catch(() => {
+      toast("Couldn't save that change");
+    });
+  }, [reviewId]);
+
   if (!snapshot) {
     return (
       <div>
@@ -744,6 +772,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
                 }))
               }
               onToggleReviewed={() => setPrefs((p) => ({ ...p, hideReviewed: !p.hideReviewed }))}
+              showGithub={snapshot.viewPrefs.showExistingComments}
+              githubCount={snapshot.existingComments?.length ?? 0}
+              onToggleGithub={toggleGithubComments}
             />
           </div>
           <div className="prog">
@@ -838,6 +869,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               isHidden={isHidden}
               actions={actions}
               onLineClick={onLineClick}
+              fileTop={gh.fileTops[f.fileKey]}
               onToggleFileFold={(key) => void patchFileFold(key, !(fileFolded.get(key) ?? false))}
               onMarkFileReviewed={markFileReviewed}
               onUnhide={(hashes) => setUnhidden((prev) => ({ ...prev, ...Object.fromEntries(hashes.map((h) => [h, true])) }))}
@@ -849,6 +881,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           No files match the filters.
         </p>
       )}
+      {gh.orphans ? (
+        <div className="ghfile" data-gh-orphans="">
+          <span className="hint">GitHub comments on files no longer in the diff</span>
+          {gh.orphans}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -860,6 +898,9 @@ function FilterDropdown({
   reviewedFiles,
   onToggleCat,
   onToggleReviewed,
+  showGithub,
+  githubCount,
+  onToggleGithub,
 }: {
   cats: ReadonlySet<string>;
   hideReviewed: boolean;
@@ -867,6 +908,10 @@ function FilterDropdown({
   reviewedFiles: number;
   onToggleCat: (k: string) => void;
   onToggleReviewed: () => void;
+  /** Issue #168: one show/hide row for existing GitHub comments. */
+  showGithub: boolean;
+  githubCount: number;
+  onToggleGithub: () => void;
 }): ReactNode {
   const [open, setOpen] = useState(false);
   const ctlRef = useRef<HTMLSpanElement>(null);
@@ -889,8 +934,15 @@ function FilterDropdown({
       count: reviewedFiles,
       toggle: onToggleReviewed,
     },
+    {
+      key: "__github",
+      label: "GitHub comments",
+      checked: showGithub,
+      count: githubCount,
+      toggle: onToggleGithub,
+    },
   ];
-  const activeCount = CATS.length - cats.size + (hideReviewed ? 1 : 0);
+  const activeCount = CATS.length - cats.size + (hideReviewed ? 1 : 0) + (showGithub ? 0 : 1);
   const active = activeCount > 0;
 
   // Close on outside press or Escape, like the other dropdowns

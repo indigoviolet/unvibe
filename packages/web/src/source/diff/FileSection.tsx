@@ -128,6 +128,8 @@ interface SectionProps {
   isHidden: (hunk: Hunk) => boolean;
   actions: HunkActions;
   onLineClick: ((fileKey: string, line: number) => void) | undefined;
+  /** Outdated GitHub threads grouped at this file's top (issue #168). */
+  fileTop?: ReactNode;
   onToggleFileFold(fileKey: string): void;
   onMarkFileReviewed(file: ReviewFile, allReviewed: boolean): void;
   onUnhide(hashes: string[]): void;
@@ -952,6 +954,12 @@ export function FileSection(props: SectionProps): ReactNode {
       </div>
       {props.folded ? null : (
         <div className="dbody" ref={bodyRef}>
+          {props.fileTop ? (
+            <div className="ghfile">
+              <span className="hint">GitHub comments on lines no longer in the diff</span>
+              {props.fileTop}
+            </div>
+          ) : null}
           {file.isBinary ? (
             <p className="hint" style={{ padding: "6px 10px" }}>
               Binary file · changes not shown.
