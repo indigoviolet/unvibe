@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, Job } from "@unvibe/shared";
 import { accessModeOf } from "@unvibe/shared";
+import type { Session } from "@unvibe/shared";
 import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
 import { DEFAULT_SETTINGS, SettingsStore, validateSettings } from "../src/settings/index.js";
@@ -666,8 +667,7 @@ describe("pipeline posture (fake runner)", () => {
   });
 });
 
-describe("restart across the shape change", () => {
-  it("pre-#160 session rows (no access posture) are dropped and rebuild", () => {
+describe("restart across the shape change", () => {  it("pre-#160 session rows (no access posture) are dropped and rebuild", () => {
     const db = openDatabase(":memory:");
     migrate(db);
     const store = new SessionStore(db);
@@ -706,5 +706,94 @@ describe("restart across the shape change", () => {
     expect(mgr.baseKeys()).toEqual([]);
     expect(store.loadAll().bases).toEqual([]);
     expect(store.loadAll().conversations).toEqual([]);
+  });
+});
+
+describe("conn retry keeps the session's posture", () => {
+  it("a DegradedConnError retry under full access forks from the full base", { timeout: 90000 }, async () => {
+    const CHATTER =
+      `I tried to fetch the code with get_code but failed to connect to the review MCP server.\n\n\`\`\`json\n{}\n\`\`\`\n`;
+    const ANSWER = `The fold is handled in the normaliser.\n\n\`\`\`json\n{}\n\`\`\`\n`;
+    const eventsFor = (text: string): AgentEvent[] => [
+      { type: "text", delta: text },
+      { type: "usage", inputTokens: 10, cachedReadTokens: 5, cachedWriteTokens: 0, outputTokens: 10 },
+      { type: "done", stopReason: "end_turn" },
+    ];
+    class GateFake extends FakeAgentRunner {
+      calls = 0;
+      release!: () => void;
+      private gate: Promise<void>;
+      constructor() {
+        super([{ match: "ready", events: eventsFor("ready") }]);
+        this.gate = new Promise<void>((r) => {
+          this.release = r;
+        });
+      }
+      override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
+        if (text.includes("posture-retry question")) {
+          this.calls += 1;
+          this.prompts.push({ sessionId: session.id, text });
+          if (this.calls === 1) {
+            await this.gate;
+            yield* eventsFor(CHATTER);
+            return;
+          }
+          yield* eventsFor(ANSWER);
+          return;
+        }
+        yield* super.prompt(session, text);
+      }
+    }
+    const agents = new GateFake();
+    const { app, ctx, reviewId } = await setupReview(new FakeCommandRunner(), { agents });
+    const enabled = ctx.settings.update({ fullAccess: true, fullAccessAcknowledgedAt: Date.now() });
+    expect(enabled.errors).toBeUndefined();
+    try {
+      const done = ctx.pipeline.runInFork({
+        reviewId,
+        kind: "ask",
+        template: "ask",
+        variables: {
+          anchor: { quote: "fold", block: "a folded header" },
+          card: "",
+          thread: "",
+          message: "posture-retry question about the fold?",
+        },
+        priority: 100,
+      });
+      // Wait until the first attempt is in flight, then observably hit a
+      // dead review-MCP URL mid-turn (the fail-conn trigger).
+      const start = Date.now();
+      while (agents.calls < 1) {
+        if (Date.now() - start > 30000) throw new Error("timed out waiting for the first attempt");
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      const dead = await app.inject({
+        method: "POST",
+        url: `/api/mcp/${"d".repeat(64)}`,
+        headers: { authorization: "Bearer tok" },
+      } as never);
+      expect(dead.statusCode).toBe(404);
+      agents.release();
+      const result = await done;
+      // `done` resolves with the answer; the job settles after
+      // bookkeeping lands.
+      await ctx.jobs.drain();
+      expect(ctx.jobs.get(result.job.id)?.state).toBe("done");
+      expect(result.text).toContain("The fold is handled");
+      // Exactly two attempts: the first fork, then a fresh fork.
+      expect(agents.calls).toBe(2);
+      // The retry forked from the full base: one base exists, keyed full,
+      // built from a full-access session — no lock-down base was started.
+      expect(ctx.sessions.baseKeys()).toHaveLength(1);
+      expect(ctx.sessions.baseKeys()[0].endsWith("|full")).toBe(true);
+      const baseStarts = agents.starts.filter((s) => s.systemPrompt !== "");
+      expect(baseStarts).toHaveLength(1);
+      expect(baseStarts[0].readOnly).toBe(false);
+      expect(baseStarts[0].systemPrompt).toContain("You may read anything in the repository under review.");
+      expect(ctx.jobs.get(result.job.id)?.accessMode).toBe("full");
+    } finally {
+      await app.close();
+    }
   });
 });
