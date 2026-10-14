@@ -22,6 +22,7 @@ import type {
   Repo,
   Version,
 } from "./entities.js";
+import type { DiffFilter, HunkScoreLevel, Plotline } from "./scores.js";
 
 /** Health is the only unauthenticated route. */
 export interface HealthResponse {
@@ -259,6 +260,17 @@ export interface ReviewSnapshot {
   logTail: LogEntry[];
   /** Monotonic revision of this snapshot; WS patches carry baseRev/headRev. */
   rev: number;
+  /**
+   * Issue #169: the reader's plotlines (empty/absent = none named yet;
+   * every hunk reads as "other"). Per-hunk assignment lives on
+   * `HunkState.plotline`, keyed by content hash.
+   */
+  plotlines?: Plotline[];
+  /**
+   * Issue #169: the diff's score/plotline filter, remembered with the
+   * review. Absent = all hunks (no filtering).
+   */
+  diffFilter?: DiffFilter;
   /**
    * M3 pipeline (PRD §16): per-review token totals + cache-hit rate.
    * Updated by the pipeline after every job; absent on pre-M3 snapshots.
@@ -672,6 +684,17 @@ export interface SummarizeHunkResponse {
   reused?: boolean;
   /** Present when `reused` is true: the stored summary. */
   summary?: string;
+}
+
+/**
+ * Issue #169: `PATCH /api/reviews/:id/diff-filter` — the diff's
+ * score/plotline filter, remembered with the review. Each field is a
+ * plotline id (or "other") / score level; explicit null clears it.
+ * Unknown plotline ids and levels are refused (400).
+ */
+export interface UpdateDiffFilterRequest {
+  plotline?: string | null;
+  score?: HunkScoreLevel | null;
 }
 
 /**

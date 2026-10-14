@@ -14,6 +14,7 @@ export const PROMPT_TEMPLATE_NAMES = [
   "base_pack",
   "critic",
   "hunk_pass",
+  "plotline_assign",
   "concept_stub",
   "concept_page",
   "ask",

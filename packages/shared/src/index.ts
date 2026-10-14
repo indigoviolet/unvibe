@@ -10,3 +10,4 @@ export * from "./content/index.js";
 export * from "./prompts.js";
 export * from "./versions.js";
 export * from "./diff.js";
+export * from "./scores.js";
