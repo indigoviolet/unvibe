@@ -67,6 +67,7 @@ import {
   type TemplateLibrary,
 } from "../prompts/index.js";
 import { formatContributionLines } from "../sharedctx/contributions.js";
+import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 
 /** Narrow interface the supervisor wires to review state. */
 export interface SnapshotProvider {
@@ -107,6 +108,13 @@ function hunkIsCited(
  * update. Log growth must append batches to the live base, not invalidate
  * it; only a regenerated guide (new cards, new revisions, rechecked
  * findings) keys a new base. Deterministic FNV-1a hex, platform-independent.
+ *
+ * Issue #110: the current description HTML (pending edit included) rides
+ * the same revision as a second hash component, so an edited description
+ * keys a new base the way a regenerated guide does — otherwise agents
+ * would keep citing the paragraph text they started with. A description
+ * edit surfaces as a "guide-regenerated" rebuild: the base content changed,
+ * whatever the section.
  */
 export function guideRevisionForSnapshot(snap: ReviewSnapshot): string {
   const shape = snap.pages.map((p) => [
@@ -123,7 +131,17 @@ export function guideRevisionForSnapshot(snap: ReviewSnapshot): string {
       c.blocks.map((b) => [b.id, b.type]),
     ]),
   ]);
-  return `guide-${fnv1aHex(JSON.stringify(shape))}`;
+  return `guide-${fnv1aHex(JSON.stringify(shape))}-${descriptionRevisionForSnapshot(snap)}`;
+}
+
+/**
+ * Short content hash of the description the agents see (issue #110): the
+ * pending edit when there is one (`currentDescriptionHtml`, issue #96).
+ * Part of the base key (via `guideRevisionForSnapshot`) and of the
+ * second-opinion base key, so a later edit invalidates the base.
+ */
+export function descriptionRevisionForSnapshot(snap: ReviewSnapshot): string {
+  return fnv1aHex(currentDescriptionHtml(snap.description ?? null));
 }
 
 function fnv1aHex(text: string): string {
@@ -238,7 +256,13 @@ export function toPromptSnapshot(
       };
     });
 
-  const description = snap.description ? descToMarkdown(snap.description.html) : undefined;
+  // Issue #110: the base reads the description the agents see — the pending
+  // edit when there is one — and carries its paragraphs with the IDs ingest
+  // assigned, parsed with the single source (`parseDescriptionParagraphs`,
+  // issue #96) the MCP tools and the validator read.
+  const descHtml = snap.description ? currentDescriptionHtml(snap.description) : "";
+  const description = descHtml ? descToMarkdown(descHtml) : undefined;
+  const descriptionParagraphs = parseDescriptionParagraphs(descHtml);
   // Reader-pinned excerpts (PRD §9.1 L1b). The stored shape carries
   // refresh bookkeeping (`needsRepining`, remapped location) the prompt
   // builder does not take, so map to the narrow excerpt shape explicitly.
@@ -266,6 +290,7 @@ export function toPromptSnapshot(
     model: opts?.model ?? "main",
     sourceKind: review.prNumber !== undefined ? "pr" : "branch",
     ...(description ? { description } : {}),
+    ...(descriptionParagraphs.length > 0 ? { descriptionParagraphs } : {}),
     files,
     pinnedCode,
     cards,

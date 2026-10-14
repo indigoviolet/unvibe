@@ -59,7 +59,7 @@ export async function runUpdateListFlow(deps: UpdateDeps): Promise<UpdateOutcome
       code: 1,
       lines: [
         err instanceof Error ? err.message : String(err),
-        "fix with: gh auth login (then gh auth setup-git so git can fetch)",
+        "check the network and retry; a broken gh login can also cause this (`gh auth login`)",
       ],
     };
   }
