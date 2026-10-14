@@ -6,6 +6,7 @@
  */
 import type { LogEntry } from "@unvibe/shared";
 import type { PromptReviewSnapshot } from "../src/context/index.js";
+import { renderMarkdownBlocks } from "../src/ingest/description.js";
 
 export const HEAD_SHA = "abc1234def5678abc1234def5678abc1234def5";
 
@@ -14,6 +15,9 @@ function log(seq: number, kind: string, payload: unknown, scope: LogEntry["scope
 }
 
 export function fixtureSnapshot(): PromptReviewSnapshot {
+  // Description paragraphs with the IDs ingest assigns (issue #110): the
+  // source blurb lists them, so goldens pin the shape agents actually get.
+  const description = "Unfold obsolete folded response header values.\n\nHTTPHeaderDict and the original message are both normalized.";
   return {
     reviewId: "r-5020",
     title: "Unfold obsolete folded response header values",
@@ -26,7 +30,8 @@ export function fixtureSnapshot(): PromptReviewSnapshot {
     guideRevision: "g1",
     model: "main-model",
     sourceKind: "pr",
-    description: "Unfold obsolete folded response header values.\n\nHTTPHeaderDict and the original message are both normalized.",
+    description,
+    descriptionParagraphs: renderMarkdownBlocks(description).paragraphs,
     files: [
       {
         fileKey: "conn",
