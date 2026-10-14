@@ -13,6 +13,11 @@
  *   same `mcpServers` + `_meta` as new/resume/load (#124: a Codex fork sent
  *   without them may lack the review tools), with the Claude quirk that a
  *   forked session needs `session/resume` before its first prompt.
+ * - Thinking level (#172): `start` applies the role's effort via
+ *   `setThinking` (Default means the adapter's own setting stands); forks
+ *   inherit the parent's value and re-apply it explicitly, and `load`
+ *   re-applies it after reopening, so new, fork, resume and load all carry
+ *   the setting.
  */
 import { tmpdir } from "node:os";
 import type {
@@ -233,9 +238,10 @@ export class AcpAgentRunner implements AgentRunner {
     cwd: string;
     systemPrompt: string;
     mcpServers: McpServerConfig[];
-  } & { readOnly?: boolean }): Promise<Session> {
+  } & { readOnly?: boolean; effort?: string }): Promise<Session> {
     const provider = normalizeProvider(opts.provider);
     const readOnly = (opts as AcpStartOptions).readOnly ?? true;
+    const effort = (opts as AcpStartOptions).effort ?? "";
     const caller = await this.ensureCaller(provider, readOnly);
     const mcpServers = toAcpMcpServers(opts.mcpServers);
     const meta = this.newSessionMeta(provider, opts.systemPrompt, readOnly);
@@ -264,6 +270,7 @@ export class AcpAgentRunner implements AgentRunner {
       acpSessionId: r.sessionId,
       provider,
       model: opts.model || "default",
+      effort,
       cwd: opts.cwd,
       mcpServers: opts.mcpServers,
       systemPrompt: opts.systemPrompt,
@@ -280,6 +287,18 @@ export class AcpAgentRunner implements AgentRunner {
       } catch (e) {
         // Unknown model: surface non-retryably; the session is still usable.
         throw new Error(`couldn't select the ${provider} model ${JSON.stringify(opts.model)}: ${errorMessage(e)}`, {
+          cause: e,
+        });
+      }
+    }
+    // Thinking level at start (#172): the adapter's own setting stands
+    // when effort is Default (""). Applied before any prompt (including
+    // the shared-cache warm turn below) so every turn runs at the level.
+    if (effort !== "") {
+      try {
+        await this.setThinking({ id: rec.acpSessionId, provider, model: rec.model }, effort);
+      } catch (e) {
+        throw new Error(`couldn't select the ${provider} effort ${JSON.stringify(effort)}: ${errorMessage(e)}`, {
           cause: e,
         });
       }
@@ -434,6 +453,7 @@ export class AcpAgentRunner implements AgentRunner {
       acpSessionId: r.sessionId,
       provider: parent.provider,
       model: parent.model,
+      effort: parent.effort,
       cwd: parent.cwd,
       mcpServers: parent.mcpServers,
       systemPrompt: parent.systemPrompt,
@@ -464,6 +484,16 @@ export class AcpAgentRunner implements AgentRunner {
         } catch {
           // inherit is fine
         }
+      }
+    }
+    // Re-apply the thinking level for the same reason (#172): forks
+    // inherit, but be explicit. Runs for both providers so the setting is
+    // sent on every fork.
+    if (parent.effort !== "") {
+      try {
+        await this.setThinking({ id: rec.acpSessionId, provider: rec.provider, model: rec.model }, parent.effort);
+      } catch {
+        // inherit is fine
       }
     }
     if (parent.provider === "codex") {
@@ -508,6 +538,15 @@ export class AcpAgentRunner implements AgentRunner {
     }
     const rec: AcpSessionRecord = { ...known };
     this.live.set(rec.acpSessionId, rec);
+    // A reopened session keeps the adapter's persisted settings, but be
+    // explicit about the thinking level (#172: load must carry it).
+    if (rec.effort !== "") {
+      try {
+        await this.setThinking({ id: rec.acpSessionId, provider: rec.provider, model: rec.model }, rec.effort);
+      } catch {
+        // persisted value stands
+      }
+    }
     if (rec.provider === "codex") {
       if (rec.readOnly) await this.applyCodexRestricted(rec);
       else await this.applyCodexFullAccess(rec);
@@ -675,6 +714,16 @@ export class AcpAgentRunner implements AgentRunner {
             mcpServers: toAcpMcpServers(rec.mcpServers),
             _meta: this.sessionMeta(rec),
           });
+          if (rec.effort !== "") {
+            try {
+              await this.setThinking(
+                { id: rec.acpSessionId, provider: rec.provider, model: rec.model },
+                rec.effort,
+              );
+            } catch {
+              // persisted value stands
+            }
+          }
           yield { type: "error", message: `forked session needed resume; retry the prompt: ${msg}`, retryable: true };
           return;
         } catch {

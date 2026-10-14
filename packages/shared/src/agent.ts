@@ -18,6 +18,12 @@ export interface AgentRunner {
      * false. A session keeps the posture it started with until it ends.
      */
     readOnly?: boolean;
+    /**
+     * Thinking level for the session (issue #172): an adapter-offered
+     * effort value. Absent or "" means Default — leave the adapter's own
+     * setting alone. Forks inherit their parent's value; `load` keeps it.
+     */
+    effort?: string;
   }): Promise<Session>;
   /** Optional capability: fork a session (ACP `session/fork`, unstable). */
   fork?(session: Session, opts?: { atMessage?: string }): Promise<Session>;

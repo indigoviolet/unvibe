@@ -21,6 +21,7 @@ function job(over: Partial<Job> = {}): Job {
     id: "j1",
     kind: "ask",
     model: "m",
+    effort: "",
     priority: 10,
     state: "running",
     ...over,

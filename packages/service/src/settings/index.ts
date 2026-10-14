@@ -5,6 +5,7 @@ export {
   StaticModelCatalog,
   type ModelCatalog,
   type OfferedModels,
+  type OfferedThinking,
 } from "./models.js";
 export { DEFAULT_SETTINGS, SettingsStore, validateSettings } from "./store.js";
 export {

@@ -23,6 +23,12 @@ export interface AcpSessionRecord {
   provider: ProviderId;
   /** Model id as selected (adapter's config value, e.g. "opus", "default"). */
   model: string;
+  /**
+   * Thinking level as selected (adapter's effort value, "" = adapter
+   * default). Reapplied on fork, resume and load so sessions started from
+   * this one keep it (#172; #121 showed forks losing session settings).
+   */
+  effort: string;
   cwd: string;
   mcpServers: McpServerConfig[];
   systemPrompt: string;
@@ -54,4 +60,6 @@ export interface AcpStartOptions {
   mcpServers: McpServerConfig[];
   /** Read-only posture: file reads + our MCP tools only, no edits/shell/network. */
   readOnly?: boolean;
+  /** Thinking level (adapter effort value, "" = adapter default). */
+  effort?: string;
 }

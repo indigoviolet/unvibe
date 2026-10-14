@@ -163,6 +163,7 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
         <span className="hint" title={modelName ? `${job.provider}/${job.model}` : undefined}>
           {job.provider ? `${job.provider}/` : ""}
           {modelName ? `${modelName} (${job.model})` : job.model}
+          {job.effort ? ` · effort ${job.effort}` : ""}
         </span>
         <span className="sp" />
         {job.usage ? (

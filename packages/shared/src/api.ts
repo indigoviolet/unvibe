@@ -841,6 +841,12 @@ export interface SubmitReviewResponse {
 export interface ModelPick {
   provider: string;
   model: string;
+  /**
+   * Thinking level for the role (issue #172): an adapter-offered effort
+   * value (Claude `effort`, Codex `reasoning_effort`). "" means Default —
+   * leave the adapter's own setting alone.
+   */
+  effort: string;
 }
 
 export interface Settings {
@@ -902,6 +908,27 @@ export interface ModelInfo {
 export interface ModelsResponse {
   provider: string;
   models: ModelInfo[];
+}
+
+/** One thinking-level value an adapter offers (issue #172). */
+export interface ThinkingOption {
+  /** Adapter config value (e.g. "low", "high"). Persisted in settings. */
+  value: string;
+  /** Display name beside the value (e.g. "High"). */
+  name?: string;
+  /** Secondary text. */
+  description?: string;
+}
+
+/** GET /api/thinking?provider=:id — thinking levels the adapter offers. */
+export interface ThinkingResponse {
+  provider: string;
+  /** Values the adapter offers for its effort selector; empty when none. */
+  options: ThinkingOption[];
+  /** Display name for the option values above (e.g. "Effort"). */
+  label?: string;
+  /** The adapter's own current value (what Default leaves alone). */
+  current?: string;
 }
 
 // --- diagnostics (issue #20) ---------------------------------------------

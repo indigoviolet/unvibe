@@ -343,7 +343,7 @@ describe("same-model refusal (PRD §4.10)", () => {
     const runner = new FakeCommandRunner();
     const { app, ctx, reviewId } = await setupReview(runner, { pages: cardSnapshot() });
     try {
-      ctx.settings.update({ main: { provider: "claude", model: "same" }, secondOpinion: { provider: "claude", model: "same" } });
+      ctx.settings.update({ main: { provider: "claude", model: "same", effort: "" }, secondOpinion: { provider: "claude", model: "same", effort: "" } });
       const deps = {
         reviews: ctx.reviews,
         jobs: ctx.jobs,
@@ -663,7 +663,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
       // the stored result is what Remove deletes); hold its turn mid-flight.
       const cur = s.ctx.settings.get();
       s.ctx.settings.update({
-        secondOpinion: { provider: cur.secondOpinion.provider, model: `${cur.secondOpinion.model}-rerun` },
+        secondOpinion: { provider: cur.secondOpinion.provider, model: `${cur.secondOpinion.model}-rerun`, effort: cur.secondOpinion.effort },
       });
       holdRerun = true;
       const j2 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });

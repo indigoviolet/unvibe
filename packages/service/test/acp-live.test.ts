@@ -438,6 +438,35 @@ describe.skipIf(!LIVE)("ACP live adapters", () => {
           await runner.dispose();
         }
       });
+
+      it("a non-default effort reaches the session (#172)", { timeout: 300_000 }, async () => {
+        const runner = new AcpAgentRunner();
+        try {
+          const thinking = await runner.listThinking(provider);
+          expect(thinking.length).toBeGreaterThan(0);
+          const selector = thinking[0]!;
+          expect(selector.options.length).toBeGreaterThan(0);
+          // A non-current value proves the setting was applied, not kept.
+          const value =
+            selector.options.map((o) => o.value).find((v) => v !== selector.current) ??
+            selector.options[0]!.value;
+          const s = await runner.start({
+            provider,
+            model: "",
+            cwd,
+            systemPrompt: "You are a test agent. Reply briefly.",
+            mcpServers: [],
+            effort: value,
+          });
+          const events = await collect(runner, s, "Reply with exactly READY and nothing else.");
+          expect(textOf(events)).toMatch(/READY/i);
+          // setThinking on the live session reaches the adapter too.
+          await runner.setThinking(s, value);
+          await runner.close(s);
+        } finally {
+          await runner.dispose();
+        }
+      });
     });
   }
 });

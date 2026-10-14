@@ -23,6 +23,13 @@ export class FakeAgentRunner implements AgentRunner {
     readOnly: boolean;
     mcpServers: McpServerConfig[];
   }[] = [];
+  /**
+   * Start options per session, in order (tests assert the effort sent).
+   * Named to avoid colliding with subclasses' own `starts` recordings
+   * (e.g. conversation-mcp-turns' MCP-server log): both push here and
+   * there independently.
+   */
+  readonly startCalls: { sessionId: string; provider: string; model: string; effort: string }[] = [];
   private nextId = 1;
 
   constructor(private scripts: FakeScript[] = []) {}
@@ -38,6 +45,7 @@ export class FakeAgentRunner implements AgentRunner {
     systemPrompt: string;
     mcpServers: McpServerConfig[];
     readOnly?: boolean;
+    effort?: string;
   }): Promise<Session> {
     const session: Session = {
       id: `fake-${this.nextId++}`,
@@ -52,6 +60,12 @@ export class FakeAgentRunner implements AgentRunner {
       systemPrompt: opts.systemPrompt,
       readOnly: opts.readOnly ?? true,
       mcpServers: opts.mcpServers,
+    });
+    this.startCalls.push({
+      sessionId: session.id,
+      provider: opts.provider,
+      model: opts.model,
+      effort: opts.effort ?? "",
     });
     return session;
   }

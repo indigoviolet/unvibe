@@ -51,6 +51,106 @@ describe("StaticModelCatalog", () => {
     expect(catalog.listModels("codex").map((m) => m.id)).toContain("gpt-6.1-sol");
     expect(catalog.listModels("unknown")).toEqual([]);
   });
+
+  it("reports no live thinking offering", async () => {
+    expect(await new StaticModelCatalog().thinking("claude")).toBeNull();
+  });
+});
+
+describe("effort settings (issue #172)", () => {
+  /** Catalog with a live model + thinking offering for validation tests. */
+  class ThinkingCatalog extends StaticModelCatalog {
+    override offered(provider: string): Promise<{ models: { id: string }[]; defaultId: string | null }> {
+      void provider;
+      return Promise.resolve({ models: [{ id: "m1" }], defaultId: "m1" });
+    }
+    override thinking(provider: string): Promise<{ label: string; options: { value: string }[]; current: string }> {
+      void provider;
+      return Promise.resolve({ label: "Effort", options: [{ value: "low" }, { value: "high" }], current: "high" });
+    }
+  }
+
+  function makeApp() {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    return createApp("tok", {
+      settings: new SettingsStore(db),
+      models: new ThinkingCatalog(),
+      jobs: new JobQueue(),
+      autoPipeline: false,
+    });
+  }
+
+  const auth = { authorization: "Bearer tok" };
+
+  it("GET /api/thinking lists the adapter's effort values", async () => {
+    const { app } = await makeApp();
+    try {
+      const res = await app.inject({ method: "GET", url: "/api/thinking?provider=claude", headers: auth });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        provider: "claude",
+        label: "Effort",
+        options: [{ value: "low" }, { value: "high" }],
+        current: "high",
+      });
+      const missing = await app.inject({ method: "GET", url: "/api/thinking", headers: auth });
+      expect(missing.statusCode).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("GET /api/thinking offers Default only with no live adapter", async () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const { app } = await createApp("tok", {
+      settings: new SettingsStore(db),
+      models: new StaticModelCatalog(),
+      jobs: new JobQueue(),
+      autoPipeline: false,
+    });
+    try {
+      const res = await app.inject({ method: "GET", url: "/api/thinking?provider=claude", headers: auth });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ provider: "claude", options: [] });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("PUT /api/settings accepts an offered effort and rejects an unoffered one", async () => {
+    const { app } = await makeApp();
+    try {
+      const ok = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: auth,
+        payload: { main: { provider: "claude", model: "m1", effort: "low" } },
+      });
+      expect(ok.statusCode).toBe(200);
+      expect(ok.json().main).toEqual({ provider: "claude", model: "m1", effort: "low" });
+
+      const def = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: auth,
+        payload: { main: { provider: "claude", model: "m1", effort: "" } },
+      });
+      expect(def.statusCode).toBe(200);
+
+      const bad = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: auth,
+        payload: { small: { provider: "claude", model: "m1", effort: "ultra" } },
+      });
+      expect(bad.statusCode).toBe(400);
+      expect(JSON.stringify(bad.json().errors)).toContain("ultra");
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe("settings + jobs routes", () => {
@@ -115,6 +215,7 @@ describe("settings + jobs routes", () => {
         kind: "explain",
         provider: "claude",
         model: "m",
+        effort: "",
         priority: 10,
         promptSnapshot: "THE PROMPT",
         run: async () => {},

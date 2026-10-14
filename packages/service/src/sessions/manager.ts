@@ -32,7 +32,7 @@ import { RealClock } from "../jobs/clock.js";
 import type { SessionStore } from "./store.js";
 
 /**
- * Base identity: (review, review version, guide revision, model, access).
+ * Base identity: (review, review version, guide revision, model, effort, access).
  * Per-model caches. The review id is part of the key: every new review
  * starts at `v1` with the same (empty) guide revision, so without it
  * reviews would share one base session.
@@ -40,6 +40,8 @@ import type { SessionStore } from "./store.js";
  * Issue #160: the agent-access posture is part of the key. Flipping the
  * setting keys a new base with the new posture; live sessions keep the
  * posture they started with until they close or rebuild.
+ * Effort is part of the key (#172): a changed thinking level builds a
+ * new base instead of reusing one that runs at another level.
  */
 export interface BaseKey {
   reviewId: string;
@@ -48,10 +50,12 @@ export interface BaseKey {
   provider: string;
   model: string;
   access: AccessMode;
+  /** Thinking level ("": adapter default). */
+  effort: string;
 }
 
 export function baseKeyString(key: BaseKey): string {
-  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.access].join("|");
+  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.effort, key.access].join("|");
 }
 
 /** Review id of a base key string (its first component). */
@@ -96,7 +100,7 @@ interface BaseRecord {
   key: BaseKey;
   keyString: string;
   session: Session;
-  build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: McpServerConfig[] };
+  build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: McpServerConfig[]; effort: string };
   pack: string;
   logSeq: number;
   live: boolean;
@@ -158,10 +162,10 @@ export class SessionManager {
         this.store.remove(b.session.id);
         continue;
       }
-      // No backward compatibility (issue #160): rows stored before the
-      // access posture existed cannot name their variant — drop them so
-      // the sessions rebuild under an explicit key.
-      if (!b.key.access || typeof b.build.readOnly !== "boolean") {
+      // No backward compatibility (issues #160/#172): rows stored before
+      // the access posture or effort existed cannot name their variant —
+      // drop them so the sessions rebuild under an explicit key.
+      if (!b.key.access || typeof b.build.readOnly !== "boolean" || typeof (b.key as { effort?: unknown }).effort !== "string" || typeof (b.build as { effort?: unknown }).effort !== "string") {
         this.store.remove(b.session.id);
         continue;
       }
@@ -178,9 +182,9 @@ export class SessionManager {
       });
     }
     for (const c of conversations) {
-      // Conversations keyed to a pre-#160 base (5-part key) belong to a
-      // dropped base: forget them, the next turn forks fresh.
-      if (c.baseKey.split("|").length < 6) {
+      // Conversations keyed to a pre-#160/#172 base (fewer than 7 parts)
+      // belong to a dropped base: forget them, the next turn forks fresh.
+      if (c.baseKey.split("|").length < 7) {
         this.store.remove(c.session.id);
         continue;
       }
@@ -241,7 +245,7 @@ export class SessionManager {
       }
     }
     const session = await this.openBaseSession(
-      { cwd: build.cwd, systemPrompt: build.systemPrompt, readOnly: build.readOnly, mcpServers: build.mcpServers },
+      { cwd: build.cwd, systemPrompt: build.systemPrompt, readOnly: build.readOnly, mcpServers: build.mcpServers, effort: build.key.effort },
       build.pack,
       build.signal,
       build.key,
@@ -250,7 +254,7 @@ export class SessionManager {
       key: build.key,
       keyString: baseKeyString(build.key),
       session,
-      build: { cwd: build.cwd, systemPrompt: build.systemPrompt, readOnly: build.readOnly, mcpServers: build.mcpServers },
+      build: { cwd: build.cwd, systemPrompt: build.systemPrompt, readOnly: build.readOnly, mcpServers: build.mcpServers, effort: build.key.effort },
       pack: build.pack,
       logSeq: closed?.logSeq ?? 0,
       live: true,
@@ -265,7 +269,7 @@ export class SessionManager {
 
   /** Start a session and send the base pack, waiting for "ready". */
   private async openBaseSession(
-    build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: McpServerConfig[] },
+    build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: McpServerConfig[]; effort: string },
     pack: string,
     signal: AbortSignal | undefined,
     key: BaseKey,
@@ -277,6 +281,7 @@ export class SessionManager {
       systemPrompt: build.systemPrompt,
       readOnly: build.readOnly,
       mcpServers: build.mcpServers,
+      effort: build.effort,
     });
     const { text } = await this.sendText(session, pack, signal);
     if (!/ready/i.test(text)) {
@@ -376,6 +381,7 @@ export class SessionManager {
         systemPrompt: base.build.systemPrompt,
         readOnly: base.build.readOnly,
         mcpServers: base.build.mcpServers,
+        effort: base.key.effort,
       });
       await this.sendText(session, base.pack, opts.signal);
     }
@@ -592,6 +598,7 @@ export class SessionManager {
       systemPrompt: base.build.systemPrompt,
       readOnly: base.build.readOnly,
       mcpServers: base.build.mcpServers,
+      effort: base.key.effort,
     });
     await this.drainEvents(session, base.pack);
     return session;

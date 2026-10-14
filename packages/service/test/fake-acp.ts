@@ -66,6 +66,8 @@ export interface FakeAgentState {
   setModelCalls: Array<{ sessionId: string; value: string }>;
   /** session/set_mode calls (mode assertions, e.g. Codex workspace-write vs agent-full-access). */
   modeCalls: Array<{ sessionId: string; modeId: string }>;
+  /** Every `session/set_config_option` call (#172: model + effort alike). */
+  setConfigCalls: Array<{ sessionId: string; configId: string; value: string }>;
   cancelled: Set<string>;
   nextId: number;
   /** When true, prompts on forked sessions fail until resume() is called. */
@@ -89,6 +91,7 @@ export function createFakeState(turns: FakeTurn[] = []): FakeAgentState {
     forkCalls: [],
     setModelCalls: [],
     modeCalls: [],
+    setConfigCalls: [],
     cancelled: new Set(),
     nextId: 1,
     forkNeedsResume: false,
@@ -209,6 +212,11 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
     })
     .onRequest("session/set_config_option", async (ctx: any) => {
       state.setModelCalls.push({ sessionId: ctx.params.sessionId, value: ctx.params.value });
+      state.setConfigCalls.push({
+        sessionId: ctx.params.sessionId,
+        configId: ctx.params.configId,
+        value: ctx.params.value,
+      });
       return {};
     })
     .onNotification("session/cancel", async (ctx: any) => {

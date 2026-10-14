@@ -97,6 +97,7 @@ export async function ensureSecondOpinionBase(
     provider: settings.secondOpinion.provider,
     model: settings.secondOpinion.model,
     access: postureFor(settings),
+    effort: settings.secondOpinion.effort,
   };
   const mcp = deps.mcp.issueSession(reviewId, `so-base-${reviewId}-v${version}`, "second-opinion");
   const mcpServers = [{ name: "unvibe", url: `${deps.mcpBaseUrl}${mcp.path}` }];
@@ -143,6 +144,7 @@ export async function forkSecondOpinionBase(
   const session = await runner.start({
     provider: settings.secondOpinion.provider,
     model: settings.secondOpinion.model,
+    effort: settings.secondOpinion.effort,
     cwd: worktreeOf(deps.dataDir, reviewId),
     systemPrompt: instructions,
     readOnly: postureFor(settings) !== "full",

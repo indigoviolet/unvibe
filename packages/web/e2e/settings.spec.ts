@@ -222,7 +222,7 @@ test("model pickers list provider models and warn on same-model second opinion",
   // the selected value + the attached placeholder option instead).
   const secondModel = second.locator("select").nth(1);
   await expect(secondModel).toHaveValue("");
-  await expect(second.locator('option[disabled][value=""]')).toBeAttached();
+  await expect(secondModel.locator('option[disabled][value=""]')).toBeAttached();
   await expect(secondModel).toBeVisible();
   await second.locator("select").nth(1).selectOption("mock-main");
   await expect(page.getByText(/same model as main/)).toBeVisible();
@@ -232,7 +232,7 @@ test("model pickers list provider models and warn on same-model second opinion",
   await page.addInitScript(() => {
     localStorage.setItem(
       "unvibe.mock.settings",
-      JSON.stringify({ main: { provider: "custom", model: "custom-1" } }),
+      JSON.stringify({ main: { provider: "custom", model: "custom-1", effort: "" } }),
     );
   });
   await page.goto("/settings");

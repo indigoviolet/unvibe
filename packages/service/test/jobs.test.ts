@@ -87,6 +87,7 @@ const spec = (over: Partial<Parameters<JobQueue["enqueue"]>[0]> = {}) => ({
   kind: "explain" as const,
   provider: "claude",
   model: "m",
+  effort: "",
   priority: JOB_PRIORITY.background,
   run: async () => {},
   ...over,
@@ -449,6 +450,17 @@ describe("card scope (#62)", () => {
     const { interrupted } = q2.recover(store.listOpen());
     expect(interrupted[0].cardId).toBe("c-central");
     gate.resolve();
+  });
+
+  it("carries effort on the job and persists it (#172); Default is stored as empty", async () => {
+    const { queue, store } = makeQueue({ persist: true });
+    const job = queue.enqueue(spec({ reviewId: "r1", effort: "high", run: async () => {} }));
+    expect(job.effort).toBe("high");
+    expect(queue.get(job.id)?.effort).toBe("high");
+    expect(store?.get(job.id)?.effort).toBe("high");
+    const plain = queue.enqueue(spec({ reviewId: "r1", run: async () => {} }));
+    expect(queue.get(plain.id)?.effort).toBe("");
+    await queue.drain();
   });
 });
 

@@ -78,6 +78,20 @@ export interface PipelineOptions {
 
 type Session = { id: string; provider: string; model: string };
 
+/**
+ * Role identity for jobs and sessions (issue #172): provider + model +
+ * the role's effort, always passed explicitly ("" = adapter default).
+ * Spread into `jobs.enqueue` (effort shows on the Debug page next to the
+ * model) and `runner.start` (the adapter applies it).
+ */
+export function roleFields(pick: { provider: string; model: string; effort: string }): {
+  provider: string;
+  model: string;
+  effort: string;
+} {
+  return { provider: pick.provider, model: pick.model, effort: pick.effort };
+}
+
 async function collectStreaming(
   runner: AgentRunner,
   session: Session,
@@ -361,6 +375,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const provider = settings.main.provider;
     const model = settings.main.model;
+    const effort = settings.main.effort;
     // #122: enqueue before awaiting the base, so the click gets its job id
     // at once. The base seq for the change list is read synchronously from
     // the current base (absent → 0, a safe under-approximation: the fork may
@@ -374,6 +389,7 @@ export class Pipeline {
           provider,
           model,
           access: postureFor(settings),
+          effort,
         }),
       )?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
@@ -397,6 +413,7 @@ export class Pipeline {
       kind: o.kind,
       provider,
       model,
+      effort,
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
@@ -596,6 +613,7 @@ export class Pipeline {
     // #160): the session posture and the job stamp below both say so,
     // regardless of the setting.
     const access = postureFor(settings, o.kind);
+    const effort = settings.small.effort;
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -609,6 +627,7 @@ export class Pipeline {
       kind: o.kind,
       provider,
       model,
+      effort,
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
@@ -622,6 +641,7 @@ export class Pipeline {
             const session = await this.opts.runner.start({
               provider,
               model,
+              effort,
               cwd: this.worktreeOf(o.reviewId),
               systemPrompt: "",
               readOnly: access !== "full",
@@ -802,8 +822,7 @@ export class Pipeline {
       return this.opts.jobs.enqueue({
         reviewId,
         kind: "concept",
-        provider: effective.main.provider,
-        model: effective.main.model,
+        ...roleFields(effective.main),
         priority: JOB_PRIORITY.userRequested,
         run: async () => {},
       });
@@ -821,8 +840,7 @@ export class Pipeline {
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "concept",
-      provider: settings.main.provider,
-      model: settings.main.model,
+      ...roleFields(settings.main),
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `concept:${slug}`, requestKind: "concept-page", baseVersion: `v${snapshot.version.n}` },
       cardId: `cc-${slug}`,
@@ -912,16 +930,14 @@ export class Pipeline {
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "summarize",
-      provider: settings.small.provider,
-      model: settings.small.model,
+      ...roleFields(settings.small),
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `hunk:${contentHash}`, requestKind: "summarize", baseVersion: `v${snapshot.version.n}` },
       accessMode: postureFor(settings, "summarize"),
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const session = await this.opts.runner.start({
-          provider: settings.small.provider,
-          model: settings.small.model,
+          ...roleFields(settings.small),
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
           readOnly: postureFor(settings, "summarize") !== "full",
@@ -1257,6 +1273,7 @@ export class Pipeline {
       provider: settings.main.provider,
       model: settings.main.model,
       access: postureFor(settings),
+      effort: settings.main.effort,
     };
     const mcp = this.opts.mcp.issueSession(reviewId, `base-${reviewId}`, "session");
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
@@ -1366,6 +1383,7 @@ export class Pipeline {
             provider: settings.main.provider,
             model: settings.main.model,
             access: postureFor(settings),
+            effort: settings.main.effort,
           },
           forked.viaFork,
         );
@@ -1394,6 +1412,7 @@ export class Pipeline {
         provider: settings.main.provider,
         model: settings.main.model,
         access: postureFor(settings),
+        effort: settings.main.effort,
       },
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
@@ -1412,8 +1431,7 @@ export class Pipeline {
     }
     const mcp = this.opts.mcp.issueSession(reviewId, `fork-${Date.now()}`, "session");
     const session = await runner.start({
-      provider: settings.main.provider,
-      model: settings.main.model,
+      ...roleFields(settings.main),
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
@@ -1450,8 +1468,7 @@ export class Pipeline {
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "reader",
-      provider: settings.main.provider,
-      model: settings.main.model,
+      ...roleFields(settings.main),
       priority: JOB_PRIORITY.visible,
       dedupe: { anchor: "guide", requestKind: "reader", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
@@ -1470,8 +1487,7 @@ export class Pipeline {
         for (let attempt = 0; ; attempt++) {
           const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
           const session = await this.opts.runner.start({
-            provider: settings.main.provider,
-            model: settings.main.model,
+            ...roleFields(settings.main),
             cwd: this.worktreeOf(reviewId),
             systemPrompt: instructions,
             readOnly: postureFor(settings) !== "full",
@@ -1829,8 +1845,7 @@ export class Pipeline {
       return this.opts.jobs.enqueue({
         reviewId,
         kind: "critic",
-        provider: settings.main.provider,
-        model: settings.main.model,
+        ...roleFields(settings.main),
         priority: JOB_PRIORITY.background,
         dedupe: { anchor: `finding:${key}`, requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
         run: async (ctx) => {
@@ -1960,8 +1975,7 @@ export class Pipeline {
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "concept",
-      provider: settings.main.provider,
-      model: settings.main.model,
+      ...roleFields(settings.main),
       priority: JOB_PRIORITY.background,
       dedupe: { anchor: "concepts", requestKind: "concept-stubs", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
@@ -2065,7 +2079,7 @@ export class Pipeline {
     snapshot: ReviewSnapshot,
     file: ReviewSnapshot["files"][number],
     hunk: ReviewSnapshot["files"][number]["hunks"][number],
-    small: { provider: string; model: string },
+    small: { provider: string; model: string; effort: string },
     expectedJobs: number,
     access: AccessMode,
   ): Job {
@@ -2080,16 +2094,14 @@ export class Pipeline {
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "hunk-pass",
-      provider: small.provider,
-      model: small.model,
+      ...roleFields(small),
       priority: JOB_PRIORITY.background,
       dedupe: { anchor: `hunk:${hunk.contentHash}`, requestKind: "hunk-pass", baseVersion: `v${snapshot.version.n}` },
       accessMode: access,
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const session = await this.opts.runner.start({
-          provider: small.provider,
-          model: small.model,
+          ...roleFields(small),
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
           readOnly: access !== "full",
@@ -2154,8 +2166,7 @@ export class Pipeline {
         this.opts.jobs.enqueue({
           reviewId,
           kind: "go-deeper",
-          provider: effective.main.provider,
-          model: effective.main.model,
+          ...roleFields(effective.main),
           priority: JOB_PRIORITY.background,
           dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
           run: async (ctx) => {
@@ -2615,8 +2626,7 @@ export class Pipeline {
         this.opts.jobs.enqueue({
           reviewId: opts.reviewId,
           kind: "update-pass",
-          provider: settings.main.provider,
-          model: settings.main.model,
+          ...roleFields(settings.main),
           priority: JOB_PRIORITY.userRequested,
           dedupe: { anchor: "update", requestKind: "update-pass", baseVersion: `v${opts.toVersion}` },
           promptSnapshot: prompt,

@@ -31,7 +31,7 @@ const ROLES: SettingsRole[] = ["main", "small", "secondOpinion"];
 
 /** Unset second-opinion marker: no second-opinion model available yet. */
 export function unsetSecondOpinion(): ModelPick {
-  return { provider: "codex", model: "" };
+  return { provider: "codex", model: "", effort: "" };
 }
 
 export interface EffectiveSettingsDeps {

@@ -15,9 +15,11 @@ export const DEFAULT_SETTINGS: Settings = {
   // so the fallback never warns "not offered"; they surface only when no
   // listing is known (offline, adapter down) or no allowed family is
   // offered, where readiness reports them plainly.
-  main: { provider: "claude", model: "claude-opus-5-5" },
-  small: { provider: "claude", model: "claude-haiku-5-5" },
-  secondOpinion: { provider: "codex", model: "gpt-6.1-sol" },
+  // Effort is "" (Default) for every role: the adapter's own thinking
+  // level stands unless the owner picks one (issue #172).
+  main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
+  small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
+  secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
   sessionsPerProvider: 4,
   inlineBudgetTokens: 40_000,
   rebuildSupersededRatio: 0.2,
@@ -44,7 +46,9 @@ export const DEFAULT_SETTINGS: Settings = {
 function isModelPick(v: unknown): v is ModelPick {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
-  return typeof o["provider"] === "string" && typeof o["model"] === "string";
+  return (
+    typeof o["provider"] === "string" && typeof o["model"] === "string" && typeof o["effort"] === "string"
+  );
 }
 
 /** Validate a partial update; returns error messages (empty = valid). */

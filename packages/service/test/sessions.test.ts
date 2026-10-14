@@ -78,7 +78,7 @@ class StubRunner implements AgentRunner {
   }
 }
 
-const KEY: BaseKey = { reviewId: "r1", reviewVersion: "v1", guideRevision: "g1", provider: "claude", model: "m", access: "lockdown" };
+const KEY: BaseKey = { reviewId: "r1", reviewVersion: "v1", guideRevision: "g1", provider: "claude", model: "m", access: "lockdown", effort: "" };
 
 function basePack(): string {
   return "L1+L1b+L2 BASE PACK";

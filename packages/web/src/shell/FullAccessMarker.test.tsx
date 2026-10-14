@@ -16,9 +16,9 @@ afterEach(() => {
 
 function settings(fullAccess: boolean): Awaited<ReturnType<typeof api.settings>> {
   return {
-    main: { provider: "claude", model: "m" },
-    small: { provider: "claude", model: "m" },
-    secondOpinion: { provider: "codex", model: "" },
+    main: { provider: "claude", model: "m", effort: "" },
+    small: { provider: "claude", model: "m", effort: "" },
+    secondOpinion: { provider: "codex", model: "", effort: "" },
     sessionsPerProvider: 4,
     inlineBudgetTokens: 40000,
     rebuildSupersededRatio: 0.2,

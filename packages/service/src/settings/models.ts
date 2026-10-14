@@ -6,12 +6,21 @@
  * offline fallback so Settings renders pickers without a login.
  */
 
-import type { ModelInfo } from "@unvibe/shared";
+import type { ModelInfo, ThinkingOption } from "@unvibe/shared";
 
 export interface OfferedModels {
   models: ModelInfo[];
   /** The adapter's current (default) model id, when the adapter reports one. */
   defaultId: string | null;
+}
+
+/** Thinking levels an adapter offers for its effort selector (issue #172). */
+export interface OfferedThinking {
+  /** Display name for the selector (e.g. "Effort"). */
+  label?: string;
+  options: ThinkingOption[];
+  /** The adapter's own current value (what Default leaves alone). */
+  current?: string;
 }
 
 export interface ModelCatalog {
@@ -22,6 +31,11 @@ export interface ModelCatalog {
    * defaults" — never "no models".
    */
   offered?(provider: string): Promise<OfferedModels | null>;
+  /**
+   * Live thinking-level offering, or null when unknown (no live adapter,
+   * probe failed). Null means "don't validate" — never "no options".
+   */
+  thinking?(provider: string): Promise<OfferedThinking | null>;
 }
 
 /** Provider ids known before the ACP adapters land. */
@@ -70,6 +84,10 @@ export class StaticModelCatalog implements ModelCatalog {
    * offline use). Tests needing validation inject their own catalog.
    */
   offered(): Promise<null> {
+    return Promise.resolve(null);
+  }
+
+  thinking(): Promise<null> {
     return Promise.resolve(null);
   }
 

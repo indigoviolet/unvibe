@@ -54,6 +54,7 @@ export interface UpdatePassDeps {
   promptsDir?: string;
   provider?: string;
   model?: string;
+  effort: string;
 }
 
 /** Format one hunk for the `{{changed_hunks}}` variable. */
@@ -348,11 +349,13 @@ export function enqueueUpdatePass(
 
   const provider = deps.provider ?? "main";
   const model = deps.model ?? "main-model";
+  const effort = deps.effort;
   return deps.jobs.enqueue({
     reviewId: opts.reviewId,
     kind: "update-pass",
     provider,
     model,
+    effort,
     priority: JOB_PRIORITY.userRequested,
     dedupe: { anchor: "update", requestKind: "update-pass", baseVersion: `v${opts.toVersion}` },
     run: async (ctx) => {

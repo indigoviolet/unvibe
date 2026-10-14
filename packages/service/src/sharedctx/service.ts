@@ -186,6 +186,7 @@ export class SharedContextService {
       provider: settings.main.provider,
       model: settings.main.model,
       access: postureFor(settings),
+      effort: settings.main.effort,
     });
   }
 

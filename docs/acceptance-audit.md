@@ -780,7 +780,11 @@ needed (that deviation is closed, not added).
   `GET /api/models` ran 200). Switching a role's provider only browses that
   provider's list and saves nothing; choosing a model saves provider + model
   together, with no false “no longer offered” alert mid-browse (issue #87;
-  `ModelsSection.test.tsx`).
+  `ModelsSection.test.tsx`). Issue #172 adds one effort control per role
+  next to its model: values come from the adapter (`GET /api/thinking`),
+  Default first (the adapter's own setting stands); a model change whose
+  provider does not offer the saved effort resets to Default with a notice
+  (`ModelsSection.test.tsx` "effort per role").
 - Model display names (#21) — met: `GET /api/models` carries `name` +
   `description` from the adapters; pickers show display name beside the id
   with description as secondary text (Claude + Codex); readiness, Doctor,
@@ -817,6 +821,9 @@ needed (that deviation is closed, not added).
   renamed the old `threadId`). Evidence:
   `service/test/jobs.test.ts` "finished jobs stay listed after a restart",
   `scripts/restart-resilience.mjs` step 2b, PRD §4.14 + §16).
+  Issue #172 adds the effort each job ran with next to the model
+  (`jobs.test.ts` "carries effort on the job and persists it"; required,
+  "" = adapter default).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log lines
   verbatim in fenced blocks under in-base/ready/waiting headings (issue
@@ -1147,6 +1154,15 @@ needed (that deviation is closed, not added).
   what they need — met (`settings.models`, `runSmall` no-fork). All
   role consumers (readiness, pipeline, second-opinion runner, shared
   context) resolve the same effective settings as Settings (#88).
+  Issue #172 adds the thinking level per role: the setting rides
+  `AgentRunner.start` (any runner can honour it); the ACP runner applies
+  it at start and re-applies it on fork and load; base keys carry it (a
+  changed level rebuilds the base); second-opinion reuse matches on it;
+  each job records it. Small stays at the adapter default unless changed.
+  Evidence: `acp-runner.test.ts` "effort is sent on new, fork, resume and
+  load" + "Default effort sends no thinking option", live
+  "a non-default effort reaches the session" per provider (tiny: one
+  one-word turn each, no pack).
 - Second-opinion isolation (own base L0+L1, never guide text/findings/
   contributions/pins beyond cited) — met (structural under the lock-down:
   `secondopinion/base.ts`; tool-level: `registry.ts:286` restricted

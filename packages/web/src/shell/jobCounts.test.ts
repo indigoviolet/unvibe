@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { jobCounts } from "./jobCounts.js";
 
 function job(id: string, state: JobState): Job {
-  return { id, kind: "ask", model: "mock-main", priority: 1, state };
+  return { id, kind: "ask", model: "mock-main", effort: "", priority: 1, state };
 }
 
 describe("jobCounts", () => {

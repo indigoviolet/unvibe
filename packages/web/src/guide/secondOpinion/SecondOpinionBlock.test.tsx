@@ -42,6 +42,7 @@ function result(verdict: SecondOpinionResult["verdict"]): SecondOpinionResult {
     mode: "check",
     provider: "codex",
     model: "mock-second",
+    effort: "",
     verdict,
     reasoning: "Checked.",
     blocks: [
