@@ -22,6 +22,7 @@ import {
   renderTemplate,
   type RenderValues,
 } from "../src/prompts/index.js";
+import { accessPolicyText } from "../src/prompts/access.js";
 import { fixtureSnapshot } from "./fixtures.js";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -86,6 +87,10 @@ function goldenValues(): Record<string, RenderValues> {
 describe("template goldens", () => {
   const lib = loadTemplatesDirSync(REPO_PROMPTS);
   const values = goldenValues();
+  // Issue #160: the instructions golden renders the lock-down variant —
+  // the golden file itself is unchanged, proving the default is
+  // byte-for-byte the pre-#160 wording.
+  values["instructions"] = { access_policy: accessPolicyText(lib, "lockdown") };
   const update = process.env.UPDATE_GOLDENS === "1";
 
   for (const name of PROMPT_TEMPLATE_NAMES) {

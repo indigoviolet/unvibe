@@ -78,7 +78,7 @@ class StubRunner implements AgentRunner {
   }
 }
 
-const KEY: BaseKey = { reviewId: "r1", reviewVersion: "v1", guideRevision: "g1", provider: "claude", model: "m" };
+const KEY: BaseKey = { reviewId: "r1", reviewVersion: "v1", guideRevision: "g1", provider: "claude", model: "m", access: "lockdown" };
 
 function basePack(): string {
   return "L1+L1b+L2 BASE PACK";
@@ -130,7 +130,7 @@ describe("getBase", () => {
     ]);
     const mgr = new SessionManager({ runner });
     await expect(
-      mgr.getBase({ key: KEY, cwd: "/", systemPrompt: "s", mcpServers: [], pack: "BASE" }),
+      mgr.getBase({ key: KEY, cwd: "/", systemPrompt: "s", readOnly: true, mcpServers: [], pack: "BASE" }),
     ).rejects.toThrow(/ready/);
   });
 
@@ -140,7 +140,7 @@ describe("getBase", () => {
     ]);
     const mgr = new SessionManager({ runner });
     await expect(
-      mgr.getBase({ key: KEY, cwd: "/", systemPrompt: "s", mcpServers: [], pack: "BASE" }),
+      mgr.getBase({ key: KEY, cwd: "/", systemPrompt: "s", readOnly: true, mcpServers: [], pack: "BASE" }),
     ).rejects.toBeInstanceOf(RetryableError);
   });
 });
@@ -167,7 +167,7 @@ describe("fork vs fallback equivalence", () => {
     );
     expect(runner.fork).toBeUndefined();
     const mgr = new SessionManager({ runner });
-    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "sys", mcpServers: [], pack: basePack() };
+    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "sys", readOnly: true, mcpServers: [], pack: basePack() };
     const base = await mgr.getBase(opts);
     const conv = await mgr.forkConversation(base.key, "hello-directions");
     expect(conv.viaFork).toBe(false);
@@ -213,7 +213,7 @@ describe("idle close and reopen", () => {
       { match: "hello", events: [{ type: "text", delta: "hi" }, { type: "done", stopReason: "end" }] },
     ]);
     const mgr = new SessionManager({ runner, clock });
-    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", mcpServers: [], pack: basePack() };
+    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", readOnly: true, mcpServers: [], pack: basePack() };
     const base = await mgr.getBase(opts);
     const conv = await mgr.forkConversation(base.key, "hello");
     await clock.advance(10 * 60 * 1000);
@@ -236,7 +236,7 @@ describe("idle close and reopen", () => {
       { failLoad: true },
     );
     const mgr = new SessionManager({ runner, clock });
-    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", mcpServers: [], pack: basePack() };
+    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", readOnly: true, mcpServers: [], pack: basePack() };
     const base = await mgr.getBase(opts);
     const conv = await mgr.forkConversation(base.key, "hello");
     await clock.advance(10 * 60 * 1000);
@@ -302,7 +302,7 @@ describe("invalidate and restore", () => {
       { match: "hello", events: [{ type: "text", delta: "hi" }, { type: "done", stopReason: "end" }] },
     ]);
     const mgr1 = new SessionManager({ runner, store });
-    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", mcpServers: [], pack: basePack() };
+    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", readOnly: true, mcpServers: [], pack: basePack() };
     const base = await mgr1.getBase(opts);
     const conv = await mgr1.forkConversation(base.key, "hello");
 
@@ -327,7 +327,7 @@ describe("invalidate and restore", () => {
     ];
     const oldUrl = [{ name: "unvibe", url: "http://127.0.0.1:1/api/mcp/old" }];
     const newUrl = [{ name: "unvibe", url: "http://127.0.0.1:1/api/mcp/new" }];
-    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", mcpServers: oldUrl, pack: basePack() };
+    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", readOnly: true, mcpServers: oldUrl, pack: basePack() };
     const mgr1 = new SessionManager({ runner: new StubRunner(scripts), store });
     const first = await mgr1.getBase(opts);
     expect(first.fresh).toBe(true);
@@ -352,7 +352,7 @@ describe("invalidate and restore", () => {
       { match: "hello", events: [{ type: "text", delta: "hi" }, { type: "done", stopReason: "end" }] },
     ];
     const oldUrl = [{ name: "unvibe", url: "http://127.0.0.1:1/api/mcp/old" }];
-    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", mcpServers: oldUrl, pack: basePack() };
+    const opts: BaseBuild = { key: KEY, cwd: "/r", systemPrompt: "s", readOnly: true, mcpServers: oldUrl, pack: basePack() };
     const mgr1 = new SessionManager({ runner: new StubRunner(scripts), store });
     const base = await mgr1.getBase(opts);
     const conv = await mgr1.forkConversation(base.key, "hello");

@@ -138,3 +138,9 @@ test.skip("the panes cannot both be hidden", async ({ page }) => {
   await expect(page.locator("#page")).not.toHaveClass(/hide/);
   await expect(page.locator("#right")).toHaveClass(/hide/);
 });
+
+test("no full-access marker while the setting is off", async ({ page }) => {
+  await gotoDemo(page);
+  await expect(page.locator("#reviewbar")).toBeVisible();
+  await expect(page.getByTestId("full-access-marker")).toHaveCount(0);
+});
