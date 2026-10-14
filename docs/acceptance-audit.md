@@ -1027,6 +1027,19 @@ needed (that deviation is closed, not added).
   file with hunk IDs; second-opinion isolation unchanged), so the agent
   can discover files once the L1 ladder leaves the file list out; the
   tool description change is a deliberate golden update.
+- `desc:` IDs in the base context — met (#110): the base source blurb
+  lists the description's paragraphs with their IDs (`- desc:<id>: <text>`
+  per paragraph, headings omitted — they carry no anchors), produced by
+  the same `parseDescriptionParagraphs` the tools and the validator read,
+  so the IDs agree everywhere (`desc-ids-base.test.ts` asserts equality
+  with ingest IDs and validator resolution — ran). The base reads the
+  pending edit (`pendingHtml ?? html` in `toPromptSnapshot`); a later edit
+  invalidates the base through the base key (the description revision rides
+  `guideRevisionForSnapshot`, and the second-opinion base key carries it as
+  `so-<deschash>`). `prompts/instructions.md` and `prompts/reader.md` say
+  the IDs are in the context, so the reader cites them directly instead of
+  spending `search_review` round-trips (live: first card cited
+  `desc:d-p1/d-p2/d-p4`, 0 unverified, 0 MCP calls before it landed).
 - Validation (existence, ranges, anchor substring, hidden concept
   candidates) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair
@@ -1208,9 +1221,9 @@ needed (that deviation is closed, not added).
    (readiness/doctor report path + version). Tarballs attached to GitHub
    releases install identically (verified 2026-10-11 from GitHub itself:
    `gh release download v0.0.1-rc.3` + `npm install -g` on npm 10 and 11,
-   doctor/start/demo/diagrams/stop green; the repo is private so the git ref
-   needs `gh auth setup-git` and the tarball needs `gh release download` —
-   a bare download URL 404s). Installing from the default branch (source
+   doctor/start/demo/diagrams/stop green; the repo has since gone public —
+   at the time it was private, so the git ref needed `gh auth setup-git`
+   and the tarball needed `gh release download`). Installing from the default branch (source
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
