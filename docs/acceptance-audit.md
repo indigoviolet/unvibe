@@ -586,6 +586,14 @@ needed (that deviation is closed, not added).
 - Suggested comments (“Agent · suggested comment”, not for PR, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
+  Issue #163: no reply box on suggestions; the selection toolbar works
+  inside the suggestion text (anchored to the comment) and Ask opens the
+  usual Ask card on it; “Ask the agent about this” as on user comments;
+  accept / edit / dismiss unchanged — met (`ThreadView.tsx`,
+  `SelectionToolbar.tsx` ai-comment scope, `ThreadView.test.tsx`
+  suggested cases, `SelectionToolbar.test.tsx` ai-comment resolution,
+  `e2e/comments.spec.ts` “AI-suggested comments carry no reply box”,
+  `docs/screenshots/163-suggested-comment.png`).
 
 ### §4.10 Second opinion — all met
 

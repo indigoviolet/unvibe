@@ -190,7 +190,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - Findings are the agent's own judgements about the change: mismatches, risks, questionable choices. They are **separate pages**, never sentences mixed into the restatement.
 - **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →".
 - **The finding page:** carries the same label, and its cards have a rust left border. Typical cards are Evidence (each piece cited) and Assessment.
-- **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card.
+- **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card. A suggestion carries no reply box (a reply could never be answered); selecting in it summons the selection toolbar, and Ask opens the usual Ask card anchored to the comment. "Ask the agent about this" answers from the comment like on any other comment; accept / edit / dismiss work as before.
 
 ### 4.10 Second opinion
 - A **Second opinion** action is available on any card, finding, or conversation answer. It asks a *different* model (§12).
