@@ -17,7 +17,7 @@
  */
 import path from "node:path";
 import type { AccessMode, AgentRunner, Session } from "@unvibe/shared";
-import { accessModeOf } from "@unvibe/shared";
+import { postureFor } from "@unvibe/shared";
 import { buildL1Source } from "../context/index.js";
 import { loadTemplatesDirSync } from "../prompts/index.js";
 import { renderSystemPrompt } from "../prompts/access.js";
@@ -66,7 +66,7 @@ export async function buildSecondOpinionBaseText(
   const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const promptSnap = toPromptSnapshot(snapshot, { model: settings.secondOpinion.model });
   const l1 = buildL1Source(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
-  const instructions = renderInstructions(deps.promptsDir, accessModeOf(settings));
+  const instructions = renderInstructions(deps.promptsDir, postureFor(settings));
   const sourceText = l1.text;
   const packText =
     `Read the review source below and reply with exactly \`ready\` and nothing else.\n\n` +
@@ -89,14 +89,14 @@ export async function ensureSecondOpinionBase(
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
   const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const { packText, version } = await buildSecondOpinionBaseText(deps, reviewId);
-  const instructions = renderInstructions(deps.promptsDir, accessModeOf(settings));
+  const instructions = renderInstructions(deps.promptsDir, postureFor(settings));
   const key = {
     reviewId,
     reviewVersion: `v${snapshot.version.n}`,
     guideRevision: `so-${descriptionRevisionForSnapshot(snapshot)}`,
     provider: settings.secondOpinion.provider,
     model: settings.secondOpinion.model,
-    access: accessModeOf(settings),
+    access: postureFor(settings),
   };
   const mcp = deps.mcp.issueSession(reviewId, `so-base-${reviewId}-v${version}`, "second-opinion");
   const mcpServers = [{ name: "unvibe", url: `${deps.mcpBaseUrl}${mcp.path}` }];
@@ -104,7 +104,7 @@ export async function ensureSecondOpinionBase(
     key,
     cwd: worktreeOf(deps.dataDir, reviewId),
     systemPrompt: instructions,
-    readOnly: accessModeOf(settings) !== "full",
+    readOnly: postureFor(settings) !== "full",
     mcpServers,
     pack: packText,
   });
@@ -128,7 +128,7 @@ export async function forkSecondOpinionBase(
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
   const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const { packText, version } = await buildSecondOpinionBaseText(deps, reviewId);
-  const instructions = renderInstructions(deps.promptsDir, accessModeOf(settings));
+  const instructions = renderInstructions(deps.promptsDir, postureFor(settings));
   const base = await ensureSecondOpinionBase(deps, reviewId);
   const runner = deps.runner;
   if (typeof runner.fork === "function") {
@@ -145,7 +145,7 @@ export async function forkSecondOpinionBase(
     model: settings.secondOpinion.model,
     cwd: worktreeOf(deps.dataDir, reviewId),
     systemPrompt: instructions,
-    readOnly: accessModeOf(settings) !== "full",
+    readOnly: postureFor(settings) !== "full",
     mcpServers: [{ name: "unvibe", url: `${deps.mcpBaseUrl}${mcp.path}` }],
   });
   // Byte-identical base pack first (caching still works).

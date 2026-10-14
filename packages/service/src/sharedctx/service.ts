@@ -24,7 +24,7 @@ import type {
   ReviewSnapshot,
   SharedContextBaseStats,
 } from "@unvibe/shared";
-import { accessModeOf } from "@unvibe/shared";
+import { postureFor } from "@unvibe/shared";
 import { filterChangeList, formatChangeList } from "../context/log.js";
 import { formatLogEntry } from "../context/log.js";
 import { charTokenEstimator } from "../context/tokens.js";
@@ -185,7 +185,7 @@ export class SharedContextService {
       guideRevision: guideRevisionForSnapshot(snap),
       provider: settings.main.provider,
       model: settings.main.model,
-      access: accessModeOf(settings),
+      access: postureFor(settings),
     });
   }
 

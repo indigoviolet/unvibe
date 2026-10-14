@@ -53,7 +53,7 @@ import { lookupForSnapshot } from "../pipeline/lookup.js";
 import { validateReply } from "../validate/index.js";
 import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
 import { renderSystemPrompt } from "../prompts/access.js";
-import { accessModeOf } from "@unvibe/shared";
+import { postureFor } from "@unvibe/shared";
 import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
 import { resolveEffectiveSettings } from "../settings/index.js";
@@ -348,7 +348,7 @@ export async function buildSecondOpinionPrompt(
   const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
   const sourceText = [ladder.source, ladder.diff.text].join("\n");
   const lib = loadTemplatesDirSync(deps.promptsDir);
-  const instructions = renderSystemPrompt(lib, accessModeOf(settings));
+  const instructions = renderSystemPrompt(lib, postureFor(settings));
   const baseExcerpts = await buildExcerptMap({ snapshot });
   const worktreePath = await getWorktreePath(deps, reviewId);
   const codeExcerpts = await readCodeExcerpts(target.citedIds, snapshot.version.headSha, worktreePath, deps.commands);
