@@ -1,0 +1,31 @@
+{
+  "name": "unvibe",
+  "version": "0.0.5-preview.ui-diff-162-165-168.dd22f45",
+  "description": "Reader for code changes: localhost service + installable web app.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "unvibe": "./packages/service/dist/index.js"
+  },
+  "dependencies": {
+    "fastify": "5.12.5",
+    "@fastify/static": "8.3.0",
+    "@fastify/websocket": "11.3.4",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "immer": "11.1.21",
+    "ws": "8.22.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "unvibe": {
+    "channel": "preview/ui-diff-162-165-168",
+    "commit": "dd22f45d00970d3dcb09d87c779cdc3ad16511b5",
+    "builtAt": "2026-10-14T10:06:18.576Z",
+    "sourceBranch": "ui/diff-162-165-168",
+    "sourceVersion": "0.0.5",
+    "sourceCommit": "dd22f45d00970d3dcb09d87c779cdc3ad16511b5",
+    "baseBranch": "main",
+    "baseCommit": "e1f159e39fb0154eb0bc9c78e5d0a53eec83028e"
+  }
+}
