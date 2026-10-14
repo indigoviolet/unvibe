@@ -409,7 +409,10 @@ needed (that deviation is closed, not added).
   and content”).
 - Citations (`<>` + count; hover previews lines; click opens source pane
   at spot w/ unfold + filter clear) — met (`guide-service.spec.ts`
-  “citations reveal over the real API”, `validate/*`).
+  “citations reveal over the real API”, `validate/*`). Chips flow inline
+  with their text and never wrap alone onto a line (issue #165); lists
+  carry per-item chips with no repeated block-level count row
+  (`guide/BlockView.list.test.tsx`).
 - Inline code chips behave as citations — met (`reply-format.md` §1,
   `guide/citations.test.ts`).
 - Unverified citations dimmed + tooltip — met (`validate/validate.ts`

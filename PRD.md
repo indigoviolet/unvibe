@@ -139,7 +139,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Dotted links** all behave the same way: hover shows a preview card, click acts.
   - A link to a page previews its title and first paragraph; click opens the page.
   - A collapsed explanation card previews its content; click expands it in place.
-- **Citations:** a small `<>` marker at the end of a block, with a count if there's more than one.
+- **Citations:** a small `<>` marker at the end of a block, with a count if there's more than one. Each chip flows inline with its text and never wraps alone onto its own line. A list carries one chip per item, next to the item — never a repeated block-level count on a line of its own.
   - Hover previews the cited lines.
   - Click opens the source pane at that spot and highlights it. If needed it unfolds or shows hidden hunks, and clears file filters.
   - Inline code chips in agent answers behave the same way.

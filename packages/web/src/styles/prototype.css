@@ -414,7 +414,12 @@ a.cx.pg { text-decoration-style: solid; color: var(--accent); }
 .src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 4px; padding: 0 4px; }
 .src:hover { text-decoration: underline; }
 /* Linkouts: small markers at the end of a block; hover previews, click opens. */
-.lo { display: inline-flex; flex-wrap: wrap; gap: 2px 6px; margin-left: 4px; vertical-align: 1px; }
+/* Issue #165: the marker row flows inline with the text it belongs to,
+   each chip atomic (inline-flex + nowrap), so a chip never wraps alone
+   onto an otherwise empty line — it travels like a word of the text. */
+.lo { display: inline; margin-left: 4px; vertical-align: 1px; }
+.lo > * { margin-right: 6px; }
+.lo > *:last-child { margin-right: 0; }
 .lo-row { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: -4px; }
 /* Anchor footnotes (issue #72): quiet chips sharing the citations line. 12px
    muted siblings of the <> chip; truncated to one short line with an
@@ -434,7 +439,7 @@ a.cx.pg { text-decoration-style: solid; color: var(--accent); }
 .lo a.fnote:hover { color: var(--accent); }
 .lo a.fnote .ic { color: var(--muted); }
 .lo a.fnote:hover .ic { color: var(--accent); }
-.lk { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--muted); opacity: .55; padding: 0 3px; border-radius: 4px; font: 10.5px var(--mono); height: 18px; }
+.lk { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--muted); opacity: .55; padding: 0 3px; border-radius: 4px; font: 10.5px var(--mono); height: 18px; white-space: nowrap; }
 .lk .ic { width: 12px; height: 12px; }
 .lk:hover, .lk.on { opacity: 1; color: var(--accent); background: var(--accent-soft); }
 .lk.cm { color: var(--note); opacity: .8; }
