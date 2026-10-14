@@ -1126,8 +1126,9 @@ needed (that deviation is closed, not added).
   contributions/pins beyond cited) — met (structural: `secondopinion/base.ts`;
   tool-level: `registry.ts:286` restricted search/resolve; e2e asserts the
   real prompt has no guide text).
-- Per-provider cap 4 (setting `sessionsPerProvider`) — met
-  (`jobs/queue.ts`, `settings.test.ts` cap cases).
+- Per-provider cap (setting `sessionsPerProvider`, default 4) applied
+  separately to main-model and small-model jobs, read live — met (#182;
+  `jobs/queue.ts`, `jobs.test.ts` cap cases incl. N-at-once and live raise).
 - Priority queue (asked > visible > background) — met (`JOB_PRIORITY`,
   `jobs.test.ts` ordering).
 - Backoff on rate limits + shown on job — met (`backoff.ts`,
