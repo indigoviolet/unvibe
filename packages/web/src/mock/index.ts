@@ -57,7 +57,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { freshBlockId, parseGitHubRepoInput } from "@unvibe/shared";
+import { freshBlockId, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -512,6 +512,8 @@ function changesFetchError(): string | null {
 }
 
 let rev = 1;
+/** Per-review diff view preferences (issue #168): the mock persists them. */
+let mockViewPrefs: import("@unvibe/shared").ReviewViewPrefs = { showExistingComments: true };
 const hunkStates = seedHunkStates();
 /** Per-file fold state (issue #162): the mock persists it like the service. */
 const fileStates = new Map<string, import("@unvibe/shared").FileState>();
@@ -545,18 +547,56 @@ function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
 }
 seedMockD2Diagrams(mockPages);
 let description = { ...MOCK_DESCRIPTION };
-let existingComments: import("@unvibe/shared").ExistingReviewComment[] = [
-  {
-    id: 101,
-    path: "src/urllib3/connection.py",
-    line: 82,
-    side: "RIGHT",
-    body: "Already on GitHub: consider covering bare LF here too.",
-    author: "teammate",
-    createdAt: "2026-09-01T12:00:00Z",
-    htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r101",
-  },
-];
+function seedExistingComments(): import("@unvibe/shared").ExistingReviewComment[] {
+  const made = (
+    c: Omit<import("@unvibe/shared").ExistingReviewComment, "bodyHtml">,
+  ): import("@unvibe/shared").ExistingReviewComment => ({ ...c, bodyHtml: renderUntrustedMarkdown(c.body) });
+  return [
+    made({
+      id: 101,
+      path: "src/urllib3/connection.py",
+      line: 82,
+      side: "RIGHT",
+      body: "Already on GitHub: consider covering bare LF here too.",
+      author: "teammate",
+      createdAt: "2026-09-01T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r101",
+    }),
+    made({
+      id: 102,
+      path: "src/urllib3/connection.py",
+      line: 82,
+      side: "RIGHT",
+      body: "Good point — the fast path only checks for `\\r\\n`.",
+      author: "author",
+      replyTo: 101,
+      createdAt: "2026-09-01T12:30:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r102",
+    }),
+    made({
+      id: 103,
+      path: "src/urllib3/connection.py",
+      line: 500,
+      side: "RIGHT",
+      body: "Outdated remark: this line moved since the comment.",
+      author: "teammate",
+      createdAt: "2026-08-20T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r103",
+    }),
+    made({
+      id: 104,
+      path: "src/urllib3/retired.py",
+      line: 10,
+      side: "RIGHT",
+      body: "Remark on a file no longer in the diff.",
+      author: "review-bot",
+      createdAt: "2026-08-10T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r104",
+    }),
+  ];
+}
+
+let existingComments: import("@unvibe/shared").ExistingReviewComment[] = seedExistingComments();
 
 const SETTINGS_KEY = "unvibe.mock.settings";
 
@@ -772,22 +812,12 @@ export function resetMockState(): void {
   hunkStates.clear();
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
   fileStates.clear();
+  mockViewPrefs = { showExistingComments: true };
   annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
   mockPages = JSON.parse(JSON.stringify(MOCK_PAGES));
   seedMockD2Diagrams(mockPages);
   description = { ...MOCK_DESCRIPTION };
-  existingComments = [
-    {
-      id: 101,
-      path: "src/urllib3/connection.py",
-      line: 82,
-      side: "RIGHT",
-      body: "Already on GitHub: consider covering bare LF here too.",
-      author: "teammate",
-      createdAt: "2026-09-01T12:00:00Z",
-      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r101",
-    },
-  ];
+  existingComments = seedExistingComments();
   mockJobs = seedJobs();
   mockContributions = seedContributions();
   mockUpdatePending = null;
@@ -977,6 +1007,7 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     annotations,
     hunkStates: stale && viewing === 2 ? staleHunkStates() : [...hunkStates.values()],
     fileStates: [...fileStates.values()],
+    viewPrefs: { ...mockViewPrefs },
     jobs: mockJobs.filter((j) => j.reviewId === reviewId || (reviewId === "demo" && !j.reviewId)),
     contributions: reviewId === "demo" ? mockContributions : [],
     logTail: [],
@@ -1579,6 +1610,7 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
     annotations: [],
     hunkStates: [],
     fileStates: [],
+    viewPrefs: { showExistingComments: true },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -1606,6 +1638,7 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
     annotations: [],
     hunkStates: [],
     fileStates: [],
+    viewPrefs: { showExistingComments: true },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -1953,6 +1986,7 @@ export const mockApi = {
         annotations: [],
         hunkStates: [],
     fileStates: [],
+    viewPrefs: { showExistingComments: true },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2007,6 +2041,7 @@ export const mockApi = {
         annotations: [],
         hunkStates: [],
     fileStates: [],
+    viewPrefs: { showExistingComments: true },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2134,6 +2169,7 @@ export const mockApi = {
             annotations: [],
             hunkStates: [],
     fileStates: [],
+    viewPrefs: { showExistingComments: true },
             jobs: [],
             contributions: [],
             logTail: [],
@@ -2164,6 +2200,7 @@ export const mockApi = {
             annotations: [],
             hunkStates: [],
     fileStates: [],
+    viewPrefs: { showExistingComments: true },
             jobs: [],
             contributions: [],
             logTail: [],
@@ -2904,6 +2941,25 @@ export const mockApi = {
     const prev = fileStates.get(fileKey) ?? { fileKey, folded: false };
     fileStates.set(fileKey, { ...prev, ...(body.folded !== undefined ? { folded: body.folded } : {}) });
     emitFileStates();
+    return { ok: true };
+  },
+
+  // Mirrors the service view PATCH (issue #168).
+  updateView: async (
+    _id: string,
+    body: import("@unvibe/shared").UpdateViewRequest,
+  ): Promise<{ ok: boolean }> => {
+    if (body.showExistingComments !== undefined) {
+      mockViewPrefs = { ...mockViewPrefs, showExistingComments: body.showExistingComments };
+      const baseRev = rev;
+      rev += 1;
+      useReview.getState().applyEvent({
+        type: "patch",
+        baseRev,
+        headRev: rev,
+        ops: [{ op: "replace", path: "/viewPrefs", value: { ...mockViewPrefs } }],
+      });
+    }
     return { ok: true };
   },
 

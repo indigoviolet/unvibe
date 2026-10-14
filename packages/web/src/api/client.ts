@@ -54,6 +54,7 @@ import type {
   UpdateDescriptionRequest,
   UpdateFileRequest,
   UpdateHunkRequest,
+  UpdateViewRequest,
   UpdateReviewResponse,
   UpdateStatusResponse,
   UpdateSwitchRequest,
@@ -329,6 +330,13 @@ const realApi = {
   /** Per-file fold state (issue #162): persisted on the review. */
   updateFile: (id: string, fileKey: string, body: UpdateFileRequest): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}/files/${encodeURIComponent(fileKey)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  /** Per-review diff view preferences (issue #168): persisted on the review. */
+  updateView: (id: string, body: UpdateViewRequest): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/view`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
