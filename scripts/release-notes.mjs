@@ -6,9 +6,9 @@
 // - Later releases: merged commits since the previous tag
 //   (`git log <prev>..<tag> --oneline`), plus the install commands.
 //
-// The install story is private-repo aware: the git ref needs git
-// credentials (`gh auth setup-git`), and the tarball asset needs
-// `gh release download` — a bare tarball URL 401s without auth.
+// The install story assumes a public repository: the git ref installs
+// with no credentials, and the attached tarball downloads from its plain
+// releases/download URL with no login.
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
@@ -72,14 +72,11 @@ Install with no flags (Node 24 or newer):
 npm install -g github:indigoviolet/unvibe#${branch}
 \`\`\`
 
-The repository is private. The git-ref install needs git credentials with
-access to it (for example \`gh auth setup-git\` after \`gh auth login\`).
-The tarball attached below is private too: a bare
-\`https://github.com/…/releases/download/…\` URL does not work without
-authentication. Download it first, then install the file:
+No login needed: the repository is public. The attached tarball below
+installs the same way — download it from its plain releases/download URL
+and install the file:
 
 \`\`\`sh
-gh release download ${tag} -p 'unvibe-*.tgz'
 npm install -g ./unvibe-${version}.tgz
 \`\`\`
 
