@@ -171,6 +171,19 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
           </button>
         ) : null}
       </div>
+      {job.accessMode || (job.tools && job.tools.length > 0) || job.checkoutReset ? (
+        <div className="frow" style={{ gap: 8 }}>
+          <span className="hint">
+            {job.accessMode === "full" ? "Full access" : job.accessMode === "lockdown" ? "Read-only" : ""}
+            {job.accessMode && job.tools && job.tools.length > 0 ? " · " : ""}
+            {job.tools && job.tools.length > 0
+              ? `Tools: ${job.tools.map((t) => (t.detail ? `${t.name} (${t.detail})` : t.name)).join(", ")}`
+              : ""}
+            {(job.accessMode || (job.tools && job.tools.length > 0)) && job.checkoutReset ? " · " : ""}
+            {job.checkoutReset ? "The checkout changed and was reset after this job" : ""}
+          </span>
+        </div>
+      ) : null}
       {diagramErrors.map((detail, i) => (
         <div className="frow" style={{ gap: 8 }} key={i}>
           <span className="hint">Diagram: {detail}</span>
