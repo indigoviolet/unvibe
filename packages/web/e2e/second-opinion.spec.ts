@@ -16,8 +16,17 @@ async function gotoReview(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready).catch(() => {});
 }
 
+/**
+ * Issue #167: the demo seeds an open floating card under C-problem that
+ * overlays the controls below it — close it first, as a reader would.
+ */
+async function closeSeedCard(page: Page): Promise<void> {
+  await page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" }).click();
+}
+
 test("card control is one icon button running check by default; run shows disagrees prominently", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   const ctl = page.locator('#C-central [data-so-ctl="central"]');
   await expect(ctl).toBeVisible();
   // One icon button (default for a guide card is check) plus a mode caret.
@@ -48,6 +57,7 @@ test("card control is one icon button running check by default; run shows disagr
 
 test("mode menu runs blind; finding defaults to blind", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   const ctl = page.locator('#C-central [data-so-ctl="central"]');
   await ctl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
   const menu = ctl.getByRole("menu", { name: "Second-opinion mode" });
@@ -69,6 +79,7 @@ test("mode menu runs blind; finding defaults to blind", async ({ page }) => {
 
 test("mode menu closes on Escape", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   const ctl = page.locator('#C-central [data-so-ctl="central"]');
   await ctl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
   await expect(ctl.getByRole("menu", { name: "Second-opinion mode" })).toBeVisible();

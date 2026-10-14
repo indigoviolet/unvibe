@@ -149,6 +149,9 @@ test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive
 }) => {
   await gotoReview(page);
   const card = page.locator("#C-central");
+  // Issue #167: the demo seeds an open floating card under C-problem that
+  // overlays the controls below it — close it first, as a reader would.
+  await page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" }).click();
   // Depth − is instant (the fixture stores all three levels).
   const prose = card.locator(".prose").first();
   const before = await prose.innerText();
