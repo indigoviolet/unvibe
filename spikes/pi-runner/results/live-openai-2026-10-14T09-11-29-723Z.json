@@ -1,0 +1,55 @@
+{
+  "upstream": "openai",
+  "model": "gpt-6.1-sol",
+  "toolCalls": 0,
+  "results": [
+    {
+      "label": "base pack",
+      "session": "01a139ae-0057-7324-b25f-ac36db33e5f9",
+      "ms": 4033,
+      "firstTextMs": 3839,
+      "usage": {
+        "input": 9153,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 5,
+        "requests": 1
+      },
+      "tools": [],
+      "stop": "end_turn",
+      "answerStart": "ready"
+    },
+    {
+      "label": "explain (fork, own key)",
+      "session": "01a139ae-106f-7324-b25f-ac3914cc4739",
+      "ms": 12453,
+      "firstTextMs": 2383,
+      "usage": {
+        "input": 9858,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 303,
+        "requests": 1
+      },
+      "tools": [],
+      "stop": "end_turn",
+      "answerStart": "It means **one header value could span multiple physical lines**. A space or tab at the start of the next line signaled “this continues the previous value,” rather than “this is a new header.” This old convention is called *obsolete line folding* (`obs-fold`). [[card:problem#b1|Background]]\n\nFor exa"
+    },
+    {
+      "label": "follow-up after restart",
+      "session": "01a139ae-106f-7324-b25f-ac3914cc4739",
+      "ms": 6011,
+      "firstTextMs": 2177,
+      "usage": {
+        "input": 449,
+        "cacheRead": 9728,
+        "cacheWrite": 0,
+        "output": 106,
+        "requests": 1
+      },
+      "tools": [],
+      "stop": "end_turn",
+      "answerStart": "The regex matches a CRLF followed by one or more spaces or tabs, also consuming any immediately preceding run of spaces or tabs, so the whole fold can be replaced with one space. [[diff:src-urllib3-connection.py:82-88]]\n\n```json\n{\"anchor\":{\"quote\":\"HTTP/1.1 used to let a server continue a header val"
+    }
+  ]
+}

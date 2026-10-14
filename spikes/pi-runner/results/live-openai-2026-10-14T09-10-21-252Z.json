@@ -1,0 +1,57 @@
+{
+  "upstream": "openai",
+  "model": "gpt-6.1-sol",
+  "toolCalls": 1,
+  "results": [
+    {
+      "label": "base pack",
+      "session": "01a139ac-d8bf-7212-9802-41206685a871",
+      "ms": 3361,
+      "firstTextMs": 3129,
+      "usage": {
+        "input": 9153,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 5,
+        "requests": 1
+      },
+      "tools": [],
+      "stop": "end_turn",
+      "answerStart": "ready"
+    },
+    {
+      "label": "explain (fork, shared key)",
+      "session": "01a139ac-e61e-7212-9802-412358ded85d",
+      "ms": 11924,
+      "firstTextMs": 3154,
+      "usage": {
+        "input": 898,
+        "cacheRead": 8960,
+        "cacheWrite": 0,
+        "output": 268,
+        "requests": 1
+      },
+      "tools": [],
+      "stop": "end_turn",
+      "answerStart": "The space or tab at the start of the next line meant **“this is still part of the previous header’s value,”** not “this is a new header.” That old convention is called *obsolete line folding*. The regression test includes this example: [[diff:test-with_dummyserver-test_socketlevel.py:101-102]]\n\n```h"
+    },
+    {
+      "label": "ask (fork, shared key)",
+      "session": "01a139ad-14b6-7212-9802-41253ed497da",
+      "ms": 14454,
+      "firstTextMs": 8387,
+      "usage": {
+        "input": 2032,
+        "cacheRead": 18688,
+        "cacheWrite": 0,
+        "output": 231,
+        "requests": 2
+      },
+      "tools": [
+        "get_hunk"
+      ],
+      "stop": "end_turn",
+      "answerStart": "`test_obsolete_line_folding_is_unfolded` in `test/with_dummyserver/test_socketlevel.py` exercises this over a real socket. Its response includes a `Set-Cookie` continuation beginning with spaces and other continuations beginning with either a space or a tab. [[diff:test-with_dummyserver-test_socketl"
+    }
+  ]
+}

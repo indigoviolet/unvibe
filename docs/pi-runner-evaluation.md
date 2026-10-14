@@ -4,7 +4,7 @@ Spike branch `spike/pi-runner`, cut from `main` at `ec6818d` (v0.0.5). Harness, 
 
 Date: 2026-10-14. Machine: Ubuntu 24.04, kernel 6.8, x86_64, Node 24.21. macOS was not run.
 
-**Status: offline evaluation complete; the live run (section 8) waits for the owner's ChatGPT login.** Every claim below is marked *verified here* (run in this spike), *read in source* (read in the installed package code) or *read in docs*.
+**Status: offline evaluation and a live run (section 8) complete.** Every claim below is marked *verified here* (run in this spike), *read in source* (read in the installed package code) or *read in docs*.
 
 ## 1. Recommendation
 
@@ -30,7 +30,7 @@ Date: 2026-10-14. Machine: Ubuntu 24.04, kernel 6.8, x86_64, Node 24.21. macOS w
    The decisions are listed in section 10.
 4. **Codex with fresh sessions (route 3) works but is a step back.** It costs a full resend of the base pack per conversation. It also hits the same MCP-secret problem unless each fresh session gets its own secret, and today's no-fork fallback in `SessionManager` does not issue one.
 
-Whether the subscription login works when driven by Unvibe, and what the prompt cache does live, are **not verified yet**. They need the owner's login (section 8).
+Live (section 8): the subscription login works through the SDK ("Sign in with ChatGPT" route). The review tools work in a live fork. A fork on the base's cache key reads 91% of its input from cache, against 0% on its own key.
 
 ## 2. What Pi is (verified here unless marked)
 
@@ -227,32 +227,53 @@ Read in source; not run.
 
 If section 6's fix gives Codex forks their tools back, route 3 is unnecessary.
 
-## 8. Live run (pending the owner's login)
+## 8. Live run (2026-10-14)
 
-Prepared and not run: `spikes/pi-runner/test/live.test.ts`, skipped unless `UNVIBE_PI_LIVE=1`. On the bundled demo it runs five model turns:
-- the base pack;
-- an Explain fork and an Ask fork on the base's cache key;
-- an Explain fork on its own key, to see whether sharing the key matters;
-- one follow-up after a simulated restart.
+- **Login:** the owner's existing Pi login, loaded by Pi from `~/.pi/agent/auth.json`, authorized by the owner.
+  - The runner used only that file: its agent directory, models file and sessions were in a temp directory, and nothing was read, copied or printed.
+  - `~/.pi` had the same files, sizes and times before and after the run.
+  - The login is **"Sign in with ChatGPT" on the `openai` provider**. `openai-codex` was not logged in; that attempt failed before any request, at no cost.
+- **Model:** `gpt-6.1-sol`, default reasoning.
+- **Data:** the bundled demo, the real base pack and prompts, and the real `McpRegistry`.
+- **Raw results:** `spikes/pi-runner/results/live-openai-*.json`.
 
-It writes timings, usage per turn (input, cache read, cache write, output, request count), the review-tool calls and the start of each answer to `spikes/pi-runner/results/`. Answers are about the public demo only.
+| Turn | Wall time | First text | Uncached input | Cache read | Output | Requests | Review tools |
+|---|---|---|---|---|---|---|---|
+| Base pack (run 1) | 3.4 s | 3.1 s | 9,153 | 0 | 5 | 1 | |
+| Explain, fork on the base's cache key | 11.9 s | 3.2 s | 898 | **8,960** | 268 | 1 | |
+| Ask, fork on the base's cache key | 14.5 s | 8.4 s | 2,032 | **18,688** | 231 | 2 | `get_hunk` |
+| Base pack (run 2) | 4.0 s | 3.8 s | 9,153 | 0 | 5 | 1 | |
+| Explain, fork on **its own** cache key | 12.5 s | 2.4 s | 9,858 | **0** | 303 | 1 | |
+| Follow-up after a simulated restart (`load`) | 6.0 s | 2.2 s | 449 | 9,728 | 106 | 1 | |
 
-What it will settle:
-- the subscription login used from the SDK, with the token stored in an Unvibe-chosen directory;
-- which models the login offers;
-- the review tools used live;
-- the prompt cache live;
-- time and tokens for Explain and Ask against today's numbers (`docs/latency-investigation.md` on `spike/latency`). Codex as shipped: Explain turn median 18.4 s with 13,056 cached and 19,972 uncached tokens; Ask 9.6 s.
+What it shows:
+
+- **The subscription login works when Pi is driven by Unvibe through the SDK.** The token came from a file Pi was pointed at, and no terminal was involved.
+  - The `openai` login offers OpenAI's full model list, `gpt-6.1-sol` included.
+  - The Codex-backend route (`openai-codex`) was not tried live.
+- **The review tools work in a live fork.** The Ask fork called `get_hunk` through the bridge. The registry served it and the answer cited the demo's test hunk.
+- **The prompt cache works across forks only on a shared key.**
+  - A fork on the base's key read 91% of its input from cache (8,960 of 9,858).
+  - The same fork on its own key, which is Pi's default, read 0.
+  - So setting `agent.sessionId` to the base's ID is required, not a nicety.
+  - After a restart, `load` kept the key, and the follow-up read 9,728 from cache.
+- **Against #114's Codex numbers:**
+  - Codex as shipped: Explain turn median 18.4 s, with 13,056 cached and 19,972 uncached tokens per Explain.
+  - Here: an Explain turn of 12 to 12.5 s, with 898 uncached tokens when the key is shared. Ask took 14.5 s.
+  - Different routes and samples of one, so read these as direction, not a benchmark.
+- **Restart:** after the restart the model answered with the earlier context.
+- **Harness bug on the way (one extra turn):** the first run stopped after three turns. A second runner instance opened its own MCP client on the base's secret and was refused, which is #174 again. Fixed by giving each runner instance its own secret. The rest ran as "part 2" with a fresh base: 6 model turns in total instead of the planned 5.
+- **Spend:** 6 turns, 7 requests, 31,543 uncached input, 37,376 cached and 918 output tokens. All billed to the ChatGPT subscription; at OpenAI's list price for `gpt-6.1-sol` (Pi's catalog) that would be about $0.08.
 
 ## 9. What was verified and what was not
 
 | Check | Route 1 `pi-acp` | Route 2 native (SDK) | Route 2 native (RPC) | Route 3 Codex fresh sessions |
 |---|---|---|---|---|
-| Subscription login driven by Unvibe | not verified | **pending live**; credential path verified with a fake token | pending live | works today (Codex CLI login) |
+| Subscription login driven by Unvibe | not verified | **yes, live** (`openai` route) | not run live | works today (Codex CLI login) |
 | Review tools reach the agent | **no** (read in source) | **yes** (verified, offline) | needs an extension; not built | only with a secret per session (section 6) |
 | System prompt | no (read in source) | yes, plus a `<cwd>` suffix (verified) | yes (verified) | yes (today's AIR instructions) |
 | Fork / base reuse | no | yes, byte-identical prefix, shared cache key (verified) | `clone`, fresh key (verified) | replaced by resending the base |
-| Prompt cache live | n/a | **pending live** | pending live | likely miss on first turn (read in source) |
+| Prompt cache live | n/a | **91% read on a shared key, 0% on its own (live)** | not run live | likely miss on first turn (read in source) |
 | Resume after restart | yes (read in source) | yes (verified) | `--session` (read in docs) | today's `load` |
 | Streaming | yes (read in source) | yes (verified) | yes (verified) | yes |
 | Usage with cache split (#125) | no (read in source) | yes (verified with fake usage) | yes (verified) | yes |
@@ -261,7 +282,7 @@ What it will settle:
 | #160 full access | n/a | no sandbox; tools in-process | no sandbox; could run under nono | Codex sandbox (did not start on this machine in #104) |
 | Install without a compiler | needs Pi installed by the user | yes, bundled (verified) | bundled CLI (not built) | user's Codex CLI |
 | Network from the service process | no | **yes** | no | no |
-| Time and tokens on the demo | n/a | pending live | not planned | from #114 |
+| Time and tokens on the demo | n/a | Explain 12 s, Ask 14.5 s (live, n=1) | not planned | from #114 |
 | macOS | not run | not run | not run | not run |
 
 ## 10. What the owner has to decide
@@ -299,7 +320,7 @@ What it will settle:
 6. Tests: the offline harness here becomes unit tests (fake backend, real registry). A `test:live:pi` task runs the five-turn live test.
 7. Full access (#160) on this provider: not until the SDK-or-RPC decision. Until then the provider is read-only only.
 
-## 12. Live-run instructions for the owner (not yet run)
+## 12. Login instructions for a scratch directory (not used: the owner's existing login was used instead, section 8)
 
 The spike never logs in on the owner's behalf and never reads the credential. One login is needed, into a scratch directory that the spike deletes afterwards:
 
@@ -324,4 +345,4 @@ PI_CODING_AGENT_DIR="$S/owner-agent" PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
   - `@earendil-works/pi-coding-agent@1.2.0`: tarball `https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-1.2.0.tgz`, integrity `sha512-h/4WaVWv1VlCaY8x8qEN5U+7jbF/e7+Ck6moPeEOFn5juMTWwNAXjwgYM7gRgbBYh8Zppwt6qWvJDzNTf4GNEQ==`, with its dependencies (77 top-level entries in `node_modules`), `--ignore-scripts`;
   - `pi-acp@0.0.34`, for reading only, never run.
   - `spikes/pi-runner/node_modules` is a git-ignored symlink to the scratch install.
-- **Live runs:** none yet. Spend: zero.
+- **Live runs:** one authorized run in two parts, 6 model turns, about $0.08 at list price, billed to the subscription (section 8). The scratch prefix and the `node_modules` symlink were deleted afterwards; `~/.pi` was not touched.

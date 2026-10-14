@@ -21,6 +21,8 @@ import { startDemo, type Demo } from "./demo.ts";
 
 const LIVE = process.env.UNVIBE_PI_LIVE === "1";
 const AGENT_DIR = process.env.UNVIBE_PI_AGENT_DIR ?? "";
+/** Only the credential file is used from AGENT_DIR; everything Pi writes goes to a temp dir. */
+const AUTH_PATH = path.join(AGENT_DIR, "auth.json");
 const UPSTREAM = (process.env.UNVIBE_PI_UPSTREAM ?? "openai-codex") as PiUpstream;
 const MODEL = process.env.UNVIBE_PI_MODEL ?? "gpt-6.1-sol";
 
@@ -82,6 +84,7 @@ describe.skipIf(!LIVE)("LIVE native Pi runner on the bundled demo", () => {
     demo = await startDemo();
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-spike-pi-live-"));
     fs.mkdirSync(path.join(dir, "worktree"));
+    fs.mkdirSync(path.join(dir, "agent"));
   });
 
   afterAll(async () => {
@@ -96,7 +99,7 @@ describe.skipIf(!LIVE)("LIVE native Pi runner on the bundled demo", () => {
 
   it("base, two forks on the shared cache key, one fork on its own key, one turn after restart", async () => {
     const make = (extra: Partial<ConstructorParameters<typeof PiAgentRunner>[0]> = {}) =>
-      new PiAgentRunner({ agentDir: AGENT_DIR, sessionDir: path.join(dir, "sessions"), upstream: UPSTREAM, ...extra });
+      new PiAgentRunner({ agentDir: path.join(dir, "agent"), authPath: AUTH_PATH, sessionDir: path.join(dir, "sessions"), upstream: UPSTREAM, ...extra });
     let runner = make();
     console.log("[live] login:", await runner.loginStatus(), "models:", await runner.listModels());
     const base = await runner.start({
@@ -109,19 +112,25 @@ describe.skipIf(!LIVE)("LIVE native Pi runner on the bundled demo", () => {
     const b = await turn(runner, base, "base pack", demo.pack);
     expect(b.error).toBeUndefined();
 
-    const explain = await turn(runner, await runner.fork!(base), "explain (fork, shared key)", demo.explain);
-    const ask = await turn(runner, await runner.fork!(base), "ask (fork, shared key)", demo.ask);
-    expect(ask.tools.length).toBeGreaterThan(0);
+    // PART=2 re-runs only the own-key fork and the restart turn (the first
+    // live run stopped there on a harness bug: a second runner instance must
+    // get its own MCP secret, #174).
+    const part2 = process.env.UNVIBE_PI_LIVE_PART === "2";
+    if (!part2) {
+      const explain = await turn(runner, await runner.fork!(base), "explain (fork, shared key)", demo.explain);
+      expect(explain.error).toBeUndefined();
+      const ask = await turn(runner, await runner.fork!(base), "ask (fork, shared key)", demo.ask);
+      expect(ask.tools.length).toBeGreaterThan(0);
+    }
 
-    const ownKey = make({ shareCacheKey: false });
-    await turn(ownKey, await ownKey.fork!(base), "explain (fork, own key)", demo.explain);
+    const ownKey = make({ shareCacheKey: false, reissueMcp: () => demo.mcpFor("own-key") });
+    const own = await ownKey.fork!(base);
+    await turn(ownKey, own, "explain (fork, own key)", demo.explain);
     await ownKey.dispose();
     await runner.dispose();
 
     runner = make({ reissueMcp: () => demo.mcpFor("reloaded") });
-    const forkId = results.find((r) => r.label.startsWith("explain (fork, shared"))!.session;
-    await turn(runner, await runner.load(forkId), "follow-up after restart", "In one sentence: what does the regex match?");
+    await turn(runner, await runner.load(own.id), "follow-up after restart", "In one sentence: what does the regex match?");
     await runner.dispose();
-    expect(explain.error).toBeUndefined();
   }, 600_000);
 });

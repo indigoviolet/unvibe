@@ -63,6 +63,8 @@ export interface PiRunnerOptions {
   upstream?: PiUpstream;
   /** Pi agent dir: holds `auth.json` (the ChatGPT OAuth token). Unvibe-owned, never ~/.pi. */
   agentDir: string;
+  /** Where the ChatGPT OAuth credential lives (default `<agentDir>/auth.json`). */
+  authPath?: string;
   /** Where session JSONL files and sidecars live. */
   sessionDir: string;
   /** Test hook: rewrite the model (e.g. point baseUrl at a fake backend). */
@@ -117,7 +119,7 @@ export class PiAgentRunner implements AgentRunner {
 
   private modelRuntime(): Promise<ModelRuntime> {
     this.runtime ??= ModelRuntime.create({
-      authPath: path.join(this.opts.agentDir, "auth.json"),
+      authPath: this.opts.authPath ?? path.join(this.opts.agentDir, "auth.json"),
       modelsPath: path.join(this.opts.agentDir, "models.json"),
     });
     return this.runtime;
