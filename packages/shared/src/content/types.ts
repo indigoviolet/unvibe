@@ -60,11 +60,13 @@ export interface ReplyData {
   /** "Go deeper" placeholder directions (reader replies). */
   pendingCards?: { id?: string; label?: string; why?: string }[];
   /**
-   * Degraded-turn report (issue #51): the turn could not do what was
-   * asked — a required tool was unreachable, a lookup came back empty, a
-   * call was refused. One line saying what was missing and what the
-   * reply is weaker for. The service fails the job instead of storing a
-   * degraded reply; process chatter never belongs in the Markdown body.
+   * Degraded-turn report (issues #51, #180): the turn could not do what
+   * was asked — a required tool was unreachable, a lookup came back
+   * empty, a call was refused. One line saying what was missing and
+   * what the reply is weaker for. With a usable body the answer is kept
+   * (this reason is recorded on the job, never shown on the card); only
+   * an empty degraded answer fails the turn. The service never judges
+   * the Markdown body's wording; process chatter never belongs in it.
    */
   degraded?: string;
   /** Anything else the agent sent; kept, never validated. */
