@@ -125,6 +125,12 @@ code { font-family: var(--mono); font-size: .86em; }
 .cols { display: grid; min-height: 0; }
 .col { overflow: auto; min-width: 0; min-height: 0; }
 #right { background: var(--surface); }
+/* One stacking context for the right pane (the diff scroller): every
+   z-index inside it orders only against its siblings, so the diff layer
+   order below is explicit and complete — code rows, then the
+   line-number gutter, then floating cards, then the pinned hunk/file
+   headers, the actions bar and the tab strip. */
+#right.col { isolation: isolate; }
 #handle { cursor: col-resize; background: var(--line); width: 6px; touch-action: none; }
 #handle:hover, #handle.drag { background: var(--accent); }
 .col.hide { display: none; }
@@ -161,7 +167,7 @@ code { font-family: var(--mono); font-size: .86em; }
 .tfoot { display: flex; gap: 2px; align-items: center; margin-top: 2px; flex-wrap: wrap; }
 
 /* ---------- right pane ---------- */
-.rstick { position: sticky; top: 0; z-index: 4; background: var(--surface); border-bottom: 1px solid var(--line); }
+.rstick { position: sticky; top: 0; z-index: 6; background: var(--surface); border-bottom: 1px solid var(--line); }
 .tabs { display: flex; gap: 2px; padding: 6px 12px 0; }
 .tab { border: 0; background: none; padding: 6px 10px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; }
 .tab[aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
@@ -169,13 +175,13 @@ code { font-family: var(--mono); font-size: .86em; }
    the whole scroll of the diff. `top` tracks the strip's live height
    through `--diffbar-top` (kept by `observeDiffTabStrip`, fallback below),
    never a hard-coded copy; `left` keeps the bar put if the pane ever
-   scrolls sideways. z-index 3 sits above the diff content and below the
-   tab strip (4) and every app overlay (25+). Opaque background + hairline
+   scrolls sideways. z-index 5 sits above the diff content and below the
+   tab strip (6) and every app overlay (25+). Opaque background + hairline
    separate it from the content scrolling under it. One row while pinned:
    narrow panes scroll the bar sideways instead of wrapping (sticky never
    clips, and the Files panel + filter dropdown live outside this bar with
    their own, higher stacking). */
-.dtool { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; padding: 6px 12px 8px; overflow-x: auto; position: sticky; top: var(--diffbar-top, 40px); left: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--line); }
+.dtool { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; padding: 6px 12px 8px; overflow-x: auto; position: sticky; top: var(--diffbar-top, 40px); left: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
 .dtool > * { flex: none; }
 .files { border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
 .frow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -267,11 +273,11 @@ code { font-family: var(--mono); font-size: .86em; }
    `--dfile-top` (kept by `observeDiffPinned`, fallback below), never a
    hard-coded copy. Each header sticks inside its own `.dfile`, which has no
    `overflow` ancestor below `#right`, so plain CSS sticky gives the
-   replacement for free. z-index 2 sits above the hunk headers (1) and the
-   diff content, below the actions bar (3), the tab strip (4) and every app
-   overlay (6+). Opaque background + hairline separate it from the content
+   replacement for free. z-index 4 sits above the hunk headers (3) and the
+   diff content, below the actions bar (5), the tab strip (6) and every app
+   overlay (25+). Opaque background + hairline separate it from the content
    scrolling under it. */
-.dfile-h { background: var(--sunk); padding: 4px 8px; font-family: var(--mono); font-size: 12px; display: flex; gap: 6px; align-items: center; border-block: 1px solid var(--line); position: sticky; top: var(--dfile-top, 83px); left: 0; z-index: 2; }
+.dfile-h { background: var(--sunk); padding: 4px 8px; font-family: var(--mono); font-size: 12px; display: flex; gap: 6px; align-items: center; border-block: 1px solid var(--line); position: sticky; top: var(--dfile-top, 83px); left: 0; z-index: 4; }
 .dfile-h .path { display: flex; min-width: 0; flex: 1; white-space: nowrap; }
 .dfile-h .path .dir { overflow: hidden; text-overflow: ellipsis; color: var(--muted); min-width: 0; }
 .dfile-h .path b { font-weight: 500; flex: none; }
@@ -287,7 +293,10 @@ table.diff td { padding: 0 8px; white-space: pre; vertical-align: top; }
 table.diff.split { table-layout: fixed; width: 100%; }
 table.diff.split col.cn { width: 3.6em; }
 table.diff.split td.c { white-space: pre-wrap; overflow-wrap: anywhere; }
-table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select: none; opacity: .75; }
+/* The line-number gutter (issue #140): above the code rows in the diff
+   layer order (see the stacking context on `#right.col`), below floating
+   cards — a card overlapping the gutter paints over the numbers. */
+table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select: none; opacity: .75; position: relative; z-index: 1; }
 /* Per-hunk tables share their file's line-number width (issue #140:
    `--lnw`, digit count, on `.dfile`), so code columns start at the same x
    in every hunk instead of sizing per hunk. Old-side numbers never carry
@@ -312,11 +321,12 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
    (no `overflow` ancestor below `#right`), so the stick reaches the pane on
    every engine — never through a wrapper whose computed overflow could trap
    it. `top` tracks the rows above through `--dhunk-top` (kept by
-   `observeDiffPinned`, fallback below). z-index 1 sits above the diff
-   content but below the file header (2), so an arriving file header slides
-   over the outgoing hunk header, and below every app overlay (6+). Opaque
+   `observeDiffPinned`, fallback below). z-index 3 sits above the diff
+   content (rows, gutter and floating cards) but below the file header
+   (4), so an arriving file header slides over the outgoing hunk header,
+   and below every app overlay (25+). Opaque
    background so code, cards and threads scroll under it. */
-.dhunk-h { position: sticky; top: var(--dhunk-top, 117px); z-index: 1; background: var(--sunk); }
+.dhunk-h { position: sticky; top: var(--dhunk-top, 117px); z-index: 3; background: var(--sunk); }
 /* Hidden-hunk runs are plain blocks between the hunk sections: they scroll
    under the pinned headers, never pin. The button spans the pane width. */
 .dhid .hid { width: 100%; box-sizing: border-box; }
@@ -454,11 +464,12 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
   overflow: auto;
   box-shadow: 0 10px 28px rgb(0 0 0 / .18);
 }
-/* In the diff the pinned rows (#140: hunk header 1, file header 2,
-   actions bar 3) stay above a floating card, so they slide over it while
-   scrolling instead of being covered by it. Ordinary hunk content still
-   paints below the card. */
-.dhunk .card.child.floating { z-index: 0; }
+/* In the diff the pinned rows (#140: hunk header 3, file header 4,
+   actions bar 5, tab strip 6) stay above a floating card, so they slide
+   over it while scrolling instead of being covered by it. The card
+   itself sits above the code rows and the line-number gutter (1), so a
+   card overlapping the gutter paints over the numbers, not under them. */
+.dhunk .card.child.floating { z-index: 2; }
 .card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
 .card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
 .card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }
