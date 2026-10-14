@@ -1,3 +1,4 @@
+/* global process, console */
 // Runs the esbuild bundle of the Pi runner (copied away from node_modules)
 // against the fake backend: proves the bundle is self-contained.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path";
