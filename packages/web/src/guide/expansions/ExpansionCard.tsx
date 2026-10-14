@@ -392,7 +392,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   };
 
   const onClose = (): void => {
-    // Cancel-on-close: the service cancels the annotation's job.
+    // Close only hides the card; a running job keeps filling its turn.
     void api
       .action(reviewId, { kind: "close", annotationId: expansion.id })
       .catch(() => {

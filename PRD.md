@@ -162,7 +162,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Explain** creates an explanation card on the selection's anchor. The card floats persistently above the content under it: it stays open, scrolls with the page next to its anchor, and takes no space in the flow, so the page never reflows. The selected text is highlighted.
 - **Pin** inserts the card inline under its anchor (under the paragraph in the description, under the line in the diff, at the hunk in the diff) — the previous clicked behaviour; unpinning returns it to floating. Pinning is per card and lasts for the session. Hunk-hosted cards are always inline and carry no pin control.
 - **Header:** the quoted text, then **Pin**, **Open as page**, **Delete** and **Close**. Below that, one answer view per turn: each answer carries the standard card controls acting on that answer alone (the latest answer shows them; earlier answers reveal them on hover or focus), and a reply box at the bottom answers in the same conversation. A floating card is keyboard reachable in its DOM position and Escape closes it like × (except from inside its own inputs).
-- **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click expands it.
+- **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click expands it. Close only hides the card: an answer still being written keeps being written and fills its turn, so the answer is there when the card is reopened or its link previewed; the card still shows it is working when reopened. Only **Delete** cancels a running answer.
 - **If the anchor text can't be found** (for example after a depth rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
 - **Open as page** moves the content to a new page titled with the quoted text — one card per answer, the first titled with the quoted text and later ones with their questions — and the anchor text becomes a link to that page at once, in the guide, the description and the diff. Opening as a page never discards work: when the answer is still being written, its job keeps running and fills the page card (the page shows the usual working state until then, and the error with Retry when the fill fails); second opinions move to the page with the answers.
 - **Follow-up suggestions** stay on Explain answers; clicking one sends it as the next turn in the same conversation.
@@ -541,7 +541,7 @@ A new base is built when any of these happens:
   - a per-provider session cap, starting at 4;
   - a priority queue: what the user asked for, then what's visible on screen, then background work;
   - back off on rate limits, and show it on the job;
-  - cancel a job when its card closes (ACP `session/cancel`);
+  - cancel a job when its card is deleted (ACP `session/cancel`); closing a card only hides it, and its running job keeps filling the turn;
   - reuse results for identical requests, keyed by (anchor, kind of request, depth, base version);
   - close idle sessions after the cache lifetime, and reopen them with `load`.
 

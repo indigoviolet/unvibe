@@ -1262,8 +1262,11 @@ needed (that deviation is closed, not added).
   `jobs.test.ts` ordering).
 - Backoff on rate limits + shown on job — met (`backoff.ts`,
   `isRetryableError` 429/quota in `agent/acp/errors.ts`, `backing-off` state).
-- Cancel on card close (`session/cancel`) — met (`actions/close.ts`,
-  `cancelAnnotationJob`; abort path in queue; `acp-runner.test.ts` cancel).
+- Cancel on card delete (`session/cancel`) — met (`actions/close.ts`
+  `deleteAction`, `cancelAnnotationJob`; abort path in queue;
+  `acp-runner.test.ts` cancel). Closing a card only hides it: its running
+  job keeps filling the turn and `working` stays set, so the answer is
+  there on reopen (`actions-m4.test.ts` close-keeps-answer).
 - Dedupe identical requests — met (queue dedupe + `findActiveJob`;
   dedupe freed on interrupt — this branch).
 - Idle close + `load` reopen — met (`sessions/manager.ts:430 sweepIdle`,
