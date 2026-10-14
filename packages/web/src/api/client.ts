@@ -52,6 +52,7 @@ import type {
   UpdateChannelsResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
+  UpdateFileRequest,
   UpdateHunkRequest,
   UpdateReviewResponse,
   UpdateStatusResponse,
@@ -324,6 +325,13 @@ const realApi = {
     }),
   summarizeHunk: (id: string, hash: string): Promise<SummarizeHunkResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/hunks/${encodeURIComponent(hash)}/summarize`),
+
+  /** Per-file fold state (issue #162): persisted on the review. */
+  updateFile: (id: string, fileKey: string, body: UpdateFileRequest): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/files/${encodeURIComponent(fileKey)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   /** Raw file lines at a commit (issue #133: diff expansion). */
   fileSlice: (

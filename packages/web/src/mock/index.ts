@@ -155,16 +155,9 @@ function seedHunkStates(): Map<string, HunkState> {
   const map = new Map<string, HunkState>();
   for (const f of MOCK_FILES) {
     f.hunks.forEach((h, i) => {
-      // Mirror the prototype's mid-use seed: one reviewed+folded hunk, one note.
+      // Mirror the prototype's mid-use seed: one reviewed+folded hunk.
       if (f.path === "test/test_connection.py" && i === 2) {
         map.set(h.contentHash, { contentHash: h.contentHash, folded: true, reviewed: true });
-      } else if (f.path === "src/urllib3/connection.py" && i === 1) {
-        map.set(h.contentHash, {
-          contentHash: h.contentHash,
-          folded: false,
-          reviewed: false,
-          note: "Only call site; everything else is the helper.",
-        });
       }
       // Issue #138: one idle hunk summary to activate in tests.
       if (f.path === "src/urllib3/connection.py" && i === 0) {
@@ -520,6 +513,8 @@ function changesFetchError(): string | null {
 
 let rev = 1;
 const hunkStates = seedHunkStates();
+/** Per-file fold state (issue #162): the mock persists it like the service. */
+const fileStates = new Map<string, import("@unvibe/shared").FileState>();
 let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
   JSON.stringify(MOCK_ANNOTATIONS),
 ) as import("@unvibe/shared").Annotation[];
@@ -776,6 +771,7 @@ export function resetMockState(): void {
   }
   hunkStates.clear();
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
+  fileStates.clear();
   annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
   mockPages = JSON.parse(JSON.stringify(MOCK_PAGES));
   seedMockD2Diagrams(mockPages);
@@ -980,6 +976,7 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     pages: reviewId === "demo" ? mockPages : MOCK_PAGES,
     annotations,
     hunkStates: stale && viewing === 2 ? staleHunkStates() : [...hunkStates.values()],
+    fileStates: [...fileStates.values()],
     jobs: mockJobs.filter((j) => j.reviewId === reviewId || (reviewId === "demo" && !j.reviewId)),
     contributions: reviewId === "demo" ? mockContributions : [],
     logTail: [],
@@ -988,6 +985,18 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
   };
   if (stale && viewing === 2) base.versionStatus = staleVersionStatus();
   return base;
+}
+
+/** Emit the file fold list through the WS-patch path (tab switches keep it). */
+function emitFileStates(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [{ op: "replace", path: "/fileStates", value: [...fileStates.values()] }],
+  });
 }
 
 /** Emit a state patch through the same path WS patches use. */
@@ -1569,6 +1578,7 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
     jobs: [],
     contributions: [],
     logTail: [],
@@ -1595,6 +1605,7 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
     jobs: [],
     contributions: [],
     logTail: [],
@@ -1941,6 +1952,7 @@ export const mockApi = {
         pages: [],
         annotations: [],
         hunkStates: [],
+    fileStates: [],
         jobs: [],
         contributions: [],
         logTail: [],
@@ -1994,6 +2006,7 @@ export const mockApi = {
         pages: [],
         annotations: [],
         hunkStates: [],
+    fileStates: [],
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2120,6 +2133,7 @@ export const mockApi = {
             pages: [],
             annotations: [],
             hunkStates: [],
+    fileStates: [],
             jobs: [],
             contributions: [],
             logTail: [],
@@ -2149,6 +2163,7 @@ export const mockApi = {
             pages: [],
             annotations: [],
             hunkStates: [],
+    fileStates: [],
             jobs: [],
             contributions: [],
             logTail: [],
@@ -2866,18 +2881,29 @@ export const mockApi = {
     return { accepted: false };
   },
 
-  // Mirrors the service PATCH semantics: null clears note/summary.
+  // Mirrors the service PATCH semantics: null clears the summary.
   updateHunk: async (_id: string, hash: string, body: UpdateHunkRequest): Promise<{ ok: boolean }> => {
     const prev = hunkStates.get(hash) ?? { contentHash: hash, folded: false, reviewed: false };
     const next: HunkState = { ...prev };
     if (body.folded !== undefined) next.folded = body.folded;
     if (body.reviewed !== undefined) next.reviewed = body.reviewed;
-    if (body.note === null) delete next.note;
-    else if (body.note !== undefined) next.note = body.note;
     if (body.summary === null) delete next.summary;
     else if (body.summary !== undefined) next.summary = body.summary;
     hunkStates.set(hash, next);
     emitHunkStates();
+    return { ok: true };
+  },
+
+  // Mirrors the service file-fold PATCH (issue #162): fold state lives on
+  // the snapshot, so it survives tab switches and reloads.
+  updateFile: async (
+    _id: string,
+    fileKey: string,
+    body: import("@unvibe/shared").UpdateFileRequest,
+  ): Promise<{ ok: boolean }> => {
+    const prev = fileStates.get(fileKey) ?? { fileKey, folded: false };
+    fileStates.set(fileKey, { ...prev, ...(body.folded !== undefined ? { folded: body.folded } : {}) });
+    emitFileStates();
     return { ok: true };
   },
 
