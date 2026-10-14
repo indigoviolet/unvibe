@@ -99,6 +99,9 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
         ...(body.suffix !== undefined ? { suffix: body.suffix } : {}),
         ...(body.position !== undefined ? { position: body.position } : {}),
         ...(body.text !== undefined ? { text: body.text } : {}),
+        ...(body.offsets !== undefined
+          ? { startOffset: body.offsets.start, endOffset: body.offsets.end }
+          : {}),
       });
       return reply.code(201).send({ id: cid });
     } catch (err) {
