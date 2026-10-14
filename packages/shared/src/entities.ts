@@ -618,6 +618,10 @@ export interface ReviewDescription {
  * M6: one existing PR review comment fetched read-only from GitHub
  * (`gh api repos/{o}/{r}/pulls/{n}/comments`, PRD §15). Never posted to;
  * the UI shows these alongside local threads.
+ *
+ * Issue #168: `bodyHtml` renders `body` with the shared untrusted-Markdown
+ * renderer (raw HTML from GitHub never reaches the DOM); `replyTo` groups
+ * replies under their root (`in_reply_to_id`).
  */
 export interface ExistingReviewComment {
   id: number;
@@ -625,9 +629,22 @@ export interface ExistingReviewComment {
   line?: number;
   side?: string;
   body: string;
+  /** `body` rendered to safe HTML at fetch time (issue #168). */
+  bodyHtml: string;
+  /** Parent comment id for replies; absent on thread roots. */
+  replyTo?: number;
   author?: string;
   createdAt?: string;
   htmlUrl?: string;
+}
+
+/**
+ * Per-review diff view preferences (issue #168). Stored with the review;
+ * the comments menu always lists every thread regardless of these.
+ */
+export interface ReviewViewPrefs {
+  /** Show existing GitHub comments in the diff. */
+  showExistingComments: boolean;
 }
 
 export type JobKind =

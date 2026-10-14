@@ -14,6 +14,7 @@ import type {
   ExistingReviewComment,
   FileState,
   HunkState,
+  ReviewViewPrefs,
   Job,
   LogEntry,
   Page,
@@ -260,6 +261,8 @@ export interface ReviewSnapshot {
    * derived from the file's hunks, never stored here.
    */
   fileStates: FileState[];
+  /** Issue #168: per-review diff view preferences. */
+  viewPrefs: ReviewViewPrefs;
   jobs: Job[];
   contributions: Contribution[];
   logTail: LogEntry[];
@@ -669,6 +672,11 @@ export interface UpdateHunkRequest {
 /** PATCH /api/reviews/:id/files/:fileKey — per-file diff state (issue #162). */
 export interface UpdateFileRequest {
   folded?: boolean;
+}
+
+/** PATCH /api/reviews/:id/view — per-review diff view preferences (issue #168). */
+export interface UpdateViewRequest {
+  showExistingComments?: boolean;
 }
 
 export interface SummarizeHunkResponse {
