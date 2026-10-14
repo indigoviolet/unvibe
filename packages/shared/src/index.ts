@@ -6,6 +6,7 @@ export * from "./links.js";
 export * from "./api.js";
 export * from "./repos.js";
 export * from "./agent.js";
+export * from "./access.js";
 export * from "./content/index.js";
 export * from "./prompts.js";
 export * from "./versions.js";
