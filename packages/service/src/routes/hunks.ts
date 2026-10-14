@@ -9,9 +9,13 @@
  *   priority (small model, no fork). "Fold all" is the client calling this
  *   per hunk missing a summary (documented in `docs/pipeline.md`); no batch
  *   endpoint is needed because jobs dedupe per hunk hash.
+ * - `PATCH /api/reviews/:id/diff-filter` — the diff's score/plotline
+ *   filter (issue #169), remembered with the review. Each field is a
+ *   plotline id (or "other") / score level; explicit null clears it.
  */
 import type { FastifyInstance } from "fastify";
-import type { UpdateHunkRequest } from "@unvibe/shared";
+import { normalizeHunkScore, PLOTLINE_OTHER_ID } from "@unvibe/shared";
+import type { UpdateDiffFilterRequest, UpdateHunkRequest } from "@unvibe/shared";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
 import type { Pipeline } from "../pipeline/index.js";
@@ -96,5 +100,48 @@ export async function registerHunks(
       if (/unknown review/.test(msg)) return reply.code(404).send({ error: msg });
       return reply.code(500).send({ error: msg });
     }
+  });
+
+  app.patch("/api/reviews/:id/diff-filter", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as UpdateDiffFilterRequest;
+    if (typeof body !== "object" || Array.isArray(body)) {
+      return reply.code(400).send({ error: "invalid filter body" });
+    }
+    const { plotline, score } = body;
+    if (plotline !== undefined && plotline !== null && typeof plotline !== "string") {
+      return reply.code(400).send({ error: "plotline must be a plotline or null" });
+    }
+    if (score !== undefined && score !== null && normalizeHunkScore(score) === null) {
+      return reply.code(400).send({ error: "score must be mechanical, routine, substantive or needs-attention" });
+    }
+    if (plotline === undefined && score === undefined) {
+      return reply.code(400).send({ error: "nothing to update" });
+    }
+
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const refused = ingestRefusal(snapshot);
+    if (refused) return reply.code(409).send({ error: refused });
+    if (typeof plotline === "string") {
+      const ids = new Set([...(snapshot.plotlines ?? []).map((p) => p.id), PLOTLINE_OTHER_ID]);
+      if (!ids.has(plotline)) return reply.code(400).send({ error: `unknown plotline ${plotline}` });
+    }
+
+    try {
+      await ctx.reviews.mutate(id, (draft) => {
+        const next = { ...(draft.diffFilter ?? {}) };
+        if (plotline === null) delete next.plotline;
+        else if (plotline !== undefined) next.plotline = plotline;
+        if (score === null) delete next.score;
+        else if (score !== undefined) next.score = normalizeHunkScore(score) ?? undefined;
+        if (next.score === undefined) delete next.score;
+        if (Object.keys(next).length === 0) delete draft.diffFilter;
+        else draft.diffFilter = next;
+      });
+    } catch (err) {
+      return reply.code(404).send({ error: (err as Error).message });
+    }
+    return { ok: true };
   });
 }

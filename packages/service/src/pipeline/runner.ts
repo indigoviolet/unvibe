@@ -27,7 +27,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { DegradedConnError, DegradedTurnError, RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
@@ -796,6 +796,10 @@ export class Pipeline {
         if (stages.critic !== "done") jobIds.push(...(await this.enqueueCritic(reviewId)).map((j) => j.id));
         if (stages.concepts !== "done") jobIds.push(...(await this.enqueueConcepts(reviewId)).map((j) => j.id));
         if (stages["hunk-pass"] !== "done") jobIds.push(...(await this.enqueueHunkPass(reviewId)).map((j) => j.id));
+        // Issue #169: the plotline assign step is not a stage; resume it
+        // like the demo fill below (no-op unless the reader named
+        // plotlines on a degraded rung with hunks still unassigned).
+        jobIds.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)).map((j) => j.id));
         // Demo auto-fill is part of enqueueAfterReader, not a stage: a
         // restart after the base finished would otherwise leave pending
         // placeholders unfilled. No-op when nothing is pending.
@@ -965,13 +969,20 @@ export class Pipeline {
    * hunk-pass stage (the two copied parse blocks). A missing summary stores
    * nothing, so the hunk shows the Summarize action again instead of
    * garbage. Guide-cited and one-line hunks are never hidden.
+   *
+   * Issue #169: the score is stored alongside, resolved against the
+   * deterministic rules (`resolveHunkScore`): an unusable value reads as
+   * routine, and a one-line change is never mechanical. Hiding still
+   * follows `hiddenReason` alone — the score never hides or unhides.
    */
   private async applyHunkSummary(reviewId: string, contentHash: string, result: HunkReplyResult): Promise<void> {
     let hiddenReason = result.hiddenReason;
     const live = this.opts.reviews.getSnapshot(reviewId);
-    if (live && (this.isCitedByGuide(reviewId, contentHash) || this.isOneLineChange(live, contentHash))) {
+    const isOneLine = live ? this.isOneLineChange(live, contentHash) : false;
+    if (live && (this.isCitedByGuide(reviewId, contentHash) || isOneLine)) {
       hiddenReason = null;
     }
+    const score = resolveHunkScore(result.score, { isOneLine });
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let state = draft.hunkStates.find((s) => s.contentHash === contentHash);
       if (!state) {
@@ -981,6 +992,7 @@ export class Pipeline {
       if (result.summary !== undefined) {
         state.summary = result.summary;
       }
+      state.score = score;
       const fileHunk = draft.files.flatMap((f) => f.hunks).find((h) => h.contentHash === contentHash);
       if (fileHunk) {
         if (hiddenReason) fileHunk.hiddenReason = hiddenReason;
@@ -1715,6 +1727,23 @@ private throwIfDegradedTurn(
       cards.map((c) => ({ title: c.title, blocks: c.blocks })),
       (data ?? null) as Record<string, unknown> | null,
     );
+    // Issue #169: validate the reader's plotline hunk IDs like any other
+    // ID before storing. Unknown IDs are dropped, a twice-claimed hunk
+    // keeps its first plotline; hunks left out stay unassigned ("other").
+    const knownPlotHunks = new Set<string>();
+    for (const f of this.opts.reviews.getSnapshot(reviewId)?.files ?? []) {
+      for (const h of f.hunks) knownPlotHunks.add(`h:${f.fileKey}:${h.contentHash}`);
+    }
+    const plotlines = normalizePlotlines(applied.plotlines, knownPlotHunks);
+    const dropped = plotlines.dropped;
+    if (dropped.unknown.length > 0 || dropped.duplicates.length > 0 || dropped.extraPlotlines > 0) {
+      console.warn(
+        `[reader] ${reviewId}: plotlines dropped ` +
+          `${dropped.unknown.length} unknown hunk IDs` +
+          (dropped.unknown.length > 0 ? ` (${dropped.unknown.slice(0, 5).join(", ")})` : "") +
+          `, ${dropped.duplicates.length} duplicates, ${dropped.extraPlotlines} extra plotlines`,
+      );
+    }
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
@@ -1789,6 +1818,18 @@ private throwIfDegradedTurn(
           ],
         });
       }
+      // Issue #169: store the validated plotlines; per-hunk assignment
+      // rides `HunkState.plotline` (content-hash keyed, like summaries).
+      draft.plotlines = plotlines.plotlines;
+      for (const [hid, pid] of Object.entries(plotlines.assignment)) {
+        const hash = hid.slice(hid.lastIndexOf(":") + 1);
+        let state = draft.hunkStates.find((s) => s.contentHash === hash);
+        if (!state) {
+          state = { contentHash: hash, folded: false, reviewed: false };
+          draft.hunkStates.push(state);
+        }
+        state.plotline = pid;
+      }
       this.markFirstCard(draft);
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
       draft.logTail.push({
@@ -1821,6 +1862,10 @@ private throwIfDegradedTurn(
     if (hunkCount > DEFAULT_HUNK_PASS_FANOUT_LIMIT) {
       out.push(...(await this.enqueueHunkPass(reviewId)));
     }
+    // Issue #169: on degraded reader rungs the follow-up assign step
+    // places the hunks the reader never saw; otherwise left-outs stay
+    // "other".
+    out.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)));
     if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
       out.push(...(await this.enqueueDemoFill(reviewId)));
     }
@@ -2146,6 +2191,142 @@ private throwIfDegradedTurn(
     } catch {
       // ignore
     }
+  }
+
+  /**
+   * Issue #169 large-PR fallback (#107): the reader names plotlines and
+   * assigns the hunks it saw, by hunk ID in one go. On degraded rungs it
+   * never saw every ID (uninteresting files collapse to one line, then
+   * files-only/counts-only drop hunk rows), so one small-model step
+   * assigns the hunks whose IDs stayed invisible. Hunks the reader saw
+   * and left out stay "other" by choice; past `PLOTLINE_ASSIGN_CAP`
+   * invisible hunks the rest also stay "other" — classifying thousands
+   * of hunks would cost a second hunk pass, exactly what the fan-out
+   * limit refuses to pay. At most one attempt per review version (a
+   * finished job is never re-enqueued; an errored one retries through
+   * resume).
+   */
+  private async maybeEnqueuePlotlineAssign(reviewId: string): Promise<Job[]> {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) return [];
+    const plotlines = snapshot.plotlines ?? [];
+    if (plotlines.length === 0) return [];
+    const attempted = this.opts.jobs
+      .listByReview(reviewId)
+      .some(
+        (j) =>
+          j.kind === "plotline-assign" &&
+          (j.state === "queued" || j.state === "running" || j.state === "backing-off" || j.state === "done"),
+      );
+    if (attempted) return [];
+    const assigned = new Set(
+      snapshot.hunkStates.filter((s) => s.plotline !== undefined).map((s) => s.contentHash),
+    );
+    const settings = await this.effectiveSettings();
+    // The ladder is deterministic: rebuild it to learn exactly which hunk
+    // IDs the reader saw (inlined + summarized). Anything assigned or
+    // visible stays out of the follow-up.
+    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
+    const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    const seen = new Set([...ladder.inlinedHunkIds, ...ladder.summarizedHunkIds]);
+    const unassigned = snapshot.files.flatMap((f) =>
+      f.hunks
+        .filter((h) => !assigned.has(h.contentHash) && !seen.has(`h:${f.fileKey}:${h.contentHash}`))
+        .map((h) => ({ file: f, hunk: h })),
+    );
+    if (unassigned.length === 0) return [];
+    if (unassigned.length > PLOTLINE_ASSIGN_CAP) {
+      console.warn(
+        `[reader] ${reviewId}: ${unassigned.length} hunks left out of plotlines past the assign cap (${PLOTLINE_ASSIGN_CAP}); leaving them in "other"`,
+      );
+      return [];
+    }
+    const plotlineList = plotlines
+      .map((p) => `- ${p.id}: ${p.name}${p.description ? ` — ${p.description}` : ""}`)
+      .join("\n");
+    const hunkList = unassigned
+      .map(({ file, hunk }) => {
+        const summary = snapshot.hunkStates.find((s) => s.contentHash === hunk.contentHash)?.summary;
+        return `- h:${file.fileKey}:${hunk.contentHash} ${file.path}: ${summary ?? hunk.header}`;
+      })
+      .join("\n");
+    const prompt = this.render("plotline_assign", { plotlines: plotlineList, hunks: hunkList });
+    const job = this.opts.jobs.enqueue({
+      reviewId,
+      kind: "plotline-assign",
+      provider: settings.small.provider,
+      model: settings.small.model,
+      priority: JOB_PRIORITY.background,
+      dedupe: { anchor: "plotlines", requestKind: "plotline-assign", baseVersion: `v${snapshot.version.n}` },
+      run: async (ctx) => {
+        ctx.setPromptSnapshot(prompt);
+        const session = await this.opts.runner.start({
+          provider: settings.small.provider,
+          model: settings.small.model,
+          cwd: this.worktreeOf(reviewId),
+          systemPrompt: "",
+          mcpServers: [],
+        });
+        ctx.setSessionId(session.id);
+        try {
+          const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
+            ctx.reportText(d),
+          );
+          ctx.reportUsage(usage);
+          await this.recordUsage(reviewId, usage);
+          // Malformed trailing JSON fails the job (visible on Debug);
+          // a missing block or zero usable assignments keeps "other".
+          const { data } = this.parseAndValidate(reviewId, text);
+          const raw = (data as Record<string, unknown> | null)?.["assignments"];
+          const live = this.opts.reviews.getSnapshot(reviewId);
+          if (typeof raw !== "object" || raw === null || Array.isArray(raw) || !live) return;
+          const ids = new Set(plotlines.map((p) => p.id));
+          const known = new Set<string>();
+          for (const f of live.files) for (const h of f.hunks) known.add(`h:${f.fileKey}:${h.contentHash}`);
+          const taken = new Set(
+            live.hunkStates.filter((s) => s.plotline !== undefined).map((s) => s.contentHash),
+          );
+          let applied = 0;
+          let dropped = 0;
+          await this.opts.reviews.mutate(reviewId, (draft) => {
+            for (const [hid, pid] of Object.entries(raw as Record<string, unknown>)) {
+              const parsed = parseId(hid);
+              if (parsed?.kind !== "h") {
+                dropped += 1;
+                continue;
+              }
+              const canonical = `h:${parsed.fileKey}:${parsed.contentHash}`;
+              if (!known.has(canonical) || typeof pid !== "string" || !ids.has(pid)) {
+                dropped += 1;
+                continue;
+              }
+              if (taken.has(parsed.contentHash)) {
+                dropped += 1;
+                continue;
+              }
+              taken.add(parsed.contentHash);
+              let state = draft.hunkStates.find((s) => s.contentHash === parsed.contentHash);
+              if (!state) {
+                state = { contentHash: parsed.contentHash, folded: false, reviewed: false };
+                draft.hunkStates.push(state);
+              }
+              state.plotline = pid;
+              applied += 1;
+            }
+          });
+          if (dropped > 0) {
+            console.warn(`[reader] ${reviewId}: plotline assign step applied ${applied}, dropped ${dropped}`);
+          }
+        } finally {
+          try {
+            await this.opts.runner.close(session);
+          } catch {
+            // ignore
+          }
+        }
+      },
+    });
+    return [job];
   }
 
   private async enqueueDemoFill(reviewId: string): Promise<Job[]> {
