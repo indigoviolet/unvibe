@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
+import { clearMarks, placeAnchorSpot, repassUntilSettled, spotFromAnchor, withPreservedSelection, type AnchorSpot } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionCard } from "./ExpansionCard.js";
@@ -56,7 +56,11 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
   useEffect(() => {
     const root = document.querySelector("#right .desc");
     if (!root || exps.length === 0) return;
-    const timer = window.setTimeout(() => {
+    // Issue #166: retry boundedly when the paragraph body isn't there yet.
+    let pending = new Set<string>(exps.map((a) => a.id));
+    let retryCleanup: (() => void) | null = null;
+    const runPass = (): void => {
+      pending = new Set<string>(exps.map((a) => a.id));
       // Idempotent re-mark (issue #15): clear our own stale marks first,
       // then re-mark inside one selection-preserving window. Thread marks
       // (`mark[data-thr]`, owned by DescriptionView) are never touched.
@@ -75,26 +79,37 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
         }
         if (!body) return;
         const bodyEl: Element = body;
-        const markInBody = (quote: string, make: () => Element): boolean =>
-          markTextInElement(bodyEl, quote, make) > 0;
+        const markInBody = (spot: AnchorSpot, make: () => Element): boolean =>
+          placeAnchorSpot(bodyEl, spot, make) > 0;
         for (const a of exps) {
           if (isAnchorStale(a) || !a.anchor.quotedText) continue;
           if (a.type === "link" || a.promotedToPage) {
             const target = a.promotedToPage ?? "";
-            if (target && markInBody(a.anchor.quotedText, () => makePageLink(target))) {
+            if (target && markInBody(spotFromAnchor(a.anchor), () => makePageLink(target))) {
               changed = true;
+              pending.delete(a.id);
             }
             continue;
           }
           const closed = !a.open;
-          if (markInBody(a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
+          if (markInBody(spotFromAnchor(a.anchor), () => makeExpMark(a.id, closed))) {
             changed = true;
+            pending.delete(a.id);
           }
         }
         if (changed) setTick((t) => t + 1);
       });
-    }, 0);
-    return () => window.clearTimeout(timer);
+      retryCleanup?.();
+      retryCleanup = null;
+      if (pending.size > 0) {
+        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
+      }
+    };
+    const timer = window.setTimeout(runPass, 0);
+    return () => {
+      window.clearTimeout(timer);
+      retryCleanup?.();
+    };
   }, [annotations, paragraphId, exps]);
 
   useEffect(() => {

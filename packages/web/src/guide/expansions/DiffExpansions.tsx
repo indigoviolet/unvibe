@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useReducer } from "react";
 import type { Annotation, Page, ReviewFile } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
+import { clearMarks, placeAnchorSpot, repassUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
 import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
@@ -119,7 +119,13 @@ export function useDiffExpansionBindings(
   const [hlTick, bumpHlTick] = useReducer((x: number) => x + 1, 0);
   useEffect(() => subscribeHighlight(() => bumpHlTick()), []);
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    // Issue #166: retry boundedly when a row isn't there yet (lazy hunk
+    // bodies, highlight upgrades replacing cells).
+    const allIds = [...byLine.values()].flat().map((a) => a.id);
+    let pending = new Set<string>(allIds);
+    let retryCleanup: (() => void) | null = null;
+    const runPass = (): void => {
+      pending = new Set<string>([...byLine.values()].flat().map((a) => a.id));
       const scope = document.body;
       withPreservedSelection(scope, () => {
         for (const [key, exps] of byLine) {
@@ -131,12 +137,20 @@ export function useDiffExpansionBindings(
             for (const a of exps) {
               if (isAnchorStale(a) || !a.anchor.quotedText) continue;
               try {
+                // Issue #166: the spot carries the recorded selection
+                // offsets, so a repeated phrase places exactly; without
+                // offsets the first occurrence wins, as today.
+                const spot = spotFromAnchor(a.anchor);
                 if (a.type === "link" || a.promotedToPage) {
                   const target = a.promotedToPage ?? "";
-                  if (target) markTextInElement(cell, a.anchor.quotedText, () => makePageLink(target));
+                  if (target && placeAnchorSpot(cell, spot, () => makePageLink(target)) > 0) {
+                    pending.delete(a.id);
+                  }
                   continue;
                 }
-                markTextInElement(cell, a.anchor.quotedText, () => makeExpMark(a.id, !a.open));
+                if (placeAnchorSpot(cell, spot, () => makeExpMark(a.id, !a.open)) > 0) {
+                  pending.delete(a.id);
+                }
               } catch {
                 // Ignore.
               }
@@ -144,8 +158,17 @@ export function useDiffExpansionBindings(
           }
         }
       });
-    }, 0);
-    return () => window.clearTimeout(timer);
+      retryCleanup?.();
+      retryCleanup = null;
+      if (pending.size > 0) {
+        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
+      }
+    };
+    const timer = window.setTimeout(runPass, 0);
+    return () => {
+      window.clearTimeout(timer);
+      retryCleanup?.();
+    };
   }, [byLine, annotations, hlTick]);
 
   useEffect(() => {

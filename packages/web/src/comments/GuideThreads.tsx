@@ -28,7 +28,7 @@ import { anchorMatchesBlock } from "../guide/guideUtils.js";
 import { onOpenBlockThread } from "../guide/annotations.js";
 import { inflightForBlock, inflightLabel } from "../guide/inflight.js";
 import { useReview } from "../state/store.js";
-import { anchorScope, clearMarks, highlightAnchorInRoot, withPreservedSelection } from "./anchor.js";
+import { anchorScope, clearMarks, highlightAnchorInRoot, repassUntilSettled, spotFromAnchor, withPreservedSelection } from "./anchor.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
@@ -86,9 +86,15 @@ export function GuideThreadHooks() {
     const threads = (annotations ?? []).filter(
       (a): a is Annotation => a.type === "comment" && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
     );
-    const highlighted = new Set<string>();
+    // Issue #166: anchors whose host text isn't there yet (a re-render
+    // landing after this pass) are retried boundedly; the next snapshot
+    // or route change passes again anyway.
+    let pending = new Set<string>(threads.map((t) => t.id));
+    let retryCleanup: (() => void) | null = null;
     // One frame: let the guide's own render commit first.
-    const timer = window.setTimeout(() => {
+    const runPass = (): void => {
+      pending = new Set<string>(threads.map((t) => t.id));
+      const highlighted = new Set<string>();
       withPreservedSelection(page, () => {
         // Footnote chips (issue #72) are marks too but live in `.lo`;
         // keep them (toggled via [data-tfallback] below).
@@ -102,12 +108,15 @@ export function GuideThreadHooks() {
           const candidates = [host.blockId, bare];
           let done = false;
           for (const top of candidates) {
-            if (highlightAnchorInRoot(anchorScope(page, host.blockId), top, thread.anchor.quotedText, () => makeMark(thread.id))) {
+            if (highlightAnchorInRoot(anchorScope(page, host.blockId), top, spotFromAnchor(thread.anchor), () => makeMark(thread.id))) {
               done = true;
               break;
             }
           }
-          if (done) highlighted.add(thread.id);
+          if (done) {
+            highlighted.add(thread.id);
+            pending.delete(thread.id);
+          }
         }
         // Footnote chips (issue #72): quoted threads whose highlight landed
         // nowhere show their chip; highlighted ones hide it again (level
@@ -120,8 +129,17 @@ export function GuideThreadHooks() {
           else (el as HTMLElement).hidden = false;
         }
       });
-    }, 0);
-    return () => window.clearTimeout(timer);
+      retryCleanup?.();
+      retryCleanup = null;
+      if (pending.size > 0) {
+        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
+      }
+    };
+    const timer = window.setTimeout(runPass, 0);
+    return () => {
+      window.clearTimeout(timer);
+      retryCleanup?.();
+    };
   }, [annotations, pages, pathname]);
 
   // Mark clicks toggle; hovering outlines anchors <-> threads.
@@ -255,6 +273,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
           quote={pending.quote}
           kind={pending.kind}
           initialText={pending.initialText}
+          offsets={pending.offsets}
           onDiscard={() => setPending(null)}
           onCreated={(id) => {
             setPending(null);
