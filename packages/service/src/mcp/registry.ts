@@ -78,6 +78,12 @@ interface McpConnection {
 interface SessionState extends IssuedSession {
   /** Live client connections by SDK session id (`mcp-session-id`). */
   connections: Map<string, McpConnection>;
+  /**
+   * Sticky: a server was connected for this secret at least once
+   * (degraded-turn detection, #51 — `activitySnapshot` diffs this
+   * before/after a turn, so it must not drop when a client disconnects).
+   */
+  everConnected: boolean;
   /** Tool calls served on this secret (degraded-turn detection, #51). */
   calls: number;
 }
@@ -114,6 +120,7 @@ export class McpRegistry {
       sessionId,
       role,
       connections: new Map(),
+      everConnected: false,
       calls: 0,
     };
     this.sessions.set(secret, state);
@@ -160,6 +167,7 @@ export class McpRegistry {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (sid) => {
+        state.everConnected = true;
         if (holder.conn) state.connections.set(sid, holder.conn);
       },
       onsessionclosed: (sid) => {
@@ -269,7 +277,7 @@ export class McpRegistry {
     for (const secret of this.byReview.get(reviewId) ?? []) {
       const state = this.sessions.get(secret);
       if (!state) continue;
-      if (state.connections.size > 0) connected += 1;
+      if (state.everConnected) connected += 1;
       toolCalls += state.calls;
     }
     return { connected, toolCalls, unknownHits: this.unknownHits };
@@ -323,6 +331,9 @@ export class McpRegistry {
     if (isInitialize) {
       const conn = this.createConnection(state);
       await conn.server.connect(conn.transport);
+      // A server is now connected for this secret (the old single
+      // transport flipped the same flag at its lazy `connect`).
+      state.everConnected = true;
       try {
         await conn.transport.handleRequest(req, res, body);
       } catch (err) {
@@ -334,23 +345,23 @@ export class McpRegistry {
       return;
     }
     // Every other request routes to its connection by SDK session id.
-    const header = req.headers["mcp-session-id"];
+    const header = req.headers?.["mcp-session-id"];
     const sid = Array.isArray(header) ? header[0] : header;
     const conn = sid ? state.connections.get(sid) : undefined;
     if (!conn) {
-      const rpcId = (body as { id?: unknown } | null)?.id ?? null;
-      res.statusCode = state.connections.size === 0 ? 400 : 404;
-      res.setHeader("content-type", "application/json");
-      res.end(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: rpcId,
-          error: {
-            code: state.connections.size === 0 ? -32000 : -32001,
-            message: state.connections.size === 0 ? "Bad Request: Server not initialized" : "Session not found",
-          },
-        }),
-      );
+      // No live connection for this SDK session id. Delegate to a fresh
+      // connected transport, as the old single transport did: it answers
+      // 400 "Server not initialized" before any initialize and 404 for an
+      // unknown session id. The connection never initializes, so it is
+      // closed again instead of leaking.
+      const fresh = this.createConnection(state);
+      await fresh.server.connect(fresh.transport);
+      state.everConnected = true;
+      try {
+        await fresh.transport.handleRequest(req, res, body);
+      } finally {
+        await fresh.transport.close().catch(() => {});
+      }
       return;
     }
     await conn.transport.handleRequest(req, res, body);
