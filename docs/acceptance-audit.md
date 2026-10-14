@@ -682,10 +682,14 @@ needed (that deviation is closed, not added).
   cases, `source/diff/diffLogic.test.ts` 19 tests; issues #56/#57: the
   comments panel keeps a 360–420px min-width anchored to its button so
   tabs/paths no longer wrap).
-- File header (chevron, path, +/−, reviewed count, toggle) — met.
+- File header (chevron, path, +/−, reviewed count, reviewed checkbox with
+  indeterminate partial state) — met (issue #162). File fold persists on
+  the snapshot (`fileStates`), so tab switches keep it; reviewed is
+  derived from hunks (mark-file marks every hunk), never stored.
 - Git's own hunks (≤3 context, merged runs); header format + raw `@@` on
-  hover; fold/Summarize/note/reviewed actions; hunk card (summary+note,
-  Delete); folding hides code only — met (`shared/src/diff.ts` +
+  hover; fold/Summarize/reviewed actions; hunk card (summary,
+  Delete); folding hides code only, unfolded through the header chevron
+  alone (no placeholder row, issue #162) — met (`shared/src/diff.ts` +
   `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”). Summaries are
   content cards (#138): idle text with one attribute mounts nothing per
   hunk (large-diff fixture: identical DOM node counts before/after,
@@ -712,8 +716,12 @@ needed (that deviation is closed, not added).
   sites); JSON-looking text is never stored and long fallbacks cut on a
   word boundary (the stored-row cleanup for pre-fix rows was removed
   under #137 — a stored JSON-looking summary is now reused/shown as-is).
-- Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
-  (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
+- Fold all folds non-hidden and summarizes only hunks still missing a
+  summary (quiet tooltip when all have one); Unfold keeps summaries —
+  met (issue #162; per-hunk `summarize` jobs, deduped;
+  `docs/pipeline.md` “Fold-all choice”). Hunk notes are removed (issue
+  #162): no stored note, no UI; a private remark is a Comment kept off
+  the PR instead.
   The Summarize dots clear when the summary lands by patch — any landed
   summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
   effect, `source/diff/summarizeBusy.test.tsx`).

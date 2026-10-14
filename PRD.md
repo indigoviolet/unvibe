@@ -57,7 +57,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 **Main flows**
 1. **Open a review.** Pick a repo, then a PR or branch. The guide starts filling in within about a minute.
 2. **Understand.** Read the guide. Hover links and citations, open concept pages, change the depth, and explain or ask about selected text.
-3. **Inspect the code.** Use the diff beside the guide: filter files, hide uninteresting hunks, fold, summarize, note, mark reviewed.
+3. **Inspect the code.** Use the diff beside the guide: filter files, hide uninteresting hunks, fold, summarize, mark reviewed.
 4. **Get a second opinion** on a card or an agent finding.
 5. **Comment and submit.** Mark comments "For PR", edit the drafts, then submit one GitHub review. If it's your PR, the description edit goes in the same submit.
 6. **Come back after new commits.** See what changed, click Update, and continue.
@@ -218,13 +218,13 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - a progress bar of hunks reviewed;
 - a folder tree that compacts single-child folders, with +/− counts and reviewed/total per file. Clicking a file scrolls to it.
 
-**File header:** collapse chevron, the path (with the file name always visible), +/− counts, the reviewed count, and a mark-file-reviewed toggle. It stays pinned under the toolbar while its file scrolls.
+**File header:** collapse chevron, the path (with the file name always visible), +/− counts, the reviewed count, and a mark-file-reviewed checkbox. The file is reviewed exactly when all its hunks are: marking the file marks every hunk, unmarking it unmarks every hunk, and a partially reviewed file shows an indeterminate checkbox beside its n/m count. File fold state is stored with the review. It stays pinned under the toolbar while its file scrolls.
 
 **Hunks**
 - **Hunks are git's own:** a run of changed lines plus up to 3 unchanged lines of context, with nearby runs merged.
 - **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover. It stays pinned under the file header while its hunk scrolls.
-- **Actions:** a leading fold chevron, then Summarize (agent), Add or Edit note, and Mark reviewed.
-- **Hunk card:** the agent summary and the user's note, each with Delete. It exists regardless of folding. **Folding only hides code**, replacing it with "N changed lines folded · show".
+- **Actions:** a leading fold chevron, then Summarize (agent) and a Mark reviewed checkbox.
+- **Hunk card:** the agent summary, with Delete. It exists regardless of folding. **Folding only hides code**; the header chevron is the single unfold control.
 - **Summaries are content cards:** an idle summary is plain text — selecting in it offers Explain, Ask…, Comment and GitHub like any other agent text. The first interaction (an action on selected text, or opening the summary) turns it into a real conversation card on the hunk, created from the stored summary text with no agent call, and it stays a card: reply box and per-answer controls included. A Comment attaches to the hunk's first changed line and never activates the summary. Deleting the card returns the hunk to its idle text. Opening a hunk card as a page keeps the summary text with a link to the page; the summary's actions then open that page instead of starting a second card.
 - **Mark reviewed** greys the hunk and folds its code.
 
@@ -242,7 +242,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - Expand by unit: one control per hunk steps from the innermost enclosing function or method to its class and then the file, one level per click, with the unit's name in the hunk header. Units come from tree-sitter grammars (eight languages) with an indentation fallback shown as approximate; hunks with no enclosing unit expand by lines.
 - Where the review has no file content to read, expansion controls hide instead of showing load errors.
 
-**Fold all and Unfold all:** Fold all summarizes and folds every hunk that isn't hidden. Unfold all shows all code and keeps the summaries.
+**Fold all and Unfold all:** Fold all folds every hunk that isn't hidden and asks the agent to summarize only the hunks still missing a summary (past the per-hunk summary limit it folds without requesting any). Unfold all shows all code and keeps the summaries.
 
 **Views**
 - **Unified:** long lines scroll sideways (per hunk: each hunk's code scrolls independently, so its header can pin without sitting inside the scroller).
@@ -342,7 +342,8 @@ type AgentEvent =
 | Review | id, repo, **branch name**, PR number (optional), versions[], current version |
 | Version | n, head SHA, merge-base SHA, base ref, fetched at, mapping from the previous version's IDs |
 | File / Hunk | file key, path, category, hunk **content hash**, header, line ranges, `hidden_reason` |
-| HunkState | content hash → folded, reviewed, summary, note (carried across versions by hash) |
+| HunkState | content hash → folded, reviewed, summary (carried across versions by hash) |
+| FileState | file key → folded (file reviewed is derived from its hunks, never stored) |
 | Page | id, kind (root, concept, finding, opened-expansion), title, saved, parent, cards[] |
 | Card | id, page, title, level, collapsed, revision, blocks[], undo stack, second opinions |
 | Block | id, type (paragraph, list, table, code, diagram, finding link, follow-up, aside), text per depth level, citations |
@@ -577,7 +578,8 @@ POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while 
 POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
 POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|depth|examples|diagram|undo|
                                            collapse|generate|second_opinion|promote|close|delete|followup|concept|bookmark, … } (409 while loading/failed)
-PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, note? } ; POST …/summarize (409 while loading/failed)
+PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, summary? } ; POST …/summarize (409 while loading/failed)
+PATCH /api/reviews/:id/files/:fileKey    { folded? } (409 while loading/failed)
 PATCH /api/reviews/:id/comments/:id      { post?, draft? } (409 while loading/failed)
 PUT  /api/reviews/:id/description        local edit (pending until submit; 409 while loading/failed)
 POST /api/reviews/:id/submit             one GitHub review plus the description update (409 while loading/failed)
