@@ -1,0 +1,31 @@
+{
+  "name": "unvibe",
+  "version": "0.0.5-preview.fix-170-update-mise-path.3e29cd9",
+  "description": "Reader for code changes: localhost service + installable web app.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "unvibe": "./packages/service/dist/index.js"
+  },
+  "dependencies": {
+    "fastify": "5.12.5",
+    "@fastify/static": "8.3.0",
+    "@fastify/websocket": "11.3.4",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "immer": "11.1.21",
+    "ws": "8.22.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "unvibe": {
+    "channel": "preview/fix-170-update-mise-path",
+    "commit": "3e29cd98a2b7621161af6e54a2dba6af6983a838",
+    "builtAt": "2026-10-14T08:53:35.643Z",
+    "sourceBranch": "fix/170-update-mise-path",
+    "sourceVersion": "0.0.5",
+    "sourceCommit": "3e29cd98a2b7621161af6e54a2dba6af6983a838",
+    "baseBranch": "main",
+    "baseCommit": "4239af7a062bc907ea9263e5c254973727788dde"
+  }
+}
