@@ -101,6 +101,7 @@ Service dependencies (so a global npm install brings the adapters along):
 | 8 | Codex workspace-write MCP approvals arrive with an **empty toolCall** (no title/name) | Correlate by `toolCallId` against the preceding `tool_call` update (the adapter always emits it first); `_meta.is_mcp_tool_approval` kept as supporting evidence. Unit test covers the correlation |
 | 9 | `load` replays history as `session/update` notifications | Drain the replay until quiet (one 20 ms window with nothing new, 300 ms ceiling) before resolving `load()` so stale chunks never leak into the next turn (#122: was a fixed 300 ms sleep) |
 | 10 | ACP errors are generic `-32603 Internal error` | Reason is in the message/details (`Session not found`, rate limit, …); `isRetryableError` classifies accordingly |
+| 11 | Claude places its dynamic environment block after the first user message and moves its cache breakpoint off it on later turns (#177) | Small one-shot sessions (`systemPrompt: ""`: hunk pass, summarize, runSmall) start with a byte-identical shared first turn (`SHARED_CACHE_FIRST_TURN`) so the per-job prompt lands after every cache-shared block; measured live, warm per-job cache writes fell from ~7k to ~2.6k tokens. The block grows with the tool set (agent types, skills, MCP instructions), so a wider tool set re-writes more of it per job |
 
 ## Permission policy
 

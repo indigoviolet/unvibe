@@ -86,6 +86,22 @@ function flattenSelectOptions(opt: unknown): Array<{ value: string; name?: strin
   return out;
 }
 
+/**
+ * First turn of every small one-shot Claude session (hunk pass,
+ * summarize, runSmall — the `systemPrompt: ""` starts). Live payload
+ * captures (#177, found via the #160 investigation) show the CLI places
+ * its dynamic environment block (environment, agent types, skills)
+ * AFTER the first user message, with the last cache breakpoint at its
+ * end. When the first message is the per-job prompt, that block can
+ * never be shared and is re-written on every job (~7k tokens per job,
+ * even warm; more with a wider tool set). A byte-identical first turn moves the
+ * per-job prompt after every shared block, so all of it cache-reads
+ * from the second job on. Mirrors the base pack's "ready" pattern in
+ * SessionManager.
+ */
+export const SHARED_CACHE_FIRST_TURN =
+  "Reply with exactly `ready` and nothing else. The task for this session arrives in the next message.";
+
 export class AcpAgentRunner implements AgentRunner {
   /**
    * One adapter subprocess per (provider, posture) — issue #160
@@ -106,6 +122,9 @@ export class AcpAgentRunner implements AgentRunner {
   /** Last reported cumulative usage per session (Claude counters grow across
    *  turns; per-turn usage is the delta — see usage.ts). */
   private usageBaseline = new Map<string, TurnUsage>();
+  /** Usage of the shared first turn, folded into the session's first
+   *  real prompt so per-job reporting stays complete (see start()). */
+  private firstTurnUsage = new Map<string, TurnUsage>();
   private modelCache = new Map<ProviderId, { at: number; models: ModelInfo[]; defaultId?: string | null }>();
   private opts: AcpRunnerOptions;
 
@@ -263,6 +282,25 @@ export class AcpAgentRunner implements AgentRunner {
         throw new Error(`couldn't select the ${provider} model ${JSON.stringify(opts.model)}: ${errorMessage(e)}`, {
           cause: e,
         });
+      }
+    }
+    // Small one-shot Claude sessions get a shared first turn so the
+    // per-job prompt lands after every cache-shared block (see
+    // SHARED_CACHE_FIRST_TURN). Best-effort: a failed first turn must
+    // not fail the job — the real prompt surfaces any real error. Its
+    // usage is folded into the first real prompt's usage event, and
+    // its notifications are drained by prompt() before that turn.
+    if (provider === "claude" && opts.systemPrompt === "") {
+      try {
+        const warm = await caller.request("session/prompt", {
+          sessionId: rec.acpSessionId,
+          prompt: [{ type: "text", text: SHARED_CACHE_FIRST_TURN }],
+        });
+        const tu = aggregateTurnUsage(warm as { usage?: unknown; _meta?: unknown });
+        this.usageBaseline.set(rec.acpSessionId, tu);
+        this.firstTurnUsage.set(rec.acpSessionId, tu);
+      } catch {
+        // ignore: caching optimisation only
       }
     }
     // Restricted posture for Codex is a session mode, applied after creation
@@ -666,6 +704,19 @@ export class AcpAgentRunner implements AgentRunner {
     if (rec.provider === "claude") {
       report = deltaTurnUsage(this.usageBaseline.get(rec.acpSessionId) ?? null, tu);
       this.usageBaseline.set(rec.acpSessionId, tu);
+      // Fold in the shared first turn (start()) once, so the job's
+      // reported usage covers both turns.
+      const first = this.firstTurnUsage.get(rec.acpSessionId);
+      if (first) {
+        this.firstTurnUsage.delete(rec.acpSessionId);
+        report = {
+          ...report,
+          inputTokens: report.inputTokens + first.inputTokens,
+          cachedReadTokens: report.cachedReadTokens + first.cachedReadTokens,
+          cachedWriteTokens: report.cachedWriteTokens + first.cachedWriteTokens,
+          outputTokens: report.outputTokens + first.outputTokens,
+        };
+      }
     }
     yield {
       type: "usage",
