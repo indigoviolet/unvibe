@@ -204,7 +204,7 @@ code { font-family: var(--mono); font-size: .86em; }
    menu stays inside the pane. Follows the second-opinion menu behaviour
    (outside press / Escape closes). */
 .fctl { display: inline-flex; position: relative; flex: none; }
-.fmenu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 220px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 4px; z-index: 30; display: flex; flex-direction: column; gap: 2px; }
+.fmenu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 220px; max-height: 60vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 4px; z-index: 30; display: flex; flex-direction: column; gap: 2px; }
 .fmenu button { display: flex; align-items: center; gap: 8px; border: 0; background: none; border-radius: 6px; padding: 6px 8px; text-align: left; font-size: 12.5px; width: 100%; white-space: nowrap; }
 .fmenu button:hover, .fmenu button:focus-visible { background: var(--sunk); }
 .fmenu .tick { width: 1.2em; flex: none; }
