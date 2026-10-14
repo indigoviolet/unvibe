@@ -22,6 +22,14 @@ async function gotoReview(page: Page): Promise<void> {
 }
 
 /**
+ * Issue #167: the demo seeds an open floating card under C-problem that
+ * overlays the controls below it — close it first, as a reader would.
+ */
+async function closeSeedCard(page: Page): Promise<void> {
+  await page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" }).click();
+}
+
+/**
  * Hover an anchor deterministically. Playwright's `hover()` may scroll with
  * the pointer already over the target, and a scroll with a stationary
  * pointer must NOT open the popover (PRD §4.5) — so scroll, settle, move
@@ -163,6 +171,7 @@ test("after a scroll, hover is ignored until the pointer moves", async ({ page }
 
 test("citation click reveals the canonical diff location", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   const seen = page.evaluate(
     () =>
       new Promise<string>((resolve) => {
@@ -183,6 +192,7 @@ test("citation click reveals the canonical diff location", async ({ page }) => {
 
 test("citation hover previews real cited lines", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   await hoverFresh(page, page.locator("#C-central .lk[data-refs]").first());
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
   await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:");
@@ -209,6 +219,7 @@ test("navigation, trail and browser back", async ({ page }) => {
 
 test("collapse chevron hides the card body; contents still lists it", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   const card = page.locator("#C-central");
   await card.locator("> .chead").getByRole("button", { name: "Collapse" }).click();
   await expect(card).toHaveClass(/collapsed/);
