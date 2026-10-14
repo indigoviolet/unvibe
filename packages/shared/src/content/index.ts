@@ -13,6 +13,8 @@ export type {
   SplitResult,
 } from "./types.js";
 export { splitReply } from "./split.js";
+export { splitStreamText } from "./stream.js";
+export type { StreamSplit } from "./stream.js";
 export {
   HUNK_SUMMARY_MAX,
   looksLikeJson,
