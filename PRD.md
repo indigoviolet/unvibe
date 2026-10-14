@@ -538,7 +538,7 @@ A new base is built when any of these happens:
 - **Role defaults:** tiers opus | sol > sonnet | terra > haiku | luna; the newest version offered within a tier wins; Fable and Astra are never picked. Second opinion is picked from the provider main is not using, and stays unset with a single provider. One source of effective settings serves Settings, readiness, the pipeline, second opinions and shared context: a saved pick wins, an unset role takes the live default, and unfillable roles keep the stored fallback (readiness reports it plainly).
 - **Effort (thinking level) per role:** the adapter's effort values (Claude `effort`, Codex `reasoning_effort`), Default first. The setting rides `AgentRunner.start`, so any runner can honour it; forks inherit it, reopened sessions keep it, and a changed level builds a new base session. Second-opinion reuse matches on it, and each job records the effort it ran with.
 - **Concurrency:**
-  - a per-provider session cap, starting at 4;
+  - a per-provider session cap, starting at 4, applied separately to main-model and small-model jobs (so the cap can allow that many of each at once, per provider);
   - a priority queue: what the user asked for, then what's visible on screen, then background work;
   - back off on rate limits, and show it on the job;
   - cancel a job when its card is deleted (ACP `session/cancel`); closing a card only hides it, and its running job keeps filling the turn;

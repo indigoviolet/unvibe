@@ -38,12 +38,14 @@ export const DEFAULT_MAX_ATTEMPTS = 8;
 export const DEFAULT_BACKOFF_BASE_MS = 1000;
 export const DEFAULT_BACKOFF_MAX_MS = 60_000;
 /**
- * #123: small-model jobs (hunk summaries) run in their own concurrency
+ * #123/#182: small-model jobs (hunk summaries) run in their own concurrency
  * bucket per provider, so the hunk pass never queues behind main-model
- * critics. The burst stays bounded (provider rate limits surface as
- * retryable errors and back off through the usual schedule).
+ * critics. Both buckets use the same per-provider cap
+ * (`getConcurrencyCap`, the `sessionsPerProvider` setting, read live on
+ * every pump), so the setting bounds each bucket separately. Provider
+ * rate limits still surface as retryable errors and back off through
+ * the usual schedule.
  */
-export const SMALL_CONCURRENCY_CAP = 4;
 const SMALL_JOB_KINDS: ReadonlySet<JobKind> = new Set(["hunk-pass", "summarize", "consolidate"]);
 export const INTERRUPTED_MESSAGE = "stopped because the service restarted — retry to run it again";
 
@@ -492,7 +494,7 @@ export class JobQueue {
     for (const entry of queued) {
       const provider = entry.job.provider ?? "";
       const small = SMALL_JOB_KINDS.has(entry.job.kind);
-      const cap = small ? SMALL_CONCURRENCY_CAP : this.getConcurrencyCap(provider);
+      const cap = this.getConcurrencyCap(provider);
       if (this.runningCount(provider, small) >= cap) continue;
       void this.execute(entry);
     }

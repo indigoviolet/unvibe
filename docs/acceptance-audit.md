@@ -1256,8 +1256,9 @@ needed (that deviation is closed, not added).
   full access (issue #160) the isolation is a prompt rule only — a shell
   can read the data directory — stated in PRD §12, `docs/acp-runner.md`,
   and the base-module header.
-- Per-provider cap 4 (setting `sessionsPerProvider`) — met
-  (`jobs/queue.ts`, `settings.test.ts` cap cases).
+- Per-provider cap (setting `sessionsPerProvider`, default 4) applied
+  separately to main-model and small-model jobs, read live — met (#182;
+  `jobs/queue.ts`, `jobs.test.ts` cap cases incl. N-at-once and live raise).
 - Priority queue (asked > visible > background) — met (`JOB_PRIORITY`,
   `jobs.test.ts` ordering).
 - Backoff on rate limits + shown on job — met (`backoff.ts`,
