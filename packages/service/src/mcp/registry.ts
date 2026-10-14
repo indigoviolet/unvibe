@@ -6,11 +6,17 @@
  *   `POST|GET|DELETE /api/mcp/:secret`. Each agent session is issued its
  *   own unguessable secret (`issueSession`); the secret identifies the
  *   (review, session, role) for attribution.
- * - One SDK `Server` per issued session, all built from the same frozen
- *   tool definitions. `ListTools` omits `pin_context` for non-readers,
- *   and a direct `pin_context` call from a non-reader is refused — so one
- *   server gives the reader session an extra tool while everyone else
- *   sees an identical surface.
+ * - One SDK `Server` per client connection, all built from the same
+ *   frozen tool definitions. A secret may carry many connections at once
+ *   (issue #174): forks reuse the base session's MCP URL, and each fork
+ *   opens its own connection with a fresh `initialize`, which a single
+ *   stateful transport refuses ("Server already initialized"). Routing is
+ *   by the SDK session id (`mcp-session-id` header); the URL secret stays
+ *   the credential and the (review, session, role) attribution.
+ *   `ListTools` omits `pin_context` for non-readers, and a direct
+ *   `pin_context` call from a non-reader is refused — so one server gives
+ *   the reader session an extra tool while everyone else sees an
+ *   identical surface.
  * - Protection: 127.0.0.1-only binding plus the per-session secret in
  *   the URL (256-bit, revocable). The `/api/mcp/*` path is exempt from
  *   the install-token gate for exactly this reason: agent subprocesses
@@ -63,10 +69,15 @@ export interface McpRegistryOptions {
   onPin?: (pin: PinRecord) => void;
 }
 
-interface SessionState extends IssuedSession {
+/** One client connection on a secret: its own server + stateful transport. */
+interface McpConnection {
   server: Server;
   transport: StreamableHTTPServerTransport;
-  connected: boolean;
+}
+
+interface SessionState extends IssuedSession {
+  /** Live client connections by SDK session id (`mcp-session-id`). */
+  connections: Map<string, McpConnection>;
   /** Tool calls served on this secret (degraded-turn detection, #51). */
   calls: number;
 }
@@ -93,40 +104,18 @@ export class McpRegistry {
 
   constructor(private readonly opts: McpRegistryOptions) {}
 
-  /** Issue a per-session secret + dedicated tool surface. */
+  /** Issue a per-session secret; connections are created per client. */
   issueSession(reviewId: string, sessionId: string, role: McpRole): IssuedSession {
     const secret = randomBytes(32).toString("hex");
-    const server = new Server(
-      { name: MCP_SERVICE_NAME, version: MCP_SERVICE_VERSION },
-      { capabilities: { tools: {} } },
-    );
     const state: SessionState = {
       secret,
       path: `/api/mcp/${secret}`,
       reviewId,
       sessionId,
       role,
-      server,
-      // Stateful (SDK-session) transport, one per issued MCP session: the
-      // SDK forbids reusing a *stateless* transport across HTTP requests,
-      // while a stateful one is built for exactly this. The MCP session id
-      // is an SDK concern; attribution still comes from our URL secret.
-      transport: new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() }),
-      connected: false,
+      connections: new Map(),
       calls: 0,
     };
-    server.setRequestHandler(ListToolsRequestSchema, () => ({
-      tools: toolsForRole(role),
-    }));
-    server.setRequestHandler(CallToolRequestSchema, async (req) => {
-      const args = (req.params.arguments ?? {}) as Record<string, unknown>;
-      state.calls += 1;
-      try {
-        return await this.dispatch(state, req.params.name, args);
-      } catch (err) {
-        return errorResult(err instanceof Error ? err.message : String(err));
-      }
-    });
     this.sessions.set(secret, state);
     let set = this.byReview.get(reviewId);
     if (!set) {
@@ -144,6 +133,43 @@ export class McpRegistry {
     return issued;
   }
 
+  /**
+   * Build one client connection (server + stateful transport) for a
+   * secret. The transport registers itself by SDK session id when its
+   * `initialize` lands and unregisters on `DELETE`/close, so a secret
+   * serves any number of simultaneous clients (issue #174).
+   */
+  private createConnection(state: SessionState): McpConnection {
+    const server = new Server(
+      { name: MCP_SERVICE_NAME, version: MCP_SERVICE_VERSION },
+      { capabilities: { tools: {} } },
+    );
+    server.setRequestHandler(ListToolsRequestSchema, () => ({
+      tools: toolsForRole(state.role),
+    }));
+    server.setRequestHandler(CallToolRequestSchema, async (req) => {
+      const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+      state.calls += 1;
+      try {
+        return await this.dispatch(state, req.params.name, args);
+      } catch (err) {
+        return errorResult(err instanceof Error ? err.message : String(err));
+      }
+    });
+    const holder: { conn?: McpConnection } = {};
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sid) => {
+        if (holder.conn) state.connections.set(sid, holder.conn);
+      },
+      onsessionclosed: (sid) => {
+        state.connections.delete(sid);
+      },
+    });
+    holder.conn = { server, transport };
+    return holder.conn;
+  }
+
   revokeSession(secret: string): void {
     const state = this.sessions.get(secret);
     if (!state) return;
@@ -153,7 +179,10 @@ export class McpRegistry {
       set.delete(secret);
       if (set.size === 0) this.byReview.delete(state.reviewId);
     }
-    void state.transport.close().catch(() => {});
+    for (const conn of state.connections.values()) {
+      void conn.transport.close().catch(() => {});
+    }
+    state.connections.clear();
   }
 
   /**
@@ -199,11 +228,17 @@ export class McpRegistry {
     let n = 0;
     await Promise.all(
       states.map(async (state) => {
-        try {
-          await state.transport.close();
-        } catch {
-          // Already gone: fine.
-        }
+        const conns = [...state.connections.values()];
+        state.connections.clear();
+        await Promise.all(
+          conns.map(async (conn) => {
+            try {
+              await conn.transport.close();
+            } catch {
+              // Already gone: fine.
+            }
+          }),
+        );
         n += 1;
       }),
     );
@@ -234,7 +269,7 @@ export class McpRegistry {
     for (const secret of this.byReview.get(reviewId) ?? []) {
       const state = this.sessions.get(secret);
       if (!state) continue;
-      if (state.connected) connected += 1;
+      if (state.connections.size > 0) connected += 1;
       toolCalls += state.calls;
     }
     return { connected, toolCalls, unknownHits: this.unknownHits };
@@ -266,10 +301,6 @@ export class McpRegistry {
       res.end("unknown mcp session");
       return;
     }
-    if (!state.connected) {
-      await state.server.connect(state.transport);
-      state.connected = true;
-    }
     // Newer claude CLIs (≥2.1.296, MCP protocol 2026-07-28) probe
     // `server/discover` before `initialize`; our SDK (1.32.1) predates it and
     // would answer HTTP 500 (fatal, tools unavailable). Answer JSON-RPC
@@ -283,7 +314,49 @@ export class McpRegistry {
       res.end(JSON.stringify({ jsonrpc: "2.0", id: rpcId, error: { code: -32601, message: "Method not found: server/discover" } }));
       return;
     }
-    await state.transport.handleRequest(req, res, body);
+    // Issue #174: every `initialize` gets its own connection, so forks
+    // reusing this secret connect alongside the base instead of being
+    // refused by its already-initialized transport.
+    const isInitialize = Array.isArray(body)
+      ? body.some((m) => (m as { method?: unknown } | null)?.method === "initialize")
+      : method === "initialize";
+    if (isInitialize) {
+      const conn = this.createConnection(state);
+      await conn.server.connect(conn.transport);
+      try {
+        await conn.transport.handleRequest(req, res, body);
+      } catch (err) {
+        const sid = conn.transport.sessionId;
+        if (sid) state.connections.delete(sid);
+        await conn.transport.close().catch(() => {});
+        throw err;
+      }
+      return;
+    }
+    // Every other request routes to its connection by SDK session id.
+    const header = req.headers["mcp-session-id"];
+    const sid = Array.isArray(header) ? header[0] : header;
+    const conn = sid ? state.connections.get(sid) : undefined;
+    if (!conn) {
+      const rpcId = (body as { id?: unknown } | null)?.id ?? null;
+      res.statusCode = state.connections.size === 0 ? 400 : 404;
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpcId,
+          error: {
+            code: state.connections.size === 0 ? -32000 : -32001,
+            message: state.connections.size === 0 ? "Bad Request: Server not initialized" : "Session not found",
+          },
+        }),
+      );
+      return;
+    }
+    await conn.transport.handleRequest(req, res, body);
+    // DELETE terminates the connection (its `onsessionclosed` already
+    // unregistered it); make sure a closed client leaves no entry behind.
+    if (req.method === "DELETE" && sid) state.connections.delete(sid);
   }
 
   // -- dispatch ---------------------------------------------------------
