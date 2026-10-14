@@ -54,6 +54,7 @@ import type {
   UpdateChannelsResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
+  UpdateDiffFilterRequest,
   UpdateFileRequest,
   UpdateHunkRequest,
   UpdateViewRequest,
@@ -339,6 +340,13 @@ const realApi = {
   /** Per-review diff view preferences (issue #168): persisted on the review. */
   updateView: (id: string, body: UpdateViewRequest): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}/view`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  /** The diff's score/plotline filter, remembered with the review. */
+  updateDiffFilter: (id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/diff-filter`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),

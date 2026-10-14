@@ -16,8 +16,8 @@
  * - the guide agent jumps here via `revealSource("diff:…")`.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
+import type { DiffFilter, Hunk, HunkScoreLevel, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import { HUNK_SCORE_LABELS, HUNK_SCORE_LEVELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT, PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -35,6 +35,7 @@ import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } fr
 import {
   buildFileTree,
   citedHunkHashes,
+  fileTopScore,
   filterFiles,
   hunkOverlaps,
   shouldHideHunk,
@@ -127,6 +128,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const setSnapshot = useReview((s) => s.setSnapshot);
   const [prefs, setPrefs] = useState<DiffPrefs>(loadPrefs);
   const [fq, setFq] = useState("");
+  // Issue #169: the score/plotline filter — one dropdown in the filter
+  // menu, remembered with the review (snapshot `diffFilter`, not local
+  // prefs). Local state applies at once; the PATCH persists it and the
+  // snapshot echo converges back through the effect below.
+  const [plotFilter, setPlotFilter] = useState<DiffFilter>({});
+  const lastSentFilter = useRef<string>("{}");
   const [unhidden, setUnhidden] = useState<Record<string, boolean>>({});
   const [dirOpen, setDirOpen] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
@@ -170,6 +177,16 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       // Private mode: prefs just don't persist.
     }
   }, [prefs]);
+
+  // Adopt the review's stored filter when it arrives or changes
+  // server-side; ignore the echo of our own change (tracked above).
+  const storedFilterKey = JSON.stringify(snapshot?.diffFilter ?? {});
+  useEffect(() => {
+    if (lastSentFilter.current !== storedFilterKey) {
+      lastSentFilter.current = storedFilterKey;
+      setPlotFilter(snapshot?.diffFilter ? { ...snapshot.diffFilter } : {});
+    }
+  }, [reviewId, storedFilterKey, snapshot?.diffFilter]);
 
   // Snapshot: the guide column fetches it too; fetch here when absent so the
   // diff pane works standalone (tests, deep links). `?version=n` views an
@@ -355,10 +372,27 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   );
 
   const cats = useMemo(() => new Set(prefs.cats), [prefs.cats]);
+  const hunkStateOf = useCallback(
+    (contentHash: string) => {
+      const s = states.get(contentHash);
+      return s ? { score: s.score, plotline: s.plotline } : undefined;
+    },
+    [states],
+  );
+  const plotActive = plotFilter.plotline !== undefined || plotFilter.score !== undefined;
   const visible = useMemo(
     () =>
-      snapshot ? filterFiles(snapshot.files, { query: fq, cats, hideReviewed: prefs.hideReviewed, reviewedCount }) : [],
-    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount],
+      snapshot
+        ? filterFiles(snapshot.files, {
+            query: fq,
+            cats,
+            hideReviewed: prefs.hideReviewed,
+            reviewedCount,
+            ...(plotActive ? { plot: plotFilter } : {}),
+            hunkStateOf,
+          })
+        : [],
+    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount, plotActive, plotFilter, hunkStateOf],
   );
 
   const progress = useMemo(() => {
@@ -400,6 +434,68 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     }, 2600);
   }, []);
 
+  // Older versions are view-only for user data (reviewed, summaries):
+  // those writes are refused with a pointer back. Folding only hides
+  // code, so it stays allowed while browsing history.
+  const readOnly =
+    versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
+
+  const setPlotFilterAndPersist = useCallback(
+    (next: DiffFilter) => {
+      setPlotFilter(next);
+      lastSentFilter.current = JSON.stringify(next);
+      // Read-only history: the choice still applies to this view, it just
+      // is not remembered with the review.
+      if (readOnly) return;
+      const body = {
+        ...(next.plotline !== undefined ? { plotline: next.plotline } : { plotline: null }),
+        ...(next.score !== undefined ? { score: next.score } : { score: null }),
+      };
+      api.updateDiffFilter(reviewId, body).catch(() => {
+        toast("Couldn't save the filter");
+      });
+    },
+    [reviewId, readOnly],
+  );
+
+  const plotlines: Plotline[] = useMemo(() => snapshot?.plotlines ?? [], [snapshot?.plotlines]);
+  const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
+  const hasScores = useMemo(
+    () => (snapshot?.hunkStates ?? []).some((s) => s.score !== undefined),
+    [snapshot?.hunkStates],
+  );
+
+  // Issue #169: counts for the plotline/score dropdown groups.
+  const plotCounts = useMemo(() => {
+    const byId = new Map<string, number>();
+    let other = 0;
+    for (const f of snapshot?.files ?? []) {
+      for (const h of f.hunks) {
+        const p = states.get(h.contentHash)?.plotline;
+        if (p === undefined) other += 1;
+        else byId.set(p, (byId.get(p) ?? 0) + 1);
+      }
+    }
+    return { byId, other };
+  }, [snapshot?.files, states]);
+  const scoreCounts = useMemo(() => {
+    const counts = { mechanical: 0, routine: 0, substantive: 0, "needs-attention": 0 } as Record<
+      HunkScoreLevel,
+      number
+    >;
+    for (const f of snapshot?.files ?? []) {
+      for (const h of f.hunks) {
+        const s = states.get(h.contentHash)?.score;
+        if (s !== undefined) counts[s] += 1;
+      }
+    }
+    return counts;
+  }, [snapshot?.files, states]);
+  const plotOpts = useMemo(
+    () => plotlines.map((p) => ({ id: p.id, name: p.name, count: plotCounts.byId.get(p.id) ?? 0 })),
+    [plotlines, plotCounts],
+  );
+
   const doReveal = useCallback(
     (target: RevealTarget) => {
       const snap = useReview.getState().snapshot;
@@ -414,6 +510,17 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         hideReviewed: p.hideReviewed && fullyReviewed ? false : p.hideReviewed,
       }));
       setFq((prev) => (file.path.toLowerCase().includes(prev.toLowerCase()) ? prev : ""));
+      // A jump target the score/plotline filter would hide clears the
+      // filter (citations promise the line will show).
+      if (target.start !== undefined) {
+        const end = target.end ?? target.start;
+        const seen = file.hunks.some(
+          (h) =>
+            hunkOverlaps(h, target.start as number, end) &&
+            hunkMatchesFilter(st.get(h.contentHash)?.score, st.get(h.contentHash)?.plotline, plotFilter),
+        );
+        if (!seen && plotActive) setPlotFilterAndPersist({});
+      }
       void patchFileFold(file.fileKey, false);
       setEagerFiles((prev) => new Set(prev).add(file.fileKey));
       if (target.start === undefined) {
@@ -435,7 +542,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       }
       flash({ fileKey: file.fileKey, start: target.start, end, nonce: Date.now() }, null);
     },
-    [reviewId, flash, patchFileFold],
+    [reviewId, flash, patchFileFold, plotActive, plotFilter, setPlotFilterAndPersist],
   );
 
   useEffect(() => {
@@ -485,12 +592,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   }, [snapshot, prefs.view]);
 
   useEffect(() => () => window.clearTimeout(hlTimer.current), []);
-
-  // Older versions are view-only for user data (reviewed, summaries):
-  // those writes are refused with a pointer back. Folding only hides
-  // code, so it stays allowed while browsing history.
-  const readOnly =
-    versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
 
   const patchHunk = useCallback(
     async (hash: string, body: UpdateHunkRequest) => {
@@ -553,6 +654,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       cats: new Set(prefs.cats),
       hideReviewed: prefs.hideReviewed,
       reviewedCount,
+      ...(plotActive ? { plot: plotFilter } : {}),
+      hunkStateOf: (hash) => {
+        const s = st.get(hash);
+        return s ? { score: s.score, plotline: s.plotline } : undefined;
+      },
     })) {
       f.hunks.forEach((h) => {
         if (
@@ -562,6 +668,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             cited: cited.has(h.contentHash),
           })
         ) {
+          return;
+        }
+        if (!hunkMatchesFilter(st.get(h.contentHash)?.score, st.get(h.contentHash)?.plotline, plotFilter)) {
           return;
         }
         targets.push({ file: f, hunk: h });
@@ -591,7 +700,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           "This review is past the per-hunk summary limit, so summaries stay on demand — use the spark button on any hunk.",
       );
     }
-  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions]);
+  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions, plotActive, plotFilter]);
 
   const unfoldAll = useCallback(async () => {
     if (readOnly) {
@@ -775,6 +884,24 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               showGithub={snapshot.viewPrefs.showExistingComments}
               githubCount={snapshot.existingComments?.length ?? 0}
               onToggleGithub={toggleGithubComments}
+              plotOpts={plotOpts}
+              otherCount={plotCounts.other}
+              plotSel={plotFilter.plotline}
+              scoreCounts={scoreCounts}
+              hasScores={hasScores}
+              scoreSel={plotFilter.score}
+              onSelectPlotline={(id) => {
+                const next: DiffFilter = { ...plotFilter };
+                if (id === undefined) delete next.plotline;
+                else next.plotline = id;
+                setPlotFilterAndPersist(next);
+              }}
+              onSelectScore={(level) => {
+                const next: DiffFilter = { ...plotFilter };
+                if (level === undefined) delete next.score;
+                else next.score = level;
+                setPlotFilterAndPersist(next);
+              }}
             />
           </div>
           <div className="prog">
@@ -785,6 +912,16 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               <i style={{ width: `${progress.total === 0 ? 0 : Math.round((100 * progress.reviewed) / progress.total)}%` }} />
             </span>
           </div>
+          {hasScores ? (
+            <div className="legend" aria-label="Hunk score legend">
+              {HUNK_SCORE_LEVELS.map((l) => (
+                <span key={l} className="leg">
+                  <span className="score-dot" data-score={l} aria-hidden="true" />
+                  {HUNK_SCORE_LABELS[l]}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="flist">
             {tree.length > 0 ? (
               tree.map((row) =>
@@ -808,6 +945,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
                     file={row.file}
                     depth={row.depth}
                     reviewed={reviewedCount(row.file)}
+                    score={fileTopScore(row.file, (hash) => states.get(hash))}
                       onJump={(key) => {
                       void patchFileFold(key, false);
                       setEagerFiles((prev) => new Set(prev).add(key));
@@ -866,6 +1004,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               lookupPage={lookupPage ?? (() => undefined)}
               onOpenPage={onOpenPage ?? (() => {})}
               onFollowUp={onFollowUp ?? (() => {})}
+              plotFilter={plotActive ? plotFilter : undefined}
+              plotlineNames={plotlineNames}
               isHidden={isHidden}
               actions={actions}
               onLineClick={onLineClick}
@@ -901,6 +1041,14 @@ function FilterDropdown({
   showGithub,
   githubCount,
   onToggleGithub,
+  plotOpts,
+  otherCount,
+  plotSel,
+  scoreCounts,
+  hasScores,
+  scoreSel,
+  onSelectPlotline,
+  onSelectScore,
 }: {
   cats: ReadonlySet<string>;
   hideReviewed: boolean;
@@ -912,6 +1060,15 @@ function FilterDropdown({
   showGithub: boolean;
   githubCount: number;
   onToggleGithub: () => void;
+  /** Issue #169: plotline options; empty when the reader named none. */
+  plotOpts: { id: string; name: string; count: number }[];
+  otherCount: number;
+  plotSel: string | undefined;
+  scoreCounts: Record<HunkScoreLevel, number>;
+  hasScores: boolean;
+  scoreSel: HunkScoreLevel | undefined;
+  onSelectPlotline: (id: string | undefined) => void;
+  onSelectScore: (level: HunkScoreLevel | undefined) => void;
 }): ReactNode {
   const [open, setOpen] = useState(false);
   const ctlRef = useRef<HTMLSpanElement>(null);
@@ -942,8 +1099,55 @@ function FilterDropdown({
       toggle: onToggleGithub,
     },
   ];
-  const activeCount = CATS.length - cats.size + (hideReviewed ? 1 : 0) + (showGithub ? 0 : 1);
+
+  // Issue #169: one dropdown more — by plotline, by score, or both. Radio
+  // rows (one choice per group); composes with the checkboxes above, the
+  // name filter and Hide uninteresting. Remembered with the review.
+  const showPlot = plotOpts.length > 0;
+  const showScore = hasScores;
+  const plotTotal = plotOpts.reduce((s, o) => s + o.count, 0) + otherCount;
+  const plotItems: { key: string; label: string; count: number; sel: boolean; pick: () => void }[] = showPlot
+    ? [
+        { key: "__plot-all", label: "All plotlines", count: plotTotal, sel: plotSel === undefined, pick: () => onSelectPlotline(undefined) },
+        ...plotOpts.map((o) => ({
+          key: `plot-${o.id}`,
+          label: o.name,
+          count: o.count,
+          sel: plotSel === o.id,
+          pick: () => onSelectPlotline(o.id),
+        })),
+        ...(otherCount > 0 || plotSel === PLOTLINE_OTHER_ID
+          ? [
+              {
+                key: "plot-other",
+                label: "Other",
+                count: otherCount,
+                sel: plotSel === PLOTLINE_OTHER_ID,
+                pick: () => onSelectPlotline(PLOTLINE_OTHER_ID),
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const scoreTotal = HUNK_SCORE_LEVELS.reduce((s, l) => s + scoreCounts[l], 0);
+  const scoreItems: { key: string; label: string; count: number; dot?: HunkScoreLevel; sel: boolean; pick: () => void }[] =
+    showScore
+      ? [
+          { key: "__score-all", label: "All levels", count: scoreTotal, sel: scoreSel === undefined, pick: () => onSelectScore(undefined) },
+          ...HUNK_SCORE_LEVELS.map((l) => ({
+            key: `score-${l}`,
+            label: HUNK_SCORE_LABELS[l],
+            count: scoreCounts[l],
+            dot: l,
+            sel: scoreSel === l,
+            pick: () => onSelectScore(l),
+          })),
+        ]
+      : [];
+  const activeCount =
+    CATS.length - cats.size + (hideReviewed ? 1 : 0) + (showGithub ? 0 : 1) + (plotSel !== undefined ? 1 : 0) + (scoreSel !== undefined ? 1 : 0);
   const active = activeCount > 0;
+  const itemCount = rows.length + plotItems.length + scoreItems.length;
 
   // Close on outside press or Escape, like the other dropdowns
   // (SecondOpinionControl, CommentsMenu).
@@ -975,7 +1179,7 @@ function FilterDropdown({
   const move = (dir: 1 | -1): void => {
     const el = document.activeElement as HTMLElement | null;
     const at = itemRefs.current.findIndex((b) => b === el);
-    const next = at < 0 ? (dir === 1 ? 0 : rows.length - 1) : (at + dir + rows.length) % rows.length;
+    const next = at < 0 ? (dir === 1 ? 0 : itemCount - 1) : (at + dir + itemCount) % itemCount;
     itemRefs.current[next]?.focus();
   };
 
@@ -1018,7 +1222,7 @@ function FilterDropdown({
               itemRefs.current[0]?.focus();
             } else if (e.key === "End") {
               e.preventDefault();
-              itemRefs.current[rows.length - 1]?.focus();
+              itemRefs.current[itemCount - 1]?.focus();
             }
           }}
         >
@@ -1040,6 +1244,57 @@ function FilterDropdown({
               <span className="cnt">{r.count}</span>
             </button>
           ))}
+          {showPlot ? (
+            <>
+              <div className="fgroup" role="presentation">
+                Plotline
+              </div>
+              {plotItems.map((r, j) => (
+                <button
+                  key={r.key}
+                  ref={(el) => {
+                    itemRefs.current[rows.length + j] = el;
+                  }}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={r.sel}
+                  onClick={r.pick}
+                >
+                  <span className="tick" aria-hidden="true">
+                    {r.sel ? "✓" : ""}
+                  </span>
+                  <span className="lbl">{r.label}</span>
+                  <span className="cnt">{r.count}</span>
+                </button>
+              ))}
+            </>
+          ) : null}
+          {showScore ? (
+            <>
+              <div className="fgroup" role="presentation">
+                Score
+              </div>
+              {scoreItems.map((r, j) => (
+                <button
+                  key={r.key}
+                  ref={(el) => {
+                    itemRefs.current[rows.length + plotItems.length + j] = el;
+                  }}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={r.sel}
+                  onClick={r.pick}
+                >
+                  <span className="tick" aria-hidden="true">
+                    {r.sel ? "✓" : ""}
+                  </span>
+                  {r.dot ? <span className="score-dot" data-score={r.dot} aria-hidden="true" /> : null}
+                  <span className="lbl">{r.label}</span>
+                  <span className="cnt">{r.count}</span>
+                </button>
+              ))}
+            </>
+          ) : null}
         </div>
       ) : null}
     </span>
@@ -1050,11 +1305,13 @@ function FileTreeRow({
   file,
   depth,
   reviewed,
+  score,
   onJump,
 }: {
   file: ReviewFile;
   depth: number;
   reviewed: number;
+  score: HunkScoreLevel | undefined;
   onJump: (fileKey: string) => void;
 }): ReactNode {
   const total = file.hunks.length;
@@ -1068,6 +1325,15 @@ function FileTreeRow({
       title={file.path}
       onClick={() => onJump(file.fileKey)}
     >
+      {score ? (
+        <span
+          className="score-dot"
+          data-score={score}
+          role="img"
+          aria-label={HUNK_SCORE_LABELS[score]}
+          data-tip={HUNK_SCORE_LABELS[score]}
+        />
+      ) : null}
       <span className="nm">{file.path.split("/").pop()}</span>
       {file.category === "generated" ? <span className="gtag">gen</span> : null}
       <span className="st">

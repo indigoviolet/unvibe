@@ -6,6 +6,7 @@
  * columns where noted in the service's migration 001.
  */
 import type { SecondOpinionMode } from "./prompts.js";
+import type { HunkScoreLevel } from "./scores.js";
 
 /** A local checkout / GitHub repo the user can open reviews from. */
 export interface Repo {
@@ -114,6 +115,17 @@ export interface HunkState {
   folded: boolean;
   reviewed: boolean;
   summary?: string;
+  /**
+   * Issue #169: the hunk pass's interestingness level (resolved against
+   * the deterministic rules by `resolveHunkScore`). Absent until the
+   * pass lands for this hunk.
+   */
+  score?: HunkScoreLevel;
+  /**
+   * Issue #169: the plotline id the reader assigned this hunk to.
+   * Absent means "other" (no plotline claimed it).
+   */
+  plotline?: string;
   /**
    * M5 (PRD §8): true when the hunk's content changed in a newer version.
    * `reviewed` is cleared and `summary` needs regeneration
@@ -665,6 +677,7 @@ export type JobKind =
   | "second-opinion"
   | "update-pass"
   | "summarize"
+  | "plotline-assign"
   | "consolidate";
 
 export type JobState = "queued" | "running" | "backing-off" | "done" | "error" | "cancelled";

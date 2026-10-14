@@ -35,12 +35,14 @@ export function accessModeOf(settings: Pick<Settings, "fullAccess">): AccessMode
  *
  * THE one place this is decided: session starts, base keys and job
  * stamps all go through `postureFor` below, never a scattered check.
- * When #169's plotline-assign lands, add its kind here.
+ * #169's `plotline-assign` is a background kind too: it always runs
+ * locked down.
  */
 export const BACKGROUND_JOB_KINDS: ReadonlySet<JobKind> = new Set([
   "hunk-pass",
   "summarize",
   "consolidate",
+  "plotline-assign",
 ]);
 
 /** True for automatic background work that always stays locked down. */

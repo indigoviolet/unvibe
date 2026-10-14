@@ -51,8 +51,10 @@ export interface ReplyData {
   followUps?: { label?: string; ask?: string }[];
   /** Hidden concept pass entries (reader replies). */
   concepts?: { slug?: string; title?: string; summary?: string }[];
-  /** Hunk-pass result for one hunk. */
-  hunk?: { summary?: string; hiddenReason?: string | null };
+  /** Hunk-pass result for one hunk (issue #169 adds the score level). */
+  hunk?: { summary?: string; hiddenReason?: string | null; score?: string };
+  /** Reader plotlines (issue #169): named threads with hunk IDs each. */
+  plotlines?: { id?: string; name?: string; description?: string; hunks?: string[] }[];
   /** Second-opinion verdict. */
   secondOpinion?: { verdict?: string; reasoning?: string; missed?: string | string[]; model?: string };
   /** Quoted anchor for explain/ask replies (validated as a substring). */

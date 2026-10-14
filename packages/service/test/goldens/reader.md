@@ -80,6 +80,13 @@ Then a **hidden concept pass**: for each domain concept the guide will need
 `concept:` slug, a title, one line of meaning, and where it is mentioned.
 These stay hidden until first opened.
 
+Then the change's **plotlines**: 2 to 8 named threads of the work (for
+example "retry logic for failed uploads"), each with a one-line
+description and the IDs of the hunks that belong to it (the `h:…` IDs on
+the hunk headers above). Cover every hunk you can; hunks you leave out
+read as "other". A hunk belongs to exactly one plotline — when it could
+fit two, pick the closest.
+
 ## Output shape
 
 Stream one `## Title` card at a time, in the order above: the problem
@@ -91,7 +98,8 @@ cards:
 
 ```json
 {"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
- "concepts": [{"slug": "obs-fold", "title": "...", "summary": "..."}]}
+ "concepts": [{"slug": "obs-fold", "title": "...", "summary": "..."}],
+ "plotlines": [{"id": "retry-logic", "name": "...", "description": "...", "hunks": ["h:<fileKey>:<hash>"]}]}
 ```
 
 Concept slugs are short kebab-case (`obs-fold`). Linking an unknown slug

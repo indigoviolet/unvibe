@@ -114,7 +114,10 @@ test("root page renders cards, contents and generated go-deeper cards", async ({
 test("dotted-link hover preview: timing and content", async ({ page }) => {
   await gotoReview(page);
   const link = page.locator('#page a.cx[data-link="concept:obs-fold"]').first();
-  await link.hover();
+  // Deterministic hover (the plotlines box can leave the link below the
+  // fold, and a plain hover() would scroll with the pointer already over
+  // the target — which the popover must ignore).
+  await hoverFresh(page, link);
   // Not instant: opens after ~0.2 s.
   await expect(page.locator("#pop")).toBeHidden({ timeout: 100 }).catch(() => {});
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });

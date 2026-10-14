@@ -382,6 +382,8 @@ const PH = {
   claim: "(select a card or finding)",
   mentions: "(mentions resolve when the action runs)",
   contributions: "(no contributions yet)",
+  plotlines: "(the reader names plotlines when the guide runs)",
+  unassignedHunks: "(hunks the reader did not see are listed here after the guide runs)",
 };
 
 /**
@@ -569,6 +571,14 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
       layer: "L1",
       label: hunkLabel,
       text: render("hunk_pass", { hunk: hunkText, path: hunkPath }),
+      cached: false,
+    },
+  ]);
+  push("plotline_assign", [
+    {
+      layer: "L2",
+      label: "plotline_assign",
+      text: render("plotline_assign", { plotlines: PH.plotlines, hunks: PH.unassignedHunks }),
       cached: false,
     },
   ]);

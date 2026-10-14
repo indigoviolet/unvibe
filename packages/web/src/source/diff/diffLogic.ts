@@ -7,8 +7,8 @@
  * `prototype.html` (its code is a sketch — this is a port of behaviour and
  * class names, not code).
  */
-import type { Annotation, Block, Hunk, HunkLine, Page, ReviewFile } from "@unvibe/shared";
-import { parseId } from "@unvibe/shared";
+import type { Annotation, Block, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
+import { hunkMatchesFilter, hunkScoreRank, parseId } from "@unvibe/shared";
 
 // --- folder tree ---------------------------------------------------------
 
@@ -130,6 +130,14 @@ export interface FileFilter {
   cats: ReadonlySet<string>;
   hideReviewed: boolean;
   reviewedCount: (file: ReviewFile) => number;
+  /**
+   * Issue #169: the score/plotline filter (one dropdown in the filter
+   * menu, remembered with the review). A file stays only when at least
+   * one of its hunks passes it; `hunkStateOf` reads the hunk's score and
+   * plotline from the snapshot's hunk states.
+   */
+  plot?: DiffFilter;
+  hunkStateOf?: (contentHash: string) => { score?: HunkScoreLevel; plotline?: string } | undefined;
 }
 
 /** Prototype `visibleFiles`: category chips + name filter + hide-reviewed. */
@@ -139,8 +147,34 @@ export function filterFiles(files: ReviewFile[], filter: FileFilter): ReviewFile
     (f) =>
       filter.cats.has(f.category) &&
       f.path.toLowerCase().includes(q) &&
-      !(filter.hideReviewed && filter.reviewedCount(f) === f.hunks.length),
+      !(filter.hideReviewed && filter.reviewedCount(f) === f.hunks.length) &&
+      (!filter.plot || f.hunks.some((h) => hunkPlotVisible(h, filter))),
   );
+}
+
+/** True when a hunk passes the score/plotline filter (absent = all pass). */
+export function hunkPlotVisible(hunk: Hunk, filter: Pick<FileFilter, "plot" | "hunkStateOf">): boolean {
+  if (!filter.plot || (filter.plot.plotline === undefined && filter.plot.score === undefined)) return true;
+  const st = filter.hunkStateOf?.(hunk.contentHash);
+  return hunkMatchesFilter(st?.score, st?.plotline, filter.plot);
+}
+
+/**
+ * The file's highest hunk score (Files list dot). Hunks without a score
+ * yet (their pass has not landed) carry no signal and are skipped;
+ * undefined when no hunk in the file has one.
+ */
+export function fileTopScore(
+  file: ReviewFile,
+  hunkStateOf: (contentHash: string) => { score?: HunkScoreLevel } | undefined,
+): HunkScoreLevel | undefined {
+  let top: HunkScoreLevel | undefined;
+  for (const h of file.hunks) {
+    const score = hunkStateOf(h.contentHash)?.score;
+    if (score === undefined) continue;
+    if (top === undefined || hunkScoreRank(score) > hunkScoreRank(top)) top = score;
+  }
+  return top;
 }
 
 // --- stats -------------------------------------------------------------------

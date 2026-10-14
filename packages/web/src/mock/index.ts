@@ -22,10 +22,13 @@ import type {
   Contribution,
   CreateReviewRequest,
   CreateReviewResponse,
+  DiffFilter,
+  HunkScoreLevel,
   HunkState,
   Job,
   ModelsResponse,
   PickFolderResponse,
+  Plotline,
   PromptExpanded,
   PromptsResponse,
   PromptTemplate,
@@ -47,6 +50,7 @@ import type {
   SwitchOutcome,
   UpdateBuildInfo,
   UpdateChannel,
+  UpdateDiffFilterRequest,
   UpdateHunkRequest,
   UpdatePendingSwitch,
   UpdateReviewResponse,
@@ -153,6 +157,31 @@ const MOCK_REVIEW: Review = {
 
 function seedHunkStates(): Map<string, HunkState> {
   const map = new Map<string, HunkState>();
+  // Issue #169: every hunk carries a canned score (the hunk pass's
+  // interestingness level); plotline assignment rides the same states.
+  const scores: Record<string, HunkScoreLevel> = {};
+  const plotlines: Record<string, string> = {};
+  for (const f of MOCK_FILES) {
+    f.hunks.forEach((h, i) => {
+      scores[h.contentHash] =
+        f.path === "src/urllib3/connection.py"
+          ? "substantive"
+          : f.path === "test/test_connection.py" && i === 2
+            ? "routine"
+            : f.path === "test/with_dummyserver/test_socketlevel.py" && i === 1
+              ? "substantive"
+              : f.path === "changelog/1362.bugfix.rst"
+                ? "routine"
+                : "mechanical";
+      if (f.path === "src/urllib3/connection.py") plotlines[h.contentHash] = "unfold";
+      else if (f.path === "test/test_connection.py") plotlines[h.contentHash] = "unfold-tests";
+      else if (f.path === "test/with_dummyserver/test_socketlevel.py" && i === 1) {
+        plotlines[h.contentHash] = "unfold-tests";
+      }
+      // The socket-level import and the changelog entry stay unassigned:
+      // they read as "other" in the filter.
+    });
+  }
   for (const f of MOCK_FILES) {
     f.hunks.forEach((h, i) => {
       // Mirror the prototype's mid-use seed: one reviewed+folded hunk.
@@ -168,10 +197,30 @@ function seedHunkStates(): Map<string, HunkState> {
           summary: "Unfolds folded header values before reading.",
         });
       }
+      const prev = map.get(h.contentHash) ?? { contentHash: h.contentHash, folded: false, reviewed: false };
+      map.set(h.contentHash, {
+        ...prev,
+        score: scores[h.contentHash] ?? "routine",
+        ...(plotlines[h.contentHash] !== undefined ? { plotline: plotlines[h.contentHash] } : {}),
+      });
     });
   }
   return map;
 }
+
+/**
+ * Issue #169: the demo's plotlines — what the reader would name for the
+ * bundled change. The socket-level import and the changelog entry stay
+ * unassigned, so they read as "other".
+ */
+const MOCK_PLOTLINES: Plotline[] = [
+  { id: "unfold", name: "Unfold folded values", description: "Normalize obsolete folds before reading headers." },
+  {
+    id: "unfold-tests",
+    name: "Tests for unfolding",
+    description: "Unit and socket-level coverage for the new behaviour.",
+  },
+];
 
 /**
  * Mock description: the generated fixture's description (stable paragraph
@@ -517,6 +566,8 @@ let mockViewPrefs: import("@unvibe/shared").ReviewViewPrefs = { showExistingComm
 const hunkStates = seedHunkStates();
 /** Per-file fold state (issue #162): the mock persists it like the service. */
 const fileStates = new Map<string, import("@unvibe/shared").FileState>();
+/** Issue #169: the diff's score/plotline filter, remembered with the review. */
+let mockDiffFilter: DiffFilter | undefined;
 let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
   JSON.stringify(MOCK_ANNOTATIONS),
 ) as import("@unvibe/shared").Annotation[];
@@ -829,6 +880,7 @@ export function resetMockState(): void {
   mockUpdatePending = null;
   mockUpdateDown = false;
   mockSoSeq = 0;
+  mockDiffFilter = undefined;
   for (const p of pendingSecondOpinions) window.clearTimeout(p.timer);
   pendingSecondOpinions = [];
   try {
@@ -1019,6 +1071,8 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     logTail: [],
     rev,
     existingComments,
+    plotlines: [...MOCK_PLOTLINES],
+    ...(mockDiffFilter !== undefined ? { diffFilter: { ...mockDiffFilter } } : {}),
   };
   if (stale && viewing === 2) base.versionStatus = staleVersionStatus();
   return base;
@@ -1036,7 +1090,7 @@ function emitFileStates(): void {
   });
 }
 
-/** Emit a state patch through the same path WS patches use. */
+/** Emit the hunk-states list through the WS-patch path. */
 function emitHunkStates(): void {
   const baseRev = rev;
   rev += 1;
@@ -1045,6 +1099,22 @@ function emitHunkStates(): void {
     baseRev,
     headRev: rev,
     ops: [{ op: "replace", path: "/hunkStates", value: [...hunkStates.values()] }],
+  });
+}
+
+/** Issue #169: emit the diff filter through the WS-patch path. */
+function emitDiffFilter(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [
+      mockDiffFilter === undefined
+        ? { op: "remove", path: "/diffFilter" }
+        : { op: "replace", path: "/diffFilter", value: { ...mockDiffFilter } },
+    ],
   });
 }
 
@@ -1057,8 +1127,7 @@ function findHunkKey(hash: string): string | null {
 }
 
 /** Emit the annotations list through the WS-patch path (drafts survive). */
-function emitAnnotations(): void {
-  const baseRev = rev;
+function emitAnnotations(): void {  const baseRev = rev;
   rev += 1;
   useReview.getState().applyEvent({
     type: "patch",
@@ -2979,6 +3048,28 @@ export const mockApi = {
     hunkStates.set(hash, { ...prev, summary });
     emitHunkStates();
     return { jobId: `mock-${hash}` };
+  },
+
+  // Issue #169: mirrors the service PATCH semantics (null clears a field;
+  // unknown plotlines and levels are refused).
+  updateDiffFilter: async (_id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> => {
+    const { plotline, score } = body;
+    if (plotline !== undefined && plotline !== null) {
+      const ids = new Set([...MOCK_PLOTLINES.map((p) => p.id), "other"]);
+      if (!ids.has(plotline)) throw new Error(`unknown plotline ${plotline}`);
+    }
+    if (score !== undefined && score !== null) {
+      const levels: readonly string[] = ["mechanical", "routine", "substantive", "needs-attention"];
+      if (!levels.includes(score)) throw new Error(`unknown score ${score}`);
+    }
+    const next: DiffFilter = { ...(mockDiffFilter ?? {}) };
+    if (plotline === null) delete next.plotline;
+    else if (plotline !== undefined) next.plotline = plotline;
+    if (score === null) delete next.score;
+    else if (score !== undefined) next.score = score;
+    mockDiffFilter = Object.keys(next).length === 0 ? undefined : next;
+    emitDiffFilter();
+    return { ok: true };
   },
 
   fileSlice: async (

@@ -268,6 +268,10 @@ run = "node ./scripts/live-submit.mjs"
 description = "Live M3 pipeline smoke on real agents (claude+codex; token spend; never run by check)"
 run = "mise run build && node scripts/live-pipeline.mjs"
 
+[tasks."test:live:plotlines"]
+description = "Live #169 evaluation: hunk scores + plotlines on the demo and public flask PRs (real agents; token spend; read-only, never posts; never run by check)"
+run = "mise run build && node scripts/live-plotlines-169.mjs"
+
 [tasks."test:live:second-opinion"]
 description = "Live second-opinion check: blind on one finding with real agents (main=Claude, second=Codex; small token spend; never run by check)"
 run = "mise run build && node scripts/live-second-opinion.mjs"

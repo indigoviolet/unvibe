@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, Job } from "@unvibe/shared";
-import { accessModeOf } from "@unvibe/shared";
+import { accessModeOf, isBackgroundJobKind, postureFor } from "@unvibe/shared";
 import type { Session } from "@unvibe/shared";
 import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
@@ -114,6 +114,14 @@ describe("setting + acknowledgement", () => {
     expect(DEFAULT_SETTINGS.fullAccess).toBe(false);
     expect(DEFAULT_SETTINGS.fullAccessAcknowledgedAt).toBeNull();
     expect(accessModeOf(DEFAULT_SETTINGS)).toBe("lockdown");
+  });
+
+  it("plotline-assign (#169) is a background kind: always locked down", () => {
+    expect(isBackgroundJobKind("plotline-assign")).toBe(true);
+    expect(postureFor({ fullAccess: true }, "plotline-assign")).toBe("lockdown");
+    expect(postureFor({ fullAccess: false }, "plotline-assign")).toBe("lockdown");
+    // A user-asked kind still follows the setting.
+    expect(postureFor({ fullAccess: true }, "reader")).toBe("full");
   });
 
   it("refuses to enable without the acknowledgement", () => {

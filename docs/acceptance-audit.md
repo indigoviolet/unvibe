@@ -2044,6 +2044,30 @@ items noticed while passing through (not verified, listed only):
 7. **Diagrams**: D2 decision already noted (§13); PRD text itself still
    contradicts (§13/§19.4) — fixed in #18, not here.
 
+### Hunk scores + plotlines experiment (#169, branch `feat/169-hunk-scores-plotlines`, try-and-decide)
+
+Not a PRD requirement: an experiment the owner tries on a preview and
+adopts or drops. Hunk-pass scores (mechanical / routine / substantive /
+needs attention, deterministic rules on top: one-line never mechanical,
+hiding still follows `hiddenReason` alone) shown as colour-blind-safe
+dots on hunk headers + Files list with legend; reader plotlines (2–8,
+hunk IDs validated, first wins, rest reads "other", large-PR assign step
+under a 200-hunk cap) as header tags + guide-root box; one dropdown
+filtering by plotline and/or score, remembered with the review, ANDed
+with all existing filters. Scoring + classification behind
+`packages/shared/src/scores.ts` so a later source replaces them without
+touching UI or stored shape (`HunkState.score/plotline`,
+snapshot `plotlines`/`diffFilter`; pre-feature reviews reset, no second
+shape). Evidence: `test/hunk-plotlines-169.test.ts` (fake runner: score
+valid/invalid, rules on top, plotlines valid/unknown/empty/>8,
+fallback fires/capped, stored shape, filter PATCH),
+`packages/shared/test/scores.test.ts`, `DiffView.scorePlotline.test.tsx`,
+`PageView.plotlines.test.tsx`, `e2e/score-plotline.spec.ts`,
+`docs/screenshots/169-*.png`, live findings on #169 (demo + 3 public
+PRs, costs per job kind). Open: owner tries the preview and decides;
+a small-PR reader degraded failure seen live (code citations outside
+hunk coverage) is reported for a separate issue, not fixed here.
+
 ## Addendum: #91 / #92 / #93 (branch `fix/91-92-93-open-pr`)
 
 - **#93 (ingest, §15, §11.1):** PR merge-base is computed against

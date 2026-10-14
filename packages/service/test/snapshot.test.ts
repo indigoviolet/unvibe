@@ -117,8 +117,8 @@ describe("snapshot build", () => {
         templates: { name: string }[];
         expanded: { name: string; expanded: string }[];
       };
-      expect(body.templates).toHaveLength(17);
-      expect(body.expanded).toHaveLength(17);
+      expect(body.templates).toHaveLength(18);
+      expect(body.expanded).toHaveLength(18);
       const blind = body.expanded.find((e) => e.name === "second_opinion_blind")!;
       expect(blind.expanded).toContain("Folds that end in a bare LF are not unfolded");
       const reader = body.expanded.find((e) => e.name === "reader")!;

@@ -13,6 +13,15 @@
 export const HUNK_PASS_FANOUT_LIMIT = 500;
 
 /**
+ * Plotline assign-step cap (issue #169): when the reader lands on a
+ * degraded rung (files-only or counts-only) with more unassigned hunks
+ * than this, the follow-up assign step is skipped and the rest read as
+ * "other" — classifying thousands of hunks would cost a second hunk
+ * pass. At or under it one small-model job assigns the rest.
+ */
+export const PLOTLINE_ASSIGN_CAP = 200;
+
+/**
  * Hard cap for one L1 prompt text in tokens (issue #107). No
  * context-window table lives in the codebase (models are known only by
  * id), so this is conservative: 80k tokens (~320KB) sits well under the

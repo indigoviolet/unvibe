@@ -7,13 +7,14 @@
  * before pending cards. Finding pages get the rust-accent `.finding`
  * class.
  */
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { Card, Page } from "@unvibe/shared";
-import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle } from "@unvibe/shared";
+import type { Card, Page, Plotline } from "@unvibe/shared";
+import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { Icon } from "../components/Icon.js";
 import { isLiveJobState, useReview } from "../state/store.js";
+import { revealSource } from "../source/reveal.js";
 import { performAction, performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
@@ -56,6 +57,69 @@ function RecheckStatus({ page }: { page: Page }) {
 /** Display form of a page title: the default shows as "Guide". */
 function displayTitle(title: string): string {
   return isDefaultGuideTitle(title) ? DEFAULT_GUIDE_TITLE : title;
+}
+
+/**
+ * Issue #169: the reader's plotlines on the guide root — a small list
+ * between Contents and the cards. Each row jumps to its first hunk in
+ * the diff; hunks no plotline claimed read as "Other".
+ */
+function Plotlines(): ReactNode {
+  const snapshot = useReview((s) => s.snapshot);
+  const plotlines: Plotline[] = snapshot?.plotlines ?? [];
+  if (plotlines.length === 0) return null;
+  const files = snapshot?.files ?? [];
+  const states = new Map((snapshot?.hunkStates ?? []).map((s) => [s.contentHash, s]));
+  const firstRefOf = (plotId: string | undefined): string | null => {
+    for (const f of files) {
+      for (const h of f.hunks) {
+        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID)) {
+          return `diff:${f.fileKey}:${h.newStart}`;
+        }
+      }
+    }
+    return null;
+  };
+  const countOf = (plotId: string | undefined): number => {
+    let n = 0;
+    for (const f of files) {
+      for (const h of f.hunks) {
+        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID)) n += 1;
+      }
+    }
+    return n;
+  };
+  const otherCount = countOf(undefined);
+  const rows = [
+    ...plotlines.map((p) => ({ id: p.id, name: p.name, desc: p.description, count: countOf(p.id), ref: firstRefOf(p.id) })),
+    ...(otherCount > 0 ? [{ id: PLOTLINE_OTHER_ID, name: "Other", desc: "Hunks no plotline claimed.", count: otherCount, ref: firstRefOf(undefined) }] : []),
+  ];
+  return (
+    <section className="plotlines" aria-label="Plotlines">
+      <h2>Plotlines</h2>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.id}>
+            {r.ref ? (
+              <button type="button" onClick={() => revealSource(r.ref as string)}>
+                <span className="plname">{r.name}</span>
+                {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
+                <span className="plcount">
+                  {r.count} {r.count === 1 ? "hunk" : "hunks"}
+                </span>
+              </button>
+            ) : (
+              <span>
+                <span className="plname">{r.name}</span>
+                {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
+                <span className="plcount">no hunks</span>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard }: Props) {
@@ -237,6 +301,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           </div>
         ) : null}
       </nav>
+      {page.kind === "root" ? <Plotlines /> : null}
       {page.cards.map(renderCard)}
     </div>
   );
