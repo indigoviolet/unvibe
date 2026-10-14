@@ -93,10 +93,23 @@ export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
   }
   if (isReplayEnv(env)) {
     const dir = opts.fixturesDir ?? resolveFixturesDir();
+    // Test/drill-only pacing overrides (issue #126 timing runs): stream
+    // the recordings at a chosen chunk size and delay. Never read by the
+    // UI; production stays at the 5 ms default.
+    const envDelay = Number(env["UNVIBE_REPLAY_DELAY_MS"] ?? "");
+    const envChunks = Number(env["UNVIBE_REPLAY_CHUNK_CHARS"] ?? "");
     return new ReplayAgentRunner({
       fixturesDir: dir,
-      ...(opts.chunkChars !== undefined ? { chunkChars: opts.chunkChars } : {}),
-      ...(opts.delayMs !== undefined ? { delayMs: opts.delayMs } : { delayMs: 5 }),
+      ...(opts.chunkChars !== undefined
+        ? { chunkChars: opts.chunkChars }
+        : Number.isSafeInteger(envChunks) && envChunks > 0
+          ? { chunkChars: envChunks }
+          : {}),
+      ...(opts.delayMs !== undefined
+        ? { delayMs: opts.delayMs }
+        : Number.isSafeInteger(envDelay) && envDelay >= 0
+          ? { delayMs: envDelay }
+          : { delayMs: 5 }),
     });
   }
   return createAcpRunner();

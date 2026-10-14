@@ -266,7 +266,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   // Under vitest with no explicit runner and the default (real) factory
   // selection, substitute the fake instead of starting real agents (#119).
   const agents =
-    opts.agents ?? (needsTestAgents ? new FakeAgentRunner() : createAgentRunner({ fixturesDir, delayMs: 5 }));
+    opts.agents ?? (needsTestAgents ? new FakeAgentRunner() : createAgentRunner({ fixturesDir }));
   const models =
     opts.models ?? (needsTestAgents && opts.agents === undefined ? new StaticModelCatalog() : new AcpModelCatalog(agents));
 
