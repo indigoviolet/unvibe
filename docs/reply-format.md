@@ -223,8 +223,10 @@ Metadata goes in the trailing JSON block:
 All fields are optional; unknown fields are kept, never rejected. A
 `degraded` line reports what the turn could not do (unreachable tool,
 empty lookup, refused call) and what the reply is weaker for — process
-chatter never belongs in the Markdown body, and the service fails the
-turn instead of storing a weakened reply (issue #51). An `anchor.host`
+chatter never belongs in the Markdown body. A `degraded` line with a
+usable body keeps the answer: it shows with a plain-words note while the
+raw reason lands on the job for the Debug page; only a degraded answer
+with no usable body fails the turn (issue #51). An `anchor.host`
 that names only a card (`card:central` with no `#block`) is rejected
 with one repair turn carrying the reason. For
 depth/example/diagram replies, `depth`/`title` say which card and level

@@ -321,7 +321,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       {!busy && promoted?.turn.working ? <Working text={promoted.turn.working} /> : null}
       {!busy && promoted?.turn.error ? (
         <div className="perr" role="alert">
-          <span>Couldn't get an answer: {promoted.turn.error}</span>
+          <span>Couldn't get an answer. Retry, or see Debug for details.</span>
           <button
             className="btn"
             type="button"

@@ -160,6 +160,7 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
       <div className="frow" style={{ gap: 8 }}>
         {job.progress ? <span className="hint">{job.progress}</span> : null}
         {job.error && job.state !== "backing-off" ? <span className="err">{job.error}</span> : null}
+        {job.degradedReason ? <span className="hint">Degraded (answer kept): {job.degradedReason}</span> : null}
         {job.state === "backing-off" && job.error ? <span className="hint">{job.error}</span> : null}
         <span className="sp" />
         <button className="x" type="button" aria-expanded={showPrompt} onClick={() => void togglePrompt()}>

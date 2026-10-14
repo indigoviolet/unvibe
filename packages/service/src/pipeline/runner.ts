@@ -137,6 +137,40 @@ function stripCodeForChatter(body: string): string {
 }
 
 /**
+ * Plain-words note appended to a kept degraded answer (never the agent's
+ * internal reason — that lives on the job for the Debug page).
+ */
+export const DEGRADED_ANSWER_NOTE = "Some references in this answer could not be linked to the code.";
+
+/** Id for the appended degraded note (deduped, never anchored). */
+export const DEGRADED_NOTE_BLOCK_ID = "b-degraded-note";
+
+export type DegradedDisposition =
+  | { kind: "ok" }
+  | { kind: "fail-conn"; message: string }
+  | { kind: "fail"; message: string }
+  | { kind: "keep"; reason: string };
+
+/**
+ * Append the quiet degraded note to a kept answer's last card (once —
+ * keyed by its stable block id). The note is plain words; the agent's
+ * internal reason lives on the job for the Debug page.
+ */
+function attachDegradedNote(cards: { blocks: { id: string }[] }[]): void {
+  const last = cards[cards.length - 1];
+  if (!last) return;
+  if (last.blocks.some((b) => b.id === DEGRADED_NOTE_BLOCK_ID || b.id.startsWith(`${DEGRADED_NOTE_BLOCK_ID}-`))) {
+    return;
+  }
+  (last.blocks as unknown[]).push({
+    type: "paragraph",
+    id: DEGRADED_NOTE_BLOCK_ID,
+    text: { standard: DEGRADED_ANSWER_NOTE },
+    citations: [],
+  });
+}
+
+/**
  * Codex MCP-refusal flake (docs/acp-runner.md quirk 6): the model answers
  * "I can't access that tool" without attempting an MCP call. Our sessions
  * must call MCP tools, so treat it as retryable (a fresh retry usually
@@ -370,7 +404,7 @@ export class Pipeline {
       baseLogSeq,
     });
     const template = this.render(o.template, variables);
-    const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
+    let prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -391,8 +425,11 @@ export class Pipeline {
       promptSnapshot: prompt,
       run: async (ctx) => {
         // Retryable errors retry inside the job (so the deferred settles
-          // once); non-retryable errors reject and mark the job error.
-          for (let attempt = 0; ; attempt++) {
+        // once); non-retryable errors reject and mark the job error.
+        // A continued session stays across attempts — except the
+        // connection retry, which forks fresh (see below).
+        let continuedId = o.continueSessionId;
+        for (let attempt = 0; ; attempt++) {
           try {
             ctx.setPromptSnapshot(prompt);
             // #122: the base builds here, inside the job — after the job id
@@ -403,11 +440,13 @@ export class Pipeline {
             // the card's session instead of forking again. All turns share
             // this path's streaming, citation check, repair turn, usage
             // and contribution handling.
-            const forked = o.continueSessionId
-              ? await this.continueOn(o.continueSessionId)
+            const forked = continuedId
+              ? await this.continueOn(continuedId)
               : await this.forkAndTrack(o.reviewId, o.conversationKey !== undefined);
             ctx.setSessionId(forked.session.id);
             let buffer = "";
+            // Per-attempt evidence: a retry must observe *its own* turn's
+            // tool activity, not the previous attempt's.
             const mcpBefore = this.opts.mcp.activitySnapshot(o.reviewId);
             const { text, usage } = await collectStreaming(
               this.opts.runner,
@@ -429,15 +468,27 @@ export class Pipeline {
             );
             throwIfMcpRefusal(text);
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
-            // A degraded first reply fails fast: no repair turn can fix
-            // chatter about the agent's own tooling (#51).
-            this.throwIfDegradedTurn(o.reviewId, mcpBefore, first.data, first.body);
+            // A degraded first reply fails fast — unless it still has a
+            // usable body, which is kept with a quiet note (#51, weakened
+            // by usable bodies). No repair turn can fix chatter about the
+            // agent's own tooling, so a kept answer skips repair.
+            let degradedReason: string | undefined;
+            const firstDisp = this.degradedDisposition(
+              o.reviewId,
+              mcpBefore,
+              first.data,
+              first.body,
+              first.cards.flatMap((c) => c.blocks).length,
+            );
+            if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
+            if (firstDisp.kind === "fail") throw new DegradedTurnError(firstDisp.message);
+            if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
             let finalText = text;
             let finalCards = first.cards;
             let finalData = first.data;
             let finalValidation = first.validation;
             let repaired = false;
-            if (first.validation.needsRepairTurn) {
+            if (first.validation.needsRepairTurn && degradedReason === undefined) {
               repaired = true;
               const anchorProblem =
                 first.validation.anchor && !first.validation.anchor.ok
@@ -464,7 +515,20 @@ export class Pipeline {
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
-              this.throwIfDegradedTurn(o.reviewId, mcpBefore, second.data, second.body);
+              const secondDisp = this.degradedDisposition(
+                o.reviewId,
+                mcpBefore,
+                second.data,
+                second.body,
+                second.cards.flatMap((c) => c.blocks).length,
+              );
+              if (secondDisp.kind === "fail-conn") throw new DegradedConnError(secondDisp.message);
+              if (secondDisp.kind === "fail") throw new DegradedTurnError(secondDisp.message);
+              if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
+            }
+            if (degradedReason !== undefined) {
+              attachDegradedNote(finalCards);
+              ctx.setDegradedReason(degradedReason);
             }
             ctx.reportUsage(usage);
             await this.recordUsage(o.reviewId, usage);
@@ -503,9 +567,29 @@ export class Pipeline {
           } catch (err) {
             // One retry on a fresh session when the turn observably hit a
             // dead review-MCP URL (#51: transient, e.g. slow-starting
-            // server): the loop re-forks above. A second failure, and any
-            // other degraded turn, is terminal.
-            if (err instanceof DegradedConnError && attempt < 1) continue;
+            // server). A continued conversation falls back to a fresh fork
+            // — retrying on the same dead session could never reconnect —
+            // with the full first-turn prompt plus the stored transcript
+            // (the short follow-up prompt assumes the live session's
+            // history). A second failure, and any other degraded turn, is
+            // terminal — unless the reply still has a usable body, which
+            // the disposition above keeps.
+            if (err instanceof DegradedConnError && attempt < 1) {
+              continuedId = undefined;
+              if (o.retryTemplate && o.retryVariables) {
+                const retryVars = changeListVariable(this.wireDeps(), o.reviewId, o.retryTemplate, o.retryVariables, {
+                  ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
+                  ...(o.cardId ? { cardId: o.cardId } : {}),
+                  ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
+                  baseLogSeq,
+                });
+                prompt = withReplayMark(
+                  this.render(o.retryTemplate, retryVars),
+                  o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined,
+                );
+              }
+              continue;
+            }
             if (err instanceof RetryableError && attempt < 3) {
               await sleepMs(50 * (attempt + 1));
               continue;
@@ -979,41 +1063,69 @@ export class Pipeline {
   }
 
   /**
-   * Fail a degraded turn instead of storing its reply (#51). Facts only,
-   * never vocabulary alone:
-   * - the trailing `degraded` field is present → terminal fail: the agent
-   *   says the reply is weakened, deterministically for the session;
-   * - the body matches a process-complaint frame AND the turn ran without
-   *   the review MCP server (no new connection or call) or observably hit
-   *   a dead review-MCP URL → fail: without tools behind it the reply is
-   *   weakened. A connection-error failure throws DegradedConnError, which
-   *   runInFork retries once on a fresh session; anything else here is
-   *   terminal (a retry would likely reproduce it at full token cost).
-   * The message lands in the job error, shown on the Debug page.
-   */
-  private throwIfDegradedTurn(
-    reviewId: string,
-    before: { connected: number; toolCalls: number; unknownHits: number },
-    data: ReplyData | null,
-    body: string,
-  ): void {
-    const field = data?.degraded;
-    if (typeof field === "string" && field.trim() !== "") {
-      throw new DegradedTurnError(`agent reported a degraded turn: ${field.trim().slice(0, 300)}`);
-    }
-    const after = this.opts.mcp.activitySnapshot(reviewId);
-    const noActivity = after.toolCalls <= before.toolCalls && after.connected <= before.connected;
-    const connError = after.unknownHits > before.unknownHits;
-    if (!noActivity && !connError) return;
-    const stripped = stripCodeForChatter(body);
-    if (!DEGRADED_FRAME_RES.some((re) => re.test(stripped))) return;
-    if (connError) {
-      throw new DegradedConnError(
-        `agent reply reports what it could not look up; a review-MCP call failed this turn`,
-      );
-    }
-    throw new DegradedTurnError(`agent reply reports what it could not look up instead of answering`);
+ * Decide what a degraded signal means (#51, weakened by usable bodies).
+ * Facts only, never vocabulary alone:
+ * - the trailing `degraded` field is present: the agent says what the
+ *   reply is weaker for. A usable body (it parses and has at least one
+ *   block) is kept with the quiet note above and the raw reason on the
+ *   job; only an empty answer fails the turn;
+ * - the body matches a process-complaint frame AND the turn ran without
+ *   the review MCP server (no new connection or call) or observably hit
+ *   a dead review-MCP URL → fail as before: without tools behind it the
+ *   reply is weakened. A connection-error failure throws
+ *   DegradedConnError, which runInFork retries once on a fresh session;
+ *   anything else here is terminal (a retry would likely reproduce it at
+ *   full token cost).
+ * The fail messages land in the job error, shown on the Debug page.
+ */
+private degradedDisposition(
+  reviewId: string,
+  before: { connected: number; toolCalls: number; unknownHits: number },
+  data: ReplyData | null,
+  body: string,
+  blockCount: number,
+): DegradedDisposition {
+  const field = data?.degraded;
+  if (typeof field === "string" && field.trim() !== "") {
+    const reason = field.trim().slice(0, 300);
+    if (blockCount > 0) return { kind: "keep", reason };
+    return { kind: "fail", message: `agent reported a degraded turn: ${reason}` };
   }
+  const after = this.opts.mcp.activitySnapshot(reviewId);
+  const noActivity = after.toolCalls <= before.toolCalls && after.connected <= before.connected;
+  const connError = after.unknownHits > before.unknownHits;
+  if (!noActivity && !connError) return { kind: "ok" };
+  const stripped = stripCodeForChatter(body);
+  if (!DEGRADED_FRAME_RES.some((re) => re.test(stripped))) return { kind: "ok" };
+  if (connError) {
+    return {
+      kind: "fail-conn",
+      message: `agent reply reports what it could not look up; a review-MCP call failed this turn`,
+    };
+  }
+  return {
+    kind: "fail",
+    message: `agent reply reports what it could not look up instead of answering`,
+  };
+}
+
+/**
+ * Reader-compat wrapper: the reader keeps #51's terminal behaviour —
+ * a degraded reader turn fails its job instead of storing guide cards.
+ */
+private throwIfDegradedTurn(
+  reviewId: string,
+  before: { connected: number; toolCalls: number; unknownHits: number },
+  data: ReplyData | null,
+  body: string,
+  blockCount: number,
+): void {
+  const disp = this.degradedDisposition(reviewId, before, data, body, blockCount);
+  if (disp.kind === "ok") return;
+  if (disp.kind === "fail-conn") throw new DegradedConnError(disp.message);
+  if (disp.kind === "fail") throw new DegradedTurnError(disp.message);
+  throw new DegradedTurnError(`agent reported a degraded turn: ${disp.reason}`);
+}
 
   /**
    * ActionContext for diagram finalize/repair from fills that run inside
@@ -1440,7 +1552,9 @@ export class Pipeline {
             let finalData = data;
             let finalValidation = validation;
             let finalBody = body;
-            this.throwIfDegradedTurn(reviewId, mcpBefore, data, body);
+            // Reader turns keep #51's terminal rule (guide cards have
+            // their own integrity path; a weakened guide is not stored).
+            this.throwIfDegradedTurn(reviewId, mcpBefore, data, body, cards.flatMap((c) => c.blocks).length);
             if (validation.needsRepairTurn) {
               const anchorProblem =
                 validation.anchor && !validation.anchor.ok
@@ -1474,7 +1588,13 @@ export class Pipeline {
               finalValidation = second.validation;
               finalBody = second.body;
             }
-            this.throwIfDegradedTurn(reviewId, mcpBefore, finalData, finalBody);
+            this.throwIfDegradedTurn(
+              reviewId,
+              mcpBefore,
+              finalData,
+              finalBody,
+              finalCards.flatMap((c) => c.blocks).length,
+            );
             // #145: diagrams the reader wrote inline in guide cards go
             // through the same finalize + one repair turn as every other
             // fill, on the reader's own session. Flattened so a bad

@@ -3,10 +3,12 @@
  *
  * With the fake `AgentRunner` the review MCP server is unreachable by
  * construction (fakes never connect), which is exactly the production
- * failure shape: a turn that reports a degraded reply — in the trailing
- * `degraded` field or as tool chatter in the body — must fail its job
- * instead of storing a card, and must leave no streamed partials behind.
- * A turn whose session did use its tools is exempt from the fuzzy match.
+ * failure shape. Tool chatter in the body still fails its job instead of
+ * storing a card and leaves no streamed partials behind — but a trailing
+ * `degraded` field with a usable body keeps the answer: it shows with a
+ * plain-words note while the raw reason lands on the job for Debug. Only
+ * an empty degraded answer fails. A turn whose session did use its tools
+ * is exempt from the fuzzy match.
  */
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, ReviewSnapshot, Session } from "@unvibe/shared";
@@ -93,7 +95,7 @@ async function runExplain(
 }
 
 describe("degraded turns (#51)", () => {
-  it("a trailing degraded field fails the job and stores nothing", { timeout: 90000 }, async () => {
+  it("a trailing degraded field with a usable body keeps the answer with a note", { timeout: 90000 }, async () => {
     const agents = new FakeAgentRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
@@ -108,14 +110,42 @@ describe("degraded turns (#51)", () => {
     try {
       const { annotationId, jobId } = await runExplain(app, ctx, id);
       expect(jobId).toBeTruthy();
+      // The job succeeds: the usable answer is kept, not thrown away.
+      expect(ctx.jobs.get(jobId!)?.state).toBe("done");
+      expect(ctx.jobs.get(jobId!)?.error).toBeUndefined();
+      // The raw reason lands on the job for the Debug page…
+      expect(ctx.jobs.get(jobId!)?.degradedReason).toContain("resolve returned nothing");
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      expect(ann.type).toBe("conversation");
+      const blocks = (ann.turns ?? [])[0]?.blocks ?? [];
+      // …the answer shows with the body plus a plain-words note (never
+      // the agent's internal wording on the card).
+      expect(JSON.stringify(blocks)).toContain("The host block is described here.");
+      expect(JSON.stringify(blocks)).toContain("Some references in this answer could not be linked to the code.");
+      expect(JSON.stringify(blocks)).not.toContain("resolve returned nothing");
+      expect(ann.turns?.[0]?.error).toBeFalsy();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a trailing degraded field with no usable body fails the job and stores nothing", { timeout: 90000 }, async () => {
+    const agents = new FakeAgentRunner([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+      {
+        match: "## The question\n\nExplain this.",
+        events: textEvents(`\`\`\`json\n{"degraded": "the MCP was unreachable and there is no answer"}\n\`\`\`\n`),
+      },
+    ]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      expect(jobId).toBeTruthy();
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/degraded/);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(ann.type).toBe("conversation");
-      // No card content survived: neither the stored fill (never applied)
-      // nor streamed partials (cleared on degraded errors).
       expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
-      expect(JSON.stringify(ctx.reviews.getSnapshot(id))).not.toContain("The host block is described here.");
     } finally {
       await app.close();
     }
@@ -397,6 +427,28 @@ describe("connection-error retry (#51 review)", () => {
       expect(
         ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a retry that still reports degraded keeps its usable body", { timeout: 90000 }, async () => {
+    const FIELD_WITH_BODY = `The host block is described here.\n\n\`\`\`json\n{"degraded": "resolve came back empty"}\n\`\`\`\n`;
+    const { agents, mcp } = hittingRunner([CHATTER, FIELD_WITH_BODY]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      mcp.current = ctx.mcp;
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      const explains = agents.seen.filter((t) => t.includes("## The question\n\nExplain this."));
+      expect(explains).toHaveLength(2);
+      // The retry failed too — but its body is usable, so the answer is
+      // kept with the note instead of failing the job.
+      expect(ctx.jobs.get(jobId!)?.state).toBe("done");
+      expect(ctx.jobs.get(jobId!)?.degradedReason).toContain("resolve came back empty");
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      const blocks = (ann.turns ?? [])[0]?.blocks ?? [];
+      expect(JSON.stringify(blocks)).toContain("The host block is described here.");
+      expect(JSON.stringify(blocks)).toContain("Some references in this answer could not be linked to the code.");
     } finally {
       await app.close();
     }

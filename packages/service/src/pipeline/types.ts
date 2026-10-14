@@ -39,6 +39,16 @@ export interface RunInForkOptions {
    * expects one. Every later turn of a conversation card runs this way.
    */
   continueSessionId?: string;
+  /**
+   * Connection retry on a fresh fork (continued turns): when a turn
+   * observably hits a dead review-MCP URL it retries once on a fresh
+   * fork instead of the dead session. The short follow-up prompt assumes
+   * the live session's history, so the retry re-renders `retryTemplate`
+   * over `retryVariables` (the full first-turn variable set, including
+   * the stored turns as the `thread` transcript).
+   */
+  retryTemplate?: string;
+  retryVariables?: Record<string, unknown>;
   /** Called with newly finished cards as they stream in. */
   onPartial?: (cards: ParsedCard[]) => void | Promise<void>;
   /**
