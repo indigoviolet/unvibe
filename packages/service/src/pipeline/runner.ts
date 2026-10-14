@@ -118,25 +118,6 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 /**
- * Tool-chatter frames, issue #51 — see throwIfDegradedTurn. Ordinary
- * words in a process-complaint shape ("I tried to look it up with gh",
- * "resolve returned no IDs"). They fail a job only conjoined with a
- * fact below. Tool names and the words MCP/gh on their own never fail a
- * job: a PR about MCP legitimately discusses them in prose.
- */
-const DEGRADED_FRAME_RES = [
-  /\bi\s+(could\s*not|couldn'?t|tried\s+to|attempted\s+to|was\s+unable\s+to|wasn'?t\s+able\s+to)\b[^.]{0,120}\b(look|cite|connect|access|confirm|verify|fetch|retrieve)\b/i,
-  /command\s+was\s+refused|permission\s+(denied|refused)/i,
-  /failed\s+to\s+connect/i,
-  /resolve\s+returned\s+no\b/i,
-];
-
-/** Strip fenced and inline code: code may legitimately contain these words. */
-function stripCodeForChatter(body: string): string {
-  return body.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ");
-}
-
-/**
  * Plain-words note appended to a kept degraded answer (never the agent's
  * internal reason — that lives on the job for the Debug page).
  */
@@ -145,10 +126,10 @@ export const DEGRADED_ANSWER_NOTE = "Some references in this answer could not be
 /** Id for the appended degraded note (deduped, never anchored). */
 export const DEGRADED_NOTE_BLOCK_ID = "b-degraded-note";
 
-export type DegradedDisposition =
+export type TurnDisposition =
   | { kind: "ok" }
   | { kind: "fail-conn"; message: string }
-  | { kind: "fail"; message: string }
+  | { kind: "fail-empty"; message: string }
   | { kind: "keep"; reason: string };
 
 /**
@@ -468,20 +449,19 @@ export class Pipeline {
             );
             throwIfMcpRefusal(text);
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
-            // A degraded first reply fails fast — unless it still has a
-            // usable body, which is kept with a quiet note (#51, weakened
-            // by usable bodies). No repair turn can fix chatter about the
-            // agent's own tooling, so a kept answer skips repair.
+            // Facts only (#180): the reply's wording is never judged. A
+            // kept degraded answer (explicit field + usable body) skips
+            // the repair turn — no repair can fix what the agent declared
+            // missing, and the answer is shown as written.
             let degradedReason: string | undefined;
-            const firstDisp = this.degradedDisposition(
+            const firstDisp = this.turnDisposition(
               o.reviewId,
               mcpBefore,
               first.data,
-              first.body,
               first.cards.flatMap((c) => c.blocks).length,
             );
             if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
-            if (firstDisp.kind === "fail") throw new DegradedTurnError(firstDisp.message);
+            if (firstDisp.kind === "fail-empty") throw new DegradedTurnError(firstDisp.message);
             if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
             let finalText = text;
             let finalCards = first.cards;
@@ -515,15 +495,14 @@ export class Pipeline {
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
-              const secondDisp = this.degradedDisposition(
+              const secondDisp = this.turnDisposition(
                 o.reviewId,
                 mcpBefore,
                 second.data,
-                second.body,
                 second.cards.flatMap((c) => c.blocks).length,
               );
               if (secondDisp.kind === "fail-conn") throw new DegradedConnError(secondDisp.message);
-              if (secondDisp.kind === "fail") throw new DegradedTurnError(secondDisp.message);
+              if (secondDisp.kind === "fail-empty") throw new DegradedTurnError(secondDisp.message);
               if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
             if (degradedReason !== undefined) {
@@ -571,9 +550,8 @@ export class Pipeline {
             // — retrying on the same dead session could never reconnect —
             // with the full first-turn prompt plus the stored transcript
             // (the short follow-up prompt assumes the live session's
-            // history). A second failure, and any other degraded turn, is
-            // terminal — unless the reply still has a usable body, which
-            // the disposition above keeps.
+            // history). A second connection failure, and any empty answer,
+            // is terminal.
             if (err instanceof DegradedConnError && attempt < 1) {
               continuedId = undefined;
               if (o.retryTemplate && o.retryVariables) {
@@ -1063,69 +1041,45 @@ export class Pipeline {
   }
 
   /**
- * Decide what a degraded signal means (#51, weakened by usable bodies).
- * Facts only, never vocabulary alone:
- * - the trailing `degraded` field is present: the agent says what the
- *   reply is weaker for. A usable body (it parses and has at least one
- *   block) is kept with the quiet note above and the raw reason on the
- *   job; only an empty answer fails the turn;
- * - the body matches a process-complaint frame AND the turn ran without
- *   the review MCP server (no new connection or call) or observably hit
- *   a dead review-MCP URL → fail as before: without tools behind it the
- *   reply is weakened. A connection-error failure throws
- *   DegradedConnError, which runInFork retries once on a fresh session;
- *   anything else here is terminal (a retry would likely reproduce it at
- *   full token cost).
- * The fail messages land in the job error, shown on the Debug page.
- */
-private degradedDisposition(
-  reviewId: string,
-  before: { connected: number; toolCalls: number; unknownHits: number },
-  data: ReplyData | null,
-  body: string,
-  blockCount: number,
-): DegradedDisposition {
-  const field = data?.degraded;
-  if (typeof field === "string" && field.trim() !== "") {
-    const reason = field.trim().slice(0, 300);
-    if (blockCount > 0) return { kind: "keep", reason };
-    return { kind: "fail", message: `agent reported a degraded turn: ${reason}` };
+   * Decide a finished turn's fate from facts the service observes, never
+   * from the reply's wording (#180; the phrase matching from #51 is gone):
+   * - the trailing `degraded` field is present with a usable body (it
+   *   parses and has at least one block): keep the answer as written,
+   *   record the raw reason on the job and add the quiet note. Never a
+   *   failure when there is content;
+   * - a review-tool call observably failed to connect this turn (a hit
+   *   on an unknown/revoked MCP secret): fail as a connection error,
+   *   which the caller retries once on a fresh session;
+   * - the answer is empty (no usable block): fail. An explicit
+   *   `degraded` reason on an empty answer names the failure.
+   * Everything else is kept, whatever words it uses. The fail messages
+   * land in the job error, shown on the Debug page.
+   */
+  private turnDisposition(
+    reviewId: string,
+    before: { connected: number; toolCalls: number; unknownHits: number },
+    data: ReplyData | null,
+    blockCount: number,
+  ): TurnDisposition {
+    const field = data?.degraded;
+    const reason =
+      typeof field === "string" && field.trim() !== "" ? field.trim().slice(0, 300) : undefined;
+    if (reason !== undefined && blockCount > 0) return { kind: "keep", reason };
+    const after = this.opts.mcp.activitySnapshot(reviewId);
+    if (after.unknownHits > before.unknownHits) {
+      return {
+        kind: "fail-conn",
+        message: `a review-MCP call failed to connect this turn`,
+      };
+    }
+    if (blockCount === 0) {
+      return {
+        kind: "fail-empty",
+        message: reason !== undefined ? `agent reported a degraded turn: ${reason}` : `agent reply was empty`,
+      };
+    }
+    return { kind: "ok" };
   }
-  const after = this.opts.mcp.activitySnapshot(reviewId);
-  const noActivity = after.toolCalls <= before.toolCalls && after.connected <= before.connected;
-  const connError = after.unknownHits > before.unknownHits;
-  if (!noActivity && !connError) return { kind: "ok" };
-  const stripped = stripCodeForChatter(body);
-  if (!DEGRADED_FRAME_RES.some((re) => re.test(stripped))) return { kind: "ok" };
-  if (connError) {
-    return {
-      kind: "fail-conn",
-      message: `agent reply reports what it could not look up; a review-MCP call failed this turn`,
-    };
-  }
-  return {
-    kind: "fail",
-    message: `agent reply reports what it could not look up instead of answering`,
-  };
-}
-
-/**
- * Reader-compat wrapper: the reader keeps #51's terminal behaviour —
- * a degraded reader turn fails its job instead of storing guide cards.
- */
-private throwIfDegradedTurn(
-  reviewId: string,
-  before: { connected: number; toolCalls: number; unknownHits: number },
-  data: ReplyData | null,
-  body: string,
-  blockCount: number,
-): void {
-  const disp = this.degradedDisposition(reviewId, before, data, body, blockCount);
-  if (disp.kind === "ok") return;
-  if (disp.kind === "fail-conn") throw new DegradedConnError(disp.message);
-  if (disp.kind === "fail") throw new DegradedTurnError(disp.message);
-  throw new DegradedTurnError(`agent reported a degraded turn: ${disp.reason}`);
-}
 
   /**
    * ActionContext for diagram finalize/repair from fills that run inside
@@ -1488,7 +1442,7 @@ private throwIfDegradedTurn(
       dedupe: { anchor: "guide", requestKind: "reader", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
-        // Card ids present before this turn: a degraded turn removes what
+        // Card ids present before this turn: a failed turn removes what
         // it streamed, never older cards (#51). Read once: a retry's own
         // streamed cards must clear on a terminal failure too (#146).
         const beforeIds = new Set(
@@ -1547,15 +1501,26 @@ private throwIfDegradedTurn(
             throwIfMcpRefusal(text);
             await this.recordUsage(reviewId, usage);
             // Issue #50: reader cards match their own `##` titles.
-            const { cards, data, validation, body } = this.parseAndValidate(reviewId, buffer, []);
+            const { cards, data, validation } = this.parseAndValidate(reviewId, buffer, []);
             let finalCards = cards;
             let finalData = data;
             let finalValidation = validation;
-            let finalBody = body;
-            // Reader turns keep #51's terminal rule (guide cards have
-            // their own integrity path; a weakened guide is not stored).
-            this.throwIfDegradedTurn(reviewId, mcpBefore, data, body, cards.flatMap((c) => c.blocks).length);
-            if (validation.needsRepairTurn) {
+            // Facts only (#180), same as fork turns: wording never fails
+            // the guide. An explicit degraded field with usable cards is
+            // kept (reason on the job, quiet note on the last card) and
+            // skips the repair turn; a connection failure retries once
+            // on a fresh session; an empty reply fails.
+            let degradedReason: string | undefined;
+            const firstDisp = this.turnDisposition(
+              reviewId,
+              mcpBefore,
+              data,
+              cards.flatMap((c) => c.blocks).length,
+            );
+            if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
+            if (firstDisp.kind === "fail-empty") throw new DegradedTurnError(firstDisp.message);
+            if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
+            if (validation.needsRepairTurn && degradedReason === undefined) {
               const anchorProblem =
                 validation.anchor && !validation.anchor.ok
                   ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
@@ -1586,15 +1551,20 @@ private throwIfDegradedTurn(
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
-              finalBody = second.body;
+              const secondDisp = this.turnDisposition(
+                reviewId,
+                mcpBefore,
+                second.data,
+                second.cards.flatMap((c) => c.blocks).length,
+              );
+              if (secondDisp.kind === "fail-conn") throw new DegradedConnError(secondDisp.message);
+              if (secondDisp.kind === "fail-empty") throw new DegradedTurnError(secondDisp.message);
+              if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
-            this.throwIfDegradedTurn(
-              reviewId,
-              mcpBefore,
-              finalData,
-              finalBody,
-              finalCards.flatMap((c) => c.blocks).length,
-            );
+            if (degradedReason !== undefined) {
+              attachDegradedNote(finalCards);
+              ctx.setDegradedReason(degradedReason);
+            }
             // #145: diagrams the reader wrote inline in guide cards go
             // through the same finalize + one repair turn as every other
             // fill, on the reader's own session. Flattened so a bad
@@ -1643,8 +1613,8 @@ private throwIfDegradedTurn(
               : (err as Error).message,
           );
           if (err instanceof DegradedTurnError) {
-            // A degraded turn must leave no card behind: provisional cards
-            // streamed mid-turn may already hold the chatter (#51).
+            // A failed turn must leave no card behind: provisional cards
+            // streamed mid-turn are not a finished guide (#51).
             await this.opts.reviews.mutate(reviewId, (draft) => {
               const root = draft.pages.find((p) => p.id === "root");
               if (!root) return;
