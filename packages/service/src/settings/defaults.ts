@@ -196,8 +196,7 @@ function pickFrom(pref: Matcher[], lists: { claude: string[]; codex: string[] })
     if (matches.length === 0) continue;
     // Newest version wins; explicit versioned ids beat aliases, plain ids
     // beat dated pins on ties, `default` ranks below the family alias.
-    matches.sort((a, b) => {
-      const av = a.parsed.version;
+    matches.sort((a, b) => {      const av = a.parsed.version;
       const bv = b.parsed.version;
       if (av !== null && bv !== null) {
         const c = compareVersions(bv, av);
@@ -209,7 +208,7 @@ function pickFrom(pref: Matcher[], lists: { claude: string[]; codex: string[] })
       if (bv !== null) return 1;
       return a.parsed.aliasRank - b.parsed.aliasRank;
     });
-    return { provider: m.provider, model: matches[0].id };
+    return { provider: m.provider, model: matches[0].id, effort: "" };
   }
   return null;
 }

@@ -222,10 +222,10 @@ export interface SecondOpinionResult {
   provider: string;
   model: string;
   /**
-   * Thinking level the run used (issue #172); absent means the adapter
-   * default. Part of the reuse identity: a changed effort re-runs.
+   * Thinking level the run used (issue #172), "" for the adapter default.
+   * Part of the reuse identity: a changed effort re-runs.
    */
-  effort?: string;
+  effort: string;
   verdict: SecondOpinionVerdict;
   /** Reasoning text from the trailing JSON (plain text fallback). */
   reasoning: string;
@@ -666,9 +666,9 @@ export interface Job {
   provider?: string;
   /**
    * Thinking level the job ran with (issue #172): the role's effort
-   * setting, or absent when the adapter default was used.
+   * setting, "" when the adapter default was used.
    */
-  effort?: string;
+  effort: string;
   /** Review this job belongs to (for `GET /api/jobs?review=:id` + WS fan-out). */
   reviewId?: string;
   priority: number;

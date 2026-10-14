@@ -49,7 +49,8 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
       : undefined;
     const provider = settings?.main.provider ?? "unknown";
     const model = settings?.main.model ?? "unknown";
-    const effort = settings?.main.effort ?? "";
+    // No settings store (scaffold): no role pick, so the adapter default.
+    const effort = settings ? settings.main.effort : "";
     const currentKey = baseKeyString({
       reviewId: id,
       reviewVersion: `v${snapshot.version.n}`,

@@ -69,8 +69,8 @@ export interface EnqueueOptions {
   kind: JobKind;
   provider: string;
   model: string;
-  /** Thinking level the job runs with (issue #172); absent = adapter default. */
-  effort?: string;
+  /** Thinking level the job runs with (issue #172), "" for the adapter default. */
+  effort: string;
   priority: number;
   dedupe?: JobDedupeKey;
   promptSnapshot?: string;
@@ -156,7 +156,7 @@ export class JobQueue {
       kind: opts.kind,
       model: opts.model,
       provider: opts.provider,
-      ...(opts.effort ? { effort: opts.effort } : {}),
+      effort: opts.effort,
       reviewId: opts.reviewId,
       priority: opts.priority,
       state: "queued",

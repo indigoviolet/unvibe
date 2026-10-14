@@ -813,8 +813,8 @@ needed (that deviation is closed, not added).
   `service/test/jobs.test.ts` "finished jobs stay listed after a restart",
   `scripts/restart-resilience.mjs` step 2b, PRD §4.14 + §16).
   Issue #172 adds the effort each job ran with next to the model
-  (`jobs.test.ts` "carries effort on the job and persists it"; absent =
-  adapter default).
+  (`jobs.test.ts` "carries effort on the job and persists it"; required,
+  "" = adapter default).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log lines
   verbatim in fenced blocks under in-base/ready/waiting headings (issue

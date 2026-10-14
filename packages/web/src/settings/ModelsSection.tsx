@@ -161,32 +161,25 @@ function ModelPicker({
     !browsing && modelIds !== null && error === null && pick.model !== "" && !modelIds.includes(pick.model);
   const unset = role === "secondOpinion" && pick.model === "";
 
-  // The saved effort may no longer be offered (model changed elsewhere,
-  // values renamed): flag it plainly; picking a value below fixes it.
-  const savedEffort = pick.effort ?? "";
-  const effortValues = !browsing && thinkingError === null ? (thinking?.options.map((o) => o.value) ?? null) : null;
+  // The saved effort may no longer be offered (values renamed): flag it
+  // plainly; picking a value below fixes it.
+  const savedEffort = pick.effort;
+  const effortValues =
+    !browsing && thinkingError === null ? (thinking ? thinking.options.map((o) => o.value) : null) : null;
   const effortMissing =
     !browsing && effortValues !== null && savedEffort !== "" && !effortValues.includes(savedEffort);
 
-  const save = async (next: ModelPick): Promise<void> => {
+  /** Offered values for the currently selected provider, when known. */
+  const offeredEffortValues = (): string[] | null =>
+    thinkingError !== null ? null : thinking ? thinking.options.map((o) => o.value) : null;
+
+  const save = async (next: ModelPick, resetNotice: string | null): Promise<void> => {
     setSaving(true);
     setSaveError(null);
     setEffortReset(null);
     try {
-      const payload: ModelPick = { ...next };
-      if (next.effort === undefined && savedEffort !== "") {
-        // Saving a new model: keep the saved effort when the new provider
-        // offers it, else fall back to Default and say so (#172). Unknown
-        // offerings (still loading, fetch failed) keep the saved value;
-        // the service skips validation then, and the warning above flags
-        // it once the list is known.
-        const values = thinkingError !== null ? null : (thinking?.options.map((o) => o.value) ?? null);
-        if (values !== null && !values.includes(savedEffort)) {
-          payload.effort = "";
-          setEffortReset(`“${savedEffort}” isn't available for ${next.provider} — reset to Default.`);
-        }
-      }
-      onSaved(await api.saveSettings({ [role]: payload }));
+      onSaved(await api.saveSettings({ [role]: next }));
+      if (resetNotice !== null) setEffortReset(resetNotice);
     } catch (err) {
       setSaveError(friendlyError(err));
       // The saved pick is unchanged: return both selects to it (#87).
@@ -196,6 +189,26 @@ function ModelPicker({
     } finally {
       setSaving(false);
     }
+  };
+
+  /**
+   * Save a newly chosen model: keep the saved effort when the new provider
+   * offers it, else fall back to Default and say so (#172). Unknown
+   * offerings (still loading, fetch failed) keep the saved value; the
+   * service skips validation then, and the warning above flags it once
+   * the list is known.
+   */
+  const saveModel = (model: string): Promise<void> => {
+    let effort = savedEffort;
+    let resetNotice: string | null = null;
+    if (savedEffort !== "") {
+      const values = offeredEffortValues();
+      if (values !== null && !values.includes(savedEffort)) {
+        effort = "";
+        resetNotice = `“${savedEffort}” isn't available for ${provider} — reset to Default.`;
+      }
+    }
+    return save({ provider, model, effort }, resetNotice);
   };
 
   return (
@@ -246,7 +259,7 @@ function ModelPicker({
               <select
                 id={`model-${role}`}
                 value={browsing ? "" : pick.model}
-                onChange={(e) => void save({ provider, model: e.target.value })}
+                onChange={(e) => void saveModel(e.target.value)}
                 disabled={saving}
               >
                 {browsing ? (
@@ -314,7 +327,7 @@ function ModelPicker({
                 id={`effort-${role}`}
                 value={browsing ? "" : savedEffort}
                 onChange={(e) =>
-                  void save({ provider: pick.provider, model: pick.model, effort: e.target.value })
+                  void save({ provider: pick.provider, model: pick.model, effort: e.target.value }, null)
                 }
                 disabled={saving || browsing}
                 title="How hard the model thinks. Default leaves the provider's own setting alone."

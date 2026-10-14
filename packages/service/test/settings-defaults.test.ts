@@ -48,9 +48,9 @@ const CODEX_ISSUE = [
 describe("selectDefaultModels against the issue #88 table", () => {
   it("matches every row (main, small, second opinion with main on Claude)", () => {
     const picked = selectDefaultModels({ claude: CLAUDE_ISSUE, codex: CODEX_ISSUE });
-    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
-    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
-    expect(picked.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "" });
+    expect(picked.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "" });
   });
 
   it("second opinion comes from the provider main is not using (main on Codex)", () => {
@@ -60,37 +60,38 @@ describe("selectDefaultModels against the issue #88 table", () => {
       claude: ["claude-opus-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
       codex: CODEX_ISSUE,
     });
-    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
-    expect(picked.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5" });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "" });
+    expect(picked.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5", effort: "" });
   });
 
   it("a saved main on Codex takes second opinion from Claude via mainOverride", () => {
     // A live pick would put main on Claude; the saved pick keeps it on
     // Codex, so second opinion ranks Claude opus first (issue table row).
     const picked = selectDefaultModels({ claude: CLAUDE_ISSUE, codex: CODEX_ISSUE }, { provider: "codex" });
-    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
-    expect(picked.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+    expect(picked.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
   });
 
   it("prefers the newer cross-provider model over the older same-provider one", () => {
     // Table order: gpt-6.1-sol (row 2) beats claude-opus-5 (row 3).
     const picked = selectDefaultModels({ claude: ["claude-opus-5"], codex: ["gpt-6.1-sol"] });
-    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "" });
   });
 
   it("falls back within and across tiers in table order", () => {
     // Only an older sonnet on Claude, only terra on Codex: sonnet row wins.
     expect(
       selectDefaultModels({ claude: ["claude-sonnet-5-5"], codex: ["gpt-5.6-terra"] }).main,
-    ).toEqual({ provider: "claude", model: "claude-sonnet-5-5" });
+    ).toEqual({ provider: "claude", model: "claude-sonnet-5-5", effort: "" });
     // Sonnet too old for its floor: terra row wins.
     expect(
       selectDefaultModels({ claude: ["claude-sonnet-5"], codex: ["gpt-5.6-terra"] }).main,
-    ).toEqual({ provider: "codex", model: "gpt-5.6-terra" });
+    ).toEqual({ provider: "codex", model: "gpt-5.6-terra", effort: "" });
     // Older opus still fills its own row when nothing newer is offered.
     expect(selectDefaultModels({ claude: ["claude-opus-5"], codex: [] }).main).toEqual({
       provider: "claude",
       model: "claude-opus-5",
+      effort: "",
     });
   });
 });
@@ -106,8 +107,8 @@ describe("excluded families are never picked", () => {
       claude: ["claude-fable-5"],
       codex: ["gpt-5.6-terra", "gpt-5.6-luna"],
     });
-    expect(picked.main).toEqual({ provider: "codex", model: "gpt-5.6-terra" });
-    expect(picked.small).toEqual({ provider: "codex", model: "gpt-5.6-luna" });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-5.6-terra", effort: "" });
+    expect(picked.small).toEqual({ provider: "codex", model: "gpt-5.6-luna", effort: "" });
     // Main is on Codex; Claude offers nothing usable for second opinion.
     expect(picked.secondOpinion).toBeNull();
   });
@@ -127,8 +128,8 @@ describe("aliases and dated ids", () => {
       claude: ["default", "opus", "sonnet", "haiku", "claude-haiku-4-5-20251001"],
       codex: [],
     });
-    expect(picked.main).toEqual({ provider: "claude", model: "opus" });
-    expect(picked.small).toEqual({ provider: "claude", model: "haiku" });
+    expect(picked.main).toEqual({ provider: "claude", model: "opus", effort: "" });
+    expect(picked.small).toEqual({ provider: "claude", model: "haiku", effort: "" });
     expect(picked.secondOpinion).toBeNull();
   });
 
@@ -137,13 +138,14 @@ describe("aliases and dated ids", () => {
       claude: ["default", "opus", "claude-opus-5-5", "haiku"],
       codex: [],
     });
-    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
   });
 
   it("prefers the stable family alias over the drifting default alias", () => {
     expect(selectDefaultModels({ claude: ["default", "opus"], codex: [] }).main).toEqual({
       provider: "claude",
       model: "opus",
+      effort: "",
     });
   });
 
@@ -154,7 +156,7 @@ describe("aliases and dated ids", () => {
       dated: true,
     });
     const picked = selectDefaultModels({ claude: ["claude-haiku-4-5-20251001"], codex: [] });
-    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-4-5-20251001" });
+    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-4-5-20251001", effort: "" });
     expect(picked.main).toBeNull();
   });
 
@@ -163,7 +165,7 @@ describe("aliases and dated ids", () => {
       claude: ["claude-haiku-4-5-20251001", "claude-haiku-4-5"],
       codex: [],
     });
-    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-4-5" });
+    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-4-5", effort: "" });
   });
 });
 
@@ -173,27 +175,27 @@ describe("new versions win without a code change", () => {
       claude: ["claude-opus-5-5", "claude-opus-6"],
       codex: CODEX_ISSUE,
     });
-    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-6" });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-6", effort: "" });
   });
 
   it("a hypothetical gpt-6.2-sol is picked up for main and second opinion", () => {
     const picked = selectDefaultModels({ claude: [], codex: ["gpt-6.2-sol", "gpt-6.1-sol"] });
-    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.2-sol" });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.2-sol", effort: "" });
   });
 });
 
 describe("one provider or none", () => {
   it("with Claude only, second opinion stays unset", () => {
     const picked = selectDefaultModels({ claude: CLAUDE_ISSUE, codex: [] });
-    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
-    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
+    expect(picked.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+    expect(picked.small).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "" });
     expect(picked.secondOpinion).toBeNull();
   });
 
   it("with Codex only, main and small come from Codex and second opinion stays unset", () => {
     const picked = selectDefaultModels({ claude: [], codex: CODEX_ISSUE });
-    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
-    expect(picked.small).toEqual({ provider: "codex", model: "gpt-6-luna" });
+    expect(picked.main).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "" });
+    expect(picked.small).toEqual({ provider: "codex", model: "gpt-6-luna", effort: "" });
     expect(picked.secondOpinion).toBeNull();
   });
 
@@ -266,7 +268,7 @@ describe("live settings defaults + validation", () => {
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { main: { provider: "claude", model: "opus-9" } },
+        payload: { main: { provider: "claude", model: "opus-9", effort: "" } },
       });
       expect(bad.statusCode).toBe(400);
       expect(JSON.stringify(bad.json())).toContain("not offered");
@@ -275,7 +277,7 @@ describe("live settings defaults + validation", () => {
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { main: { provider: "claude", model: "claude-sonnet-5-5" } },
+        payload: { main: { provider: "claude", model: "claude-sonnet-5-5", effort: "" } },
       });
       expect(ok.statusCode).toBe(200);
 
@@ -291,14 +293,14 @@ describe("live settings defaults + validation", () => {
   it("a saved main on Codex takes second opinion from Claude (issue table row)", async () => {
     const { app, ctx } = await makeApp(liveCatalog());
     try {
-      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol" } });
+      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol", effort: "" } });
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
         main: { provider: string; model: string };
         secondOpinion: { provider: string; model: string };
       };
-      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol" });
-      expect(body.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol", effort: "" });
+      expect(body.secondOpinion).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
     } finally {
       await app.close();
     }
@@ -318,9 +320,9 @@ describe("live settings defaults + validation", () => {
         small: { provider: string; model: string };
         secondOpinion: { provider: string; model: string };
       };
-      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
-      expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
-      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+      expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "", effort: "" });
     } finally {
       await app.close();
     }
@@ -331,14 +333,14 @@ describe("live settings defaults + validation", () => {
       stubCatalog({ codex: { models: [...CODEX_ISSUE], defaultId: null } }),
     );
     try {
-      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol" } });
+      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol", effort: "" } });
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
         main: { provider: string; model: string };
         secondOpinion: { provider: string; model: string };
       };
-      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol" });
-      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol", effort: "" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "", effort: "" });
     } finally {
       await app.close();
     }
@@ -373,13 +375,13 @@ describe("live settings defaults + validation", () => {
       stubCatalog({ codex: { models: ["gpt-6.1-sol"], defaultId: null } }),
     );
     try {
-      ctx.settings.update({ main: { provider: "claude", model: "claude-opus-5" } });
+      ctx.settings.update({ main: { provider: "claude", model: "claude-opus-5", effort: "" } });
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
         main: { provider: string; model: string };
         secondOpinion: { provider: string; model: string };
       };
-      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5" });
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5", effort: "" });
       expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "" });
     } finally {
       await app.close();
@@ -399,15 +401,15 @@ describe("live settings defaults + validation", () => {
         main: { provider: string; model: string };
         secondOpinion: { provider: string; model: string };
       };
-      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
-      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "", effort: "" });
 
       // Unsetting explicitly is valid; empty main is not.
       const unset = await app.inject({
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { secondOpinion: { provider: "codex", model: "" } },
+        payload: { secondOpinion: { provider: "codex", model: "", effort: "" } },
       });
       expect(unset.statusCode).toBe(200);
       const badMain = await app.inject({
@@ -455,7 +457,7 @@ describe("live settings defaults + validation", () => {
       // Unfillable roles keep the stored (static) pick; readiness reports it.
       expect(body.main.model).toBe("claude-opus-5-5");
       // Codex offering is definitive but unusable: second opinion unsets.
-      expect(body.secondOpinion).toEqual({ provider: "codex", model: "" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "", effort: "" });
     } finally {
       await app.close();
     }
@@ -466,8 +468,8 @@ describe("live settings defaults + validation", () => {
     migrate(db);
     const settings = new SettingsStore(db);
     const resolved = await resolveEffectiveSettings({ settings, models: liveCatalog() });
-    expect(resolved.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
-    expect(resolved.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+    expect(resolved.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+    expect(resolved.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "" });
     // Nothing persisted: no role counts as saved and stored values stand.
     expect(settings.savedKeys()).toEqual([]);
     expect(settings.get().main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });

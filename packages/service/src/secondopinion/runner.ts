@@ -445,13 +445,13 @@ export function findStoredSecondOpinion(
   provider: string,
   model: string,
   version: number,
-  effort = "",
+  effort: string,
 ): SecondOpinionResult | null {
   const matches = (s: SecondOpinionResult): boolean =>
     s.mode === mode &&
     s.provider === provider &&
     s.model === model &&
-    (s.effort ?? "") === effort &&
+    s.effort === effort &&
     s.version === version;
   for (const ann of snapshot.annotations) {
     const turn = (ann.turns ?? []).find((t) => t.id === cardId);
@@ -493,7 +493,7 @@ export async function requestSecondOpinion(
   const version = snapshot.version.n;
   const provider = settings.secondOpinion.provider;
   const model = settings.secondOpinion.model;
-  const effort = settings.secondOpinion.effort ?? "";
+  const effort = settings.secondOpinion.effort;
   const kind: JobKind = "second-opinion";
   // PRD §12 reuse (#10): identical stored result (same card, mode, model,
   // effort, base version) returns without an agent call — no job, no tokens.
@@ -525,7 +525,7 @@ export async function requestSecondOpinion(
     kind,
     provider,
     model,
-    ...(effort !== "" ? { effort } : {}),
+    effort,
     priority: JOB_PRIORITY.userRequested,
     dedupe,
     cardId: cardIdForJob,
@@ -640,7 +640,7 @@ export async function requestSecondOpinion(
           mode: req.mode,
           provider,
           model,
-          ...(effort !== "" ? { effort } : {}),
+          effort,
           verdict,
           reasoning,
           blocks: fixedBlocks,

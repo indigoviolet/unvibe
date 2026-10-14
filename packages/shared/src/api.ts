@@ -843,10 +843,10 @@ export interface ModelPick {
   model: string;
   /**
    * Thinking level for the role (issue #172): an adapter-offered effort
-   * value (Claude `effort`, Codex `reasoning_effort`). Absent or "" means
-   * Default — leave the adapter's own setting alone.
+   * value (Claude `effort`, Codex `reasoning_effort`). "" means Default —
+   * leave the adapter's own setting alone.
    */
-  effort?: string;
+  effort: string;
 }
 
 export interface Settings {

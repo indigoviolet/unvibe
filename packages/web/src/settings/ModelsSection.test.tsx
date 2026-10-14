@@ -21,9 +21,9 @@ const MODELS: Record<string, string[]> = {
 };
 
 const SETTINGS = {
-  main: { provider: "claude", model: "opus" },
-  small: { provider: "claude", model: "haiku" },
-  secondOpinion: { provider: "codex", model: "gpt-6.1-sol" },
+  main: { provider: "claude", model: "opus", effort: "" },
+  small: { provider: "claude", model: "haiku", effort: "" },
+  secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
 } as Settings;
 
 type ModelsResult = Awaited<ReturnType<typeof api.models>>;
@@ -81,7 +81,7 @@ describe("ModelsSection provider switch", () => {
     mockReadiness();
     mockModels();
     mockThinking();
-    const next = { ...SETTINGS, small: { provider: "codex", model: "gpt-6-luna" } } as Settings;
+    const next = { ...SETTINGS, small: { provider: "codex", model: "gpt-6-luna", effort: "" } } as Settings;
     const saveSettings = vi.spyOn(api, "saveSettings").mockResolvedValue(next);
     const onSaved = vi.fn();
     render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
@@ -94,7 +94,7 @@ describe("ModelsSection provider switch", () => {
     expect(screen.queryByTestId("model-small-missing")).not.toBeInTheDocument();
 
     fireEvent.change(modelSelect("small"), { target: { value: "gpt-6-luna" } });
-    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ small: { provider: "codex", model: "gpt-6-luna" } }));
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ small: { provider: "codex", model: "gpt-6-luna", effort: "" } }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(next));
   });
 
@@ -137,7 +137,7 @@ describe("ModelsSection provider switch", () => {
     mockThinking();
     const retired = {
       ...SETTINGS,
-      small: { provider: "claude", model: "retired-x" },
+      small: { provider: "claude", model: "retired-x", effort: "" },
     } as Settings;
     render(<ModelsSection settings={retired} onSaved={vi.fn()} />);
 
@@ -208,7 +208,7 @@ describe("ModelsSection provider switch", () => {
 
     // A saved-model change for the saved provider also leaves the browse.
     rerender(
-      <ModelsSection settings={{ ...SETTINGS, small: { provider: "claude", model: "opus" } }} onSaved={onSaved} />,
+      <ModelsSection settings={{ ...SETTINGS, small: { provider: "claude", model: "opus", effort: "" } }} onSaved={onSaved} />,
     );
     expect(provSelect("small")).toHaveValue("codex");
     expect(screen.getByText("Pick a codex model…")).toBeInTheDocument();
@@ -218,7 +218,7 @@ describe("ModelsSection provider switch", () => {
     await waitFor(() => expect(modelSelect("small")).toHaveValue("opus"));
     rerender(
       <ModelsSection
-        settings={{ ...SETTINGS, small: { provider: "codex", model: "gpt-6-luna" } }}
+        settings={{ ...SETTINGS, small: { provider: "codex", model: "gpt-6-luna", effort: "" } }}
         onSaved={onSaved}
       />,
     );
@@ -281,11 +281,11 @@ describe("ModelsSection provider switch", () => {
     mockThinking();
     const unset = {
       ...SETTINGS,
-      secondOpinion: { provider: "codex", model: "" },
+      secondOpinion: { provider: "codex", model: "", effort: "" },
     } as Settings;
     const next = {
       ...unset,
-      secondOpinion: { provider: "claude", model: "opus" },
+      secondOpinion: { provider: "claude", model: "opus", effort: "" },
     } as Settings;
     const saveSettings = vi.spyOn(api, "saveSettings").mockResolvedValue(next);
     const onSaved = vi.fn();
@@ -313,7 +313,7 @@ describe("ModelsSection provider switch", () => {
     await screen.findByText("Pick a claude model…");
     fireEvent.change(modelSelect("secondOpinion"), { target: { value: "opus" } });
     await waitFor(() =>
-      expect(saveSettings).toHaveBeenCalledWith({ secondOpinion: { provider: "claude", model: "opus" } }),
+      expect(saveSettings).toHaveBeenCalledWith({ secondOpinion: { provider: "claude", model: "opus", effort: "" } }),
     );
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(next));
   });

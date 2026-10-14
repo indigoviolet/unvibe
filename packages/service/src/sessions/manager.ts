@@ -49,7 +49,7 @@ export interface BaseKey {
 }
 
 export function baseKeyString(key: BaseKey): string {
-  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.effort ?? ""].join("|");
+  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.effort].join("|");
 }
 
 /** Review id of a base key string (its first component). */
@@ -257,7 +257,7 @@ export class SessionManager {
       cwd: build.cwd,
       systemPrompt: build.systemPrompt,
       mcpServers: build.mcpServers,
-      ...(build.effort !== "" ? { effort: build.effort } : {}),
+      effort: build.effort,
     });
     const { text } = await this.sendText(session, pack, signal);
     if (!/ready/i.test(text)) {
@@ -356,7 +356,7 @@ export class SessionManager {
         cwd: base.build.cwd,
         systemPrompt: base.build.systemPrompt,
         mcpServers: base.build.mcpServers,
-        ...(base.key.effort !== "" ? { effort: base.key.effort } : {}),
+        effort: base.key.effort,
       });
       await this.sendText(session, base.pack, opts.signal);
     }
@@ -557,7 +557,7 @@ export class SessionManager {
       cwd: base.build.cwd,
       systemPrompt: base.build.systemPrompt,
       mcpServers: base.build.mcpServers,
-      ...(base.key.effort !== "" ? { effort: base.key.effort } : {}),
+      effort: base.key.effort,
     });
     await this.drainEvents(session, base.pack);
     return session;

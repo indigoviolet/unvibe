@@ -160,8 +160,8 @@ describe("anchor block ids", () => {
 describe("jobForCard", () => {
   it("finds running or queued jobs for the card", () => {
     const jobs = [
-      { id: "a", kind: "depth", model: "m", priority: 1, state: "done", cardId: "c1" },
-      { id: "b", kind: "go-deeper", model: "m", priority: 1, state: "running", cardId: "c2" },
+      { id: "a", kind: "depth", model: "m", effort: "", priority: 1, state: "done", cardId: "c1" },
+      { id: "b", kind: "go-deeper", model: "m", effort: "", priority: 1, state: "running", cardId: "c2" },
     ] as const;
     expect(jobForCard([...jobs], "c1")).toBeUndefined();
     expect(jobForCard([...jobs], "c2")?.id).toBe("b");

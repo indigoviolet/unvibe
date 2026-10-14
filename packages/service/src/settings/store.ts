@@ -40,9 +40,7 @@ function isModelPick(v: unknown): v is ModelPick {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
   return (
-    typeof o["provider"] === "string" &&
-    typeof o["model"] === "string" &&
-    (o["effort"] === undefined || typeof o["effort"] === "string")
+    typeof o["provider"] === "string" && typeof o["model"] === "string" && typeof o["effort"] === "string"
   );
 }
 

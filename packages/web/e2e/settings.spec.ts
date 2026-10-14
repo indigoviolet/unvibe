@@ -232,7 +232,7 @@ test("model pickers list provider models and warn on same-model second opinion",
   await page.addInitScript(() => {
     localStorage.setItem(
       "unvibe.mock.settings",
-      JSON.stringify({ main: { provider: "custom", model: "custom-1" } }),
+      JSON.stringify({ main: { provider: "custom", model: "custom-1", effort: "" } }),
     );
   });
   await page.goto("/settings");

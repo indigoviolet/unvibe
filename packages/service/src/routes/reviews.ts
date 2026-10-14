@@ -866,11 +866,13 @@ export async function registerReviews(
     const parser = deps.parser ?? new JsonBlockReplyParser();
     let provider = "main";
     let model = "main-model";
+    let effort = "";
     try {
       const s = (deps as RouteDeps).settings?.get();
       if (s) {
         provider = s.main.provider;
         model = s.main.model;
+        effort = s.main.effort;
       }
     } catch {
       // Keep defaults.
@@ -886,6 +888,7 @@ export async function registerReviews(
           ...(deps.promptsDir !== undefined ? { promptsDir: deps.promptsDir } : {}),
           provider,
           model,
+          effort,
         },
         { reviewId: id, toVersion: snapshot.review.currentVersion },
       );

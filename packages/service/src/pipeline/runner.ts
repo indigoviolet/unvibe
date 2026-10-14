@@ -77,21 +77,16 @@ type Session = { id: string; provider: string; model: string };
 
 /**
  * Role identity for jobs and sessions (issue #172): provider + model +
- * the role's effort. Spread into `jobs.enqueue` (effort shows on the
- * Debug page next to the model) and `runner.start` (the adapter applies
- * it). Default (""/absent) is omitted, so it reads as the adapter default.
+ * the role's effort, always passed explicitly ("" = adapter default).
+ * Spread into `jobs.enqueue` (effort shows on the Debug page next to the
+ * model) and `runner.start` (the adapter applies it).
  */
-export function roleFields(pick: { provider: string; model: string; effort?: string }): {
+export function roleFields(pick: { provider: string; model: string; effort: string }): {
   provider: string;
   model: string;
-  effort?: string;
+  effort: string;
 } {
-  return { provider: pick.provider, model: pick.model, ...(pick.effort ? { effort: pick.effort } : {}) };
-}
-
-/** Effort value for a base key ("": adapter default). */
-export function roleEffort(pick: { effort?: string }): string {
-  return pick.effort ?? "";
+  return { provider: pick.provider, model: pick.model, effort: pick.effort };
 }
 
 async function collectStreaming(
@@ -402,7 +397,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const provider = settings.main.provider;
     const model = settings.main.model;
-    const effort = roleEffort(settings.main);
+    const effort = settings.main.effort;
     // #122: enqueue before awaiting the base, so the click gets its job id
     // at once. The base seq for the change list is read synchronously from
     // the current base (absent → 0, a safe under-approximation: the fork may
@@ -439,6 +434,7 @@ export class Pipeline {
       kind: o.kind,
       provider,
       model,
+      effort,
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
@@ -637,7 +633,7 @@ export class Pipeline {
     const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     const provider = settings.small.provider;
     const model = settings.small.model;
-    const effort = roleEffort(settings.small);
+    const effort = settings.small.effort;
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -651,7 +647,7 @@ export class Pipeline {
       kind: o.kind,
       provider,
       model,
-      ...(effort !== "" ? { effort } : {}),
+      effort,
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
@@ -664,7 +660,7 @@ export class Pipeline {
             const session = await this.opts.runner.start({
               provider,
               model,
-              ...(effort !== "" ? { effort } : {}),
+              effort,
               cwd: this.worktreeOf(o.reviewId),
               systemPrompt: "",
               mcpServers: [],
@@ -1312,7 +1308,7 @@ private throwIfDegradedTurn(
       guideRevision: guideRevisionForSnapshot(snapshot),
       provider: settings.main.provider,
       model: settings.main.model,
-      effort: roleEffort(settings.main),
+      effort: settings.main.effort,
     };
     const mcp = this.opts.mcp.issueSession(reviewId, `base-${reviewId}`, "session");
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
@@ -1420,7 +1416,7 @@ private throwIfDegradedTurn(
             guideRevision: guideRevisionForSnapshot(snapshot),
             provider: settings.main.provider,
             model: settings.main.model,
-            effort: roleEffort(settings.main),
+            effort: settings.main.effort,
           },
           forked.viaFork,
         );
@@ -1450,7 +1446,7 @@ private throwIfDegradedTurn(
         guideRevision: guideRevisionForSnapshot(snapshot),
         provider: settings.main.provider,
         model: settings.main.model,
-        effort: roleEffort(settings.main),
+        effort: settings.main.effort,
       },
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
@@ -2096,7 +2092,7 @@ private throwIfDegradedTurn(
     snapshot: ReviewSnapshot,
     file: ReviewSnapshot["files"][number],
     hunk: ReviewSnapshot["files"][number]["hunks"][number],
-    small: { provider: string; model: string; effort?: string },
+    small: { provider: string; model: string; effort: string },
     expectedJobs: number,
   ): Job {
     const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);

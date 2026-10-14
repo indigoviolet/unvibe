@@ -80,9 +80,10 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
           }
         }
         // Never persist an effort value the adapter does not offer.
-        // Default (""/absent) always passes: it leaves the adapter's own
-        // setting alone.
-        const effort = pick.effort ?? "";
+        // Default ("") always passes: it leaves the adapter's own
+        // setting alone. Validation above already rejected a missing or
+        // non-string effort, so it is always present here.
+        const effort = pick.effort;
         if (effort !== "" && typeof thinking === "function") {
           try {
             const live = await thinking.call(deps.models, pick.provider);

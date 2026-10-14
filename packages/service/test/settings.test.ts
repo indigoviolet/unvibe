@@ -215,6 +215,7 @@ describe("settings + jobs routes", () => {
         kind: "explain",
         provider: "claude",
         model: "m",
+        effort: "",
         priority: 10,
         promptSnapshot: "THE PROMPT",
         run: async () => {},
