@@ -476,26 +476,34 @@ export class JobQueue {
     return entry;
   }
 
-  private runningCount(provider: string, small: boolean): number {
-    let n = 0;
-    for (const e of this.entries.values()) {
-      if (e.job.provider === provider && e.job.state === "running" && SMALL_JOB_KINDS.has(e.job.kind) === small) {
-        n += 1;
-      }
-    }
-    return n;
-  }
-
   /** Start queued jobs while per-provider caps allow, highest priority first. */
   private pump(): void {
     const queued = [...this.entries.values()]
       .filter((e) => e.job.state === "queued" && e.run !== undefined)
       .sort((a, b) => b.job.priority - a.job.priority || a.seq - b.seq);
+    // Caps and running counts are read once per pump, not once per queued
+    // job: the cap lookup reads the live setting (a store read in the
+    // service), and a large fan-out (hundreds of hunk jobs) pumps on every
+    // settle, so per-entry lookups made big runs quadratic in store reads.
+    const caps = new Map<string, number>();
+    const running = new Map<string, number>();
+    for (const e of this.entries.values()) {
+      if (e.job.state !== "running") continue;
+      const key = `${e.job.provider ?? ""}|${SMALL_JOB_KINDS.has(e.job.kind)}`;
+      running.set(key, (running.get(key) ?? 0) + 1);
+    }
     for (const entry of queued) {
       const provider = entry.job.provider ?? "";
       const small = SMALL_JOB_KINDS.has(entry.job.kind);
-      const cap = this.getConcurrencyCap(provider);
-      if (this.runningCount(provider, small) >= cap) continue;
+      let cap = caps.get(provider);
+      if (cap === undefined) {
+        cap = this.getConcurrencyCap(provider);
+        caps.set(provider, cap);
+      }
+      const key = `${provider}|${small}`;
+      const n = running.get(key) ?? 0;
+      if (n >= cap) continue;
+      running.set(key, n + 1);
       void this.execute(entry);
     }
   }
