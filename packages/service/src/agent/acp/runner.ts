@@ -89,12 +89,12 @@ function flattenSelectOptions(opt: unknown): Array<{ value: string; name?: strin
 /**
  * First turn of every small one-shot Claude session (hunk pass,
  * summarize, runSmall — the `systemPrompt: ""` starts). Live payload
- * captures (#160 investigation) show the CLI places its dynamic
- * environment block (environment, agent types, skills) AFTER the first
- * user message, with the last cache breakpoint at its end. When the
- * first message is the per-job prompt, that block can never be shared
- * and is re-written on every job (~14k tokens in full access, ~7k in
- * lock-down, per job, even warm). A byte-identical first turn moves the
+ * captures (#177, found via the #160 investigation) show the CLI places
+ * its dynamic environment block (environment, agent types, skills)
+ * AFTER the first user message, with the last cache breakpoint at its
+ * end. When the first message is the per-job prompt, that block can
+ * never be shared and is re-written on every job (~7k tokens per job,
+ * even warm; more with a wider tool set). A byte-identical first turn moves the
  * per-job prompt after every shared block, so all of it cache-reads
  * from the second job on. Mirrors the base pack's "ready" pattern in
  * SessionManager.
