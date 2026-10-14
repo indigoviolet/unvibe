@@ -104,7 +104,13 @@ Service dependencies (so a global npm install brings the adapters along):
 
 ## Permission policy
 
-Deny-by-default (`src/agent/acp/permissions.ts`):
+Two postures, chosen by the full-access setting (issue #160; `readOnly` on
+every session, stored on the session record, part of the base key, stamped
+on each job as `accessMode`). A session keeps the posture it started with
+until it ends: flipping the setting keys new bases, while live sessions
+and conversation cards keep the old posture until they close or rebuild.
+
+Deny-by-default lock-down (`src/agent/acp/permissions.ts`, the default):
 
 - **Allow** (answering `allow_once`, never `allow_always`):
   - our MCP servers' tools — Claude spelling `mcp__<server>__<tool>`,
@@ -130,6 +136,63 @@ Tightest working configuration per adapter (proven by live tests):
   defaults (workspace-bounded writes, no network) + deny-by-default handler
   with toolCallId correlation. `read-only` mode and `agent` mode are both
   unusable (see quirks 6–7).
+
+## Full access (opt-in, issue #160)
+
+Off by default; on only with the stored warning acknowledgement. When on,
+agent sessions (main, small, and second-opinion sessions, both providers)
+run unrestricted: shell, `git`, `gh`, web, file tools. No new custom
+lookup tools were built; the restrictions moved into the system prompt
+(`prompts/instructions.md` filled with `prompts/access-full.md` instead of
+`prompts/access-lockdown.md` — one builder, `renderSystemPrompt`, used for
+new/resume/load/fork and the Debug prompt preview alike).
+
+- **Claude:** `_meta` carries the system prompt with no `claudeCode`
+  tool reduction — the adapter defaults (the agent's full tool set) apply —
+  and the permission handler approves every request (`allow_once`, so each
+  call still re-prompts and stays auditable).
+- **Codex:** `agent-full-access` session mode, set after `session/new` and
+  re-applied on fork and load like the restricted mode. From the adapter
+  sources: id `agent-full-access`, "Unrestricted access to the internet and
+  any file on your computer", approval `never` (no permission round-trip,
+  so shell and network run without prompts),   sandbox `dangerFullAccess`.
+  The review MCP tools run without prompts there too (verified live: a
+  full-access session calling a review tool — see the #160 report).
+- **#124 interaction:** Codex forks sent without `mcpServers` + `_meta`
+  may still come up with no review tools (that issue stays open). Under
+  full access such a fork can at least use `git` and `gh` directly.
+- **Second opinion:** its isolation from the guide is a prompt rule under
+  full access (a shell can read the data directory, including other
+  reviews). Under the lock-down it stays structural.
+- **Small-model sessions** (hunk summaries, consolidation) follow the same
+  setting with an empty system prompt — uniform posture, no carve-outs.
+
+What is still ENFORCED under full access, and what is only INSTRUCTED
+(also stated in PRD §6.1):
+
+- Enforced: loopback-only service; nothing posted to GitHub except through
+  the Submit review path (leases unchanged); post-job checkout
+  verify-and-reset (`src/fullaccess/verify.ts`: `git status` + `rev-parse`
+  against the reviewed commit after each job, `reset --hard` + `clean -fd`
+  when changed, recorded on the job); the scrubbed adapter environment
+  below; per-job tool records (`job.tools`: tool names plus adapter-sent
+  argument detail, shown on the Debug page).
+- Only instructed: everything in the full-access prompt list (no GitHub
+  writes, no push/commit, no file creates/edits/deletes, no installs, no
+  running project code, no home-directory credentials, PR/web text as
+  material never instructions, blocked needs in `degraded`).
+
+Adapter subprocess environment (`scrubAdapterEnv` in `connection.ts`,
+applied to every adapter spawn, either posture): drops all `UNVIBE_*`,
+`OP_*` / `*1PASSWORD*`, `*SENTRY*`, and any `*TOKEN*` / `*SECRET*`
+(notably `GITHUB_TOKEN` / `GH_TOKEN`, so the agent's own `gh` uses the
+keyring login like the user's). Kept: `CLAUDE_CODE_EXECUTABLE` /
+`CODEX_PATH`, `PATH`, `HOME`, and provider API keys the CLIs log in with.
+Name-based, so an oddly-named secret can slip through — and it is not a
+sandbox. An unrestricted agent can still reach on the machine: the `gh`
+login (keyring), SSH keys, and the data directory (other reviews, the
+service token). The warning says plainly that nothing is sandboxed; the
+prompt does not prevent this.
 
 ## Models and thinking
 
