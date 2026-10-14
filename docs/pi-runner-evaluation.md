@@ -212,7 +212,7 @@ While wiring forks, a fork that opened its own MCP connection to the base's URL 
 - **Possible fixes:**
   - issue a new secret per session or fork, at the cost of an `AgentRunner.fork` signature change;
   - or let the registry accept a new `initialize` on a known secret by creating a new transport.
-- Suggested as a new issue (not opened by this spike: the supervisor decides).
+- Tracked in #174.
 
 ## 7. Route 3: fresh Codex sessions instead of forks
 
