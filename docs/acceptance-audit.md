@@ -897,6 +897,17 @@ needed (that deviation is closed, not added).
 - No-fork fallback (byte-identical first message, caching) — met (M0 §8
   rows; `pipeline/runner.ts:830 forkFor`; `sessions/manager.ts:271
   forkConversation`; fallback test `pipeline.test.ts:444`).
+- Small-job prompt-cache sharing (#177) — met. Fresh Claude sessions for
+  hunk-pass/summarize/runSmall jobs (`systemPrompt: ""`) re-wrote the
+  CLI's dynamic environment block (~7k tokens, warm) on every job,
+  because the CLI places it after the first user message where the
+  per-job prompt differs. `AcpAgentRunner.start` now sends a
+  byte-identical shared first turn (`SHARED_CACHE_FIRST_TURN`) for such
+  sessions, so the job prompt lands after every cache-shared block;
+  fake-transport tests pin identical `session/new` meta and first turn
+  across sessions (`acp-runner.test.ts` "cache probe (#177)" — ran).
+  Live-verified 2026-10-14 (Haiku, hunk-shaped jobs): warm per-job
+  cache writes 7,371 → 2,588 tokens, hit rate 47.2% → 79.9%.
 - Read-only permission policy asserted for both adapters — met
   (`agent/acp/permissions.ts` deny-by-default; Claude tools allowlist +
   `workspace-write` + sandbox for Codex; `docs/acp-runner.md`; unit
