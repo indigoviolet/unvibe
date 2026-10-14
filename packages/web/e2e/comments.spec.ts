@@ -335,6 +335,29 @@ test("comments dropdown is wide enough for tabs, paths and previews", async ({ p
   expect(Math.abs((all as { y: number }).y - (pr as { y: number }).y)).toBeLessThan(2);
 });
 
+test("existing GitHub list: no sideways overflow and clamped rows at minimum width (#183)", async ({ page }) => {
+  // Narrow window: the menu sits at its minimum width.
+  await page.setViewportSize({ width: 800, height: 700 });
+  await gotoReview(page);
+  if (!(await page.locator("#right").isVisible())) {
+    await page.locator("#toggleRight").click();
+  }
+  await page.locator('#reviewbar [data-cm=""]').click();
+  const panel = page.locator(".cmenu");
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('[data-ghjump="105"]')).toBeVisible();
+  const overflow = await panel.evaluate((el) => el.scrollWidth <= el.clientWidth);
+  expect(overflow).toBe(true);
+  // Rows are clamped: the long made-up body shows at most a few lines.
+  const body = panel.locator('[data-ghjump="105"] .ghmenu');
+  const lines = await body.evaluate((el) => {
+    const h = el.getBoundingClientRect().height;
+    const lh = Number.parseFloat(getComputedStyle(el).lineHeight) || 18;
+    return h / lh;
+  });
+  expect(lines).toBeLessThanOrEqual(3.5);
+});
+
 test("comments dropdown stays inside the viewport in a narrow window", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await gotoReview(page);

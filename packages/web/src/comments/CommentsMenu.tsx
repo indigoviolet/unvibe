@@ -370,9 +370,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             ) : (
               githubGroups.map((g) => (
                 <div key={g.label}>
-                  <span className="cw" style={{ display: "block", margin: "4px 0 0" }}>
-                    {g.label}
-                  </span>
+                  <span className="ghgroup">{g.label}</span>
                   {g.threads.map((t) => {
                     const snap = snapshot;
                     const outdated = snap ? isOutdatedComment(snap.files, t.root) : false;
@@ -397,8 +395,15 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
                           <span className="cx2 ghmenu" dangerouslySetInnerHTML={{ __html: t.root.bodyHtml }} />
                         </button>
                         {t.root.htmlUrl ? (
-                          <a href={t.root.htmlUrl} target="_blank" rel="noreferrer noopener">
-                            Open on GitHub
+                          <a
+                            className="ib"
+                            href={t.root.htmlUrl}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            data-tip="Open on GitHub"
+                            aria-label="Open on GitHub"
+                          >
+                            <Icon name="open" />
                           </a>
                         ) : null}
                       </div>

@@ -644,6 +644,16 @@ function seedExistingComments(): import("@unvibe/shared").ExistingReviewComment[
       createdAt: "2026-08-10T12:00:00Z",
       htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r104",
     }),
+    made({
+      id: 105,
+      path: "src/example/very/long/path/to/a/deeply/nested/module/with/a/long/name.py",
+      line: 42,
+      side: "RIGHT",
+      body: "A made-up long comment for the menu: `some_function_with_a_rather_long_name(argument_one, argument_two)` plus a superlongunbrokenwordthatwouldotherwiseforcethemenuwiderthanthepanel and several more sentences so the body runs well past two lines in the menu at its minimum width.\n\nA second paragraph with **emphasis** and a list:\n\n- first point\n- second point",
+      author: "teammate",
+      createdAt: "2026-09-02T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r105",
+    }),
   ];
 }
 
