@@ -52,6 +52,8 @@ import { withReplayMark } from "../pipeline/replayMark.js";
 import { lookupForSnapshot } from "../pipeline/lookup.js";
 import { validateReply } from "../validate/index.js";
 import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
+import { renderSystemPrompt } from "../prompts/access.js";
+import { accessModeOf } from "@unvibe/shared";
 import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
 import { resolveEffectiveSettings } from "../settings/index.js";
@@ -266,6 +268,7 @@ async function collectStreaming(
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
+  onTool?: (name: string, detail?: string) => void,
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
@@ -273,6 +276,8 @@ async function collectStreaming(
     if (ev.type === "text") {
       text += ev.delta;
       onDelta(ev.delta);
+    } else if (ev.type === "tool") {
+      if (ev.status === "start") onTool?.(ev.name, ev.detail);
     } else if (ev.type === "usage") {
       usage.inputTokens += ev.inputTokens;
       usage.cachedReadTokens += ev.cachedReadTokens;
@@ -343,8 +348,7 @@ export async function buildSecondOpinionPrompt(
   const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
   const sourceText = [ladder.source, ladder.diff.text].join("\n");
   const lib = loadTemplatesDirSync(deps.promptsDir);
-  const instructionsTpl = lib.get("instructions");
-  const instructions = instructionsTpl ? renderTemplate(instructionsTpl, {}) : "";
+  const instructions = renderSystemPrompt(lib, accessModeOf(settings));
   const baseExcerpts = await buildExcerptMap({ snapshot });
   const worktreePath = await getWorktreePath(deps, reviewId);
   const codeExcerpts = await readCodeExcerpts(target.citedIds, snapshot.version.headSha, worktreePath, deps.commands);
@@ -546,6 +550,7 @@ export async function requestSecondOpinion(
           turn,
           req.signal ?? ctx.signal,
           (d) => ctx.reportText(d),
+          (name, detail) => ctx.reportTool(name, detail),
         );
         const split = splitReply(text);
         if (!split.ok && (split.error.kind === "malformed" || split.error.kind === "not-object")) {
@@ -579,6 +584,7 @@ export async function requestSecondOpinion(
           }
           const repair = await collectStreaming(deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
             ctx.reportText(d),
+            (name, detail) => ctx.reportTool(name, detail),
           );
           usage.inputTokens += repair.usage.inputTokens;
           usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -621,6 +627,7 @@ export async function requestSecondOpinion(
               "standard",
               finalBlocks,
               (u) => ctx.reportUsage(u),
+              (name, detail) => ctx.reportTool(name, detail),
             )
           : finalBlocks;
         // One reasoning body may flatten several reply cards (#116):

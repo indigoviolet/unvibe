@@ -28,6 +28,7 @@ import type {
   TokenUsage,
 } from "@unvibe/shared";
 import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
+import { accessModeOf } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { DegradedConnError, DegradedTurnError, RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
@@ -37,6 +38,7 @@ import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import { NoAgentError } from "../agent/none.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildLadder, DEFAULT_HUNK_PASS_FANOUT_LIMIT } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
+import { renderSystemPrompt } from "../prompts/access.js";
 import type { SessionManager } from "../sessions/manager.js";
 import { baseKeyString } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
@@ -81,7 +83,7 @@ async function collectStreaming(
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
-  onTool?: () => void,
+  onTool?: (name: string, detail?: string) => void,
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   let afterTool = false;
@@ -97,7 +99,7 @@ async function collectStreaming(
     } else if (ev.type === "tool") {
       if (ev.status === "start") {
         afterTool = true;
-        onTool?.();
+        onTool?.(ev.name, ev.detail);
       }
     } else if (ev.type === "usage") {
       usage.inputTokens += ev.inputTokens;
@@ -115,6 +117,14 @@ async function collectStreaming(
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Optional tool-call relay for contexts that may not report tools. */
+function reportToolFrom(ctx?: {
+  reportTool?: (name: string, detail?: string) => void;
+}): ((name: string, detail?: string) => void) | undefined {
+  const fn = ctx?.reportTool;
+  return fn ? (name, detail) => fn(name, detail) : undefined;
 }
 
 /**
@@ -361,6 +371,7 @@ export class Pipeline {
           guideRevision: guideRevisionForSnapshot(snapshot),
           provider,
           model,
+          access: accessModeOf(settings),
         }),
       )?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
@@ -426,6 +437,7 @@ export class Pipeline {
                   }
                 }
               },
+              (name, detail) => ctx.reportTool(name, detail),
             );
             throwIfMcpRefusal(text);
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
@@ -453,6 +465,7 @@ export class Pipeline {
                 `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
               const repair = await collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                 ctx.reportText(d),
+                (name, detail) => ctx.reportTool(name, detail),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -559,12 +572,14 @@ export class Pipeline {
               model,
               cwd: this.worktreeOf(o.reviewId),
               systemPrompt: "",
+              readOnly: accessModeOf(settings) !== "full",
               mcpServers: [],
             });
             ctx.setSessionId(session.id);
             try {
               const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
                 ctx.reportText(d),
+                (name, detail) => ctx.reportTool(name, detail),
               );
               const first = this.parseAndValidate(o.reviewId, text);
               let finalText = text;
@@ -583,6 +598,7 @@ export class Pipeline {
                   `\nReply with the same one-line summary and corrected citations. End with the same trailing JSON block.`;
                 const repair = await collectStreaming(this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                   ctx.reportText(d),
+                  (name, detail) => ctx.reportTool(name, detail),
                 );
                 usage.inputTokens += repair.usage.inputTokens;
                 usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -764,6 +780,7 @@ export class Pipeline {
         ctx.setSessionId(forked.session.id);
         const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
           ctx.reportText(d),
+          (name, detail) => ctx.reportTool(name, detail),
         );
         ctx.reportUsage(usage);
         throwIfMcpRefusal(text);
@@ -789,6 +806,7 @@ export class Pipeline {
           "standard",
           blocks,
           (u) => ctx.reportUsage(u),
+          (name, detail) => ctx.reportTool(name, detail),
         );
         await this.opts.reviews.mutate(reviewId, (draft) => {
           let page = draft.pages.find((p) => p.id === `c-${slug}`);
@@ -854,12 +872,14 @@ export class Pipeline {
           model: settings.small.model,
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
+          readOnly: accessModeOf(settings) !== "full",
           mcpServers: [],
         });
         ctx.setSessionId(session.id);
         try {
           const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
+            (name, detail) => ctx.reportTool(name, detail),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
@@ -1050,10 +1070,11 @@ export class Pipeline {
     level: string,
     blocks: Block[],
     onUsage?: (u: TokenUsage) => void,
+    onTool?: (name: string, detail?: string) => void,
   ): Promise<Block[]> {
     const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
     if (!first.needsRepair) return first.blocks;
-    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage);
+    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage, onTool);
   }
 
   /**
@@ -1074,6 +1095,7 @@ export class Pipeline {
     level: string,
     first: { blocks: Block[]; messages: string[] },
     onUsage?: (u: TokenUsage) => void,
+    onTool?: (name: string, detail?: string) => void,
   ): Promise<Block[]> {
     const actx = this.actionContextFor(reviewId);
     try {
@@ -1084,6 +1106,7 @@ export class Pipeline {
         this.render("diagram", variables),
         signal,
         () => {},
+        onTool,
       );
       onUsage?.(usage);
       await this.recordUsage(reviewId, usage);
@@ -1166,9 +1189,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructionsTpl = lib.get("instructions");
-    if (!instructionsTpl) throw new Error("missing instructions template");
-    const instructions = renderTemplate(instructionsTpl, {});
+    const instructions = renderSystemPrompt(lib, accessModeOf(settings));
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
     // The base pack instructs the agent to answer "ready" (SessionManager
     // waits for it). buildBasePack's user is L1+L1b+L2; prefix the ready
@@ -1180,6 +1201,7 @@ export class Pipeline {
       guideRevision: guideRevisionForSnapshot(snapshot),
       provider: settings.main.provider,
       model: settings.main.model,
+      access: accessModeOf(settings),
     };
     const mcp = this.opts.mcp.issueSession(reviewId, `base-${reviewId}`, "session");
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
@@ -1187,6 +1209,7 @@ export class Pipeline {
       key,
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
+      readOnly: accessModeOf(settings) !== "full",
       mcpServers,
       pack: packText,
     });
@@ -1287,6 +1310,7 @@ export class Pipeline {
             guideRevision: guideRevisionForSnapshot(snapshot),
             provider: settings.main.provider,
             model: settings.main.model,
+            access: accessModeOf(settings),
           },
           forked.viaFork,
         );
@@ -1304,9 +1328,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructionsTpl = lib.get("instructions");
-    if (!instructionsTpl) throw new Error("missing instructions template");
-    const instructions = renderTemplate(instructionsTpl, {});
+    const instructions = renderSystemPrompt(lib, accessModeOf(settings));
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
     const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
     const base = await this.opts.sessions.getBase({
@@ -1316,9 +1338,11 @@ export class Pipeline {
         guideRevision: guideRevisionForSnapshot(snapshot),
         provider: settings.main.provider,
         model: settings.main.model,
+        access: accessModeOf(settings),
       },
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
+      readOnly: accessModeOf(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}/api/mcp/fallback` }],
       pack: packText,
     });
@@ -1337,6 +1361,7 @@ export class Pipeline {
       model: settings.main.model,
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
+      readOnly: accessModeOf(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
     });
     for await (const ev of runner.prompt(session, packText)) {
@@ -1359,7 +1384,7 @@ export class Pipeline {
     const source = ladder.source;
     const diff = ladder.diff;
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructions = renderTemplate(lib.get("instructions")!, {});
+    const instructions = renderSystemPrompt(lib, accessModeOf(settings));
     let prompt = renderTemplate(lib.get("reader")!, {
       source,
       diff_inline: diff.text,
@@ -1394,6 +1419,7 @@ export class Pipeline {
             model: settings.main.model,
             cwd: this.worktreeOf(reviewId),
             systemPrompt: instructions,
+            readOnly: accessModeOf(settings) !== "full",
             mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
           });
           ctx.setSessionId(session.id);
@@ -1425,9 +1451,10 @@ export class Pipeline {
                   // ignore mid-stream
                 }
               },
-              () => {
+              (name, detail) => {
                 // Text written before a tool call and before any card heading
                 // is the agent narrating its exploration, not card content.
+                ctx.reportTool(name, detail);
                 if (!/^## /m.test(buffer)) buffer = "";
               },
             );
@@ -1460,6 +1487,7 @@ export class Pipeline {
               ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
               const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
                 ctx.reportText(d),
+                (name, detail) => ctx.reportTool(name, detail),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -1488,6 +1516,7 @@ export class Pipeline {
               "standard",
               flat,
               (u) => ctx.reportUsage(u),
+              (name, detail) => ctx.reportTool(name, detail),
             );
             const withDiagrams = splitFinalizedBlocks(finalCards, finalized);
             await this.applyReaderResult(reviewId, withDiagrams, finalData, finalValidation);
@@ -1736,6 +1765,7 @@ export class Pipeline {
           try {
             const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
               ctx.reportText(d),
+              (name, detail) => ctx.reportTool(name, detail),
             );
             ctx.reportUsage(usage);
             throwIfMcpRefusal(text);
@@ -1867,6 +1897,7 @@ export class Pipeline {
         try {
           const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
+            (name, detail) => ctx.reportTool(name, detail),
           );
           ctx.reportUsage(usage);
           throwIfMcpRefusal(text);
@@ -1948,8 +1979,9 @@ export class Pipeline {
       return [];
     }
     this.hunkPassCompleted.set(reviewId, 0);
+    const hunkPassReadOnly = accessModeOf(settings) !== "full";
     return targets.map(({ file, hunk }) =>
-      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length),
+      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length, hunkPassReadOnly),
     );
   }
 
@@ -1960,6 +1992,7 @@ export class Pipeline {
     hunk: ReviewSnapshot["files"][number]["hunks"][number],
     small: { provider: string; model: string },
     expectedJobs: number,
+    readOnly: boolean,
   ): Job {
     const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
     const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
@@ -1983,12 +2016,14 @@ export class Pipeline {
           model: small.model,
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
+          readOnly,
           mcpServers: [],
         });
         ctx.setSessionId(session.id);
         try {
           const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
+            (name, detail) => ctx.reportTool(name, detail),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
@@ -2061,7 +2096,12 @@ export class Pipeline {
     cardId: string,
     signal: AbortSignal | undefined,
     onText: (delta: string) => void,
-    ctx?: { setPromptSnapshot: (s: string) => void; setSessionId: (s: string) => void; reportUsage: (u: TokenUsage) => void },
+    ctx?: {
+      setPromptSnapshot: (s: string) => void;
+      setSessionId: (s: string) => void;
+      reportUsage: (u: TokenUsage) => void;
+      reportTool?: (name: string, detail?: string) => void;
+    },
   ): Promise<void> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
@@ -2078,7 +2118,9 @@ export class Pipeline {
     void base;
     const forked = await this.forkFor(reviewId);
     ctx?.setSessionId(forked.session.id);
-    const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, signal, onText);
+    const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, signal, onText, (name, detail) =>
+      ctx?.reportTool?.(name, detail),
+    );
     ctx?.reportUsage(usage);
     throwIfMcpRefusal(text);
     await this.recordUsage(reviewId, usage);
@@ -2099,6 +2141,7 @@ export class Pipeline {
       "standard",
       blocks,
       (u) => ctx?.reportUsage(u),
+      reportToolFrom(ctx),
     );
     const title = (data?.["title"] as string | undefined) ?? card.pending.label;
     await this.opts.reviews.mutate(reviewId, (draft) => {
@@ -2517,6 +2560,7 @@ export class Pipeline {
                   prompt,
                   opts.signal ?? ctx.signal,
                   (d) => ctx.reportText(d),
+                  (name, detail) => ctx.reportTool(name, detail),
                 );
                 ctx.reportUsage(usage);
                 throwIfMcpRefusal(text);

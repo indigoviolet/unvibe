@@ -25,16 +25,21 @@ import type {
   Session,
   TokenUsage,
 } from "@unvibe/shared";
+import type { AccessMode } from "@unvibe/shared";
 import { RetryableError } from "../jobs/errors.js";
 import type { Clock } from "../jobs/clock.js";
 import { RealClock } from "../jobs/clock.js";
 import type { SessionStore } from "./store.js";
 
 /**
- * Base identity: (review, review version, guide revision, model). Per-model
- * caches. The review id is part of the key: every new review starts at `v1`
- * with the same (empty) guide revision, so without it reviews would share
- * one base session.
+ * Base identity: (review, review version, guide revision, model, access).
+ * Per-model caches. The review id is part of the key: every new review
+ * starts at `v1` with the same (empty) guide revision, so without it
+ * reviews would share one base session.
+ *
+ * Issue #160: the agent-access posture is part of the key. Flipping the
+ * setting keys a new base with the new posture; live sessions keep the
+ * posture they started with until they close or rebuild.
  */
 export interface BaseKey {
   reviewId: string;
@@ -42,10 +47,11 @@ export interface BaseKey {
   guideRevision: string;
   provider: string;
   model: string;
+  access: AccessMode;
 }
 
 export function baseKeyString(key: BaseKey): string {
-  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model].join("|");
+  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.access].join("|");
 }
 
 /** Review id of a base key string (its first component). */
@@ -57,6 +63,8 @@ export interface BaseBuild {
   key: BaseKey;
   cwd: string;
   systemPrompt: string;
+  /** Issue #160: posture for the session (false = full access). */
+  readOnly: boolean;
   mcpServers: McpServerConfig[];
   /** Base pack text (L1 + L1b + L2); the agent answers "ready". */
   pack: string;
@@ -88,7 +96,7 @@ interface BaseRecord {
   key: BaseKey;
   keyString: string;
   session: Session;
-  build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[] };
+  build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: McpServerConfig[] };
   pack: string;
   logSeq: number;
   live: boolean;
@@ -142,6 +150,13 @@ export class SessionManager {
         this.store.remove(b.session.id);
         continue;
       }
+      // No backward compatibility (issue #160): rows stored before the
+      // access posture existed cannot name their variant — drop them so
+      // the sessions rebuild under an explicit key.
+      if (!b.key.access || typeof b.build.readOnly !== "boolean") {
+        this.store.remove(b.session.id);
+        continue;
+      }
       this.bases.set(baseKeyString(b.key), {
         key: b.key,
         keyString: baseKeyString(b.key),
@@ -155,6 +170,12 @@ export class SessionManager {
       });
     }
     for (const c of conversations) {
+      // Conversations keyed to a pre-#160 base (5-part key) belong to a
+      // dropped base: forget them, the next turn forks fresh.
+      if (c.baseKey.split("|").length < 6) {
+        this.store.remove(c.session.id);
+        continue;
+      }
       this.conversations.set(c.session.id, {
         session: c.session,
         baseKey: c.baseKey,
@@ -212,7 +233,7 @@ export class SessionManager {
       }
     }
     const session = await this.openBaseSession(
-      { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
+      { cwd: build.cwd, systemPrompt: build.systemPrompt, readOnly: build.readOnly, mcpServers: build.mcpServers },
       build.pack,
       build.signal,
       build.key,
@@ -221,7 +242,7 @@ export class SessionManager {
       key: build.key,
       keyString: baseKeyString(build.key),
       session,
-      build: { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
+      build: { cwd: build.cwd, systemPrompt: build.systemPrompt, readOnly: build.readOnly, mcpServers: build.mcpServers },
       pack: build.pack,
       logSeq: closed?.logSeq ?? 0,
       live: true,
@@ -236,7 +257,7 @@ export class SessionManager {
 
   /** Start a session and send the base pack, waiting for "ready". */
   private async openBaseSession(
-    build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[] },
+    build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: McpServerConfig[] },
     pack: string,
     signal: AbortSignal | undefined,
     key: BaseKey,
@@ -246,6 +267,7 @@ export class SessionManager {
       model: key.model,
       cwd: build.cwd,
       systemPrompt: build.systemPrompt,
+      readOnly: build.readOnly,
       mcpServers: build.mcpServers,
     });
     const { text } = await this.sendText(session, pack, signal);
@@ -344,6 +366,7 @@ export class SessionManager {
         model: base.key.model,
         cwd: base.build.cwd,
         systemPrompt: base.build.systemPrompt,
+        readOnly: base.build.readOnly,
         mcpServers: base.build.mcpServers,
       });
       await this.sendText(session, base.pack, opts.signal);
@@ -544,6 +567,7 @@ export class SessionManager {
       model: base.key.model,
       cwd: base.build.cwd,
       systemPrompt: base.build.systemPrompt,
+      readOnly: base.build.readOnly,
       mcpServers: base.build.mcpServers,
     });
     await this.drainEvents(session, base.pack);

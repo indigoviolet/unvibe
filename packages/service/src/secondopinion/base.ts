@@ -7,15 +7,20 @@
  * (PRD §6), since L0 + L1 is common; the per-request part (topic or claim
  * + cited code) goes in the turn.
  *
- * Isolation is structural: the base pack is built from L0 instructions +
- * L1 source only. Guide text, findings, contributions, the log, and the
- * main model's pinned code never enter — except cited excerpts, which
- * travel in the turn, not the base.
+ * Isolation is structural under the lock-down: the base pack is built
+ * from L0 instructions + L1 source only. Guide text, findings,
+ * contributions, the log, and the main model's pinned code never enter —
+ * except cited excerpts, which travel in the turn, not the base. Under
+ * full access (issue #160) this isolation is a PROMPT rule only: the
+ * session has a shell and can read the data directory, so it could reach
+ * guide text and other reviews despite the rule. See docs/acp-runner.md.
  */
 import path from "node:path";
-import type { AgentRunner, Session } from "@unvibe/shared";
+import type { AccessMode, AgentRunner, Session } from "@unvibe/shared";
+import { accessModeOf } from "@unvibe/shared";
 import { buildL1Source } from "../context/index.js";
-import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
+import { loadTemplatesDirSync } from "../prompts/index.js";
+import { renderSystemPrompt } from "../prompts/access.js";
 import { toPromptSnapshot } from "../routes/prompts.js";
 import type { McpRegistry } from "../mcp/index.js";
 import type { SessionManager } from "../sessions/manager.js";
@@ -42,11 +47,9 @@ function worktreeOf(dataDir: string, reviewId: string): string {
   return path.join(dataDir, "worktrees", reviewId);
 }
 
-function renderInstructions(promptsDir: string): string {
+function renderInstructions(promptsDir: string, access: AccessMode): string {
   const lib = loadTemplatesDirSync(promptsDir);
-  const tpl = lib.get("instructions");
-  if (!tpl) throw new Error("missing instructions template");
-  return renderTemplate(tpl, {});
+  return renderSystemPrompt(lib, access);
 }
 
 /**
@@ -63,7 +66,7 @@ export async function buildSecondOpinionBaseText(
   const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const promptSnap = toPromptSnapshot(snapshot, { model: settings.secondOpinion.model });
   const l1 = buildL1Source(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
-  const instructions = renderInstructions(deps.promptsDir);
+  const instructions = renderInstructions(deps.promptsDir, accessModeOf(settings));
   const sourceText = l1.text;
   const packText =
     `Read the review source below and reply with exactly \`ready\` and nothing else.\n\n` +
@@ -83,13 +86,14 @@ export async function ensureSecondOpinionBase(
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
   const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const { packText, version } = await buildSecondOpinionBaseText(deps, reviewId);
-  const instructions = renderInstructions(deps.promptsDir);
+  const instructions = renderInstructions(deps.promptsDir, accessModeOf(settings));
   const key = {
     reviewId,
     reviewVersion: `v${snapshot.version.n}`,
     guideRevision: "so",
     provider: settings.secondOpinion.provider,
     model: settings.secondOpinion.model,
+    access: accessModeOf(settings),
   };
   const mcp = deps.mcp.issueSession(reviewId, `so-base-${reviewId}-v${version}`, "second-opinion");
   const mcpServers = [{ name: "unvibe", url: `${deps.mcpBaseUrl}${mcp.path}` }];
@@ -97,6 +101,7 @@ export async function ensureSecondOpinionBase(
     key,
     cwd: worktreeOf(deps.dataDir, reviewId),
     systemPrompt: instructions,
+    readOnly: accessModeOf(settings) !== "full",
     mcpServers,
     pack: packText,
   });
@@ -120,7 +125,7 @@ export async function forkSecondOpinionBase(
   if (!snapshot) throw new Error(`unknown review ${reviewId}`);
   const settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
   const { packText, version } = await buildSecondOpinionBaseText(deps, reviewId);
-  const instructions = renderInstructions(deps.promptsDir);
+  const instructions = renderInstructions(deps.promptsDir, accessModeOf(settings));
   const base = await ensureSecondOpinionBase(deps, reviewId);
   const runner = deps.runner;
   if (typeof runner.fork === "function") {
@@ -137,6 +142,7 @@ export async function forkSecondOpinionBase(
     model: settings.secondOpinion.model,
     cwd: worktreeOf(deps.dataDir, reviewId),
     systemPrompt: instructions,
+    readOnly: accessModeOf(settings) !== "full",
     mcpServers: [{ name: "unvibe", url: `${deps.mcpBaseUrl}${mcp.path}` }],
   });
   // Byte-identical base pack first (caching still works).

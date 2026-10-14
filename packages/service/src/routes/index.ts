@@ -62,6 +62,7 @@ export async function registerRoutes(
         return snap ? toPromptSnapshot(snap) : null;
       },
     },
+    ...(full.settings ? { settings: full.settings } : {}),
   });
   await registerJobs(app, deps);
   await registerEvents(app, ctx.bus);

@@ -14,6 +14,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import type { SharedContextResponse } from "@unvibe/shared";
+import { accessModeOf } from "@unvibe/shared";
 import { buildBasePack } from "../context/base.js";
 import { baseKeyString } from "../sessions/manager.js";
 import type { SessionManager } from "../sessions/manager.js";
@@ -21,7 +22,8 @@ import type { ModelCatalog, SettingsStore } from "../settings/index.js";
 import { resolveEffectiveSettings } from "../settings/index.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import { buildBaseMarkdown, buildContributionsMarkdown, buildLogMarkdown } from "../sharedctx/debug.js";
-import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
+import { loadTemplatesDirSync } from "../prompts/index.js";
+import { renderSystemPrompt } from "../prompts/access.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "./prompts.js";
 import type { ServiceContext } from "./context.js";
 
@@ -55,6 +57,7 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
       guideRevision: guideRevisionForSnapshot(snapshot),
       provider,
       model,
+      access: settings ? accessModeOf(settings) : "lockdown",
     });
 
     // The pack the agents actually get: same snapshot adapter and builder
@@ -64,11 +67,9 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
     let instructionsNote: string | undefined;
     try {
       const lib = loadTemplatesDirSync(ctx.promptsDir ?? "");
-      const tpl = lib.get("instructions");
-      if (!tpl) {
+      system = renderSystemPrompt(lib, settings ? accessModeOf(settings) : "lockdown");
+      if (!lib.get("instructions")) {
         instructionsNote = "The instructions prompt could not be loaded, so L0 is shown empty.";
-      } else {
-        system = renderTemplate(tpl, {});
       }
     } catch {
       instructionsNote = "The instructions prompt could not be loaded, so L0 is shown empty.";
