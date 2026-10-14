@@ -516,6 +516,17 @@ needed (that deviation is closed, not added).
   unique within each stored body (multi-card replies dedupe to `-c2`…,
   inserts take fresh IDs; matching is exact on owner + block), so one
   anchor draws exactly one card.
+- Paragraph-by-paragraph answers, experiment (#126): completed
+  paragraphs render from the live stream while the turn fills (never
+  half sentences; fences, directives and the trailer stay held), marked
+  "Still writing…" with citations dimmed-pending beside the fixed
+  working label; the stored turn replaces them at done, a repair
+  replaces cleanly, errors clear them (retry intact); kill switch
+  `unvibe:no-stream-paragraphs` — met (`shared/content/stream.ts` +
+  `content-stream.test.ts`, `streamedAnswer.ts` +
+  `StreamedAnswer.test.tsx`, `docs/screenshots/126-first-paragraph.png`,
+  paced-replay timing in the #126 comment: first paragraph ~8.3 s,
+  done ~19 s vs ~18.4 s today).
 - Deliberately off-prototype (`prototype.html` is look-and-behaviour
   reference, not code): Explain and Ask share one teal conversation
   card — the prototype's separate sand Ask thread (`.ithread`) is gone;

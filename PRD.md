@@ -167,6 +167,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Open as page** moves the content to a new page titled with the quoted text — one card per answer, the first titled with the quoted text and later ones with their questions — and the anchor text becomes a link to that page at once, in the guide, the description and the diff. Opening as a page never discards work: when the answer is still being written, its job keeps running and fills the page card (the page shows the usual working state until then, and the error with Retry when the fill fails); second opinions move to the page with the answers.
 - **Follow-up suggestions** stay on Explain answers; clicking one sends it as the next turn in the same conversation.
 - The card is never submitted to GitHub; it carries no For-PR control.
+- **Answers stream paragraph by paragraph (experiment, #126):** while an answer is being written, each completed paragraph appears when the model finishes it — never half sentences. The answer is marked as still being written until the turn ends (the fixed working label stays); citations show as pending and resolve when the turn ends and validation has run. A repair turn replaces the shown text. Applies to conversation answers only; `localStorage unvibe:no-stream-paragraphs = "1"` restores all-at-once answers.
 
 ### 4.8 Comments
 - **Ask…** opens the conversation card (§4.7) on the selection's anchor, with the question as its first turn. **Comment** starts a comment thread with no agent reply. Only Ask sends text to the agent.
