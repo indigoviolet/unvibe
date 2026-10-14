@@ -365,15 +365,17 @@ test("the pinned headers' controls keep working: collapse the file, fold the hun
   expect(await pinnedFile(page)).toContain("connection.py");
   await page.locator(`[id="F-${CONN}"] .dfile-h`).getByRole("button", { name: "Expand file" }).click();
   await expect(page.locator(`[id="F-${CONN}"] .dbody`)).toHaveCount(1);
-  // Fold the first hunk through its pinned header.
+  // Fold the first hunk through its pinned header: the code hides and the
+  // header chevron becomes the single unfold control (no placeholder row).
   await expectPinned(page, `[data-hunk="${CONN}:0"]`, s.hunkTop, "hunk", "Hunk 1 of");
   await page
     .locator(`[data-hunk="${CONN}:0"]`)
     .getByRole("button", { name: "Fold code", exact: true })
     .click();
   await expect(
-    page.locator(`[id="F-${CONN}"]`).getByRole("button", { name: /changed lines folded/ }).first(),
+    page.locator(`[data-hunk="${CONN}:0"]`).getByRole("button", { name: "Show code", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(`[id="F-${CONN}"]`).getByText("changed lines folded")).toHaveCount(0);
 });
 
 test("hidden-hunk rows scroll under the pinned headers instead of pinning", async ({ page }) => {

@@ -121,7 +121,6 @@ function Harness({
           folded={false}
           eager
           busy={{}}
-          editingNote={{}}
           slots={{}}
           commentedLines={new Set()}
           highlight={null}

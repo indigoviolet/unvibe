@@ -92,6 +92,7 @@ function makeBigSnapshot(): import("@unvibe/shared").ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
     jobs: [],
     contributions: [],
     logTail: [],

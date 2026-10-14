@@ -229,9 +229,10 @@ describe("DiffView unit expansion", () => {
     const tconn = within(section);
     await fireEvent.click(screen.getByText(/Hunks 1–2 of 3 hidden · imports/));
     await screen.findByText("Hunk 1 of 3");
-    // The third hunk starts folded (seeded): unfold it so its lower
-    // step renders — the upper side alone still reaches the whole gap.
-    await fireEvent.click(tconn.getByText("37 changed lines folded · show"));
+    // The third hunk starts folded (seeded): unfold it through its header
+    // chevron so its lower step renders — the upper side alone still
+    // reaches the whole gap.
+    await fireEvent.click(tconn.getByRole("button", { name: "Show code" }));
     // Big gap (22-210, 189 lines): expand up from the lower hunk.
     const up = tconn.getAllByRole("button", { name: "Show 20 more lines" });
     await fireEvent.click(up[up.length - 1]);
@@ -311,7 +312,6 @@ describe("FileSection number width", () => {
           folded={false}
           eager
           busy={{}}
-          editingNote={{}}
           slots={{}}
           commentedLines={new Set()}
           highlight={null}
@@ -376,7 +376,6 @@ describe("FileSection number width", () => {
           folded={false}
           eager
           busy={{}}
-          editingNote={{}}
           slots={{}}
           commentedLines={new Set()}
           highlight={null}
@@ -441,7 +440,6 @@ describe("FileSection number width", () => {
           folded={false}
           eager
           busy={{}}
-          editingNote={{}}
           slots={{}}
           commentedLines={new Set()}
           highlight={null}

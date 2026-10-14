@@ -125,7 +125,6 @@ function Harness(): React.JSX.Element {
           folded={false}
           eager
           busy={{}}
-          editingNote={{}}
           slots={lineSlots}
           commentedLines={new Set()}
           highlight={null}

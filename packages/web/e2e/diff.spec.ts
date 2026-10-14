@@ -42,16 +42,18 @@ async function scrollDiffToBottom(page: Page): Promise<void> {
 test.skip("fold and unfold a hunk", async ({ page }) => {
   const conn = page.locator(connFile);
   await conn.getByRole("button", { name: "Fold code" }).first().click();
-  await expect(conn.getByText("changed lines folded · show")).toBeVisible();
-  await conn.getByText("changed lines folded · show").click();
+  // One unfold control only: the header chevron, no placeholder row.
+  await expect(conn.getByRole("button", { name: "Show code" })).toBeVisible();
   await expect(conn.getByText("changed lines folded · show")).toHaveCount(0);
+  await conn.getByRole("button", { name: "Show code" }).click();
+  await expect(conn.getByRole("button", { name: "Show code" })).toHaveCount(0);
 });
 
 // DISABLED(#119): same as the DiffView.test.tsx progress test (also in real-service.spec.ts)
 test.skip("mark reviewed advances the hunks-reviewed progress", async ({ page }) => {
   await page.getByRole("button", { name: "Show file list" }).click();
   await expect(page.getByText("1/8 hunks reviewed")).toBeVisible();
-  await page.locator(connFile).getByRole("button", { name: "Mark reviewed" }).first().click();
+  await page.locator(connFile).getByRole("checkbox", { name: "Mark reviewed" }).first().click();
   await expect(page.getByText("2/8 hunks reviewed")).toBeVisible();
 });
 
@@ -145,12 +147,38 @@ test("revealSource unhides a hidden hunk and highlights the line", async ({ page
 test.skip("revealSource unfolds a folded hunk and highlights the range", async ({ page }) => {
   const conn = page.locator(connFile);
   await conn.getByRole("button", { name: "Fold code" }).nth(1).click();
-  await expect(conn.getByText("3 changed lines folded · show")).toBeVisible();
+  await expect(conn.getByRole("button", { name: "Show code" })).toBeVisible();
   const ok = await page.evaluate((key) => window.__revealSource?.(`diff:${key}:650-651`), CONN);
   expect(ok).toBe(true);
   await expect(page.locator(`[id="L-${CONN}-650"].hl`)).toBeVisible();
   await expect(page.locator(`[id="L-${CONN}-651"].hl`)).toBeVisible();
-  await expect(conn.getByText("3 changed lines folded · show")).toHaveCount(0);
+  await expect(conn.getByRole("button", { name: "Show code" })).toHaveCount(0);
+});
+
+// Issue #162: file fold survives a tab switch, and file reviewed derives
+// from hunks with a partial state.
+test("file fold survives a tab switch; file reviewed derives from hunks", async ({ page }) => {
+  const conn = page.locator(connFile);
+  await conn.getByRole("button", { name: "Collapse file" }).click();
+  await expect(conn.locator(".dbody")).toHaveCount(0);
+  // To the description tab and back: the fold must survive.
+  await page.getByRole("tab", { name: "PR description" }).click();
+  await expect(conn).toHaveCount(0);
+  await page.getByRole("tab", { name: "Diff" }).click();
+  await expect(page.locator(connFile).locator(".dbody")).toHaveCount(0);
+  await page.locator(connFile).getByRole("button", { name: "Expand file" }).click();
+  await expect(page.locator(connFile).locator(".dbody")).toHaveCount(1);
+  // File reviewed derives from hunks: mark the file, unmark one hunk.
+  const file = page.locator(connFile);
+  await expect(file.getByText("0/2")).toBeVisible();
+  await file.getByRole("checkbox", { name: "Mark file reviewed" }).click();
+  await expect(file.getByText("2/2")).toBeVisible();
+  await expect(file.getByRole("checkbox", { name: "Mark file not reviewed" })).toBeChecked();
+  await file.getByRole("checkbox", { name: "Mark not reviewed" }).first().click();
+  await expect(file.getByText("1/2")).toBeVisible();
+  const partial = file.getByRole("checkbox", { name: "Mark file reviewed" });
+  await expect(partial).not.toBeChecked();
+  expect(await partial.evaluate((el) => (el as HTMLInputElement).indeterminate)).toBe(true);
 });
 
 // DISABLED(#119): not a diff test; repeats start.spec.ts demo-row tests

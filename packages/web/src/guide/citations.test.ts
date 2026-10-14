@@ -55,6 +55,7 @@ function snapshot(): ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
     jobs: [],
     contributions: [],
     logTail: [],
