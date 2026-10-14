@@ -66,14 +66,14 @@ describe("performAction in-flight funnel", () => {
     }
   });
 
-  test("follow-up retargets to the answer expansion and clears on fill", async () => {
+  test("follow-up retargets to the answer card and clears on fill", async () => {
     // Fake timers for the mock's 700 ms answer fill (issue #119).
     vi.useFakeTimers();
     try {
       performFollowUp(REVIEW_ID, "g-flow", "b3", 0);
       const chipKey = "followup:g-flow:b3:0";
       expect(useReview.getState().inflight[chipKey]).toMatchObject({ kind: "followup" });
-      // The response retargets the chip entry to the answer expansion…
+      // The response retargets the chip entry to the answer card…
       await vi.advanceTimersByTimeAsync(0);
       expect(useReview.getState().inflight[chipKey]).toBeUndefined();
       const keys = Object.keys(useReview.getState().inflight);
@@ -82,10 +82,10 @@ describe("performAction in-flight funnel", () => {
       // …and the entry clears when the answer fill lands.
       await vi.advanceTimersByTimeAsync(1000);
       expect(useReview.getState().inflight).toEqual({});
-      const expansion = useReview.getState().snapshot?.annotations.find((a) => a.id === answerKey);
-      expect(expansion?.type).toBe("expansion");
+      const card = useReview.getState().snapshot?.annotations.find((a) => a.id === answerKey);
+      expect(card?.type).toBe("conversation");
       expect(
-        expansion?.type === "expansion" ? expansion.expansion?.blocks.length : 0,
+        card?.type === "conversation" ? (card.turns?.[0]?.blocks.length ?? 0) : 0,
       ).toBeGreaterThan(0);
     } finally {
       vi.useRealTimers();

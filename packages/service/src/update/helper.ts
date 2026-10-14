@@ -85,13 +85,30 @@ export interface HelperArgs extends SwitchPlan {
   scriptPath: string;
   /** SERVICE_VERSION of the switching service (installed-build fallback). */
   serviceVersion: string;
+  /**
+   * Restart through the service manager (issue #108 follow-up): the
+   * switching service detected its login unit and the helper must start
+   * (and stop) generations through it, never by direct spawn — a direct
+   * spawn would leave an unmanaged generation holding the port while the
+   * manager's next start crashes on EADDRINUSE.
+   */
+  managed: boolean;
+  /** Unit file path (from the switching service's real HOME). */
+  loginUnitPath: string;
+  /** macOS uid for `gui/<uid>` targets, null when unknown / on Linux. */
+  loginUid: number | null;
 }
 
 export interface HelperDeps {
   waitForExit(pid: number, timeoutMs: number): Promise<boolean>;
   switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }>;
-  /** Spawn a service generation; resolves its pid. */
-  startService(): Promise<number>;
+  /**
+   * Start a service generation; resolves its pid, or null when the
+   * generation was started through the service manager and its pid is not
+   * known (the lock carries it once it answers; the stale-generation
+   * health check is skipped for it — the manager serializes starts).
+   */
+  startService(): Promise<number | null>;
   /**
    * Stop a generation the helper itself started (SIGTERM + bounded wait).
    * Best-effort, never throws. The service PID the helper was told about

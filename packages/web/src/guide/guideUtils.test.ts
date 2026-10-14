@@ -1,7 +1,7 @@
 /**
- * Unit tests for the pure guide logic: read roll-up, contents model,
- * depth text selection, link discovery (both `data-node` and `data-link`
- * spellings), concept resolution, anchor matching.
+ * Unit tests for the pure guide logic: contents model, depth text
+ * selection, link discovery (both `data-node` and `data-link` spellings),
+ * concept resolution, anchor matching.
  */
 import { describe, expect, it } from "vitest";
 import type { Card, Job, Page } from "@unvibe/shared";
@@ -12,15 +12,11 @@ import {
   contentsModel,
   depthText,
   emptyGuideState,
-  isPageRead,
   jobForCard,
   linkedPages,
   lookupConceptPage,
-  markKnownLinks,
   pageIdForLinkTarget,
   pagePreview,
-  readCount,
-  readableCards,
   splitAnchorBlockId,
 } from "./guideUtils.js";
 
@@ -39,7 +35,6 @@ function mkCard(id: string, pageId: string, opts?: Partial<Card>): Card {
     pageId,
     title: id,
     level: "standard",
-    read: false,
     collapsed: false,
     revision: 1,
     blocks: [para(`${id}-1`, `Body of ${id}.`)],
@@ -52,34 +47,6 @@ function mkPage(id: string, cards: Card[], kind: Page["kind"] = "concept"): Page
   return { id, kind, title: `Title ${id}`, saved: false, parent: "root", cards };
 }
 
-describe("read roll-up (PRD §4.4)", () => {
-  it("a page is read when all its cards are", () => {
-    const page = mkPage("p", [mkCard("a", "p"), mkCard("b", "p")]);
-    expect(isPageRead(page)).toBe(false);
-    page.cards[0].read = true;
-    expect(isPageRead(page)).toBe(false);
-    expect(readCount(page)).toBe(1);
-    page.cards[1].read = true;
-    expect(isPageRead(page)).toBe(true);
-  });
-
-  it("pending cards do not count toward read state", () => {
-    const pending: Card = {
-      ...mkCard("g", "p"),
-      title: null,
-      blocks: [],
-      pending: { label: "Go deeper", why: "why" },
-    };
-    const page = mkPage("p", [pending]);
-    expect(readableCards(page)).toHaveLength(0);
-    expect(isPageRead(page)).toBe(false);
-  });
-
-  it("an empty page is never read", () => {
-    expect(isPageRead(mkPage("p", []))).toBe(false);
-  });
-});
-
 describe("depth text selection (PRD §4.4)", () => {
   const text = { simple: "simple", standard: "standard", deep: "deep" };
   it("picks the level text, falling back to standard", () => {
@@ -91,12 +58,12 @@ describe("depth text selection (PRD §4.4)", () => {
 });
 
 describe("contents model (PRD §4.3)", () => {
-  it("lists this page's cards and linked pages, muting read items", () => {
-    const target = mkPage("c-obs-fold", [mkCard("cc", "c-obs-fold", { read: true })]);
+  it("lists this page's cards and linked pages", () => {
+    const target = mkPage("c-obs-fold", [mkCard("cc", "c-obs-fold")]);
     const root = mkPage("root", [
       mkCard("problem", "root"),
       {
-        ...mkCard("central", "root", { read: true }),
+        ...mkCard("central", "root"),
         blocks: [
           para("x", `See <a class="cx" data-link="concept:obs-fold">folding</a>.`),
           { type: "finding-link", id: "f1", pageId: "f-lf", citations: [] },
@@ -106,14 +73,8 @@ describe("contents model (PRD §4.3)", () => {
     const lookup = (id: string): Page | undefined =>
       id === "c-obs-fold" ? target : id === "f-lf" ? mkPage("f-lf", [mkCard("ev", "f-lf")], "finding") : undefined;
     const { cards, links } = contentsModel(root, lookup);
-    expect(cards.map((c) => [c.id, c.read])).toEqual([
-      ["problem", false],
-      ["central", true],
-    ]);
-    expect(links.map((l) => [l.id, l.read])).toEqual([
-      ["c-obs-fold", true],
-      ["f-lf", false],
-    ]);
+    expect(cards.map((c) => c.id)).toEqual(["problem", "central"]);
+    expect(links.map((l) => l.id)).toEqual(["c-obs-fold", "f-lf"]);
   });
 
   it("untitled cards fall back to their first sentence, never cut mid-word (#49)", () => {
@@ -168,20 +129,6 @@ describe("concept resolution", () => {
     expect(lookupConceptPage(lookup, "nope")).toBeUndefined();
     expect(pageIdForLinkTarget("concept:obs-fold", lookup)).toBe("c-obs-fold");
     expect(pageIdForLinkTarget("page:f-lf", lookup)).toBeNull();
-  });
-});
-
-describe("known links", () => {
-  it("mutes links to fully read pages with the check mark class", () => {
-    const read = mkPage("c-obs-fold", [mkCard("cc", "c-obs-fold", { read: true })]);
-    const unread = mkPage("c-other", [mkCard("cc", "c-other")]);
-    const html =
-      `<a class="cx" data-link="concept:obs-fold">A</a> ` +
-      `<a class="cx" data-node="c-other">B</a> <a class="cx" data-link="concept:nope">C</a>`;
-    expect(markKnownLinks(html, [read, unread])).toBe(
-      `<a class="cx known" data-link="concept:obs-fold">A</a> ` +
-        `<a class="cx" data-node="c-other">B</a> <a class="cx" data-link="concept:nope">C</a>`,
-    );
   });
 });
 

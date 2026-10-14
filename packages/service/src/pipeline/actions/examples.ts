@@ -9,6 +9,7 @@ import {
   findCardTargetInDraft,
   insertExamples,
   markStaleAnchors,
+  mirrorPromotedAnswer,
   pushUndo,
   recordInteraction,
   setTargetContent,
@@ -16,7 +17,7 @@ import {
   targetLevel,
   findCardTarget,
 } from "../../interaction/index.js";
-import { cardTitle, storedCardTitle } from "./events.js";
+import { answerEchoTitle, cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   baseVersionOf,
@@ -54,8 +55,9 @@ export async function examplesAction(
   const variables = { card: cardPromptText(snapshot, cardId), level };
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "examples", key: cardId } : undefined;
-  // Issue #50: reply prose must not open by repeating the card title.
-  const echoTitle = storedCardTitle(snapshot, cardId);
+  // Issue #50: reply prose must not open by repeating the card title
+  // (an answer's question, else the card's quoted text).
+  const echoTitle = storedCardTitle(snapshot, cardId) ?? answerEchoTitle(snapshot, cardId);
 
   const done = pipeline.runInFork({
     reviewId,
@@ -81,13 +83,14 @@ export async function examplesAction(
       await reviews.mutate(reviewId, (draft) => {
         const t = findCardTargetInDraft(draft, cardId);
         if (!t) return;
-        const current = (t.kind === "page-card" ? t.card.blocks : t.annotation.expansion!.blocks) as Block[];
+        const current = targetBlocks(t) as Block[];
         const out = insertExamples(current, collected);
         if (out.added === 0) return;
-        const from = t.kind === "page-card" ? t.card.level : t.annotation.expansion!.level;
+        const from = targetLevel(t);
         pushUndo(t, [...current], from);
         setTargetContent(t, out.blocks, from);
         markStaleAnchors(draft, cardId);
+        mirrorPromotedAnswer(draft, cardId);
         added = out.added;
       });
       if (added > 0) {

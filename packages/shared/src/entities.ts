@@ -158,20 +158,36 @@ export interface Page {
 
 export type DepthLevel = "simple" | "standard" | "deep";
 
-/** One card on a page. IDs stay stable across revisions (PRD §7.2). */
-export interface Card {
+/**
+ * Issue #136: what depth, examples, diagram, undo and second opinion act
+ * on — a page card's body or one answer (turn) of a conversation card.
+ * Every unit carries its own `ans_…`/card id so none of those contracts
+ * change shape when the unit is an answer.
+ */
+export interface ContentBody {
+  /** Page-card id, or `ans_<12 hex>` for a conversation answer. */
   id: string;
+  blocks: Block[];
+  level: DepthLevel;
+  /** Bumped on every accepted rewrite; references always mean latest. */
+  revision: number;
+  /** Undo stack of block snapshots (depth/examples/diagram changes). */
+  undoStack: CardSnapshot[];
+  /**
+   * Second-opinion results attached to this unit, not part of its
+   * revisable content. Depth changes and undo operate on `blocks` /
+   * `level` / `undoStack` only, so these survive both. Keep one per
+   * mode+model; re-running replaces the matching entry.
+   */
+  secondOpinions?: SecondOpinionResult[];
+}
+
+/** One card on a page. IDs stay stable across revisions (PRD §7.2). */
+export interface Card extends ContentBody {
   pageId: string;
   /** Null when the reply carried no title; the UI shows the shared fallback (`content/titles.ts`, issue #49). */
   title: string | null;
-  level: DepthLevel;
-  read: boolean;
   collapsed: boolean;
-  /** Bumped on every accepted rewrite; references always mean latest. */
-  revision: number;
-  blocks: Block[];
-  /** Undo stack of block snapshots (depth/examples/diagram changes). */
-  undoStack: CardSnapshot[];
   /** Placeholder ("Go deeper") cards that still need generation. */
   pending?: PendingCard;
   /**
@@ -182,19 +198,13 @@ export interface Card {
   stale?: boolean;
   staleChangedHunks?: number;
   staleHunks?: string[];
-  /**
-   * M6 second opinion (PRD §4.10): results attached to the card, not part
-   * of its revisable content. Depth changes and undo operate on `blocks` /
-   * `level` / `undoStack` only, so these survive both. Keep one per
-   * mode+model; re-running replaces the matching entry.
-   */
-  secondOpinions?: SecondOpinionResult[];
 }
 
 /**
  * M6 second opinion (PRD §4.10, §12).
  *
- * Additive-only: new entity carried on `Card.secondOpinions`. The
+ * Additive-only: new entity carried on `ContentBody.secondOpinions`
+ * (a page card or one conversation answer). The
  * reasoning body is stored as validated `Block[]` so citation markers
  * behave like all others (hover preview, click reveals). `missed` is the
  * trailing-JSON "anything the card missed" string. `SecondOpinionMode`
@@ -378,88 +388,75 @@ export type Block =
   | FollowUpBlock
   | AsideBlock;
 
-export type AnnotationType = "expansion" | "thread" | "link";
+/**
+ * Issue #136: a conversation card (`"conversation"`) holds turns; a
+ * comment (`"comment"`, reviewer-written, the only thing submitted)
+ * holds messages; `"link"` is an opened-as-page card.
+ */
+export type AnnotationType = "conversation" | "comment" | "link";
 
+/**
+ * Issue #136 slice 2: one comment message. Comments never carry agent
+ * replies (those live on conversation turns as blocks); `ai` appears
+ * only for agent-drafted suggested comments not yet marked for the PR.
+ */
 export interface ChatMessage {
   who: "you" | "ai";
-  /** Plain text (user) or HTML (agent answer with link tokens rendered). */
+  /** Plain text. */
   text?: string;
-  html?: string;
   /** Agent-drafted suggested comment not yet marked for the PR. */
   suggested?: boolean;
-  /** M4: validated citations backing an agent reply (hover + jump-to-source). */
-  citations?: Citation[];
-  /**
-   * M4: streaming / error marker for an agent reply in flight. `working`
-   * carries the progress line while the job runs; `error` carries a
-   * retryable failure once it settles that way (never a spinner forever).
-   */
-  working?: string | null;
-  error?: string | null;
 }
 
 /**
- * M4 (PRD §4.7): body of an expansion annotation. An expansion is a card
- * in its own right — depth level, read, collapsed, revision and undo
- * stack — so every card action (depth, examples, diagram, undo, read,
- * collapse) works on it too. The quoted anchor text stays in
- * `Annotation.anchor`; the agent's content lives here.
+ * Issue #136: one question and its answer inside a conversation card. The
+ * answer is stored as blocks — the same unit as a guide card's body — so
+ * depth, examples, diagram, undo and second opinion act on it through the
+ * same lookup, keyed by the answer's own `ans_…` id.
  */
-export interface ExpansionState {
-  /** Agent content blocks (streamed in while the job runs). */
-  blocks: Block[];
-  /** Depth level of the rendered text (simpler / standard / first principles). */
-  level: DepthLevel;
-  /** Greyed + collapsed to its title row (marking an expansion read closes it). */
-  read: boolean;
-  collapsed: boolean;
-  /** Bumped on every accepted rewrite; references always mean latest. */
-  revision: number;
-  /** Undo stack of block snapshots (depth/examples/diagram changes). No redo. */
-  undoStack: CardSnapshot[];
-  /** Progress line while the explain job runs (immediately visible working state). */
+export interface Turn extends ContentBody {
+  /**
+   * The reader's question, or null for the default question (Explain).
+   * Shown as the answer's heading for later turns; the card header shows
+   * the selected text for the first.
+   */
+  question: string | null;
+  /** Progress line while this turn's job runs (immediately visible working state). */
   working?: string | null;
   /** Retryable failure text (visible error state + retry path, PRD §4.8). */
   error?: string | null;
-  /** Active job filling or rewriting this expansion, when one is running. */
+  /** Active job filling or rewriting this turn, when one is running. */
   jobId?: string;
-  /**
-   * True when the anchor text can no longer be found in its host (for
-   * example after a depth rewrite). The annotation stays attached to the
-   * block and the UI shows the collapsed-card fallback (PRD §4.7).
-   */
-  anchorStale?: boolean;
-  /**
-   * M4 second opinion (PRD §4.10): results attached to the expansion, not
-   * part of its revisable content — depth changes and undo operate on
-   * `blocks` / `level` / `undoStack` only, so these survive both. Keep one
-   * per mode+model; re-running replaces the matching entry.
-   */
-  secondOpinions?: SecondOpinionResult[];
 }
 
-/** An expansion card, comment thread, or opened-as-page link on an anchor. */
+/** A conversation card, comment, or opened-as-page link on an anchor. */
 export interface Annotation {
   id: string;
   type: AnnotationType;
   anchor: Anchor;
   /** Open in place vs closed back to its marker/link. */
   open: boolean;
-  /** Threads only: messages so far. */
+  /** Comments only: messages so far. */
   messages: ChatMessage[];
-  /** Threads only: include in the Submit review payload. */
+  /** Comments only: include in the Submit review payload. */
   post: boolean;
-  /** Threads only: editable draft of the text to post (For PR view). */
+  /** Comments only: editable draft of the text to post (For PR view). */
   draft?: string;
-  /** Threads only: a Note (no agent reply) vs Ask. */
-  note: boolean;
-  /** Threads only: unsent reply-box content (survives re-renders). */
+  /** Unsent reply-box content (survives re-renders; comments and conversations). */
   reply?: string;
   /**
-   * M4: expansion body (type `"expansion"` only). Anchor-only annotations
-   * (no `expansion`) are treated as closed link stubs.
+   * Issue #136: turns of a conversation card (type `"conversation"` only).
+   * The first turn's question is null for Explain (the default question).
    */
-  expansion?: ExpansionState;
+  turns?: Turn[];
+  /**
+   * Issue #136: the card's one agent session, created on the first turn
+   * and reused for every later turn. After a restart the session is
+   * rebuilt from the stored turns.
+   */
+  sessionId?: string;
+  /** Conversations only: collapsed to the title row. */
+  collapsed?: boolean;
   /**
    * M4: progress line while an agent job works on this annotation
    * (explain fill, ask reply). Cleared when the job settles.
@@ -467,18 +464,12 @@ export interface Annotation {
   working?: string | null;
   /**
    * M4: retryable failure text (visible error state with a retry path,
-   * never a spinner forever, PRD §4.8). Set on the thread/expansion when
-   * its job errors; cleared on the next attempt.
+   * never a spinner forever, PRD §4.8). Set on the thread/conversation
+   * when its job errors; cleared on the next attempt.
    */
   error?: string | null;
   /** M4: active agent job for this annotation, when one is running. */
   jobId?: string;
-  /**
-   * M4: conversation session backing this thread's agent replies. Forked
-   * once per thread; follow-up turns reuse it via
-   * `SessionManager.sendOnConversation` instead of forking again.
-   */
-  sessionId?: string;
   /**
    * M4: true when the anchor text can no longer be found in its host
    * (for example after a depth rewrite of the host card). The annotation
@@ -493,6 +484,15 @@ export interface Annotation {
    */
   promotedToPage?: string;
   /**
+   * Issue #152: when a conversation is opened as a page while a turn is
+   * still filling (or has failed), the turns stay on the link annotation
+   * as the fill's state owner and each moved turn maps to its page card.
+   * The fill keeps running and mirrors finished blocks onto the mapped
+   * card; the page resolves the working/error state through this mapping.
+   * Turns are dropped once every mapped turn has settled successfully.
+   */
+  promotedTurns?: { turnId: string; cardId: string }[];
+  /**
    * M5 (PRD §8): true when the anchored code changed and the quote could
    * not be re-found with confidence. The original snippet is kept in
    * `originalSnippet` and `successor` links to the best new-code guess.
@@ -502,8 +502,8 @@ export interface Annotation {
   originalSnippet?: string;
   successor?: Anchor;
   /**
-   * M6: posted marker set by Submit after the thread reaches GitHub.
-   * Threads with `postedAt` set are never posted twice (double-submit
+   * M6: posted marker set by Submit after the comment reaches GitHub.
+   * Comments with `postedAt` set are never posted twice (double-submit
    * protection; retry after a partial failure skips them).
    */
   postedAt?: number;
@@ -516,13 +516,19 @@ export type AnchorHost =
   /**
    * A guide block, stored `<card>#<block>` (block ids repeat across cards,
    * #78). The card part is a page-card id, or — for an annotation on text
-   * inside an explanation (#116) — the hosting expansion's annotation id.
-   * Hosts nest by the same mechanism to any depth (an annotation per
-   * level; every level stays in the flat annotation list).
+   * inside a conversation answer (#116, #136) — the hosting answer's
+   * `ans_…` id. Hosts nest by the same mechanism to any depth (an
+   * annotation per level; every level stays in the flat annotation list).
    */
   | { kind: "block"; blockId: string }
   | { kind: "description"; paragraphId: string }
-  | { kind: "diff-line"; fileKey: string; line: number; endLine?: number; side?: "LEFT" | "RIGHT" };
+  | { kind: "diff-line"; fileKey: string; line: number; endLine?: number; side?: "LEFT" | "RIGHT" }
+  /**
+   * Issue #138: a hunk, addressed `h:<fileKey>:<contentHash>` (stable
+   * across versions while the hunk's content is). Hosts the conversation
+   * card an idle hunk summary activates into.
+   */
+  | { kind: "hunk"; fileKey: string; contentHash: string };
 
 export interface Anchor {
   host: AnchorHost;
@@ -622,7 +628,6 @@ export type JobKind =
   | "critic"
   | "hunk-pass"
   | "concept"
-  | "explain"
   | "ask"
   | "depth"
   | "examples"
@@ -665,14 +670,20 @@ export interface Job {
   /** Cache read share: cachedRead/(input+cachedRead+cachedWrite). input counts uncached input only (M0, #125). */
   cacheHitRate?: number;
   error?: string;
+  /**
+   * The agent's `degraded` reason for a turn whose usable answer was kept
+   * anyway (the answer carries a plain-words note; the raw reason lives
+   * here for the Debug page, never on the card).
+   */
+  degradedReason?: string;
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
   cardId?: string;
   /**
-   * M4: annotation this job works on (explain fill, ask reply, follow-up
-   * answer), when annotation-scoped. Lets the UI match streamed `text`
-   * events to the thread/expansion while it fills.
+   * Issue #136: annotation this job works on (conversation fill,
+   * follow-up answer), when annotation-scoped. Lets the UI match
+   * streamed `text` events to the card while it fills.
    */
-  threadId?: string;
+  annotationId?: string;
   /** Latest human-readable progress line, shown on the card while running. */
   progress?: string;
   /**

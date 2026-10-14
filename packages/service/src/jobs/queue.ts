@@ -58,6 +58,8 @@ export interface JobContext {
   setPromptSnapshot(text: string): void;
   /** Record the agent session backing this job. */
   setSessionId(id: string): void;
+  /** Record the agent's `degraded` reason for a kept answer (Debug page). */
+  setDegradedReason(reason: string): void;
 }
 
 export type JobFn = (ctx: JobContext) => Promise<void>;
@@ -78,8 +80,8 @@ export interface EnqueueOptions {
    * the entry (for `text` events).
    */
   cardId?: string;
-  /** M4: annotation the streamed text belongs to (ask replies, expansions). */
-  threadId?: string;
+  /** Issue #136: annotation the streamed text belongs to (conversation fills). */
+  annotationId?: string;
   run: JobFn;
 }
 
@@ -101,7 +103,7 @@ interface Entry {
   run?: JobFn;
   reviewId: string;
   cardId?: string;
-  threadId?: string;
+  annotationId?: string;
   seq: number;
   abort?: AbortController;
 }
@@ -159,7 +161,7 @@ export class JobQueue {
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.promptSnapshot !== undefined ? { promptSnapshot: opts.promptSnapshot } : {}),
       ...(dedupeKey ? { dedupeKey } : {}),
-      ...(opts.threadId ? { threadId: opts.threadId } : {}),
+      ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
       ...(opts.cardId ? { cardId: opts.cardId } : {}),
     };
     const entry: Entry = {
@@ -167,7 +169,7 @@ export class JobQueue {
       run: opts.run,
       reviewId: opts.reviewId,
       cardId: opts.cardId,
-      ...(opts.threadId ? { threadId: opts.threadId } : {}),
+      ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
       seq: this.seq++,
     };
     this.entries.set(job.id, entry);
@@ -241,6 +243,21 @@ export class JobQueue {
     this.save(entry);
     this.emit(entry);
     this.pump();
+    return copy(entry.job);
+  }
+
+  /**
+   * Re-target a job at a new card (issue #152: promote moves a
+   * conversation's fill to a page card while it runs, so the page shows
+   * the working state through the usual `cardId` match). The job keeps
+   * running; only its address changes.
+   */
+  retarget(id: string, cardId: string): Job {
+    const entry = this.required(id);
+    entry.job.cardId = cardId;
+    entry.cardId = cardId;
+    this.save(entry);
+    this.emit(entry);
     return copy(entry.job);
   }
 
@@ -522,7 +539,7 @@ export class JobQueue {
           type: "text",
           jobId: job.id,
           ...(entry.cardId ? { cardId: entry.cardId } : {}),
-          ...(entry.threadId ? { threadId: entry.threadId } : {}),
+          ...(entry.annotationId ? { annotationId: entry.annotationId } : {}),
           delta,
         });
       },
@@ -533,6 +550,11 @@ export class JobQueue {
       },
       setSessionId: (id) => {
         job.sessionId = id;
+        this.save(entry);
+        this.emit(entry);
+      },
+      setDegradedReason: (reason) => {
+        job.degradedReason = reason;
         this.save(entry);
         this.emit(entry);
       },

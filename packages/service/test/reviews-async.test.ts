@@ -307,6 +307,186 @@ describe("POST /api/reviews async (#92)", () => {
     }
   });
 
+  it("#149: opening a ready PR review reuses it instead of creating a second", async () => {
+    const dir = await makeRepo();
+    const head = await git(dir, "rev-parse", "feature");
+    const prView = JSON.stringify({
+      title: "Ready PR",
+      body: "Body.",
+      author: { login: "octocat" },
+      state: "OPEN",
+      isDraft: false,
+      baseRefName: "main",
+      headRefName: "feature",
+      headRefOid: head,
+    });
+    const fake = new FakeCommandRunner();
+    // Two gh views enqueued: the second is consumed only when the bug is
+    // present (a second ingest runs). With the fix it stays queued.
+    fake.enqueue({ cmd: "gh", stdout: prView, stderr: "", code: 0 });
+    fake.enqueue({ cmd: "gh", stdout: prView, stderr: "", code: 0 });
+    const runner: CommandRunner = {
+      run: (cmd, opts) => {
+        if (cmd === "gh") return fake.run(cmd, opts);
+        if (cmd === "git" && isGitFetch(opts.args)) return Promise.resolve({ stdout: "", stderr: "", code: 0 });
+        return real.run(cmd, opts);
+      },
+    };
+    const { app } = await createApp("tok", { runner, autoPipeline: false });
+    try {
+      process.env.UNVIBE_REPO_ROOTS = "";
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+      const first = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, pr: 42, title: "Ready PR", author: "octocat" },
+      });
+      expect(first.statusCode).toBe(202);
+      const id1 = (first.json() as ReviewSnapshot).review.id;
+      await awaitStatus(app, id1, "ready");
+      // Opening the same PR again must reuse the ready review.
+      const second = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, pr: 42, title: "Ready PR", author: "octocat" },
+      });
+      expect(second.statusCode).toBe(200);
+      const body2 = second.json() as ReviewSnapshot & { reused?: boolean };
+      expect(body2.review.id).toBe(id1);
+      expect(body2.reused).toBe(true);
+      const list = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
+      const ids = (list.json() as ReviewsListResponse).reviews.filter((r) => r.repoId === repoId).map((r) => r.id);
+      expect(ids).toEqual([id1]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("#149: opening a ready branch review reuses it", async () => {
+    const dir = await makeRepo();
+    const { app } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      process.env.UNVIBE_REPO_ROOTS = "";
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+      const first = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, branch: "feature" },
+      });
+      expect(first.statusCode).toBe(202);
+      const id1 = (first.json() as ReviewSnapshot).review.id;
+      await awaitStatus(app, id1, "ready");
+      const second = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, branch: "feature" },
+      });
+      expect(second.statusCode).toBe(200);
+      expect((second.json() as ReviewSnapshot).review.id).toBe(id1);
+      const list = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
+      const ids = (list.json() as ReviewsListResponse).reviews.filter((r) => r.repoId === repoId).map((r) => r.id);
+      expect(ids).toEqual([id1]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("#149: a PR review and a branch review of the same branch are different sources", async () => {
+    const dir = await makeRepo();
+    const head = await git(dir, "rev-parse", "feature");
+    const prView = JSON.stringify({
+      title: "Same branch PR",
+      body: "",
+      author: { login: "a" },
+      state: "OPEN",
+      isDraft: false,
+      baseRefName: "main",
+      headRefName: "feature",
+      headRefOid: head,
+    });
+    const fake = new FakeCommandRunner();
+    fake.enqueue({ cmd: "gh", stdout: prView, stderr: "", code: 0 });
+    const runner: CommandRunner = {
+      run: (cmd, opts) => {
+        if (cmd === "gh") return fake.run(cmd, opts);
+        if (cmd === "git" && isGitFetch(opts.args)) return Promise.resolve({ stdout: "", stderr: "", code: 0 });
+        return real.run(cmd, opts);
+      },
+    };
+    const { app } = await createApp("tok", { runner, autoPipeline: false });
+    try {
+      process.env.UNVIBE_REPO_ROOTS = "";
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+      const pr = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, pr: 42 },
+      });
+      const prId = (pr.json() as ReviewSnapshot).review.id;
+      await awaitStatus(app, prId, "ready");
+      const br = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, branch: "feature" },
+      });
+      const brId = (br.json() as ReviewSnapshot).review.id;
+      expect(brId).not.toBe(prId);
+      await awaitStatus(app, brId, "ready");
+      // Each reopens its own review.
+      const prAgain = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, pr: 42 },
+      });
+      expect((prAgain.json() as ReviewSnapshot).review.id).toBe(prId);
+      const brAgain = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId, branch: "feature" },
+      });
+      expect((brAgain.json() as ReviewSnapshot).review.id).toBe(brId);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("#149: two concurrent creates for the same source end with one review", async () => {
+    const dir = await makeRepo();
+    const head = await git(dir, "rev-parse", "feature");
+    const held = heldGhRunner();
+    const { app } = await createApp("tok", { runner: held.runner, autoPipeline: false });
+    try {
+      process.env.UNVIBE_REPO_ROOTS = "";
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+      const [a, b] = await Promise.all([
+        app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: { repoId, pr: 42 } }),
+        app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: { repoId, pr: 42 } }),
+      ]);
+      const idA = (a.json() as ReviewSnapshot).review.id;
+      const idB = (b.json() as ReviewSnapshot).review.id;
+      expect(idB).toBe(idA);
+      held.release(ghPrView(head));
+      await awaitStatus(app, idA, "ready");
+      const list = await app.inject({ method: "GET", url: "/api/reviews", headers: authed });
+      const ids = (list.json() as ReviewsListResponse).reviews.filter((r) => r.repoId === repoId).map((r) => r.id);
+      expect(ids).toEqual([idA]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("pipeline starts only after the ingest succeeds", async () => {
     const dir = await makeRepo();
     const head = await git(dir, "rev-parse", "feature");

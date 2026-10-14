@@ -1,0 +1,41 @@
+# Unvibe front-door page (issue #150): deploy `site/` to GitHub Pages.
+#
+# Runs only when `site/` changes (CI minutes are scarce), plus manual
+# dispatch. No build step: `site/` is plain HTML + CSS + one image.
+# The owner enables Pages once in the repository settings (Settings →
+# Pages → Source: GitHub Actions); afterwards every merge to `main`
+# touching `site/` republishes https://indigoviolet.github.io/unvibe/.
+
+name: pages
+
+on:
+  push:
+    branches: ["main"]
+    paths: ["site/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Upload the page
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

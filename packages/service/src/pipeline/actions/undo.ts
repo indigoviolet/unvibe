@@ -4,7 +4,7 @@
  * expansions attached to the card survive undo (annotations live outside
  * cards, re-attached to their blocks by id).
  */
-import { applyUndo, findCardTargetInDraft, markStaleAnchors, recordInteraction } from "../../interaction/index.js";
+import { applyUndo, findCardTargetInDraft, markStaleAnchors, mirrorPromotedAnswer, recordInteraction } from "../../interaction/index.js";
 import { getSnapshotOrThrow, type ActionContext } from "./common.js";
 
 export async function undoAction(
@@ -19,6 +19,7 @@ export async function undoAction(
     if (!t) throw new Error(`unknown card ${cardId}`);
     undone = applyUndo(t);
     if (undone) markStaleAnchors(draft, cardId);
+    if (undone) mirrorPromotedAnswer(draft, cardId);
   });
   // Undo is UI state (PRD §9.3): accepted, never logged.
   if (undone) await recordInteraction({ kind: "undo", reviewId, cardId, text: `Undid last change on ${cardId}` });

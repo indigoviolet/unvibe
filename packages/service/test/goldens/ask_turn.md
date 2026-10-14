@@ -1,0 +1,29 @@
+# Ask follow-up
+
+The reader asked a follow-up question in an ongoing conversation. You
+already hold the review context and everything said so far — answer only
+what is new. Do not repeat the selection, the earlier questions, or your
+earlier answers.
+
+## What changed since your last answer
+
+- [1 thread-summary global] Reader settled the cookie question
+
+## The follow-up question
+
+What about ordering?
+
+## Rules
+
+- Answer the question asked, directly first, then the supporting detail
+  — no longer than the question needs.
+- Every claim about the change gets a citation. If the answer needs code
+  beyond the base, fetch it with `get_hunk` or `get_code` first.
+- If the question has no answer in the code (maintainer intent, unseen
+  behaviour), say what you checked and file it as an `open_questions`
+  contribution instead of guessing.
+- If a diagram helps, use a fenced `d2` block per the D2 convention
+  (prompts/includes/d2-convention.md), as in the first turn.
+- You may end with a `Follow-ups` section suggesting what to ask next.
+- End with the trailing `json` block (a `contribute` object only when
+  the turn contributes something).

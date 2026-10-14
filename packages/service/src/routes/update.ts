@@ -24,6 +24,7 @@
  */
 import { spawn } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -41,6 +42,7 @@ import { readInstalledBuild } from "../update/channels.js";
 import { resolveBuildInfo } from "../update/build-info.js";
 import type { HelperArgs } from "../update/helper.js";
 import type { Updater } from "../update/updater.js";
+import { currentUid, isLoginManaged, loginUnitPath } from "../update/service-manager.js";
 import {
   hasAnySubmitLease,
   readPendingSwitch,
@@ -255,7 +257,7 @@ export async function registerUpdate(
       activeJobs = deps.jobs?.activeCount() ?? 0;
       if (activeJobs > 0) {
         blocked = (deps.jobs?.listActive(UPDATE_BLOCKED_JOBS_CAP) ?? []).map((j) => {
-          const label = j.progress ?? j.cardId ?? j.threadId;
+          const label = j.progress ?? j.cardId ?? j.annotationId;
           return {
             id: j.id,
             kind: j.kind,
@@ -327,6 +329,12 @@ export async function registerUpdate(
       logPath: path.join(updateDir(ctx.dataDir), `switch-${Date.now()}.log`),
       scriptPath,
       serviceVersion: routeServiceVersion(deps),
+      // Restart through the service manager when login-managed (issue
+      // #108 follow-up): detected here from the real HOME; tests use the
+      // fake HOME through the same path.
+      managed: isLoginManaged(os.homedir(), process.platform),
+      loginUnitPath: loginUnitPath(os.homedir(), process.platform),
+      loginUid: currentUid(),
       ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
     };
     const argsFile = path.join(updateDir(ctx.dataDir), `helper-args-${Date.now()}.json`);

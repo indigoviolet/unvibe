@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import { HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -101,6 +102,14 @@ export interface DiffViewProps {
   commentedLines?: ReadonlySet<string>;
   /** "Start a comment" hook: fired when a new-side line number is clicked. */
   onLineClick?: (fileKey: string, line: number) => void;
+  /**
+   * Page lookup + navigation + follow-ups for activated hunk cards
+   * (#138). Optional so DiffView stays usable standalone in tests; the
+   * review route always passes the real ones.
+   */
+  lookupPage?: (pageId: string) => import("@unvibe/shared").Page | undefined;
+  onOpenPage?: (pageId: string) => void;
+  onFollowUp?: (cardId: string, blockId: string, index: number) => void;
 }
 
 interface Highlight {
@@ -110,7 +119,7 @@ interface Highlight {
   nonce: number;
 }
 
-export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: DiffViewProps): ReactNode {
+export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, lookupPage, onOpenPage, onFollowUp }: DiffViewProps): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
   const setSnapshot = useReview((s) => s.setSnapshot);
   const [prefs, setPrefs] = useState<DiffPrefs>(loadPrefs);
@@ -257,6 +266,36 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
     () => new Map<string, HunkUiState>((snapshot?.hunkStates ?? []).map((s) => [s.contentHash, s])),
     [snapshot],
   );
+
+  // Activated hunk summaries (issue #138): content hash → conversation
+  // card. Only hashes in the current files draw — a card whose hunk
+  // changed stays with the old version and never renders on the new one.
+  const hunkCards = useMemo(() => {
+    const files = snapshot?.files ?? [];
+    const current = new Set(files.flatMap((f) => f.hunks.map((h) => h.contentHash)));
+    const map = new Map<string, import("@unvibe/shared").Annotation>();
+    for (const a of snapshot?.annotations ?? []) {
+      if (a.type !== "conversation" || a.anchor.host.kind !== "hunk") continue;
+      if (!current.has(a.anchor.host.contentHash) || map.has(a.anchor.host.contentHash)) continue;
+      map.set(a.anchor.host.contentHash, a);
+    }
+    return map;
+  }, [snapshot]);
+
+  // Promoted hunk discussions (issue #138 follow-up): content hash →
+  // page id. The hunk keeps its summary text plus a page-link chip; its
+  // interactions open the page instead of activating a fresh card.
+  const promotedHunks = useMemo(() => {
+    const files = snapshot?.files ?? [];
+    const current = new Set(files.flatMap((f) => f.hunks.map((h) => h.contentHash)));
+    const map = new Map<string, string>();
+    for (const a of snapshot?.annotations ?? []) {
+      if (a.type !== "link" || a.anchor.host.kind !== "hunk" || !a.promotedToPage) continue;
+      if (!current.has(a.anchor.host.contentHash) || map.has(a.anchor.host.contentHash)) continue;
+      map.set(a.anchor.host.contentHash, a.promotedToPage);
+    }
+    return map;
+  }, [snapshot]);
 
   const reviewedCount = useCallback(
     (f: ReviewFile) => f.hunks.filter((h) => states.get(h.contentHash)?.reviewed).length,
@@ -514,12 +553,25 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
         targets.push({ file: f, hunk: h });
       });
     }
-    // Fold first so the UI settles, then summarize hunks lacking one.
+    // Fold first so the UI settles, then summarize hunks lacking one —
+    // except past the hunk-pass fan-out limit (issue #107), where Fold
+    // all folds only: requesting a summary per hunk would be exactly the
+    // fan-out the pipeline refuses to run, and the per-hunk Summarize
+    // button in the hunk header stays as the on-demand path.
     await Promise.all(targets.map(({ hunk }) => api.updateHunk(reviewId, hunk.contentHash, { folded: true }).catch(() => {})));
-    for (const { hunk } of targets) {
-      if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
+    const totalHunks = snap.files.reduce((n, f) => n + f.hunks.length, 0);
+    const overFanout = totalHunks > HUNK_PASS_FANOUT_LIMIT;
+    if (!overFanout) {
+      for (const { hunk } of targets) {
+        if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
+      }
+      toast(`Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. Summaries appear as they are written.`);
+    } else {
+      toast(
+        `Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. ` +
+          "This review is past the per-hunk summary limit, so summaries stay on demand — use the spark button on any hunk.",
+      );
     }
-    toast(`Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. Summaries appear as they are written.`);
   }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions]);
 
   const unfoldAll = useCallback(async () => {
@@ -562,6 +614,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
 
   const tree: TreeRow[] = prefs.filesOpen ? buildFileTree(visible) : [];
   const catCount = (k: string): number => snapshot.files.filter((f) => f.category === k).length;
+  // Fold-all summarises per hunk only under the fan-out limit (issue
+  // #107): past it the button folds without requesting summaries.
+  const overFanoutLimit = snapshot.files.reduce((n, f) => n + f.hunks.length, 0) > HUNK_PASS_FANOUT_LIMIT;
 
   // Update banner: the local refresh result wins; otherwise the snapshot's
   // own `versionStatus` (set when a refresh created a newer version).
@@ -616,7 +671,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
         <button
           className="x"
           type="button"
-          data-tip="Summarize every hunk with the agent, then fold the code"
+          data-tip={
+            overFanoutLimit
+              ? "Fold the code (this review is past the per-hunk summary limit; summaries stay on demand)"
+              : "Summarize every hunk with the agent, then fold the code"
+          }
           aria-label="Fold all"
           onClick={() => void foldAll()}
         >
@@ -761,6 +820,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick }: D
               contentAvailable={!noContent}
               briefs={briefs}
               states={states}
+              hunkCards={hunkCards}
+              promotedHunks={promotedHunks}
+              lookupPage={lookupPage ?? (() => undefined)}
+              onOpenPage={onOpenPage ?? (() => {})}
+              onFollowUp={onFollowUp ?? (() => {})}
               isHidden={isHidden}
               actions={actions}
               onLineClick={onLineClick}
@@ -820,7 +884,7 @@ function FilterDropdown({
   const active = activeCount > 0;
 
   // Close on outside press or Escape, like the other dropdowns
-  // (SecondOpinionControl, Tips, CommentsMenu).
+  // (SecondOpinionControl, CommentsMenu).
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent): void => {

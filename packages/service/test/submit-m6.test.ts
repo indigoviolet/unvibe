@@ -14,12 +14,11 @@ const REVIEW_URL = `https://github.com/${OWNER}/${REPO_NAME}/pull/${PR_NUMBER}#d
 function descThread(text: string): Annotation {
   return {
     id: "ann_desc",
-    type: "thread",
+    type: "comment",
     anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
     messages: [{ who: "you", text }],
     post: true,
-    note: true,
   };
 }
 
@@ -113,7 +112,7 @@ describe("submit", () => {
       expect(editCall?.opts.args.slice(0, 4)).toEqual(["pr", "edit", String(PR_NUMBER), "--body-file"]);
 
       const snap = ctx.reviews.getSnapshot(reviewId);
-      expect(snap?.annotations.every((a) => a.type !== "thread" || !a.post || a.postedAt)).toBe(true);
+      expect(snap?.annotations.every((a) => a.type !== "comment" || !a.post || a.postedAt)).toBe(true);
       expect(snap?.annotations[0].postedUrl).toBe(REVIEW_URL);
       expect(snap?.description?.pendingMarkdown).toBeUndefined();
       expect(snap?.description?.baseMarkdown).toBe("Edited body.\n");

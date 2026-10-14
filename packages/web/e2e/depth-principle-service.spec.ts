@@ -2,7 +2,7 @@
  * Deepest-level "Underlying principle" end to end (PRD §4.4, audit #10).
  *
  * Real service (`mise run build` first) + `UNVIBE_AGENT: "replay"` demo
- * review via the shared harness. On a page card and on an expansion card:
+ * review via the shared harness. On a page card and on a conversation card:
  * step to the deepest level, press + again → exactly one "Underlying
  * principle" block appears; press + again → nothing more is added and the
  * user is told (toast); undo removes it.
@@ -132,14 +132,14 @@ test.describe("deepest-level principle over the real service (replay)", () => {
     await expect(principleLocator(card)).toHaveCount(0, { timeout: 10_000 });
   });
 
-  test("expansion card: same principle flow", async ({ page }) => {
+  test("conversation card: same principle flow", async ({ page }) => {
     test.setTimeout(180_000);
     await openReview(page);
     if (!svc) throw new Error("service not running");
 
-    // Create an expansion via the API (Explain on a central paragraph that
-    // actually contains the quote) so the test does not depend on selection
-    // mechanics. The quote must be a substring of the host block text.
+    // Create a conversation card via the API (Explain on a central paragraph
+    // that actually contains the quote) so the test does not depend on
+    // selection mechanics. The quote must be a substring of the host block text.
     const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
       pages: {
         id: string;
@@ -165,11 +165,11 @@ test.describe("deepest-level principle over the real service (replay)", () => {
       const deadline = Date.now() + 60_000;
       for (;;) {
         const cur = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
-          annotations: { id: string; expansion?: { blocks: unknown[] } }[];
+          annotations: { id: string; turns?: { blocks: unknown[] }[] }[];
         };
         const ann = cur.annotations.find((a) => a.id === annId);
-        if (ann?.expansion && ann.expansion.blocks.length > 0) break;
-        if (Date.now() > deadline) throw new Error("expansion did not fill in time");
+        if ((ann?.turns?.[0]?.blocks.length ?? 0) > 0) break;
+        if (Date.now() > deadline) throw new Error("conversation did not fill in time");
         await new Promise((r) => setTimeout(r, 100));
       }
     }
@@ -179,7 +179,7 @@ test.describe("deepest-level principle over the real service (replay)", () => {
     const exp = page.locator(`#C-central [data-expansion="${annId}"]`).first();
     await expect(exp).toBeVisible({ timeout: 30_000 });
 
-    // Step the expansion to deep (normal steps add no principle).
+    // Step the answer to deep (normal steps add no principle).
     for (let i = 0; i < 2; i++) {
       const expPips = exp.locator(".pips i.on");
       const expPipsBefore = await expPips.count();

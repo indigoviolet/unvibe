@@ -105,7 +105,7 @@ describe("echo stripping on actions (issue #50)", () => {
 {}
 \`\`\`
 `;
-    const agents = fakeWith([{ match: "# Explain", events: textEvents(reply) }]);
+    const agents = fakeWith([{ match: "## The question\n\nExplain this.", events: textEvents(reply) }]);
     const { app, ctx } = await createApp("tok", { agents });
     try {
       const id = await createDemoReview(app);
@@ -120,7 +120,8 @@ describe("echo stripping on actions (issue #50)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(ann.error).toBeNull();
-      const blocks = (ann as unknown as { expansion: { blocks: { type: string }[] } }).expansion.blocks;
+      const turnId = res.json.turnId as string;
+      const blocks = (ann.turns ?? []).find((t) => t.id === turnId)!.blocks;
       expect(blocks).toHaveLength(1);
     } finally {
       await app.close();
@@ -150,13 +151,14 @@ Not with this PR. The message is rewritten in place.
       });
       expect(res.status).toBe(200);
       await waitForJob(ctx, res.json.jobId as string);
-      const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.threadId as string))!;
-      expect(thread.error).toBeNull();
-      const ai = (thread as unknown as { messages: { who: string; html?: string }[] }).messages.find(
-        (m) => m.who === "ai",
-      )!;
-      expect(ai.html).not.toContain("Does Requests see the raw value?</p>");
-      expect(ai.html).toContain("rewritten in place");
+      const turnId = res.json.turnId as string;
+      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
+      expect(card.error).toBeNull();
+      const turn = (card.turns ?? []).find((t) => t.id === turnId)!;
+      const { renderMarkdown } = await import("@unvibe/shared");
+      const body = renderMarkdown(turn.blocks);
+      expect(body).not.toContain("Does Requests see the raw value?");
+      expect(body).toContain("rewritten in place");
     } finally {
       await app.close();
     }

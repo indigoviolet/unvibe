@@ -242,6 +242,60 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
+  it("#124: session/fork carries the same mcpServers and _meta as session/new (claude)", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "unvibe-instructions",
+      mcpServers: [{ name: "test", url: "http://127.0.0.1:9/mcp" }],
+    });
+    const newMeta = state.newMetas.get(base.id);
+    const fork = await runner.fork(base, { atMessage: "msg-1" });
+    expect(state.forkCalls).toHaveLength(1);
+    const call = state.forkCalls[0]!;
+    expect(call.from).toBe(base.id);
+    expect(call.atMessage).toBe("msg-1");
+    // The ACP wire shape, identical to what session/new carried.
+    expect(call.mcpServers).toEqual([{ type: "http", name: "test", url: "http://127.0.0.1:9/mcp", headers: [] }]);
+    // The session meta plus the AIR fork point merged under the same key.
+    expect(call.meta).toMatchObject({
+      systemPrompt: "unvibe-instructions",
+      claudeCode: { options: { tools: ["Read", "Glob", "Grep"] } },
+      jetbrains: { air: { version: 1, fork: { version: 1, messageId: "msg-1" } } },
+    });
+    expect(call.meta).toMatchObject(newMeta as Record<string, unknown>);
+    // A plain fork (no fork point) carries exactly the session meta.
+    await runner.fork(base);
+    expect(state.forkCalls[1]?.meta).toEqual(newMeta);
+    expect(state.forkCalls[1]?.mcpServers).toEqual(call.mcpServers);
+    expect(fork.id).not.toBe(base.id);
+    await runner.dispose();
+  });
+
+  it("#124: session/fork carries the same mcpServers and custom instructions as session/new (codex)", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { codex: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "codex",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "codex-instructions",
+      mcpServers: [{ name: "test", url: "http://127.0.0.1:9/mcp" }],
+    });
+    const newMeta = state.newMetas.get(base.id);
+    expect(newMeta).toEqual({ jetbrains: { air: { version: 1, customInstructions: "codex-instructions" } } });
+    await runner.fork(base);
+    expect(state.forkCalls).toHaveLength(1);
+    expect(state.forkCalls[0]?.mcpServers).toEqual([
+      { type: "http", name: "test", url: "http://127.0.0.1:9/mcp", headers: [] },
+    ]);
+    expect(state.forkCalls[0]?.meta).toEqual(newMeta);
+    await runner.dispose();
+  });
+
   it("#121: codex resume carries the same custom instructions as new", async () => {
     const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
     const runner = new AcpAgentRunner({ settleMs: 0, factories: { codex: fakeTransportFactory(state) } });

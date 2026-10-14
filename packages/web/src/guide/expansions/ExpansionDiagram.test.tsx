@@ -1,8 +1,8 @@
 /**
- * Expansion diagrams (issue #71): a diagram block stored in
- * `annotations[].expansion.blocks` renders through the same on-demand
- * path as card diagrams — the web requests the SVG by the block's hash
- * and inlines it, in both themes.
+ * Answer diagrams (issues #71, #136): a diagram block stored in a
+ * conversation turn renders through the same on-demand path as card
+ * diagrams — the web requests the SVG by the block's hash and inlines
+ * it, in both themes.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -37,7 +37,7 @@ const DARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" 
 function expansion(): Annotation {
   return {
     id: "ann_exp",
-    type: "expansion",
+    type: "conversation",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Why?",
@@ -51,23 +51,25 @@ function expansion(): Annotation {
     post: false,
     note: false,
     working: null,
-    expansion: {
-      blocks: [
-        {
-          type: "diagram",
-          id: "b-d1",
-          source: "exp-a -> exp-b",
-          citations: [],
-          render: { hash: HASH, status: "unavailable" },
-        },
-      ],
-      level: "standard",
-      read: false,
-      collapsed: false,
-      revision: 2,
-      undoStack: [],
-      working: null,
-    },
+    turns: [
+      {
+        id: "ans_exp1",
+        question: null,
+        blocks: [
+          {
+            type: "diagram",
+            id: "b-d1",
+            source: "exp-a -> exp-b",
+            citations: [],
+            render: { hash: HASH, status: "unavailable" },
+          },
+        ],
+        level: "standard",
+        revision: 2,
+        undoStack: [],
+        working: null,
+      },
+    ],
   } as unknown as Annotation;
 }
 
@@ -89,7 +91,6 @@ function seedSnapshot(ann: Annotation): void {
             pageId: "root",
             title: "Card",
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: [{ type: "paragraph", id: "b1", text: { standard: "Some text." }, citations: [] }],
@@ -119,8 +120,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("expansion diagram rendering (#71)", () => {
-  test("an unavailable expansion diagram fetches by hash and inlines the SVG, light then dark", async () => {
+describe("answer diagram rendering (#71, #136)", () => {
+  test("an unavailable answer diagram fetches by hash and inlines the SVG, light then dark", async () => {
     const ann = expansion();
     seedSnapshot(ann);
     const spy = vi

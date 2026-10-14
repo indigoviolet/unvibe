@@ -70,42 +70,64 @@ describe("resolveSelectionHost inside other hosts (#116)", () => {
   });
 });
 
-describe("comment from an agent answer (issue #135)", () => {
-  function seedWithExpansion(): void {
-    const expansion: Annotation = {
-      id: "ann_1",
-      type: "expansion",
-      anchor: {
-        host: { kind: "diff-line", fileKey: "conn", line: 91 },
-        quotedText: "code",
-        prefix: "",
-        suffix: "",
-        position: 91,
-        version: 1,
-      },
-      open: true,
-      messages: [],
-      post: false,
-      note: false,
-    };
-    useReview.getState().clear();
-    useReview.getState().setSnapshot({
-      review: { id: "r", repoId: "x", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
-      version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
-      files: [],
-      pages: [],
-      annotations: [expansion],
-      hunkStates: [],
-      jobs: [],
-      contributions: [],
-      logTail: [],
-      rev: 1,
-    } as unknown as ReviewSnapshot);
-  }
+function seedConversationCard(): void {
+  const card: Annotation = {
+    id: "ann_1",
+    type: "conversation",
+    turns: [{ id: "ans_9", question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
+    anchor: {
+      host: { kind: "diff-line", fileKey: "conn", line: 91 },
+      quotedText: "code",
+      prefix: "",
+      suffix: "",
+      position: 91,
+      version: 1,
+    },
+    open: true,
+    messages: [],
+    post: false,
+  };
+  useReview.getState().clear();
+  useReview.getState().setSnapshot({
+    review: { id: "r", repoId: "x", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    files: [],
+    pages: [],
+    annotations: [card],
+    hunkStates: [],
+    jobs: [],
+    contributions: [],
+    logTail: [],
+    rev: 1,
+  } as unknown as ReviewSnapshot);
+}
 
-  test("a block anchor inside an expansion maps to the card anchor", () => {
-    seedWithExpansion();
-    expect(commentCardAnchor({ where: "block", blockId: "ann_1#b2" })).toEqual({
+describe("selection inside a conversation answer (issue #136)", () => {
+  test("the owning answer comes from the answer wrapper, not the card section", () => {
+    document.body.innerHTML =
+      `<div id="page">` +
+      `<section class="card child" id="B-ann_1">` +
+      `<div class="ans" data-answer="ans_9"><p data-top="b1"><span id="in-answer">x</span></p></div>` +
+      `</section></div>`;
+    expect(resolveSelectionHost(document.getElementById("in-answer")!)).toEqual({
+      anchor: { where: "block", blockId: "ans_9#b1" },
+    });
+  });
+
+  test("an answer owner maps a comment to the card anchor", () => {
+    seedConversationCard();
+    expect(commentCardAnchor({ where: "block", blockId: "ans_9#b1" })).toEqual({
+      where: "diff-line",
+      fileKey: "conn",
+      line: 91,
+    });
+  });
+});
+
+describe("comment from an agent answer (issue #135)", () => {
+  test("a block anchor inside an answer maps to the card anchor", () => {
+    seedConversationCard();
+    expect(commentCardAnchor({ where: "block", blockId: "ans_9#b2" })).toEqual({
       where: "diff-line",
       fileKey: "conn",
       line: 91,
@@ -113,7 +135,7 @@ describe("comment from an agent answer (issue #135)", () => {
   });
 
   test("a page-card anchor maps nowhere", () => {
-    seedWithExpansion();
+    seedConversationCard();
     expect(commentCardAnchor({ where: "block", blockId: "central#b2" })).toBeNull();
     expect(commentCardAnchor({ where: "diff-line", fileKey: "conn", line: 91 })).toBeNull();
   });
@@ -250,6 +272,29 @@ describe("revealed context (issue #133)", () => {
       fileKey: "gone",
       newLines: [],
       oldLines: [12],
+    });
+  });
+});
+
+describe("resolveSelectionHost on idle hunk summaries (issue #138)", () => {
+  test("a selection in the summary anchors the hunk", () => {
+    document.body.innerHTML =
+      `<div id="right"><div class="dhunk"><div class="fwrap"><div class="fcard">` +
+      `<div class="fsum"><p data-hunksum="conn:hash1"><span id="in-sum">Unfolds folds</span></p></div>` +
+      `</div></div></div></div>`;
+    expect(resolveSelectionHost(document.getElementById("in-sum")!)).toEqual({
+      anchor: { where: "hunk", fileKey: "conn", contentHash: "hash1" },
+    });
+  });
+
+  test("a selection inside an activated hunk card still addresses its answer blocks", () => {
+    document.body.innerHTML =
+      `<div id="right"><div class="dhunk"><div class="fwrap"><div class="fcard">` +
+      `<section class="card child" data-expansion="ann_h"><div class="ans" data-answer="ans_1">` +
+      `<div class="exp-b"><p class="prose sel" data-top="b1"><span id="in-ans">Unfolds folds</span></p></div>` +
+      `</div></section></div></div></div></div>`;
+    expect(resolveSelectionHost(document.getElementById("in-ans")!)).toEqual({
+      anchor: { where: "block", blockId: "ans_1#b1" },
     });
   });
 });

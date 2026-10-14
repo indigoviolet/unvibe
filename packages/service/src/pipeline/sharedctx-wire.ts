@@ -82,7 +82,7 @@ export function changeListVariable(
 
 export interface IngestTurnOptions {
   sessionId: string;
-  threadId?: string;
+  annotationId?: string;
   conversationKey?: string;
   cardId?: string;
   hunkHash?: string;
@@ -119,7 +119,7 @@ export async function ingestAgentTurn(
       {
         reviewId,
         sessionId: opts.sessionId,
-        ...(opts.threadId ? { threadId: opts.threadId } : {}),
+        ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
         contribute: opts.data.contribute,
         contextText,
         existing,

@@ -1,9 +1,9 @@
 /**
  * M4 web fixes (service side, additive):
- * - PATCH /comments/:id `open` applies to expansions (dotted-link click
- *   re-expands a closed expansion in place);
- * - second opinion resolves expansion targets and stores the result on the
- *   expansion body (survives depth/undo; removable by mode or stored id);
+ * - PATCH /comments/:id `open` applies to conversation cards (dotted-link
+ *   click re-expands a closed card in place);
+ * - second opinion resolves answer targets and stores the result on the
+ *   turn (survives depth/undo; removable by mode or stored id);
  * - concept jobs carry their stub card id so streamed text has a target.
  */
 import { describe, expect, it } from "vitest";
@@ -35,7 +35,7 @@ function fakeWithVerdict(verdict = "agrees"): FakeAgentRunner {
   ]);
 }
 
-function pagesWithExpansion(): { pages: ReviewSnapshot["pages"]; annotations: ReviewSnapshot["annotations"] } {
+function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations: ReviewSnapshot["annotations"] } {
   const pages = [
     {
       id: "root",
@@ -67,7 +67,7 @@ function pagesWithExpansion(): { pages: ReviewSnapshot["pages"]; annotations: Re
   const annotations = [
     {
       id: "ann_exp1",
-      type: "expansion",
+      type: "conversation",
       anchor: {
         host: { kind: "block", blockId: "central#b1" },
         quotedText: "the thing",
@@ -80,21 +80,23 @@ function pagesWithExpansion(): { pages: ReviewSnapshot["pages"]; annotations: Re
       messages: [],
       post: false,
       note: false,
-      expansion: {
-        blocks: [
-          {
-            type: "paragraph",
-            id: "e1",
-            text: { standard: "Explanation [[diff:a-py:1-2]]" },
-            citations: [{ target: "diff:a-py:1-2" }],
-          },
-        ],
-        level: "standard",
-        read: false,
-        collapsed: false,
-        revision: 1,
-        undoStack: [],
-      },
+      turns: [
+        {
+          id: "ans_exp1",
+          question: null,
+          blocks: [
+            {
+              type: "paragraph",
+              id: "e1",
+              text: { standard: "Explanation [[diff:a-py:1-2]]" },
+              citations: [{ target: "diff:a-py:1-2" }],
+            },
+          ],
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+        },
+      ],
     },
   ] as unknown as ReviewSnapshot["annotations"];
   return { pages, annotations };
@@ -122,8 +124,8 @@ async function setupWith(pages: ReviewSnapshot["pages"], annotations: ReviewSnap
 }
 
 describe("M4 web fixes", () => {
-  it("PATCH comments open applies to expansions", async () => {
-    const { pages, annotations } = pagesWithExpansion();
+  it("PATCH comments open applies to conversation cards", async () => {
+    const { pages, annotations } = pagesWithConversation();
     const s = await setupWith(pages, annotations);
     try {
       const authed = { authorization: "Bearer tok" };
@@ -134,7 +136,7 @@ describe("M4 web fixes", () => {
       const opened = await s.app.inject({ method: "PATCH", url: `/api/reviews/${s.reviewId}/comments/ann_exp1`, headers: authed, payload: { open: true } } as never);
       expect(opened.statusCode).toBe(200);
       expect(s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!.open).toBe(true);
-      // post/draft/reply stay thread-only on expansions.
+      // post/draft stay thread-only on conversation cards (reply drafts are allowed).
       const bad = await s.app.inject({ method: "PATCH", url: `/api/reviews/${s.reviewId}/comments/ann_exp1`, headers: authed, payload: { post: true } } as never);
       expect(bad.statusCode).toBe(400);
     } finally {
@@ -142,37 +144,38 @@ describe("M4 web fixes", () => {
     }
   });
 
-  it("second opinion works on expansions and survives depth/undo", async () => {
-    const { pages, annotations } = pagesWithExpansion();
+  it("second opinion works on answers and survives depth/undo", async () => {
+    const { pages, annotations } = pagesWithConversation();
     const s = await setupWith(pages, annotations);
     try {
       const snap = s.ctx.reviews.getSnapshot(s.reviewId)!;
-      const target = resolveTarget(snap, "ann_exp1");
-      expect(target.expansionId).toBe("ann_exp1");
+      const target = resolveTarget(snap, "ans_exp1");
+      expect(target.answerId).toBe("ans_exp1");
+      expect(target.annotationId).toBe("ann_exp1");
       expect(target.claimText).toContain("the thing");
       const deps = {
         reviews: s.ctx.reviews, jobs: s.ctx.jobs, sessions: s.ctx.sessions, runner: s.agents,
         mcp: s.ctx.mcp, settings: s.ctx.settings, commands: s.ctx.runner,
         dataDir: s.ctx.dataDir, promptsDir: s.ctx.promptsDir, mcpBaseUrl: "http://127.0.0.1:4517",
       };
-      const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "ann_exp1", mode: "check" });
+      const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "ans_exp1", mode: "check" });
       await s.ctx.jobs.drain(10000);
       expect(s.ctx.jobs.get(job.id)?.state).toBe("done");
       const stored = s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!;
-      expect(stored.type).toBe("expansion");
-      expect((stored as unknown as { expansion: { secondOpinions: { verdict: string }[] } }).expansion.secondOpinions).toHaveLength(1);
+      expect(stored.type).toBe("conversation");
+      expect((stored.turns?.[0]?.secondOpinions ?? []) as { verdict: string }[]).toHaveLength(1);
       // Removal by mode and by stored id both work.
-      await removeSecondOpinion({ reviews: s.ctx.reviews }, s.reviewId, "ann_exp1", "check");
+      await removeSecondOpinion({ reviews: s.ctx.reviews }, s.reviewId, "ans_exp1", "check");
       expect(
-        ((s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1") as unknown as { expansion: { secondOpinions?: unknown[] } }).expansion.secondOpinions ?? []).length,
+        (s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!.turns?.[0]?.secondOpinions ?? []).length,
       ).toBe(0);
     } finally {
       await s.app.close();
     }
   });
 
-  it("unknown expansion second-opinion targets fail like unknown cards", async () => {
-    const { pages } = pagesWithExpansion();
+  it("unknown answer second-opinion targets fail like unknown cards", async () => {
+    const { pages } = pagesWithConversation();
     const s = await setupWith(pages, []);
     try {
       const snap = s.ctx.reviews.getSnapshot(s.reviewId)!;

@@ -151,9 +151,18 @@ export interface RepoChange {
    * are none or the source did not say.
    */
   requestedTeams?: string[];
-  /** Set for kind "review": the opened review's id (M1 service addition). */
+  /**
+   * Set for kind "review": the opened review's id (M1 service addition).
+   * #149: also set for kind "pr"/"branch" when that row already has a
+   * review (same repo + PR number, or same repo + branch-only review) —
+   * the row opens that review instead of starting a new one.
+   */
   reviewId?: string;
-  /** Set for kind "review": head moved since the review was fetched. */
+  /**
+   * Set for kind "review": head moved since the review was fetched.
+   * #149: also set for kind "pr"/"branch" alongside `reviewId` when the
+   * linked review has new commits waiting.
+   */
   stale?: boolean;
   /** Set for kind "demo": fixture name, e.g. "urllib3-5020" (M3 pipeline). */
   demo?: string;
@@ -284,6 +293,15 @@ export interface ReviewSnapshot {
 }
 
 export type ReviewResponse = ReviewSnapshot;
+
+/**
+ * #149: `POST /api/reviews` answers with the review snapshot plus whether
+ * it reused an existing review for the same source (repo + PR number, or
+ * repo + branch). New reviews answer 202 without the flag; a reused
+ * review answers 200 with `reused: true`, so the web navigates without a
+ * "created" toast.
+ */
+export type CreateReviewResponse = ReviewSnapshot & { reused?: boolean };
 
 /**
  * Front screen (PRD §4.2): every review opened before, across ALL repos,
@@ -422,13 +440,19 @@ export interface UpdateReviewResponse {
  */
 export type ReviewAction =
   | { kind: "explain"; quote: string; anchor: ActionAnchor }
+  /** Issue #136 slice 2: same request; creates a conversation card whose first question is the message. */
   | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string }
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string }
+  /**
+   * Issue #136: `cardId` is a page-card id or one conversation answer's
+   * `ans_…` id. Depth, examples, diagram, undo and second opinion act on
+   * that unit's own blocks/level/undo stack, so an answer rewrites alone.
+   */
   | { kind: "depth"; cardId: string; direction: "simpler" | "deeper" }
   | { kind: "examples"; cardId: string }
   | { kind: "diagram"; cardId: string }
   | { kind: "undo"; cardId: string }
-  | { kind: "read"; cardId: string; read: boolean }
+  /** Issue #136: `cardId` is a page-card id or a conversation card id. */
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
   | { kind: "bookmark"; pageId: string; saved: boolean }
@@ -437,19 +461,29 @@ export type ReviewAction =
   | { kind: "close"; annotationId: string }
   | { kind: "delete"; targetId: string }
   /**
-   * M4: answer a follow-up suggestion under the block it came from. The
-   * answer is added as an expansion anchored on that block (prototype
-   * `follow`), quoting the suggestion label.
+   * Issue #138: turn an idle hunk summary into its conversation card
+   * (created from the stored summary text, no agent call), or reopen it.
+   * The explicit hunk control sends this; selecting summary text and
+   * choosing Explain/Ask goes through those actions with a hunk anchor.
+   */
+  | { kind: "hunk_card"; fileKey: string; contentHash: string }
+  /**
+   * M4: answer a follow-up suggestion under the block it came from.
+   * `cardId` is a page-card id, a conversation card id, or one answer's
+   * `ans_…` id. On a page card the answer arrives as a new conversation
+   * card anchored on that block (prototype `follow`), quoting the
+   * suggestion label; on a conversation card the suggestion is sent as
+   * the next turn in the same conversation (#136).
    */
   | { kind: "followup"; cardId: string; blockId: string; index: number }
   /**
-   * M4: follow-up user message in an existing ask thread. Continues the
-   * thread's conversation session (`Annotation.sessionId`) instead of
-   * forking again.
+   * Follow-up user message on a conversation card, added as a turn on
+   * the card's session (`Annotation.sessionId`) instead of forking
+   * again.
    */
-  | { kind: "reply"; threadId: string; message: string }
-  /** M4: retry a thread/expansion whose job left a visible error state. */
-  | { kind: "retry"; threadId: string }
+  | { kind: "reply"; annotationId: string; message: string }
+  /** Retry the last turn of a conversation card. */
+  | { kind: "retry"; annotationId: string }
   /**
    * M4: write a concept page on first open (`ensureConceptPage`). The
    * page shows a working state while its job fills it.
@@ -460,13 +494,20 @@ export type ActionAnchor =
   /**
    * A guide block, addressed `<card>#<block>` (block ids restart at `b1`
    * in every card, so the card qualifier is required). The card part is a
-   * page-card id, or — for a selection inside an explanation (#116) — the
-   * hosting expansion's annotation id, so nested explanations address
-   * `<expansion>#<block>` the same way.
+   * page-card id, or — for a selection inside a conversation answer (#116,
+   * #136) — the hosting answer's `ans_…` id, so nested cards address
+   * `<answer>#<block>` the same way.
    */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
-  | { where: "diff-line"; fileKey: string; line: number };
+  | { where: "diff-line"; fileKey: string; line: number }
+  /**
+   * Issue #138: a hunk, addressed `h:<fileKey>:<contentHash>`. Explain
+   * and Ask with a hunk anchor first turn the hunk's idle summary into a
+   * real conversation card (no agent call), then run as a nested card on
+   * the selected summary text.
+   */
+  | { where: "hunk"; fileKey: string; contentHash: string };
 
 export interface ActionResponse {
   accepted: boolean;
@@ -474,11 +515,11 @@ export interface ActionResponse {
   jobId?: string;
   /** M4: annotation created or targeted by the action (explain/ask/note/followup). */
   annotationId?: string;
-  /** M4: thread id (ask/reply/retry/followup answers). Same as annotationId for threads. */
-  threadId?: string;
+  /** Issue #136: turn created or targeted by the action (explain/ask/reply/retry/followup). */
+  turnId?: string;
   /** M4: page created or targeted (promote/concept/bookmark). */
   pageId?: string;
-  /** M4: card created or targeted (depth/examples/diagram/undo/read/collapse/followup). */
+  /** M4: card created or targeted (depth/examples/diagram/undo/collapse/followup). */
   cardId?: string;
   /** M4: true when an identical active request was reused (dedupe, PRD §12). */
   deduplicated?: boolean;
@@ -489,7 +530,7 @@ export interface ActionResponse {
    */
   reused?: boolean;
   /**
-   * Depth stepper result (issue #65): the card/expansion level after the
+   * Depth stepper result (issue #65): the card/answer level after the
    * action. Lets the client tell a stored-level switch (level changed:
    * silent) from already-at-the-limit (level unchanged: toast).
    */
@@ -669,7 +710,7 @@ export interface ReviewUsageTotals {
 
 // --- comments ------------------------------------------------------------
 
-/** PATCH /api/reviews/:id/comments/:commentId (M6 extends M3 contract). */
+/** PATCH /api/reviews/:id/comments/:commentId (M6 extends M3 contract; comments only). */
 export interface UpdateCommentRequest {
   post?: boolean;
   /** Editable draft of the text to post; explicit null clears it. */
@@ -691,8 +732,6 @@ export interface CreateCommentRequest {
   suffix?: string;
   /** Best-effort position at creation (line/offset). */
   position?: number;
-  /** True = Note (no agent reply); false = user's first Ask message. */
-  note?: boolean;
   /** Initial user text (first message when present). */
   text?: string;
   /**
@@ -717,7 +756,6 @@ export interface ReplyCommentRequest {
 export interface ThreadMessage {
   who: "you" | "ai";
   text?: string;
-  html?: string;
   /** M6: agent-drafted suggested comment (first message, not for PR). */
   suggested?: boolean;
 }
@@ -1260,7 +1298,7 @@ export type StatePatchOp =
 
 export type ReviewEvent =
   | { type: "job"; job: Job }
-  | { type: "text"; jobId: string; cardId?: string; threadId?: string; delta: string }
+  | { type: "text"; jobId: string; cardId?: string; annotationId?: string; delta: string }
   | { type: "patch"; baseRev: number; headRev: number; ops: StatePatchOp[] }
   | { type: "snapshot"; snapshot: ReviewSnapshot }
   | { type: "error"; message: string; jobId?: string };

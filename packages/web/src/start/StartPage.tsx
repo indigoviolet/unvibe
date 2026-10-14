@@ -61,6 +61,7 @@ import type {
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { Icon } from "../components/Icon.js";
 import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
@@ -613,6 +614,22 @@ export function StartPage(): React.JSX.Element {
     [navigate, loadSessions],
   );
 
+  /**
+   * #149: open a PR/branch row — a row that already has a review opens it
+   * directly (no new review, no repeated agent work); otherwise the review
+   * is created (the service reuses a ready review there too).
+   */
+  const openChange = useCallback(
+    (c: RepoChange, i: number, body: CreateReviewRequest) => {
+      if (c.reviewId) {
+        navigate(`/review/${c.reviewId}`);
+        return;
+      }
+      void openReview(changeKey(c, i), body);
+    },
+    [navigate, openReview],
+  );
+
   const removeSession = useCallback(
     async (id: string) => {
       setDeleting(id);
@@ -780,10 +797,10 @@ export function StartPage(): React.JSX.Element {
   const orphanSessions = reposLoaded
     ? (sessions ?? []).filter((s) => s.repoId !== "demo" && !knownIds.has(s.repoId))
     : [];
-  // Quiet kept-lists sign (#90): how old the shown rows are, plus a refresh
-  // marker while the background fetch is in flight. Short plain sentence
-  // case. The line always renders once lists show (even as a blank) so it
-  // never shifts the layout when it appears or disappears.
+  // Quiet kept-lists sign (#90, #148): how old the shown rows are, plus a
+  // refresh marker while the background fetch is in flight. Short plain
+  // sentence case. It rides the refresh icon's tooltip, so no text line
+  // ever appears or shifts the layout.
   const keptStatus =
     listsFor !== null && listsFor === selectedId ? keptStatusText(keptFetchedAt, refreshing) : null;
 
@@ -1024,7 +1041,46 @@ export function StartPage(): React.JSX.Element {
                   </button>
                 </p>
               ) : (
-                <>
+                <section className="prblock" aria-label="PRs and branches" data-testid="pr-block">
+                  <div className="prblock-head">
+                    <h2 className="prblock-title">PRs and branches</h2>
+                    <div className="prblock-tools">
+                      {/* Manual refresh (#148): the same load the Retry
+                          button below triggers. The last-fetch time rides
+                          the tooltip; the icon spins while fetching. */}
+                      <button
+                        className="ib"
+                        type="button"
+                        onClick={retryLists}
+                        title={keptStatus ?? "Refresh lists"}
+                        aria-label="Refresh lists"
+                        data-testid="lists-refresh"
+                      >
+                        <span className={refreshing ? "spin" : undefined} aria-hidden="true">
+                          <Icon name="refresh" />
+                        </span>
+                      </button>
+                      {/* Recency filter (#95, #131, #148): one compact
+                          control for everything in this block — "Your
+                          PRs", both review groups and Recent branches (by
+                          last commit date). Reviews above stays
+                          unfiltered. */}
+                      <select
+                        aria-label="Updated within"
+                        className="tbtn"
+                        value={recency}
+                        onChange={(e) => {
+                          if (isRecencyWindow(e.target.value)) selectRecency(e.target.value);
+                        }}
+                      >
+                        {RECENCY_WINDOWS.map((w) => (
+                          <option key={w.value} value={w.value}>
+                            {w.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   {listsError ? (
                     <p className="hint" role="alert" data-testid="lists-error">
                       Couldn&apos;t load PRs and branches for {selected ? `${selected.owner}/${selected.name}` : "this repo"}: {listsError}{" "}
@@ -1038,32 +1094,6 @@ export function StartPage(): React.JSX.Element {
                       {fetchNote}
                     </p>
                   ) : null}
-                  <p className="hint" data-testid="kept-status" style={{ minHeight: "1.2em", margin: 0 }}>
-                    {keptStatus ?? " "}
-                  </p>
-                  {/* Recency filter (#95, #131): one control for everything
-                      below it — "Your PRs", both review groups and Recent
-                      branches (by last commit date). Reviews above stays
-                      unfiltered. */}
-                  <div className="frow" style={{ gap: 6, alignItems: "center", marginBottom: 2 }}>
-                    <label className="hint" htmlFor="review-recency">
-                      Updated within
-                    </label>
-                    <select
-                      id="review-recency"
-                      className="tbtn"
-                      value={recency}
-                      onChange={(e) => {
-                        if (isRecencyWindow(e.target.value)) selectRecency(e.target.value);
-                      }}
-                    >
-                      {RECENCY_WINDOWS.map((w) => (
-                        <option key={w.value} value={w.value}>
-                          {w.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <ChangeSection
                     title="Your PRs"
                     changes={visibleAuthoring}
@@ -1077,7 +1107,7 @@ export function StartPage(): React.JSX.Element {
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
                     onOpen={(c, i) =>
-                      openReview(changeKey(c, i), {
+                      openChange(c, i, {
                         repoId: selectedId,
                         pr: c.prNumber,
                         branch: c.branch,
@@ -1116,7 +1146,7 @@ export function StartPage(): React.JSX.Element {
                         owner={selected?.owner ?? null}
                         name={selected?.name ?? null}
                         onOpen={(row, j) =>
-                          openReview(changeKey(row, j), {
+                          openChange(row, j, {
                             repoId: selectedId,
                             pr: row.prNumber,
                             branch: row.branch,
@@ -1151,7 +1181,7 @@ export function StartPage(): React.JSX.Element {
                         owner={selected?.owner ?? null}
                         name={selected?.name ?? null}
                         onOpen={(row, j) =>
-                          openReview(changeKey(row, j), {
+                          openChange(row, j, {
                             repoId: selectedId,
                             pr: row.prNumber,
                             branch: row.branch,
@@ -1174,9 +1204,9 @@ export function StartPage(): React.JSX.Element {
                     onShowAll={() => selectRecency("all")}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
-                    onOpen={(c, i) => openReview(changeKey(c, i), { repoId: selectedId, branch: c.branch })}
+                    onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
                   />
-                </>
+                </section>
               )}
             </>
           )}
@@ -1422,7 +1452,13 @@ function ChangeRow({
           <span className="cx2">{c.title}</span>
         </button>
       </div>
-      {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
+      {c.reviewId || opening === changeKey(c, i) ? (
+        <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+          {c.reviewId ? <span className="prtag">review</span> : null}
+          {c.reviewId && c.stale ? <span className="prtag">new commits</span> : null}
+          {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

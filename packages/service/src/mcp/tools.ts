@@ -56,9 +56,11 @@ const SEARCH_REVIEW: McpToolDef = {
   name: "search_review",
   description:
     "Substring search over this review: guide cards, annotations, " +
-    "contributions and the PR description paragraphs. Returns matching " +
-    "items with IDs (description hits are desc: IDs). The second-opinion " +
-    "role searches only the description.",
+    "contributions, the PR description paragraphs, and changed file paths. " +
+    "Returns matching items with IDs (description hits are desc: IDs). " +
+    "A query matching a file path returns one file hit per file with its " +
+    "hunk IDs; map any path to all its hunk IDs with `resolve`. " +
+    "The second-opinion role searches only the description.",
   inputSchema: {
     type: "object",
     properties: {

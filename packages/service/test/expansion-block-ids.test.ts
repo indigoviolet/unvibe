@@ -1,5 +1,5 @@
 /**
- * Block IDs stay unique within one expansion body (#116).
+ * Block IDs stay unique within one answer body (#116, #136).
  *
  * `parseCards` numbers blocks per card, so a multi-card agent reply
  * flattened into an explanation used to repeat IDs (`["b1","b1"]`) — and
@@ -92,7 +92,7 @@ function fakeAgents(): FakeAgentRunner {
   return new FakeAgentRunner([
     { match: "reply with exactly", events: textEvents("ready") },
     { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-    { match: "# Explain", events: textEvents(TWO_CARD_EXPLAIN) },
+    { match: "## The question\n\nExplain this.", events: textEvents(TWO_CARD_EXPLAIN) },
     { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
     { match: "# Examples", events: textEvents(EXAMPLES_REPLY) },
     { match: "# Ask", events: textEvents(ASK_REPLY) },
@@ -201,7 +201,7 @@ describe("inserted block IDs (#116)", () => {
   });
 });
 
-describe("expansion body block IDs (#116)", () => {
+describe("answer body block IDs (#116, #136)", () => {
   it("a multi-card explain stores unique, first-stable block IDs", { timeout: 90000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const { app, ctx } = await createApp("tok", { agents: fakeAgents() });
@@ -216,8 +216,9 @@ describe("expansion body block IDs (#116)", () => {
       expect(res.status).toBe(200);
       if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
       else await new Promise((r) => setTimeout(r, 500));
+      const turnId = res.json.turnId as string;
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
-      const ids = topIds(ann.expansion!.blocks);
+      const ids = topIds((ann.turns ?? []).find((t) => t.id === turnId)!.blocks);
       expect(ids.length).toBeGreaterThan(2);
       assertUnique(ids);
       // First occurrences keep their parser IDs.
@@ -241,20 +242,25 @@ describe("expansion body block IDs (#116)", () => {
       expect(res.status).toBe(200);
       if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
       const annId = res.json.annotationId as string;
-      const atFirst = topIds(ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.expansion!.blocks);
+      const turnId = res.json.turnId as string;
+      const turnBlocks = () =>
+        (ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.turns ?? []).find((t) => t.id === turnId)!.blocks;
+      const atFirst = topIds(turnBlocks());
       assertUnique(atFirst);
 
-      const depth = await postAction(app, id, { kind: "depth", cardId: annId, direction: "simpler" });
+      // Depth and examples act on the answer alone: the card id is the
+      // answer id, and the sibling-free rewrite keeps every block id.
+      const depth = await postAction(app, id, { kind: "depth", cardId: turnId, direction: "simpler" });
       expect(depth.status).toBe(200);
       if (depth.json.jobId) await waitForJob(ctx, depth.json.jobId as string);
-      const atDepth = topIds(ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.expansion!.blocks);
+      const atDepth = topIds(turnBlocks());
       assertUnique(atDepth);
       for (const kept of atFirst) expect(atDepth).toContain(kept);
 
-      const examples = await postAction(app, id, { kind: "examples", cardId: annId });
+      const examples = await postAction(app, id, { kind: "examples", cardId: turnId });
       expect(examples.status).toBe(200);
       if (examples.json.jobId) await waitForJob(ctx, examples.json.jobId as string);
-      const atExamples = topIds(ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.expansion!.blocks);
+      const atExamples = topIds(turnBlocks());
       assertUnique(atExamples);
       expect(atExamples.length).toBeGreaterThan(atDepth.length);
     } finally {
@@ -276,17 +282,28 @@ describe("expansion body block IDs (#116)", () => {
       expect(res.status).toBe(200);
       if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
       const annId = res.json.annotationId as string;
-      const body = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.expansion!.blocks;
+      const turnId = res.json.turnId as string;
+      const body = (ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.turns ?? []).find(
+        (t) => t.id === turnId,
+      )!.blocks;
       const followUp = body.find((b) => b.type === "follow-up");
       expect(followUp).toBeTruthy();
 
-      const follow = await postAction(app, id, { kind: "followup", cardId: annId, blockId: followUp!.id, index: 0 });
+      // A suggestion on the conversation card is the next turn in the
+      // same conversation (the item stays).
+      const turnsBefore = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.turns!.length;
+      const follow = await postAction(app, id, { kind: "followup", cardId: turnId, blockId: followUp!.id, index: 0 });
       expect(follow.status).toBe(200);
       if (follow.json.jobId) await waitForJob(ctx, follow.json.jobId as string);
-      const answer = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (follow.json.annotationId as string))!;
-      expect(answer.anchor.host).toMatchObject({ kind: "block", blockId: `${annId}#${followUp!.id}` });
+      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (follow.json.annotationId as string))!;
+      expect(card.id).toBe(annId);
+      expect(card.turns!.length).toBe(turnsBefore + 1);
+      expect(card.turns!.at(-1)!.blocks.length).toBeGreaterThan(0);
+      const kept = (card.turns ?? []).find((t) => t.id === turnId)!.blocks.find((b) => b.type === "follow-up");
+      expect(kept).toBeTruthy();
 
-      // A nested Explain on each paragraph addresses a distinct host.
+      // A nested Explain on each paragraph addresses a distinct host
+      // (stored qualified by the answer id).
       const paras = body.filter((b) => b.type === "paragraph");
       expect(paras.length).toBeGreaterThanOrEqual(2);
       const hosts: string[] = [];
@@ -296,12 +313,12 @@ describe("expansion body block IDs (#116)", () => {
         const nested = await postAction(app, id, {
           kind: "explain",
           quote: `${quote} #${i}`,
-          anchor: { where: "block", blockId: `${annId}#${p.id}` },
+          anchor: { where: "block", blockId: `${turnId}#${(p as { id: string }).id}` },
         });
         expect(nested.status).toBe(200);
         const stored = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (nested.json.annotationId as string))!;
         const host = (stored.anchor.host as { blockId: string }).blockId;
-        expect(host).toBe(`${annId}#${p.id}`);
+        expect(host).toBe(`${turnId}#${(p as { id: string }).id}`);
         hosts.push(host);
       }
       expect(new Set(hosts).size).toBe(hosts.length);

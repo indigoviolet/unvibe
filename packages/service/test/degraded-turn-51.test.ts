@@ -3,10 +3,12 @@
  *
  * With the fake `AgentRunner` the review MCP server is unreachable by
  * construction (fakes never connect), which is exactly the production
- * failure shape: a turn that reports a degraded reply — in the trailing
- * `degraded` field or as tool chatter in the body — must fail its job
- * instead of storing a card, and must leave no streamed partials behind.
- * A turn whose session did use its tools is exempt from the fuzzy match.
+ * failure shape. Tool chatter in the body still fails its job instead of
+ * storing a card and leaves no streamed partials behind — but a trailing
+ * `degraded` field with a usable body keeps the answer: it shows with a
+ * plain-words note while the raw reason lands on the job for Debug. Only
+ * an empty degraded answer fails. A turn whose session did use its tools
+ * is exempt from the fuzzy match.
  */
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, ReviewSnapshot, Session } from "@unvibe/shared";
@@ -85,20 +87,20 @@ async function runExplain(
   await waitFor(() => {
     const s = ctx.reviews.getSnapshot(id);
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
-      | { working: string | null; expansion?: { working: string | null } }
+      | { working: string | null; turns?: { working: string | null }[] }
       | undefined;
-    return a?.working == null && a?.expansion?.working == null;
+    return a?.working == null && (a?.turns ?? []).every((t) => t.working == null);
   }, 60000);
   return { annotationId, ...(jobId ? { jobId } : {}) };
 }
 
 describe("degraded turns (#51)", () => {
-  it("a trailing degraded field fails the job and stores nothing", { timeout: 90000 }, async () => {
+  it("a trailing degraded field with a usable body keeps the answer with a note", { timeout: 90000 }, async () => {
     const agents = new FakeAgentRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(
           `The host block is described here.\n\n\`\`\`json\n{"degraded": "resolve returned nothing for the description paragraphs"}\n\`\`\`\n`,
         ),
@@ -108,14 +110,42 @@ describe("degraded turns (#51)", () => {
     try {
       const { annotationId, jobId } = await runExplain(app, ctx, id);
       expect(jobId).toBeTruthy();
+      // The job succeeds: the usable answer is kept, not thrown away.
+      expect(ctx.jobs.get(jobId!)?.state).toBe("done");
+      expect(ctx.jobs.get(jobId!)?.error).toBeUndefined();
+      // The raw reason lands on the job for the Debug page…
+      expect(ctx.jobs.get(jobId!)?.degradedReason).toContain("resolve returned nothing");
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      expect(ann.type).toBe("conversation");
+      const blocks = (ann.turns ?? [])[0]?.blocks ?? [];
+      // …the answer shows with the body plus a plain-words note (never
+      // the agent's internal wording on the card).
+      expect(JSON.stringify(blocks)).toContain("The host block is described here.");
+      expect(JSON.stringify(blocks)).toContain("Some references in this answer could not be linked to the code.");
+      expect(JSON.stringify(blocks)).not.toContain("resolve returned nothing");
+      expect(ann.turns?.[0]?.error).toBeFalsy();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a trailing degraded field with no usable body fails the job and stores nothing", { timeout: 90000 }, async () => {
+    const agents = new FakeAgentRunner([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+      {
+        match: "## The question\n\nExplain this.",
+        events: textEvents(`\`\`\`json\n{"degraded": "the MCP was unreachable and there is no answer"}\n\`\`\`\n`),
+      },
+    ]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      expect(jobId).toBeTruthy();
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/degraded/);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(ann.type).toBe("expansion");
-      // No card content survived: neither the stored fill (never applied)
-      // nor streamed partials (cleared on degraded errors).
-      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
-      expect(JSON.stringify(ctx.reviews.getSnapshot(id))).not.toContain("The host block is described here.");
+      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
     } finally {
       await app.close();
     }
@@ -126,7 +156,7 @@ describe("degraded turns (#51)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(
           `The review's MCP server failed to connect, so I could not look up the host block's ID.\n\n\`\`\`json\n{}\n\`\`\`\n`,
         ),
@@ -139,7 +169,7 @@ describe("degraded turns (#51)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       const snap = ctx.reviews.getSnapshot(id)!;
       const ann = snap.annotations.find((a) => a.id === annotationId)!;
-      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
+      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
       expect(JSON.stringify(snap)).not.toContain("failed to connect");
     } finally {
       await app.close();
@@ -151,7 +181,7 @@ describe("degraded turns (#51)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(
           `I don't know the exact repo name, though. I tried to look it up with gh, but the command was refused.\n\n\`\`\`json\n{}\n\`\`\`\n`,
         ),
@@ -165,7 +195,7 @@ describe("degraded turns (#51)", () => {
       const snap = ctx.reviews.getSnapshot(id)!;
       expect(JSON.stringify(snap)).not.toContain("command was refused");
       const ann = snap.annotations.find((a) => a.id === annotationId)!;
-      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
+      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
     } finally {
       await app.close();
     }
@@ -179,7 +209,7 @@ describe("degraded turns (#51)", () => {
     let mcp: McpRegistry | null = null;
     class ConnectingFakeRunner extends FakeAgentRunner {
       override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
-        if (reviewId && mcp && text.includes("# Explain")) {
+        if (reviewId && mcp && text.includes("## The question\n\nExplain this.")) {
           const issued = mcp.issueSession(reviewId, "mid-turn", "session");
           void mcp.handleRequest(issued.secret, {} as never, {} as never, { method: "ping" }).catch(() => {});
           await new Promise((r) => setTimeout(r, 150));
@@ -191,7 +221,7 @@ describe("degraded turns (#51)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(`I could not verify the timeout from the context alone.\n\n\`\`\`json\n{}\n\`\`\`\n`),
       },
     ]);
@@ -204,7 +234,7 @@ describe("degraded turns (#51)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+        ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -246,7 +276,7 @@ describe("card-only anchors (#51 validator)", () => {
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
       {
-        match: "# Explain",
+        match: "## The question\n\nExplain this.",
         events: textEvents(
           `The host block is described here.\n\n\`\`\`json\n{"anchor": {"quote": "problem paragraph", "host": "card:central"}}\n\`\`\`\n`,
         ),
@@ -264,7 +294,7 @@ describe("card-only anchors (#51 validator)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+        ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -286,7 +316,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
     let mcp: McpRegistry | null = null;
     class ConnectingFakeRunner extends FakeAgentRunner {
       override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
-        if (reviewId && mcp && text.includes("# Explain")) {
+        if (reviewId && mcp && text.includes("## The question\n\nExplain this.")) {
           const issued = mcp.issueSession(reviewId, "mid-turn", "session");
           void mcp.handleRequest(issued.secret, {} as never, {} as never, { method: "ping" }).catch(() => {});
           await new Promise((r) => setTimeout(r, 150));
@@ -297,7 +327,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
     const agents = new ConnectingFakeRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-      { match: "# Explain", events: textEvents(MCP_PROSE_REPLY) },
+      { match: "## The question\n\nExplain this.", events: textEvents(MCP_PROSE_REPLY) },
     ]);
     const { app, ctx, id } = await openDemo(agents);
     try {
@@ -306,7 +336,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
       const { annotationId, jobId } = await runExplain(app, ctx, id);
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const blocks = (ann as unknown as { expansion: { blocks: { type: string }[] } }).expansion.blocks;
+      const blocks = ((ann.turns ?? [])[0]?.blocks ?? []);
       expect(blocks.length).toBeGreaterThan(0);
       expect(JSON.stringify(blocks)).toContain("MCP server exposes get_hunk");
     } finally {
@@ -318,7 +348,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
     const agents = new FakeAgentRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-      { match: "# Explain", events: textEvents(MCP_PROSE_REPLY) },
+      { match: "## The question\n\nExplain this.", events: textEvents(MCP_PROSE_REPLY) },
     ]);
     const { app, ctx, id } = await openDemo(agents);
     try {
@@ -326,7 +356,7 @@ describe("vocabulary is never a fact (#51 review)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+        ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -350,7 +380,7 @@ describe("connection-error retry (#51 review)", () => {
       seen: string[] = [];
       override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
         this.seen.push(text);
-        if (text.includes("# Explain")) {
+        if (text.includes("## The question\n\nExplain this.")) {
           calls += 1;
           mcp.current?.noteUnknownHit();
           yield* scripted[Math.min(calls, scripted.length) - 1]!;
@@ -373,12 +403,12 @@ describe("connection-error retry (#51 review)", () => {
       mcp.current = ctx.mcp;
       const { annotationId, jobId } = await runExplain(app, ctx, id);
       // Exactly two turns: the first attempt plus one retry on a fresh fork.
-      const explains = agents.seen.filter((t) => t.includes("# Explain"));
+      const explains = agents.seen.filter((t) => t.includes("## The question\n\nExplain this."));
       expect(explains).toHaveLength(2);
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/could not look up|degraded/i);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect((ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks).toEqual([]);
+      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
     } finally {
       await app.close();
     }
@@ -390,13 +420,35 @@ describe("connection-error retry (#51 review)", () => {
     try {
       mcp.current = ctx.mcp;
       const { annotationId, jobId } = await runExplain(app, ctx, id);
-      const explains = agents.seen.filter((t) => t.includes("# Explain"));
+      const explains = agents.seen.filter((t) => t.includes("## The question\n\nExplain this."));
       expect(explains).toHaveLength(2);
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        (ann as unknown as { expansion: { blocks: unknown[] } }).expansion.blocks.length,
+        ((ann.turns ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a retry that still reports degraded keeps its usable body", { timeout: 90000 }, async () => {
+    const FIELD_WITH_BODY = `The host block is described here.\n\n\`\`\`json\n{"degraded": "resolve came back empty"}\n\`\`\`\n`;
+    const { agents, mcp } = hittingRunner([CHATTER, FIELD_WITH_BODY]);
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      mcp.current = ctx.mcp;
+      const { annotationId, jobId } = await runExplain(app, ctx, id);
+      const explains = agents.seen.filter((t) => t.includes("## The question\n\nExplain this."));
+      expect(explains).toHaveLength(2);
+      // The retry failed too — but its body is usable, so the answer is
+      // kept with the note instead of failing the job.
+      expect(ctx.jobs.get(jobId!)?.state).toBe("done");
+      expect(ctx.jobs.get(jobId!)?.degradedReason).toContain("resolve came back empty");
+      const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
+      const blocks = (ann.turns ?? [])[0]?.blocks ?? [];
+      expect(JSON.stringify(blocks)).toContain("The host block is described here.");
+      expect(JSON.stringify(blocks)).toContain("Some references in this answer could not be linked to the code.");
     } finally {
       await app.close();
     }

@@ -524,7 +524,7 @@ describe("persistence and restart recovery", () => {
     const store = new JobStore(db);
     const q1 = new JobQueue({ clock: new ManualClock(), persist: store });
     const finished = q1.enqueue(
-      spec({ reviewId: "r1", promptSnapshot: "P", threadId: "t-1", run: async () => {} }),
+      spec({ reviewId: "r1", promptSnapshot: "P", annotationId: "t-1", run: async () => {} }),
     );
     await q1.drain();
     expect(q1.get(finished.id)?.state).toBe("done");
@@ -556,8 +556,8 @@ describe("persistence and restart recovery", () => {
     // Lists stay small (no prompt snapshots); single gets keep them.
     expect(listed.find((j) => j.id === finished.id)?.promptSnapshot).toBeUndefined();
     expect(q2.get(finished.id)?.promptSnapshot).toBe("P");
-    // threadId survives, so finished ask/explain jobs still match their threads.
-    expect(q2.get(finished.id)?.threadId).toBe("t-1");
+    // annotationId survives, so finished ask jobs still match their cards.
+    expect(q2.get(finished.id)?.annotationId).toBe("t-1");
     // Hydrated jobs never count as active, never execute, never block exit.
     expect(q2.activeCount()).toBe(0);
     expect(q2.listActive()).toEqual([]);

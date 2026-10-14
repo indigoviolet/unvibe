@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { GuideThreadHooks } from "../../comments/GuideThreads.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionHighlights } from "./ExpansionHighlights.js";
@@ -37,10 +38,10 @@ describe("hover outline (#111)", () => {
   test("a mouseover leaves depth pips on while clearing mark/card/thread outlines", () => {
     const page = mountPage();
     render(
-      <>
+      <MemoryRouter initialEntries={["/review/demo"]}>
         <ExpansionHighlights />
         <GuideThreadHooks />
-      </>,
+      </MemoryRouter>,
     );
     page.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     // Pips keep their React-rendered active state.

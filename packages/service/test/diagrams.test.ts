@@ -558,15 +558,15 @@ explain-demo-a -> explain-demo-b: hello
 \`\`\`
 `;
 
-describe("expansion diagrams (#71)", () => {
-  it("serves a diagram stored in an Explain expansion (not 404)", { timeout: 90000 }, async () => {
+describe("conversation answer diagrams (#71, #136)", () => {
+  it("serves a diagram stored in an Explain answer (not 404)", { timeout: 90000 }, async () => {
     const prev = process.env.UNVIBE_D2_BIN;
     process.env.UNVIBE_D2_BIN = "/nonexistent/d2-for-test";
     try {
       const agents = new FakeAgentRunner([
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_WITH_DIAGRAM) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_WITH_DIAGRAM) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -594,12 +594,12 @@ describe("expansion diagrams (#71)", () => {
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -623,7 +623,7 @@ describe("expansion diagrams (#71)", () => {
     }
   });
 
-  it("serves a diagram nested in an aside inside an expansion", { timeout: 90000 }, async () => {
+  it("serves a diagram nested in an aside inside an answer", { timeout: 90000 }, async () => {
     const prev = process.env.UNVIBE_D2_BIN;
     process.env.UNVIBE_D2_BIN = "/nonexistent/d2-for-test";
     try {
@@ -643,7 +643,7 @@ aside-demo-a -> aside-demo-b: hi
       const agents = new FakeAgentRunner([
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(reply) },
+        { match: "## The question\n\nExplain this.", events: textEvents(reply) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -671,11 +671,11 @@ aside-demo-a -> aside-demo-b: hi
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
-        const expansion = snap.annotations.find((a) => a.id === annotationId)!.expansion!;
-        const asideBlock = expansion.blocks.find((b) => b.type === "aside") as unknown as {
+        const turnBlocks = snap.annotations.find((a) => a.id === annotationId)!.turns![0]!.blocks;
+        const asideBlock = turnBlocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; render?: { hash: string } }[];
         };
         expect(asideBlock).toBeDefined();
@@ -720,7 +720,7 @@ broken-shape: "x" {link: "diff:nope:999999"}
       const agents = new FakeAgentRunner([
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(reply) },
+        { match: "## The question\n\nExplain this.", events: textEvents(reply) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -748,12 +748,12 @@ broken-shape: "x" {link: "diff:nope:999999"}
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.expansion?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           render?: { hash: string; status: string };
         };
         expect(dg).toBeDefined();
@@ -793,7 +793,7 @@ function writeFailingD2(): { dir: string; bin: string } {
   return { dir, bin };
 }
 
-/** Wait until an Explain expansion's fill settled (final mutate cleared `working`). */
+/** Wait until an Explain answer's fill settled (final mutate cleared `working`). */
 function waitForExpansion(
   ctx: { reviews: { getSnapshot(id: string): ReviewSnapshot | null } },
   id: string,
@@ -803,9 +803,9 @@ function waitForExpansion(
   return waitFor(() => {
     const s = ctx.reviews.getSnapshot(id);
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
-      | { working: string | null; expansion?: { blocks: unknown[]; working: string | null } }
+      | { working: string | null; turns?: { blocks: unknown[]; working: string | null }[] }
       | undefined;
-    return (a?.expansion?.blocks.length ?? 0) > 0 && a?.working == null && a?.expansion?.working == null;
+    return ((a?.turns?.[0]?.blocks.length ?? 0) > 0) && a?.working == null && (a?.turns ?? []).every((t) => t.working == null);
   }, timeoutMs);
 }
 /** Explain reply carrying the owner's failing shape (inline `.class`). */
@@ -883,7 +883,7 @@ describe("failed on-demand renders (#130)", () => {
       const agents = new FakeAgentRunner([
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -913,7 +913,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           render?: { hash: string; status: string };
         };
         expect(dg).toBeDefined();
@@ -948,7 +948,7 @@ describe("failed on-demand renders (#130)", () => {
         { match: "failed validation", events: textEvents(EXPLAIN_FIXED_REPAIR) },
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_CLASS_DIAGRAM) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -980,7 +980,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -1013,7 +1013,7 @@ describe("failed on-demand renders (#130)", () => {
         { match: "failed validation", events: textEvents(EXPLAIN_FIXED_REPAIR) },
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_STEPS_SHAPE) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_STEPS_SHAPE) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -1045,7 +1045,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -1245,7 +1245,7 @@ describe("aside-nested diagrams (#130)", () => {
         { match: "failed validation", events: textEvents(EXPLAIN_ASIDE_FIXED) },
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -1277,7 +1277,7 @@ describe("aside-nested diagrams (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const aside = snap.annotations
           .find((a) => a.id === annotationId)!
-          .expansion!.blocks.find((b) => b.type === "aside") as unknown as {
+          .turns![0]!.blocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; source?: string; render?: { status: string } }[];
         };
         expect(aside).toBeDefined();
@@ -1303,7 +1303,7 @@ describe("aside-nested diagrams (#130)", () => {
         { match: "failed validation", events: textEvents("Prose without a diagram.\n\n```json\n{}\n```\n") },
         { match: "reply with exactly", events: textEvents("ready") },
         { match: "# Reader task", events: textEvents(MINIMAL_READER) },
-        { match: "# Explain", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_ASIDE_BROKEN) },
       ]);
       const { app, ctx } = await createApp("tok", { agents });
       try {
@@ -1332,8 +1332,8 @@ describe("aside-nested diagrams (#130)", () => {
         await waitForExpansion(ctx, id, annotationId);
         expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
         const snap = ctx.reviews.getSnapshot(id)!;
-        const expansion = snap.annotations.find((a) => a.id === annotationId)!.expansion!;
-        const aside = expansion.blocks.find((b) => b.type === "aside") as unknown as {
+        const turnBlocks = snap.annotations.find((a) => a.id === annotationId)!.turns![0]!.blocks;
+        const aside = turnBlocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; render?: { status: string; error?: string } }[];
         };
         expect(aside).toBeDefined();
@@ -1341,7 +1341,7 @@ describe("aside-nested diagrams (#130)", () => {
         expect(dg.render?.status).toBe("error");
         expect(dg.render?.error).toMatch(/not valid D2/);
         // The prose is unaffected.
-        expect(JSON.stringify(expansion.blocks)).toContain("An explanation with an example.");
+        expect(JSON.stringify(turnBlocks)).toContain("An explanation with an example.");
       } finally {
         await app.close();
       }
@@ -1478,6 +1478,181 @@ describe("real d2 binary", () => {
       }
     } finally {
       fs.rmSync(secretDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// --- issue #145: diagrams written inline in guide (reader) cards ---------
+
+/** Reader reply with the owner's failing shape inline in a guide card. */
+const READER_CLASS_DIAGRAM = `## The problem
+
+A paragraph about the problem.
+
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup" {.class: [bad]}
+start -> gone: finish
+\`\`\`
+
+## The central change
+
+The central paragraph.
+
+\`\`\`json
+{"cardIds": ["problem", "central"]}
+\`\`\`
+`;
+
+/** Fixed diagram reply for the reader's repair turn (legal line form). */
+const READER_FIXED_REPAIR = `A fixed diagram for the problem card.
+
+\`\`\`d2
+direction: right
+start: "request in"
+gone: "unmount cleanup"
+gone.class: [bad]
+start -> gone: finish
+\`\`\`
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+function rootDiagramOf(
+  ctx: { reviews: { getSnapshot(id: string): ReviewSnapshot | null } },
+  id: string,
+): { source: string; render?: { hash: string; status: string; error?: string } } | undefined {
+  const snap = ctx.reviews.getSnapshot(id)!;
+  const cards = snap.pages.find((p) => p.id === "root")?.cards ?? [];
+  for (const card of cards) {
+    const dg = (card.blocks as { type: string }[]).find((b) => b.type === "diagram") as unknown as {
+      source: string;
+      render?: { hash: string; status: string; error?: string };
+    };
+    if (dg) return dg;
+  }
+  return undefined;
+}
+
+describe("reader inline diagrams (#145)", () => {
+  it("splitFinalizedBlocks restores the per-card split, extras to the last card", async () => {
+    const { splitFinalizedBlocks } = await import("../src/pipeline/apply.js");
+    const p = (id: string): { type: string; id: string } => ({ type: "paragraph", id });
+    const dg = (id: string): { type: string; id: string } => ({ type: "diagram", id });
+    const cards = [
+      { title: "The problem", blocks: [p("b1"), dg("b2")] },
+      { title: "The central change", blocks: [p("b1")] },
+    ];
+    // 1:1 finalize: same blocks back across the same split.
+    expect(splitFinalizedBlocks(cards, [p("b1"), dg("b2"), p("b1")])).toEqual(cards);
+    // Repair extras append to the last card, never the first.
+    const split = splitFinalizedBlocks(cards, [p("b1"), dg("b2"), p("b1"), dg("b9")]);
+    expect(split[0].blocks).toEqual([p("b1"), dg("b2")]);
+    expect(split[1].blocks).toEqual([p("b1"), dg("b9")]);
+  });
+
+  it("a bad diagram gets exactly one repair turn and lands drawn", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents(READER_FIXED_REPAIR) },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(READER_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+        // The diagram repair turn ran exactly once, on the reader session.
+        await waitFor(
+          () => agents.prompts.filter((p) => p.text.includes("failed validation")).length === 1,
+          60000,
+        );
+        // listByReview returns copies: re-list inside the poll and read
+        // fresh state via get(), or the wait spins on a stale snapshot.
+        const readerDone = (): boolean => {
+          const jobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
+          const last = jobs[jobs.length - 1];
+          return last !== undefined && ["done", "error", "cancelled"].includes(ctx.jobs.get(last.id)?.state ?? "");
+        };
+        await waitFor(readerDone, 60000);
+        const readerJobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
+        expect(ctx.jobs.get(readerJobs[readerJobs.length - 1]!.id)?.state).toBe("done");
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const dg = rootDiagramOf(ctx, id);
+        expect(dg).toBeDefined();
+        // The repaired source won and rendered.
+        expect(dg!.render?.status).toBe("ok");
+        expect(dg!.source).toContain("gone.class: [bad]");
+        // The prose is unaffected.
+        expect(JSON.stringify(ctx.reviews.getSnapshot(id))).toContain("A paragraph about the problem.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("an unrepairable diagram keeps an error block and the prose", { timeout: 120000 }, async () => {
+    const { dir, bin } = writeSmartD2();
+    const prev = process.env.UNVIBE_D2_BIN;
+    process.env.UNVIBE_D2_BIN = bin;
+    try {
+      const agents = new FakeAgentRunner([
+        { match: "failed validation", events: textEvents("Still prose, no diagram here.\n\n```json\n{}\n```\n") },
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(READER_CLASS_DIAGRAM) },
+      ]);
+      const { app, ctx } = await createApp("tok", { agents });
+      try {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/reviews",
+          headers: authed,
+          payload: { repoId: "demo" },
+        } as never);
+        expect(created.statusCode).toBe(201);
+        const id = (created.json() as ReviewSnapshot).review.id;
+        await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+        // listByReview returns copies: re-list inside the poll and read
+        // fresh state via get(), or the wait spins on a stale snapshot.
+        const readerDone = (): boolean => {
+          const jobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
+          const last = jobs[jobs.length - 1];
+          return last !== undefined && ["done", "error", "cancelled"].includes(ctx.jobs.get(last.id)?.state ?? "");
+        };
+        await waitFor(readerDone, 60000);
+        const readerJobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
+        expect(ctx.jobs.get(readerJobs[readerJobs.length - 1]!.id)?.state).toBe("done");
+        // Exactly one repair turn, no loop.
+        expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
+        const dg = rootDiagramOf(ctx, id);
+        expect(dg).toBeDefined();
+        expect(dg!.render?.status).toBe("error");
+        // The prose is unaffected.
+        expect(JSON.stringify(ctx.reviews.getSnapshot(id))).toContain("A paragraph about the problem.");
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_D2_BIN;
+      else process.env.UNVIBE_D2_BIN = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

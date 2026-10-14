@@ -19,6 +19,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { selectText } from "./select-text.js";
 import type { Locator, Page } from "@playwright/test";
 
 const exec = promisify(execFile);
@@ -30,37 +31,6 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
   if (body !== undefined) args.push("-d", JSON.stringify(body));
   const { stdout } = await exec("curl", args);
   return JSON.parse(stdout);
-}
-
-async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
-  await page.evaluate((sel: string) => {
-    document.querySelector(sel)?.scrollIntoView({ block: "center" });
-  }, rootSelector);
-  // No settle wait: the app has no smooth scrolling.
-  const found = await page.evaluate(
-    ({ rootSelector, text }: { rootSelector: string; text: string }) => {
-      const root = document.querySelector(rootSelector);
-      if (!root) return false;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const data = (node as Text).data;
-        const at = data.indexOf(text);
-        if (at < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, at);
-        range.setEnd(node, at + text.length);
-        const sel = getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return true;
-      }
-      return false;
-    },
-    { rootSelector, text },
-  );
-  expect(found).toBe(true);
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 5000 });
 }
 
 /**
@@ -249,18 +219,19 @@ test.describe("reader journey over the real service (replay)", () => {
     await page.goBack();
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 15_000 });
 
-    // Ask on another block; the streamed answer carries citations; clicking
-    // one reveals the diff with a highlight.
+    // Ask on another block; the answer arrives as blocks with citations;
+    // clicking one reveals the diff with a highlight.
     await selectText(page, "#C-problem", "folded");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const thread = page.locator("#C-problem .ithread[data-thread]", { hasText: "What is line folding?" });
-    await expect(thread.first()).toBeVisible({ timeout: 30_000 });
-    await expect(thread.locator(".msg .av.ai").first()).toBeVisible({ timeout: 60_000 });
-    const marker = thread.locator(".msg .lk[data-refs]");
+    const card = page.locator("#C-problem .card.child[data-expansion]", { hasText: "What is line folding?" });
+    await expect(card.first()).toBeVisible({ timeout: 30_000 });
+    await expect(card.locator(".ans-q").first()).toContainText("What is line folding?", { timeout: 30_000 });
+    await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    const marker = card.locator(".lk[data-refs]");
     await expect(marker.first()).toBeVisible({ timeout: 30_000 });
     await marker.first().click();
     await expect(page.locator('#right [role="tab"][aria-selected="true"]')).toContainText("Diff", { timeout: 10_000 });
@@ -279,11 +250,11 @@ test.describe("reader journey over the real service (replay)", () => {
     await follow.click();
     await expect(page.locator("#page .follow", { hasText: label })).toHaveCount(0, { timeout: 30_000 });
 
-    // Mark cards read; Contents shows them read.
-    await page.locator("#C-central > .ctl").getByRole("button", { name: "Mark read" }).click();
-    await expect(page.locator("#C-central")).toHaveClass(/read/, { timeout: 10_000 });
+    // Collapse the card; Contents still lists it.
+    await page.locator("#C-central > .chead").getByRole("button", { name: "Collapse" }).click();
+    await expect(page.locator("#C-central")).toHaveClass(/collapsed/, { timeout: 10_000 });
     await expect(page.locator('nav.toc li [data-tocard="central"]')).toBeVisible();
     const item = page.locator("nav.toc li", { has: page.locator('[data-tocard="central"]') });
-    await expect(item).toHaveClass(/done/, { timeout: 10_000 });
+    await expect(item).toBeVisible({ timeout: 10_000 });
   });
 });

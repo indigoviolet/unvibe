@@ -58,7 +58,6 @@ function mkCard(id: string, pageId: string, title: string | null, blocks: Block[
     pageId,
     title,
     level: "standard",
-    read: false,
     collapsed: false,
     revision: 1,
     blocks,
@@ -293,18 +292,18 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
 
   // --- annotations (prototype seed()) ----------------------------------
   // Annotation anchors use real file keys; card anchors use card#block IDs.
-  // M4: the seed expansion carries its body (`Annotation.expansion`) so it
-  // renders like any explain result — an expansion is a card in its own
-  // right (level, read, collapsed, revision, undo stack). Content comes
-  // from the recorded `explain-obs-fold` reply, canonicalized like the
-  // live pipeline stores it.
+  // Issue #136: the seed conversation carries its turns (`Annotation.turns`)
+  // so it renders like any explain result — each answer is a unit in its
+  // own right (level, revision, undo stack). Content comes from the
+  // recorded `explain-obs-fold` reply, canonicalized like the live
+  // pipeline stores it.
   const connKey = meta.keyAliases["conn"];
   const tconnKey = meta.keyAliases["tconn"];
   const explainSeed = parseReply(textOf("explain-obs-fold.md"));
   const annotations: Annotation[] = [
     {
       id: "x-seed",
-      type: "expansion",
+      type: "conversation",
       anchor: {
         host: { kind: "block", blockId: "problem#b1" },
         quotedText: "raw CRLF",
@@ -316,19 +315,20 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       open: true,
       messages: [],
       post: false,
-      note: false,
-      expansion: {
-        blocks: canonBlocks(explainSeed.blocks),
-        level: "standard",
-        read: false,
-        collapsed: false,
-        revision: 1,
-        undoStack: [],
-      },
+      turns: [
+        {
+          id: "ans_seed1",
+          question: null,
+          blocks: canonBlocks(explainSeed.blocks),
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+        },
+      ],
     },
     {
       id: "t-seed",
-      type: "thread",
+      type: "comment",
       anchor: {
         host: { kind: "block", blockId: "central#b4" },
         quotedText: "fast path",
@@ -340,17 +340,12 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       open: true,
       messages: [
         { who: "you", text: "Does the fast path still catch a fold that uses a bare LF?" },
-        {
-          who: "ai",
-          html: `Not with this PR. The fast path checks for <code>"\\r\\n"</code> and the pattern requires <code>\\r\\n</code>. <code>http.client</code> also accepts header lines that end in a bare LF. The tests only send CRLF folds. See the finding about bare LF folds.`,
-        },
       ],
       post: false,
-      note: false,
     },
     {
       id: "t-sglf",
-      type: "thread",
+      type: "comment",
       anchor: {
         host: { kind: "diff-line", fileKey: connKey, line: 82 },
         quotedText: "_OBSOLETE_FOLD_RE",
@@ -368,11 +363,10 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         },
       ],
       post: false,
-      note: false,
     },
     {
       id: "t-sgperf",
-      type: "thread",
+      type: "comment",
       anchor: {
         host: { kind: "diff-line", fileKey: connKey, line: 80 },
         quotedText: "Starting the optional OWS match",
@@ -390,11 +384,10 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         },
       ],
       post: false,
-      note: false,
     },
     {
       id: "t-diff",
-      type: "thread",
+      type: "comment",
       anchor: {
         host: { kind: "diff-line", fileKey: tconnKey, line: 220 },
         quotedText: "one  three",
@@ -406,13 +399,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       open: true,
       messages: [
         { who: "you", text: "Is the double space here intended?" },
-        {
-          who: "ai",
-          html: `Yes. RFC 9112 allows replacing each fold with <em>one or more</em> spaces, and the helper replaces each fold with exactly one. <code>"one\\r\\n \\r\\n\\tthree"</code> contains two folds back to back, so it becomes two spaces. Collapsing them further would change whitespace the server actually sent.`,
-        },
       ],
       post: false,
-      note: false,
     },
   ];
 

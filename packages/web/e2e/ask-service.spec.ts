@@ -1,13 +1,12 @@
 /**
- * Ask over the real service (M4 interaction).
+ * Ask over the real service (#136 slice 2: Ask makes the same card).
  *
  * Built service + temp data dir + the `demo` review (`UNVIBE_AGENT:
  * "replay"`, so no live agents and no git needed). Covers:
- * - select guide text → Ask → working thread → streamed agent answer
- *   with citation markers (the `ask`/`reply` actions through the patch
- *   path, replacing the old 60 s client-only fallback);
- * - Explain runs without breaking (the expansion card itself is a later
- *   milestone; assert no error toast and an expansion annotation created).
+ * - select guide text → Ask → working card → streamed agent answer
+ *   stored as blocks with citation markers (the `ask` action through the
+ *   patch path, replacing the old 60 s client-only fallback);
+ * - a diagram in an Ask answer renders through the diagrams route (#106).
  *
  * Requires `mise run build` first. Skipped when the service isn't built.
  */
@@ -17,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
+import { selectText } from "./select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 
 const exec = promisify(execFile);
@@ -43,41 +43,6 @@ async function apiJson(
   if (body !== undefined) args.push("-d", JSON.stringify(body));
   const { stdout } = await exec("curl", args);
   return JSON.parse(stdout);
-}
-
-/**
- * Select the first occurrence of `text` under `rootSelector`, then
- * dispatch mouseup so the selection toolbar reacts as if the user dragged.
- */
-async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
-  await page.evaluate((rootSelector) => {
-    document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
-  }, rootSelector);
-  await page.waitForTimeout(350);
-  const found = await page.evaluate(
-    ({ rootSelector, text }) => {
-      const root = document.querySelector(rootSelector);
-      if (!root) return false;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const data = (node as Text).data;
-        const at = data.indexOf(text);
-        if (at < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, at);
-        range.setEnd(node, at + text.length);
-        const sel = getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return true;
-      }
-      return false;
-    },
-    { rootSelector, text },
-  );
-  expect(found).toBe(true);
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
 }
 
 test.describe("ask over the real service", () => {
@@ -141,8 +106,8 @@ test.describe("ask over the real service", () => {
       if (!root) return;
       new MutationObserver(() => {
         const seen = (window as unknown as { __m4seen: { working: boolean; stream: boolean } }).__m4seen;
-        if (root.querySelector(".ithread .working")) seen.working = true;
-        if (root.querySelector(".ithread .stream")) seen.stream = true;
+        if (root.querySelector(".card.child .working")) seen.working = true;
+        if (root.querySelector(".card.child .stream")) seen.stream = true;
       }).observe(root, { childList: true, subtree: true, characterData: true });
     });
     await selectText(page, "#C-central", "fast path");
@@ -151,21 +116,23 @@ test.describe("ask over the real service", () => {
     await expect(composer).toBeVisible();
     await composer.locator("textarea").fill("Does the fast path still catch a fold that uses a bare LF?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    // The thread carries the question; the agent answer arrives with the
-    // agent avatar and a citation marker whose refs point at the diff
-    // (never the 60 s waiting fallback).
-    const thread = page.locator("#C-central .ithread[data-thread]", {
+    // The card carries the question; the agent answer arrives as blocks
+    // with a citation marker whose refs point at the diff (never the
+    // 60 s waiting fallback, never raw thread HTML).
+    const card = page.locator("#C-central .card.child[data-expansion]", {
       hasText: "Does the fast path still catch a fold",
     });
-    // Thread-creation patch latency stretches under parallel-suite load
-    // (same race as the comments-service specs); the reply below is the
+    // Card-creation patch latency stretches under parallel-suite load
+    // (same race as the comments-service specs); the answer below is the
     // stable signal.
-    await expect(thread.first()).toBeVisible({ timeout: 30_000 });
-    await expect(thread.locator(".msg .av.ai").first()).toBeVisible({ timeout: 30_000 });
-    const marker = thread.locator(".msg .lk[data-refs]");
+    await expect(card.first()).toBeVisible({ timeout: 30_000 });
+    await expect(card.locator(".ans-q").first()).toContainText("Does the fast path still catch a fold", {
+      timeout: 30_000,
+    });
+    const marker = card.locator(".lk[data-refs]");
     await expect(marker.first()).toBeVisible({ timeout: 30_000 });
     await expect(marker.first()).toHaveAttribute("data-refs", /diff:/);
-    await expect(thread.locator(".working")).toHaveCount(0);
+    await expect(card.locator(".working")).toHaveCount(0);
     // And the working state really rendered mid-flight, with no streamed
     // agent text anywhere (issue #46).
     const seen = await page.evaluate(
@@ -173,24 +140,5 @@ test.describe("ask over the real service", () => {
     );
     expect(seen?.working).toBe(true);
     expect(seen?.stream).toBe(false);
-  });
-
-  // DISABLED(#119): same Explain covered by interaction-journey-service.spec.ts and actions-m4.test.ts
-  test.skip("explain runs without breaking", async ({ page }) => {
-    test.setTimeout(120_000);
-    await openReview(page);
-    await selectText(page, "#C-central", "fast path");
-    await page.locator('#selbar [data-act="explain"]').click();
-    // No error toast: the action is accepted (the expansion card itself
-    // renders in a later milestone).
-    await page.waitForTimeout(3000);
-    await expect(page.locator("#toast")).toBeHidden();
-    if (!svc) throw new Error("service not running");
-    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
-      annotations: { type: string; anchor: { quotedText: string } }[];
-    };
-    expect(snap.annotations.some((a) => a.type === "expansion" && a.anchor.quotedText.includes("fast path"))).toBe(
-      true,
-    );
   });
 });

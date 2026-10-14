@@ -1,7 +1,7 @@
 /**
  * Pipeline public types (M3): the reusable seam the next agents build on.
  *
- * `runInFork` handles base lookup/rebuild, fork-or-fallback, L4 rendering,
+ * `runInFork` handles base lookup/rebuild, fork-or-continue, L4 rendering,
  * job bookkeeping, streaming, validation + repair, and returns parsed
  * content + trailing JSON. `runSmall` is the small-model equivalent (no
  * fork, no base). See `docs/pipeline.md` for the worked example.
@@ -29,8 +29,26 @@ export interface RunInForkOptions {
   conversationKey?: string;
   /** Hunk content hash the conversation is anchored on (change-list filter). */
   hunkHash?: string;
-  /** Thread the turn replies in (contribution labelling; M4: WS correlation). */
-  threadId?: string;
+  /** Annotation the turn belongs to (contribution labelling; WS correlation). */
+  annotationId?: string;
+  /**
+   * Issue #136: continue on an existing conversation session instead of
+   * forking the base. The session is ensured (reopened/rebuilt) inside
+   * the job; a rebuild loses history past the base, so the caller sends
+   * the full prompt (stored turns as "conversation so far") when it
+   * expects one. Every later turn of a conversation card runs this way.
+   */
+  continueSessionId?: string;
+  /**
+   * Connection retry on a fresh fork (continued turns): when a turn
+   * observably hits a dead review-MCP URL it retries once on a fresh
+   * fork instead of the dead session. The short follow-up prompt assumes
+   * the live session's history, so the retry re-renders `retryTemplate`
+   * over `retryVariables` (the full first-turn variable set, including
+   * the stored turns as the `thread` transcript).
+   */
+  retryTemplate?: string;
+  retryVariables?: Record<string, unknown>;
   /** Called with newly finished cards as they stream in. */
   onPartial?: (cards: ParsedCard[]) => void | Promise<void>;
   /**
@@ -76,8 +94,8 @@ export interface RunSmallOptions {
   priority: number;
   dedupeKey?: { anchor: string; requestKind: string; depth?: string; baseVersion: string };
   cardId?: string;
-  /** M4: annotation the streamed text belongs to (ask replies, expansions). */
-  threadId?: string;
+  /** Issue #136: annotation the streamed text belongs to (conversation fills). */
+  annotationId?: string;
   signal?: AbortSignal;
   replay?: { kind: string; key?: string };
   /** M4: called with the enqueued job once it exists (see above). */

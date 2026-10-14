@@ -16,7 +16,9 @@ import { requestSecondOpinion, removeSecondOpinion } from "../../secondopinion/i
 
 function depsFromPipeline(pipeline: Pipeline): SecondOpinionDeps {
   const opts = (pipeline as unknown as { opts: SecondOpinionDeps }).opts;
-  return opts;
+  // #145: hand the pipeline itself through for inline diagram finalize
+  // (repair turn on the second-opinion session; shared log untouched).
+  return { ...opts, pipeline };
 }
 
 export async function secondOpinionAction(
@@ -108,9 +110,11 @@ function findOpinionInSnapshot(
 ): { cardId: string; mode: SecondOpinionMode } | null {
   if (!snapshot) return null;
   for (const a of snapshot.annotations) {
-    if (a.type !== "expansion" || !a.expansion) continue;
-    const hit = (a.expansion.secondOpinions ?? []).find((s) => s.id === opinionId);
-    if (hit) return { cardId: a.id, mode: hit.mode };
+    if (a.type !== "conversation") continue;
+    for (const t of a.turns ?? []) {
+      const hit = (t.secondOpinions ?? []).find((s) => s.id === opinionId);
+      if (hit) return { cardId: t.id, mode: hit.mode };
+    }
   }
   for (const p of snapshot.pages) {
     for (const c of p.cards) {

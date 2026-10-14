@@ -62,7 +62,7 @@ export interface FakeAgentState {
   permissionOutcomes: Array<{ title: string; outcome: string; optionId?: string }>;
   promptCalls: Array<{ sessionId: string; text: string }>;
   resumeCalls: string[];
-  forkCalls: Array<{ from: string; atMessage?: string }>;
+  forkCalls: Array<{ from: string; atMessage?: string; mcpServers?: unknown; meta?: unknown }>;
   setModelCalls: Array<{ sessionId: string; value: string }>;
   cancelled: Set<string>;
   nextId: number;
@@ -158,7 +158,9 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
       const parent = state.sessions.get(from);
       if (!parent) throw new acp.RequestError(-32603, `Internal error :: ${JSON.stringify({ details: "Session not found" })}`);
       const atMessage = readAirFork(ctx.params._meta);
-      state.forkCalls.push({ from, atMessage });
+      // #124: record the full fork request so tests can assert it carries
+      // the same session-defining fields as new/resume/load.
+      state.forkCalls.push({ from, atMessage, mcpServers: ctx.params.mcpServers, meta: ctx.params._meta });
       const id = `fake-${state.nextId++}`;
       state.sessions.set(id, {
         cwd: ctx.params.cwd ?? parent.cwd,

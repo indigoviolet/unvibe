@@ -8,6 +8,7 @@
  */
 import {
   charTokenEstimator,
+  DEFAULT_BASE_PROMPT_CAP_TOKENS,
   DEFAULT_INLINE_BUDGET_TOKENS,
   type TokenEstimator,
 } from "./tokens.js";
@@ -91,6 +92,13 @@ export interface L1Options {
   /** Inline budget in tokens (setting, default ~40k, PRD §9.1). */
   inlineBudgetTokens?: number;
   /**
+   * Hard cap in tokens for the whole L1 text (default
+   * `DEFAULT_BASE_PROMPT_CAP_TOKENS`, issue #107). Not a setting: the
+   * ladder picks the first rung that fits, so the prompt can never grow
+   * past this no matter what the inline budget is set to.
+   */
+  baseCapTokens?: number;
+  /**
    * Content hashes of hunks overlapping reader-pinned excerpts. Over
    * budget, these still inline in full; everything else falls back to
    * headers + summaries fetched later with `get_hunk`.
@@ -98,10 +106,19 @@ export interface L1Options {
   pinnedHunkHashes?: ReadonlySet<string>;
 }
 
+/**
+ * L1 ladder rungs (issue #107), cheapest last. One function
+ * (`buildLadder`) renders them in order and takes the first that fits the
+ * hard cap — a ladder, not a framework.
+ */
+export type L1Rung = "full" | "budget-limited" | "no-uninteresting-hunks" | "files-only" | "counts-only";
+
 export interface L1Result {
   text: string;
   /** True when the fallback rendering was used. */
   overBudget: boolean;
+  /** Which ladder rung produced the text. */
+  rung: L1Rung;
   diffTokens: number;
   inlineBudgetTokens: number;
   inlinedHunkIds: string[];
@@ -111,17 +128,82 @@ export interface L1Result {
 export interface DiffSectionResult {
   text: string;
   overBudget: boolean;
+  /** Which ladder rung produced the text. */
+  rung: L1Rung;
   diffTokens: number;
   inlineBudgetTokens: number;
   inlinedHunkIds: string[];
   summarizedHunkIds: string[];
 }
 
+/** The ladder's parts: source + diff + hidden render from one rung. */
+export interface L1Ladder {
+  source: string;
+  diff: DiffSectionResult;
+  hidden: string;
+  text: string;
+  rung: L1Rung;
+  overBudget: boolean;
+  diffTokens: number;
+  inlineBudgetTokens: number;
+  inlinedHunkIds: string[];
+  summarizedHunkIds: string[];
+}
+
+function fileLineCounts(file: ContextFile): { added: number; removed: number; hidden: number } {
+  const lines = file.hunks.flatMap((h) => h.lines);
+  return {
+    added: lines.filter((l) => l.kind === "add").length,
+    removed: lines.filter((l) => l.kind === "del").length,
+    hidden: file.hunks.filter((h) => h.hiddenReason !== undefined).length,
+  };
+}
+
+/** One file-list line, shared by the blurb and the no-uninteresting rung. */
+function formatFileLine(file: ContextFile): string {
+  const { added, removed, hidden } = fileLineCounts(file);
+  const hiddenNote = hidden > 0 ? ` · ${hidden} hidden` : "";
+  const hunks = file.hunks.length === 1 ? "1 hunk" : `${file.hunks.length} hunks`;
+  return `- ${file.path} — +${added} −${removed} (${hunks}${hiddenNote})`;
+}
+
+/**
+ * True when a file's hunks carry no signal the ladder must keep per-hunk:
+ * generated / docs / config categories, or every hunk already carries the
+ * deterministic hidden reason ingest assigned without any model call.
+ */
+function isUninterestingFile(file: ContextFile): boolean {
+  if (file.hunks.length === 0) return true;
+  if (file.category === "generated" || file.category === "docs" || file.category === "config") return true;
+  return file.hunks.every((h) => h.hiddenReason !== undefined);
+}
+
+function countReviewHunks(snapshot: PromptReviewSnapshot): number {
+  return snapshot.files.reduce((n, f) => n + f.hunks.length, 0);
+}
+
+const CATEGORY_ORDER: ContextFile["category"][] = ["source", "tests", "docs", "config", "generated"];
+
+function topDirOf(path: string): string {
+  const slash = path.indexOf("/");
+  return slash < 0 ? "(root)" : path.slice(0, slash);
+}
+
 /**
  * The `{{source}}` variable: metadata, description or commit log, and the
  * file list — everything in L1 except the diff itself and hidden rows.
+ *
+ * Under the hard cap this renders exactly what it always has. Past the
+ * cap the ladder (`buildLadder`) swaps the file list for counts; that
+ * path lives in `renderCountsSource` below so this function stays the
+ * rung's byte-stable source part.
  */
-export function buildSourceBlurb(snapshot: PromptReviewSnapshot): string {
+export function buildSourceBlurb(snapshot: PromptReviewSnapshot, opts: L1Options = {}): string {
+  return buildLadder(snapshot, opts).source;
+}
+
+/** Today's full source blurb, byte for byte (rungs full → counts-only share the head). */
+function renderSourceHead(snapshot: PromptReviewSnapshot): string[] {
   const head: string[] = [
     `# Source: ${snapshot.title}`,
     "",
@@ -136,58 +218,144 @@ export function buildSourceBlurb(snapshot: PromptReviewSnapshot): string {
   } else {
     head.push("## Commit log", "", snapshot.commitLog ?? "(no commits)", "");
   }
-  head.push("## Files", "");
+  return head;
+}
+
+/** Source blurb with the per-file list replaced by counts (counts-only rung). */
+function renderCountsSource(
+  snapshot: PromptReviewSnapshot,
+  capTokens: number,
+): string {
+  const head = renderSourceHead(snapshot);
+  let added = 0;
+  let removed = 0;
+  const byCategory = new Map<string, { files: number; hunks: number }>();
+  const byDir = new Map<string, number>();
+  const dirOrder: string[] = [];
   for (const file of snapshot.files) {
-    const lines = file.hunks.flatMap((h) => h.lines);
-    const added = lines.filter((l) => l.kind === "add").length;
-    const removed = lines.filter((l) => l.kind === "del").length;
-    const hidden = file.hunks.filter((h) => h.hiddenReason !== undefined).length;
-    const hiddenNote = hidden > 0 ? ` · ${hidden} hidden` : "";
-    const hunks = file.hunks.length === 1 ? "1 hunk" : `${file.hunks.length} hunks`;
-    head.push(`- ${file.path} — +${added} −${removed} (${hunks}${hiddenNote})`);
+    const counts = fileLineCounts(file);
+    added += counts.added;
+    removed += counts.removed;
+    const cat = byCategory.get(file.category) ?? { files: 0, hunks: 0 };
+    cat.files += 1;
+    cat.hunks += file.hunks.length;
+    byCategory.set(file.category, cat);
+    const dir = topDirOf(file.path);
+    if (!byDir.has(dir)) {
+      byDir.set(dir, 0);
+      dirOrder.push(dir);
+    }
+    byDir.set(dir, (byDir.get(dir) ?? 0) + 1);
   }
-  head.push("");
+  const hunks = countReviewHunks(snapshot);
+  const cats = CATEGORY_ORDER.filter((c) => (byCategory.get(c)?.files ?? 0) > 0).map(
+    (c) => `${c}: ${byCategory.get(c)!.files} files, ${byCategory.get(c)!.hunks} hunks`,
+  );
+  const dirs = dirOrder.map((d) => `${d}: ${byDir.get(d)} file${byDir.get(d) === 1 ? "" : "s"}`);
+  head.push(
+    "## Files (counts only)",
+    "",
+    `- files: ${snapshot.files.length} · hunks: ${hunks} · +${added} −${removed}`,
+    `- by category: ${cats.length > 0 ? cats.join("; ") : "(none)"}`,
+    `- by directory: ${dirs.length > 0 ? dirs.join("; ") : "(none)"}`,
+    `> The per-file list was left out to fit the prompt cap (${capTokens} tokens). ` +
+      "Find changed files with `search_review`, map a path to hunk IDs with `resolve`, " +
+      "fetch a hunk with `get_hunk`, read file ranges with `get_code`.",
+    "",
+  );
   return head.join("\n");
 }
 
 /**
  * The `{{diff_inline}}` variable: per-file hunks with IDs inline.
  *
- * Over the inline budget, only cited and pinned hunks inline in full;
- * every other hunk becomes a header + one-line summary row, with a notice
- * that the rest is fetched with `get_hunk`. Guide-cited hunks are always
- * inlined: a real version never hides a hunk the guide cites (§4.13).
+ * Under the inline budget and the hard cap this renders exactly what it
+ * always has (rung `full`); past either, the ladder degrades in named
+ * rungs (see `buildLadder`). Guide-cited and pinned hunks stay inlined in
+ * full on every rung where they still fit; when they alone exceed the cap
+ * they are dropped last, with a notice saying so.
  */
 export function buildDiffSection(
   snapshot: PromptReviewSnapshot,
   opts: L1Options = {},
 ): DiffSectionResult {
-  const estimator = opts.estimator ?? charTokenEstimator;
-  const inlineBudgetTokens = opts.inlineBudgetTokens ?? DEFAULT_INLINE_BUDGET_TOKENS;
-  const pinned = opts.pinnedHunkHashes ?? new Set<string>();
+  return buildLadder(snapshot, opts).diff;
+}
 
+interface HunkEntry {
+  file: ContextFile;
+  hunk: ContextHunk;
+  full: string;
+}
+
+function collectHunks(
+  snapshot: PromptReviewSnapshot,
+  estimator: TokenEstimator,
+): { entries: HunkEntry[]; fullDiff: string; diffTokens: number } {
   const fullFileSections: string[] = [];
-  const allHunks: { file: ContextFile; hunk: ContextHunk; full: string }[] = [];
+  const entries: HunkEntry[] = [];
   for (const file of snapshot.files) {
     const parts = [`## file: ${file.path} (${file.category})`, ""];
     for (const hunk of file.hunks) {
       const full = formatHunk(hunk);
-      allHunks.push({ file, hunk, full });
+      entries.push({ file, hunk, full });
       parts.push(full, "");
     }
     fullFileSections.push(parts.join("\n"));
   }
   const fullDiff = fullFileSections.join("\n");
-  const diffTokens = estimator.estimateTokens(fullDiff);
+  return { entries, fullDiff, diffTokens: estimator.estimateTokens(fullDiff) };
+}
+
+/** Full hunks for guide-cited + pinned entries, grouped by file. */
+function citedSections(
+  snapshot: PromptReviewSnapshot,
+  entries: HunkEntry[],
+  pinned: ReadonlySet<string>,
+): { text: string; ids: string[] } {
+  const byFile = new Map<string, string[]>();
+  const ids: string[] = [];
+  for (const { file, hunk, full } of entries) {
+    if (pinned.has(hunk.contentHash) || hunk.citedByGuide === true) {
+      ids.push(hunkId(hunk.fileKey, hunk.contentHash));
+      pushFileLine(byFile, file, full);
+    }
+  }
+  const parts: string[] = [];
+  for (const file of snapshot.files) {
+    const lines = byFile.get(file.fileKey);
+    if (!lines) continue;
+    parts.push(`## file: ${file.path} (${file.category})`, "", ...lines, "");
+  }
+  return { text: parts.join("\n"), ids };
+}
+
+/**
+ * The ladder (issue #107): render L1 source + diff + hidden in order from
+ * the richest rung to the cheapest, and take the first whose text fits the
+ * hard cap. Pure and deterministic: same input, byte-identical output.
+ *
+ * Rungs full and budget-limited render exactly what previous releases
+ * sent, so reviews under the budgets — including every prompt golden —
+ * are byte-unchanged.
+ */
+export function buildLadder(snapshot: PromptReviewSnapshot, opts: L1Options = {}): L1Ladder {
+  const estimator = opts.estimator ?? charTokenEstimator;
+  const inlineBudgetTokens = opts.inlineBudgetTokens ?? DEFAULT_INLINE_BUDGET_TOKENS;
+  const capTokens = opts.baseCapTokens ?? DEFAULT_BASE_PROMPT_CAP_TOKENS;
+  const pinned = opts.pinnedHunkHashes ?? new Set<string>();
+
+  const sourceFull = [...renderSourceHead(snapshot), "## Files", "", ...snapshot.files.map(formatFileLine), ""].join(
+    "\n",
+  );
+  const { entries, fullDiff, diffTokens } = collectHunks(snapshot, estimator);
   const overBudget = diffTokens > inlineBudgetTokens;
 
-  const inlinedHunkIds: string[] = [];
-  const summarizedHunkIds: string[] = [];
-  let text: string;
-  if (!overBudget) {
-    text = `## Diff\n\n${fullDiff}`;
-    for (const { hunk } of allHunks) inlinedHunkIds.push(hunkId(hunk.fileKey, hunk.contentHash));
-  } else {
+  // Today's two renderings, extracted unchanged into functions so each
+  // rung renders lazily, in order (issue #107): a small review pays only
+  // for the first rung instead of every rung up front.
+  const fullText = `## Diff\n\n${fullDiff}`;
+  const renderBudgetLimited = (): { text: string; inlined: string[]; summarized: string[] } => {
     const parts = [
       "## Diff (budget-limited)",
       "",
@@ -197,13 +365,15 @@ export function buildDiffSection(
       "",
     ];
     const byFile = new Map<string, string[]>();
-    for (const { file, hunk, full } of allHunks) {
+    const inlined: string[] = [];
+    const summarized: string[] = [];
+    for (const { file, hunk, full } of entries) {
       const id = hunkId(hunk.fileKey, hunk.contentHash);
       if (pinned.has(hunk.contentHash) || hunk.citedByGuide === true) {
-        inlinedHunkIds.push(id);
+        inlined.push(id);
         pushFileLine(byFile, file, full);
       } else {
-        summarizedHunkIds.push(id);
+        summarized.push(id);
         pushFileLine(byFile, file, `${formatHunkHeader(hunk)}\n${formatHiddenHunk(hunk)}`);
       }
     }
@@ -212,13 +382,188 @@ export function buildDiffSection(
       if (!lines) continue;
       parts.push(`## file: ${file.path} (${file.category})`, "", ...lines, "");
     }
-    text = parts.join("\n");
+    return { text: parts.join("\n"), inlined, summarized };
+  };
+
+  // Lazy caches: each rung below renders on first use, in order.
+  let hiddenRows: string | undefined;
+  let hiddenCounts: string | undefined;
+  let countsSource: string | undefined;
+  let cited: { text: string; ids: string[] } | undefined;
+  const getHiddenRows = (): string => (hiddenRows ??= renderHiddenRows(snapshot));
+  const getHiddenCounts = (): string => (hiddenCounts ??= renderHiddenCounts(snapshot, capTokens));
+  const getCountsSource = (): string => (countsSource ??= renderCountsSource(snapshot, capTokens));
+  const getCited = (): { text: string; ids: string[] } => (cited ??= citedSections(snapshot, entries, pinned));
+
+  // Rung bodies (diff part only; source/hidden chosen per rung below).
+  // Rung 3: like budget-limited, but uninteresting files collapse to one line each.
+  const renderNoUninteresting = (): { text: string; inlined: string[]; summarized: string[] } => {
+    const parts = [
+      "## Diff (no uninteresting hunks)",
+      "",
+      `> Diff over the inline budget (${diffTokens} tokens > ${inlineBudgetTokens}): ` +
+        "uninteresting files (generated, docs/config, or hunks with a deterministic hidden reason) " +
+        "are listed one line per file. Showing hunk headers, summaries and pinned hunks in full " +
+        "for the rest. Fetch any hunk with `get_hunk`; find changed files with `search_review`, " +
+        "map a path to hunk IDs with `resolve`, read file ranges with `get_code`.",
+      "",
+    ];
+    const byFile = new Map<string, string[]>();
+    const inlined: string[] = [];
+    const summarized: string[] = [];
+    for (const { file, hunk, full } of entries) {
+      const id = hunkId(hunk.fileKey, hunk.contentHash);
+      if (pinned.has(hunk.contentHash) || hunk.citedByGuide === true) {
+        inlined.push(id);
+        pushFileLine(byFile, file, full);
+        continue;
+      }
+      if (isUninterestingFile(file)) continue;
+      summarized.push(id);
+      pushFileLine(byFile, file, `${formatHunkHeader(hunk)}\n${formatHiddenHunk(hunk)}`);
+    }
+    for (const file of snapshot.files) {
+      if (isUninterestingFile(file)) {
+        const mine = entries.some(
+          ({ file: f, hunk }) =>
+            f.fileKey === file.fileKey && (pinned.has(hunk.contentHash) || hunk.citedByGuide === true),
+        );
+        if (!mine) {
+          const reasons = [...new Set(file.hunks.map((h) => h.hiddenReason).filter((r) => r !== undefined))];
+          const { added, removed } = fileLineCounts(file);
+          const hunks = file.hunks.length === 1 ? "1 hunk" : `${file.hunks.length} hunks`;
+          const why = reasons.length > 0 ? `hidden: ${reasons.join(", ")}` : file.category;
+          parts.push(
+            `## file: ${file.path} (${file.category})`,
+            "",
+            `- ${file.path} — +${added} −${removed} (${hunks}, ${why})`,
+            "",
+          );
+          continue;
+        }
+      }
+      const lines = byFile.get(file.fileKey);
+      if (!lines) continue;
+      parts.push(`## file: ${file.path} (${file.category})`, "", ...lines, "");
+    }
+    return { text: parts.join("\n"), inlined, summarized };
+  };
+
+  const filesOnlyNotice =
+    `> Diff too large for hunk rows (${diffTokens} tokens > ${capTokens} cap): file names only, ` +
+    "no hunk bodies. Guide-cited and pinned hunks follow in full. Fetch any other hunk with `get_hunk` " +
+    "(hunk IDs via `resolve`); find changed files with `search_review`; read file ranges with `get_code`.";
+  const countsOnlyNotice =
+    `> Diff too large for a file list (${diffTokens} tokens > ${capTokens} cap): counts only, ` +
+    "no hunk bodies. Guide-cited and pinned hunks follow in full. Fetch any other hunk with `get_hunk` " +
+    "(hunk IDs via `resolve`); find changed files with `search_review`; read file ranges with `get_code`.";
+  const droppedCitedNotice = (n: number): string =>
+    `> Guide-cited/pinned hunks (${n}) were left out too: they alone exceed the prompt cap. ` +
+    "Reach them the same way (`resolve`, `get_hunk`, `get_code`).";
+
+  const renderFilesOnlyDiff = (
+    rung: "files-only" | "counts-only",
+    withCited: boolean,
+  ): { diffText: string; inlined: string[] } => {
+    const citedNow = getCited();
+    const head = rung === "files-only" ? "## Diff (files only)" : "## Diff (counts only)";
+    const notice = rung === "files-only" ? filesOnlyNotice : countsOnlyNotice;
+    const parts = [head, "", notice, ""];
+    const inlined = withCited ? citedNow.ids : [];
+    if (withCited && citedNow.text !== "") parts.push(citedNow.text);
+    if (!withCited && citedNow.ids.length > 0) parts.push(droppedCitedNotice(citedNow.ids.length), "");
+    return { diffText: parts.join("\n"), inlined };
+  };
+
+  // Rung evaluation, in order: the first rung whose text fits the cap
+  // wins. `full` is only eligible under the inline budget (today's rule).
+  // Rungs files-only / counts-only share the cited rider: try with cited
+  // hunks first, drop them last, with a notice.
+  const fits = (text: string): boolean => estimator.estimateTokens(text) <= capTokens;
+  const pack = (
+    rung: L1Rung,
+    source: string,
+    diffText: string,
+    inlined: string[],
+    summarized: string[],
+    hidden: string,
+    text: string,
+  ): L1Ladder => ({
+    source,
+    diff: {
+      text: diffText,
+      overBudget: rung !== "full",
+      rung,
+      diffTokens,
+      inlineBudgetTokens,
+      inlinedHunkIds: inlined,
+      summarizedHunkIds: summarized,
+    },
+    hidden,
+    text,
+    rung,
+    overBudget: rung !== "full",
+    diffTokens,
+    inlineBudgetTokens,
+    inlinedHunkIds: inlined,
+    summarizedHunkIds: summarized,
+  });
+
+  if (!overBudget) {
+    const hidden = getHiddenRows();
+    const text = [sourceFull, fullText, hidden].join("\n");
+    if (fits(text)) {
+      return pack(
+        "full",
+        sourceFull,
+        fullText,
+        entries.map(({ hunk }) => hunkId(hunk.fileKey, hunk.contentHash)),
+        [],
+        hidden,
+        text,
+      );
+    }
   }
-  return { text, overBudget, diffTokens, inlineBudgetTokens, inlinedHunkIds, summarizedHunkIds };
+  {
+    const diff = renderBudgetLimited();
+    const hidden = getHiddenRows();
+    const text = [sourceFull, diff.text, hidden].join("\n");
+    if (fits(text)) {
+      return pack("budget-limited", sourceFull, diff.text, diff.inlined, diff.summarized, hidden, text);
+    }
+  }
+  {
+    const diff = renderNoUninteresting();
+    const hidden = getHiddenCounts();
+    const text = [sourceFull, diff.text, hidden].join("\n");
+    if (fits(text)) {
+      return pack("no-uninteresting-hunks", sourceFull, diff.text, diff.inlined, diff.summarized, hidden, text);
+    }
+  }
+  for (const rung of ["files-only", "counts-only"] as const) {
+    const source = rung === "files-only" ? sourceFull : getCountsSource();
+    const hidden = getHiddenCounts();
+    for (const withCited of [true, false]) {
+      const variant = renderFilesOnlyDiff(rung, withCited);
+      const text = [source, variant.diffText, hidden].join("\n");
+      if (fits(text)) {
+        return pack(rung, source, variant.diffText, variant.inlined, [], hidden, text);
+      }
+    }
+  }
+
+  // Unreachable in practice (the counts-only tier without cited hunks is a
+  // few hundred tokens), but fail plainly — naming the PR size — instead
+  // of letting the provider answer "Internal error: Prompt is too long".
+  const where = snapshot.prNumber !== undefined ? `PR #${snapshot.prNumber} ` : "";
+  throw new Error(
+    `Review too large for a guide prompt: ${where}${snapshot.files.length} files, ` +
+      `${countReviewHunks(snapshot)} hunks (over the ${capTokens}-token prompt cap even at the counts-only tier).`,
+  );
 }
 
-/** One-line rows for every hidden hunk (the L1 tail section). */
-export function buildHiddenHunksSection(snapshot: PromptReviewSnapshot): string {
+/** Today's hidden-hunk rows, byte for byte. */
+function renderHiddenRows(snapshot: PromptReviewSnapshot): string {
   const rows: string[] = [];
   for (const file of snapshot.files) {
     for (const hunk of file.hunks) {
@@ -228,20 +573,59 @@ export function buildHiddenHunksSection(snapshot: PromptReviewSnapshot): string 
   return ["## Hidden hunks", "", ...(rows.length > 0 ? rows : ["(none)"]), ""].join("\n");
 }
 
+/** Hidden hunks as counts by reason (rungs past budget-limited, and the capped standalone). */
+function renderHiddenCounts(snapshot: PromptReviewSnapshot, capTokens: number): string {
+  const byReason = new Map<string, number>();
+  const order: string[] = [];
+  let n = 0;
+  for (const file of snapshot.files) {
+    for (const hunk of file.hunks) {
+      if (hunk.hiddenReason === undefined) continue;
+      n += 1;
+      if (!byReason.has(hunk.hiddenReason)) {
+        byReason.set(hunk.hiddenReason, 0);
+        order.push(hunk.hiddenReason);
+      }
+      byReason.set(hunk.hiddenReason, (byReason.get(hunk.hiddenReason) ?? 0) + 1);
+    }
+  }
+  const breakdown = order.length > 0 ? order.map((r) => `${r} ×${byReason.get(r)}`).join("; ") : "(none)";
+  return [
+    "## Hidden hunks (counts only)",
+    "",
+    `- hidden hunks: ${n}${n > 0 ? ` (${breakdown})` : ""}`,
+    `> Per-hunk rows were left out to fit the prompt cap (${capTokens} tokens). ` +
+      "Fetch any hunk with `get_hunk`.",
+    "",
+  ].join("\n");
+}
+
+/** One-line rows for every hidden hunk (the L1 tail section). */
+export function buildHiddenHunksSection(snapshot: PromptReviewSnapshot, opts: L1Options = {}): string {
+  const estimator = opts.estimator ?? charTokenEstimator;
+  const capTokens = opts.baseCapTokens ?? DEFAULT_BASE_PROMPT_CAP_TOKENS;
+  const rows = renderHiddenRows(snapshot);
+  if (estimator.estimateTokens(rows) <= capTokens) return rows;
+  return renderHiddenCounts(snapshot, capTokens);
+}
+
 /**
  * Build L1 Source: metadata, description or commit log, the diff with IDs
  * inline, the file list, and one-line summaries of hidden hunks.
+ *
+ * The text is the ladder's pick (`buildLadder`): under the budgets it is
+ * exactly what previous releases sent.
  */
 export function buildL1Source(snapshot: PromptReviewSnapshot, opts: L1Options = {}): L1Result {
-  const diff = buildDiffSection(snapshot, opts);
-  const text = [buildSourceBlurb(snapshot), diff.text, buildHiddenHunksSection(snapshot)].join("\n");
+  const ladder = buildLadder(snapshot, opts);
   return {
-    text,
-    overBudget: diff.overBudget,
-    diffTokens: diff.diffTokens,
-    inlineBudgetTokens: diff.inlineBudgetTokens,
-    inlinedHunkIds: diff.inlinedHunkIds,
-    summarizedHunkIds: diff.summarizedHunkIds,
+    text: ladder.text,
+    overBudget: ladder.overBudget,
+    rung: ladder.rung,
+    diffTokens: ladder.diffTokens,
+    inlineBudgetTokens: ladder.inlineBudgetTokens,
+    inlinedHunkIds: ladder.inlinedHunkIds,
+    summarizedHunkIds: ladder.summarizedHunkIds,
   };
 }
 
@@ -322,19 +706,39 @@ export function buildL2Guide(snapshot: PromptReviewSnapshot): string {
 /**
  * Build the hunk-summaries section (the `{{hunk_summaries}}` variable of
  * the base pack): one line per hunk, summary or `(pending)`.
+ *
+ * Per-hunk like the diff, so it obeys the same hard cap (issue #107):
+ * past it only guide-cited hunks keep their rows, the rest collapse to
+ * counts with a notice. Under the cap the output is exactly what previous
+ * releases sent.
  */
-export function buildHunkSummaries(snapshot: PromptReviewSnapshot): string {
+export function buildHunkSummaries(snapshot: PromptReviewSnapshot, opts: L1Options = {}): string {
+  const estimator = opts.estimator ?? charTokenEstimator;
+  const capTokens = opts.baseCapTokens ?? DEFAULT_BASE_PROMPT_CAP_TOKENS;
   const rows: string[] = ["## Hunk summaries", ""];
-  let any = false;
+  const citedRows: string[] = [];
+  let total = 0;
+  let withSummary = 0;
   for (const file of snapshot.files) {
     for (const hunk of file.hunks) {
-      any = true;
-      rows.push(`- [[${hunkId(hunk.fileKey, hunk.contentHash)}]]: ${hunk.summary ?? "(pending)"}`);
+      total += 1;
+      if (hunk.summary !== undefined) withSummary += 1;
+      const row = `- [[${hunkId(hunk.fileKey, hunk.contentHash)}]]: ${hunk.summary ?? "(pending)"}`;
+      rows.push(row);
+      if (hunk.citedByGuide === true) citedRows.push(row);
     }
   }
-  if (!any) rows.push("(no hunks)");
+  if (total === 0) rows.push("(no hunks)");
   rows.push("");
-  return rows.join("\n");
+  const full = rows.join("\n");
+  if (estimator.estimateTokens(full) <= capTokens) return full;
+  const notice =
+    `> Hunk-summary rows were left out to fit the prompt cap (${capTokens} tokens). ` +
+    "Fetch any hunk with `get_hunk`; summaries regenerate on demand in the diff view.";
+  const counts = `- hunks: ${total} (${withSummary} with summaries)`;
+  const withCited = ["## Hunk summaries", "", ...citedRows, counts, notice, ""].join("\n");
+  if (citedRows.length > 0 && estimator.estimateTokens(withCited) <= capTokens) return withCited;
+  return ["## Hunk summaries", "", counts, notice, ""].join("\n");
 }
 
 export interface L4Conversation {

@@ -5,7 +5,7 @@
  * 1. explanations (working → fill → close → dotted link → preview →
  *    re-expand → open as page → back; delete);
  * 2. card controls (depth instant, examples/diagram + nothing-to-add, undo,
- *    read, collapse; drafts survive);
+ *    collapse; drafts survive);
  * 3. follow-ups + concept pages;
  * 4. corrections + shared-context indicator;
  * 5. second opinion on expansions;
@@ -15,6 +15,7 @@
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
+import { selectText } from "./select-text.js";
 
 async function gotoReview(page: Page): Promise<void> {
   await page.goto("/review/demo");
@@ -22,51 +23,6 @@ async function gotoReview(page: Page): Promise<void> {
     "Unfold obsolete folded response headers",
   );
   await page.evaluate(() => document.fonts.ready).catch(() => {});
-}
-
-async function selectText(page: Page, rootSelector: string, text: string): Promise<void> {
-  // Select and wait in one polled step. The scrollIntoView below can
-  // deliver its scroll event after the toolbar shows when the loop is
-  // busy (a late scroll dismisses the bar), so select-then-assert flakes:
-  // re-select until the bar sticks. A repeated select is harmless (same
-  // range, same mouseup path) and converges once the scroll lands.
-  await expect
-    .poll(
-      async () => {
-        await page.evaluate((rootSelector) => {
-          document.querySelector(rootSelector)?.scrollIntoView({ block: "center" });
-        }, rootSelector);
-        // No settle wait: the app has no smooth scrolling.
-        const found = await page.evaluate(
-          ({ rootSelector, text }) => {
-            const root = document.querySelector(rootSelector);
-            if (!root) return false;
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-              const data = (node as Text).data;
-              const at = data.indexOf(text);
-              if (at < 0) continue;
-              const range = document.createRange();
-              range.setStart(node, at);
-              range.setEnd(node, at + text.length);
-              const sel = getSelection();
-              sel?.removeAllRanges();
-              sel?.addRange(range);
-              (node as Text).parentElement?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-              return true;
-            }
-            return false;
-          },
-          { rootSelector, text },
-        );
-        if (!found) return "not-found";
-        // Let a late scroll land before reading the bar.
-        await page.waitForTimeout(150);
-        return (await page.locator("#selbar").isVisible()) ? "shown" : "hidden-again";
-      },
-      { timeout: 15000 },
-    )
-    .toBe("shown");
 }
 
 /**
@@ -170,7 +126,25 @@ test("1b. expansion delete removes the card", async ({ page }) => {
   await expect(page.locator('#C-central [data-expansion]').first()).toHaveCount(0);
 });
 
-test("2. card controls: depth, examples, diagram, undo, read, collapse; drafts survive", async ({
+test("1c. the reply box answers in the same conversation (issue #136)", async ({ page }) => {
+  await gotoReview(page);
+  await selectText(page, "#C-central", "fast path");
+  await page.locator('#selbar [data-act="explain"]').click();
+  const card = page.locator('#C-central [data-expansion]').first();
+  await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
+  // Reply in the card's own box; a second answer lands on the same card.
+  await card.getByPlaceholder("Ask a follow-up…").fill("What about ordering?");
+  await card.getByRole("button", { name: "Reply", exact: true }).click();
+  const answers = card.locator("[data-answer]");
+  await expect(answers).toHaveCount(2, { timeout: 8000 });
+  await expect(answers.nth(1)).toContainText("Mock explanation", { timeout: 8000 });
+  await expect(answers.nth(1).locator(".ans-q")).toContainText("What about ordering?");
+  // Per-answer controls address the answer: depth on the second answer.
+  await answers.nth(1).locator(".ctl").getByRole("button", { name: "Simpler" }).click();
+  await expect(answers.nth(1).locator(".prose").first()).toContainText("In short:", { timeout: 8000 });
+});
+
+test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive", async ({
   page,
 }) => {
   await gotoReview(page);
@@ -206,12 +180,6 @@ test("2. card controls: depth, examples, diagram, undo, read, collapse; drafts s
   await card.locator("> .ctl").getByRole("button", { name: "Undo" }).click();
   await expect(composer).toHaveValue("draft that must survive");
   await page.keyboard.press("Escape");
-  // Mark read greys + collapses; unmarking expands.
-  await card.locator("> .ctl").getByRole("button", { name: "Mark read" }).click();
-  await expect(card).toHaveClass(/read/);
-  await expect(card).toHaveClass(/collapsed/);
-  await card.getByRole("button", { name: "Mark unread" }).click();
-  await expect(card).not.toHaveClass(/read/);
   // Collapse chevron first, × last behaviour via the title row.
   await card.locator("> .chead").getByRole("button", { name: "Collapse" }).click();
   await expect(card).toHaveClass(/collapsed/);

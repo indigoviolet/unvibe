@@ -1,11 +1,11 @@
 # Architecture
 
-One process owns everything. The browser app is served by it and talks to it over HTTP + WebSocket on `127.0.0.1`.
+One process owns everything. The browser app is served by it and talks to it over HTTP + WebSocket on loopback, opened at `http://unvibe.localhost:4517` (bookmark; the service starts at login — `docs/unvibe-localhost.md`).
 
 ```
 browser: React app (served by the service, installable)
   │  HTTP + WebSocket, per-install token, loopback Host/Origin checks
-service: Node on 127.0.0.1:4517
+service: Node on loopback (127.0.0.1 + ::1) :4517
   ├── store ─────── SQLite + files under the data dir
   ├── ingest ────── git/gh ──► managed worktree of the branch
   ├── agent sessions ───────── your claude / codex CLIs (your logins)
@@ -40,11 +40,11 @@ The service never writes into your checkout; agents read the code in a worktree 
    while loading reuses the review (repo + PR/branch dedupe in the
    service, so two tabs share one). The pipeline starts only after the
    ingest; the demo fixture stays synchronous. No agent involved in ingest itself.
-2. **Reader** (`src/pipeline/`): the main model explores the worktree and streams the guide cards (problem, central change, go-deeper directions), hidden concept candidates, and pinned code excerpts.
-3. **Base session** (`src/sessions/`): the shared context (source, pinned code, guide) is built once per model and kept warm, so later conversations start mostly from cache. Fork jobs enqueue before the base build and the base rebuilds in the background when the guide settles (#122); a finished answer applies before post-turn bookkeeping, which still settles with its job.
-4. **Parallel forks**: a critic writes findings as separate pages with drafted suggested comments on diff lines; concept stubs become full pages; the small model summarizes each hunk and marks uninteresting ones (never a cited or one-line hunk). The hunk pass starts at ingest in its own queue bucket, not after the reader (#123); hunks hidden before the guide exists reappear once cited.
-5. **Conversations** (`src/pipeline/actions/`, `src/secondopinion/`): explain, ask, depth, examples, go-deeper generation, and second opinions each run in a fork of the base and apply their result to the page.
-6. **Comments** (`src/comments/`): threads on guide text, description paragraphs, and diff lines, with editable For-PR drafts. The comments menu lists them all and never posts.
+2. **Reader** (`src/pipeline/`): the main model explores the worktree and streams the guide cards (problem, central change, go-deeper directions), hidden concept candidates, and pinned code excerpts. Its prompt is the L1 ladder's pick for the review size (full diff on small reviews; degraded tiers on huge ones — see below).
+3. **Base session** (`src/sessions/`): the shared context (source, pinned code, guide) is built once per model and kept warm, so later conversations start mostly from cache. Fork jobs enqueue before the base build and the base rebuilds in the background when the guide settles (#122); a finished answer applies before post-turn bookkeeping, which still settles with its job. L1 (source + diff + hidden hunks) renders as a ladder — full, budget-limited, no-uninteresting-hunks, files-only, counts-only — taking the first rung under a hard 80k-token cap; guide-cited/pinned hunks stay inlined wherever they fit. Every other prompt (critic/concepts forks, second opinions, update pass, prompt preview, debug page) builds from the same ladder, so none bypasses the cap.
+4. **Parallel forks**: a critic writes findings as separate pages with drafted suggested comments on diff lines; concept stubs become full pages; the small model summarizes each hunk and marks uninteresting ones (never a cited or one-line hunk). The hunk pass starts at ingest in its own queue bucket, not after the reader (#123); hunks hidden before the guide exists reappear once cited. Past 500 hunks there is no per-hunk fan-out at ingest (no guide exists yet to cite); only guide-cited hunks fan out once the reader lands, and the rest summarise on demand (diff view, Fold-all), while Hide-uninteresting folding keeps working on the deterministic ingest reasons.
+5. **Conversations** (`src/pipeline/actions/`, `src/secondopinion/`): explain, ask, depth, examples, go-deeper generation, and second opinions each run in a fork of the base and apply their result to the card or answer. Explain and Ask are one conversation card with turns; depth, examples, diagram, undo and second opinion act per answer.
+6. **Comments** (`src/comments/`): comment threads on guide text, description paragraphs, and diff lines, with editable For-PR drafts. The comments menu lists comments only and never posts. Ask opens a conversation card, never a thread.
 7. **Submit** (`src/submit/`): one GitHub review with every marked comment, plus the description edit when there is one. An in-flight lease reconciled against GitHub means a crash and retry can never double-post.
 8. **New commits** (`src/versions/`): opening or refreshing compares the new head for free and marks what moved or changed; Update runs the agent pass that revises stale cards, rechecks findings, and covers new code. Hunk state keyed by content hash survives rebases.
 9. **Switch builds** (`src/update/`, issue #36 step 2): the version picker lists installable channels and restarts the service onto another build — see "Life of a switch" below.
@@ -93,7 +93,7 @@ without touching GitHub (see DEVELOPMENT.md).
 - **Snapshot + patch stream.** The UI holds a full review snapshot (`GET /api/reviews/:id`) and applies state patches over the WebSocket (`src/events.ts`, `packages/web/src/state/store.ts`).
 - **Base session + forks.** Every conversation forks one warm base per model instead of resending the context, which is what keeps follow-up turns cheap. The reader's own session is never forked.
 - **Citations + validation.** Agent answers link code with tokens (`src/validate/`); ranges are checked, unambiguous slips are repaired, and what cannot be verified is shown dimmed.
-- **Content-hashed hunks + versions.** Hunk state (folded, reviewed, summary, note) is keyed by content hash, not line number, and each new head SHA becomes a version with an ID mapping — so comments and read state carry across pushes and rebases.
+- **Content-hashed hunks + versions.** Hunk state (folded, reviewed, summary, note) is keyed by content hash, not line number, and each new head SHA becomes a version with an ID mapping — so comments carry across pushes and rebases.
 - **Agent boundary.** Providers differ; the `AgentRunner` interface (`packages/shared/src/agent.ts`) does not. Permission policy is deny-by-default: agents may read files and call the service's own tools, nothing else.
 - **What talks to the network.** Only `gh`, `git`, and the agent CLIs, all spawned by the service under your logins. The service process and the web app contact nothing but loopback. Enforcement detail lives in `DEVELOPMENT.md`.
 
@@ -111,7 +111,7 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/service/src/context/` + `src/sharedctx/` | Layered context packs, append-only log, contributions |
 | `packages/service/src/validate/` | Link-token checking and repair |
 | `packages/service/src/versions/` | Refresh compare, ID mapping, update pass |
-| `packages/service/src/comments/` | Threads, For-PR drafts, suggested comments |
+| `packages/service/src/comments/` | Comment threads, For-PR drafts, suggested comments |
 | `packages/service/src/submit/` | One-review submit + description update, crash-safe lease |
 | `packages/service/src/secondopinion/` | Isolated second-model verdicts on cards and findings |
 | `packages/service/src/agent/` | `AgentRunner` factory (`replay`/`none`/real); ACP only in `src/agent/acp/` |
@@ -127,14 +127,17 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/web/src/settings/VersionSection.tsx` | Settings → Version: toggle, channel groups, switch + restart wait |
 | `packages/web/src/shell/PreviewBuildBadge.tsx` | Quiet preview pill (branch · commit) in the review/Settings/Start headers |
 | `packages/service/src/cli/` | `start`/`stop`/`status`/`setup`/`open`/`token`/`doctor`, single-instance lock |
+| `packages/service/src/cli/setup/` | `unvibe://` handler (macOS helper, Linux desktop file) + start-at-login unit (launchd agent, systemd user unit, issue #108) |
+| `packages/service/src/cli/managed-cli.ts` | Manager-aware start/stop/status: through launchd/systemd while the login unit is installed, pid-direct otherwise (issue #108 follow-up) |
+| `packages/service/src/update/service-manager.ts` | Login-unit identity/paths/argv, staleness check, unit refresh; imported by the self-contained update-helper bundle |
 | `packages/service/src/lifecycle/` | Idle exit, bounded ordered shutdown (`service-shutdown.ts`, issue #30) |
-| `packages/service/src/security/` | Token auth, loopback Host/Origin gates, CSP header |
+| `packages/service/src/security/` | Token auth, loopback Host/Origin gates (exact names incl. `unvibe.localhost`, Origin pinned to port), CSP header |
 | `packages/service/src/telemetry/` | Dev-only Sentry error reporting (off without `SENTRY_DSN_SERVICE`; SDK not in the release) |
 | `packages/service/src/repos/` + `src/reviews/` | Repo detection/list, review create/list/delete |
 | `packages/web/src/start/` | Front screen: prior reviews, demo, repos, PRs, branches |
 | `packages/web/src/guide/` | Guide pages, cards, citations, hover previews |
-| `packages/web/src/source/` | Source pane: PR description, diff, hunk state. Diff code rows upgrade to Shiki token colours after first paint (`diff/highlight/`: lazy core/engine/grammars, content-hash cache, `?nohl=1` escape hatch). Diff expansion (`diff/FileExpansion.tsx` + `diff/expandLines.ts`): step/show-all controls and tinted revealed context around hunks, served by the file-slice route |
-| `packages/web/src/comments/` | Threads, selection toolbar, comments menu |
+| `packages/web/src/source/` | Source pane: PR description, diff, hunk state. Idle hunk summaries are plain text (one attribute, nothing mounted); the first interaction activates a conversation card on the hunk (`source/diff/hunkAnchor.ts`, `FileSection.tsx`). Diff code rows upgrade to Shiki token colours after first paint (`diff/highlight/`: lazy core/engine/grammars, content-hash cache, `?nohl=1` escape hatch). Diff expansion (`diff/FileExpansion.tsx` + `diff/expandLines.ts`): step/show-all controls and tinted revealed context around hunks, served by the file-slice route |
+| `packages/web/src/comments/` | Comment threads, selection toolbar, comments menu |
 | `packages/web/src/settings/` | Models, prompt templates, limits, environment |
 | `packages/web/src/debug/` | Per-review debug page (jobs, expanded prompts, then base, log, contributions as rendered Markdown + delete) |
 | `packages/web/src/versions/` | Refresh banner, stale/outdated markers, Update |

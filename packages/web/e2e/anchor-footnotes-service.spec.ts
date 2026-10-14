@@ -89,11 +89,11 @@ test.describe("anchor footnotes over the real service (replay)", () => {
       const deadline = Date.now() + 60_000;
       for (;;) {
         const cur = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
-          annotations: { id: string; expansion?: { blocks: unknown[] } }[];
+          annotations: { id: string; turns?: { blocks: unknown[] }[] }[];
         };
         const ann = cur.annotations.find((a) => a.id === annId);
-        if (ann?.expansion && ann.expansion.blocks.length > 0) break;
-        if (Date.now() > deadline) throw new Error("expansion did not fill in time");
+        if ((ann?.turns?.[0]?.blocks.length ?? 0) > 0) break;
+        if (Date.now() > deadline) throw new Error("conversation did not fill in time");
         await new Promise((r) => setTimeout(r, 1000));
       }
     }

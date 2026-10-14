@@ -165,8 +165,8 @@ describe("#122.2 answer before bookkeeping", () => {
       const doneA = ctx.pipeline
         .runInFork({
           reviewId: id,
-          kind: "explain",
-          template: "explain",
+          kind: "ask",
+          template: "ask",
           variables: EXPLAIN_VARS,
           priority: JOB_PRIORITY.userRequested,
           conversationKey: "conv-A",
@@ -192,8 +192,8 @@ describe("#122.2 answer before bookkeeping", () => {
       const varsB = { ...EXPLAIN_VARS, message: "Bee?" };
       const doneB = ctx.pipeline.runInFork({
         reviewId: id,
-        kind: "explain",
-        template: "explain",
+        kind: "ask",
+        template: "ask",
         variables: varsB,
         priority: JOB_PRIORITY.userRequested,
         conversationKey: "conv-B",
@@ -343,8 +343,8 @@ describe("#122.1 enqueue before the base", () => {
       let seen: Job | undefined;
       const done = ctx.pipeline.runInFork({
         reviewId: id,
-        kind: "explain",
-        template: "explain",
+        kind: "ask",
+        template: "ask",
         variables: EXPLAIN_VARS,
         priority: JOB_PRIORITY.userRequested,
         onJob: (job) => {

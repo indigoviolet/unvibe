@@ -206,7 +206,7 @@ describe("log taxonomy (PRD §9.3)", () => {
     const settled = logEntryForEvent({
       kind: "thread-settled",
       reviewId: "r",
-      threadId: "ann_1",
+      annotationId: "ann_1",
       cardId: "c-A",
       text: "The thread concluded y is two.",
     });
@@ -289,8 +289,8 @@ describe("change lists and the seen marker (PRD §9.3)", () => {
     try {
       const res = await setup.ctx.pipeline.runInFork({
         reviewId: setup.reviewId,
-        kind: "explain",
-        template: "explain",
+        kind: "ask",
+        template: "ask",
         variables: explainVars,
         priority: JOB_PRIORITY.userRequested,
         conversationKey: "conv-1",
@@ -310,8 +310,8 @@ describe("change lists and the seen marker (PRD §9.3)", () => {
       // is clean too.
       await setup.ctx.pipeline.runInFork({
         reviewId: setup.reviewId,
-        kind: "explain",
-        template: "explain",
+        kind: "ask",
+        template: "ask",
         variables: explainVars,
         priority: JOB_PRIORITY.userRequested,
         conversationKey: "conv-1",
@@ -535,7 +535,7 @@ describe("contributions (PRD §9.5)", () => {
         {
           reviewId: setup.reviewId,
           sessionId: "sess-1",
-          threadId: "ann_1",
+          annotationId: "ann_1",
           contribute: {
             facts: [
               { text: "y equals two", citations: ["diff:a-py:2"] },
@@ -806,8 +806,8 @@ describe("base growth observability (PRD §4.14, §9.3)", () => {
       });
       expect(res.statusCode).toBe(200);
       const expanded = (res.json() as { expanded: { name: string; expanded: string }[] }).expanded;
-      const explain = expanded.find((e) => e.name === "explain")!;
-      expect(explain.expanded).toContain("REAL-L3-PROBE settled topic");
+      const ask = expanded.find((e) => e.name === "ask")!;
+      expect(ask.expanded).toContain("REAL-L3-PROBE settled topic");
     } finally {
       await setup.app.close();
     }
@@ -986,27 +986,25 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
         draft.annotations.push(
           {
             id: tA,
-            type: "thread",
+            type: "comment",
             anchor: { host: { kind: "diff-line", fileKey: firstFile.fileKey, line }, quotedText: "q", prefix: "", suffix: "", position: line, version: 1 },
             open: false,
             messages: [
               { who: "you", text: "What about A?" },
-              { who: "ai", text: "SETTLED-A-SUMMARY the A thread concluded first." },
+              { who: "ai", text: "SETTLED-A-SUMMARY the A thread concluded first.", suggested: true },
             ],
             post: false,
-            note: false,
           },
           {
             id: tB,
-            type: "thread",
+            type: "comment",
             anchor: { host: { kind: "diff-line", fileKey: firstFile.fileKey, line }, quotedText: "q", prefix: "", suffix: "", position: line, version: 1 },
             open: false,
             messages: [
               { who: "you", text: "What about B?" },
-              { who: "ai", text: "SETTLED-B-SUMMARY the B thread concluded second." },
+              { who: "ai", text: "SETTLED-B-SUMMARY the B thread concluded second.", suggested: true },
             ],
             post: false,
-            note: false,
           },
         );
       });

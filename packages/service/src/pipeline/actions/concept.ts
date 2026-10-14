@@ -52,7 +52,6 @@ export async function conceptAction(
             pageId,
             title: null,
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: [],

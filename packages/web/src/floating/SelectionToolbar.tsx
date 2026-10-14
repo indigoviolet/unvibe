@@ -19,10 +19,17 @@
  * a pure-deletion diff row anchors to the nearest row with a new-side
  * line, as the prototype does.
  *
- * A Comment from a selection inside an agent answer (an expansion card,
+ * A Comment from a selection inside an agent answer (a conversation card,
  * issue #135) anchors where the card is anchored — not on the selected
  * block — and quotes the selection as a Markdown blockquote prefilled in
  * the composer, so it reads correctly once submitted to GitHub.
+ *
+ * Scroll race (issue #147): the bar hides on scroll, so an app-initiated
+ * scroll (a cited line revealed, a card arriving and shifting the page)
+ * landing within milliseconds of the mouse-up hides the bar the user just
+ * summoned. Scrolls in the first `SCROLL_GRACE_MS` after the bar shows
+ * re-position it over the (still live) selection instead of hiding it;
+ * later scrolls hide it as before.
  *
  * GitHub (issue #134) is a plain link out: on a diff selection it opens
  * the selected lines in GitHub's file view at the review's commit (head
@@ -34,6 +41,7 @@
  * interaction agent's Explain/expansion cards (`resolveSelectionHost`).
  */
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { ActionAnchor, ReviewSnapshot } from "@unvibe/shared";
 import { githubFileUrl } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
@@ -42,6 +50,8 @@ import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
+import { showGuidePane } from "../shell/panes.js";
+import { hunkCommentAnchor, hunkDiffRange, parseHunkAttr, promotedPageForHunk } from "../source/diff/hunkAnchor.js";
 import { toast } from "./Toast.js";
 import { useReview } from "../state/store.js";
 
@@ -50,8 +60,8 @@ export const NEW_THREAD_EVENT = "unvibe:new-thread";
 export interface NewThreadRequest {
   anchor: ActionAnchor;
   quote: string;
-  /** True = Comment (no agent reply); false = Ask. */
-  note: boolean;
+  /** Comment (no agent reply) or Ask (usual conversation card). */
+  kind: "comment" | "ask";
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
 }
@@ -87,9 +97,20 @@ export function isRevealedElement(el: HTMLElement): boolean {
  */
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // Second-opinion reasoning is attached content, not a host (#116): its
-  // blocks live on the result, not on any card or expansion, so the
+  // blocks live on the result, not on any card or answer, so the
   // service has no block to anchor to. No toolbar there.
   if (el.closest("[data-so]")) return null;
+  // Issue #136: inside a conversation answer the owning unit is the
+  // answer, found from the answer wrapper's attribute — not from
+  // `section.card[id]`, which names the whole card.
+  const answer = el.closest("[data-answer]");
+  if (answer) {
+    const answerId = (answer as HTMLElement).dataset.answer ?? "";
+    const top = el.closest("[data-top]");
+    const blockId = (top as HTMLElement | null)?.dataset.top ?? "";
+    if (!answerId || !blockId) return null;
+    return { anchor: { where: "block", blockId: `${answerId}#${blockId}` } };
+  }
   const top = el.closest("#page [data-top], #right [data-top]");
   if (top) {
     const id = (top as HTMLElement).dataset.top ?? "";
@@ -101,7 +122,9 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
       return { anchor: { where: "description", paragraphId } };
     }
     // Block ids repeat across cards (`b1`, `b2`, … in each): qualify with
-    // the owning card, or expansion, so the anchor addresses one block.
+    // the owning card, or conversation card, so the anchor addresses one
+    // block. (Selections inside an answer return earlier, qualified with
+    // the answer id.)
     const owner = top.closest("section.card[id]")?.id ?? "";
     const cardId = /^[CB]-/.test(owner) ? owner.slice(2) : "";
     return { anchor: { where: "block", blockId: cardId && !id.includes("#") ? `${cardId}#${id}` : id } };
@@ -111,6 +134,18 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   const descNode = el.closest("#right .desc [id]");
   if (descNode && el.closest("#right .desc")) {
     return { anchor: { where: "description", paragraphId: (descNode as HTMLElement).id } };
+  }
+  // Issue #138: an idle hunk summary is plain text with a `data-hunksum`
+  // attribute — no component, no listener per hunk. Selecting in it still
+  // brings up the toolbar, anchored on the hunk. (Selections inside an
+  // activated card resolve to its answer blocks via the branches above.
+  // The sticky hunk header's `data-hunk` is a different attribute and
+  // never matches here.)
+  const hunkEl = el.closest("[data-hunksum]") as HTMLElement | null;
+  if (hunkEl) {
+    const ref = parseHunkAttr(hunkEl.dataset.hunksum);
+    if (ref) return { anchor: { where: "hunk", fileKey: ref.fileKey, contentHash: ref.contentHash } };
+    return null;
   }
   const td = el.closest("#right table.diff td.c");
   if (!td) return null;
@@ -278,31 +313,51 @@ export function blockquoteQuote(quote: string): string {
 }
 
 /**
- * Card anchor behind a block anchor that sits inside an expansion (issue
- * #135): the owner part of `<expansion>#<block>` names the expansion
- * annotation, whose own anchor is where a Comment from its text belongs.
- * Null for page-card anchors and anything unresolvable.
+ * Card anchor behind a block anchor that sits inside a conversation
+ * answer (issue #135): the owner part of `<answer>#<block>` names the
+ * answer, whose card's own anchor is where a Comment from its text
+ * belongs. Null for page-card anchors and anything unresolvable.
+ * Issue #138: an answer on a hunk card comments on the hunk's first
+ * changed line (never the hunk — comments live on lines).
  */
 export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   if (anchor.where !== "block") return null;
   const hash = anchor.blockId.indexOf("#");
   if (hash < 0) return null;
   const owner = anchor.blockId.slice(0, hash);
-  const found = useReview.getState().snapshot?.annotations.find((a) => a.id === owner);
-  if (!found || found.type !== "expansion") return null;
+  const annotations = useReview.getState().snapshot?.annotations ?? [];
+  const found =
+    annotations.find((a) => a.id === owner) ??
+    annotations.find((a) => (a.turns ?? []).some((t) => t.id === owner));
+  if (!found || found.type !== "conversation") return null;
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
+  if (host.kind === "hunk") {
+    return (
+      hunkCommentAnchor(useReview.getState().snapshot, { fileKey: host.fileKey, contentHash: host.contentHash }) ??
+      null
+    );
+  }
   return { where: "diff-line", fileKey: host.fileKey, line: host.line };
 }
+
+/**
+ * Issue #147: scrolls landing just after the bar shows are the app's own
+ * (reveal jumps, card fills shifting the page), not the user's — give them
+ * a grace window where the bar re-positions instead of hiding.
+ */
+export const SCROLL_GRACE_MS = 500;
 
 export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
   const readOnly = useIsReadOnlyVersion();
   const snapshot = useReview((s) => s.snapshot);
+  const navigate = useNavigate();
   const barRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<Pending | null>(null);
   pendingRef.current = pending;
+  const shownAt = useRef(0);
   // Issue #134: the repo behind this review (owner/name for the GitHub
   // link). Local checkouts (`owner: "local"`), the demo and unknown repos
   // have no GitHub file view, so the action hides there.
@@ -336,7 +391,7 @@ export function SelectionToolbar() {
     const onMouseUp = (e: MouseEvent): void => {
       if ((e.target as Element | null)?.closest?.("#selbar")) return;
       const scope = (e.target as Element | null)?.closest?.(
-        "#page, #right .desc:not(.editing), #right table.diff",
+        "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk .fwrap",
       );
       if (
         !scope ||
@@ -361,6 +416,18 @@ export function SelectionToolbar() {
           return;
         }
         const cardAnchor = commentCardAnchor(host.anchor);
+        // Issue #138: a hunk anchor needs the touched rows mapped from
+        // the hunk itself (the summary is no table row): Comment lands on
+        // the hunk's first changed line without activating the summary,
+        // and GitHub opens the hunk's line range.
+        let hunkComment: ActionAnchor | undefined;
+        let hunkRange: DiffRange | undefined;
+        if (host.anchor.where === "hunk") {
+          const snap = useReview.getState().snapshot;
+          const ref = { fileKey: host.anchor.fileKey, contentHash: host.anchor.contentHash };
+          hunkComment = hunkCommentAnchor(snap, ref) ?? undefined;
+          hunkRange = hunkDiffRange(snap, ref) ?? undefined;
+        }
         // The GitHub link needs the touched rows, not just the anchor
         // line — but only on the anchor's own file (a cross-file drag has
         // nothing unambiguous to open).
@@ -374,19 +441,25 @@ export function SelectionToolbar() {
           anchor: host.anchor,
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
+          ...(hunkComment ? { commentAnchor: hunkComment } : {}),
           ...(diffRange ? { diffRange } : {}),
+          ...(hunkRange ? { diffRange: hunkRange } : {}),
         });
+        shownAt.current = Date.now();
         // Position after render (needs the bar's size).
-        window.setTimeout(() => {
-          const b = bar();
-          if (!b || sel.rangeCount === 0) return;
-          const r = sel.getRangeAt(0).getBoundingClientRect();
-          b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, r.left + r.width / 2 - b.offsetWidth / 2))}px`;
-          const preferBelow = r.top - b.offsetHeight - 8 < 56;
-          const rawTop = preferBelow ? r.bottom + 8 : r.top - b.offsetHeight - 8;
-          b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, rawTop))}px`;
-        }, 0);
+        window.setTimeout(place, 0);
       }, 0);
+    };
+
+    const place = (): void => {
+      const b = bar();
+      const sel = window.getSelection();
+      if (!b || !sel || sel.rangeCount === 0) return;
+      const r = sel.getRangeAt(0).getBoundingClientRect();
+      b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, r.left + r.width / 2 - b.offsetWidth / 2))}px`;
+      const preferBelow = r.top - b.offsetHeight - 8 < 56;
+      const rawTop = preferBelow ? r.bottom + 8 : r.top - b.offsetHeight - 8;
+      b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, rawTop))}px`;
     };
 
     const onSelectionChange = (): void => {
@@ -395,7 +468,15 @@ export function SelectionToolbar() {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === "Escape") hide();
     };
-    const onScroll = (): void => hide();
+    const onScroll = (): void => {
+      // Issue #147: a scroll landing just after the bar shows is the app's
+      // own — the selection is still live, so follow it instead of hiding.
+      if (pendingRef.current !== null && Date.now() - shownAt.current < SCROLL_GRACE_MS) {
+        place();
+        return;
+      }
+      hide();
+    };
     const onPointerDown = (e: PointerEvent): void => {
       if (!(e.target as Element | null)?.closest?.("#selbar")) hide();
     };
@@ -425,9 +506,36 @@ export function SelectionToolbar() {
     window.getSelection()?.removeAllRanges();
   };
 
+  /**
+   * Page a hunk-anchored action belongs to when the hunk's discussion
+   * already moved there (issue #138 follow-up): Explain/Ask open the
+   * page instead of activating a fresh card. Null otherwise (the action
+   * runs normally, activating the summary first).
+   */
+  const promotedTarget = (anchor: ActionAnchor): { pageId: string; reviewId: string } | null => {
+    if (anchor.where !== "hunk") return null;
+    const snap = useReview.getState().snapshot;
+    const pageId = promotedPageForHunk(snap, { fileKey: anchor.fileKey, contentHash: anchor.contentHash });
+    const reviewId = snap?.review.id;
+    if (!pageId || !reviewId) return null;
+    if (!snap?.pages.some((p) => p.id === pageId)) return null;
+    return { pageId, reviewId };
+  };
+
+  const openPromotedPage = (target: { pageId: string; reviewId: string }): void => {
+    dismiss();
+    showGuidePane();
+    navigate(`/review/${target.reviewId}/page/${encodeURIComponent(target.pageId)}`);
+  };
+
   const onExplain = (): void => {
     const current = pendingRef.current;
     if (!current) return;
+    const promoted = promotedTarget(current.anchor);
+    if (promoted) {
+      openPromotedPage(promoted);
+      return;
+    }
     const reviewId = useReview.getState().snapshot?.review.id;
     dismiss();
     if (!reviewId) {
@@ -455,20 +563,27 @@ export function SelectionToolbar() {
       });
   };
 
-  const onAskNote = (note: boolean): void => {
+  const onAskNote = (kind: "comment" | "ask"): void => {
     const current = pendingRef.current;
     if (!current) return;
+    if (kind === "ask") {
+      const promoted = promotedTarget(current.anchor);
+      if (promoted) {
+        openPromotedPage(promoted);
+        return;
+      }
+    }
     dismiss();
-    if (note && current.commentAnchor) {
+    if (kind === "comment" && current.commentAnchor) {
       requestNewThread({
         anchor: current.commentAnchor,
         quote: current.quote,
-        note,
+        kind,
         initialText: blockquoteQuote(current.quote),
       });
       return;
     }
-    requestNewThread({ anchor: current.anchor, quote: current.quote, note });
+    requestNewThread({ anchor: current.anchor, quote: current.quote, kind });
   };
 
   return (
@@ -477,11 +592,11 @@ export function SelectionToolbar() {
         Explain
       </button>
       <span className="sep" />
-      <button type="button" data-act="ask" onClick={() => onAskNote(false)}>
+      <button type="button" data-act="ask" onClick={() => onAskNote("ask")}>
         Ask…
       </button>
       {pending?.revealed ? null : (
-        <button type="button" data-act="note" onClick={() => onAskNote(true)}>
+        <button type="button" data-act="note" onClick={() => onAskNote("comment")}>
           Comment
         </button>
       )}

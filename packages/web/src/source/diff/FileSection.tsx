@@ -19,9 +19,13 @@
  * (above-the-fold files, file jumps, `revealSource` targets).
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { Hunk, HunkLine, ReviewFile } from "@unvibe/shared";
+import type { Annotation, Hunk, HunkLine, Page, ReviewFile } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
+import { friendlyError } from "../../api/client.js";
+import { toast } from "../../floating/Toast.js";
+import { performAction } from "../../guide/actions.js";
+import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
 import {
   fileStats,
   groupHunks,
@@ -35,13 +39,13 @@ import { codeLineHtml } from "./highlight/codeHtml.js";
 import { useFileHighlight } from "./highlight/useFileHighlight.js";
 import type { LineTokens } from "./highlight/tokenize.js";
 import {
-  ExpandEdge,
-  ExpandGap,
+  ControlSeparator,
   RevealedRows,
   useFileExpansion,
   useRevealedTokens,
+  type GutterControl,
 } from "./FileExpansion.js";
-import { maxLineDigits } from "./expandLines.js";
+import { hiddenIn, maxLineDigits } from "./expandLines.js";
 import "./highlight/highlight.css";
 
 export type DiffViewMode = "unified" | "split";
@@ -111,6 +115,22 @@ interface SectionProps {
    */
   tokens?: ReadonlyMap<string, { old: (LineTokens | null)[]; new: (LineTokens | null)[] }>;
   states: ReadonlyMap<string, HunkUiState>;
+  /**
+   * Activated hunk summaries (issue #138): content hash → conversation
+   * card hosted on the hunk. The hunk's section draws the card in place
+   * of the idle summary text. Optional (defaults to none) so sections
+   * stay usable standalone in tests.
+   */
+  hunkCards?: ReadonlyMap<string, Annotation>;
+  /**
+   * Promoted hunk discussions (issue #138 follow-up): content hash →
+   * page id. The hunk keeps its summary text plus a page-link chip.
+   */
+  promotedHunks?: ReadonlyMap<string, string>;
+  /** Page lookup + navigation + follow-ups for activated hunk cards. */
+  lookupPage?: (pageId: string) => Page | undefined;
+  onOpenPage?: (pageId: string) => void;
+  onFollowUp?: (cardId: string, blockId: string, index: number) => void;
   isHidden: (hunk: Hunk) => boolean;
   actions: HunkActions;
   onLineClick: ((fileKey: string, line: number) => void) | undefined;
@@ -309,7 +329,14 @@ function HunkCard({
   noteStale,
   noteDraft,
   hash,
+  fileKey,
   actions,
+  hunkCard,
+  promotedPageId,
+  reviewId,
+  lookupPage,
+  onOpenPage,
+  onFollowUp,
 }: {
   reviewed: boolean;
   summary: string | undefined;
@@ -317,14 +344,73 @@ function HunkCard({
   noteStale: boolean;
   noteDraft: string | undefined;
   hash: string;
+  fileKey: string;
   actions: HunkActions;
+  /** Activated conversation card hosted on this hunk, if any (#138). */
+  hunkCard: Annotation | undefined;
+  /** Page a hunk discussion moved to, if any (#138 follow-up). */
+  promotedPageId: string | undefined;
+  reviewId: string;
+  lookupPage: (pageId: string) => Page | undefined;
+  onOpenPage: (pageId: string) => void;
+  onFollowUp: (cardId: string, blockId: string, index: number) => void;
 }): ReactNode {
+  // A promoted discussion whose page is gone reads as ordinary idle
+  // (the page cannot be deleted today; defensive only).
+  const promotedPage = promotedPageId ? lookupPage(promotedPageId) : undefined;
+  const showPromoted = !hunkCard && promotedPage !== undefined && summary !== undefined;
+  const activate = (): void => {
+    // Drag-selects carry a live range and fall through to the selection
+    // toolbar instead (Explain/Ask there open the page too while
+    // promoted, via the toolbar's own check).
+    if (!window.getSelection()?.isCollapsed) return;
+    if (showPromoted && promotedPageId) {
+      onOpenPage(promotedPageId);
+      return;
+    }
+    // The explicit hunk control (issue #138): a click with no selection
+    // turns the idle summary into its card (or reopens it) with no agent
+    // call.
+    void performAction(reviewId, { kind: "hunk_card", fileKey, contentHash: hash }, { toast: false })
+      .then((res) => {
+        if (!res.accepted) toast("Not available with mock data");
+      })
+      .catch((err: unknown) => {
+        toast(`Couldn't open the summary: ${friendlyError(err)}`);
+      });
+  };
   return (
     <div className={`fcard${reviewed ? " rev" : ""}`}>
-      {summary ? (
+      {hunkCard && hunkCard.open ? (
+        <ExpansionCard
+          reviewId={reviewId}
+          expansion={hunkCard}
+          lookupPage={lookupPage}
+          onOpenPage={onOpenPage}
+          onFollowUp={onFollowUp}
+        />
+      ) : summary ? (
         <div className="fsum">
-          <span className="av ai">AI</span>
-          <p>{summary}</p>
+          <span className="av ai" role="img" aria-label="Agent" data-tip="Agent">
+            <Icon name="spark" />
+          </span>
+          <p
+            data-hunksum={`${fileKey}:${hash}`}
+            data-tip={showPromoted ? "Open the page" : "Open as a card"}
+            onClick={activate}
+          >
+            {summary}
+          </p>
+          {showPromoted && promotedPageId && promotedPage ? (
+            <a
+              className="cx pg"
+              data-node={promotedPageId}
+              title={promotedPage.title}
+              aria-label={`Open page: ${promotedPage.title}`}
+            >
+              {promotedPage.title}
+            </a>
+          ) : null}
           <button
             className="ib"
             type="button"
@@ -335,10 +421,18 @@ function HunkCard({
             <Icon name="trash" />
           </button>
         </div>
+      ) : hunkCard && !hunkCard.open ? (
+        <div className="fsum">
+          <button className="tbtn xs" type="button" onClick={activate}>
+            Reopen summary card
+          </button>
+        </div>
       ) : null}
       {note && noteDraft === undefined ? (
         <div className="fsum">
-          <span className="av you">You</span>
+          <span className="av you" role="img" aria-label="You" data-tip="You">
+            <Icon name="person" />
+          </span>
           <div>
             <p style={{ margin: 0 }}>{note}</p>
             {noteStale ? <span className="hint">code changed since this note</span> : null}
@@ -555,7 +649,7 @@ function HunkBlock(
           <Icon name="check" />
         </button>
       </div>
-      {summary ?? note ?? noteDraft !== undefined ? (
+      {summary !== undefined || note !== undefined || noteDraft !== undefined || props.hunkCards?.get(h.contentHash) !== undefined ? (
         <div className="fwrap">
           <HunkCard
             reviewed={reviewed}
@@ -564,7 +658,14 @@ function HunkBlock(
             noteStale={noteStale}
             noteDraft={noteDraft}
             hash={h.contentHash}
+            fileKey={file.fileKey}
             actions={props.actions}
+            hunkCard={props.hunkCards?.get(h.contentHash)}
+            promotedPageId={props.promotedHunks?.get(h.contentHash)}
+            reviewId={props.reviewId}
+            lookupPage={props.lookupPage ?? (() => undefined)}
+            onOpenPage={props.onOpenPage ?? (() => {})}
+            onFollowUp={props.onFollowUp ?? (() => {})}
           />
         </div>
       ) : null}
@@ -619,6 +720,16 @@ export function FileSection(props: SectionProps): ReactNode {
     disabled: !canExpand,
   });
   const revealedTokens = useRevealedTokens(file.path, expansion.lines, visible && !props.folded && !file.isBinary);
+  // Learn the file total up front for the one shape that could never
+  // reach a first response otherwise: a single hunk starting at line 1
+  // (no top or gap controls to click). Silent: failures just leave the
+  // bottom control hidden.
+  const firstStart = file.hunks.length === 1 ? (file.isDeleted === true ? file.hunks[0].oldStart : file.hunks[0].newStart) : -1;
+  const needProbe = canExpand && expansion.totalLines === null && firstStart === 1 && visible && !props.folded;
+  const probeTotal = expansion.probeTotal;
+  useEffect(() => {
+    if (needProbe) void probeTotal();
+  }, [needProbe, probeTotal]);
   // Widest line number in the file, in digits (see `--lnw` on `.dfile`).
   // Revealed lines can carry more digits than the hunks (a 4-digit file
   // with 3-digit hunks), so they widen the shared width too.
@@ -671,15 +782,17 @@ export function FileSection(props: SectionProps): ReactNode {
 
   /**
    * File body sections (issue #133 on #140's structure): hidden runs stay
-   * table-free `.dhid` blocks; each shown hunk mounts edge-above /
-   * revealed-above into its section's `beforeRows` and revealed-below /
-   * edge-below / gap into `afterRows`. Folded hunks render no table, so
-   * their expansion rows wait for unfolding.
+   * table-free `.dhid` blocks; each shown hunk mounts its expansion rows
+   * into its section. Per gap at most one hidden run survives, with one
+   * set of controls sharing its remaining count: step-down + show-all
+   * ride the upper hunk's table, step-up the lower hunk's. Continuous
+   * boundaries (fully revealed or zero-line gaps, file edges) show no
+   * controls; revealed blocks collapse through their hover gutter icon.
+   * Folded hunks render no table, so their expansion rows wait for
+   * unfolding.
    */
   function buildSections(): ReactNode {
     const groups = groupHunks(file.hunks, props.isHidden);
-    const shown = new Set(groups.flatMap((g) => (g.type === "show" ? [g.index] : [])));
-    const lastIndex = file.hunks.length - 1;
     return groups.map((g) => {
       if (g.type === "hidden") {
         return (
@@ -699,20 +812,37 @@ export function FileSection(props: SectionProps): ReactNode {
       const before: ReactNode[] = [];
       const after: ReactNode[] = [];
       if (canExpand) {
+        const deleted = file.isDeleted === true;
+        const hs = deleted ? h.oldStart : h.newStart;
+        const he = deleted ? h.oldEnd : h.newEnd;
+        // Lines above this hunk: the top region (first hunk) carries
+        // step-up + show-all; a gap above carries only the step-up — the
+        // gap's show-all rides the upper hunk's side, so each gap holds
+        // one set of controls sharing one remaining count.
         const above = expansion.regionAbove(i);
         if (above) {
-          before.push(
-            <ExpandEdge
-              key={`xa-${file.fileKey}-${i}`}
-              hunk={h}
-              index={i}
-              side="above"
-              expansion={expansion}
-              file={file}
-              cols={cols}
-              showHide={i === 0}
-            />,
-          );
+          const remainingAbove = hiddenIn(above, expansion.revealed)
+            .filter((r) => r.end < hs)
+            .reduce((s, r) => s + r.end - r.start + 1, 0);
+          if (remainingAbove > 0 && i === 0) {
+            const controls: GutterControl[] = [
+              {
+                kind: "step",
+                dir: "up",
+                label: `Show ${Math.min(20, remainingAbove)} more lines`,
+                onClick: () => expansion.expandUp(h, i),
+              },
+              {
+                kind: "all",
+                dir: "up",
+                label: `Show all ${remainingAbove} lines`,
+                onClick: () => expansion.expandAll(above),
+              },
+            ];
+            before.push(
+              <ControlSeparator key={`xa-${file.fileKey}-${i}`} controls={controls} cols={cols} pending={expansion.pending} />,
+            );
+          }
           // Gap lines render once, below the earlier hunk — so only the
           // top region renders lines above.
           if (i === 0) {
@@ -727,11 +857,15 @@ export function FileSection(props: SectionProps): ReactNode {
                   tokens={revealedTokens}
                   slots={props.slots}
                   highlight={props.highlight}
+                  onHideBlock={(s, e) => expansion.collapseInterval(s, e)}
                 />,
               );
             }
           }
         }
+        // Lines below this hunk (the gap below, or the bottom region for
+        // the last hunk): revealed rows first, then the upper side's
+        // step-down + show-all for the remaining run.
         const below = expansion.regionBelow(i, file.hunks);
         if (below) {
           const belowLines = expansion.lines.filter((l) => l.line >= below.start && l.line <= below.end);
@@ -745,29 +879,63 @@ export function FileSection(props: SectionProps): ReactNode {
                 tokens={revealedTokens}
                 slots={props.slots}
                 highlight={props.highlight}
+                onHideBlock={(s, e) => expansion.collapseInterval(s, e)}
+              />,
+            );
+          }
+          const remainingBelow = hiddenIn(below, expansion.revealed)
+            .filter((r) => r.end > he)
+            .reduce((s, r) => s + r.end - r.start + 1, 0);
+          if (remainingBelow > 0) {
+            after.push(
+              <ControlSeparator
+                key={`xb-${file.fileKey}-${i}`}
+                controls={[
+                  {
+                    kind: "step",
+                    dir: "down",
+                    label: `Show ${Math.min(20, remainingBelow)} more lines`,
+                    onClick: () => expansion.expandDown(h, i),
+                  },
+                  {
+                    kind: "all",
+                    dir: "down",
+                    label: `Show all ${remainingBelow} lines`,
+                    onClick: () => expansion.expandAll(below),
+                  },
+                ]}
+                cols={cols}
+                pending={expansion.pending}
               />,
             );
           }
         }
-        after.push(
-          <ExpandEdge
-            key={`xb-${file.fileKey}-${i}`}
-            hunk={h}
-            index={i}
-            side="below"
-            expansion={expansion}
-            file={file}
-            cols={cols}
-            showHide={i === lastIndex}
-          />,
-        );
-        // The gap row lives with the earlier hunk, and only while both
-        // sides show: a fully revealed gap then reads as one run of code
-        // lines, closed by the slim hide row, with the next hunk's own
-        // (pinning) header below it.
-        const gap = expansion.regions.find((r) => r.key === `gap-${i}`);
-        if (gap && shown.has(i + 1)) {
-          after.push(<ExpandGap key={`gap-${file.fileKey}-${i}`} region={gap} expansion={expansion} cols={cols} />);
+        // The lower side's step-up for the gap above: one set of controls
+        // per gap, sharing the run's remaining count with the upper side.
+        if (i > 0) {
+          const gapAbove = expansion.regionAbove(i);
+          if (gapAbove && gapAbove.key !== "top") {
+            const remainingRun = hiddenIn(gapAbove, expansion.revealed)
+              .filter((r) => r.start < hs)
+              .reduce((s, r) => s + r.end - r.start + 1, 0);
+            if (remainingRun > 0) {
+              before.push(
+                <ControlSeparator
+                  key={`xu-${file.fileKey}-${i}`}
+                  controls={[
+                    {
+                      kind: "step",
+                      dir: "up",
+                      label: `Show ${Math.min(20, remainingRun)} more lines`,
+                      onClick: () => expansion.expandUp(h, i),
+                    },
+                  ]}
+                  cols={cols}
+                  pending={expansion.pending}
+                />,
+              );
+            }
+          }
         }
       }
       return (

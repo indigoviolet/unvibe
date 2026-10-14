@@ -1,23 +1,22 @@
 /**
- * Comment threads without the agent (M6).
+ * Comments without the agent (M6, #136 slice 2).
  *
- * Threads live as `Annotation` records of type `"thread"` in the review
- * snapshot (`packages/shared` entities). Every change goes through
- * `ReviewStore.mutate` so subscribers get RFC 6902 patches.
+ * Comments live as `Annotation` records of type `"comment"` in the review
+ * snapshot (`packages/shared` entities) — the only thing submitted to
+ * GitHub. Every change goes through `ReviewStore.mutate` so subscribers
+ * get RFC 6902 patches.
  *
- * - `createThreadInDraft` / `createThread`: Note or user's first message,
- *   anchored on a guide block, a description paragraph, or a diff line,
- *   with quoted text + prefix/suffix (PRD §7 Anchor).
+ * - `createThreadInDraft` / `createThread`: a reviewer comment anchored
+ *   on a guide block, a description paragraph, or a diff line, with
+ *   quoted text + prefix/suffix (PRD §7 Anchor). Comments are for the PR
+ *   by default.
  * - `createSuggestedCommentInDraft` / `createSuggestedComment`: agent
- *   findings' suggested comments — a thread on a diff line whose first
+ *   findings' suggested comments — a comment on a diff line whose first
  *   message is flagged `suggested` and is NOT marked for the PR (PRD §4.9).
  * - `replyInDraft` / `replyToThread`: user reply.
  * - `setOpenInDraft` / `setThreadOpen`, `setPostInDraft` / `setThreadPost`,
  *   `setDraftInDraft` / `updateThreadDraft`, `deleteInDraft` /
  *   `deleteAnnotation`: open/close, mark for PR, edit For-PR draft, delete.
- * - `appendAgentReplyInDraft` / `appendAgentReply`: clearly marked seam the
- *   Ask pipeline calls to deliver the agent's reply (another agent owns the
- *   pipeline; this module only appends the message).
  *
  * The `POST /api/reviews/:id/actions` union (`note`, `close`, `delete`)
  * overlaps this module. The actions route (another agent) should call
@@ -44,8 +43,6 @@ export interface CreateThreadParams {
   prefix?: string;
   suffix?: string;
   position?: number;
-  /** True = Note (no agent reply); false = user's first Ask message. */
-  note?: boolean;
   /** Initial user text (first message when present). */
   text?: string;
 }
@@ -82,6 +79,8 @@ function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
       }
       return host;
     }
+    case "hunk":
+      return { kind: "hunk", fileKey: anchor.fileKey, contentHash: anchor.contentHash };
   }
 }
 
@@ -204,6 +203,20 @@ export function buildAnchor(
   // back to the nearest commentable line or the review body).
   const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
   if (!file) throw new Error(`unknown file ${host.fileKey}`);
+  if (host.kind === "hunk") {
+    // Issue #138: the hunk must exist; the summary text lives in
+    // hunkStates, read by the hunk-card creation (not stored here).
+    const hunk = file.hunks.find((h) => h.contentHash === host.contentHash);
+    if (!hunk) throw new Error(`unknown hunk ${host.fileKey}:${host.contentHash}`);
+    return {
+      host,
+      quotedText: quote,
+      prefix: opts.prefix ?? "",
+      suffix: opts.suffix ?? "",
+      position: opts.position ?? 0,
+      version,
+    };
+  }
   if (!Number.isSafeInteger(host.line) || host.line < 1) {
     throw new Error(`invalid diff line ${String(host.line)}`);
   }
@@ -236,24 +249,21 @@ export function createThreadInDraft(
     quote,
     { prefix: params.prefix, suffix: params.suffix, position: params.position },
   );
-  const note = params.note ?? false;
   const messages: ChatMessage[] = [];
   if (params.text !== undefined && params.text !== "") {
     messages.push({ who: "you", text: params.text });
   }
-  // Guide threads start closed; diff + description threads start open
+  // Guide comments start closed; diff + description comments start open
   // (prototype `threadShown`: `t.file || t.desc ? !collapsed : open`).
-  // Issue #135: a Comment is for the PR by default; an Ask thread never
-  // is (Ask has no "for the PR" control and is never submitted).
+  // A Comment is for the PR by default (issue #135).
   const open = anchor.host.kind === "block" ? false : true;
   const thread: Annotation = {
     id: newAnnotationId(),
-    type: "thread",
+    type: "comment",
     anchor,
     open,
     messages,
-    post: note,
-    note,
+    post: true,
     ...(messages.length === 0 ? { reply: "" } : {}),
   };
   draft.annotations.push(thread as Annotation);
@@ -280,77 +290,52 @@ export function createSuggestedCommentInDraft(
   );
   const thread: Annotation = {
     id: newAnnotationId(),
-    type: "thread",
+    type: "comment",
     anchor,
     open: true,
     messages: [{ who: "ai", text: params.suggestionText, suggested: true }],
     post: false,
-    note: false,
   };
   draft.annotations.push(thread as Annotation);
   return thread;
 }
 
-function findThread(draft: WritableDraft<ReviewSnapshot>, threadId: string): Annotation {
-  const found = (draft.annotations as Annotation[]).find((a) => a.id === threadId);
-  if (!found) throw new Error(`unknown comment ${threadId}`);
-  if (found.type !== "thread") throw new Error(`annotation ${threadId} is not a thread`);
+function findThread(draft: WritableDraft<ReviewSnapshot>, commentId: string): Annotation {
+  const found = (draft.annotations as Annotation[]).find((a) => a.id === commentId);
+  if (!found) throw new Error(`unknown comment ${commentId}`);
+  if (found.type !== "comment") throw new Error(`annotation ${commentId} is not a comment`);
   return found as WritableDraft<Annotation> as unknown as Annotation;
 }
 
 /** Draft helper: user reply. */
 export function replyInDraft(
   draft: WritableDraft<ReviewSnapshot>,
-  threadId: string,
+  commentId: string,
   text: string,
 ): void {
   if (!text || text.trim() === "") throw new Error("reply text is required");
-  const thread = findThread(draft, threadId);
+  const thread = findThread(draft, commentId);
   (thread.messages as ChatMessage[]).push({ who: "you", text });
   thread.reply = "";
-  thread.open = true;
-}
-
-/**
- * Draft helper: agent reply seam.
- *
- * The Ask pipeline (another agent) calls `appendAgentReply` after the
- * agent answers. This module only appends the message — prompting,
- * streaming, and citations belong to the pipeline.
- */
-export function appendAgentReplyInDraft(
-  draft: WritableDraft<ReviewSnapshot>,
-  threadId: string,
-  message: { text?: string; html?: string },
-): void {
-  if (message.text === undefined && message.html === undefined) {
-    throw new Error("agent reply needs text or html");
-  }
-  const thread = findThread(draft, threadId);
-  (thread.messages as ChatMessage[]).push({
-    who: "ai",
-    ...(message.text !== undefined ? { text: message.text } : {}),
-    ...(message.html !== undefined ? { html: message.html } : {}),
-  });
   thread.open = true;
 }
 
 /** Draft helper: open/close. */
 export function setOpenInDraft(
   draft: WritableDraft<ReviewSnapshot>,
-  threadId: string,
+  commentId: string,
   open: boolean,
 ): void {
-  findThread(draft, threadId).open = open;
+  findThread(draft, commentId).open = open;
 }
 
 /** Draft helper: mark for PR. */
 export function setPostInDraft(
   draft: WritableDraft<ReviewSnapshot>,
-  threadId: string,
+  commentId: string,
   post: boolean,
 ): void {
-  const thread = findThread(draft, threadId);
+  const thread = findThread(draft, commentId);
   thread.post = post;
   if (post) thread.open = true;
 }
@@ -358,10 +343,10 @@ export function setPostInDraft(
 /** Draft helper: edit the For-PR draft text (null clears it). */
 export function setDraftInDraft(
   draft: WritableDraft<ReviewSnapshot>,
-  threadId: string,
+  commentId: string,
   text: string | null | undefined,
 ): void {
-  const thread = findThread(draft, threadId);
+  const thread = findThread(draft, commentId);
   if (text === null || text === undefined) {
     delete thread.draft;
   } else {
@@ -372,10 +357,10 @@ export function setDraftInDraft(
 /** Draft helper: unsent reply-box content (null clears it). */
 export function setReplyBoxInDraft(
   draft: WritableDraft<ReviewSnapshot>,
-  threadId: string,
+  commentId: string,
   text: string | null | undefined,
 ): void {
-  const thread = findThread(draft, threadId);
+  const thread = findThread(draft, commentId);
   if (text === null || text === undefined) {
     delete thread.reply;
   } else {
@@ -384,21 +369,10 @@ export function setReplyBoxInDraft(
 }
 
 /** Draft helper: delete a thread. */
-export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, threadId: string): void {
-  const idx = (draft.annotations as Annotation[]).findIndex((a) => a.id === threadId);
-  if (idx < 0) throw new Error(`unknown comment ${threadId}`);
+export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: string): void {
+  const idx = (draft.annotations as Annotation[]).findIndex((a) => a.id === commentId);
+  if (idx < 0) throw new Error(`unknown comment ${commentId}`);
   (draft.annotations as Annotation[]).splice(idx, 1);
-}
-
-/**
- * Issue #135: only Comments are submitted. A thread counts as a comment
- * when it never asks the agent (`note`) or when its first message is an
- * agent-drafted suggested comment (PRD §4.9 — drafted for the PR, the
- * reviewer only marks it). Ask threads are never submitted.
- */
-export function isCommentThread(thread: Annotation): boolean {
-  if (thread.note) return true;
-  return thread.messages.some((m) => m.suggested);
 }
 
 /**
@@ -445,7 +419,7 @@ export async function createThread(
 
 /**
  * Actions-route seam: `note` action without agent involvement.
- * Creates a Note thread (no agent reply); the conversation pipeline owns
+ * Creates a comment (no agent reply); the conversation pipeline owns
  * everything that needs the agent.
  */
 export async function createNoteThread(
@@ -453,30 +427,7 @@ export async function createNoteThread(
   reviewId: string,
   params: { anchor: ActionAnchor; quote: string; text?: string; prefix?: string; suffix?: string },
 ): Promise<{ id: string; snapshot: ReviewSnapshot }> {
-  return createThread(store, reviewId, { ...params, note: true });
-}
-
-/**
- * Actions-route seam: `ask` without the agent reply. Creates the thread
- * with the user's first message; the pipeline delivers the agent reply
- * via `appendAgentReply`.
- */
-export async function createAskThread(
-  store: ReviewStore,
-  reviewId: string,
-  params: { anchor: ActionAnchor; quote: string; message: string; prefix?: string; suffix?: string },
-): Promise<{ id: string; snapshot: ReviewSnapshot }> {
-  if (!params.message || params.message.trim() === "") {
-    throw new Error("ask message is required");
-  }
-  return createThread(store, reviewId, {
-    anchor: params.anchor,
-    quote: params.quote,
-    text: params.message,
-    prefix: params.prefix,
-    suffix: params.suffix,
-    note: false,
-  });
+  return createThread(store, reviewId, { ...params });
 }
 
 /** Create an agent-suggested comment (critic pipeline seam). */
@@ -496,31 +447,11 @@ export async function createSuggestedComment(
 export async function replyToThread(
   store: ReviewStore,
   reviewId: string,
-  threadId: string,
+  commentId: string,
   text: string,
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
-    replyInDraft(draft, threadId, text);
-  });
-}
-
-/**
- * Agent-reply seam for the Ask pipeline.
- *
- * ```ts
- * const { id } = await createAskThread(store, reviewId, { anchor, quote, message });
- * // … pipeline prompts the agent …
- * await appendAgentReply(store, reviewId, id, { text: answer });
- * ```
- */
-export async function appendAgentReply(
-  store: ReviewStore,
-  reviewId: string,
-  threadId: string,
-  message: { text?: string; html?: string },
-): Promise<ReviewSnapshot> {
-  return mutateThread(store, reviewId, (draft) => {
-    appendAgentReplyInDraft(draft, threadId, message);
+    replyInDraft(draft, commentId, text);
   });
 }
 
@@ -528,11 +459,11 @@ export async function appendAgentReply(
 export async function setThreadOpen(
   store: ReviewStore,
   reviewId: string,
-  threadId: string,
+  commentId: string,
   open: boolean,
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
-    setOpenInDraft(draft, threadId, open);
+    setOpenInDraft(draft, commentId, open);
   });
 }
 
@@ -549,11 +480,11 @@ export async function closeAnnotation(
 export async function setThreadPost(
   store: ReviewStore,
   reviewId: string,
-  threadId: string,
+  commentId: string,
   post: boolean,
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
-    setPostInDraft(draft, threadId, post);
+    setPostInDraft(draft, commentId, post);
   });
 }
 
@@ -561,11 +492,11 @@ export async function setThreadPost(
 export async function updateThreadDraft(
   store: ReviewStore,
   reviewId: string,
-  threadId: string,
+  commentId: string,
   text: string | null | undefined,
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
-    setDraftInDraft(draft, threadId, text);
+    setDraftInDraft(draft, commentId, text);
   });
 }
 
@@ -573,11 +504,11 @@ export async function updateThreadDraft(
 export async function updateReplyBox(
   store: ReviewStore,
   reviewId: string,
-  threadId: string,
+  commentId: string,
   text: string | null | undefined,
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
-    setReplyBoxInDraft(draft, threadId, text);
+    setReplyBoxInDraft(draft, commentId, text);
   });
 }
 
@@ -585,10 +516,10 @@ export async function updateReplyBox(
 export async function deleteAnnotation(
   store: ReviewStore,
   reviewId: string,
-  threadId: string,
+  commentId: string,
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
-    deleteInDraft(draft, threadId);
+    deleteInDraft(draft, commentId);
   });
 }
 

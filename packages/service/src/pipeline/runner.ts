@@ -35,7 +35,7 @@ import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import { NoAgentError } from "../agent/none.js";
-import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildDiffSection, buildSourceBlurb } from "../context/index.js";
+import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildLadder, DEFAULT_HUNK_PASS_FANOUT_LIMIT } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import { baseKeyString } from "../sessions/manager.js";
@@ -47,7 +47,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
-import { criticApply, isDefaultReaderCardId, readerApply, readerCardId } from "./apply.js";
+import { criticApply, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
@@ -134,6 +134,40 @@ const DEGRADED_FRAME_RES = [
 /** Strip fenced and inline code: code may legitimately contain these words. */
 function stripCodeForChatter(body: string): string {
   return body.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ");
+}
+
+/**
+ * Plain-words note appended to a kept degraded answer (never the agent's
+ * internal reason — that lives on the job for the Debug page).
+ */
+export const DEGRADED_ANSWER_NOTE = "Some references in this answer could not be linked to the code.";
+
+/** Id for the appended degraded note (deduped, never anchored). */
+export const DEGRADED_NOTE_BLOCK_ID = "b-degraded-note";
+
+export type DegradedDisposition =
+  | { kind: "ok" }
+  | { kind: "fail-conn"; message: string }
+  | { kind: "fail"; message: string }
+  | { kind: "keep"; reason: string };
+
+/**
+ * Append the quiet degraded note to a kept answer's last card (once —
+ * keyed by its stable block id). The note is plain words; the agent's
+ * internal reason lives on the job for the Debug page.
+ */
+function attachDegradedNote(cards: { blocks: { id: string }[] }[]): void {
+  const last = cards[cards.length - 1];
+  if (!last) return;
+  if (last.blocks.some((b) => b.id === DEGRADED_NOTE_BLOCK_ID || b.id.startsWith(`${DEGRADED_NOTE_BLOCK_ID}-`))) {
+    return;
+  }
+  (last.blocks as unknown[]).push({
+    type: "paragraph",
+    id: DEGRADED_NOTE_BLOCK_ID,
+    text: { standard: DEGRADED_ANSWER_NOTE },
+    citations: [],
+  });
 }
 
 /**
@@ -237,6 +271,15 @@ export class Pipeline {
   private mcpBaseUrl: string;
   /** #122: reviews with a base rebuild already warming (debounce). */
   private warmInFlight = new Set<string>();
+  /**
+   * Hunk-pass completions since the last fan-out, per review (issue
+   * #107). Counting queue states (`maybeMarkStageDone`) races when jobs
+   * finish together: every job sees its siblings still "running" — the
+   * queue flips them to done only after each `run()` returns — so nobody
+   * marks the stage done. Counting completions in the success path is
+   * exact: each increment runs atomically between awaits.
+   */
+  private hunkPassCompleted = new Map<string, number>();
 
   constructor(private readonly opts: PipelineOptions) {
     this.promptsDir = opts.promptsDir ?? resolvePromptsDir() ?? "prompts";
@@ -300,7 +343,7 @@ export class Pipeline {
     reviewId: string,
     turn: {
       sessionId: string;
-      threadId?: string;
+      annotationId?: string;
       conversationKey?: string;
       cardId?: string;
       hunkHash?: string;
@@ -314,7 +357,7 @@ export class Pipeline {
       const lookup = this.lookupWithAliases(snapshot);
       await ingestAgentTurn(this.wireDeps(), reviewId, {
         sessionId: turn.sessionId,
-        ...(turn.threadId ? { threadId: turn.threadId } : {}),
+        ...(turn.annotationId ? { annotationId: turn.annotationId } : {}),
         ...(turn.conversationKey ? { conversationKey: turn.conversationKey } : {}),
         ...(turn.cardId ? { cardId: turn.cardId } : {}),
         ...(turn.hunkHash ? { hunkHash: turn.hunkHash } : {}),
@@ -361,7 +404,7 @@ export class Pipeline {
       baseLogSeq,
     });
     const template = this.render(o.template, variables);
-    const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
+    let prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -378,21 +421,32 @@ export class Pipeline {
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
-      ...(o.threadId ? { threadId: o.threadId } : {}),
+      ...(o.annotationId ? { annotationId: o.annotationId } : {}),
       promptSnapshot: prompt,
       run: async (ctx) => {
         // Retryable errors retry inside the job (so the deferred settles
-          // once); non-retryable errors reject and mark the job error.
-          for (let attempt = 0; ; attempt++) {
+        // once); non-retryable errors reject and mark the job error.
+        // A continued session stays across attempts — except the
+        // connection retry, which forks fresh (see below).
+        let continuedId = o.continueSessionId;
+        for (let attempt = 0; ; attempt++) {
           try {
             ctx.setPromptSnapshot(prompt);
             // #122: the base builds here, inside the job — after the job id
             // went out. forkFor ensures the same base again (a live-cache hit).
             const base = await this.ensureBase(o.reviewId);
             void base;
-            const forked = await this.forkFor(o.reviewId);
+            // Issue #136: later turns of a conversation card continue on
+            // the card's session instead of forking again. All turns share
+            // this path's streaming, citation check, repair turn, usage
+            // and contribution handling.
+            const forked = continuedId
+              ? await this.continueOn(continuedId)
+              : await this.forkAndTrack(o.reviewId, o.conversationKey !== undefined);
             ctx.setSessionId(forked.session.id);
             let buffer = "";
+            // Per-attempt evidence: a retry must observe *its own* turn's
+            // tool activity, not the previous attempt's.
             const mcpBefore = this.opts.mcp.activitySnapshot(o.reviewId);
             const { text, usage } = await collectStreaming(
               this.opts.runner,
@@ -414,15 +468,27 @@ export class Pipeline {
             );
             throwIfMcpRefusal(text);
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
-            // A degraded first reply fails fast: no repair turn can fix
-            // chatter about the agent's own tooling (#51).
-            this.throwIfDegradedTurn(o.reviewId, mcpBefore, first.data, first.body);
+            // A degraded first reply fails fast — unless it still has a
+            // usable body, which is kept with a quiet note (#51, weakened
+            // by usable bodies). No repair turn can fix chatter about the
+            // agent's own tooling, so a kept answer skips repair.
+            let degradedReason: string | undefined;
+            const firstDisp = this.degradedDisposition(
+              o.reviewId,
+              mcpBefore,
+              first.data,
+              first.body,
+              first.cards.flatMap((c) => c.blocks).length,
+            );
+            if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
+            if (firstDisp.kind === "fail") throw new DegradedTurnError(firstDisp.message);
+            if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
             let finalText = text;
             let finalCards = first.cards;
             let finalData = first.data;
             let finalValidation = first.validation;
             let repaired = false;
-            if (first.validation.needsRepairTurn) {
+            if (first.validation.needsRepairTurn && degradedReason === undefined) {
               repaired = true;
               const anchorProblem =
                 first.validation.anchor && !first.validation.anchor.ok
@@ -449,7 +515,20 @@ export class Pipeline {
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
-              this.throwIfDegradedTurn(o.reviewId, mcpBefore, second.data, second.body);
+              const secondDisp = this.degradedDisposition(
+                o.reviewId,
+                mcpBefore,
+                second.data,
+                second.body,
+                second.cards.flatMap((c) => c.blocks).length,
+              );
+              if (secondDisp.kind === "fail-conn") throw new DegradedConnError(secondDisp.message);
+              if (secondDisp.kind === "fail") throw new DegradedTurnError(secondDisp.message);
+              if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
+            }
+            if (degradedReason !== undefined) {
+              attachDegradedNote(finalCards);
+              ctx.setDegradedReason(degradedReason);
             }
             ctx.reportUsage(usage);
             await this.recordUsage(o.reviewId, usage);
@@ -477,7 +556,7 @@ export class Pipeline {
             await this.finishBookkeeping(o.reviewId, () =>
               this.ingestTurn(o.reviewId, {
                 sessionId: forked.session.id,
-                ...(o.threadId ? { threadId: o.threadId } : {}),
+                ...(o.annotationId ? { annotationId: o.annotationId } : {}),
                 ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
                 ...(o.cardId ? { cardId: o.cardId } : {}),
                 ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
@@ -488,9 +567,29 @@ export class Pipeline {
           } catch (err) {
             // One retry on a fresh session when the turn observably hit a
             // dead review-MCP URL (#51: transient, e.g. slow-starting
-            // server): the loop re-forks above. A second failure, and any
-            // other degraded turn, is terminal.
-            if (err instanceof DegradedConnError && attempt < 1) continue;
+            // server). A continued conversation falls back to a fresh fork
+            // — retrying on the same dead session could never reconnect —
+            // with the full first-turn prompt plus the stored transcript
+            // (the short follow-up prompt assumes the live session's
+            // history). A second failure, and any other degraded turn, is
+            // terminal — unless the reply still has a usable body, which
+            // the disposition above keeps.
+            if (err instanceof DegradedConnError && attempt < 1) {
+              continuedId = undefined;
+              if (o.retryTemplate && o.retryVariables) {
+                const retryVars = changeListVariable(this.wireDeps(), o.reviewId, o.retryTemplate, o.retryVariables, {
+                  ...(o.conversationKey ? { conversationKey: o.conversationKey } : {}),
+                  ...(o.cardId ? { cardId: o.cardId } : {}),
+                  ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
+                  baseLogSeq,
+                });
+                prompt = withReplayMark(
+                  this.render(o.retryTemplate, retryVars),
+                  o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined,
+                );
+              }
+              continue;
+            }
             if (err instanceof RetryableError && attempt < 3) {
               await sleepMs(50 * (attempt + 1));
               continue;
@@ -533,7 +632,7 @@ export class Pipeline {
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
-      ...(o.threadId ? { threadId: o.threadId } : {}),
+      ...(o.annotationId ? { annotationId: o.annotationId } : {}),
       promptSnapshot: prompt,
       run: async (ctx) => {
         for (let attempt = 0; ; attempt++) {
@@ -788,7 +887,6 @@ export class Pipeline {
               pageId: `c-${slug}`,
               title: null,
               level: "standard",
-              read: false,
               collapsed: false,
               revision: (page.cards[0]?.revision ?? 0) + 1,
               blocks: stored,
@@ -965,41 +1063,69 @@ export class Pipeline {
   }
 
   /**
-   * Fail a degraded turn instead of storing its reply (#51). Facts only,
-   * never vocabulary alone:
-   * - the trailing `degraded` field is present → terminal fail: the agent
-   *   says the reply is weakened, deterministically for the session;
-   * - the body matches a process-complaint frame AND the turn ran without
-   *   the review MCP server (no new connection or call) or observably hit
-   *   a dead review-MCP URL → fail: without tools behind it the reply is
-   *   weakened. A connection-error failure throws DegradedConnError, which
-   *   runInFork retries once on a fresh session; anything else here is
-   *   terminal (a retry would likely reproduce it at full token cost).
-   * The message lands in the job error, shown on the Debug page.
-   */
-  private throwIfDegradedTurn(
-    reviewId: string,
-    before: { connected: number; toolCalls: number; unknownHits: number },
-    data: ReplyData | null,
-    body: string,
-  ): void {
-    const field = data?.degraded;
-    if (typeof field === "string" && field.trim() !== "") {
-      throw new DegradedTurnError(`agent reported a degraded turn: ${field.trim().slice(0, 300)}`);
-    }
-    const after = this.opts.mcp.activitySnapshot(reviewId);
-    const noActivity = after.toolCalls <= before.toolCalls && after.connected <= before.connected;
-    const connError = after.unknownHits > before.unknownHits;
-    if (!noActivity && !connError) return;
-    const stripped = stripCodeForChatter(body);
-    if (!DEGRADED_FRAME_RES.some((re) => re.test(stripped))) return;
-    if (connError) {
-      throw new DegradedConnError(
-        `agent reply reports what it could not look up; a review-MCP call failed this turn`,
-      );
-    }
-    throw new DegradedTurnError(`agent reply reports what it could not look up instead of answering`);
+ * Decide what a degraded signal means (#51, weakened by usable bodies).
+ * Facts only, never vocabulary alone:
+ * - the trailing `degraded` field is present: the agent says what the
+ *   reply is weaker for. A usable body (it parses and has at least one
+ *   block) is kept with the quiet note above and the raw reason on the
+ *   job; only an empty answer fails the turn;
+ * - the body matches a process-complaint frame AND the turn ran without
+ *   the review MCP server (no new connection or call) or observably hit
+ *   a dead review-MCP URL → fail as before: without tools behind it the
+ *   reply is weakened. A connection-error failure throws
+ *   DegradedConnError, which runInFork retries once on a fresh session;
+ *   anything else here is terminal (a retry would likely reproduce it at
+ *   full token cost).
+ * The fail messages land in the job error, shown on the Debug page.
+ */
+private degradedDisposition(
+  reviewId: string,
+  before: { connected: number; toolCalls: number; unknownHits: number },
+  data: ReplyData | null,
+  body: string,
+  blockCount: number,
+): DegradedDisposition {
+  const field = data?.degraded;
+  if (typeof field === "string" && field.trim() !== "") {
+    const reason = field.trim().slice(0, 300);
+    if (blockCount > 0) return { kind: "keep", reason };
+    return { kind: "fail", message: `agent reported a degraded turn: ${reason}` };
   }
+  const after = this.opts.mcp.activitySnapshot(reviewId);
+  const noActivity = after.toolCalls <= before.toolCalls && after.connected <= before.connected;
+  const connError = after.unknownHits > before.unknownHits;
+  if (!noActivity && !connError) return { kind: "ok" };
+  const stripped = stripCodeForChatter(body);
+  if (!DEGRADED_FRAME_RES.some((re) => re.test(stripped))) return { kind: "ok" };
+  if (connError) {
+    return {
+      kind: "fail-conn",
+      message: `agent reply reports what it could not look up; a review-MCP call failed this turn`,
+    };
+  }
+  return {
+    kind: "fail",
+    message: `agent reply reports what it could not look up instead of answering`,
+  };
+}
+
+/**
+ * Reader-compat wrapper: the reader keeps #51's terminal behaviour —
+ * a degraded reader turn fails its job instead of storing guide cards.
+ */
+private throwIfDegradedTurn(
+  reviewId: string,
+  before: { connected: number; toolCalls: number; unknownHits: number },
+  data: ReplyData | null,
+  body: string,
+  blockCount: number,
+): void {
+  const disp = this.degradedDisposition(reviewId, before, data, body, blockCount);
+  if (disp.kind === "ok") return;
+  if (disp.kind === "fail-conn") throw new DegradedConnError(disp.message);
+  if (disp.kind === "fail") throw new DegradedTurnError(disp.message);
+  throw new DegradedTurnError(`agent reported a degraded turn: ${disp.reason}`);
+}
 
   /**
    * ActionContext for diagram finalize/repair from fills that run inside
@@ -1020,11 +1146,15 @@ export class Pipeline {
 
   /**
    * Finalize inline diagrams for a fill that already holds its blocks
-   * (#130): pre-check + render, plus exactly one repair turn on the
+   * (#130, #145): pre-check + render, plus exactly one repair turn on the
    * fill's own session when needed. A failed repair keeps the
-   * error-status blocks; the prose is unaffected.
+   * error-status blocks; the prose is unaffected. One place decides "this
+   * block is a diagram that needs finalizing", used by every job kind:
+   * pipeline fills call this directly; second opinions call it through
+   * their deps' pipeline. Never touches the shared log (no ingestTurn),
+   * so second-opinion isolation holds.
    */
-  private async finalizeInlineBlocks(
+  async finalizeInlineBlocks(
     reviewId: string,
     session: Session,
     signal: AbortSignal | undefined,
@@ -1238,6 +1368,45 @@ export class Pipeline {
     }
   }
 
+  /**
+   * Issue #136: continue a later turn on an existing conversation
+   * session. The session is ensured (reopened when idle-closed); a
+   * rebuild between the caller's probe and this job proceeds on the fresh
+   * session — the retry path then forks with the stored transcript.
+   */
+  private async continueOn(sessionId: string): Promise<{ session: Session; viaFork: boolean }> {
+    const { session } = await this.opts.sessions.ensureConversation(sessionId);
+    return { session, viaFork: true };
+  }
+
+  /**
+   * Issue #136: fork for a turn and register the fork when it backs a
+   * persistent conversation (`conversationKey`, e.g. a card id).
+   * Registration is what makes the session tracked, persisted,
+   * idle-closed and reopenable (#143); one-shot forks stay untracked.
+   */
+  private async forkAndTrack(reviewId: string, track: boolean): Promise<{ session: Session; viaFork: boolean }> {
+    const forked = await this.forkFor(reviewId);
+    if (track) {
+      const snapshot = this.opts.reviews.getSnapshot(reviewId);
+      const settings = await this.effectiveSettings();
+      if (snapshot) {
+        this.opts.sessions.registerConversation(
+          forked.session,
+          {
+            reviewId,
+            reviewVersion: `v${snapshot.version.n}`,
+            guideRevision: guideRevisionForSnapshot(snapshot),
+            provider: settings.main.provider,
+            model: settings.main.model,
+          },
+          forked.viaFork,
+        );
+      }
+    }
+    return forked;
+  }
+
   private async forkFor(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
     // #122: never fork from a stale log — wait for the previous turn's
     // bookkeeping (base growth) to land first.
@@ -1296,8 +1465,11 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
-    const source = buildSourceBlurb(promptSnap);
-    const diff = buildDiffSection(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    // One ladder call for both halves (issue #107): source + diff come
+    // from the same rung, so the reader prompt stays under the hard cap.
+    const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    const source = ladder.source;
+    const diff = ladder.diff;
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderTemplate(lib.get("instructions")!, {});
     let prompt = renderTemplate(lib.get("reader")!, {
@@ -1316,106 +1488,160 @@ export class Pipeline {
       dedupe: { anchor: "guide", requestKind: "reader", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
-        const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
         // Card ids present before this turn: a degraded turn removes what
-        // it streamed, never older cards (#51).
+        // it streamed, never older cards (#51). Read once: a retry's own
+        // streamed cards must clear on a terminal failure too (#146).
         const beforeIds = new Set(
           (this.opts.reviews.getSnapshot(reviewId)?.pages.find((p) => p.id === "root")?.cards ?? []).map((c) => c.id),
         );
-        const session = await this.opts.runner.start({
-          provider: settings.main.provider,
-          model: settings.main.model,
-          cwd: this.worktreeOf(reviewId),
-          systemPrompt: instructions,
-          mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
-        });
-        ctx.setSessionId(session.id);
-        try {
-          let buffer = "";
-          const streamed = new Set<number>();
-          const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
-          const { text, usage } = await collectStreaming(
-            this.opts.runner,
-            session,
-            prompt,
-            ctx.signal,
-            (delta) => {
-              ctx.reportText(delta);
-              buffer += delta;
-              try {
-                const partials = parseCardsPartial(buffer);
-                // An untitled first section is held back: it is either
-                // preamble (dropped) or settled by the final apply.
-                const skip = partials[0]?.title === null ? 1 : 0;
-                for (let i = skip; i < partials.length; i++) {
-                  const p = partials[i];
-                  const index = i - skip;
-                  if (streamed.has(index)) continue;
-                  streamed.add(index);
-                  void this.applyReaderCard(reviewId, index, p.title, p.blocks);
+        // #146: the reader retries once on a fresh session when a turn
+        // observably hit a dead review-MCP connection, like fork jobs. The
+        // retry gets a fresh per-run secret and session, never the dead
+        // turn's. Anything else (including a second connection failure) is
+        // terminal.
+        for (let attempt = 0; ; attempt++) {
+          const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
+          const session = await this.opts.runner.start({
+            provider: settings.main.provider,
+            model: settings.main.model,
+            cwd: this.worktreeOf(reviewId),
+            systemPrompt: instructions,
+            mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
+          });
+          ctx.setSessionId(session.id);
+          try {
+            let buffer = "";
+            const streamed = new Set<number>();
+            const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
+            const { text, usage } = await collectStreaming(
+              this.opts.runner,
+              session,
+              prompt,
+              ctx.signal,
+              (delta) => {
+                ctx.reportText(delta);
+                buffer += delta;
+                try {
+                  const partials = parseCardsPartial(buffer);
+                  // An untitled first section is held back: it is either
+                  // preamble (dropped) or settled by the final apply.
+                  const skip = partials[0]?.title === null ? 1 : 0;
+                  for (let i = skip; i < partials.length; i++) {
+                    const p = partials[i];
+                    const index = i - skip;
+                    if (streamed.has(index)) continue;
+                    streamed.add(index);
+                    void this.applyReaderCard(reviewId, index, p.title, p.blocks);
+                  }
+                } catch {
+                  // ignore mid-stream
                 }
-              } catch {
-                // ignore mid-stream
-              }
-            },
-            () => {
-              // Text written before a tool call and before any card heading
-              // is the agent narrating its exploration, not card content.
-              if (!/^## /m.test(buffer)) buffer = "";
-            },
-          );
-          ctx.reportUsage(usage);
-          throwIfMcpRefusal(text);
-          await this.recordUsage(reviewId, usage);
-          // Issue #50: reader cards match their own `##` titles.
-          const { cards, data, validation, body } = this.parseAndValidate(reviewId, buffer, []);
-          let finalCards = cards;
-          let finalData = data;
-          let finalValidation = validation;
-          let finalBody = body;
-          this.throwIfDegradedTurn(reviewId, mcpBefore, data, body);
-          if (validation.needsRepairTurn) {
-            const anchorProblem =
-              validation.anchor && !validation.anchor.ok
-                ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
-                : "";
-            const repairPrompt =
-              `Some citations in your previous reply could not be verified:\n` +
-              validation.tokens
-                .filter((t) => t.status === "unverified")
-                .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
-                .join("\n") +
-              anchorProblem +
-              `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
-            const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
-              ctx.reportText(d),
+              },
+              () => {
+                // Text written before a tool call and before any card heading
+                // is the agent narrating its exploration, not card content.
+                if (!/^## /m.test(buffer)) buffer = "";
+              },
             );
-            usage.inputTokens += repair.usage.inputTokens;
-                usage.cachedReadTokens += repair.usage.cachedReadTokens;
-                usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
-            usage.outputTokens += repair.usage.outputTokens;
-            ctx.reportUsage(repair.usage);
-            throwIfMcpRefusal(repair.text);
-            await this.recordUsage(reviewId, repair.usage);
-            const second = this.parseAndValidate(reviewId, repair.text, []);
-            finalCards = second.cards;
-            finalData = second.data;
-            finalValidation = second.validation;
-            finalBody = second.body;
-          }
-          this.throwIfDegradedTurn(reviewId, mcpBefore, finalData, finalBody);
-          await this.applyReaderResult(reviewId, finalCards, finalData, finalValidation);
-          // #122: the guide cards are already applied above; bookkeeping
-          // joins the per-review chain (still awaited before the job ends).
-          await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: session.id, data: finalData }));
-          this.setStage(reviewId, "reader", "done");
-          // Awaited: the reader job ends with its follow-ups enqueued and
-          // the cited-hunk repair applied (#123), never floating behind it.
-          await this.enqueueAfterReader(reviewId);
-          // #122: the guide just landed — build the base before the next click.
-          this.warmBase(reviewId);
+            ctx.reportUsage(usage);
+            throwIfMcpRefusal(text);
+            await this.recordUsage(reviewId, usage);
+            // Issue #50: reader cards match their own `##` titles.
+            const { cards, data, validation, body } = this.parseAndValidate(reviewId, buffer, []);
+            let finalCards = cards;
+            let finalData = data;
+            let finalValidation = validation;
+            let finalBody = body;
+            // Reader turns keep #51's terminal rule (guide cards have
+            // their own integrity path; a weakened guide is not stored).
+            this.throwIfDegradedTurn(reviewId, mcpBefore, data, body, cards.flatMap((c) => c.blocks).length);
+            if (validation.needsRepairTurn) {
+              const anchorProblem =
+                validation.anchor && !validation.anchor.ok
+                  ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
+                  : "";
+              const repairPrompt =
+                `Some citations in your previous reply could not be verified:\n` +
+                validation.tokens
+                  .filter((t) => t.status === "unverified")
+                  .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
+                  .join("\n") +
+                anchorProblem +
+                `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
+              // #124: the repair prompt names the failed citations, so keep
+              // it on the job's stored prompt — the Debug page then shows
+              // what failed (prompt wording, an ID shape, or the validator).
+              ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
+              const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
+                ctx.reportText(d),
+              );
+              usage.inputTokens += repair.usage.inputTokens;
+              usage.cachedReadTokens += repair.usage.cachedReadTokens;
+              usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
+              usage.outputTokens += repair.usage.outputTokens;
+              ctx.reportUsage(repair.usage);
+              throwIfMcpRefusal(repair.text);
+              await this.recordUsage(reviewId, repair.usage);
+              const second = this.parseAndValidate(reviewId, repair.text, []);
+              finalCards = second.cards;
+              finalData = second.data;
+              finalValidation = second.validation;
+              finalBody = second.body;
+            }
+            this.throwIfDegradedTurn(
+              reviewId,
+              mcpBefore,
+              finalData,
+              finalBody,
+              finalCards.flatMap((c) => c.blocks).length,
+            );
+            // #145: diagrams the reader wrote inline in guide cards go
+            // through the same finalize + one repair turn as every other
+            // fill, on the reader's own session. Flattened so a bad
+            // diagram costs one shared repair turn, then split back.
+            const flat = finalCards.flatMap((c) => c.blocks);
+            const finalized = await this.finalizeInlineBlocks(
+              reviewId,
+              session,
+              ctx.signal,
+              `Guide: ${finalCards.map((c) => c.title ?? "(untitled)").join(" / ")}`,
+              "standard",
+              flat,
+              (u) => ctx.reportUsage(u),
+            );
+            const withDiagrams = splitFinalizedBlocks(finalCards, finalized);
+            await this.applyReaderResult(reviewId, withDiagrams, finalData, finalValidation);
+            // #122: the guide cards are already applied above; bookkeeping
+            // joins the per-review chain (still awaited before the job ends).
+            await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: session.id, data: finalData }));
+            this.setStage(reviewId, "reader", "done");
+            // Awaited: the reader job ends with its follow-ups enqueued and
+            // the cited-hunk repair applied (#123), never floating behind it.
+            await this.enqueueAfterReader(reviewId);
+            // #122: the guide just landed — build the base before the next click.
+            this.warmBase(reviewId);
+            return;
         } catch (err) {
-          this.setStage(reviewId, "reader", "error", (err as Error).message);
+          // One retry on a fresh session when the turn observably hit a
+          // dead review-MCP connection (#146, like fork jobs): the loop
+          // re-issues the secret and session above. Provisional ids are
+          // deterministic (`readerCardId`), so the retry's streams overwrite
+          // this attempt's partials instead of duplicating them; the final
+          // apply drops whatever the winning attempt did not reproduce.
+          // Usage already reported + recorded per attempt above lands in the
+          // totals exactly once per attempt — never twice, never lost.
+          if (err instanceof DegradedConnError && attempt < 1) continue;
+          // Terminal. The stage error is reader-facing (plain words, #45:
+          // no MCP, no tool names); the raw reason stays on the job error
+          // for the Debug page. Retry is the guide's Retry control (#86).
+          this.setStage(
+            reviewId,
+            "reader",
+            "error",
+            err instanceof DegradedConnError
+              ? "The guide couldn't be started because the review details couldn't be reached. Please retry."
+              : (err as Error).message,
+          );
           if (err instanceof DegradedTurnError) {
             // A degraded turn must leave no card behind: provisional cards
             // streamed mid-turn may already hold the chatter (#51).
@@ -1433,7 +1659,9 @@ export class Pipeline {
             // ignore
           }
           // The reader session is closed: its MCP secret dies with it.
+          // Per attempt, so a retry never reuses the dead turn's secret.
           this.opts.mcp.revokeSession(mcp.secret);
+          }
         }
       },
     });
@@ -1467,7 +1695,6 @@ export class Pipeline {
           pageId: "root",
           title,
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: fixed,
@@ -1507,7 +1734,6 @@ export class Pipeline {
             pageId: "root",
             title: c.title,
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: fixed,
@@ -1534,7 +1760,6 @@ export class Pipeline {
           pageId: "root",
           title: p.label,
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: [],
@@ -1556,7 +1781,6 @@ export class Pipeline {
               pageId: `c-${c.slug}`,
               title: null,
               level: "standard",
-              read: false,
               collapsed: false,
               revision: 1,
               blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary }, citations: [] }],
@@ -1588,6 +1812,15 @@ export class Pipeline {
     // #123: the hunk pass starts in startReview now (at ingest), not here.
     // Hunks hidden before the guide existed are unhidden when cited.
     await this.unhideCitedHunks(reviewId);
+    // Issue #107: past the fan-out limit the ingest-time pass enqueues
+    // nothing (no guide exists yet to cite), so fan out the guide-cited
+    // hunks now that the reader landed; the rest stay on demand. Under the
+    // limit the ingest pass already covers every hunk.
+    const snapshotNow = this.opts.reviews.getSnapshot(reviewId);
+    const hunkCount = snapshotNow?.files.reduce((n, f) => n + f.hunks.length, 0) ?? 0;
+    if (hunkCount > DEFAULT_HUNK_PASS_FANOUT_LIMIT) {
+      out.push(...(await this.enqueueHunkPass(reviewId)));
+    }
     if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
       out.push(...(await this.enqueueDemoFill(reviewId)));
     }
@@ -1650,7 +1883,6 @@ export class Pipeline {
                   pageId: applied.pageId,
                   title: c.title,
                   level: "standard",
-                  read: false,
                   collapsed: false,
                   revision: 1,
                   blocks: c.blocks,
@@ -1778,7 +2010,6 @@ export class Pipeline {
                     pageId: `c-${c.slug}`,
                     title: null,
                     level: "standard",
-                    read: false,
                     collapsed: false,
                     revision: 1,
                     blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary ?? "" }, citations: [] }],
@@ -1818,54 +2049,103 @@ export class Pipeline {
     this.setStage(reviewId, "hunk-pass", "running");
     const settings = await this.effectiveSettings();
     const hunks = snapshot.files.flatMap((f) => f.hunks.map((h) => ({ file: f, hunk: h })));
-    return hunks.map(({ file, hunk }) => {
-      const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
-      const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
-      const body = cited ? `${hunkText}\n\nCITED-BY-GUIDE` : hunkText;
-      const replayKey = this.replayKeyForHunk(snapshot, file.fileKey, hunk.contentHash);
-      const prompt = withReplayMark(
-        this.render("hunk_pass", { hunk: body, path: file.path }),
-        isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
-      );
-      return this.opts.jobs.enqueue({
-        reviewId,
-        kind: "hunk-pass",
-        provider: settings.small.provider,
-        model: settings.small.model,
-        priority: JOB_PRIORITY.background,
-        dedupe: { anchor: `hunk:${hunk.contentHash}`, requestKind: "hunk-pass", baseVersion: `v${snapshot.version.n}` },
-        run: async (ctx) => {
-          ctx.setPromptSnapshot(prompt);
-          const session = await this.opts.runner.start({
-            provider: settings.small.provider,
-            model: settings.small.model,
-            cwd: this.worktreeOf(reviewId),
-            systemPrompt: "",
-            mcpServers: [],
-          });
-          ctx.setSessionId(session.id);
+    // Issue #107: past the fan-out limit there is no per-hunk fan-out —
+    // only guide-cited hunks lacking a stored summary are enqueued, and
+    // everything else summarises on demand (`POST …/hunks/:hash/summarize`,
+    // Fold-all). At ingest (#123 starts the pass here) no guide exists yet,
+    // so the cited set is empty and the stage reaches done with no jobs;
+    // `enqueueAfterReader` fans out the cited hunks once the reader lands.
+    // Resume re-runs this same branch — never the full fan-out.
+    const overLimit = hunks.length > DEFAULT_HUNK_PASS_FANOUT_LIMIT;
+    const targets = overLimit
+      ? hunks.filter(({ hunk }) => {
+          if (!this.isCitedByGuide(reviewId, hunk.contentHash)) return false;
+          return snapshot.hunkStates.find((s) => s.contentHash === hunk.contentHash)?.summary === undefined;
+        })
+      : hunks;
+    if (targets.length === 0) {
+      this.setStage(reviewId, "hunk-pass", "done");
+      return [];
+    }
+    this.hunkPassCompleted.set(reviewId, 0);
+    return targets.map(({ file, hunk }) =>
+      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length),
+    );
+  }
+
+  private enqueueOneHunkPass(
+    reviewId: string,
+    snapshot: ReviewSnapshot,
+    file: ReviewSnapshot["files"][number],
+    hunk: ReviewSnapshot["files"][number]["hunks"][number],
+    small: { provider: string; model: string },
+    expectedJobs: number,
+  ): Job {
+    const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
+    const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
+    const body = cited ? `${hunkText}\n\nCITED-BY-GUIDE` : hunkText;
+    const replayKey = this.replayKeyForHunk(snapshot, file.fileKey, hunk.contentHash);
+    const prompt = withReplayMark(
+      this.render("hunk_pass", { hunk: body, path: file.path }),
+      isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
+    );
+    return this.opts.jobs.enqueue({
+      reviewId,
+      kind: "hunk-pass",
+      provider: small.provider,
+      model: small.model,
+      priority: JOB_PRIORITY.background,
+      dedupe: { anchor: `hunk:${hunk.contentHash}`, requestKind: "hunk-pass", baseVersion: `v${snapshot.version.n}` },
+      run: async (ctx) => {
+        ctx.setPromptSnapshot(prompt);
+        const session = await this.opts.runner.start({
+          provider: small.provider,
+          model: small.model,
+          cwd: this.worktreeOf(reviewId),
+          systemPrompt: "",
+          mcpServers: [],
+        });
+        ctx.setSessionId(session.id);
+        try {
+          const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
+            ctx.reportText(d),
+          );
+          ctx.reportUsage(usage);
+          await this.recordUsage(reviewId, usage);
+          const { data } = this.parseAndValidate(reviewId, text);
+          await this.applyHunkSummary(reviewId, hunk.contentHash, parseHunkReply(text, data));
+          this.markHunkPassComplete(reviewId, expectedJobs);
+        } catch (err) {
+          this.setStage(reviewId, "hunk-pass", "error", (err as Error).message);
+          throw err;
+        } finally {
           try {
-            const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
-              ctx.reportText(d),
-            );
-            ctx.reportUsage(usage);
-            await this.recordUsage(reviewId, usage);
-            const { data } = this.parseAndValidate(reviewId, text);
-            await this.applyHunkSummary(reviewId, hunk.contentHash, parseHunkReply(text, data));
-            this.maybeMarkStageDone(reviewId, "hunk-pass", hunks.length);
-          } catch (err) {
-            this.setStage(reviewId, "hunk-pass", "error", (err as Error).message);
-            throw err;
-          } finally {
-            try {
-              await this.opts.runner.close(session);
-            } catch {
-              // ignore
-            }
+            await this.opts.runner.close(session);
+          } catch {
+            // ignore
           }
-        },
-      });
+        }
+      },
     });
+  }
+
+  /**
+   * Record one hunk-pass job's success; mark the stage done once every job
+   * of the last fan-out completed. Never overwrites an error set by a
+   * failed sibling (resume retries it).
+   */
+  private markHunkPassComplete(reviewId: string, expectedJobs: number): void {
+    try {
+      const completed = (this.hunkPassCompleted.get(reviewId) ?? 0) + 1;
+      this.hunkPassCompleted.set(reviewId, completed);
+      if (completed < expectedJobs) return;
+      const errored = this.opts.jobs
+        .listByReview(reviewId)
+        .some((j) => j.kind === "hunk-pass" && j.state === "error");
+      if (!errored) this.setStage(reviewId, "hunk-pass", "done");
+    } catch {
+      // ignore
+    }
   }
 
   private async enqueueDemoFill(reviewId: string): Promise<Job[]> {
@@ -2023,7 +2303,6 @@ export class Pipeline {
           pageId: `c-${slug}`,
           title: null,
           level: "standard",
-          read: false,
           collapsed: false,
           revision: (page.cards[0]?.revision ?? 0) + 1,
           blocks: stored,

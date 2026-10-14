@@ -14,8 +14,14 @@
  * the pass reveals it when the highlight lands nowhere and hides it again
  * when the phrase returns. Thread chips (`[data-tfallback]`) belong to
  * `GuideThreads` and are never touched here.
+ *
+ * The pass re-runs on the route as well as the snapshot (issue #152):
+ * the guide page remounts with clean DOM on navigation while this
+ * component stays mounted, so without the route trigger a mark drawn
+ * before leaving would never come back.
  */
 import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
@@ -41,6 +47,7 @@ function makePageLink(pageId: string): HTMLElement {
 export function ExpansionHighlights() {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const pages = useReview((s) => s.snapshot?.pages);
+  const pathname = useLocation().pathname;
 
   useEffect(() => {
     const root = document.getElementById("page");
@@ -61,7 +68,7 @@ export function ExpansionHighlights() {
         );
         const highlighted = new Set<string>();
         for (const a of annotations ?? []) {
-          if (a.type !== "expansion" && a.type !== "link") continue;
+          if (a.type !== "conversation" && a.type !== "link") continue;
           if (isAnchorStale(a)) continue;
           if (!a.anchor.quotedText) continue;
           if (a.anchor.host.kind !== "block") continue;
@@ -104,7 +111,7 @@ export function ExpansionHighlights() {
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [annotations, pages]);
+  }, [annotations, pages, pathname]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent): void => {
@@ -115,7 +122,7 @@ export function ExpansionHighlights() {
       const reviewId = snap?.review.id;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!reviewId || !found) return;
-      if (found.type === "expansion" && !found.open) {
+      if (found.type === "conversation" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
@@ -162,7 +169,7 @@ function splitBlock(blockId: string): { cardId: string | null; block: string } {
   return { cardId: blockId.slice(0, hash), block: blockId.slice(hash + 1) };
 }
 
-/** Expansions anchored on a card + block (open ones render in place). */
+/** Conversation cards anchored on a card + block (open ones render in place). */
 export function expansionsForBlock(
   annotations: import("@unvibe/shared").Annotation[] | undefined,
   cardId: string,
@@ -171,7 +178,7 @@ export function expansionsForBlock(
   if (!annotations) return [];
   return annotations.filter(
     (a) =>
-      (a.type === "expansion" || a.type === "link") &&
+      (a.type === "conversation" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
   );

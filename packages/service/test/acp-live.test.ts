@@ -241,6 +241,76 @@ describe.skipIf(!LIVE)("ACP live adapters", () => {
         }
       });
 
+      // DISABLED(#124): live-verified 2026-10-13 that a Codex fork comes up
+      // with no review tools even with mcpServers + _meta on session/fork
+      // (the model never attempts the tool: zero permission requests across
+      // 7 forks; it reports "unavailable" or hallucinates the result). The
+      // fields are still sent (pinned by the fake-transport tests in
+      // acp-runner.test.ts); un-skip this when the underlying fork-tools
+      // issue is fixed. Skipped, not expected-fail, so `test:live` burns
+      // no tokens on a known failure.
+      it.skip("#124: a fork inherits the review tools and calls one", { timeout: 300_000 }, async () => {
+        // One small pack, one fork, one tool call: the fork must reach the
+        // review tools (pre-fix Codex forks came up without `mcpServers`,
+        // the probable #51 cause). At most one retry on a fresh fork for
+        // the Codex "can't access that tool" flake (quirk 6); a missing
+        // server fails every attempt, so the retry cannot mask the bug.
+        const runner = new AcpAgentRunner();
+        try {
+          const pack = smallPack();
+          const s = await runner.start({
+            provider,
+            model: "",
+            cwd,
+            systemPrompt: "You are a read-only code reviewer. Never edit files, never run shell commands.",
+            mcpServers: [{ name: "unvibe-live", url: mcp.url }],
+          });
+          const base = await collect(runner, s, pack.message);
+          expect(textOf(base)).toMatch(/READY/i);
+          console.log(`[live:fork-tools:${provider}] base usage=${JSON.stringify(usageOf(base))}`);
+          // Control: the base session itself calls the tool in this
+          // environment, so a fork failure is fork-specific, not the setup.
+          const ctlBefore = mcp.calls.length;
+          const ctl = await collect(
+            runner,
+            s,
+            "Call the get_hunk tool with id 'h:live:fork124base' and then reply with BASE-TOOL-OK plus the exact string it returned, and nothing else.",
+          );
+          const ctlText = textOf(ctl);
+          const ctlLanded = mcp.calls.slice(ctlBefore).some((c) => c.id === "h:live:fork124base");
+          console.log(
+            `[live:fork-tools:${provider}] base-control tool-call-landed=${ctlLanded} usage=${JSON.stringify(usageOf(ctl))} reply=${JSON.stringify(ctlText.slice(0, 120))}`,
+          );
+          expect(ctlLanded).toBe(true);
+          let toolText = "";
+          let ok = false;
+          // Same bounded retries as the base-session tool test above: the
+          // Codex "can't access that tool" flake (quirk 6) needs fresh
+          // forks, and a missing server fails every attempt, so retries
+          // cannot mask the bug.
+          for (let attempt = 0; attempt < 5 && !ok; attempt++) {
+            const fork = await runner.fork(s);
+            const before = mcp.calls.length;
+            const tool = await collect(
+              runner,
+              fork,
+              "Call the get_hunk tool with id 'h:live:fork124' and then reply with FORK-TOOL-OK plus the exact string it returned, and nothing else.",
+            );
+            toolText = textOf(tool);
+            const landed = mcp.calls.slice(before).some((c) => c.id === "h:live:fork124");
+            ok = landed && toolText.includes("FORK-TOOL-OK") && toolText.includes("alpha-bravo-42");
+              console.log(
+              `[live:fork-tools:${provider}] attempt=${attempt} tool-call-landed=${landed} usage=${JSON.stringify(usageOf(tool))} reply=${JSON.stringify(toolText.slice(0, 120))}`,
+            );
+            await runner.close(fork);
+          }
+          expect(ok).toBe(true);
+          await runner.close(s);
+        } finally {
+          await runner.dispose();
+        }
+      });
+
       it("load after close recalls context", { timeout: 180_000 }, async () => {
         const runner = new AcpAgentRunner();
         try {

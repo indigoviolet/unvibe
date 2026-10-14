@@ -1,16 +1,23 @@
 /**
- * `unvibe setup` orchestration (PRD §14): per-install token, platform URL
- * handler (`unvibe://start` → start the service), and `--uninstall`.
+ * `unvibe setup` orchestration (PRD §14): per-install token, start-at-login
+ * service (issue #108), platform URL handler (`unvibe://start` → start the
+ * service), and `--uninstall`.
  *
  * Idempotent: re-running rewrites the same files and re-registers.
- * Nothing starts at login: no LaunchAgents, no systemd units, no autostart
- * entries are written anywhere (asserted by test).
  */
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  LAUNCHD_LABEL,
+  launchdPlistContent,
+  launchdPlistPath,
+  SYSTEMD_UNIT_NAME,
+  systemdUnitContent,
+  systemdUnitPath,
+} from "./login.js";
 import {
   appleScriptSource,
   helperAppPath,
@@ -80,11 +87,21 @@ function rmrf(p: string): void {
   fs.rmSync(p, { recursive: true, force: true });
 }
 
+export interface InstallSetupOpts {
+  /** Service port baked into the login unit (defaults to 4517). */
+  port?: number;
+  /** Data dir baked into the login unit (defaults to the real one). */
+  dataDir?: string;
+  /** Skip the start-at-login unit (handler only). */
+  noLogin?: boolean;
+}
+
 /** Install the `unvibe://` handler for this platform. Returns log lines. */
 export async function installSetup(
   paths: SetupPaths,
   runner: SetupRunner = realSetupRunner(),
   platform: SetupPlatform = process.platform,
+  opts: InstallSetupOpts = {},
 ): Promise<string[]> {
   const steps: string[] = [];
   if (platform === "darwin") {
@@ -131,7 +148,59 @@ export async function installSetup(
   } else {
     throw new Error(`unvibe setup works on macOS and Linux only (this is ${platform})`);
   }
+  if (opts.noLogin) {
+    steps.push("login start skipped (--no-login)");
+    return steps;
+  }
+  steps.push(...(await installLoginUnit(paths, runner, platform, opts)));
   return steps;
+}
+
+/**
+ * Write the start-at-login unit and enable it (issue #108). The file
+ * write always happens; enabling is best-effort (headless sessions have
+ * no login manager to talk to) and degrades to a warning naming the
+ * manual command. Returns log lines.
+ */
+async function installLoginUnit(
+  paths: SetupPaths,
+  runner: SetupRunner,
+  platform: SetupPlatform,
+  opts: InstallSetupOpts,
+): Promise<string[]> {
+  const unit = {
+    nodePath: paths.nodePath,
+    cliPath: paths.cliPath,
+    port: opts.port ?? 4517,
+    dataDir: opts.dataDir ?? "",
+  };
+  if (platform === "darwin") {
+    const plist = launchdPlistPath(paths.homeDir);
+    fs.mkdirSync(path.dirname(plist), { recursive: true });
+    fs.writeFileSync(plist, launchdPlistContent(unit));
+    // Idempotent refresh of the login instance: unload whatever is there
+    // (ignored when absent), then load. Never touches a manually started
+    // service, which lives outside the login domain.
+    const uid = os.userInfo().uid;
+    await runner.run("launchctl", ["bootout", `gui/${uid}/${LAUNCHD_LABEL}`]);
+    const loaded = await runner.run("launchctl", ["bootstrap", `gui/${uid}`, plist]);
+    return [
+      loaded.code === 0
+        ? `service starts at login (launchd agent at ${plist}; never idle-exits there)`
+        : `warning: login start not enabled (launchctl: ${loaded.stderr.trim() || loaded.stdout.trim() || "unknown error"}). Run: launchctl bootstrap gui/${uid} ${plist}`,
+    ];
+  }
+  // Linux.
+  const unitFile = systemdUnitPath(paths.homeDir);
+  fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+  fs.writeFileSync(unitFile, systemdUnitContent(unit));
+  await runner.run("systemctl", ["--user", "daemon-reload"]);
+  const enabled = await runner.run("systemctl", ["--user", "enable", "--now", SYSTEMD_UNIT_NAME]);
+  return [
+    enabled.code === 0
+      ? `service starts at login (systemd user unit at ${unitFile}; never idle-exits there)`
+      : `warning: login start not enabled (systemctl: ${enabled.stderr.trim() || enabled.stdout.trim() || "no user session?"}). Run: systemctl --user enable --now ${SYSTEMD_UNIT_NAME}`,
+  ];
 }
 
 /** Remove what `installSetup` created. Idempotent. Returns log lines. */
@@ -150,6 +219,7 @@ export async function uninstallSetup(
     } else {
       steps.push("no link handler installed; nothing to remove");
     }
+    steps.push(...(await uninstallLoginUnit(paths, runner, platform)));
   } else if (platform === "linux") {
     const file = desktopFilePath(paths.homeDir);
     if (fs.existsSync(file)) {
@@ -159,17 +229,53 @@ export async function uninstallSetup(
       steps.push("no link handler installed; nothing to remove");
     }
     await runner.run("update-desktop-database", [path.dirname(file)]);
+    steps.push(...(await uninstallLoginUnit(paths, runner, platform)));
   } else {
     throw new Error(`unvibe setup works on macOS and Linux only (this is ${platform})`);
   }
   return steps;
 }
 
+/** Remove the start-at-login unit (issue #108). Idempotent. */
+async function uninstallLoginUnit(
+  paths: SetupPaths,
+  runner: SetupRunner,
+  platform: SetupPlatform,
+): Promise<string[]> {
+  if (platform === "darwin") {
+    // Best-effort unload first: only our label, only the login domain.
+    try {
+      const uid = os.userInfo().uid;
+      await runner.run("launchctl", ["bootout", `gui/${uid}/${LAUNCHD_LABEL}`]);
+    } catch {
+      // The runner never throws, but stay idempotent regardless.
+    }
+    const plist = launchdPlistPath(paths.homeDir);
+    if (fs.existsSync(plist)) {
+      fs.unlinkSync(plist);
+      return [`removed ${plist} (service no longer starts at login)`];
+    }
+    return ["no login start installed; nothing to remove"];
+  }
+  // Best-effort disable first (ignored when absent or headless).
+  await runner.run("systemctl", ["--user", "disable", "--now", SYSTEMD_UNIT_NAME]);
+  const unitFile = systemdUnitPath(paths.homeDir);
+  if (fs.existsSync(unitFile)) {
+    fs.unlinkSync(unitFile);
+    return [`removed ${unitFile} (service no longer starts at login)`];
+  }
+  return ["no login start installed; nothing to remove"];
+}
+
 /**
- * Fail closed when setup would write login items: the allow-list of roots
- * setup may create under a home dir. Tests assert nothing else appears.
+ * What setup may create under a home dir (issue #108: the link handler
+ * plus the start-at-login unit). Tests assert nothing else appears.
  */
 export function setupAllowedRoots(homeDir: string, platform: SetupPlatform): string[] {
-  if (platform === "darwin") return [path.join(homeDir, "Applications", "Unvibe.app")];
-  return [path.join(homeDir, ".local", "share", "applications", DESKTOP_FILENAME)];
+  if (platform === "darwin")
+    return [path.join(homeDir, "Applications", "Unvibe.app"), launchdPlistPath(homeDir)];
+  return [
+    path.join(homeDir, ".local", "share", "applications", DESKTOP_FILENAME),
+    systemdUnitPath(homeDir),
+  ];
 }

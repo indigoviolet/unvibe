@@ -28,13 +28,13 @@ import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { descriptionPaneName } from "../source/description/paneName.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
-import { isCommentThread, threadPostText } from "./threads.js";
+import { threadPostText } from "./threads.js";
 
 const plain = (s: string): string => s.replace(/<[^>]+>/g, "");
 
 function excerpt(thread: Annotation): string {
   const first = thread.messages[0];
-  return plain(first?.text ?? first?.html ?? "").slice(0, 140);
+  return plain(first?.text ?? "").slice(0, 140);
 }
 
 function resolveFilePath(snapshot: ReviewSnapshot, key: string): string | null {
@@ -174,16 +174,17 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const navigate = useNavigate();
   const rootRef = useRef<HTMLSpanElement>(null);
 
+  // Issue #136: the menu lists comments only. Conversations (Explain
+  // and Ask cards) never appear here; they are found through their
+  // dotted links in place.
   const threads = useMemo(
     () =>
       ((snapshot?.annotations ?? []).filter(
-        (a) => a.type === "thread" && (a as Annotation).messages.length > 0,
+        (a) => a.type === "comment" && (a as Annotation).messages.length > 0,
       ) as Annotation[]),
     [snapshot],
   );
-  // Issue #135: the For PR filter shows Comments only — Ask threads are
-  // never submitted, even when an older review still carries the mark.
-  const forPr = useMemo(() => threads.filter((t) => t.post && isCommentThread(t)), [threads]);
+  const forPr = useMemo(() => threads.filter((t) => t.post && !t.postedAt), [threads]);
   const existing = snapshot?.existingComments ?? fetchedExisting ?? null;
 
   // Fetch read-only GitHub comments once per menu opening when the
@@ -242,6 +243,9 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     // Guide thread: open its page, expand a collapsed card, scroll to it.
     // The menu now lives in the review bar, so jumping to a guide thread
     // while only the source pane is showing brings the guide back (#83).
+    // Comments never anchor hunks (the service rejects them); anything
+    // else here is a corrupt snapshot, not a jump target.
+    if (host.kind !== "block") return;
     const holder = snap.pages
       .flatMap((p) => p.cards.map((c) => ({ page: p, card: c })))
       .find(({ card }) =>

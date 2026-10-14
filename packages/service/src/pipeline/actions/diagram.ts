@@ -16,12 +16,14 @@ import {
   findCardTargetInDraft,
   insertDiagrams,
   markStaleAnchors,
+  mirrorPromotedAnswer,
   pushUndo,
   recordInteraction,
   setTargetContent,
+  targetBlocks,
   targetLevel,
 } from "../../interaction/index.js";
-import { cardTitle, storedCardTitle } from "./events.js";
+import { answerEchoTitle, cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   baseVersionOf,
@@ -52,7 +54,7 @@ export async function diagramAction(
   // stored block with no agent call ("never duplicating one already there",
   // PRD §4.4). A card whose diagram was removed (undo/delete) is
   // legitimately a new request.
-  const blocks = target.kind === "page-card" ? target.card.blocks : (target.annotation.expansion?.blocks ?? []);
+  const blocks = targetBlocks(target);
   if (blocks.some((b) => b.type === "diagram")) {
     return { cardId, reused: true };
   }
@@ -61,8 +63,9 @@ export async function diagramAction(
   const variables = { card: cardPromptText(snapshot, cardId), level };
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "diagram" } : undefined;
-  // Issue #50: the walkthrough must not open by repeating the card title.
-  const echoTitle = storedCardTitle(snapshot, cardId);
+  // Issue #50: the walkthrough must not open by repeating the card title
+  // (an answer's question, else the card's quoted text).
+  const echoTitle = storedCardTitle(snapshot, cardId) ?? answerEchoTitle(snapshot, cardId);
 
   const done = pipeline.runInFork({
     reviewId,
@@ -115,13 +118,14 @@ export async function diagramAction(
       await reviews.mutate(reviewId, (draft) => {
         const t = findCardTargetInDraft(draft, cardId);
         if (!t) return;
-        const current = (t.kind === "page-card" ? t.card.blocks : t.annotation.expansion!.blocks) as Block[];
+        const current = targetBlocks(t) as Block[];
         const out = insertDiagrams(current, fresh);
         if (out.added === 0) return;
-        const from = t.kind === "page-card" ? t.card.level : t.annotation.expansion!.level;
+        const from = targetLevel(t);
         pushUndo(t, [...current], from);
         setTargetContent(t, out.blocks, from);
         markStaleAnchors(draft, cardId);
+        mirrorPromotedAnswer(draft, cardId);
         added = out.added;
       });
       if (added > 0) {

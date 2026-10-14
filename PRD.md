@@ -22,7 +22,7 @@ This document is the hand-off for building it. It contains the product behaviour
 **Constraints that apply throughout**
 - **No new logins.** GitHub access goes through the user's existing `gh` login. Agents run through the user's existing Claude Code and Codex logins.- **Nothing is hosted on the public internet.** Everything runs on the user's machine, on localhost.
 - **Nothing is posted to GitHub until the user clicks Submit review** (§4.12).
-- **Nothing starts at login** (§14).
+- **The service starts at login** (§14) so the bookmark always answers; a manually started service still idle-exits.
 
 **Where to start.** Milestone M0 (§17) is a short spike that tests the riskiest assumption, ACP session forking, before anything else is built.
 
@@ -67,27 +67,39 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ## 4. Product behaviour
 
 ### 4.1 Layout
-- **Top bar (app-wide only):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge and Tips where they show, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button).
-- **Review bar** (second row on a review, above both panes): the review identity (`owner/name#N` + title, the PR label linking to the PR page on GitHub for PR reviews), the version selector next to it (hidden for single-version reviews; the current version annotated in the dropdown, an older shown version flagged with a warning border), a GitHub link-out for PR reviews, Debug as an icon button, a `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action. While any of the review's jobs is running or queued, a small `running · queued` count sits in the right corner after Submit — a link to the Debug jobs list, with a slow gradient drift while anything runs. It renders nothing when no job is live. At narrow widths the title gives way first; the version selector never truncates away.
+- **Top bar (app-wide, every screen but reviews):** the **Unvibe** home link, a breadcrumb after it on every screen but the start page (`Unvibe / Settings`, `Unvibe / Settings / Doctor`, `Unvibe / <review> / Debug`), the preview-build badge on the start page and Settings, and Settings as a gear icon button in the same place on every screen (the Settings screen itself has no Settings button). There is no Tips control anywhere.
+- **Review bar** (the only bar on a review, above both panes): a home control back to the start page at its left end (first in focus order), then the review identity (`owner/name#N` + title, the PR label linking to the PR page on GitHub for PR reviews), the version selector next to it (hidden for single-version reviews; the current version annotated in the dropdown, an older shown version flagged with a warning border), a GitHub link-out for PR reviews, Debug as an icon button, and a compact preview-build marker while the running build is a preview (one quiet word, full text on hover, hidden at narrow widths). No Settings gear: Settings is reached from the start page. A `[ Guide | Source ]` pane selector (each segment toggles its pane; either pane alone fills the window, never both hidden), and Comments + Submit side by side with Submit as the primary action. While any of the review's jobs is running or queued, a small `running · queued` count sits in the right corner after Submit — a link to the Debug jobs list. While anything runs a highlight travels around the pill's border with the inside calm (the box never moves or resizes); under reduced motion the highlight fades in place instead. It renders nothing when no job is live. At narrow widths the title gives way first; the version selector never truncates away.
 - **Guide** (left, main column): the current page.
 - **Source pane** (right): tabs for **PR description** and **Diff**. A drag handle resizes it, and the arrow keys work on the handle. It's docked at window widths of 900px and up, and an overlay below that. Clicking any citation opens it.
 - Nothing may disappear because a pane is narrow. Controls wrap, become icons with tooltips, or stay pinned to the pane width.
 
 ### 4.2 Start page
 - A repo selector, centred above the Reviews list, that remembers recent repos and finds local checkouts.
-- For the selected repo:
+- For the selected repo, the PR and branch lists form one delineated
+  block ("PRs and branches") whose boundary matches exactly what the
+  recency filter covers:
   - **PRs you're authoring:** `gh pr list --author @me`, newest first;
   - **PRs waiting on your review:** `gh pr list --search "review-requested:@me"`
     split into **requested of you** (direct, `user-review-requested:@me`) and
     **requested of your team** (the rest, with team names), each newest
     first;
-  - one remembered recency filter (1d, 3d, 1w, 2w, All) below Reviews
-    applies to every list below it by last update: every PR list and
-    **recent branches** (local and remote, by last commit date, newest
-    first with the commit age on each row); a list the filter empties
-    names its window with a way back to All;
-  - **reviews you've opened before**, with their unread and stale state ("new commits · Update"),
-    ordered by recent activity, unfiltered by the recency filter.
+  - **recent branches** (local and remote, by last commit date, newest
+    first with the commit age on each row);
+  - one remembered recency filter (1d, 3d, 1w, 2w, All) at the block's
+    top right applies to every list in the block by last update; a list
+    the filter empties names its window with a way back to All;
+  - a refresh icon beside the filter re-fetches the lists (spinning
+    while fetching, still under reduced motion), with the last-fetch
+    time in its tooltip instead of a text line.
+- Opening a PR or branch that already has a review opens that review:
+  one review per PR and one per branch in a repo (a PR review and a
+  branch review of the same branch are different). Rows that already
+  have a review say so, and clicking one opens it rather than starting
+  a new review. When the source has new commits, the existing review
+  opens with the refresh it already offers ("new commits · Update").
+- **reviews you've opened before**, with their stale state ("new commits · Update"),
+  ordered by recent activity, unfiltered by the recency filter, outside
+  the block.
 - PR rows show the head branch, a relative update time and the diff size
   (lines added and removed, files changed); where a row names a GitHub PR,
   its number links to the PR page (new tab) without opening the review.
@@ -101,34 +113,32 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   repo behaves as before.
 
 ### 4.3 Pages
-- **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an expansion. The kinds behave the same; only the root and finding pages show a type label.
+- **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an explanation card. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
   - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page (no label row at all on pages with no label);
   - the title, with the **bookmark** icon (save or unsave the page) on the title line, right-aligned.
 - **Trail:** a breadcrumb back to the root, on every page except the root.
-- **Contents:** a collapsible box listing this page's cards (click to jump, expanding the card if needed) and the pages it links to. Read items are muted. There are no other status labels.
+- **Contents:** a collapsible box listing this page's cards (click to jump, expanding the card if needed) and the pages it links to. There are no other status labels.
 - **Go deeper:** the root page ends with placeholder cards for the directions the agent picked for this change. **Generate** shows progress and fills the card. A generated card may end with follow-up suggestions; clicking one adds its answer.
 - **Saving:** pages are scoped to the repo. Saving is deferred (§2), but the bookmark and its state must exist.
 
 ### 4.4 Cards
-Every card and every expansion card has the same controls:
-- **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Expansions show the quoted selection as their header instead and get no derived title.
+Every page card has the same controls. Explanation cards (§4.7) carry the same controls per answer:
+- **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Explanation cards show the quoted selection as their header instead and get no derived title.
 - **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row.
-- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles. While a depth change runs, both buttons keep their icons and are disabled (one shared control for cards and expansions).
+- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles. While a depth change runs, both buttons keep their icons and are disabled (one shared control for page cards and answers).
   - Changing depth rewrites the card's paragraphs in place.
   - + at the deepest level adds an "Underlying principle" block.
   - Depth versions are generated **on demand** and kept once made.
 - **Use examples** and **Add diagram:** insert example or diagram blocks after the paragraphs they relate to, never duplicating one already there.
 - **Diagrams** render inline in the card at fit: the whole diagram visible, no scrollbars, never above natural size. +/−/Reset zoom in place (trackpad pinch and Ctrl/Cmd+wheel zoom; a plain wheel scrolls the page), drag pans once zoomed. When the guide pane has spare room the block breaks out past the text column, centered, up to the usable width; caption and citations stay column-aligned. **Expand** opens the same diagram out of the column in a full-window view with the same zoom/pan plus reset-to-fit. Esc or the close control shuts it and focus returns to Expand. Citation hover previews and click-to-reveal work the same expanded, inline, and zoomed. Diagrams wear the guide palette in both themes, with `myid.class: [ok]` / `[bad]` on its own line for good/bad states. A diagram that did not render shows its source with a plain "Couldn't draw this diagram." note and a retry — no zoom, Reset or Expand controls, no compiler output (the raw reason is on the Debug page).
-- **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and expansions attached to the card survive undo.
-- **Mark read:** greys the card and collapses it to its title row. Unmarking expands it.
-- **Read state rolls up:** a page is read when all of its cards are, and links to fully read pages show muted.
+- **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and nested cards attached to the card survive undo.
 - **While the agent works:** the card (likewise threads, hunk summaries, placeholders and the loading states) shows a fixed plain label with three dots bouncing in sequence — never streamed agent text. Under the OS reduced-motion setting the dots stay still but solid.
 
 ### 4.5 Links and citations
 - **Dotted links** all behave the same way: hover shows a preview card, click acts.
   - A link to a page previews its title and first paragraph; click opens the page.
-  - A collapsed expansion previews its content; click expands it in place.
+  - A collapsed explanation card previews its content; click expands it in place.
 - **Citations:** a small `<>` marker at the end of a block, with a count if there's more than one.
   - Hover previews the cited lines.
   - Click opens the source pane at that spot and highlights it. If needed it unfolds or shows hidden hunks, and clears file filters.
@@ -144,23 +154,26 @@ Every card and every expansion card has the same controls:
 ### 4.6 Selecting text
 - Works in the guide, the PR description, and diff code.
 - A selection snaps to whole words, with leading and trailing spaces trimmed, and the highlight updates to match.
-- The toolbar offers **Explain**, **Ask…**, **Comment** and **GitHub**. Examples and diagrams come from the explanation card's own controls, not the toolbar.
+- The toolbar offers **Explain**, **Ask…**, **Comment** and **GitHub**. Examples and diagrams come from the conversation card's own controls, not the toolbar.
 - The toolbar appears only when the user finishes selecting text, never after clicking a control.
 - **GitHub** is a plain link out: on a diff selection it opens the selected lines in GitHub's file view at the review's commit (the head commit for added and unchanged lines, the base commit when the selection is only on removed lines). It starts no job and no thread, and is hidden where there is nothing unambiguous to open (prose, non-GitHub repos, the demo).
 
 ### 4.7 Explanations
-- **Explain** creates an expansion card right under the block the text came from: under the paragraph in the description, under the line in the diff. The selected text is highlighted.
-- **Header:** the quoted text, then **Open as page**, **Delete** and **Close**. Below that, the standard card controls.
-- **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click expands it. Marking an expansion read closes it the same way.
+- **Explain** creates an explanation card right under the block the text came from: under the paragraph in the description, under the line in the diff. The selected text is highlighted.
+- **Header:** the quoted text, then **Open as page**, **Delete** and **Close**. Below that, one answer view per turn: each answer carries the standard card controls acting on that answer alone (the latest answer shows them; earlier answers reveal them on hover or focus), and a reply box at the bottom answers in the same conversation.
+- **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click expands it.
 - **If the anchor text can't be found** (for example after a depth rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
-- **Open as page** moves the content to a new page titled with the quoted text, and the anchor text becomes a link to that page.
+- **Open as page** moves the content to a new page titled with the quoted text — one card per answer, the first titled with the quoted text and later ones with their questions — and the anchor text becomes a link to that page at once, in the guide, the description and the diff. Opening as a page never discards work: when the answer is still being written, its job keeps running and fills the page card (the page shows the usual working state until then, and the error with Retry when the fill fails); second opinions move to the page with the answers.
+- **Follow-up suggestions** stay on Explain answers; clicking one sends it as the next turn in the same conversation.
+- The card is never submitted to GitHub; it carries no For-PR control.
 
 ### 4.8 Comments
-- **Ask…** starts a thread, and the agent replies with citations. **Comment** starts a thread with no agent reply. Only Ask sends text to the agent.
-- A **Comment** is for the PR by default and can be switched off to keep it local. An **Ask** thread is never for the PR and carries no For-PR control. Only comments are submitted to GitHub.
+- **Ask…** opens the conversation card (§4.7) on the selection's anchor, with the question as its first turn. **Comment** starts a comment thread with no agent reply. Only Ask sends text to the agent.
+- A **Comment** is for the PR by default and can be switched off to keep it local. A conversation card is never for the PR and carries no For-PR control. Only comments are submitted to GitHub.
 - Selecting text inside an agent answer and choosing **Comment** opens a comment anchored where the card is anchored, with the selection quoted as a Markdown blockquote for the reviewer to write under.
-- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** on comments (a send icon, filled when on), **Delete** and **Close**.
-- **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent); a reply in an Ask thread goes to the agent.
+- A comment offers **Ask the agent about this**: the usual Ask card on the comment's anchor, quoting the comment. The answer is never submitted; it is the only way a comment leads to an agent reply.
+- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** (a send icon, filled when on), **Delete** and **Close**.
+- **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent).
   - Typed text survives anything else on the page re-rendering.
   - Discard removes a new thread, and clears the box on an existing one; on an existing thread it stays disabled until there is a draft.
 - **Where threads live:**
@@ -174,12 +187,12 @@ Every card and every expansion card has the same controls:
 
 ### 4.9 Agent findings
 - Findings are the agent's own judgements about the change: mismatches, risks, questionable choices. They are **separate pages**, never sentences mixed into the restatement.
-- **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →". It dims once the finding page is read.
+- **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →".
 - **The finding page:** carries the same label, and its cards have a rust left border. Typical cards are Evidence (each piece cited) and Assessment.
 - **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card.
 
 ### 4.10 Second opinion
-- A **Second opinion** action is available on any card or finding. It asks a *different* model (§12).
+- A **Second opinion** action is available on any card, finding, or conversation answer. It asks a *different* model (§12).
 - **Mode:** **blind** by default for findings, where the model sees only the topic and the cited code. **Check this claim** by default for cards, where it sees the claim. A switch on the action selects the other mode.
 - **Result:** a "Second opinion" block attached to the card, labelled with the model, giving a verdict (agrees / partly / disagrees), reasoning with citations, and anything the card missed. A disagreement is shown prominently.
 
@@ -212,6 +225,7 @@ Every card and every expansion card has the same controls:
 - **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover. It stays pinned under the file header while its hunk scrolls.
 - **Actions:** a leading fold chevron, then Summarize (agent), Add or Edit note, and Mark reviewed.
 - **Hunk card:** the agent summary and the user's note, each with Delete. It exists regardless of folding. **Folding only hides code**, replacing it with "N changed lines folded · show".
+- **Summaries are content cards:** an idle summary is plain text — selecting in it offers Explain, Ask…, Comment and GitHub like any other agent text. The first interaction (an action on selected text, or opening the summary) turns it into a real conversation card on the hunk, created from the stored summary text with no agent call, and it stays a card: reply box and per-answer controls included. A Comment attaches to the hunk's first changed line and never activates the summary. Deleting the card returns the hunk to its idle text. Opening a hunk card as a page keeps the summary text with a link to the page; the summary's actions then open that page instead of starting a second card.
 - **Mark reviewed** greys the hunk and folds its code.
 
 **Hide uninteresting**
@@ -220,10 +234,11 @@ Every card and every expansion card has the same controls:
 - **One-line changes are never hidden.** A real version should also never hide a hunk that the guide cites.
 
 **Expand beyond hunks**
-- Step controls above and below every hunk reveal context a few lines at a time; the gap between two hunks also offers Show all. A fully revealed gap reads as continuous.
-- Revealed lines are context: visibly apart from the diff's own lines, syntax-coloured like the rest, collapsible back per region.
+- Quiet caret icons in the line-number gutter reveal context: a single caret steps a few lines, a double caret shows a whole hidden run; direction follows where lines appear. No text labels, no control rows that read as content.
+- Each gap holds one hidden run with one set of controls sharing its remaining count. Continuous boundaries — fully revealed gaps, adjacent hunks, file edges — show no controls. Revealed blocks collapse back through a quiet fold icon on their first line's gutter.
+- Revealed lines are context: visibly apart from the diff's own lines, syntax-coloured like the rest.
 - Deleted files expand on the old side, new files on the new side; binary files offer no expansion. Old and new numbers stay aligned in Split.
-- Revealed lines offer Explain and Ask, anchored on the diff line (read as `code:<path>:<lines>@<sha>`). Note is not offered there.
+- Revealed lines offer Explain, Ask and GitHub, anchored on the diff line (read as `code:<path>:<lines>@<sha>`). Comment is not offered there.
 - Expand by unit: one control per hunk steps from the innermost enclosing function or method to its class and then the file, one level per click, with the unit's name in the hunk header. Units come from tree-sitter grammars (eight languages) with an indentation fallback shown as approximate; hunks with no enclosing unit expand by lines.
 - Where the review has no file content to read, expansion controls hide instead of showing load errors.
 
@@ -233,7 +248,7 @@ Every card and every expansion card has the same controls:
 - **Unified:** long lines scroll sideways (per hunk: each hunk's code scrolls independently, so its header can pin without sitting inside the scroller).
 - **Split:** always two equal halves with fixed line-number columns; long lines wrap inside their half. Choosing Split widens the pane if it's narrow.
 - **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
-- **Pinned rows (sideways):** hunk headers, hunk cards, line comments and expansions are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.
+- **Pinned rows (sideways):** hunk headers, hunk cards, line comments and explanation cards are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.
 
 **New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
 
@@ -254,11 +269,11 @@ Every card and every expansion card has the same controls:
 | Close, leaving the anchor link or marker | × | Always last on the right |
 | Delete | Trash | Right side, just before × |
 | Item actions | Icons with tooltips | Right side, before Delete |
-| Read / reviewed | Check in a circle | Right end of card controls; hunk and file headers |
+| Reviewed | Check in a circle | Hunk and file headers |
 | Agent content vs the user's | "AI" or the user's initials on each message; teal for the agent, amber for the user's comments | Threads, hunk cards |
 
 - The only type labels are "Guide" and "Agent finding".
-- Comments and expansions use the same header layout.
+- Comments and explanation cards use the same header layout.
 - An element hidden with the `hidden` attribute must stay hidden even if its own style sets `display`. Two prototype bugs came from this.
 
 ---
@@ -269,8 +284,9 @@ Every card and every expansion card has the same controls:
 ┌───────── Installed web app (Chrome "Install app", served from localhost) ─────────┐
 │  React UI: start page · guide · source pane · settings                            │
 └───────────────▲─────────────────────────────── HTTP + WebSocket (token) ──────────┘
-                │
+                 │
 ┌───────────────┴──────────────── Unvibe service (Node/TypeScript, localhost) ───────┐
+│  Opens at http://unvibe.localhost:4517 (bookmark; starts at login, §14)            │
 │  Review store (SQLite + files) · ingest (git/gh) · context builder · job queue    │
 │  Citation validator · MCP server (HTTP, shared by all sessions)                   │
 │  AgentRunner interface ──► ACP client ──► claude-agent-acp / codex-acp (stdio)    │
@@ -328,12 +344,12 @@ type AgentEvent =
 | File / Hunk | file key, path, category, hunk **content hash**, header, line ranges, `hidden_reason` |
 | HunkState | content hash → folded, reviewed, summary, note (carried across versions by hash) |
 | Page | id, kind (root, concept, finding, opened-expansion), title, saved, parent, cards[] |
-| Card | id, page, title, level, read, collapsed, revision, blocks[], undo stack |
+| Card | id, page, title, level, collapsed, revision, blocks[], undo stack, second opinions |
 | Block | id, type (paragraph, list, table, code, diagram, finding link, follow-up, aside), text per depth level, citations |
-| Annotation | id, type (expansion, thread, link), anchor, open/closed, plus for threads: messages, `post`, draft, note flag |
-| Anchor | host (block ID, description paragraph, or diff line), quoted text, prefix/suffix, position at creation, version |
+| Annotation | id, type (conversation, comment, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for comments: messages, `post`, draft; plus for links moved mid-fill: the unsettled turns with their page-card mapping until they settle. A conversation can host on a hunk (`h:…`), created from the hunk's summary text with no agent call. |
+| Anchor | host (block ID, description paragraph, diff line, or hunk), quoted text, prefix/suffix, position at creation, version |
 | Contribution | id, source session, items (fact, correction, open question, reader note), citations, replaces, status |
-| Job | id, kind, model, priority, state, session ID, prompt snapshot, usage, error |
+| Job | id, kind, model, priority, state, session ID, prompt snapshot, usage, error, card/annotation address |
 | LogEntry | seq, kind, payload, scope (global, or local to a card) |
 
 ### 7.2 ID grammar
@@ -344,7 +360,7 @@ diff:<fileKey>:<line>[-<line>]@<headSha>   new-side lines in the change
 h:<fileKey>:<contentHash>                  a hunk (stable across versions)
 code:<path>:<line>[-<line>]@<sha>          any code at a commit (pinned or fetched)
 desc:<paragraph>@<rev>                     description paragraph
-card:<cardId>[#<blockId>]                  guide content
+card:<cardId>[#<blockId>]                  guide content (a page card, or one conversation answer `ans_…`)
 page:<pageId>                              a page
 concept:<slug>                             a concept (may be a hidden candidate)
 ann:<id>                                   an annotation
@@ -408,7 +424,7 @@ The aim: every conversation starts mostly from cache, and rarely needs a tool ca
 
 ### 9.3 The append-only log and change lists
 - **What enters the log:**
-  - **never:** read, collapse, depth, open/close and "mark for PR" state;
+  - **never:** collapse, depth, open/close and "mark for PR" state;
   - **only for conversations anchored on that card:** examples, diagrams and depth rewrites;
   - **one line, once a thread settles:** a summary of the thread;
   - **in full:** new cards and findings, and answers that cited something outside the base;
@@ -518,7 +534,8 @@ A new base is built when any of these happens:
 | `critic` | Critic fork | Criteria, the suggested-comment format |
 | `hunk_pass` | Small model | `{{hunk}}`, `{{path}}` |
 | `concept_stub`, `concept_page` | Concept pages | `{{concept}}`, `{{mentions}}` |
-| `explain`, `ask` | Conversations (L4) | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
+| `ask` | Conversation first turns, Explain and Ask alike | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
+| `ask_turn` | Conversation follow-ups on a live session | `{{change_list}}`, `{{message}}` |
 | `depth`, `examples`, `diagram` | Card controls | `{{card}}`, `{{level}}` |
 | `go_deeper` | Placeholder cards | `{{direction}}` |
 | `update_pass` | Update | `{{changed_hunks}}`, `{{stale_cards}}`, `{{findings}}` |
@@ -533,12 +550,14 @@ A new base is built when any of these happens:
 
 ## 14. App shell, install and security
 
-- **Service:** Node and TypeScript, listening on `127.0.0.1` only. It requires a **token** (one per install): generated at setup, held by the UI, and checked on every HTTP and WebSocket request.
-- **UI:** a React (Vite) build served by the service, and **installable as a web app** from Chrome (localhost counts as secure). There are no browser extensions.
-- **Nothing starts at login.**
-  - `unvibe setup` writes a small link-handler app to `~/Applications`. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing, and it registers the `unvibe://` URL scheme.
+- **Service:** Node and TypeScript, listening on loopback only (`127.0.0.1` plus a `::1` companion on the same port, so it answers however the browser resolves the name; never a routable address, and no setting can move it there). It requires a **token** (one per install): generated at setup, held by the UI, and checked on every HTTP and WebSocket request. The Host/Origin gate accepts exactly `127.0.0.1`, `localhost`, `unvibe.localhost`, `::1` and `::ffff:127.0.0.1` — never a suffix or substring; the check stays port-agnostic as before (pinning was tried and reverted: it 403s the app's own loads on ephemeral binds).
+- **UI:** a React (Vite) build served by the service at `http://unvibe.localhost:4517` (bookmarkable; the `127.0.0.1` URL is the same service), and **installable as a web app** from Chrome (localhost counts as secure). There are no browser extensions.
+- **The service starts at login.**
+  - `unvibe setup` writes a start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux) running `start --foreground` with the port and data dir baked in, plus the small link-handler app to `~/Applications` (macOS) or the desktop file (Linux) that registers the `unvibe://` URL scheme. It's generated locally, so Gatekeeper doesn't quarantine it and it needs no Apple signing.
+  - `setup` prints the link with the token once; after that a long-lived cookie (`Max-Age` one year, `SameSite=Lax`, host-only) carries it and the plain URL works as a bookmark. The old `127.0.0.1` URL keeps working because it is the same service; there are no redirects.
   - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The link handler starts the service, and the page reloads.
-  - The service exits after a period with no open window and no running jobs (default 10 minutes).
+  - A login-started service never idle-exits (`UNVIBE_IDLE_MS=0` in the unit). A manually started service exits after a period with no open window and no running jobs (default 10 minutes).
+  - While the unit is installed, `stop`/`start` (and `open`) go through the service manager; otherwise the CLI owns the process directly. The units restart on crash only (launchd `KeepAlive SuccessfulExit:false`, systemd `Restart=on-failure`), so a deliberate stop stays down and an update (`stop` → install → `start`, or the in-app switch) can never race a manager restart. Every update rewrites the unit with the just-installed paths; `doctor` warns when the baked paths go stale.
 - **Install:** `npm install -g github:<org>/unvibe#release`, then `unvibe setup`. Updates use the same install command. The agent CLIs (`claude`/`codex`) are the user's own installs (see `DEVELOPMENT.md` "Releases" and `docs/acceptance-audit.md` "Intentional deviations" item 1).
 - **macOS gotcha:** apps opened from Finder don't inherit the shell's `PATH`. On startup the service must read it from a login shell (`zsh -lc 'echo $PATH'`) so it can find `gh`, `git`, `claude`, `codex` and mise-installed tools.
 - **Storage:** `~/.local/share/unvibe/` holds a SQLite database plus a folder per review (`<owner>/<repo>/<review-id>/`) for the log and snapshots. Nothing is written into the user's checkout, apart from the worktree, which is created alongside it under a managed path.
@@ -556,8 +575,8 @@ POST /api/reviews/:id/retry              re-run a failed ingest
 POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot)
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
 POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
-POST /api/reviews/:id/actions            { kind: explain|ask|note|depth|examples|diagram|undo|read|
-                                           collapse|generate|second_opinion|promote|close|delete, … } (409 while loading/failed)
+POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|depth|examples|diagram|undo|
+                                           collapse|generate|second_opinion|promote|close|delete|followup|concept|bookmark, … } (409 while loading/failed)
 PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, note? } ; POST …/summarize (409 while loading/failed)
 PATCH /api/reviews/:id/comments/:id      { post?, draft? } (409 while loading/failed)
 PUT  /api/reviews/:id/description        local edit (pending until submit; 409 while loading/failed)
@@ -599,7 +618,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | Rebase comparison | `git range-diff <old-base>..<old-head> <new-base>..<new-head>` |
 
 - **Description edits** are converted from the edited HTML back to Markdown before `gh pr edit`. Content outside edited paragraphs must round-trip unchanged.
-- **If `GITHUB_TOKEN` is set in the environment** without the needed scopes, it can override the `gh` keyring login. Run `gh` with `GITHUB_TOKEN` unset unless the user configures otherwise.
+- **If `GITHUB_TOKEN` is set in the environment** without the needed scopes, it can override the `gh` keyring login. Run `gh` with `GITHUB_TOKEN` unset unless the user configures otherwise. The start-at-login units (§14) bake in only `UNVIBE_PORT`, `UNVIBE_DATA_DIR` and `UNVIBE_IDLE_MS` — never the whole environment, so a stray `GITHUB_TOKEN` cannot leak into the login-started service.
 
 ---
 
@@ -620,7 +639,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | **M0** | **ACP spike** (do this first) | In both `claude-agent-acp` and `codex-acp`: start a session with a system prompt plus an MCP server, send a ~30k-token pack, fork it twice, and confirm that (a) each fork answers questions about the pack, (b) usage shows cache reads on the forks, (c) a trailing JSON block parses reliably. Results written up. |
 | M1 | Service, ingest and diff | Start page lists repos, PRs and branches. Opening one ingests it. The diff pane has every §4.13 feature except agent summaries. Token-protected localhost service, installable web app, helper and idle exit. |
 | M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept candidates are hidden. Hunk pass summaries, and Hide uninteresting with reasons. |
-| M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Expansions close into links; Open as page. Mark read. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
+| M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Explanation cards close into links; Open as page. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
 | M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |

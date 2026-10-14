@@ -183,12 +183,12 @@ test("re-selecting the current repo reloads its lists", async ({ page }) => {
   // the kept lists with a fresh load: the kept rows stay visible with a
   // refresh sign — never a stuck "Loading…".
   await page.getByLabel("Repo").selectOption("urllib3");
-  await expect(page.locator('[data-testid="kept-status"]')).toContainText("refreshing");
+  await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /refreshing/);
   await expect(page.getByText("Your PRs")).toBeVisible();
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
   await expect(page.getByText("Your PRs")).toBeVisible();
-  await expect(page.locator('[data-testid="kept-status"]')).not.toContainText("refreshing");
+  await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /^Updated /);
 });
 
 test("reviews for checkouts no longer listed stay openable and removable", async ({ page }) => {

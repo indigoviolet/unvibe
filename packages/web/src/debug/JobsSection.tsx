@@ -160,6 +160,7 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
       <div className="frow" style={{ gap: 8 }}>
         {job.progress ? <span className="hint">{job.progress}</span> : null}
         {job.error && job.state !== "backing-off" ? <span className="err">{job.error}</span> : null}
+        {job.degradedReason ? <span className="hint">Degraded (answer kept): {job.degradedReason}</span> : null}
         {job.state === "backing-off" && job.error ? <span className="hint">{job.error}</span> : null}
         <span className="sp" />
         <button className="x" type="button" aria-expanded={showPrompt} onClick={() => void togglePrompt()}>
@@ -190,7 +191,7 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
 }
 
 /**
- * Raw diagram failure reasons for one job's card or expansion (issue
+ * Raw diagram failure reasons for one job's card or answer (issue
  * #130): reader-facing diagram text stays plain, so the compiler message
  * surfaces here on the Debug page instead. Empty when the snapshot is
  * not loaded or nothing failed.
@@ -214,11 +215,11 @@ function diagramErrorsFor(snapshot: ReviewSnapshot | null, job: Job): string[] {
       }
     }
   }
-  if (job.threadId) {
-    const found = snapshot.annotations.find((a) => a.id === job.threadId) as unknown as
-      | { expansion?: { blocks: Block[] } }
+  if (job.annotationId) {
+    const found = snapshot.annotations.find((a) => a.id === job.annotationId) as unknown as
+      | { turns?: { blocks: Block[] }[] }
       | undefined;
-    if (found?.expansion) walk(found.expansion.blocks);
+    for (const turn of found?.turns ?? []) walk(turn.blocks);
   }
   return out;
 }

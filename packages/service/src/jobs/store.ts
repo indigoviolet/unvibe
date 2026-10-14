@@ -17,11 +17,12 @@ interface JobData {
   usage?: Job["usage"];
   cacheHitRate?: number;
   error?: string;
+  degradedReason?: string;
   dedupeKey?: string;
   attempts?: number;
   nextRetryAt?: number;
   cardId?: string;
-  threadId?: string;
+  annotationId?: string;
 }
 
 export interface JobPersistence {
@@ -58,11 +59,12 @@ function rowToJob(row: {
     ...(data.usage !== undefined ? { usage: data.usage } : {}),
     ...(data.cacheHitRate !== undefined ? { cacheHitRate: data.cacheHitRate } : {}),
     ...(data.error !== undefined ? { error: data.error } : {}),
+    ...(data.degradedReason !== undefined ? { degradedReason: data.degradedReason } : {}),
     ...(data.dedupeKey !== undefined ? { dedupeKey: data.dedupeKey } : {}),
     ...(data.attempts !== undefined ? { attempts: data.attempts } : {}),
     ...(data.nextRetryAt !== undefined ? { nextRetryAt: data.nextRetryAt } : {}),
     ...(data.cardId !== undefined ? { cardId: data.cardId } : {}),
-    ...(data.threadId !== undefined ? { threadId: data.threadId } : {}),
+    ...(data.annotationId !== undefined ? { annotationId: data.annotationId } : {}),
   };
 }
 
@@ -76,11 +78,12 @@ export class JobStore implements JobPersistence {
       ...(job.usage !== undefined ? { usage: job.usage } : {}),
       ...(job.cacheHitRate !== undefined ? { cacheHitRate: job.cacheHitRate } : {}),
       ...(job.error !== undefined ? { error: job.error } : {}),
+      ...(job.degradedReason !== undefined ? { degradedReason: job.degradedReason } : {}),
       ...(job.dedupeKey !== undefined ? { dedupeKey: job.dedupeKey } : {}),
       ...(job.attempts !== undefined ? { attempts: job.attempts } : {}),
       ...(job.nextRetryAt !== undefined ? { nextRetryAt: job.nextRetryAt } : {}),
       ...(job.cardId !== undefined ? { cardId: job.cardId } : {}),
-      ...(job.threadId !== undefined ? { threadId: job.threadId } : {}),
+      ...(job.annotationId !== undefined ? { annotationId: job.annotationId } : {}),
     };
     this.db
       .prepare(

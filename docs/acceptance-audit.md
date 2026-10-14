@@ -18,7 +18,7 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §4.1 layout (4) | 4 | 0 | 0 | 0 |
 | §4.2 start page (5) | 5 | 0 | 0 | 0 |
 | §4.3 pages (7) | 7 | 0 | 0 | 0 |
-| §4.4 cards (6) | 6 | 0 | 0 | 0 |
+| §4.4 cards (5) | 5 | 0 | 0 | 0 |
 | §4.5 links/citations (8) | 8 | 0 | 0 | 0 |
 | §4.6 selecting text (4) | 4 | 0 | 0 | 0 |
 | §4.7 explanations (5) | 5 | 0 | 0 | 0 |
@@ -44,7 +44,7 @@ Verdicts: **met / partly / not met / cannot verify here**.
 | §16 non-functional (5) | 5 | 0 | 0 | 0 |
 | §17 M0–M6 done-when (7) | 7 | 0 | 0 | 0 |
 | §18 test kinds (4) | 4 | 0 | 0 | 0 |
-| **Total** | **214** | **0** | **0** | **1** |
+| **Total** | **213** | **0** | **0** | **1** |
 
 (Audit-10 correction: the prior total (204/2) was stale — the row values
 already summed to 208 met + 3 partly + 1 cannot-verify = 212 requirements.
@@ -54,6 +54,8 @@ partly + 1 cannot-verify = 212.)
 so the rows now sum to 212 met + 1 cannot-verify = 213.)
 (Issue #133 stage 2 adds two more §4.13 requirements — expand by unit,
 no file content — so the rows now sum to 214 met + 1 cannot-verify = 215.)
+(Issue #136 slice 1 removes the read state as a feature — one fewer §4.4
+requirement — so the rows now sum to 213 met + 1 cannot-verify = 214.)
 
 Fixed in this branch (was failing/missing before): stale-dist `check`
 failure; missing Host/Origin gate; MCP secrets never revoked; submit
@@ -79,18 +81,33 @@ checkouts; job-list snapshot bloat; doctor port diagnosis; broken
   diagnostics (home+token redacted); Reload everything re-probes PATH,
   restarts adapters (in-flight fail as retryable, jobs retry), clears
   caches, re-checks d2, without restart.
-- **Nothing hosted publicly** — met. Fastify binds `127.0.0.1` only
-  (`server.ts:278`); static network guards (`network-guards.test.ts`,
+- **Nothing hosted publicly** — met. Fastify binds `127.0.0.1` plus a
+  `::1` companion on the same port (issue #108; answers however the
+  browser resolves `unvibe.localhost`, still loopback only, no host
+  setting); static network guards (`network-guards.test.ts`,
   `network-privacy.test.ts`, Playwright `network-privacy.spec.ts`,
   `network-guard.ts` fixture) fail the suite on any non-loopback contact.
 - **Nothing posted until Submit** — met. `gh-writes.test.ts` proves only
   `src/submit/**` + `routes/submit.ts` contain write-shaped `gh` calls;
   this branch adds the submit lease so even a crash cannot double-post
   (`submit/lease.ts`, `submit-m6.test.ts` “crash safety”).
-- **Nothing starts at login** — met. `e2e-linux.mjs` asserts setup writes
-  only the `.desktop` handler; `macos-testing.md` step 3 checks
-  `~/Library/LaunchAgents` is empty; idle exit (10 min default) shuts the
-  service down.
+- **Starts at login, stays local** (issue #108) — met. `setup` writes a
+  launchd agent (macOS) / systemd user unit (Linux) running
+  `start --foreground` with port + data dir baked in and
+  `UNVIBE_IDLE_MS=0`, so the login-started service never idle-exits; a
+  manually started service keeps the 10-minute idle exit. Follow-up:
+  while the unit is installed, `stop`/`start`/`open` go through the
+  service manager (crash-only restart: launchd `KeepAlive
+  SuccessfulExit:false`, systemd `Restart=on-failure` — a deliberate
+  stop stays down, updates can't race a restart); `status` says `starts
+  at login`; failed manager starts unload again (no crash-loop, no port
+  fight) and fall back to a direct spawn with a warning. Both update
+  paths refresh the unit with the just-installed paths; `doctor` warns
+  on stale baked paths; the login-shell PATH probe (headless-safe) is
+  how manager-started services find their tools. `managed-cli` +
+  `service-manager` tests pin the matrix with a stub runner + fake HOME
+  (`e2e-*.mjs` use `--no-login` to stay hermetic). macOS
+  enable + Safari still need a human (see `macos-testing.md`).
 - **New repos under the team org** — cannot verify here (process rule, no
   org access from this machine).
 
@@ -104,23 +121,29 @@ UI); nothing below was edited by this pass.
 
 ### §4.1 Layout — all met
 
-- Top bar (app-wide only: Unvibe home link, breadcrumb trail, badge/Tips
-  where shown, gear Settings icon in the same place; Settings screen has
-  none) — met (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb
-  cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues
-  #31/#55 round 2).
-- Review bar (identity + version selector next to it per #120 + GitHub
-  link-out + Debug icon, [ Guide | Source ] pane toggles incl. full-width
-  source per #83, Comments + primary Submit; source tabs keep PR
-  description / Diff only; at narrow widths the title gives way first and
-  the selector never truncates) — met
+- Top bar (app-wide, every screen but reviews: Unvibe home link,
+  breadcrumb trail, badge on start/Settings, gear Settings icon in the same
+  place; Settings screen has none; no Tips anywhere per #141) — met
+  (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb cases,
+  `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues #31/#55
+  round 2, #141).
+- Review bar (the only bar on a review per #141: home control first, then
+  identity + version selector next to it per #120 + GitHub link-out + Debug
+  icon + compact preview marker, [ Guide | Source ] pane toggles incl.
+  full-width source per #83, Comments + primary Submit; at narrow widths
+  the title gives way first and the selector never truncates; no Settings
+  gear) — met
   (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
   `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
   `55-review-800px.png`, `55-review-dark.png`,
   `83-source-full-width.png`, `120-wide-light.png`,
   `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
   `120-narrow-light-readonly.png`,
-  `120-narrow-dark-readonly.png`).
+  `120-narrow-dark-readonly.png`, `141-review-800-light.png`,
+  `141-review-800-dark.png`, `141-review-1440-light.png`,
+  `141-review-1440-dark.png`,
+  `141-review-readonly-800-light.png`,
+  `141-review-readonly-800-dark.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
   `comments.spec.ts`; walk shows pane + tabs).
@@ -244,7 +267,7 @@ needed (that deviation is closed, not added).
   met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header cases,
   `guide.spec.ts` finding-label + saved-bookmark cases).
 - Trail breadcrumb off-root — met (`guide.spec.ts` “pages navigate”).
-- Contents box (cards jump + linked pages, read muted, no other labels)
+- Contents box (cards jump + linked pages, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
   `guide.spec.ts` “renders cards, contents and generated go-deeper cards”).
   Card entries show the title (real or the shared #49 fallback), never a
@@ -256,15 +279,15 @@ needed (that deviation is closed, not added).
 - Bookmark + state exists (sharing deferred) — met (`Page.saved`,
   `reviews/list.ts` summaries).
 
-### §4.4 Cards — all met (audit-10)
+### §4.4 Cards — all met (audit-10; #136 slice 1)
 
 - Collapse chevron, title-row-only collapsed — met (`guide.spec.ts`).
   Every page card shows a title: the prompts require one for every card
   (issues #49/#50), and when the agent omits it the header and Contents
   share one derived fallback — the first sentence or clause of the body,
   cut on a word boundary with an ellipsis (`shared/src/content/titles.ts`,
-  `CardView.test.tsx`). Expansions keep their quoted-selection header
-   with no derived second title. Replies never repeat what the reader
+  `CardView.test.tsx`). Explanation cards keep their quoted-selection
+  header with no derived second title. Replies never repeat what the reader
    already sees (shared "Reply hygiene" guidance in `instructions.md`;
    the `explain` "quote it back" rule is removed), with a deterministic
    exact-match strip of a leading echo line at parse time
@@ -272,21 +295,39 @@ needed (that deviation is closed, not added).
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
    rule; failures go in the trailing `degraded` field). A job fails on
-   facts only: a `degraded` field fails terminally, and a
-   process-complaint frame fails when the turn ran without the review
-   MCP server or hit a dead MCP URL — tool names and MCP/gh alone never
-   fail a job. Connection-error failures retry once on a fresh session;
-   everything else degraded is terminal. Streamed partials are cleared
-   and the reason lands in the job error on the Debug page
-   (`degraded-turn-51.test.ts`). A reply anchor that names only the card
-   gets one repair turn carrying the reason (`validate.test.ts`).
+   facts only: a process-complaint frame fails when the turn ran without
+   the review MCP server or hit a dead MCP URL — tool names and MCP/gh
+   alone never fail a job. A trailing `degraded` field with a usable body
+   (it parses and has at least one block) keeps the answer instead of
+   failing: the answer shows with the plain-words note "Some references
+   in this answer could not be linked to the code." and the raw reason
+   lands on the job (`degradedReason`) for the Debug page; only a
+   degraded answer with no usable body fails the turn. Connection-error
+   failures retry once on a fresh session (fork jobs since #51, the
+   reader since #146: fresh per-run secret + session, deterministic
+   provisional ids so the retry overwrites rather than duplicates, each
+   attempt's usage recorded once; a continued conversation turn falls
+   back to a fresh fork with the full first-turn prompt plus the stored
+   transcript, since the short follow-up prompt assumes the live
+   session's history); a retry that still reports degraded keeps its
+   usable body the same way. Everything else degraded is terminal. A
+   twice-failed reader sets a plain-words stage
+   error ("The guide couldn't be started because the review details
+   couldn't be reached. Please retry.") with Retry, the raw reason
+   staying on the job error for the Debug page. Streamed partials are
+   cleared and the reason lands in the job error on the Debug page
+   (`degraded-turn-51.test.ts`, `reader-146-124.test.ts`). A reply anchor
+   that names only the card gets one repair turn carrying the reason
+   (`validate.test.ts`). The reader's citation-repair prompt (naming the
+   failed citations) is kept on the job's stored prompt, so the Debug
+   page shows what failed (#124).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
   + and − keep their icons and are disabled, with no dots inside the
-  control, in both directions — one shared control for cards and
-  expansions (issue #129; the target-pip pulse was dropped as allowed —
-  `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
+  control, in both directions — one shared control for page cards and
+  conversation answers (issue #129; the target-pip pulse was dropped as
+  allowed — `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
   `depth-principle-service.spec.ts`).
 - Examples / Add diagram inserts, never duplicated — met
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
@@ -345,10 +386,13 @@ needed (that deviation is closed, not added).
   bytes. Not fixed in app code (overriding the family would break D2's
   tight box layout); shorter labels + inline/overlay zoom are the
   mitigations.
-- Undo (depth/examples/diagram, no redo, comments/expansions survive) —
-  met (`actions/undo.ts`, `actions-m4.test.ts`).
-- Mark read (grey + collapse), roll-up to page, muted links — met
-  (`guide-service.spec.ts` “card read action”).
+- Undo (depth/examples/diagram, no redo, comments/nested cards survive)
+  — met (`actions/undo.ts`, `actions-m4.test.ts`).
+- Read state removed as a feature (#136, owner decision): no Mark read
+  control and no stored read state on any card (guide or
+  conversation); the per-hunk reviewed tick and N/M progress stay.
+  (`entities.ts` has no `read`; `CardView.tsx` / `ExpansionCard.tsx`
+  render no read control; `guideUtils.test.ts` read suites deleted.)
 - “Underlying principle” block at deepest `+` — met (audit-10):
   `e2e/depth-principle-service.spec.ts` (real service, `UNVIBE_AGENT:
   "replay"`, shared harness, demo review) steps a page card to deep,
@@ -390,8 +434,8 @@ needed (that deviation is closed, not added).
   Inside an explanation the same toolbar appears (#116); inside
   second-opinion reasoning and thread replies it does not (neither is an
   anchor host — `SelectionToolbar.test.tsx`).
-- Selections inside an explanation anchor to the expansion's block
-  (`<expansion>#<block>`) for Explain and Ask; a Comment there anchors
+- Selections inside a conversation answer anchor to the answer's block
+  (`<answer>#<block>`, owner from the answer wrapper) for Explain and Ask; a Comment there anchors
   where the card is anchored and quotes the selection as a Markdown
   blockquote prefilled in the composer (issue #135). The nested
   explanation, thread or comment renders under its anchor, nests to any
@@ -406,13 +450,16 @@ needed (that deviation is closed, not added).
   `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
   `comments.spec.ts` “GitHub action links diff lines”).
 
-### §4.7 Explanations — all met
+### §4.7 Explanations — all met (#136 slices 1+2, #152)
 
-- Expansion under source block, highlight; header (quote, Open as page,
-  Delete, Close) + card controls — met (`actions/explain.ts`,
-  `ask-service.spec.ts` “explain runs”).
-- Close → dotted link (preview/expand); read closes the same way — met
-  (`actions/close.ts`, `promote.ts`).
+- Conversation card under the source block, highlight; header (quote,
+  Open as page, Delete, Close) + one answer view per turn, each with the
+  card controls acting on that answer alone, plus a reply box answered in
+  the same conversation — met (`actions/conversation.ts`,
+  `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
+  `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
+- Close → dotted link (preview/expand) — met (`actions/close.ts`,
+  `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with
   a "from an earlier wording" hint (issue #72, replaces the collapsed-card
   fallback) — met (`interaction/cards.ts` visible-level `markStaleAnchors`
@@ -420,50 +467,86 @@ needed (that deviation is closed, not added).
   `guide/CardView.test.tsx` footnote chips;
   `e2e/anchor-footnotes-service.spec.ts` closed → deep → chip → open →
   back → highlight).
-- Open as page moves content, anchor becomes link — met
-  (`actions/promote.ts`, `actions-m4.test.ts` “promote”).
+- Open as page moves content (one page card per answer, first titled
+  with the quote, later ones with their questions), anchor becomes link
+  at once in the guide, the description and the diff — met
+  (`actions/promote.ts`, `actions-m4.test.ts` “promote”,
+  `source/diff/DiffPromotedLink.test.tsx`). Opening as a page never
+  discards work (issue #152): a still-running fill keeps running and
+  lands on the page card (turns stay on the link as the fill's state
+  owner with the card's session, mirrored per partial; the job is
+  re-targeted at the page card so the page shows the working state; the
+  turns drop off the link and the session closes once everything has
+  settled), a failed fill shows the error with Retry on the page, and
+  second opinions move to the page with the answers — met
+  (`conversation.test.ts` “promote mid-fill”, `guide/CardViewPromoted.test.tsx`,
+  `e2e/promote-midfill.spec.ts`).
 - One box while working (issue #97) — met: the Explain placeholder gives
   way as soon as its expansion is in the snapshot (guide, description and
   diff alike), the card shows the fixed “Writing explanation…” label from
   the anchor-keyed entry instead of the “Working…” fallback, and
   content-needing controls (depth, examples, diagram, second opinion) stay
-  off until the text arrives (`guide/inflight.ts` `anchorEntryForExpansion`,
+  off until the text arrives (`guide/inflight.ts` `anchorEntryForConversation`,
   `ExpansionCard.tsx`, `comments/doubleIndicator.test.tsx` “Explain”,
   `guide/inflight.test.ts` anchor-entry cases). First and later Explains
   take the same code path; the first only looks different because agent
   session setup stretches the patch-before-response window.
-- Explanations nest (#116): an Explain on text inside an explanation
-  anchors to the expansion's block and renders under it, to any depth;
-  Ask/Note there behave the same. Citations to expansion blocks validate
-  (`card:<expansion>#<block>`). Closed nested explanations and stale
+- Follow-up suggestions stay on Explain answers; clicking one sends it as
+  the next turn in the same conversation (the item stays, like reply-box
+  text) — met (`actions/followup.ts` conversation branch,
+  `ConversationCard.test.tsx` suggestion case). On guide cards a click
+  still consumes the item and opens a new conversation card.
+- The card is never submitted to GitHub and carries no For-PR control —
+  met (no `post` on conversations; submit posts threads only).
+- Explanations nest (#116, #136): an Explain on text inside an answer
+  anchors to the answer's block and renders under it, to any depth;
+  Ask/Note there behave the same. Citations to answer blocks validate
+  (`card:<answer>#<block>`). Closed nested cards and stale
   anchors use the same footnote chips as card-level ones. Block IDs are
   unique within each stored body (multi-card replies dedupe to `-c2`…,
   inserts take fresh IDs; matching is exact on owner + block), so one
   anchor draws exactly one card.
+- Deliberately off-prototype (`prototype.html` is look-and-behaviour
+  reference, not code): Explain and Ask share one teal conversation
+  card — the prototype's separate sand Ask thread (`.ithread`) is gone;
+  comments keep the sand thread look so the two stay easy to tell apart
+  (owner decisions on #136). Per-answer controls show on the latest
+  answer, on hover/focus for earlier ones. Follow-up chips send the next
+  turn and stay (they are not consumed). “Ask the agent about this” on
+  comments and keep-filling open-as-page have no prototype counterpart.
+  Author markers are icons, not text — a person icon for the reviewer,
+  the spark for the agent, with screen-reader names (“You” / “Agent”)
+  and tooltips — where the prototype prints “Me”/“You”/“AI” plus a name
+  line (owner decision; the second-opinion model label stays, since it
+  is information, not an author label).
 
-### §4.8 Comments — all met
+### §4.8 Comments — all met (#136 slice 2: threads are comments only)
 
-- Ask… (agent + citations) / Comment (no reply, for the PR by default) —
-  met (`actions/ask.ts`, `note.ts`, `comments-service.spec.ts` “create a
-  comment … survives reload”; `comments-m6.test.ts` “comments for the PR”).
-  Only Ask sends text to the agent; clicking a diff line opens a Comment.
-  Only comments are submitted — Ask threads carry no For-PR control and
-  the submit path skips them (issue #135). A Comment from an agent answer
-  quotes the selection as a Markdown blockquote (replaces promote-to-PR;
-  “Open as page” is a different feature and stays).
-- Ask thread replies never show follow-up suggestions (issue #103) — met:
-  the ask prompt no longer asks for them and `replyHtml` drops any
-  `follow-up` block (plus a leftover heading or card title) on both the
-  initial fill and reply turns, while cards and Explain expansions keep
-  their chips (`actions-ask-followups.test.ts`).
-- Thread header (quote/`file:line`, Mark for PR filled when on for
-  comments, Delete, Close) — met (`comments/threads.test.ts`,
-  `ThreadView.test.tsx` “only comment threads carry the For-PR control”,
-  walk screenshot shows “Agent · suggested comment” threads with
-  Reply/Discard).
+- Ask… opens the conversation card (§4.7) on the selection's anchor,
+  with the question as its first turn; Comment starts a comment thread
+  with no agent reply — met (the old `ask.ts`/`explain.ts` are merged
+  into `actions/conversation.ts`, `NewThreadComposer.tsx`,
+  `ask-service.spec.ts`). Only Ask sends text to the agent; clicking a
+  diff line opens a Comment. Only comments are submitted — conversation
+  cards carry no For-PR control and the submit path skips them (issue
+  #135). A Comment from an agent answer quotes the selection as a
+  Markdown blockquote. A comment offers “Ask the agent about this”: the
+  usual Ask card on the comment's anchor, quoting the comment — the only
+  way a comment leads to an agent reply, and the answer is never
+  submitted.
+- Follow-up suggestions live on conversation answers, never in comment
+  threads: one behaviour for every answer — the model may end any answer
+  with suggestions, they render as chips on that answer, and clicking one
+  sends it as the next turn in the same conversation (`actions-ask-followups.test.ts`,
+  `ConversationCard.test.tsx` suggestion case).
+- Thread header (quote/`file:line`, Mark for PR filled when on,
+  Delete, Close) — met (`comments/threads.test.ts`,
+  `ThreadView.test.tsx`, walk screenshot shows “Agent · suggested
+  comment” threads with Reply/Discard).
 - Reply box always visible, Discard/Reply, typed text survives rerender;
   Discard stays disabled on an existing thread until there is a draft —
-  met (`comments/ThreadView.test.tsx`, `comments.spec.ts`).
+  met (`comments/ThreadView.test.tsx`, `comments.spec.ts`). Replies are
+  reviewer-written only, never agent answers.
 - Placement (guide closed + hover outline; diff under line + line-number
   reopen + click-number starts; description under paragraph) — met
   (`comments.spec.ts` “diff line click starts a comment; close leaves an
@@ -471,9 +554,10 @@ needed (that deviation is closed, not added).
   cards/threads (issue #111), never the depth stepper pips
   (`guide/expansions/hoverOutline.test.tsx`).
 - One box while asking (issue #97) — met: the Ask composer hides as soon
-  as its thread is in the snapshot, and the thread's working row uses the
+  as its card is in the snapshot, and the card's working row uses the
   fixed Ask label instead of the “Reading the diff…” fallback
-  (`comments/NewThreadComposer.tsx`, `comments/ThreadView.tsx`,
+  (`comments/NewThreadComposer.tsx`,
+  `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
 - Comments menu (all comments, jump, For PR filter with editable drafts,
   never posts; lives in the review bar next to Submit since round 2, so it
@@ -483,9 +567,9 @@ needed (that deviation is closed, not added).
 
 ### §4.9 Findings — all met
 
-- Separate pages, orange guide card with confidence + “Open →”, dims when
-  read — met (walk shows finding-linked content; `pipeline/apply.ts`
-  criticApply).
+- Separate pages, orange guide card with confidence + “Open →” — met
+  (walk shows finding-linked content; `pipeline/apply.ts`
+  criticApply). (The read-dim is gone with the read state, #136.)
 - Finding page label + rust-border Evidence/Assessment cards — met
   (`reply-format.md`, demo snapshot has `f-lf`/`f-perf` with 2 cards each —
   ran).
@@ -524,7 +608,7 @@ needed (that deviation is closed, not added).
 ### §4.12 Submit review — all met
 
 - Nothing reaches GitHub until Submit — met (`gh-writes.test.ts`). Only
-  comments are submitted; Ask threads and explanations are never posted
+  comments are submitted; conversation cards are never posted
   (issue #135).
 - Button count, panel (locations + drafts, Cancel, Submit as \<user\>) —
   met (ui-walk opened the panel; `submit-m6.test.ts` preview).
@@ -602,7 +686,22 @@ needed (that deviation is closed, not added).
 - Git's own hunks (≤3 context, merged runs); header format + raw `@@` on
   hover; fold/Summarize/note/reviewed actions; hunk card (summary+note,
   Delete); folding hides code only — met (`shared/src/diff.ts` +
-  `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”).
+  `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”). Summaries are
+  content cards (#138): idle text with one attribute mounts nothing per
+  hunk (large-diff fixture: identical DOM node counts before/after,
+  zero card chrome for idle summaries); selecting in it offers the
+  toolbar on a hunk anchor; the first interaction activates a real
+  conversation card on `h:<fileKey>:<contentHash>` from the stored text
+  with no agent call, then the action runs nested; Comment lands on the
+  first changed line without activating; deleting the card returns the
+  idle text — met (`service/test/hunk-cards.test.ts`,
+  `source/diff/hunkAnchor.test.ts`,
+  `source/diff/HunkCardActivation.test.tsx`,
+  `e2e/hunk-summary.spec.ts`). A hunk card opened as a page keeps its
+  summary text plus a page-link chip; the summary's click/Explain/Ask
+  open that page instead of a second card, and a hunk whose page is gone
+  reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
+  cases, `hunk-summary.spec.ts` promoted flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
   run with reason, click reveals; one-line never hidden; cited never
   hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
@@ -630,17 +729,21 @@ needed (that deviation is closed, not added).
   `GET /api/reviews/:id/file` serves raw ranges at a commit through the
   shared `readCodeSlice` source with a per-request cap
   (`service/src/routes/files.ts`, `service/test/file-slice.test.ts` 4
-  tests); step controls above/below each hunk (20 lines) plus gap
-  show-all with a slim hide when fully revealed, so the hunks read as
-  continuous (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 9 tests, `FileExpansion.test.tsx` 5 tests,
-  `e2e/diff-expand.spec.ts` 4 tests); revealed rows are tinted context
+  tests); quiet gutter caret icons (single = 20-line step, double =
+  whole run) in thin separator rows frozen left while code scrolls, one
+  hidden run per gap sharing one remaining count from both ends, no
+  controls on continuous boundaries (fully revealed or zero-line gaps,
+  file edges; the total is probed up front for single-hunk files), and a
+  quiet fold icon on each revealed block's first gutter number instead
+  of control rows (`web/src/source/diff/FileExpansion.tsx`,
+  `expandLines.test.ts` 10 tests, `FileExpansion.test.tsx` 14 tests,
+  `e2e/diff-expand.spec.ts` 8 tests); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
   (`expand.css`, `highlightLines`); deleted files expand on the old
   side, new files on the new side, binary files offer nothing, renames
   read the new path at head — nothing throws; revealed lines offer
-  Explain and Ask on the diff-line anchor (read as
-  `code:<path>:<lines>@<sha>`) while Note stays hidden there
+  Explain, Ask and GitHub on the diff-line anchor (read as
+  `code:<path>:<lines>@<sha>`) while Comment stays hidden there
   (`SelectionToolbar.test.tsx`); `docs/screenshots/133-*.png`.
 - Expand beyond hunks, by unit (issue #133, stage 2) — met:
   `GET /api/reviews/:id/outline` answers the enclosing chain for a hunk
@@ -701,7 +804,8 @@ needed (that deviation is closed, not added).
   results (issue #117: the queue used to hydrate only open jobs, so a
   completed review showed an empty list while every row sat in SQLite;
   `recover()` now loads all stored jobs and open ones still come back
-  marked interrupted; `threadId` is persisted too. Evidence:
+  marked interrupted; `annotationId` is persisted too (#136 slice 2
+  renamed the old `threadId`). Evidence:
   `service/test/jobs.test.ts` "finished jobs stay listed after a restart",
   `scripts/restart-resilience.mjs` step 2b, PRD §4.14 + §16).
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
@@ -728,10 +832,12 @@ needed (that deviation is closed, not added).
 
 ### §4.15 Conventions — all met
 
-- Chevron/Delete/×/check placement + AI/user initials + teal/amber — met
-  (walk screenshot; prototype CSS class names kept).
+- Chevron/Delete/× placement + AI/user initials + teal/amber — met
+  (walk screenshot; prototype CSS class names kept). The card check
+  (Mark read) is gone with the read state (#136); the hunk reviewed
+  tick keeps its check.
 - Only “Guide” + “Agent finding” labels — met (walk).
-- Comments/expansions share header layout — met (`ThreadView` shared).
+- Comments/explanation cards share header layout — met (`ThreadView` shared).
 - `hidden` stays hidden — met (`styles/prototype.css:25`
   `[hidden]{display:none!important}` — the two prototype bugs' fix,
   present).
@@ -745,7 +851,12 @@ needed (that deviation is closed, not added).
 - Interface (`start/fork/load/prompt/close`, event union) — met
   (`shared/src/agent.ts`, `agent/acp/runner.ts`).
 - Fork works both adapters (+Claude resume quirk handled) — met (M0
-  results table 12/12 + 11/12; `runner.ts` fork/resume).
+  results table 12/12 + 11/12; `runner.ts` fork/resume). Forks carry the
+  same `mcpServers` + `_meta` as new/resume/load (#124, fake-transport
+  pinned); live-verified that a Codex fork still comes up with no review
+  tools (zero tool attempts across 7 forks — the drop is inside the
+  adapter/CLI fork path, a bigger fix explicitly deferred), so the live
+  fork-tools check is skipped until then (`test:live:fork-tools`).
 - No-fork fallback (byte-identical first message, caching) — met (M0 §8
   rows; `pipeline/runner.ts:830 forkFor`; `sessions/manager.ts:271
   forkConversation`; fallback test `pipeline.test.ts:444`).
@@ -773,13 +884,19 @@ needed (that deviation is closed, not added).
 
 ## §7 Data model and IDs — all met
 
-- Entities per §7.1 table — met (`shared/src/entities.ts` 699 lines;
-  single schema migration (001–005 collapsed under #137; dead
-  `annotations`/`cards`/`blocks`/`hunk_states` tables and the unused
-  `note_ack` prompt removed under #142) + sessions table;
+- Entities per §7.1 table — met (`shared/src/entities.ts`;
+  #136 slices 1+2: `ContentBody` (page card or answer), `Turn`
+  (`ans_…` + question + answer blocks), `Annotation` types
+  `conversation` (turns + one session id), `comment` (messages, `post`,
+  draft) and `link` (plus `promotedTurns` mapping moved turns to page
+  cards while unsettled, #152); `ExpansionState` and `Card.read`
+  removed; single schema migration (001–005 collapsed under
+  #137; dead `annotations`/`cards`/`blocks`/`hunk_states` tables and the
+  unused `note_ack` prompt removed under #142) + sessions table;
   `store.test.ts`, `state.test.ts`).
-- ID grammar (§7.2 all nine forms) — met (`shared/src/ids.ts`,
-  `links.ts`; `ids` unit tests).
+- ID grammar (§7.2 all eight forms) — met (`shared/src/ids.ts`,
+  `links.ts`; `ids` unit tests). `card:` addresses a page card or one
+  conversation answer (`ans_…`).
 - App assigns IDs; agents never invent them — met: every token validated
   (`validate/*`); unknown IDs fail/repair/unverified; unknown `concept:`
   slugs become hidden candidates (`validate/validate.ts`, `validate.test.ts`).
@@ -819,6 +936,29 @@ needed (that deviation is closed, not added).
 
 - Layers L0–L4 ordering + budgets (40k guess, hunk-header fallback) —
   met (`context/layers.ts`, `context.test.ts` header/summary fallback).
+  (#107) L1 is now a ladder with a hard 80k-token cap
+  (`DEFAULT_BASE_PROMPT_CAP_TOKENS`, not a setting so tuning the inline
+  budget can never reintroduce the provider "Prompt is too long"
+  failure): full → budget-limited → no-uninteresting-hunks →
+  files-only → counts-only, guide-cited/pinned hunks inlined wherever
+  they still fit and dropped last with a notice; every rung past full
+  names only real tools (`get_hunk`, `search_review`, `resolve`,
+  `get_code`); `buildHunkSummaries`/`buildHiddenHunksSection` obey the
+  same cap; reader, base, second-opinion, prompt preview and debug page
+  all build from the one ladder call; the update pass caps
+  `changed_hunks`. Under the budgets every builder is byte-identical to
+  before (`prompt-goldens.test.ts` unchanged). Follow-up: the cap holds
+  for the assembled base message, not per section — `buildBasePack`
+  gives hunk summaries only what is left of the cap after L1+L1b+L2
+  (floor 500 tokens so counts always fit) and asserts the total; the
+  prompts preview and `changed_hunks` budget leftovers the same way.
+  Cost: rungs render lazily in order (small reviews pay for the first
+  rung only), token counting is allocation-free (`countCodePoints`),
+  and `capChangedHunks` keeps a running total instead of re-joining per
+  chunk. Provider "prompt is too long" errors are non-retryable (`agent/acp/errors.ts`) so the queue
+  cannot loop on them, and the ladder throws a plain message naming the
+  PR size if even counts-only cannot fit. Deviation from PRD §9.1 noted
+  below.
 - Per-model base cache; base key (review, version, guide rev, model) — met
   (#43: the key had no review id, so reviews shared a base and a removed
   review's session was reused when the change was added again; Remove now
@@ -867,6 +1007,10 @@ needed (that deviation is closed, not added).
   longer truncate at the first `</li>`). Pending description edits are
   read (`pendingHtml ?? html`); stored HTML predating stable IDs falls
   back to positional per-block numbering (`desc-ids.test.ts` — ran).
+  (#107) `search_review` also matches changed file paths (one hit per
+  file with hunk IDs; second-opinion isolation unchanged), so the agent
+  can discover files once the L1 ladder leaves the file list out; the
+  tool description change is a deliberate golden update.
 - Validation (existence, ranges, anchor substring, hidden concept
   candidates) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair
@@ -885,11 +1029,36 @@ needed (that deviation is closed, not added).
    streamed, and text before the first `## ` card is dropped — met
    (`pipeline/apply.ts`, `pipeline.test.ts` “stored once”). Reviews
    created before the fix keep their duplicate cards; no migration.
+   Diagrams the reader writes inline in guide cards run the same
+   finalize + one repair turn as every other fill (#145: flattened
+   across cards for one shared repair turn on the reader session, then
+   split back — `splitFinalizedBlocks`); a failed repair keeps
+   error-status blocks, prose unaffected. Extra turns per guide build:
+   at most one citation repair + one diagram repair per reader run, and
+   at most one diagram repair per second-opinion run (each other fill
+   keeps its existing one-repair bound).
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×2 with evidence/assessment/confidence +
    suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
 5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
    — met (demo 8 summaries — ran from global install).
+   (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no
+   per-hunk fan-out at ingest (no guide exists yet to cite): only
+   guide-cited hunks lacking a stored summary fan out once the reader
+   lands, everything else summarises on demand (`POST
+   …/hunks/:hash/summarize`, Fold-all; jobs dedupe per hunk hash). The
+   stage still reaches done (empty fan-out sets done; completions are
+   counted in the success path, fixing a race where concurrent jobs all
+   saw each other "running" and nobody marked done), and resume reruns
+   the same branch — never the full fan-out. The limit is shared
+   (`HUNK_PASS_FANOUT_LIMIT` in `packages/shared`, read by the pipeline
+   and the web): past it Fold all folds only and requests no summaries
+   (toast, tooltip and Tips copy say so; per-hunk Summarize stays
+   on-demand). Hide-uninteresting folding
+   needs no model summaries: it folds on the deterministic ingest hidden
+   reason, and summary-less rows render the reason copy with no spinner
+   (`DiffView.test.tsx` "folds on the deterministic hidden reason").
+   Deviation from PRD §11 step 5 noted below.
 6. On demand (depth/go-deeper/explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
@@ -950,12 +1119,13 @@ needed (that deviation is closed, not added).
 
 ## §13 Prompts — all met
 
-- Files with front matter (role/tier/variables) — met (`prompts/*.md` 18
-  templates; `prompts/loader.ts`).
+- Files with front matter (role/tier/variables) — met (`prompts/*.md` 17
+  templates: `ask.md` first turns, `ask_turn.md` follow-ups, `explain.md`
+  deleted under #136 slice 2; `prompts/loader.ts`).
 - Deterministic rendering (stable order, no timestamps, golden files) —
-  met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens refreshed
-  for the #49/#50 template edits (`instructions`, `explain`).
-- All 14 template rows present — met (18 files cover every row;
+  met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens cover
+  `ask` + `ask_turn` (the old `explain` golden went with the template).
+- All 17 template rows present — met (17 files cover every row;
   `routes/prompts.ts` serves template + expanded).
 - Settings shows the template; the debug page shows the per-review
   expanded text with L0–L4 marks, tokens, cache part — met
@@ -970,18 +1140,24 @@ needed (that deviation is closed, not added).
    to suit the flow, cites on each code-mapped shape/connection,
    `myid.class: [ok|bad]` on its own line for states (never inside
    `{ … }`), never name a shape steps/layers/scenarios/boards — mirrored
-   into `diagram.md`, `explain.md`,
+   into `diagram.md`, `ask.md`,
    `go_deeper.md`, `concept_page.md`, `instructions.md` and the goldens.
 
 ## §14 Shell, install, security, storage — all met
 
-- Service on 127.0.0.1 + per-install token on every HTTP and WS route —
-  met (enumerated all 30 routes + WS: 401 unauth — ran; `server.ts:169`
-  gate; WS handshake 401 — ran).
-- Token never in URL after first load — met (`web/src/api/client.ts:55`
-  moves URL token to `localStorage` + `SameSite=Lax` cookie; ui-walk).
+- Service on loopback + per-install token on every HTTP and WS route —
+  met (enumerated all 30 routes + WS: 401 unauth — ran; `server.ts`
+  gate; WS handshake 401 — ran). Opens at `http://unvibe.localhost:4517`
+  (issue #108; the `127.0.0.1` URL is the same service).
+- Token never in URL after first load — met (`web/src/api/client.ts`
+  moves URL token to `localStorage` + persistent `SameSite=Lax` cookie
+  (`Max-Age` one year, issue #108); ui-walk).
 - Host/Origin checks (DNS-rebinding, cross-site WS) — met (new
   `security/host.ts`, 403 for evil Host/Origin — ran; `host.test.ts`).
+  Issue #108 accepts exactly `unvibe.localhost` more (no suffix match;
+  look-alikes, trailing dot, userinfo, hex IPv6 all 403 — ran, HTTP and
+  WS; the gate stays port-agnostic by decision: pinning 403s the app's
+  own loads on ephemeral binds).
 - MCP per-session secrets (unguessable 256-bit, scoped per review, expire
   with session/review, pin_context reader-only) — met (`mcp/registry.ts`
   + lifecycle fixes + `mcp.test.ts` “secret lifecycle” — ran).
@@ -993,7 +1169,9 @@ needed (that deviation is closed, not added).
   (empirical lifecycle on a real repo — ran; `reviews/delete.ts`).
 - Nothing starts at login; idle exit (10 min, no window + no jobs) — met
   (`e2e-linux.mjs` idle-exit; empirical 8 s idle exit + stays up with
-  jobs — ran).
+  jobs — ran). Superseded by issue #108: the service now starts at login
+  (launchd/systemd, `UNVIBE_IDLE_MS=0` there so it never idle-exits);
+  manual starts keep the idle exit. See "Starts at login" above.
 - Install `npm install -g github:<org>/unvibe#release` + `unvibe setup` +
   same command updates — **met**: the `#release` ref serves a
   self-contained tree (built service + web, no build step, no lifecycle
@@ -1215,6 +1393,14 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
     review, no separate ingest path). The user never edits the managed
     checkout, so fetching is safe; removing the repo deletes the clone
     (managed only), and only while it has no reviews.
+12. Huge-PR prompt tiers (#107): PRD §9.1 says L1 carries "the full
+    handwritten diff" with only the 40k-token header fallback, and §11
+    step 5 says the hunk pass summarises each hunk. Past the inline
+    budget L1 now degrades further (no-uninteresting-hunks → files-only
+    → counts-only, hard-capped at 80k tokens), and past 500 hunks the
+    hunk pass only fans out guide-cited hunks, summarising the rest on
+    demand. Under the budgets every prompt is byte-identical to the
+    PRD shape; only oversized reviews see the degraded tiers.
 
 ## Open list
 
@@ -1380,17 +1566,20 @@ invalid; `shared/test/blocks.test.ts` one case per container;
 component change). Since #130, Explain expansions, go-deeper results,
 concept pages and aside-nested diagrams additionally run the same
 finalize + one repair turn as Add-diagram blocks
-(`diagram-finalize.ts`; go-deeper/concept repair runs on the fill's own
-session, nested repairs splice into the failed slots keeping stored
-ids), so a bad inline diagram is repaired before it reaches the reader;
-an unrepairable one resolves to 409 `error` with the source shown and a
-plain note + retry, never 404/500, and never breaks its card.
-Second-opinion reasoning still skips the repair turn (on-demand render
-only).
-Open: ask thread replies still show the raw D2 source (`<pre
-class="d2">`, no fetch). Serving them through the same endpoint would
-need thread replies stored as blocks (a storage change) or parsing the
-HTML back (fragile); left as static source text with working citations.
+   (`diagram-finalize.ts`; go-deeper/concept repair runs on the fill's own
+   session, nested repairs splice into the failed slots keeping stored
+   ids), so a bad inline diagram is repaired before it reaches the reader;
+   an unrepairable one resolves to 409 `error` with the source shown and a
+   plain note + retry, never 404/500, and never breaks its card. Since
+   #145 the same path covers diagrams written inline in guide (reader)
+   cards and diagrams in second-opinion reasoning (repair on the
+   second-opinion session/model, shared log untouched — isolation holds;
+   `second-opinion.test.ts` reasoning-diagram cases).
+   Open: ask thread replies still show the raw D2 source (`<pre
+   class="d2">`, no fetch). Serving them through the same endpoint would
+   need thread replies stored as blocks (a storage change) or parsing the
+   HTML back (fragile); left as static source text with working citations
+   (with #136).
 
 ### Immediate action feedback (#46, complete)
 
@@ -1440,8 +1629,8 @@ every agent action so the same handover runs. Service jobs now carry
  the issue report (before/after for depth, examples, generate,
  follow-up, explain; replay fills run sub-second, captured via CDP
  bursts).
- Fixed under #117: `threadId` is carried through the jobs-store JSON
- column like `cardId`. Hunk summarize busy never clears on success (#63,
+  Fixed under #117: `annotationId` is carried through the jobs-store JSON
+  column like `cardId` (#136 slice 2 renamed the old `threadId`). Hunk summarize busy never clears on success (#63,
  adjacent, untracked here).
 
 ### Progress signs (#98, branch `feat/98-progress-signs`)
@@ -1462,18 +1651,29 @@ every agent action so the same handover runs. Service jobs now carry
  review's jobs is live — `running` counts `running` jobs, `queued`
  counts `queued` + `backing-off` (both wait: for a slot, for a retry);
  terminal states count for neither — linking to the review's Debug jobs
- list. A slow gradient drifts while anything runs; queued-only is quiet;
- nothing renders when idle or while the review is still opening/failed
- (the open is ingest state, never a snapshot job). Plain link text, no
- live region. CSS only, no new dependency, no CSP change.
- Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
- `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
- queued-only, hidden idle, hidden while opening), new
- `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
- after cancelling all live jobs, 800px fit, computed
- `animation-name`/`duration` on the dots, reduced-motion off via
- emulation), `copy-guard` green. Screenshots `docs/screenshots/98-*`.
- Full gates not yet run.
+  list. While anything runs (issue #144) a highlight travels around the
+  pill's border with the inside calm — a masked conic gradient on a
+  pseudo-element, so the box never moves, resizes or shifts its neighbours;
+  queued-only is quiet; nothing renders when idle or while the review is
+  still opening/failed (the open is ingest state, never a snapshot job).
+  Plain link text, no live region. Under `prefers-reduced-motion` the dots
+  take turns fading in place (no rise) and the pill's highlight fades in
+  place (no rotation); the rewriting border keeps its colour-only pulse;
+  the depth stepper's pips never animate in either mode. CSS only, no new
+  dependency, no CSP change.
+  Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
+  `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
+  queued-only, hidden idle, hidden while opening), new
+  `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
+  after cancelling all live jobs, 800px fit, computed
+  `animation-name`/`duration` on the dots and on the pill's border in full
+  motion, pill + Submit boxes identical over a full travel cycle, depth
+  stepper still in both modes, reduced-motion fade animations with no
+  transform via emulation), `copy-guard` green. Screenshots
+  `docs/screenshots/98-*` and `docs/screenshots/144-*` (both pill options
+  tried; the travelling border picked over the stronger gradient: visible
+  without flooding the pill or hurting the numbers' contrast).
+  Full gates not yet run.
 
 ### Reload blank page, part 1: error boundaries (#101, complete)
 
@@ -1710,6 +1910,40 @@ items noticed while passing through (not verified, listed only):
   `StartPage.requested.test.tsx` (authoring sort, one control below
   Reviews, filtered-empty with Show all, branch ages, Reviews ignores the
   window), `e2e/start-lists.spec.ts`.
+- **#148 (start page, §4.2):** the PR and branch lists the filter governs
+  are one delineated block ("PRs and branches": bordered container with a
+  heading row) whose boundary matches exactly what the filter covers;
+  Reviews and the PR opener stay outside it. The recency selector sits at
+  the block's top right, compact (the window alone with an accessible
+  label). The last-fetch time is a refresh icon in the same row — the
+  same load the Retry button triggers — spinning while fetching (still
+  under reduced motion) with the time in its tooltip, so no text line
+  ever shifts the layout. Filtered-empty states with Show all keep
+  working inside the block. Evidence: `e2e/start-block.spec.ts` (block
+  boundary, compact filter, refresh click → spinning → settled tooltip,
+  filtered-empty way back), `StartPage.kept.test.tsx` (tooltip states),
+  `docs/screenshots/148-wide-light.png`,
+  `docs/screenshots/148-wide-dark.png`,
+  `docs/screenshots/148-narrow-light.png`,
+  `docs/screenshots/148-narrow-dark.png` (looked at).
+- **#149 (start page + reviews, §4.2):** one review per PR and one per
+  branch in a repo. `POST /api/reviews` reuses the existing review for
+  the same source (repo + PR number, or repo + branch) whether loading,
+  failed or ready — answering 200 with `reused: true` (new
+  `CreateReviewResponse` contract) instead of creating a second review —
+  and opening it counts as opening (front-screen order). A PR review and
+  a branch review of the same branch are different sources. Stored
+  duplicates resolve to the most recently active review; two concurrent
+  creates for one source share a single insert (per-key in-flight slot
+  over the #92 pending map). New commits still surface through the
+  existing review's refresh ("new commits"), never a fork. PR/branch
+  list rows that already have a review carry its id (service
+  `repoChanges` + mock alike) and show a small "review" marker ("new
+  commits" alongside when stale); clicking the row opens that review
+  directly. Evidence: `test/reviews-async.test.ts` (ready-PR reuse,
+  branch reuse, PR-vs-branch distinct, concurrent creates → one row),
+  `test/changes-pr-branch.test.ts` (row markers, PR review does not
+  mark its branch), `e2e/open-review.spec.ts` (marker + direct open).
 - **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
   in the quiet meta style with the diff add/delete colours, omitted when
   unknown; thousands separators, "1 file" singular. Evidence:

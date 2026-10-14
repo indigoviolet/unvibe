@@ -1,7 +1,7 @@
 /**
  * Depth reuse toasts (issue #65): the toast shows only when the level did
  * not change and nothing was added — for Deeper and Simpler, on cards and
- * on expansions. A stored-level switch (reused with a new level) and an
+ * on conversation answers. A stored-level switch (reused with a new level) and an
  * agent-generated change stay silent.
  */
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -25,15 +25,17 @@ function setCardLevel(cardId: string, level: DepthLevel): void {
   });
 }
 
-function setExpansionLevel(annotationId: string, level: DepthLevel): void {
+function setAnswerLevel(answerId: string, level: DepthLevel): void {
   const snap = useReview.getState().snapshot!;
   useReview.getState().setSnapshot({
     ...snap,
-    annotations: snap.annotations.map((a) =>
-      a.id === annotationId && a.type === "expansion" && a.expansion
-        ? { ...a, expansion: { ...a.expansion, level } }
-        : a,
-    ),
+    annotations: snap.annotations.map((a) => {
+      if (a.type !== "conversation") return a;
+      return {
+        ...a,
+        turns: (a.turns ?? []).map((t) => (t.id === answerId ? { ...t, level } : t)),
+      };
+    }),
   });
 }
 
@@ -105,14 +107,14 @@ describe("depth reuse toasts", () => {
     }
   });
 
-  test("expansion Deeper served from stored text shows no toast", async () => {
+  test("answer Deeper served from stored text shows no toast", async () => {
     const actionSpy = vi
       .spyOn(api, "action")
-      .mockResolvedValue({ accepted: true, cardId: "x-seed", reused: true, level: "deep" });
+      .mockResolvedValue({ accepted: true, cardId: "ans_seed1", reused: true, level: "deep" });
     const toastSpy = vi.spyOn(ToastModule, "toast").mockImplementation(() => {});
     try {
-      // x-seed is standard in the seed; the service switched it to deep.
-      await performAction(REVIEW_ID, { kind: "depth", cardId: "x-seed", direction: "deeper" });
+      // ans_seed1 is standard in the seed; the service switched it to deep.
+      await performAction(REVIEW_ID, { kind: "depth", cardId: "ans_seed1", direction: "deeper" });
       expect(toastSpy).not.toHaveBeenCalled();
     } finally {
       actionSpy.mockRestore();
@@ -120,14 +122,14 @@ describe("depth reuse toasts", () => {
     }
   });
 
-  test("expansion Deeper at the deepest level toasts", async () => {
-    setExpansionLevel("x-seed", "deep");
+  test("answer Deeper at the deepest level toasts", async () => {
+    setAnswerLevel("ans_seed1", "deep");
     const actionSpy = vi
       .spyOn(api, "action")
-      .mockResolvedValue({ accepted: true, cardId: "x-seed", reused: true, level: "deep" });
+      .mockResolvedValue({ accepted: true, cardId: "ans_seed1", reused: true, level: "deep" });
     const toastSpy = vi.spyOn(ToastModule, "toast").mockImplementation(() => {});
     try {
-      await performAction(REVIEW_ID, { kind: "depth", cardId: "x-seed", direction: "deeper" });
+      await performAction(REVIEW_ID, { kind: "depth", cardId: "ans_seed1", direction: "deeper" });
       expect(toastSpy).toHaveBeenCalledWith("Already at the deepest level");
     } finally {
       actionSpy.mockRestore();

@@ -8,6 +8,8 @@
  *   listener navigates; the slot unmounts with the annotation type flip);
  * - closed expansions highlight their quote in the diff row as a dotted
  *   link; click re-expands;
+ * - promoted links keep a page-link mark on the quote (click opens the
+ *   page), including while the moved answer is still filling;
  * - anchor-stale shows the collapsed card fallback in the slot.
  */
 import { useEffect, useMemo, useReducer } from "react";
@@ -28,6 +30,14 @@ function makeExpMark(id: string, closed: boolean): HTMLElement {
   return mark;
 }
 
+function makePageLink(pageId: string): HTMLElement {
+  const a = document.createElement("a");
+  a.className = "cx pg";
+  a.dataset.node = pageId;
+  (a as HTMLAnchorElement).title = "Opened as its own page";
+  return a;
+}
+
 export function useDiffExpansionBindings(
   reviewId: string,
   lookupPage: (pageId: string) => Page | undefined,
@@ -39,9 +49,11 @@ export function useDiffExpansionBindings(
   const byLine = useMemo(() => {
     const map = new Map<string, Annotation[]>();
     for (const a of annotations ?? []) {
-      if (a.type !== "expansion" && a.type !== "link") continue;
+      if (a.type !== "conversation" && a.type !== "link") continue;
       if (a.anchor.host.kind !== "diff-line") continue;
-      if (a.type === "link") continue; // promoted: navigates away, no slot
+      // Promoted links join the map so the anchor keeps its page-link
+      // mark (issue #152); they render no slot (the card moved away).
+      if (a.type === "link" && !a.promotedToPage) continue;
       const key = slotKey(a.anchor.host.fileKey, a.anchor.host.line);
       const list = map.get(key) ?? [];
       list.push(a);
@@ -63,6 +75,10 @@ export function useDiffExpansionBindings(
   // also re-runs on highlight completions (`hlTick`). Quotes spanning
   // several token spans still resolve: `markTextInElement` joins text nodes
   // before locating the quote.
+  //
+  // Promoted links (issue #152) mark the anchor as a page link at once,
+  // including while the moved answer is still filling: the quote keeps
+  // its link styling from the promote patch on.
   const [hlTick, bumpHlTick] = useReducer((x: number) => x + 1, 0);
   useEffect(() => subscribeHighlight(() => bumpHlTick()), []);
   useEffect(() => {
@@ -74,10 +90,15 @@ export function useDiffExpansionBindings(
           const row = document.getElementById(`L-${fileKey}-${lineStr}`);
           if (!row) continue;
           for (const cell of row.querySelectorAll("td.c")) {
-            clearMarks(cell, "mark.anc.ex[data-jump], mark.anc.exl[data-jump]");
+            clearMarks(cell, "mark.anc.ex[data-jump], mark.anc.exl[data-jump], a.cx.pg[data-node]");
             for (const a of exps) {
               if (isAnchorStale(a) || !a.anchor.quotedText) continue;
               try {
+                if (a.type === "link" || a.promotedToPage) {
+                  const target = a.promotedToPage ?? "";
+                  if (target) markTextInElement(cell, a.anchor.quotedText, () => makePageLink(target));
+                  continue;
+                }
                 markTextInElement(cell, a.anchor.quotedText, () => makeExpMark(a.id, !a.open));
               } catch {
                 // Ignore.
@@ -92,13 +113,20 @@ export function useDiffExpansionBindings(
 
   useEffect(() => {
     const onClick = (e: MouseEvent): void => {
+      // Promoted page links inside diff rows navigate to the page.
+      const pg = (e.target as Element | null)?.closest?.("#right a.cx.pg[data-node]");
+      if (pg) {
+        const target = (pg as HTMLElement).dataset.node ?? "";
+        if (target) onOpenPage(target);
+        return;
+      }
       const mark = (e.target as Element | null)?.closest?.("#right mark.anc[data-jump]");
       if (!mark) return;
       const id = (mark as HTMLElement).dataset.jump ?? "";
       const snap = useReview.getState().snapshot;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found || found.anchor.host.kind !== "diff-line") return;
-      if (found.type === "expansion" && !found.open) {
+      if (found.type === "conversation" && !found.open) {
         api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
@@ -109,12 +137,12 @@ export function useDiffExpansionBindings(
     };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
-  }, [reviewId]);
+  }, [reviewId, onOpenPage]);
 
   const lineSlots = useMemo<LineSlots>(() => {
     const slots: LineSlots = {};
     for (const [key, exps] of byLine) {
-      const open = exps.filter((a) => a.type === "expansion" && a.open);
+      const open = exps.filter((a) => a.type === "conversation" && a.open);
       if (open.length === 0) continue;
       slots[key] = (
         <>

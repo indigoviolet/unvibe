@@ -57,6 +57,12 @@ describe("ReviewBar", () => {
     await renderBar("r-old", "urllib3/urllib3#5011");
     const bar = document.getElementById("reviewbar");
     expect(bar).not.toBeNull();
+    // Issue #141: the home control is the bar's first control; no
+    // Settings gear on a review (Settings is reached from the start page).
+    const home = screen.getByRole("link", { name: "Back to the start page" });
+    expect(home).toHaveAttribute("href", "/");
+    expect(home).toHaveAttribute("title", "Back to the start page");
+    expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
     expect(bar).toHaveTextContent("Fix retry backoff on 429s");
     const github = screen.getByRole("link", { name: "Open PR on GitHub" });
     expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
@@ -206,7 +212,7 @@ describe("ReviewBar", () => {
         files: [],
         pages: [],
         ingest: { status: "loading", step: "fetching" },
-        jobs: [{ id: "j1", kind: "explain", model: "m", priority: 1, state: "running" }],
+        jobs: [{ id: "j1", kind: "ask", model: "m", priority: 1, state: "running" }],
       } as typeof snap);
       renderCountBar("opening-2");
       expect(screen.queryByRole("link", { name: /running, .* queued/ })).toBeNull();

@@ -71,12 +71,11 @@ export function createSnapshotLookup(
         if (card.id === cardId) return card.blocks;
       }
     }
-    // Explanations are cards in their own right (#116): `card:<ann>#<block>`
+    // Answers are cards in their own right (#136): `card:<ans>#<block>`
     // citations address their blocks the same way page cards do.
     for (const ann of snapshot.annotations) {
-      if (ann.type === "expansion" && ann.expansion && ann.id === cardId) {
-        return ann.expansion.blocks;
-      }
+      const turn = (ann.turns ?? []).find((t) => t.id === cardId);
+      if (turn) return turn.blocks;
     }
     return null;
   };

@@ -1,7 +1,8 @@
 /**
- * Block walker (issue #71): the diagrams route must find diagram blocks
- * wherever the data model can hold them. One case per live container, plus
- * the deliberate exclusions (undo stacks, thread HTML).
+ * Block walker (issue #71, #136): the diagrams route must find diagram
+ * blocks wherever the data model can hold them. One case per live
+ * container — including every turn of a conversation card — plus the
+ * deliberate exclusions (undo stacks, thread HTML).
  */
 import { describe, expect, it } from "vitest";
 import type { Annotation, Block, DiagramBlock, Page } from "../src/entities.js";
@@ -31,6 +32,7 @@ const CARD_SO_HASH = "card-so-00000004";
 const EXP_HASH = "exp-top-00000005";
 const EXP_ASIDE_HASH = "exp-aside-0000006";
 const EXP_SO_HASH = "exp-so-000000007";
+const TURN2_HASH = "turn2-top-00000009";
 const UNDO_HASH = "undo-stale-0000008";
 
 const SRC: Record<string, string> = {
@@ -41,6 +43,7 @@ const SRC: Record<string, string> = {
   [EXP_HASH]: "exp-top-a -> exp-top-b",
   [EXP_ASIDE_HASH]: "exp-aside-a -> exp-aside-b",
   [EXP_SO_HASH]: "exp-so-a -> exp-so-b",
+  [TURN2_HASH]: "turn2-top-a -> turn2-top-b",
   [UNDO_HASH]: "undo-a -> undo-b",
 };
 
@@ -57,7 +60,6 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
           pageId: "root",
           title: null,
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: [
@@ -88,7 +90,7 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
   const annotations = [
     {
       id: "ann_exp",
-      type: "expansion",
+      type: "conversation",
       anchor: {
         host: { kind: "block", blockId: "central#b1" },
         quotedText: "q",
@@ -101,31 +103,42 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
       messages: [],
       post: false,
       note: false,
-      expansion: {
-        blocks: [
-          diagram(SRC[EXP_HASH], EXP_HASH),
-          aside("ea1", [diagram(SRC[EXP_ASIDE_HASH], EXP_ASIDE_HASH)]),
-        ],
-        level: "standard",
-        read: false,
-        collapsed: false,
-        revision: 2,
-        undoStack: [],
-        secondOpinions: [
-          {
-            id: "so-exp-blind",
-            cardId: "ann_exp",
-            mode: "blind",
-            provider: "p",
-            model: "m",
-            verdict: "partly",
-            reasoning: "mostly",
-            blocks: [paragraph("so-p"), diagram(SRC[EXP_SO_HASH], EXP_SO_HASH)],
-            version: 1,
-            createdAt: 1,
-          },
-        ],
-      },
+      turns: [
+        {
+          id: "ans_1",
+          question: null,
+          blocks: [
+            diagram(SRC[EXP_HASH], EXP_HASH),
+            aside("ea1", [diagram(SRC[EXP_ASIDE_HASH], EXP_ASIDE_HASH)]),
+          ],
+          level: "standard",
+          revision: 2,
+          undoStack: [],
+          secondOpinions: [
+            {
+              id: "so-exp-blind",
+              cardId: "ans_1",
+              mode: "blind",
+              provider: "p",
+              model: "m",
+              verdict: "partly",
+              reasoning: "mostly",
+              blocks: [paragraph("so-p"), diagram(SRC[EXP_SO_HASH], EXP_SO_HASH)],
+              version: 1,
+              createdAt: 1,
+            },
+          ],
+        },
+        // A later turn is walked too (a diagram in a follow-up answer renders).
+        {
+          id: "ans_2",
+          question: "And then?",
+          blocks: [diagram(SRC[TURN2_HASH], TURN2_HASH)],
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+        },
+      ],
     },
     {
       // Ask thread: the agent's diagram arrives as raw HTML, not a block.
@@ -149,11 +162,11 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
 }
 
 describe("liveBlockLists", () => {
-  it("enumerates card, second-opinion and expansion lists", () => {
+  it("enumerates card, second-opinion and turn lists", () => {
     const lists = liveBlockLists(snapshot());
-    // card blocks + card second-opinion blocks + expansion blocks +
-    // expansion second-opinion blocks.
-    expect(lists).toHaveLength(4);
+    // card blocks + card second-opinion blocks + turn-1 blocks +
+    // turn-1 second-opinion blocks + turn-2 blocks.
+    expect(lists).toHaveLength(5);
   });
 });
 
@@ -163,9 +176,10 @@ describe("findDiagramByHash", () => {
     ["card aside", CARD_ASIDE_HASH],
     ["nested aside in card", CARD_NESTED_HASH],
     ["card second opinion", CARD_SO_HASH],
-    ["expansion", EXP_HASH],
-    ["expansion aside", EXP_ASIDE_HASH],
-    ["expansion second opinion", EXP_SO_HASH],
+    ["answer", EXP_HASH],
+    ["answer aside", EXP_ASIDE_HASH],
+    ["answer second opinion", EXP_SO_HASH],
+    ["second turn", TURN2_HASH],
   ])("finds a diagram in a %s", (_label, hash) => {
     const hit = findDiagramByHash(snapshot(), hash);
     expect(hit?.source).toBe(SRC[hash]);
@@ -193,7 +207,7 @@ describe("allDiagramBlocks", () => {
   it("collects every live diagram exactly once", () => {
     const hashes = allDiagramBlocks(snapshot()).map((d) => d.render?.hash).sort();
     expect(hashes).toEqual(
-      [CARD_HASH, CARD_ASIDE_HASH, CARD_NESTED_HASH, CARD_SO_HASH, EXP_HASH, EXP_ASIDE_HASH, EXP_SO_HASH].sort(),
+      [CARD_HASH, CARD_ASIDE_HASH, CARD_NESTED_HASH, CARD_SO_HASH, EXP_HASH, EXP_ASIDE_HASH, EXP_SO_HASH, TURN2_HASH].sort(),
     );
   });
 
