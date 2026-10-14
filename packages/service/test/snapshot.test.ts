@@ -56,13 +56,12 @@ describe("snapshot build", () => {
       ["t-diff", "t-seed", "t-sgperf", "t-sglf", "x-seed"].sort(),
     );
 
-    // Seed state survived: tconn hunk 3 reviewed+folded, conn hunk 2 noted.
+    // Seed state survived: tconn hunk 3 reviewed+folded (hunk notes are
+    // gone, issue #162 — no hunk carries one).
     const tconn = snapshot.files.find((f) => f.fileKey === "test-test_connection.py")!;
-    const conn = snapshot.files.find((f) => f.fileKey === "src-urllib3-connection.py")!;
     const reviewed = snapshot.hunkStates.find((s) => s.contentHash === tconn.hunks[2].contentHash)!;
     expect(reviewed).toMatchObject({ reviewed: true, folded: true });
-    const noted = snapshot.hunkStates.find((s) => s.contentHash === conn.hunks[1].contentHash)!;
-    expect(noted.note).toMatch(/Only call site/);
+    expect(snapshot.hunkStates.every((s) => !("note" in s))).toBe(true);
 
     // Independent re-validation: every citation in the snapshot validates
     // (same alias mapping the builder uses for the short recording keys).
