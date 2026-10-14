@@ -1,0 +1,118 @@
+{
+ "provider": "claude",
+ "scenario": "actions",
+ "mode": "bypassPermissions",
+ "nono": true,
+ "model": "haiku",
+ "perm": "deny",
+ "ok": true,
+ "totalMs": 27184,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 331
+  },
+  {
+   "name": "session/new",
+   "ms": 1547,
+   "modes": [
+    "default",
+    "acceptEdits",
+    "plan",
+    "auto",
+    "bypassPermissions"
+   ],
+   "current": "default"
+  },
+  {
+   "name": "set model",
+   "ms": 42
+  },
+  {
+   "name": "set mode",
+   "ms": 25
+  },
+  {
+   "name": "prompt actions",
+   "ms": 25214,
+   "firstTextMs": 3505,
+   "textChunks": 158,
+   "text": "I'll run the steps in order, one at a time.\n\n**Step 1****Step 2****Step 3****Step 4** (read first, then edit with the file tool)**Step 5****Step 6****Step 7****Step 8****Step 9** (the web fetch tool is deferred, so I'll load its schema first)**Step 10**All ten steps ran once each, in order. Steps 2, 3, 4, 5, 6, 7 and 8 failed, and the sandbox or permissions blocked each one.\n\n| Step | What I ran | Result | Error (first line, verbatim) |\n|---|---|---|---|\n| 1 | `git log --oneline -n 2` | ok | \u2014 (output: `e970a60 add sub`, `324bff7 add calc`) |\n| 2 | `gh pr view 7 -R acme-fixture-does-not-exist-91c3/app` | failed | `HTTP 401: Bad credentials (https://api.github.com/graphql)` |\n| 3 | `gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"` | failed | `nono: command policy denied gh: Command 'gh' is blocked: invocation_policy.default deny` |\n| 4 | Read `calc.py`, then append `# spike edit` with the file edit tool | failed (the read succeeded; the edit was denied) | `EACCES: permission denied, open '<scratch>/fx/checkout/calc.py.tmp.1901722.b96ff12e2c40'` |\n| 5 | `echo \"# spike shell edit\" >> calc.py` | failed | `(eval):1: permission denied: calc.py` |\n| 6 | `echo spike >> <scratch>/fx/outside/note.txt` | failed | `(eval):1: permission denied: <scratch>/fx/outside/note.txt` |\n| 7 | `cat <scratch>/home2/secret.txt` | failed | `cat: <scratch>/home2/secret.txt: Permission denied` |\n| 8 | Read `<scratch>/home2/secret.txt` with the file read tool | failed | `EACCES: permission denied, open '<scratch>/home2/secret.txt'` |\n| 9 | Fetched https://example.com with WebFetch (loaded via ToolSearch first) | ok | \u2014 (page title \"Example Domain\"; WebFetch does not expose the HTTP status) |\n| 10 | `curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com` | ok | \u2014 (HTTP 200) |",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "git log --oneline -n 2",
+     "status": "completed",
+     "output": "\"e970a60 add sub\\n324bff7 add calc\""
+    },
+    {
+     "title": "gh pr view 7 -R acme-fixture-does-not-exist-91c3/app",
+     "status": "failed",
+     "output": "\"Exit code 1\\nHTTP 401: Bad credentials (https://api.github.com/graphql)\\nTry authenticating with:  gh auth login -h github.com\""
+    },
+    {
+     "title": "gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"",
+     "status": "failed",
+     "output": "\"Exit code 126\\nnono: command policy denied gh: Command 'gh' is blocked: invocation_policy.default deny\""
+    },
+    {
+     "title": "Read calc.py",
+     "status": "completed",
+     "output": "\"1\\tdef add(a, b):\\n2\\t    return a + b\\n3\\t\\n4\\tdef sub(a, b):\\n5\\t    return a - b\\n6\\t\""
+    },
+    {
+     "title": "Edit calc.py",
+     "status": "failed",
+     "output": "\"EACCES: permission denied, open '<scratch>/fx/checkout/calc.py.tmp.1901722.b96ff12e2c40'\""
+    },
+    {
+     "title": "echo \"# spike shell edit\" >> calc.py",
+     "status": "failed",
+     "output": "\"Exit code 1\\n(eval):1: permission denied: calc.py\""
+    },
+    {
+     "title": "echo spike >> <scratch>/fx/outside/note.txt",
+     "status": "failed",
+     "output": "\"Exit code 1\\n(eval):1: permission denied: <scratch>/fx/outside/note.txt\""
+    },
+    {
+     "title": "cat <scratch>/home2/secret.txt",
+     "status": "failed",
+     "output": "\"Exit code 1\\ncat: <scratch>/home2/secret.txt: Permission denied\""
+    },
+    {
+     "title": "Read <scratch>/home2/secret.txt",
+     "status": "failed",
+     "output": "\"EACCES: permission denied, open '<scratch>/home2/secret.txt'\""
+    },
+    {
+     "title": "ToolSearch",
+     "status": "completed",
+     "output": "[{\"type\":\"tool_reference\",\"tool_name\":\"WebFetch\"}]"
+    },
+    {
+     "title": "Fetch https://example.com",
+     "status": "completed",
+     "output": "\"The page title is **Example Domain**. The content includes no HTTP status information, such as a status code or response headers. It contains only the page's visible text, which says the domain is meant for use in documentation examples and is \\\"not a service.\\\"\""
+    },
+    {
+     "title": "curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com",
+     "status": "completed",
+     "output": "\"200\""
+    }
+   ],
+   "usage": {
+    "inputTokens": 28,
+    "cachedReadTokens": 279390,
+    "cachedWriteTokens": 2786,
+    "outputTokens": 2670
+   }
+  }
+ ],
+ "permissionRequests": [],
+ "mcpCalls": 0,
+ "ghStubLog": ""
+}

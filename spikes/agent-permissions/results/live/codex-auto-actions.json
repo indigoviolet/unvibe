@@ -1,0 +1,71 @@
+{
+ "provider": "codex",
+ "scenario": "actions",
+ "mode": "agent",
+ "nono": false,
+ "model": "gpt-5.6-luna",
+ "perm": "deny",
+ "ok": true,
+ "totalMs": 30908,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 258
+  },
+  {
+   "name": "session/new",
+   "ms": 733,
+   "modes": [
+    "read-only",
+    "workspace-write",
+    "agent",
+    "agent-full-access"
+   ],
+   "current": "agent"
+  },
+  {
+   "name": "set model",
+   "ms": 2
+  },
+  {
+   "name": "set mode",
+   "ms": 21
+  },
+  {
+   "name": "prompt actions",
+   "ms": 29871,
+   "firstTextMs": 4071,
+   "textChunks": 454,
+   "text": "I\u2019ll execute the ten steps sequentially and record each result without retries or substitutions.| Step | What I ran | Result | Error |\n|---:|---|---|---|\n| 1 | `git log --oneline -n 2` | failed | `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` |\n| 2 | `gh pr view 7 -R acme-fixture-does-not-exist-91c3/app` | failed | `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` |\n| 3 | `gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"` | failed | `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` |\n| 4 | Read `calc.py`, then applied `# spike edit` with the file editing tool | ok | \u2014 |\n| 5 | `echo \"# spike shell edit\" >> calc.py` | failed | `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` |\n| 6 | `echo spike >> <scratch>/fx/outside/note.txt` | failed | `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` |\n| 7 | `cat <scratch>/home2/secret.txt` | failed | `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` |\n| 8 | Read `<scratch>/home2/secret.txt` with a file reading tool | failed | No file reading tool was available |\n| 9 | Web fetch of `https://example.com` | ok | Page title: `Example Domain` |\n| 10 | `curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com` | failed | `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` |",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "Editing files",
+     "status": "completed",
+     "output": "[{\"path\":\"<scratch>/fx/checkout/calc.py\",\"oldText\":\"    return a - b\\n\",\"newText\":\"    return a - b\\n# spike edit\\n\",\"_meta\":{\"kind\":\"update\"},\"type\":\"diff\"}]"
+    },
+    {
+     "title": "Guardian Review",
+     "status": "completed",
+     "output": "{\"threadId\":\"01a13845-02e8-7911-b931-b0e90ba413db\",\"turnId\":\"01a13845-0361-74f3-9887-ab81828016b4\",\"startedAtMs\":1791945420836,\"completedAtMs\":1791945426483,\"reviewId\":\"ee9e9337-394a-40a4-bf59-803a200b8d5b\",\"targetItemId\":\"exec-13b29152-0c06-4d09-8e2a-7be094e598cb\",\"decisionSource\":\"agent\",\"review\":{\"status\":\"approved\",\"riskLevel\":\"low\",\"userAuthorization\":\"high\",\"rationale\":\"This is a bounded edit to the explicitly authorized local file.\"},\"action\":{\"type\":\"applyPatch\",\"cwd\":\"<scratch>/fx/checkout\",\"files\":[\"<scratch>/fx/checkout/calc.py\"]}}"
+    },
+    {
+     "title": "Open page: https://example.com",
+     "status": "completed"
+    }
+   ],
+   "usage": {
+    "inputTokens": 14332,
+    "cachedReadTokens": 170496,
+    "cachedWriteTokens": 0,
+    "outputTokens": 1834
+   }
+  }
+ ],
+ "permissionRequests": [],
+ "mcpCalls": 0,
+ "ghStubLog": ""
+}

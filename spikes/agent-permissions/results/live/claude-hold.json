@@ -1,0 +1,74 @@
+{
+ "provider": "claude",
+ "scenario": "hold",
+ "mode": "default",
+ "nono": false,
+ "model": "haiku",
+ "perm": "hold:25",
+ "ok": true,
+ "totalMs": 30562,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 340
+  },
+  {
+   "name": "session/new",
+   "ms": 703,
+   "modes": [
+    "default",
+    "acceptEdits",
+    "plan",
+    "auto",
+    "bypassPermissions"
+   ],
+   "current": "default"
+  },
+  {
+   "name": "set model",
+   "ms": 41
+  },
+  {
+   "name": "set mode",
+   "ms": 41
+  },
+  {
+   "name": "prompt hold",
+   "ms": 29415,
+   "firstTextMs": 28980,
+   "textChunks": 6,
+   "text": "https://github.example.invalid/acme/app/pull/7#issuecomment-0 (stub: nothing was posted)",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "gh pr comment 7 -R acme/app --body \"spike hold test\"",
+     "status": "completed",
+     "output": "\"https://github.example.invalid/acme/app/pull/7#issuecomment-0 (stub: nothing was posted)\""
+    }
+   ],
+   "usage": {
+    "inputTokens": 4,
+    "cachedReadTokens": 30494,
+    "cachedWriteTokens": 9193,
+    "outputTokens": 169
+   }
+  }
+ ],
+ "permissionRequests": [
+  {
+   "title": "gh pr comment 7 -R acme/app --body \"spike hold test\"",
+   "options": [
+    "allow_once",
+    "allow_always",
+    "reject_once"
+   ],
+   "answer": "allow_once",
+   "heldMs": 25013
+  }
+ ],
+ "mcpCalls": 0,
+ "ghStubLog": "gh pr comment 7 -R acme/app --body spike hold test\n"
+}

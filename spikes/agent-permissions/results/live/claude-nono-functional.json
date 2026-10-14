@@ -1,0 +1,105 @@
+{
+ "provider": "claude",
+ "scenario": "functional",
+ "mode": "bypassPermissions",
+ "nono": true,
+ "model": "haiku",
+ "perm": "deny",
+ "ok": true,
+ "totalMs": 13072,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 349
+  },
+  {
+   "name": "session/new",
+   "ms": 1531,
+   "modes": [
+    "default",
+    "acceptEdits",
+    "plan",
+    "auto",
+    "bypassPermissions"
+   ],
+   "current": "default"
+  },
+  {
+   "name": "set model",
+   "ms": 42
+  },
+  {
+   "name": "set mode",
+   "ms": 24
+  },
+  {
+   "name": "prompt mcp",
+   "ms": 3419,
+   "firstTextMs": 3049,
+   "textChunks": 3,
+   "text": "NOTE:alpha:quiet-harbor-58",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "mcp__unvibe__get_note",
+     "status": "completed",
+     "output": "[{\"type\":\"text\",\"text\":\"NOTE:alpha:quiet-harbor-58\"}]"
+    }
+   ],
+   "usage": {
+    "inputTokens": 4,
+    "cachedReadTokens": 31495,
+    "cachedWriteTokens": 8630,
+    "outputTokens": 78
+   }
+  },
+  {
+   "name": "session/fork",
+   "ms": 16
+  },
+  {
+   "name": "session/resume (fork)",
+   "ms": 1603
+  },
+  {
+   "name": "prompt fork recall",
+   "ms": 2189,
+   "firstTextMs": 1816,
+   "textChunks": 3,
+   "text": "NOTE:alpha:quiet-harbor-58",
+   "stopReason": "end_turn",
+   "tools": [],
+   "usage": {
+    "inputTokens": 2,
+    "cachedReadTokens": 20103,
+    "cachedWriteTokens": 634,
+    "outputTokens": 103
+   }
+  },
+  {
+   "name": "session/load",
+   "ms": 1558
+  },
+  {
+   "name": "prompt after load",
+   "ms": 2002,
+   "firstTextMs": 1630,
+   "textChunks": 3,
+   "text": "NOTE:alpha:quiet-harbor-58",
+   "stopReason": "end_turn",
+   "tools": [],
+   "usage": {
+    "inputTokens": 2,
+    "cachedReadTokens": 20103,
+    "cachedWriteTokens": 627,
+    "outputTokens": 114
+   }
+  }
+ ],
+ "permissionRequests": [],
+ "mcpCalls": 1,
+ "ghStubLog": ""
+}

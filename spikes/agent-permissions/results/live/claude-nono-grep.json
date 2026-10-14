@@ -1,0 +1,68 @@
+{
+ "provider": "claude",
+ "scenario": "grep",
+ "mode": "bypassPermissions",
+ "nono": true,
+ "model": "haiku",
+ "perm": "deny",
+ "ok": true,
+ "totalMs": 9236,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 343
+  },
+  {
+   "name": "session/new",
+   "ms": 1749,
+   "modes": [
+    "default",
+    "acceptEdits",
+    "plan",
+    "auto",
+    "bypassPermissions"
+   ],
+   "current": "default"
+  },
+  {
+   "name": "set model",
+   "ms": 35
+  },
+  {
+   "name": "set mode",
+   "ms": 25
+  },
+  {
+   "name": "prompt grep",
+   "ms": 7060,
+   "firstTextMs": 6337,
+   "textChunks": 18,
+   "text": "The search didn't run. The built-in Grep tool isn't available in this session, and the error was:\n\n`Error: No such tool available: Grep. Grep is not available in this session \u2014 search file contents with `grep` via the Bash tool instead.`\n\nI didn't fall back to the shell, since you asked for the built-in tool.",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "ToolSearch",
+     "status": "completed",
+     "output": "\"No matching deferred tools found\""
+    },
+    {
+     "title": "grep -n \"def sub\" <scratch>/fx/checkout",
+     "status": "failed",
+     "output": "\"<tool_use_error>Error: No such tool available: Grep. Grep is not available in this session \u2014 search file contents with `grep` via the Bash tool instead.</tool_use_error>\""
+    }
+   ],
+   "usage": {
+    "inputTokens": 6,
+    "cachedReadTokens": 51358,
+    "cachedWriteTokens": 9812,
+    "outputTokens": 764
+   }
+  }
+ ],
+ "permissionRequests": [],
+ "mcpCalls": 0,
+ "ghStubLog": ""
+}

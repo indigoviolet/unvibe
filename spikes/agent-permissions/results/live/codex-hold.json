@@ -1,0 +1,73 @@
+{
+ "provider": "codex",
+ "scenario": "hold",
+ "mode": "workspace-write",
+ "nono": false,
+ "model": "gpt-5.6-luna",
+ "perm": "hold:25",
+ "ok": true,
+ "totalMs": 32244,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 247
+  },
+  {
+   "name": "session/new",
+   "ms": 825,
+   "modes": [
+    "read-only",
+    "workspace-write",
+    "agent",
+    "agent-full-access"
+   ],
+   "current": "agent"
+  },
+  {
+   "name": "set model",
+   "ms": 2
+  },
+  {
+   "name": "set mode",
+   "ms": 11
+  },
+  {
+   "name": "prompt hold",
+   "ms": 31138,
+   "firstTextMs": 2976,
+   "textChunks": 13,
+   "text": "I\u2019m attempting the requested append with the file editing tool.done",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "Editing files",
+     "status": "completed",
+     "output": "[{\"path\":\"<scratch>/fx/outside/note.txt\",\"oldText\":\"outside-file\\n\",\"newText\":\"outside-file\\n# spike hold test\\n\",\"_meta\":{\"kind\":\"update\"},\"type\":\"diff\"}]"
+    }
+   ],
+   "usage": {
+    "inputTokens": 8444,
+    "cachedReadTokens": 29184,
+    "cachedWriteTokens": 0,
+    "outputTokens": 240
+   }
+  }
+ ],
+ "permissionRequests": [
+  {
+   "title": "Edit files",
+   "options": [
+    "allow_once",
+    "allow_always",
+    "reject_once"
+   ],
+   "answer": "allow_once",
+   "heldMs": 25014
+  }
+ ],
+ "mcpCalls": 0,
+ "ghStubLog": ""
+}

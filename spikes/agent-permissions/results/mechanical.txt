@@ -1,0 +1,63 @@
+== bare (no sandbox; gh is the stub) ==
+git log                            rc=0   62c70d7 add sub|1c643c3 add calc
+read file in checkout              rc=0   def add(a, b):|    return a + b||def sub(a, b):|    return a - b
+edit in checkout                   rc=0   wrote
+new file in checkout               rc=0   wrote
+edit outside checkout              rc=0   wrote
+read outside checkout              rc=0   outside-file|x
+read home file                     rc=0   FAKE-HOME-SECRET-7731
+read home .ssh key                 rc=0   FAKE-SSH-KEY-9912
+write agent scratch dir            rc=0   wrote
+web fetch (curl https)             rc=0   200
+token visible to agent             rc=0   UNVIBE_GH_TOKEN=ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0000 GH_TOKEN=<unset>
+gh pr view (read)                  rc=0   title:	Add sub() to calc|state:	OPEN|author:	fixture-author|number:	7|--|Adds a sub(a, b) helper next to add. (stub)
+gh api GET (read)                  rc=0   (gh stub: recorded, nothing sent)
+gh pr comment (write)              rc=0   https://github.example.invalid/acme/app/pull/7#issuecomment-0 (stub: nothing was posted)
+gh pr review --approve             rc=0   (gh stub: recorded, nothing sent)
+gh pr merge                        rc=0   (gh stub: recorded, nothing sent)
+gh api -X POST                     rc=0   (gh stub: recorded, nothing sent)
+gh api -f (implicit POST)          rc=0   (gh stub: recorded, nothing sent)
+gh api graphql (mutation)          rc=0   (gh stub: recorded, nothing sent)
+gh auth token                      rc=0   (gh stub: recorded, nothing sent)
+real gh by absolute path           rc=0   https://github.example.invalid/acme/app/pull/7#issuecomment-0 (stub: nothing was posted)
+loopback: allowed port             rc=0   200
+loopback: a port not granted       rc=0   200
+unix socket: system D-Bus          rc=0   connected
+
+== nono, policy/unvibe-claude.json ==
+git log                            rc=0   30d74cd add sub|ee5c961 add calc
+read file in checkout              rc=0   def add(a, b):|    return a + b||def sub(a, b):|    return a - b
+edit in checkout                   rc=1   bash: line 1: calc.py: Permission denied
+new file in checkout               rc=1   bash: line 1: NEWFILE: Permission denied
+edit outside checkout              rc=1   bash: line 1: <scratch>/fx/outside/note.txt: Permission denied
+read outside checkout              rc=1   cat: <scratch>/fx/outside/note.txt: Permission denied
+read home file                     rc=1   cat: <scratch>/home2/secret.txt: Permission denied
+read home .ssh key                 rc=1   cat: <scratch>/home2/.ssh/id_ed25519: Permission denied
+write agent scratch dir            rc=0   wrote
+web fetch (curl https)             rc=0   200
+token visible to agent             rc=0   UNVIBE_GH_TOKEN=<unset> GH_TOKEN=<unset>
+gh pr view (read)                  rc=1   HTTP 401: Bad credentials (https://api.github.com/graphql)|Try authenticating with:  gh auth login -h github.com
+gh api GET (read)                  rc=1   {|  "message": "Bad credentials",|  "documentation_url": "https://docs.github.com/rest",|  "status": "401"|}gh: Bad credentials (HTTP 401)
+gh pr comment (write)              rc=126 nono: command policy denied gh: Command 'gh' is blocked: invocation_policy.default deny
+gh pr review --approve             rc=126 nono: command policy denied gh: Command 'gh' is blocked: invocation_policy.default deny
+gh pr merge                        rc=126 nono: command policy denied gh: Command 'gh' is blocked: invocation_policy.default deny
+gh api -X POST                     rc=126 nono: command policy denied gh: Command 'gh' is blocked: Unvibe agents may only read from GitHub
+gh api -f (implicit POST)          rc=1   {"error":"Forbidden"}gh: HTTP 403
+gh api graphql (mutation)          rc=126 nono: command policy denied gh: Command 'gh' is blocked: Unvibe agents may not send raw GraphQL: it can post
+gh auth token                      rc=126 nono: command policy denied gh: Command 'gh' is blocked: invocation_policy.default deny
+real gh by absolute path           rc=126 <repo>/spikes/agent-permissions/harness/probe.sh: line 4: <home>/.local/share/mise/installs/github-cli/2.102.0/gh_2.102.0_linux_amd64/bin/gh: Permission denied
+loopback: allowed port             rc=0   200
+loopback: a port not granted       rc=7   curl: (7) Failed to connect to 127.0.0.1 port 43667 after 0 ms: Couldn't connect to server|000
+unix socket: system D-Bus          rc=1   Traceback (most recent call last):|  File "<string>", line 1, in <module>|PermissionError: [Errno 13] Permission denied
+
+checkout after the sandboxed run: 0 changed files; outside note: outside-file 
+
+== credential proxy against the fake GitHub (method/path rules, stand-in token) ==
+/bin/bash: /etc/bash.bashrc: Permission denied
+GET pull request                   rc=0   {"number":7,"title":"Add sub() to calc","state":"OPEN","body":"Adds subtraction. (fixture PR, made up)","author":{"login":"fixture-author"},"url":"https://githu
+POST issue comment                 rc=0   {"error":"Forbidden"} [http 403]
+DELETE repo                        rc=0   {"error":"Forbidden"} [http 403]
+POST /graphql with mutation        rc=0   {"data":{"addComment":{"commentEdge":{"node":{"url":"fake://comment/1"}}}}} [http 200]
+what reached the fake GitHub:
+  {"method":"GET","path":"/repos/acme/app/pulls/7","auth":"real-fake-token","mutation":false,"bodyBytes":0}
+  {"method":"POST","path":"/graphql","auth":"real-fake-token","mutation":true,"bodyBytes":26}

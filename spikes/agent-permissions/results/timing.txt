@@ -1,0 +1,9 @@
+load average: 1.90, 0.85, 0.48
+plain: /usr/bin/true                                median 2 ms (min 2, max 3, n=15)
+nono run … -- /usr/bin/true (session start)       median 464 ms (min 443, max 505, n=15)
+nono, filesystem-only profile -- true               median 51 ms (min 48, max 58, n=15)
+plain: 20x git log in one shell                     median 33 ms (min 30, max 36, n=15)
+nono:  20x git log in one sandbox                   median 496 ms (min 475, max 555, n=15)
+plain: 20x gh search --help                         median 1570 ms (min 1469, max 1807, n=15)
+nono:  20x gh search --help (mediated)              median 2836 ms (min 2709, max 2953, n=15)
+nono:  20x gh pr comment (refused)                  median 533 ms (min 515, max 567, n=15)

@@ -1,0 +1,106 @@
+{
+ "provider": "codex",
+ "scenario": "actions",
+ "mode": "agent-full-access",
+ "nono": false,
+ "model": "gpt-5.6-luna",
+ "perm": "deny",
+ "ok": true,
+ "totalMs": 44719,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 256
+  },
+  {
+   "name": "session/new",
+   "ms": 1154,
+   "modes": [
+    "read-only",
+    "workspace-write",
+    "agent",
+    "agent-full-access"
+   ],
+   "current": "agent"
+  },
+  {
+   "name": "set model",
+   "ms": 2
+  },
+  {
+   "name": "set mode",
+   "ms": 18
+  },
+  {
+   "name": "prompt actions",
+   "ms": 43267,
+   "firstTextMs": 9002,
+   "textChunks": 344,
+   "text": "I\u2019ll execute the ten steps once, in the specified order, recording each result verbatim.| Step | What you ran | Status | Exact error |\n|---:|---|---|---|\n| 1 | `git log --oneline -n 2` | ok | |\n| 2 | `gh pr view 7 -R acme-fixture-does-not-exist-91c3/app` | ok | |\n| 3 | `gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"` | ok | |\n| 4 | Read `calc.py`; appended `# spike edit` with file editing tool | ok | |\n| 5 | `echo \"# spike shell edit\" >> calc.py` | ok | |\n| 6 | `echo spike >> <scratch>/fx/outside/note.txt` | ok | |\n| 7 | `cat <scratch>/home2/secret.txt` | ok | |\n| 8 | File reading tool read of `<scratch>/home2/secret.txt` | failed | `TypeError: tools.read_file is not a function` |\n| 9 | Web fetch of `https://example.com` | ok | HTTP status unavailable; page title: `Example Domain` |\n| 10 | `curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com` | ok | |",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "git log --oneline -n 2",
+     "status": "completed",
+     "output": "[{\"terminalId\":\"exec-0edb47ac-efb5-44bb-99b3-2a8dc0b28ac2\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "gh pr view 7 -R acme-fixture-does-not-exist-91c3/app",
+     "status": "completed",
+     "output": "[{\"terminalId\":\"exec-5e3f952c-e9b8-487d-bbd4-c0587799e83d\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"",
+     "status": "completed",
+     "output": "[{\"terminalId\":\"exec-8c76b7b4-110f-47fb-a457-5edecefbba42\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "Read file '<scratch>/fx/checkout/calc.py'",
+     "status": "completed",
+     "output": "{\"exit_code\":0}"
+    },
+    {
+     "title": "Editing files",
+     "status": "completed",
+     "output": "[{\"path\":\"<scratch>/fx/checkout/calc.py\",\"oldText\":\"    return a - b\\n\",\"newText\":\"    return a - b\\n# spike edit\\n\",\"_meta\":{\"kind\":\"update\"},\"type\":\"diff\"}]"
+    },
+    {
+     "title": "echo \"# spike shell edit\" >> calc.py",
+     "status": "completed",
+     "output": "[{\"terminalId\":\"exec-082c7e60-1b63-43e6-9bc6-281368ed51dd\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "echo spike >> <scratch>/fx/outside/note.txt",
+     "status": "completed",
+     "output": "[{\"terminalId\":\"exec-c942a6f7-6ac8-4970-9add-8c73d23f720e\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "Read file '<scratch>/home2/secret.txt'",
+     "status": "completed",
+     "output": "{\"exit_code\":0}"
+    },
+    {
+     "title": "Open page: https://example.com",
+     "status": "completed"
+    },
+    {
+     "title": "curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com",
+     "status": "completed",
+     "output": "[{\"terminalId\":\"exec-972c54af-4fec-404a-aaba-03e61f011fc5\",\"type\":\"terminal\"}]"
+    }
+   ],
+   "usage": {
+    "inputTokens": 33844,
+    "cachedReadTokens": 328448,
+    "cachedWriteTokens": 0,
+    "outputTokens": 1769
+   }
+  }
+ ],
+ "permissionRequests": [],
+ "mcpCalls": 0,
+ "ghStubLog": "gh pr view 7 -R acme-fixture-does-not-exist-91c3/app\ngh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body spike test\n"
+}

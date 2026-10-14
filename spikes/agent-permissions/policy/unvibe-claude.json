@@ -1,0 +1,221 @@
+{
+  "extends": "default",
+  "meta": {
+    "name": "unvibe-claude",
+    "description": "Unvibe review agent (Claude Code): checkout read-only, gh read-only, no home secrets"
+  },
+  "groups": {
+    "include": [
+      "git_config"
+    ]
+  },
+  "security": {
+    "signal_mode": "isolated",
+    "capability_elevation": false
+  },
+  "workdir": {
+    "access": "read"
+  },
+  "filesystem": {
+    "allow": [
+      "$HOME/.claude"
+    ],
+    "allow_file": [
+      "$HOME/.claude.json",
+      "$HOME/.claude.json.lock",
+      "$HOME/.claude.lock"
+    ]
+  },
+  "environment": {
+    "deny_vars": [
+      "UNVIBE_GH_TOKEN",
+      "GH_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_ENTERPRISE_TOKEN",
+      "OP_*",
+      "SSH_AUTH_SOCK"
+    ]
+  },
+  "network": {
+    "allow_domain": [
+      "*"
+    ]
+  },
+  "open_urls": {
+    "allow_origins": [],
+    "allow_localhost": false
+  },
+  "command_policies": {
+    "credentials": {
+      "github-api": {
+        "type": "proxy",
+        "upstream": "https://api.github.com",
+        "credential_key": "env://UNVIBE_GH_TOKEN",
+        "env_var": "GH_TOKEN",
+        "inject_header": "Authorization",
+        "credential_format": "token {}"
+      }
+    },
+    "commands": {
+      "gh": {
+        "from": {
+          "session": {
+            "sandbox": {
+              "fs_read": [
+                "."
+              ],
+              "credentials": [
+                {
+                  "name": "github-api",
+                  "endpoint_policy": {
+                    "default": "deny",
+                    "allow": [
+                      {
+                        "method": "GET",
+                        "path": "/**"
+                      },
+                      {
+                        "method": "POST",
+                        "path": "/graphql"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "invocation_policy": {
+              "default": "deny",
+              "deny": [
+                {
+                  "argv": {
+                    "prefix": [
+                      "api",
+                      "graphql"
+                    ]
+                  },
+                  "reason": "Unvibe agents may not send raw GraphQL: it can post"
+                },
+                {
+                  "argv": {
+                    "contains": [
+                      "--method"
+                    ]
+                  },
+                  "reason": "Unvibe agents may only read from GitHub"
+                },
+                {
+                  "argv": {
+                    "contains": [
+                      "-X"
+                    ]
+                  },
+                  "reason": "Unvibe agents may only read from GitHub"
+                },
+                {
+                  "argv": {
+                    "contains": [
+                      "--web"
+                    ]
+                  },
+                  "reason": "Unvibe agents may not open a browser"
+                }
+              ],
+              "allow": [
+                {
+                  "argv": {
+                    "prefix": [
+                      "pr",
+                      "view"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "pr",
+                      "list"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "pr",
+                      "diff"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "pr",
+                      "checks"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "issue",
+                      "view"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "issue",
+                      "list"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "search"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "repo",
+                      "view"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "run",
+                      "view"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "run",
+                      "list"
+                    ]
+                  }
+                },
+                {
+                  "argv": {
+                    "prefix": [
+                      "api"
+                    ]
+                  },
+                  "reason": "gh api: the proxy allows GET only"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "linux": {
+    "af_unix_mediation": "pathname"
+  }
+}

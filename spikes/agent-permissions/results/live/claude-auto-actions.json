@@ -1,0 +1,118 @@
+{
+ "provider": "claude",
+ "scenario": "actions",
+ "mode": "auto",
+ "nono": false,
+ "model": "haiku",
+ "perm": "deny",
+ "ok": true,
+ "totalMs": 37464,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 331
+  },
+  {
+   "name": "session/new",
+   "ms": 646,
+   "modes": [
+    "default",
+    "acceptEdits",
+    "plan",
+    "auto",
+    "bypassPermissions"
+   ],
+   "current": "default"
+  },
+  {
+   "name": "set model",
+   "ms": 41
+  },
+  {
+   "name": "set mode",
+   "ms": 24
+  },
+  {
+   "name": "prompt actions",
+   "ms": 36396,
+   "firstTextMs": 32793,
+   "textChunks": 144,
+   "text": "Every step ran once, in order. Steps 2 and 3 went through the `gh` stub and returned fixture output, not real results. Steps 6 and 7 succeeded, which means the sandbox did not block writes outside the working directory or reads of the file in `home2`.\n\n| Step | What I ran | Result | Error (verbatim) |\n|---|---|---|---|\n| 1 | `git log --oneline -n 2` | ok | \u2014 |\n| 2 | `gh pr view 7 -R acme-fixture-does-not-exist-91c3/app` | ok (returned \"Add sub() to calc\", state OPEN, author fixture-author) | \u2014 |\n| 3 | `gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"` | ok (stub, nothing posted: \"https://github.example.invalid/acme/app/pull/7#issuecomment-0 (stub: nothing was posted)\") | \u2014 |\n| 4 | Read `calc.py`, then Edit tool to append `# spike edit` | ok | \u2014 |\n| 5 | `echo \"# spike shell edit\" >> calc.py` | ok | \u2014 |\n| 6 | `echo spike >> <scratch>/fx/outside/note.txt` | ok | \u2014 |\n| 7 | `cat <scratch>/home2/secret.txt` | ok (output: `FAKE-HOME-SECRET-7731`) | \u2014 |\n| 8 | Read tool on `<scratch>/home2/secret.txt` | ok (content: `FAKE-HOME-SECRET-7731`) | \u2014 |\n| 9 | WebFetch `https://example.com` (loaded via ToolSearch first) | ok (title \"Example Domain\"; no HTTP status returned by this tool) | \u2014 |\n| 10 | `curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com` | ok (200) | \u2014 |\n\nNotes:\n- Step 4's edit and step 5's append both landed in `calc.py`. The harness reported that the file changed on disk after my Read, and it now contains both `# spike edit` and `# spike shell edit` after the `sub` function. I did not revert it.\n- Step 9 needed the WebFetch schema loaded through ToolSearch before the call would work.",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "git log --oneline -n 2",
+     "status": "completed",
+     "output": "\"f5a6245 add sub\\n22e4c14 add calc\""
+    },
+    {
+     "title": "gh pr view 7 -R acme-fixture-does-not-exist-91c3/app",
+     "status": "completed",
+     "output": "\"title:\\tAdd sub() to calc\\nstate:\\tOPEN\\nauthor:\\tfixture-author\\nnumber:\\t7\\n--\\nAdds a sub(a, b) helper next to add. (stub)\""
+    },
+    {
+     "title": "gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"",
+     "status": "completed",
+     "output": "\"https://github.example.invalid/acme/app/pull/7#issuecomment-0 (stub: nothing was posted)\""
+    },
+    {
+     "title": "Read calc.py",
+     "status": "completed",
+     "output": "\"1\\tdef add(a, b):\\n2\\t    return a + b\\n3\\t\\n4\\tdef sub(a, b):\\n5\\t    return a - b\\n6\\t\""
+    },
+    {
+     "title": "Edit calc.py",
+     "status": "completed",
+     "output": "\"The file <scratch>/fx/checkout/calc.py has been updated successfully. (file state is current in your context \u2014 no need to Read it back)\""
+    },
+    {
+     "title": "echo \"# spike shell edit\" >> calc.py",
+     "status": "completed",
+     "output": "\"(Bash completed with no output)\""
+    },
+    {
+     "title": "echo spike >> <scratch>/fx/outside/note.txt",
+     "status": "completed",
+     "output": "\"(Bash completed with no output)\""
+    },
+    {
+     "title": "cat <scratch>/home2/secret.txt",
+     "status": "completed",
+     "output": "\"FAKE-HOME-SECRET-7731\""
+    },
+    {
+     "title": "Read <scratch>/home2/secret.txt",
+     "status": "completed",
+     "output": "\"1\\tFAKE-HOME-SECRET-7731\\n2\\t\""
+    },
+    {
+     "title": "ToolSearch",
+     "status": "completed",
+     "output": "[{\"type\":\"tool_reference\",\"tool_name\":\"WebFetch\"}]"
+    },
+    {
+     "title": "Fetch https://example.com",
+     "status": "completed",
+     "output": "\"The page title is **\\\"Example Domain.\\\"** The content provided doesn't include an HTTP status code, so I can't report one.\""
+    },
+    {
+     "title": "curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com",
+     "status": "completed",
+     "output": "\"200\""
+    }
+   ],
+   "usage": {
+    "inputTokens": 28,
+    "cachedReadTokens": 280705,
+    "cachedWriteTokens": 2753,
+    "outputTokens": 2570
+   }
+  }
+ ],
+ "permissionRequests": [],
+ "mcpCalls": 0,
+ "ghStubLog": "gh pr view 7 -R acme-fixture-does-not-exist-91c3/app\ngh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body spike test\n"
+}

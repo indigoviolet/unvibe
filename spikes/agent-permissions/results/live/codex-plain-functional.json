@@ -1,0 +1,100 @@
+{
+ "provider": "codex",
+ "scenario": "functional",
+ "mode": "agent-full-access",
+ "nono": false,
+ "model": "gpt-5.6-luna",
+ "perm": "deny",
+ "ok": true,
+ "totalMs": 27262,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 245
+  },
+  {
+   "name": "session/new",
+   "ms": 663,
+   "modes": [
+    "read-only",
+    "workspace-write",
+    "agent",
+    "agent-full-access"
+   ],
+   "current": "agent"
+  },
+  {
+   "name": "set model",
+   "ms": 3
+  },
+  {
+   "name": "set mode",
+   "ms": 13
+  },
+  {
+   "name": "prompt mcp",
+   "ms": 16609,
+   "firstTextMs": 16171,
+   "textChunks": 10,
+   "text": "NOTE:alpha:quiet-harbor-58",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "mcp.unvibe.get_note",
+     "status": "completed",
+     "output": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"NOTE:alpha:quiet-harbor-58\"}],\"structuredContent\":null,\"_meta\":null},\"error\":null}"
+    }
+   ],
+   "usage": {
+    "inputTokens": 15845,
+    "cachedReadTokens": 52480,
+    "cachedWriteTokens": 0,
+    "outputTokens": 135
+   }
+  },
+  {
+   "name": "session/fork",
+   "ms": 77
+  },
+  {
+   "name": "prompt fork recall",
+   "ms": 4885,
+   "firstTextMs": 4348,
+   "textChunks": 10,
+   "text": "NOTE:alpha:quiet-harbor-58",
+   "stopReason": "end_turn",
+   "tools": [],
+   "usage": {
+    "inputTokens": 21653,
+    "cachedReadTokens": 11392,
+    "cachedWriteTokens": 0,
+    "outputTokens": 14
+   }
+  },
+  {
+   "name": "session/load",
+   "ms": 82
+  },
+  {
+   "name": "prompt after load",
+   "ms": 4362,
+   "firstTextMs": 3832,
+   "textChunks": 10,
+   "text": "NOTE:alpha:quiet-harbor-58",
+   "stopReason": "end_turn",
+   "tools": [],
+   "usage": {
+    "inputTokens": 21648,
+    "cachedReadTokens": 11392,
+    "cachedWriteTokens": 0,
+    "outputTokens": 14
+   }
+  }
+ ],
+ "permissionRequests": [],
+ "mcpCalls": 1,
+ "ghStubLog": ""
+}

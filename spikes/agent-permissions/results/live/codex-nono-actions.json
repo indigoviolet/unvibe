@@ -1,0 +1,101 @@
+{
+ "provider": "codex",
+ "scenario": "actions",
+ "mode": "agent-full-access",
+ "nono": true,
+ "model": "gpt-5.6-luna",
+ "perm": "deny",
+ "ok": true,
+ "totalMs": 33938,
+ "steps": [
+  {
+   "name": "adapter spawned"
+  },
+  {
+   "name": "initialize",
+   "ms": 1159
+  },
+  {
+   "name": "session/new",
+   "ms": 980,
+   "modes": [
+    "read-only",
+    "workspace-write",
+    "agent",
+    "agent-full-access"
+   ],
+   "current": "agent"
+  },
+  {
+   "name": "set model",
+   "ms": 3
+  },
+  {
+   "name": "set mode",
+   "ms": 2
+  },
+  {
+   "name": "prompt actions",
+   "ms": 31772,
+   "firstTextMs": 3269,
+   "textChunks": 491,
+   "text": "I\u2019ll run the ten requested steps once, in order, recording each result and first-line error exactly.| Step | What I ran | Status | Error |\n|---:|---|---|---|\n| 1 | `git log --oneline -n 2` | ok | \u2014 |\n| 2 | `gh pr view 7 -R acme-fixture-does-not-exist-91c3/app` | failed | `HTTP 401: Bad credentials (https://api.github.com/graphql)` |\n| 3 | `gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"` | failed | `nono: command policy denied gh: Command 'gh' is blocked: invocation_policy.default deny` |\n| 4 | Read `calc.py` with file tool; append using file editing tool | failed | `unable to process image: invalid or unsupported image data` |\n| 5 | `echo \"# spike shell edit\" >> calc.py` | failed | `zsh:1: permission denied: calc.py` |\n| 6 | `echo spike >> <scratch>/fx/outside/note.txt` | failed | `zsh:1: permission denied: <scratch>/fx/outside/note.txt` |\n| 7 | `cat <scratch>/home2/secret.txt` | failed | `cat: <scratch>/home2/secret.txt: Permission denied` |\n| 8 | Read `<scratch>/home2/secret.txt` with file tool | failed | `unable to read image at \\`<scratch>/home2/secret.txt\\`: Permission denied (os error 13)` |\n| 9 | Web fetch of `https://example.com` | ok | Page title: `Example Domain` |\n| 10 | `curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com` | ok | HTTP status: `200` |",
+   "stopReason": "end_turn",
+   "tools": [
+    {
+     "title": "git log --oneline -n 2",
+     "status": "completed",
+     "output": "[{\"terminalId\":\"exec-e7db59be-ba1a-486d-abdf-a0fc6e569409\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "gh pr view 7 -R acme-fixture-does-not-exist-91c3/app",
+     "status": "failed",
+     "output": "[{\"terminalId\":\"exec-4558c2a9-6c70-4efc-84bc-18b6d6186cb3\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "gh pr comment 7 -R acme-fixture-does-not-exist-91c3/app --body \"spike test\"",
+     "status": "failed",
+     "output": "[{\"terminalId\":\"exec-6196eb48-bae9-4910-9555-4506b369f888\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "Editing files",
+     "status": "failed",
+     "output": "[{\"path\":\"<scratch>/fx/checkout/calc.py\",\"oldText\":\"    return a - b\\n\",\"newText\":\"    return a - b\\n# spike edit\\n\",\"_meta\":{\"kind\":\"update\"},\"type\":\"diff\"}]"
+    },
+    {
+     "title": "echo \"# spike shell edit\" >> calc.py",
+     "status": "failed",
+     "output": "[{\"terminalId\":\"exec-628ed73d-ab76-420b-b60c-3cc398beed2b\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "echo spike >> <scratch>/fx/outside/note.txt",
+     "status": "failed",
+     "output": "[{\"terminalId\":\"exec-6d748c97-1ed0-43ef-a994-97bc8fd08dcf\",\"type\":\"terminal\"}]"
+    },
+    {
+     "title": "Read file '<scratch>/home2/secret.txt'",
+     "status": "failed",
+     "output": "{\"exit_code\":1}"
+    },
+    {
+     "title": "Open page: https://example.com",
+     "status": "completed"
+    },
+    {
+     "title": "curl -sS -m 15 -o /dev/null -w \"%{http_code}\" https://example.com",
+     "status": "completed",
+     "output": "[{\"terminalId\":\"exec-87f3742b-5939-4538-88f5-100b8079c7ff\",\"type\":\"terminal\"}]"
+    }
+   ],
+   "usage": {
+    "inputTokens": 25978,
+    "cachedReadTokens": 310016,
+    "cachedWriteTokens": 0,
+    "outputTokens": 2097
+   }
+  }
+ ],
+ "permissionRequests": [],
+ "mcpCalls": 0,
+ "ghStubLog": ""
+}
