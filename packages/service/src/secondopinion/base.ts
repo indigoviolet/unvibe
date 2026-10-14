@@ -16,7 +16,7 @@ import path from "node:path";
 import type { AgentRunner, Session } from "@unvibe/shared";
 import { buildL1Source } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
-import { toPromptSnapshot } from "../routes/prompts.js";
+import { descriptionRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";
 import type { McpRegistry } from "../mcp/index.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { ReviewStore } from "../state/store.js";
@@ -74,6 +74,9 @@ export async function buildSecondOpinionBaseText(
 /**
  * Get (or build) the shared second-opinion base for (version, model).
  * Keyed by reviewVersion + fixed "so" guideRevision + provider + model.
+ * The "so" component carries the description revision (issue #110): the L1
+ * source lists description paragraphs with their IDs, so an edited
+ * description keys a new base instead of serving stale paragraphs.
  */
 export async function ensureSecondOpinionBase(
   deps: SecondOpinionBaseDeps,
@@ -87,7 +90,7 @@ export async function ensureSecondOpinionBase(
   const key = {
     reviewId,
     reviewVersion: `v${snapshot.version.n}`,
-    guideRevision: "so",
+    guideRevision: `so-${descriptionRevisionForSnapshot(snapshot)}`,
     provider: settings.secondOpinion.provider,
     model: settings.secondOpinion.model,
     effort: settings.secondOpinion.effort,

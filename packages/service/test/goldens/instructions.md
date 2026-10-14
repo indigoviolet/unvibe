@@ -46,8 +46,8 @@ already in front of you.
   ID. Use it when you need surrounding code beyond the diff.
 - `search_review(query)`: matching cards, annotations, contributions and
   description paragraphs, with IDs. Use it before restating something that
-  may already be covered. The description in your context shows no IDs:
-  search a paragraph's words to cite it.
+  may already be covered. The description in your context already lists
+  each paragraph with its `desc:` ID: cite it directly.
 - `resolve(description)`: candidate `h:`, `card:` and `desc:` IDs for a
   description of a location. Use it when you know where something is in
   words but not as an ID.

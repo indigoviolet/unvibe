@@ -79,6 +79,9 @@ snapshot ends up complete without clicks.
    `snapshot.pinnedCode`.
 2. **Base** (`SessionManager.getBase`) from `buildBasePack` once the reader
    is done. Key `(version, guideRevision, model)`; per-model caches.
+   `guideRevision` covers the guide content plus the current description
+   HTML (pending edit included — #110), so a description edit keys a new
+   base; the L1 source lists description paragraphs with their `desc:` IDs.
 3. **Parallel forks** (`fanOut`): **critic** ×2 (findings as separate pages
    with Evidence/Assessment/confidence + drafted suggested comment as a
    thread on a diff line via `comments/threads.ts`, `suggested: true`,
