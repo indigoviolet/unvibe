@@ -35,6 +35,12 @@ export interface UpdateDeps {
   dataDir: string;
   cliScriptPath: string | undefined;
   serviceVersion: string;
+  /**
+   * Login-shell-merged PATH for the npm spawn (issue #170), resolved by the
+   * caller (`cli/commands.ts`) so this flow stays pure for tests. Undefined
+   * inherits the process env.
+   */
+  updateEnv?: { PATH: string };
 }
 
 export interface UpdateOutcome {
@@ -82,6 +88,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
     serviceScriptPath: deps.cliScriptPath,
     serviceVersion: deps.serviceVersion,
     channel,
+    env: deps.updateEnv,
     log: () => {},
   });
   if (result.code === 2) {

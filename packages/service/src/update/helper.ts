@@ -97,6 +97,14 @@ export interface HelperArgs extends SwitchPlan {
   loginUnitPath: string;
   /** macOS uid for `gui/<uid>` targets, null when unknown / on Linux. */
   loginUid: number | null;
+  /**
+   * Service PATH at switch time (issue #170): the service repaired it from
+   * the login shell at boot, and the detached helper restores it before
+   * running npm, so version-manager wrappers (mise's reshim step) find
+   * their binaries. A snapshot, not a re-probe: the helper must stay fast
+   * and headless-safe after the service has exited.
+   */
+  effectivePath: string;
 }
 
 export interface HelperDeps {
@@ -131,6 +139,14 @@ export interface HelperDeps {
   clearPending(): void;
   log(message: string): void;
   nowIso(): string;
+}
+
+/**
+ * Restore the service's repaired PATH in the detached helper (issue #170).
+ * Empty values are ignored: an empty PATH would hide npm itself.
+ */
+export function applyEffectivePath(pathValue: string | undefined): void {
+  if (pathValue) process.env.PATH = pathValue;
 }
 
 /** True when the observed build is the switch target. */

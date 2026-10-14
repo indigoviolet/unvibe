@@ -34,7 +34,7 @@ import {
   startManagedService,
   stopManagedService,
 } from "./service-manager.js";
-import { runSwitchFlow, type HelperArgs, type ObservedHealth } from "./helper.js";
+import { runSwitchFlow, type HelperArgs, type ObservedHealth, applyEffectivePath } from "./helper.js";
 import type { SwitchOutcome } from "@unvibe/shared";
 
 function isPidAlive(pid: number): boolean {
@@ -146,6 +146,7 @@ function parseArgs(raw: unknown): HelperArgs {
     managed: o["managed"] as boolean,
     loginUnitPath: o["loginUnitPath"] as string,
     loginUid: loginUid as number | null,
+    effectivePath: str("effectivePath"),
     ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
   };
 }
@@ -213,6 +214,13 @@ async function main(): Promise<number> {
   }
   log(`helper starting (args ${argsFile}, pid ${process.pid})`);
 
+  // Issue #170: restore the service's login-shell-repaired PATH before
+  // running npm (mise's npm wrapper calls bare `mise` after a global
+  // install). The helper outlives the service, so it inherits the snapshot
+  // instead of re-probing from a detached, possibly headless context.
+  applyEffectivePath(args.effectivePath);
+  log(`update PATH: ${args.effectivePath}`);
+
   // The installed build is identified from the service entry path in
   // the args — never from this copy's own location (it lives in the data
   // dir precisely so the npm swap cannot move it).
@@ -225,6 +233,7 @@ async function main(): Promise<number> {
           serviceScriptPath: args.scriptPath,
           serviceVersion: args.serviceVersion,
           log,
+          env: { PATH: args.effectivePath },
         });
 
   const waitForExit = async (pid: number, timeoutMs: number): Promise<boolean> => {
