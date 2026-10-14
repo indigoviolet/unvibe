@@ -853,10 +853,18 @@ needed (that deviation is closed, not added).
 - Fork works both adapters (+Claude resume quirk handled) — met (M0
   results table 12/12 + 11/12; `runner.ts` fork/resume). Forks carry the
   same `mcpServers` + `_meta` as new/resume/load (#124, fake-transport
-  pinned); live-verified that a Codex fork still comes up with no review
-  tools (zero tool attempts across 7 forks — the drop is inside the
-  adapter/CLI fork path, a bigger fix explicitly deferred), so the live
-  fork-tools check is skipped until then (`test:live:fork-tools`).
+  pinned). Issue #174 found why forks had no working review tools: a
+  fork reuses the base's MCP URL and its fresh `initialize` was refused
+  by the base secret's single stateful transport ("Server already
+  initialized"); the mount now accepts one connection per client on a
+  secret (`mcp/registry.ts`, `mcp.test.ts` "multiple clients on one
+  secret" — ran). Live-verified before/after on 2026-10-14: Codex and
+  Claude forks both failed every attempt before (Codex reported the
+  tool unavailable or hallucinated the result; Claude reported "MCP
+  server failed to connect" — Claude only looked unaffected because
+  ordinary forks answer from the inline pack without calling tools),
+  and both called `get_hunk` on the first attempt after
+  (`test:live:fork-tools` — ran, live-only).
 - No-fork fallback (byte-identical first message, caching) — met (M0 §8
   rows; `pipeline/runner.ts:830 forkFor`; `sessions/manager.ts:271
   forkConversation`; fallback test `pipeline.test.ts:444`).
@@ -1197,7 +1205,10 @@ needed (that deviation is closed, not added).
   own loads on ephemeral binds).
 - MCP per-session secrets (unguessable 256-bit, scoped per review, expire
   with session/review, pin_context reader-only) — met (`mcp/registry.ts`
-  + lifecycle fixes + `mcp.test.ts` “secret lifecycle” — ran).
+  + lifecycle fixes + `mcp.test.ts` “secret lifecycle” — ran). One secret
+  serves many simultaneous client connections (issue #174: forks share
+  the base's URL); revoking a secret closes every connection on it
+  (`mcp.test.ts` "multiple clients on one secret" — ran).
 - `get_code` + file routes traversal-proof — met (`checkPathInRepo`,
   `mcp.test.ts` traversal cases — ran).
 - Agent permission policy read-only both adapters — met (§6).
