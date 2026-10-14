@@ -147,6 +147,9 @@ interface SectionProps {
   plotFilter?: DiffFilter;
   /** Issue #169: plotline id → display name, for the hunk header tag. */
   plotlineNames?: ReadonlyMap<string, string>;
+  /** Owner direction (#169): the header dot/chip are the filter selectors. */
+  onSelectScore?: (level: HunkScoreLevel) => void;
+  onSelectPlotline?: (id: string) => void;
   isHidden: (hunk: Hunk) => boolean;
   actions: HunkActions;
   onLineClick: ((fileKey: string, line: number) => void) | undefined;
@@ -602,13 +605,17 @@ function HunkBlock(
           <Icon name={folded ? "right" : "down"} />
         </button>
         {score ? (
-          <span
-            className="score-dot"
-            data-score={score}
-            role="img"
-            aria-label={HUNK_SCORE_LABELS[score]}
-            data-tip={HUNK_SCORE_LABELS[score]}
-          />
+          <button
+            type="button"
+            className={`score-pick${props.plotFilter?.score === score ? " sel" : ""}`}
+            aria-pressed={props.plotFilter?.score === score}
+            aria-label={`Show only ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks`}
+            data-scorepick={score}
+            data-tip={props.plotFilter?.score === score ? "Show all hunks" : `Show only ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks`}
+            onClick={() => props.onSelectScore?.(score)}
+          >
+            <span className="score-dot" data-score={score} aria-hidden="true" />
+          </button>
         ) : null}
         <span className="hl2" data-tip={h.header}>
           <b>
@@ -627,9 +634,18 @@ function HunkBlock(
           </span>
           {changedSinceReviewed ? <span className="prtag">changed since reviewed</span> : null}
           {plotName ? (
-            <span className="ptag" data-tip={`Plotline: ${plotName}`}>
+            <button
+              type="button"
+              className={`ptag ptag-pick${props.plotFilter?.plotline === st?.plotline ? " sel" : ""}`}
+              aria-pressed={props.plotFilter?.plotline === st?.plotline}
+              data-plotpick={st?.plotline}
+              data-tip={props.plotFilter?.plotline === st?.plotline ? "Show all hunks" : `Show only ${plotName}`}
+              onClick={() => {
+                if (st?.plotline !== undefined) props.onSelectPlotline?.(st.plotline);
+              }}
+            >
               {plotName}
-            </span>
+            </button>
           ) : null}
         </span>
         {summaryPending && !busy ? (

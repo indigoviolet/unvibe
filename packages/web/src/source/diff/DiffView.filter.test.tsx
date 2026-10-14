@@ -43,7 +43,7 @@ describe("DiffView file filters", () => {
     expect(document.getElementById(`F-${CONN}`)).toBeNull();
     expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
     // Header plus the files-panel tree row both name the file.
-    expect(document.querySelectorAll("button.fr:not(.dir)")).toHaveLength(1);
+    expect(document.querySelectorAll(".fr:not(.dir)")).toHaveLength(1);
   });
 
   it("applies stored filter prefs (categories + hide reviewed) after the dropdown change", async () => {

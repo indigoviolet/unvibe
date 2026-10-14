@@ -1,13 +1,14 @@
 /**
  * Hunk scores + plotlines in the diff pane (issue #169), against the mock
  * API (`VITE_MOCK=1`): header dots and plotline tags, the Files list dots
- * and legend, the filter dropdown's plotline/score groups (each alone,
- * both together, composed with Hide uninteresting), persistence with the
- * review, and markers on activated hunk cards.
+ * and legend, the dots and chips as the filter selectors (each alone,
+ * both together, composed with Hide uninteresting), the active-filter
+ * chip in the actions bar, persistence with the review, and markers on
+ * activated hunk cards.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useReview } from "../../state/store.js";
 import { resetMockState, setMockLatency } from "../../mock/index.js";
 import { DiffView } from "./DiffView.js";
@@ -35,12 +36,6 @@ const TCONN = "test-test_connection.py";
 const TSOCK = "test-with_dummyserver-test_socketlevel.py";
 const LOG = "changelog-1362.bugfix.rst";
 
-async function openFilterMenu() {
-  await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
-  await fireEvent.click(screen.getByRole("button", { name: "File filters" }));
-  return screen.getByRole("menu", { name: "File filters" });
-}
-
 describe("DiffView scores and plotlines", () => {
   it("shows score dots and plotline tags on hunk headers", async () => {
     await renderDiff();
@@ -64,45 +59,47 @@ describe("DiffView scores and plotlines", () => {
     }
   });
 
-  it("filters by plotline and remembers it with the review", async () => {
+  it("filters by plotline from a header chip and remembers it with the review", async () => {
     await renderDiff();
-    const menu = await openFilterMenu();
-    const unfold = within(menu).getByRole("menuitemradio", { name: /Unfold folded values/ });
-    expect(unfold).toHaveAttribute("aria-checked", "false");
-    await fireEvent.click(unfold);
-    // Only the file with unfold hunks stays; the filter persists.
+    await fireEvent.click(document.querySelector('[data-plotpick="unfold"]') as HTMLElement);
+    // Only the file with unfold hunks stays; the filter persists and the
+    // actions bar shows the active chip.
     expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();
     expect(useReview.getState().snapshot?.diffFilter).toEqual({ plotline: "unfold" });
-    // Back to all plotlines clears the stored filter.
-    const menu2 = screen.getByRole("menu", { name: "File filters" });
-    await fireEvent.click(within(menu2).getByRole("menuitemradio", { name: /All plotlines/ }));
+    expect(document.querySelector('[data-filterchip="plotline"]')?.textContent).toContain("Unfold folded values");
+    // Clicking the active chip again clears the stored filter.
+    await fireEvent.click(document.querySelector('[data-plotpick="unfold"]') as HTMLElement);
     expect(document.getElementById(`F-${TCONN}`)).not.toBeNull();
     expect(useReview.getState().snapshot?.diffFilter).toBeUndefined();
+    expect(document.querySelector('[data-filterchip="plotline"]')).toBeNull();
   });
 
-  it("filters by score", async () => {
+  it("filters by score from the legend and clears from the actions-bar chip", async () => {
     await renderDiff();
-    const menu = await openFilterMenu();
-    await fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Mechanical/ }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
+    await fireEvent.click(document.querySelector('.legend [data-scorepick="mechanical"]') as HTMLElement);
     // Mechanical hunks live in the two test files only.
     expect(document.getElementById(`F-${TCONN}`)).not.toBeNull();
     expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
     expect(document.getElementById(`F-${CONN}`)).toBeNull();
     expect(document.getElementById(`F-${LOG}`)).toBeNull();
     expect(useReview.getState().snapshot?.diffFilter).toEqual({ score: "mechanical" });
+    expect(document.querySelector('[data-filterchip="score"]')?.textContent).toContain("Score: mechanical");
+    // The chip's × clears it.
+    await fireEvent.click(screen.getByRole("button", { name: "Clear score filter" }));
+    expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
+    expect(useReview.getState().snapshot?.diffFilter).toBeUndefined();
   });
 
   it("combines plotline and score, composed with Hide uninteresting", async () => {
     await renderDiff();
-    const menu = await openFilterMenu();
-    await fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Tests for unfolding/ }));
+    await fireEvent.click(document.querySelector('[data-plotpick="unfold-tests"]') as HTMLElement);
     // The import-only run in the tests file is unfold-tests too, so its
     // hidden row stays while Hide uninteresting is on.
     expect(document.querySelectorAll("button.hid")).toHaveLength(1);
     expect(document.getElementById(`F-${CONN}`)).toBeNull();
-    const menuAfter = screen.getByRole("menu", { name: "File filters" });
-    await fireEvent.click(within(menuAfter).getByRole("menuitemradio", { name: /Substantive/ }));
+    await fireEvent.click(document.querySelector('[data-hunk] [data-scorepick="substantive"]') as HTMLElement);
     // Only the socket-level test hunk is unfold-tests + substantive.
     expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();

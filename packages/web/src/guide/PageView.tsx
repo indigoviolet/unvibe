@@ -11,7 +11,9 @@ import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { Card, Page, Plotline } from "@unvibe/shared";
 import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
+import { api } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
+import { toast } from "../floating/Toast.js";
 import { Icon } from "../components/Icon.js";
 import { isLiveJobState, useReview } from "../state/store.js";
 import { revealSource } from "../source/reveal.js";
@@ -64,7 +66,7 @@ function displayTitle(title: string): string {
  * between Contents and the cards. Each row jumps to its first hunk in
  * the diff; hunks no plotline claimed read as "Other".
  */
-function Plotlines(): ReactNode {
+function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
   const plotlines: Plotline[] = snapshot?.plotlines ?? [];
   if (plotlines.length === 0) return null;
@@ -101,7 +103,28 @@ function Plotlines(): ReactNode {
         {rows.map((r) => (
           <li key={r.id}>
             {r.ref ? (
-              <button type="button" onClick={() => revealSource(r.ref as string)}>
+              <button
+                type="button"
+                className={snapshot?.diffFilter?.plotline === r.id ? "sel" : undefined}
+                aria-pressed={snapshot?.diffFilter?.plotline === r.id}
+                data-plotpick={r.id}
+                data-tip={snapshot?.diffFilter?.plotline === r.id ? "Show all hunks" : `Show only ${r.name}`}
+                onClick={() => {
+                  const active = snapshot?.diffFilter?.plotline === r.id;
+                  const body = {
+                    plotline: active ? null : r.id,
+                    score: snapshot?.diffFilter?.score ?? null,
+                  };
+                  api
+                    .updateDiffFilter(reviewId, body)
+                    .then(() => {
+                      if (!active) revealSource(r.ref as string);
+                    })
+                    .catch(() => {
+                      toast("Couldn't save the filter");
+                    });
+                }}
+              >
                 <span className="plname">{r.name}</span>
                 {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
                 <span className="plcount">
@@ -301,7 +324,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           </div>
         ) : null}
       </nav>
-      {page.kind === "root" ? <Plotlines /> : null}
+      {page.kind === "root" ? <Plotlines reviewId={reviewId} /> : null}
       {page.cards.map(renderCard)}
     </div>
   );

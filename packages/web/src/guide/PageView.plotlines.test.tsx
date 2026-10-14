@@ -2,7 +2,7 @@
  * Plotlines on the guide root (issue #169): the reader's named threads
  * sit between Contents and the cards, each jumping to its first hunk.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -67,6 +67,23 @@ describe("PageView plotlines", () => {
     await fireEvent.click(first);
     const ref = takePendingReveal();
     expect(ref).toMatch(/^diff:src-urllib3-connection\.py:\d+$/);
+  });
+
+  it("filters the diff to the plotline and reveals its first hunk", async () => {
+    await renderRoot();
+    const box = document.querySelector(".plotlines")!;
+    const first = box.querySelectorAll("li button")[0];
+    await fireEvent.click(first);
+    // The stored filter is set (DiffView echoes it) and the reveal queued.
+    await vi.waitFor(() => {
+      expect(useReview.getState().snapshot?.diffFilter?.plotline).toBe("unfold");
+    });
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    // Clicking the active entry again clears the filter.
+    await fireEvent.click(first);
+    await vi.waitFor(() => {
+      expect(useReview.getState().snapshot?.diffFilter?.plotline).toBeUndefined();
+    });
   });
 
   it("stays off finding pages", async () => {

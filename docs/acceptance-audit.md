@@ -2117,9 +2117,16 @@ needs attention, deterministic rules on top: one-line never mechanical,
 hiding still follows `hiddenReason` alone) shown as colour-blind-safe
 dots on hunk headers + Files list with legend; reader plotlines (2–8,
 hunk IDs validated, first wins, rest reads "other", large-PR assign step
-under a 200-hunk cap) as header tags + guide-root box; one dropdown
-filtering by plotline and/or score, remembered with the review, ANDed
-with all existing filters. Scoring + classification behind
+under a 200-hunk cap) as header tags + guide-root box; filtering by
+plotline and/or score, remembered with the review, ANDed with all
+existing filters. Owner direction after the first preview: the dots and
+chips are the selectors — clicking a score dot (hunk header, Files list
+or legend) or a plotline chip (hunk header or guide Plotlines entry)
+toggles that filter, the guide entry also reveals the first hunk, and
+the pinned actions bar shows one active-filter chip ("Plotline: name ·
+N hidden ×") per active dimension. The filter menu keeps only its
+checkbox rows; the stored `diffFilter` state and persistence are
+unchanged. Scoring + classification behind
 `packages/shared/src/scores.ts` so a later source replaces them without
 touching UI or stored shape (`HunkState.score/plotline`,
 snapshot `plotlines`/`diffFilter`; pre-feature reviews reset, no second

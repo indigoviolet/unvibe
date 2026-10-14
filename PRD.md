@@ -219,6 +219,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 
 **Files panel** (it scrolls with the diff):
 - a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count), a **Reviewed** row and a **GitHub comments** visibility row; the button shows an active count whenever a non-default filter applies;
+- hunk interestingness scores and plotlines (#169, experiment): each score dot (hunk header, Files list, legend) and each plotline chip (hunk header, guide Plotlines box) is a selector — clicking it filters the diff to that score or plotline, clicking the active one again clears it, and a guide Plotlines entry also reveals the plotline's first hunk. While a score or plotline filter is on, the pinned toolbar shows an active-filter chip per dimension ("Plotline: <name> · N hidden ×" / "Score: <level> · N hidden ×") whose × clears that dimension. The filter state is remembered with the review; a reveal target the filter would hide still clears it;
 - a progress bar of hunks reviewed;
 - a folder tree that compacts single-child folders, with +/− counts and reviewed/total per file. Clicking a file scrolls to it.
 
