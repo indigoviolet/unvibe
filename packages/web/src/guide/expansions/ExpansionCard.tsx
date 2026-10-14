@@ -239,7 +239,7 @@ function AnswerView({
       ) : null}
       {errorText && !noAgent ? (
         <div className="perr" role="alert">
-          <span>Couldn't get an answer: {errorText}</span>
+          <span>Couldn't get an answer. Retry, or see Debug for details.</span>
           <button
             className="btn"
             type="button"

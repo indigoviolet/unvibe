@@ -164,6 +164,25 @@ describe("conversation card", () => {
     expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "retry", annotationId: "ann_conv" });
   });
 
+  test("a failed turn shows plain words, never the raw reason", () => {
+    const c = card({
+      error: "agent reported a degraded turn: the unvibe MCP could not connect",
+      turns: [
+        turn("ans_1"),
+        turn("ans_2", {
+          question: "And then?",
+          error: "agent reported a degraded turn: the unvibe MCP could not connect",
+        }),
+      ],
+    });
+    seedSnapshot([c]);
+    show(c);
+    const alert = document.querySelector('[data-answer="ans_2"] [role="alert"]')!;
+    expect(alert).toHaveTextContent("Couldn't get an answer. Retry, or see Debug for details.");
+    expect(alert.textContent).not.toContain("degraded");
+    expect(alert.textContent).not.toContain("MCP");
+  });
+
   test("a selection inside an answer resolves to the answer-qualified block", () => {
     const c = card();
     seedSnapshot([c]);
