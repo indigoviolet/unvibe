@@ -63,6 +63,7 @@ import {
   touchReviewOpened,
 } from "../reviews/index.js";
 import { hasAnySubmitLease } from "../update/index.js";
+import { fetchExistingComments } from "../submit/index.js";
 import { readSubmitLease } from "../submit/lease.js";
 import { isNoneRunner } from "../agent/factory.js";
 
@@ -258,6 +259,7 @@ async function runIngestBackground(
       annotations: [],
       hunkStates: [],
       fileStates: [],
+      viewPrefs: { showExistingComments: true },
       jobs: [],
       contributions: [],
       logTail: [],
@@ -297,6 +299,7 @@ async function runIngestBackground(
       draft.annotations = [];
       draft.hunkStates = [];
       draft.fileStates = [];
+      draft.viewPrefs = { showExistingComments: true };
       draft.jobs = [];
       draft.contributions = [];
       draft.logTail = [];
@@ -311,6 +314,24 @@ async function runIngestBackground(
       // Never fail the ingest; fire-and-forget (startReview resolves live
       // model defaults first).
       void pipeline.startReview(reviewId).catch(() => {});
+    }
+    // Issue #168: existing GitHub comments load with the review (PRs
+    // only), best effort — a gh failure leaves the field absent and the
+    // comments menu fetches on open instead.
+    if (args.pr !== undefined) {
+      const repo = ctx.repos.get(repoId);
+      if (repo) {
+        try {
+          const comments = await fetchExistingComments(ctx.runner, repoPath, repo.owner, repo.name, args.pr);
+          await ctx.reviews
+            .mutate(reviewId, (draft) => {
+              draft.existingComments = comments.map((c) => ({ ...c }));
+            })
+            .catch(() => {});
+        } catch {
+          // Leave absent; the menu lazy-loads.
+        }
+      }
     }
   } catch (err) {
     try {
@@ -445,6 +466,7 @@ async function beginReviewFromSource(
     annotations: [],
     hunkStates: [],
     fileStates: [],
+    viewPrefs: { showExistingComments: true },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -650,6 +672,8 @@ export async function registerReviews(
         annotations: [],
         hunkStates: [],
         fileStates: [],
+        viewPrefs: { showExistingComments: true },
+      viewPrefs: { showExistingComments: true },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -843,6 +867,21 @@ export async function registerReviews(
       );
     } catch (err) {
       return reply.code(502).send({ error: `refresh failed: ${(err as Error).message}` });
+    }
+    // Issue #168: existing GitHub comments reload with the review (PRs
+    // only), whether or not new commits arrived — best effort, so a gh
+    // failure keeps the previous list.
+    if (row.prNumber !== null && row.prNumber !== undefined) {
+      try {
+        const comments = await fetchExistingComments(ctx.runner, repo.localPath, repo.owner, repo.name, row.prNumber);
+        await ctx.reviews
+          .mutate(id, (draft) => {
+            draft.existingComments = comments.map((c) => ({ ...c }));
+          })
+          .catch(() => {});
+      } catch {
+        // Keep the previous list.
+      }
     }
     if (!result.moved) {
       const response: RefreshResponse = { review: snapshot.review, newVersion: false };

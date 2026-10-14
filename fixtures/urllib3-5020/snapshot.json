@@ -2309,6 +2309,9 @@
     }
   ],
   "fileStates": [],
+  "viewPrefs": {
+    "showExistingComments": true
+  },
   "jobs": [
     {
       "id": "job-reader",

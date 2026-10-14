@@ -22,6 +22,7 @@ export {
 export {
   buildConceptsSection,
   buildDiffSection,
+  buildExistingCommentsSection,
   buildGuideSection,
   buildHiddenHunksSection,
   buildHunkSummaries,
