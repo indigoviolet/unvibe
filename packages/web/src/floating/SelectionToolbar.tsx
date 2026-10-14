@@ -2,7 +2,9 @@
  * Text-selection toolbar (comments owner; PRD §4.6).
  *
  * Ported from `prototype.html` (behaviour + `#selbar` styles, not code):
- * - works in the guide, the PR description and diff code;
+ * - works in the guide, the PR description, diff code and read-only
+ *   GitHub threads (issue #168: anchored on the thread's diff line;
+ *   Comment quotes the selection into the reviewer's own comment);
  * - the selection snaps to whole words with leading/trailing spaces
  *   trimmed, and the highlight updates to match;
  * - offers Explain, Ask… and Comment;
@@ -146,6 +148,18 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
     const ref = parseHunkAttr(hunkEl.dataset.hunksum);
     if (ref) return { anchor: { where: "hunk", fileKey: ref.fileKey, contentHash: ref.contentHash } };
     return null;
+  }
+  // Issue #168: a selection inside a read-only GitHub thread anchors on
+  // the thread's diff line, so Explain, Ask and Comment all work there.
+  // (Outdated threads carry no line and offer no toolbar.)
+  const ghEl = el.closest("[data-gh-thread]") as HTMLElement | null;
+  if (ghEl) {
+    const raw = ghEl.dataset.ghThread ?? "";
+    const sep = raw.lastIndexOf(":");
+    const fileKey = sep > 0 ? raw.slice(0, sep) : "";
+    const line = Number(raw.slice(sep + 1));
+    if (!fileKey || !Number.isSafeInteger(line) || line < 1) return null;
+    return { anchor: { where: "diff-line", fileKey, line } };
   }
   const td = el.closest("#right table.diff td.c");
   if (!td) return null;
@@ -391,7 +405,7 @@ export function SelectionToolbar() {
     const onMouseUp = (e: MouseEvent): void => {
       if ((e.target as Element | null)?.closest?.("#selbar")) return;
       const scope = (e.target as Element | null)?.closest?.(
-        "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk .fwrap",
+        "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk .fwrap, #right .ghfile",
       );
       if (
         !scope ||
@@ -416,6 +430,12 @@ export function SelectionToolbar() {
           return;
         }
         const cardAnchor = commentCardAnchor(host.anchor);
+        // Issue #168: a Comment on text selected inside a read-only
+        // GitHub thread quotes the selection into the reviewer's own
+        // comment (a reply on GitHub is out of scope).
+        const anchorEl = elementOf(anchorNode) ?? document.body;
+        const inGhThread =
+          host.anchor.where === "diff-line" && anchorEl.closest?.("[data-gh-thread]") != null;
         // Issue #138: a hunk anchor needs the touched rows mapped from
         // the hunk itself (the summary is no table row): Comment lands on
         // the hunk's first changed line without activating the summary,
@@ -441,6 +461,7 @@ export function SelectionToolbar() {
           anchor: host.anchor,
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
+          ...(inGhThread && host.anchor.where === "diff-line" ? { commentAnchor: host.anchor } : {}),
           ...(hunkComment ? { commentAnchor: hunkComment } : {}),
           ...(diffRange ? { diffRange } : {}),
           ...(hunkRange ? { diffRange: hunkRange } : {}),

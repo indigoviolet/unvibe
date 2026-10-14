@@ -413,7 +413,6 @@ export async function refreshReview(
       if (nh === undefined) continue;
       s.stale = true;
       s.needsSummary = true;
-      if (s.note !== undefined) s.noteStale = true;
       s.supersededBy = nh;
     }
     for (const c of comparison.changed) {
@@ -425,10 +424,8 @@ export async function refreshReview(
         folded: prev.folded,
         reviewed: false,
         ...(prev.summary !== undefined ? { summary: prev.summary } : {}),
-        ...(prev.note !== undefined ? { note: prev.note } : {}),
         stale: true,
         needsSummary: true,
-        ...(prev.note !== undefined ? { noteStale: true as const } : {}),
       });
     }
     // Reviewed flags on changed hunks live on the carried entries above;

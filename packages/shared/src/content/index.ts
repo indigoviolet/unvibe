@@ -58,4 +58,5 @@ export {
   freshBlockId,
   liveBlockLists,
 } from "./blocks.js";
+export { renderUntrustedMarkdown } from "./untrusted.js";
 export type { BlockSnapshot } from "./blocks.js";

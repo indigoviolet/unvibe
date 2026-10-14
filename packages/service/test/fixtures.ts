@@ -138,6 +138,7 @@ export function fixtureSnapshot(): PromptReviewSnapshot {
       { slug: "obs-fold", title: "Obsolete line folding", oneLine: "A header value continued on the next line." },
       { slug: "injection", title: "Header injection", oneLine: "A raw line break splitting one header into two." },
     ],
+    existingComments: [],
     log: [
       log(1, "thread-summary", { summary: "Reader settled the cookie question" }, { scope: "global" }),
       log(2, "example", { text: "folded Set-Cookie example" }, { scope: "card", cardId: "c-problem" }),

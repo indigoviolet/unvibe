@@ -136,28 +136,30 @@ test.describe("real service", () => {
       const { reviewId, hash } = await openFeatureReview(page);
       const appFile = `[id="F-${fileKeyForPath("src/app.py")}"]`;
 
-      // Mark the first hunk reviewed through the UI (PATCH + WS patch).
-      await page.locator(appFile).getByRole("button", { name: "Mark reviewed" }).first().click();
-      await expect(page.locator(appFile).getByText("changed lines folded · show")).toBeVisible();
+      // Mark the first hunk reviewed through the UI (PATCH + WS patch):
+      // its code folds behind the header chevron (no placeholder row).
+      await page.locator(appFile).getByRole("checkbox", { name: "Mark reviewed" }).first().click();
+      await expect(page.locator(appFile).getByRole("button", { name: "Show code" })).toBeVisible();
+      await expect(page.locator(appFile).getByText("return 2")).toHaveCount(0);
 
       // State survives a page reload (durable ReviewStore).
       await page.reload();
       await expect(page.locator(appFile)).toBeVisible();
-      await expect(page.locator(appFile).getByText("changed lines folded · show")).toBeVisible();
+      await expect(page.locator(appFile).getByRole("button", { name: "Show code" })).toBeVisible();
 
       // State survives a service restart (SQLite, same data dir).
       await svc.stop();
       svc = await startService(dataDir);
       await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
       await expect(page.locator(appFile)).toBeVisible({ timeout: 30_000 });
-      await expect(page.locator(appFile).getByText("changed lines folded · show")).toBeVisible();
+      await expect(page.locator(appFile).getByRole("button", { name: "Show code" })).toBeVisible();
 
     // Out-of-band change through curl arrives over WS with no reload.
     await curlJson(svc.origin, svc.token, "PATCH", `/api/reviews/${reviewId}/hunks/${hash}`, {
       reviewed: false,
       folded: false,
     });
-    await expect(page.locator(appFile).getByText("changed lines folded · show")).toHaveCount(0);
+    await expect(page.locator(appFile).getByRole("button", { name: "Show code" })).toHaveCount(0);
     await expect(page.locator(appFile).getByText("return 2")).toBeVisible();
   });
 

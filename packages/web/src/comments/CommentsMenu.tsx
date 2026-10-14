@@ -29,6 +29,7 @@ import { useReview } from "../state/store.js";
 import { descriptionPaneName } from "../source/description/paneName.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
 import { threadPostText } from "./threads.js";
+import { groupGithubComments, isOutdatedComment, requestGithubThread, type GithubThread } from "./GithubThreads.js";
 
 const plain = (s: string): string => s.replace(/<[^>]+>/g, "");
 
@@ -272,6 +273,34 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
 
   const list = filter === "pr" ? forPr : threads;
 
+  // Existing GitHub threads grouped by file, in fetch order (issue #168).
+  const githubGroups = useMemo(() => {
+    if (!snapshot || !existing) return [];
+    const groups = new Map<string, { label: string; threads: GithubThread[] }>();
+    for (const t of groupGithubComments(existing)) {
+      const label = t.root.path ?? "General";
+      const g = groups.get(label) ?? { label, threads: [] };
+      g.threads.push(t);
+      groups.set(label, g);
+    }
+    return [...groups.values()];
+  }, [snapshot, existing]);
+
+  const jumpExisting = (thread: GithubThread): void => {
+    const snap = useReview.getState().snapshot;
+    if (!snap) return;
+    setOpen(false);
+    const file = thread.root.path ? snap.files.find((f) => f.path === thread.root.path) : undefined;
+    const outdated = isOutdatedComment(snap.files, thread.root);
+    if (file && thread.root.line !== undefined && !outdated) {
+      revealSource(`diff:${file.fileKey}:${thread.root.line}`);
+    } else if (file) {
+      revealSource(`diff:${file.fileKey}`);
+    }
+    // Expands the thread in the diff (and scrolls to it when shown).
+    requestGithubThread(thread.root.id);
+  };
+
   return (
     <span ref={rootRef} style={{ position: "relative" }}>
       <button
@@ -339,15 +368,42 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
                 No review comments on GitHub yet.
               </p>
             ) : (
-              existing.map((c) => (
-                <div className="ci" key={`existing-${c.id}`}>
-                  <span className="cj">
-                    <span className="cw">
-                      {c.path ?? "General"}
-                      {c.line ? `:${c.line}` : ""} · {c.author ?? "GitHub"}
-                    </span>
-                    <span className="cx2">{c.body.slice(0, 140)}</span>
+              githubGroups.map((g) => (
+                <div key={g.label}>
+                  <span className="cw" style={{ display: "block", margin: "4px 0 0" }}>
+                    {g.label}
                   </span>
+                  {g.threads.map((t) => {
+                    const snap = snapshot;
+                    const outdated = snap ? isOutdatedComment(snap.files, t.root) : false;
+                    const count = 1 + t.replies.length;
+                    const where =
+                      t.root.path && t.root.line !== undefined
+                        ? `${t.root.path.split("/").pop()}:${t.root.line}`
+                        : "General";
+                    return (
+                      <div className="ci" key={`existing-${t.root.id}`}>
+                        <button
+                          className="cj"
+                          type="button"
+                          data-ghjump={t.root.id}
+                          onClick={() => jumpExisting(t)}
+                        >
+                          <span className="cw">
+                            {where} · {t.root.author ?? "GitHub"} · {count}{" "}
+                            {count === 1 ? "comment" : "comments"}
+                            {outdated ? " · outdated" : ""}
+                          </span>
+                          <span className="cx2 ghmenu" dangerouslySetInnerHTML={{ __html: t.root.bodyHtml }} />
+                        </button>
+                        {t.root.htmlUrl ? (
+                          <a href={t.root.htmlUrl} target="_blank" rel="noreferrer noopener">
+                            Open on GitHub
+                          </a>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               ))
             )}

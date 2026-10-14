@@ -102,6 +102,7 @@ describe("repoChanges review markers (#149)", () => {
     // PR #77 ingest view (head = feature).
     fake.enqueue({
       cmd: "gh",
+      args: ["pr", "view", "77", "--json", "title,body,author,state,isDraft,baseRefName,headRefName,headRefOid"],
       stdout: JSON.stringify({
         title: "Feature PR",
         body: "",
@@ -118,7 +119,28 @@ describe("repoChanges review markers (#149)", () => {
     // Authoring list: PR #77 only.
     fake.enqueue({
       cmd: "gh",
+      args: [
+        "pr",
+        "list",
+        "--repo",
+        "acme/app",
+        "--author",
+        "@me",
+        "--json",
+        "number,title,author,updatedAt,headRefName,additions,deletions,changedFiles,url,reviewRequests",
+        "--limit",
+        "30",
+      ],
       stdout: JSON.stringify([{ number: 77, title: "Feature PR", headRefName: "feature" }]),
+      stderr: "",
+      code: 0,
+    });
+    // Issue #168: the ingest loads existing comments (none here), so the
+    // scripted sequence above is never disturbed by the extra `gh` call.
+    fake.enqueue({
+      cmd: "gh",
+      args: ["api", "repos/acme/app/pulls/77/comments"],
+      stdout: "[]",
       stderr: "",
       code: 0,
     });

@@ -1117,7 +1117,6 @@
           "pageId": "root",
           "title": "The problem",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1163,7 +1162,6 @@
           "pageId": "root",
           "title": "The central change",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1218,7 +1216,6 @@
           "pageId": "root",
           "title": "Data flow: from the socket to HTTPHeaderDict",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1234,11 +1231,11 @@
                   "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
                 }
               ],
-              "caption": "Where a response's headers go after parsing, and the one place they are now unfolded.",
               "render": {
                 "hash": "f23beae236cc0685",
                 "status": "ok"
-              }
+              },
+              "caption": "Where a response's headers go after parsing, and the one place they are now unfolded."
             },
             {
               "type": "list",
@@ -1326,7 +1323,6 @@
           "pageId": "root",
           "title": "Design: why the original HTTPMessage is rewritten too",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1388,7 +1384,6 @@
           "pageId": "root",
           "title": "The pattern: why the lookbehind matters",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1467,7 +1462,6 @@
           "pageId": "root",
           "title": "Review checklist",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1602,7 +1596,6 @@
           "pageId": "f-lf",
           "title": "Evidence",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1652,7 +1645,6 @@
           "pageId": "f-lf",
           "title": "Assessment",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1707,7 +1699,6 @@
           "pageId": "f-perf",
           "title": "Evidence",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1755,7 +1746,6 @@
           "pageId": "f-perf",
           "title": "Assessment",
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1795,7 +1785,6 @@
           "pageId": "c-obs-fold",
           "title": null,
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1855,7 +1844,6 @@
           "pageId": "c-http-headers",
           "title": null,
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1912,7 +1900,6 @@
           "pageId": "c-header-injection",
           "title": null,
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -1969,7 +1956,6 @@
           "pageId": "c-regex-performance",
           "title": null,
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -2018,7 +2004,6 @@
           "pageId": "c-ows-rws",
           "title": null,
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -2052,7 +2037,6 @@
           "pageId": "c-set-cookie",
           "title": null,
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -2101,7 +2085,6 @@
           "pageId": "c-requests-cookies",
           "title": null,
           "level": "standard",
-          "read": false,
           "collapsed": false,
           "revision": 1,
           "blocks": [
@@ -2183,8 +2166,7 @@
           "revision": 1,
           "undoStack": []
         }
-      ],
-      "collapsed": false
+      ]
     },
     {
       "id": "t-seed",
@@ -2293,8 +2275,7 @@
     {
       "contentHash": "b355d2096d4d7f39",
       "folded": false,
-      "reviewed": false,
-      "note": "Only call site; everything else is the helper."
+      "reviewed": false
     },
     {
       "contentHash": "6cfb09ec98cba6ba",
@@ -2327,6 +2308,10 @@
       "reviewed": false
     }
   ],
+  "fileStates": [],
+  "viewPrefs": {
+    "showExistingComments": true
+  },
   "jobs": [
     {
       "id": "job-reader",

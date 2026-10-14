@@ -298,6 +298,15 @@ export function toPromptSnapshot(
     cards,
     findings,
     concepts,
+    // Issue #168: absent until first fetched (menu or refresh); the agents
+    // see every fetched comment whether or not the diff shows them.
+    existingComments: (snap.existingComments ?? []).map((c) => ({
+      id: c.id,
+      ...(c.path !== undefined ? { path: c.path } : {}),
+      ...(c.line !== undefined ? { line: c.line } : {}),
+      ...(c.author !== undefined ? { author: c.author } : {}),
+      body: c.body,
+    })),
     log: snap.logTail,
     contributions: snap.contributions,
   };

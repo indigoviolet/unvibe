@@ -1,8 +1,8 @@
 /**
  * Block rendering (web-guide owner; PRD §4.4 display side + §4.5 + §4.9).
  *
- * Paragraph, list (per-item citations plus the block-level union the
- * parser emits), table, code, diagram (D2, service-rendered), aside
+ * Paragraph, list (per-item citations; no block-level union row — issue
+ * #165), table, code, diagram (D2, service-rendered), aside
  * (Example / Diagram / Underlying principle), finding-link (orange
  * agent-finding card), follow-up chips, comment-link (suggested review
  * comment on a diff line).
@@ -163,14 +163,19 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
         );
       });
       const list = block.ordered ? <ol className="lst">{items}</ol> : <ul className="lst">{items}</ul>;
+      // Issue #165: no block-level citation union under a list — every
+      // source it counts already carries its own per-item chip next to
+      // the claim, so the `<> N` row only repeated them on a line of its
+      // own. Footnotes (which anchor on the block, not an item) keep
+      // their row.
       const hasFootnotes = (footnotes?.length ?? 0) > 0;
       return (
         <div className="blk" id={id}>
           {list}
-          {(resolved.length > 0 || threads.length > 0 || hasFootnotes) && (
+          {hasFootnotes && (
             <div className="lo-row">
               <BlockMarkers
-                citations={resolved}
+                citations={[]}
                 threads={[]}
                 footnotes={footnotes}
                 blockId={block.id}

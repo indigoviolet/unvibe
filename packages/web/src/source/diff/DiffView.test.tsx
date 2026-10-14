@@ -1,8 +1,9 @@
 /**
  * Behaviour tests for the diff pane against the mock API (`VITE_MOCK=1`,
- * see `package.json` test script): fold/unfold, mark reviewed, hide
- * uninteresting, files filter, line clicks/slots, notes, summarize, and
- * `revealSource` on a hidden + a folded hunk.
+ * see `package.json` test script): fold/unfold, mark reviewed, file/hunk
+ * reviewed relation, file fold across remounts, hide uninteresting, files
+ * filter, line clicks/slots, summarize, and `revealSource` on a hidden +
+ * a folded hunk.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -59,14 +60,16 @@ describe("DiffView", () => {
   it("folds and unfolds a hunk, keeping its card", async () => {
     await renderDiff();
     const conn = within(connSection());
-    // The second conn hunk carries the seeded note, so its card is visible unfolded.
-    expect(conn.getByText("Only call site; everything else is the helper.")).toBeInTheDocument();
-    await fireEvent.click(conn.getAllByRole("button", { name: "Fold code" })[1]);
-    expect(await conn.findByText("3 changed lines folded · show")).toBeInTheDocument();
+    // Hunk 0 carries the seeded idle summary (#138), so its card is visible unfolded.
+    expect(conn.getByText("Unfolds folded header values before reading.")).toBeInTheDocument();
+    await fireEvent.click(conn.getAllByRole("button", { name: "Fold code" })[0]);
+    // One unfold control only: the header chevron, no placeholder row.
+    expect(await conn.findByRole("button", { name: "Show code" })).toBeInTheDocument();
+    expect(conn.queryByText(/changed lines folded/)).not.toBeInTheDocument();
     // The card survives folding.
-    expect(conn.getByText("Only call site; everything else is the helper.")).toBeInTheDocument();
-    await fireEvent.click(conn.getByText("3 changed lines folded · show"));
-    expect(conn.queryByText("3 changed lines folded · show")).not.toBeInTheDocument();
+    expect(conn.getByText("Unfolds folded header values before reading.")).toBeInTheDocument();
+    await fireEvent.click(conn.getByRole("button", { name: "Show code" }));
+    expect(conn.queryByRole("button", { name: "Show code" })).not.toBeInTheDocument();
   });
 
   it("marks a hunk reviewed (greys + folds) and advances progress", async () => {
@@ -74,8 +77,39 @@ describe("DiffView", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
     expect(await screen.findByText("1/8 hunks reviewed")).toBeInTheDocument();
     const conn = within(connSection());
-    await fireEvent.click(conn.getAllByRole("button", { name: "Mark reviewed" })[0]);
+    await fireEvent.click(conn.getAllByRole("checkbox", { name: "Mark reviewed" })[0]);
     expect(await screen.findByText("2/8 hunks reviewed")).toBeInTheDocument();
+  });
+
+  it("derives file reviewed from its hunks with a partial checkbox state", async () => {
+    await renderDiff();
+    const conn = within(connSection());
+    // Neither conn hunk reviewed: file checkbox unchecked, 0/2.
+    expect(conn.getByRole("checkbox", { name: "Mark file reviewed" })).not.toBeChecked();
+    expect(conn.getByText("0/2")).toBeInTheDocument();
+    // Marking the file marks every hunk: checked, 2/2.
+    await fireEvent.click(conn.getByRole("checkbox", { name: "Mark file reviewed" }));
+    expect(await conn.findByRole("checkbox", { name: "Mark file not reviewed" })).toBeChecked();
+    expect(conn.getByText("2/2")).toBeInTheDocument();
+    // Unmarking one hunk: partial — unchecked + indeterminate, 1/2.
+    await fireEvent.click(conn.getAllByRole("checkbox", { name: "Mark not reviewed" })[0]);
+    const partial = (await conn.findByRole("checkbox", { name: "Mark file reviewed" })) as HTMLInputElement;
+    expect(partial.checked).toBe(false);
+    expect(partial.indeterminate).toBe(true);
+    expect(conn.getByText("1/2")).toBeInTheDocument();
+  });
+
+  it("keeps file fold state across a tab switch (remount)", async () => {
+    const first = await renderDiff();
+    await fireEvent.click(within(connSection()).getByRole("button", { name: "Collapse file" }));
+    // The fold round-trips through the mock API snapshot, not local state.
+    await waitFor(() => expect(connSection().querySelector(".dbody")).toBeNull());
+    // Switching tabs unmounts the diff pane; the fold must survive that.
+    first.unmount();
+    await renderDiff();
+    expect(connSection().querySelector(".dbody")).toBeNull();
+    await fireEvent.click(within(connSection()).getByRole("button", { name: "Expand file" }));
+    await waitFor(() => expect(connSection().querySelector(".dbody")).not.toBeNull());
   });
 
   it("toggles Hide uninteresting off and on", async () => {
@@ -113,20 +147,6 @@ describe("DiffView", () => {
     expect(onLineClick).toHaveBeenCalledWith(CONN, 77);
   });
 
-  it("adds and deletes a hunk note", async () => {
-    await renderDiff();
-    const conn = within(connSection());
-    await fireEvent.click(conn.getAllByRole("button", { name: "Add note" })[0]);
-    const box = conn.getByPlaceholderText("Your note on this hunk…");
-    await fireEvent.change(box, { target: { value: "check the fast path" } });
-    await fireEvent.click(conn.getByRole("button", { name: "Save" }));
-    expect(await conn.findByText("check the fast path")).toBeInTheDocument();
-    const card = conn.getByText("check the fast path").closest(".fsum");
-    if (!card) throw new Error("note card missing");
-    await fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Delete note" }));
-    expect(await conn.findByRole("button", { name: "Add note" })).toBeInTheDocument();
-  });
-
   it("summarizes a hunk with canned mock text", async () => {
     await renderDiff();
     const conn = within(connSection());
@@ -141,7 +161,7 @@ describe("DiffView", () => {
     // No hunk carries a summary (the hunk pass never ran): hidden runs
     // must still fold on the ingest hidden reason with sensible copy — no
     // raw placeholder text, no spinner that never ends — and a folded hunk
-    // without a summary must render its folded row.
+    // without a summary must hide behind the header chevron alone.
     useReview.getState().setSnapshot(makeNoSummarySnapshot());
     render(<DiffView reviewId="nosum" />);
     await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
@@ -154,11 +174,13 @@ describe("DiffView", () => {
     // Expanding the run shows the hunks.
     await fireEvent.click(screen.getByText(/Hunks 1–2 of 2 hidden · generated/));
     expect(await screen.findByText("Hunk 1 of 2")).toBeInTheDocument();
-    // Folding a hunk with no summary renders the folded row, keeps the
-    // on-demand Summarize action, and never spins.
+    // Folding a hunk with no summary hides the code behind the header
+    // chevron alone (no placeholder row), keeps the on-demand Summarize
+    // action, and never spins.
     const src = within(document.getElementById("F-src-plain-py") as HTMLElement);
     await fireEvent.click(src.getAllByRole("button", { name: "Fold code" })[0]);
-    expect(await src.findByText("3 changed lines folded · show")).toBeInTheDocument();
+    expect(await src.findByRole("button", { name: "Show code" })).toBeInTheDocument();
+    expect(src.queryByText(/changed lines folded/)).not.toBeInTheDocument();
     expect(src.getByRole("button", { name: "Summarize with agent" })).toBeInTheDocument();
     expect(src.queryByLabelText("Summarizing")).toBeNull();
   });
@@ -173,7 +195,7 @@ describe("DiffView", () => {
     const summarize = vi.spyOn(api, "summarizeHunk").mockResolvedValue({ jobId: "j1" });
     try {
       expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toContain(
-        "Summarize every hunk",
+        "still missing a summary",
       );
       await fireEvent.click(screen.getByRole("button", { name: "Fold all" }));
       await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
@@ -182,6 +204,23 @@ describe("DiffView", () => {
       update.mockRestore();
       summarize.mockRestore();
     }
+  });
+
+  it("Fold all stays quiet about summarizing when summaries exist (#162)", async () => {
+    const snap = makeNoSummarySnapshot();
+    snap.hunkStates = [
+      { contentHash: "gen0", folded: false, reviewed: false, summary: "Generated helper." },
+      { contentHash: "gen1", folded: false, reviewed: false, summary: "Generated helper." },
+      { contentHash: "plain0", folded: false, reviewed: false, summary: "Plain change." },
+    ];
+    useReview.getState().setSnapshot(snap);
+    render(<DiffView reviewId="nosum" />);
+    await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
+    // The generated hunks stay hidden and the one visible hunk already
+    // has a summary: folding promises nothing about summarizing.
+    expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toContain(
+      "already has a summary",
+    );
   });
 
   it("Fold all folds without summarizing past the fan-out limit (#107)", async () => {
@@ -229,11 +268,12 @@ describe("DiffView", () => {
   it("revealSource unfolds a folded hunk and highlights the range", async () => {
     await renderDiff();
     const conn = within(connSection());
+    // Lines 650-651 sit in conn's second hunk: fold it, then reveal.
     await fireEvent.click(conn.getAllByRole("button", { name: "Fold code" })[1]);
-    expect(await conn.findByText("3 changed lines folded · show")).toBeInTheDocument();
+    expect(await conn.findByRole("button", { name: "Show code" })).toBeInTheDocument();
     expect(revealSource(`diff:${CONN}:650-651`)).toBe(true);
     await screen.findByText((_c, el) => el?.id === `L-${CONN}-650`, {}, { timeout: 3000 });
-    expect(conn.queryByText("3 changed lines folded · show")).not.toBeInTheDocument();
+    expect(conn.queryByRole("button", { name: "Show code" })).not.toBeInTheDocument();
     expect(document.getElementById(`L-${CONN}-650`)?.className).toMatch(/hl/);
     expect(document.getElementById(`L-${CONN}-651`)?.className).toMatch(/hl/);
   });
@@ -314,6 +354,8 @@ function makeNoSummarySnapshot(): import("@unvibe/shared").ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -361,6 +403,8 @@ function makeOverLimitSnapshot(): import("@unvibe/shared").ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true },
     jobs: [],
     contributions: [],
     logTail: [],

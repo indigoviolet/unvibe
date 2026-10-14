@@ -12,7 +12,9 @@ import type {
   Contribution,
   DepthLevel,
   ExistingReviewComment,
+  FileState,
   HunkState,
+  ReviewViewPrefs,
   Job,
   LogEntry,
   Page,
@@ -254,6 +256,13 @@ export interface ReviewSnapshot {
   pages: Page[];
   annotations: Annotation[];
   hunkStates: HunkState[];
+  /**
+   * Issue #162: per-file fold state, keyed by file key. Reviewed is
+   * derived from the file's hunks, never stored here.
+   */
+  fileStates: FileState[];
+  /** Issue #168: per-review diff view preferences. */
+  viewPrefs: ReviewViewPrefs;
   jobs: Job[];
   contributions: Contribution[];
   logTail: LogEntry[];
@@ -653,13 +662,21 @@ export interface FileOutlineResponse {
 export interface UpdateHunkRequest {
   folded?: boolean;
   reviewed?: boolean;
-  /** Set to change the note; explicit null clears it (M1 addition). */
-  note?: string | null;
   /**
    * Set/replace the agent summary, or delete it with `null`.
    * Added for M1-web (hunk cards carry Delete for the summary).
    */
   summary?: string | null;
+}
+
+/** PATCH /api/reviews/:id/files/:fileKey — per-file diff state (issue #162). */
+export interface UpdateFileRequest {
+  folded?: boolean;
+}
+
+/** PATCH /api/reviews/:id/view — per-review diff view preferences (issue #168). */
+export interface UpdateViewRequest {
+  showExistingComments?: boolean;
 }
 
 export interface SummarizeHunkResponse {

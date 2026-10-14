@@ -35,11 +35,6 @@ const NO_ACTIONS = {
   toggleFold: () => {},
   summarize: () => {},
   deleteSummary: () => {},
-  beginNote: () => {},
-  changeNote: () => {},
-  saveNote: () => {},
-  discardNote: () => {},
-  deleteNote: () => {},
   toggleReviewed: () => {},
 };
 
@@ -73,7 +68,6 @@ describe("FileSection with injected tokens", () => {
         folded={false}
         eager
         busy={{}}
-        editingNote={{}}
         slots={{}}
         commentedLines={new Set()}
         highlight={null}
@@ -115,7 +109,6 @@ describe("FileSection with injected tokens", () => {
         folded={false}
         eager
         busy={{}}
-        editingNote={{}}
         slots={{}}
         commentedLines={new Set()}
         highlight={null}
@@ -159,7 +152,6 @@ describe("FileSection with injected tokens", () => {
         folded={false}
         eager
         busy={{}}
-        editingNote={{}}
         slots={{}}
         commentedLines={new Set()}
         highlight={null}
@@ -236,7 +228,6 @@ describe("hostile code text (issue #101)", () => {
         folded={false}
         eager
         busy={{}}
-        editingNote={{}}
         slots={{}}
         commentedLines={new Set()}
         highlight={null}

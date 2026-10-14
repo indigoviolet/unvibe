@@ -129,13 +129,13 @@ describe("redo guide", () => {
           ctx.reviews.getSnapshot(oldId)?.pages.find((p) => p.id === "root")?.cards ?? [];
         expect(oldCards.length).toBeGreaterThan(0);
 
-        // User data: a hunk note + reviewed mark, and a thread marked for the PR.
+        // User data: a reviewed mark, and a thread marked for the PR.
         const hash = oldSnap.files[0].hunks[0].contentHash;
         const noted = await app.inject({
           method: "PATCH",
           url: `/api/reviews/${oldId}/hunks/${hash}`,
           headers: authed,
-          payload: { note: "my note", reviewed: true },
+          payload: { reviewed: true },
         });
         expect(noted.statusCode).toBe(200);
         const fileKey = oldSnap.files[0].fileKey;
@@ -202,8 +202,8 @@ describe("redo guide", () => {
         expect(newCards.length).toBeGreaterThan(0);
         expect(fresh.annotations).toEqual([]);
         // The new pipeline writes its own hunk states; none carries the
-        // old review's note or reviewed marks.
-        expect(fresh.hunkStates.filter((s) => s.note !== undefined || s.reviewed)).toEqual([]);
+        // old review's reviewed marks.
+        expect(fresh.hunkStates.filter((s) => s.reviewed)).toEqual([]);
         expect(fresh.version.n).toBe(1);
         const newJobs = ctx.jobs.listByReview(newId);
         expect(newJobs.length).toBeGreaterThan(0);

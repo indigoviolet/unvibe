@@ -418,7 +418,10 @@ needed (that deviation is closed, not added).
   and content”).
 - Citations (`<>` + count; hover previews lines; click opens source pane
   at spot w/ unfold + filter clear) — met (`guide-service.spec.ts`
-  “citations reveal over the real API”, `validate/*`).
+  “citations reveal over the real API”, `validate/*`). Chips flow inline
+  with their text and never wrap alone onto a line (issue #165); lists
+  carry per-item chips with no repeated block-level count row
+  (`guide/BlockView.list.test.tsx`).
 - Inline code chips behave as citations — met (`reply-format.md` §1,
   `guide/citations.test.ts`).
 - Unverified citations dimmed + tooltip — met (`validate/validate.ts`
@@ -573,6 +576,20 @@ needed (that deviation is closed, not added).
   opens with the source pane closed) — met (`comments-service.spec.ts`
   “mark for PR, edit the draft, submit posts exactly one review”;
   `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
+- Already on GitHub (issue #168) — met: existing review comments load
+  with the review and reload on refresh (read-only `gh api`, stubbed in
+  tests), render as collapsed read-only threads on their diff lines
+  (author + count, Open on GitHub, Markdown rendered with the shared
+  untrusted renderer), outdated ones at their file and removed-file ones
+  at the diff's end; the menu groups them by file and thread with
+  rendered bodies and jumps to them; selecting their text offers
+  Explain/Ask/Comment (quoting into the reviewer's own comment); one
+  filter-menu control hides them in the diff (remembered with the
+  review) without removing them from the agents' context, where they
+  arrive framed as other people's material, never instructions
+  (`comments/GithubThreads.test.tsx`,
+  `source/diff/DiffView.github.test.tsx`, `e2e/comments.spec.ts`
+  GitHub-thread cases, `service/test/context.test.ts` framing cases).
 
 ### §4.9 Findings — all met
 
@@ -684,17 +701,21 @@ needed (that deviation is closed, not added).
   Measured stack 149px (strip 41 + bar 43 + file 34 + hunk 31); no compact
   pinned variant — the hunk header is already one 31px line, pure CSS
   cannot restyle only-while-pinned, and every control must stay usable.
-- Files panel (name filter + Filter dropdown with per-type counts and a
-  Reviewed row, active count on the button, hunk progress, compacting tree
+- Files panel (name filter + Filter dropdown with per-type counts, a
+  Reviewed row and a GitHub-comments visibility row, active count on the button, hunk progress, compacting tree
   + counts, click-scroll) — met (`diff.spec.ts` "file filter dropdown …",
   `source/diff/DiffView.test.tsx` stored-prefs + active-state + keyboard
   cases, `source/diff/diffLogic.test.ts` 19 tests; issues #56/#57: the
   comments panel keeps a 360–420px min-width anchored to its button so
   tabs/paths no longer wrap).
-- File header (chevron, path, +/−, reviewed count, toggle) — met.
+- File header (chevron, path, +/−, reviewed count, reviewed checkbox with
+  indeterminate partial state) — met (issue #162). File fold persists on
+  the snapshot (`fileStates`), so tab switches keep it; reviewed is
+  derived from hunks (mark-file marks every hunk), never stored.
 - Git's own hunks (≤3 context, merged runs); header format + raw `@@` on
-  hover; fold/Summarize/note/reviewed actions; hunk card (summary+note,
-  Delete); folding hides code only — met (`shared/src/diff.ts` +
+  hover; fold/Summarize/reviewed actions; hunk card (summary,
+  Delete); folding hides code only, unfolded through the header chevron
+  alone (no placeholder row, issue #162) — met (`shared/src/diff.ts` +
   `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”). Summaries are
   content cards (#138): idle text with one attribute mounts nothing per
   hunk (large-diff fixture: identical DOM node counts before/after,
@@ -721,8 +742,12 @@ needed (that deviation is closed, not added).
   sites); JSON-looking text is never stored and long fallbacks cut on a
   word boundary (the stored-row cleanup for pre-fix rows was removed
   under #137 — a stored JSON-looking summary is now reused/shown as-is).
-- Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
-  (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
+- Fold all folds non-hidden and summarizes only hunks still missing a
+  summary (quiet tooltip when all have one); Unfold keeps summaries —
+  met (issue #162; per-hunk `summarize` jobs, deduped;
+  `docs/pipeline.md` “Fold-all choice”). Hunk notes are removed (issue
+  #162): no stored note, no UI; a private remark is a Comment kept off
+  the PR instead.
   The Summarize dots clear when the summary lands by patch — any landed
   summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
   effect, `source/diff/summarizeBusy.test.tsx`).

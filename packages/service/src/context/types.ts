@@ -53,6 +53,16 @@ export interface PinnedExcerpt {
   text: string;
 }
 
+/** One existing GitHub review comment, as the agents see it (issue #168). */
+export interface ExistingCommentInput {
+  id: number;
+  path?: string;
+  line?: number;
+  author?: string;
+  /** Plain-text body (the rendered HTML stays in the UI). */
+  body: string;
+}
+
 /** One guide card's standard-depth prose, already rendered to Markdown. */
 export interface GuideCardInput {
   id: string;
@@ -115,6 +125,8 @@ export interface PromptReviewSnapshot {
   cards: GuideCardInput[];
   findings: FindingInput[];
   concepts: ConceptIndexEntry[];
+  /** Existing GitHub review comments, oldest first (issue #168). */
+  existingComments: ExistingCommentInput[];
   /** Append-only log, ascending seq (PRD §9.3). */
   log: LogEntry[];
   /**

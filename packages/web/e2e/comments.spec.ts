@@ -268,6 +268,37 @@ test("existing GitHub comments render read-only under their own heading", async 
   await expect(page.locator(".cmenu")).toContainText("Already on GitHub: consider covering bare LF");
 });
 
+test("GitHub thread in the diff expands at its line; the menu item jumps to it", async ({ page }) => {
+  await gotoReview(page);
+  const thread = page.locator("#gh-thread-101");
+  await expect(thread).toBeVisible();
+  await expect(thread).toContainText("teammate · 2 comments");
+  await thread.getByRole("button", { name: "Expand comments from teammate" }).click();
+  await expect(thread).toContainText("consider covering bare LF");
+  await expect(thread.getByText("Open on GitHub")).toHaveCount(2);
+  // The menu item jumps back to the thread in the diff.
+  await page.locator('#reviewbar [data-cm=""]').click();
+  await page.locator('.cmenu [data-ghjump="101"]').click();
+  await expect(page.locator(".cmenu")).toHaveCount(0);
+  await expect(page.locator("#gh-thread-101")).toContainText("consider covering bare LF");
+});
+
+test("outdated threads sit at their file; removed-file threads at the end; hiding keeps the menu", async ({
+  page,
+}) => {
+  await gotoReview(page);
+  const conn = page.locator(`[id="F-${CONN}"]`);
+  await expect(conn).toContainText("GitHub comments on lines no longer in the diff");
+  await expect(page.locator("[data-gh-orphans]")).toContainText("review-bot · 1 comment");
+  // Hide them in the diff: threads vanish, the menu still lists them.
+  await page.getByRole("button", { name: "Show file list" }).click();
+  await page.getByRole("button", { name: "File filters" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
+  await expect(page.locator("#gh-thread-101")).toHaveCount(0);
+  await page.locator('#reviewbar [data-cm=""]').click();
+  await expect(page.locator('.cmenu [data-ghjump="101"]')).toBeVisible();
+});
+
 test("comments dropdown is wide enough for tabs, paths and previews", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#reviewbar [data-cm=""]').click();

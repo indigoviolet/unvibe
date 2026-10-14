@@ -414,7 +414,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     Object.assign(s, patch);
   };
   setState(meta.keyAliases["tconn"], 2, { reviewed: true, folded: true });
-  setState(meta.keyAliases["conn"], 1, { note: "Only call site; everything else is the helper." });
 
   const version = {
     n: 1,
@@ -447,6 +446,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     pages,
     annotations,
     hunkStates,
+    fileStates: [],
+    viewPrefs: { showExistingComments: true },
     jobs: [
       { id: "job-reader", kind: "reader", model: "fixture", effort: "", priority: 1, state: "done" },
       { id: "job-critic-lf", kind: "critic", model: "fixture", effort: "", priority: 2, state: "done" },
