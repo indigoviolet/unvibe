@@ -158,8 +158,8 @@ Central text.
 
 \`\`\`json
 {"cardIds": ["problem", "central"], "pendingCards": [], "concepts": [], "plotlines": [
-  {"id": "thread-one", "name": "First thread", "description": "The main work.", "hunks": ["h:a-py:hmulti", "h:a-py:hcited", "h:nope:zzz"]},
-  {"name": "Second thread", "description": "The rest.", "hunks": ["h:a-py:hmulti", "h:a-py:hone"]}
+  {"id": "thread-one", "name": "First thread", "description": "The main work.", "why": "It lands first.", "hunks": ["h:a-py:hmulti", "h:a-py:hcited", "h:nope:zzz"]},
+  {"name": "Second thread", "description": "The rest.", "why": "It can land after the first.", "buildsOn": "thread-one", "hunks": ["h:a-py:hmulti", "h:a-py:hone"]}
 ]}
 \`\`\`
 `;
@@ -259,8 +259,8 @@ describe("reader plotlines (#169)", () => {
       await waitFor(() => (ctx.reviews.getSnapshot(id)?.plotlines?.length ?? 0) === 2);
       const snap = ctx.reviews.getSnapshot(id)!;
       expect(snap.plotlines).toMatchObject([
-        { id: "thread-one", name: "First thread", description: "The main work." },
-        { id: "second-thread", name: "Second thread", description: "The rest." },
+        { id: "thread-one", name: "First thread", description: "The main work.", why: "It lands first." },
+        { id: "second-thread", name: "Second thread", description: "The rest.", why: "It can land after the first.", buildsOn: "thread-one" },
       ]);
       const plotOf = (h: string): string | undefined =>
         snap.hunkStates.find((s) => s.contentHash === h)?.plotline;
@@ -304,7 +304,7 @@ Central text.
   });
 
   it("caps more than 8 plotlines at 8", async () => {
-    const lines = Array.from({ length: 10 }, (_, i) => `{"name": "Thread ${i}", "hunks": []}`).join(",\n");
+    const lines = Array.from({ length: 10 }, (_, i) => `{"name": "Thread ${i}", "why": "Separate.", "hunks": []}`).join(",\n");
     const reader = `## The problem
 
 Problem text.
@@ -422,8 +422,8 @@ Central text.
 
 \`\`\`json
 {"cardIds": ["problem", "central"], "pendingCards": [], "concepts": [], "plotlines": [
-  {"id": "bulk", "name": "Bulk work", "description": "The visible bulk.", "hunks": ${JSON.stringify(firstIds)}},
-  {"id": "tail", "name": "Tail work", "description": "The rest.", "hunks": []}
+  {"id": "bulk", "name": "Bulk work", "description": "The visible bulk.", "why": "The main thread.", "hunks": ${JSON.stringify(firstIds)}},
+  {"id": "tail", "name": "Tail work", "description": "The rest.", "why": "A separate tail.", "buildsOn": "bulk", "hunks": []}
 ]}
 \`\`\`
 `;

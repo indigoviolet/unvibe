@@ -10,10 +10,12 @@
  *   deterministic rules still apply on top (see `resolveHunkScore`): a
  *   one-line change is never "mechanical", and hiding still follows
  *   `hiddenReason` alone — the score never hides or unhides by itself.
- * - Plotlines: the reader names 2–8 threads and lists hunk IDs per
- *   thread. Unknown IDs are dropped (reported in `dropped`), a hunk in
- *   two plotlines keeps the first, and hunks the reader leaves out read
- *   as "other" without storing anything.
+ * - Plotlines: the reader names a few threads of change (the unit of a
+ *   separate commit or stacked PR, never a file type) in landing order,
+ *   each with a required "why separate" line and an optional `buildsOn`,
+ *   and lists hunk IDs per thread. Unknown IDs are dropped (reported in
+ *   `dropped`), a hunk in two plotlines keeps the first, and hunks the
+ *   reader leaves out read as "other" without storing anything.
  */
 import { parseId } from "./ids.js";
 import { truncateAtWordBoundary } from "./content/hunk.js";
@@ -77,7 +79,12 @@ export const MAX_PLOTLINES = 8;
 /** Assignment id for hunks no plotline claims (never stored). */
 export const PLOTLINE_OTHER_ID = "other";
 
-/** One named thread of the change. */
+/**
+ * One thread of the change: a unit with its own purpose that could
+ * land as a separate commit or stacked PR. Never a file type — tests,
+ * docs and config belong to the thread they serve. Plotlines are
+ * stored in landing order (foundations first).
+ */
 export interface Plotline {
   /** Short kebab-case id, unique within the review. */
   id: string;
@@ -85,6 +92,10 @@ export interface Plotline {
   name: string;
   /** One-line description. */
   description: string;
+  /** One line on why this thread is separate (could land on its own). */
+  why: string;
+  /** Id of an earlier plotline this one builds on, when it depends on one. */
+  buildsOn?: string;
 }
 
 /** Raw trailing-JSON shape the reader (or the assign step) sends. */
@@ -92,6 +103,8 @@ export interface RawPlotline {
   id?: string;
   name?: string;
   description?: string;
+  why?: string;
+  buildsOn?: string;
   hunks?: string[];
 }
 
@@ -144,6 +157,10 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
     const rec = raw as Record<string, unknown>;
     const name = typeof rec["name"] === "string" ? cleanLine(rec["name"], 40) : "";
     if (name === "") continue;
+    // `why` (why this thread is separate) is required: an entry without
+    // it is not a usable plotline and is dropped, like a nameless one.
+    const why = typeof rec["why"] === "string" ? cleanLine(rec["why"], 140) : "";
+    if (why === "") continue;
     if (plotlines.length >= MAX_PLOTLINES) {
       extraPlotlines += 1;
       continue;
@@ -154,6 +171,7 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
     seenIds.add(id);
     const description =
       typeof rec["description"] === "string" ? cleanLine(rec["description"], 140) : "";
+    const buildsOnRaw = typeof rec["buildsOn"] === "string" && rec["buildsOn"].trim() !== "" ? slugify(rec["buildsOn"]) : undefined;
     const hunks = Array.isArray(rec["hunks"]) ? rec["hunks"] : [];
     for (const h of hunks) {
       if (typeof h !== "string") continue;
@@ -170,7 +188,13 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
       }
       assignment[canonical] = id;
     }
-    plotlines.push({ id, name, description });
+    plotlines.push({ id, name, description, why, ...(buildsOnRaw !== undefined ? { buildsOn: buildsOnRaw } : {}) });
+  }
+  // `buildsOn` must name another plotline in the same list (landing
+  // order means it should be an earlier one, but any known id is kept);
+  // unknown or self references are dropped, never stored dangling.
+  for (const p of plotlines) {
+    if (p.buildsOn !== undefined && (p.buildsOn === p.id || !seenIds.has(p.buildsOn))) delete p.buildsOn;
   }
   return { plotlines, assignment, dropped: { unknown, duplicates, extraPlotlines } };
 }

@@ -214,11 +214,18 @@ function seedHunkStates(): Map<string, HunkState> {
  * unassigned, so they read as "other".
  */
 const MOCK_PLOTLINES: Plotline[] = [
-  { id: "unfold", name: "Unfold folded values", description: "Normalize obsolete folds before reading headers." },
+  {
+    id: "unfold",
+    name: "Unfold folded values",
+    description: "Normalize obsolete folds before reading headers.",
+    why: "The behaviour change itself: it can land and be reverted on its own.",
+  },
   {
     id: "unfold-tests",
-    name: "Tests for unfolding",
+    name: "Prove the unfolding works",
     description: "Unit and socket-level coverage for the new behaviour.",
+    why: "Proof for the change, kept apart so it can be reviewed against the behaviour it checks.",
+    buildsOn: "unfold",
   },
 ];
 

@@ -232,6 +232,8 @@ async function runCase(c, token, repoCache) {
       id: p.id,
       name: p.name,
       description: p.description,
+      why: p.why,
+      buildsOn: p.buildsOn ?? null,
       hunks: byPlot.get(p.id) ?? 0,
       sample: samples.get(p.id) ?? [],
     }));

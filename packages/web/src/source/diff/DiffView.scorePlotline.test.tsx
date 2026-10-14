@@ -45,7 +45,11 @@ describe("DiffView scores and plotlines", () => {
     expect(document.querySelector('.dhunk-h .score-dot[data-score="mechanical"]')).not.toBeNull();
     const tags = [...document.querySelectorAll(".dhunk-h .ptag")].map((el) => el.textContent);
     expect(tags).toContain("Unfold folded values");
-    expect(tags).toContain("Tests for unfolding");
+    expect(tags).toContain("Prove the unfolding works");
+    // The tag tooltip carries the plotline's why-separate line.
+    const tag = document.querySelector('.dhunk-h .ptag[data-plotpick="unfold"]');
+    expect(tag?.getAttribute("data-tip")).toContain("The behaviour change itself");
+    expect(tag?.getAttribute("data-tip")).toContain("Show only Unfold folded values");
   });
 
   it("shows file dots and the score legend in the Files list", async () => {

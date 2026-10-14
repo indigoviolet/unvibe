@@ -92,13 +92,41 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
     return n;
   };
   const otherCount = countOf(undefined);
+  const nameOf = (id: string | undefined): string | undefined =>
+    id === undefined ? undefined : (plotlines.find((p) => p.id === id)?.name ?? id);
   const rows = [
-    ...plotlines.map((p) => ({ id: p.id, name: p.name, desc: p.description, count: countOf(p.id), ref: firstRefOf(p.id) })),
-    ...(otherCount > 0 ? [{ id: PLOTLINE_OTHER_ID, name: "Other", desc: "Hunks no plotline claimed.", count: otherCount, ref: firstRefOf(undefined) }] : []),
+    ...plotlines.map((p, i) => ({
+      id: p.id,
+      order: i + 1,
+      name: p.name,
+      desc: p.description,
+      why: p.why,
+      buildsOnName: nameOf(p.buildsOn),
+      count: countOf(p.id),
+      ref: firstRefOf(p.id),
+    })),
+    ...(otherCount > 0
+      ? [
+          {
+            id: PLOTLINE_OTHER_ID,
+            order: undefined as number | undefined,
+            name: "Other",
+            desc: "Hunks no plotline claimed.",
+            why: "",
+            buildsOnName: undefined as string | undefined,
+            count: otherCount,
+            ref: firstRefOf(undefined),
+          },
+        ]
+      : []),
   ];
   return (
     <section className="plotlines" aria-label="Plotlines">
       <h2>Plotlines</h2>
+      <p className="plnote">
+        A plotline is one thread of the change — the part that could land as its own commit or stacked PR. Tests and docs
+        sit with the thread they serve.
+      </p>
       <ul>
         {rows.map((r) => (
           <li key={r.id}>
@@ -125,17 +153,23 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                     });
                 }}
               >
+                {r.order !== undefined ? <span className="plorder">{r.order}. </span> : null}
                 <span className="plname">{r.name}</span>
                 {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
                 <span className="plcount">
                   {r.count} {r.count === 1 ? "hunk" : "hunks"}
                 </span>
+                {r.why ? <span className="plwhy">{r.why}</span> : null}
+                {r.buildsOnName ? <span className="plbuilds">Builds on {r.buildsOnName}</span> : null}
               </button>
             ) : (
               <span>
+                {r.order !== undefined ? <span className="plorder">{r.order}. </span> : null}
                 <span className="plname">{r.name}</span>
                 {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
                 <span className="plcount">no hunks</span>
+                {r.why ? <span className="plwhy">{r.why}</span> : null}
+                {r.buildsOnName ? <span className="plbuilds">Builds on {r.buildsOnName}</span> : null}
               </span>
             )}
           </li>

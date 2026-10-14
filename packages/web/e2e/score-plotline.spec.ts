@@ -22,7 +22,7 @@ test("hunk headers carry score dots and plotline tags", async ({ page }) => {
   await expect(dots.first()).toBeVisible();
   await expect(page.locator('.dhunk-h .score-dot[data-score="substantive"]').first()).toBeVisible();
   await expect(page.locator(".dhunk-h .ptag", { hasText: "Unfold folded values" }).first()).toBeVisible();
-  await expect(page.locator(".dhunk-h .ptag", { hasText: "Tests for unfolding" }).first()).toBeVisible();
+  await expect(page.locator(".dhunk-h .ptag", { hasText: "Prove the unfolding works" }).first()).toBeVisible();
 });
 
 test("Files list shows file dots and the score legend", async ({ page }) => {
@@ -66,17 +66,22 @@ test("clicking a plotline chip filters and the filter survives a reload of the p
 test("guide root lists plotlines with hunk counts", async ({ page }) => {
   const box = page.locator(".plotlines");
   await expect(box).toBeVisible();
-  await expect(box.getByText("Unfold folded values")).toBeVisible();
-  await expect(box.getByText("Tests for unfolding")).toBeVisible();
+  await expect(box.locator(".plname", { hasText: "Unfold folded values" })).toBeVisible();
+  await expect(box.locator(".plname", { hasText: "Prove the unfolding works" })).toBeVisible();
   await expect(box.getByText("Other")).toBeVisible();
   await expect(box.getByText(/hunks?/).first()).toBeVisible();
+  // Landing order, the why-separate line, builds-on, and the box's
+  // one-line explanation of what a plotline is.
+  await expect(box.locator(".plnote")).toContainText("could land as its own commit or stacked PR");
+  await expect(box.locator(".plbuilds")).toContainText("Builds on Unfold folded values");
+  await expect(box.locator("li").first()).toContainText("1. Unfold folded values");
 });
 
 test("guide Plotlines entry filters the diff and scrolls to its first hunk", async ({ page }) => {
   const box = page.locator(".plotlines");
   await box.locator('[data-plotpick="unfold-tests"]').click();
   // The diff is filtered to that plotline and its first hunk is in view.
-  await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Tests for unfolding");
+  await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Prove the unfolding works");
   await expect(page.locator(connFile)).toHaveCount(0);
   await expect(page.locator(`[id="F-${TSOCK}"]`)).toBeVisible();
   const inView = await page.evaluate(() => {
