@@ -213,6 +213,10 @@ function fullSystemPrompt(): string {
   return renderSystemPrompt(loadTemplatesDirSync(REPO_PROMPTS), "full");
 }
 
+function lockdownSystemPrompt(): string {
+  return renderSystemPrompt(loadTemplatesDirSync(REPO_PROMPTS), "lockdown");
+}
+
 describe.skipIf(!LIVE)("full-access live check (#160)", () => {
   for (const provider of PROVIDERS) {
     describe(provider, () => {
@@ -280,6 +284,30 @@ describe.skipIf(!LIVE)("full-access live check (#160)", () => {
           input += forkSpend.input;
           output += forkSpend.output;
           expect(textOf(forkEvents)).toContain(subjects[0]);
+
+          // Lock-down denies the same gh request: a readOnly session has
+          // no shell, so it must not report the titles (nor start Bash).
+          const locked = await runner.start({
+            provider,
+            model: MODELS[provider] ?? "default",
+            cwd: dir,
+            systemPrompt: lockdownSystemPrompt(),
+            mcpServers: [],
+          });
+          const denyEvents = await collect(
+            runner,
+            locked,
+            "Run `gh pr list --repo indigoviolet/unvibe --limit 3 --json number,title` and report the titles as plain text.",
+          );
+          const denySpend = spendOf(denyEvents);
+          input += denySpend.input;
+          output += denySpend.output;
+          const denyText = textOf(denyEvents);
+          console.log(`FULLACCESS-LIVE provider=${provider} lockdown-reply=${JSON.stringify(denyText.slice(0, 1000))}`);
+          expect(denyEvents.filter((e) => e.type === "tool" && e.name === "Bash")).toHaveLength(0);
+          if (expectedTitles.length > 0) {
+            expect(denyText).not.toContain(expectedTitles[0].slice(0, 40));
+          }
 
           // The agent never wrote: the fixture stays clean.
           expect(gitStatus(dir)).toBe("");

@@ -797,3 +797,162 @@ describe("conn retry keeps the session's posture", () => {
     }
   });
 });
+
+describe("follow-ups across a posture flip (owner report)", () => {
+  const GUIDE_PAGES = [
+    {
+      id: "root",
+      kind: "root",
+      title: "Guide",
+      saved: false,
+      cards: [
+        {
+          id: "c1",
+          pageId: "root",
+          title: "Card",
+          blocks: [
+            {
+              type: "paragraph",
+              id: "b1",
+              text: { standard: "The widget folds headers." },
+              citations: [],
+            },
+          ],
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+          collapsed: false,
+        },
+      ],
+    },
+  ] as never;
+
+  const FIRST = `First answer about the fold.
+
+\`\`\`json
+{}
+\`\`\`
+`;
+  const SECOND = `Second answer with more detail.
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
+  function scriptedAgents(): FakeAgentRunner {
+    const eventsFor = (text: string): AgentEvent[] => [
+      { type: "text", delta: text },
+      { type: "usage", inputTokens: 10, cachedReadTokens: 5, cachedWriteTokens: 0, outputTokens: 10 },
+      { type: "done", stopReason: "end_turn" },
+    ];
+    return new FakeAgentRunner([
+      { match: "reply with exactly", events: eventsFor("ready") },
+      // "tell me more" first: the reply prompt also carries the anchor
+      // quote, and the fake matches first-match-wins.
+      { match: "tell me more", events: eventsFor(SECOND) },
+      { match: "folds headers", events: eventsFor(FIRST) },
+    ]);
+  }
+
+  async function waitJob(ctx: { jobs: { get(id: string): { state: string } | undefined } }, jobId: string): Promise<void> {
+    const start = Date.now();
+    for (;;) {
+      const state = ctx.jobs.get(jobId)?.state;
+      if (state === "done" || state === "error" || state === "cancelled") {
+        if (state !== "done") throw new Error(`job ended as ${state}`);
+        return;
+      }
+      if (Date.now() - start > 30000) throw new Error("timed out waiting for the job");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  async function explainThenReply(fullAccessFirst: boolean): Promise<{
+    firstSession: string;
+    replySession: string;
+    replyText: string;
+    baseKeys: string[];
+    baseStarts: { readOnly: boolean; systemPrompt: string }[];
+    replyAccess: string | undefined;
+    oldClosed: boolean;
+  }> {
+    const agents = scriptedAgents();
+    const { app, ctx, reviewId } = await setupReview(new FakeCommandRunner(), { agents, pages: GUIDE_PAGES });
+    if (fullAccessFirst) {
+      const res = ctx.settings.update({ fullAccess: true, fullAccessAcknowledgedAt: Date.now() });
+      expect(res.errors).toBeUndefined();
+    }
+    try {
+      const auth = { authorization: "Bearer tok" };
+      const ex = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/actions`,
+        headers: auth,
+        payload: { kind: "explain", quote: "folds headers", anchor: { where: "block", blockId: "b1" } },
+      } as never);
+      expect(ex.statusCode).toBe(200);
+      const annotationId = (ex.json() as { annotationId: string }).annotationId;
+      await waitJob(ctx, (ex.json() as { jobId: string }).jobId);
+      const firstSession = ctx.reviews.getSnapshot(reviewId)!.annotations.find((a) => a.id === annotationId)!.sessionId!;
+      expect(firstSession).toBeTruthy();
+      // Flip the setting after the card's session exists.
+      const flip = ctx.settings.update(
+        fullAccessFirst ? { fullAccess: false } : { fullAccess: true, fullAccessAcknowledgedAt: Date.now() },
+      );
+      expect(flip.errors).toBeUndefined();
+      const rep = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/actions`,
+        headers: auth,
+        payload: { kind: "reply", annotationId, message: "tell me more" },
+      } as never);
+      expect(rep.statusCode).toBe(200);
+      await waitJob(ctx, (rep.json() as { jobId: string }).jobId);
+      const live = ctx.reviews.getSnapshot(reviewId)!;
+      const card = live.annotations.find((a) => a.id === annotationId)!;
+      const replySession = card.sessionId!;
+      const replyText = (card.turns ?? []).map((t) => t.blocks.map((b) => JSON.stringify(b)).join("")).join("");
+      return {
+        firstSession,
+        replySession,
+        replyText,
+        baseKeys: ctx.sessions.baseKeys(),
+        baseStarts: agents.starts.map((s) => ({ readOnly: s.readOnly, systemPrompt: s.systemPrompt })),
+        replyAccess: ctx.jobs.get((rep.json() as { jobId: string }).jobId)?.accessMode,
+        oldClosed: !agents.sessions.has(firstSession),
+      };
+    } finally {
+      await app.close();
+    }
+  }
+
+  it("lock-down card followed up after enabling: fresh full-access fork, old session closed", async () => {
+    const r = await explainThenReply(false);
+    // Answered from the second script on a new session, re-anchored.
+    expect(r.replyText).toContain("Second answer with more detail.");
+    expect(r.replySession).toBeTruthy();
+    expect(r.replySession).not.toBe(r.firstSession);
+    expect(r.oldClosed).toBe(true);
+    // The reply ran under full access, never on the lock-down session.
+    expect(r.replyAccess).toBe("full");
+    expect(r.baseKeys.some((k) => k.endsWith("|full"))).toBe(true);
+    const fullBases = r.baseStarts.filter((s) => s.systemPrompt !== "" && s.readOnly === false);
+    expect(fullBases).toHaveLength(1);
+    expect(fullBases[0].systemPrompt).toContain("You may run `gh` to read");
+  });
+
+  it("full-access card followed up after disabling: fresh lock-down fork, old session closed", async () => {
+    const r = await explainThenReply(true);
+    expect(r.replyText).toContain("Second answer with more detail.");
+    expect(r.replySession).toBeTruthy();
+    expect(r.replySession).not.toBe(r.firstSession);
+    expect(r.oldClosed).toBe(true);
+    expect(r.replyAccess).toBe("lockdown");
+    expect(r.baseKeys.some((k) => k.endsWith("|lockdown"))).toBe(true);
+    const bases = r.baseStarts.filter((s) => s.systemPrompt !== "");
+    expect(bases).toHaveLength(2);
+    expect(bases[bases.length - 1].readOnly).toBe(true);
+    expect(bases[bases.length - 1].systemPrompt).toContain("there is no shell, no `gh`, no network and no edits");
+  });
+});

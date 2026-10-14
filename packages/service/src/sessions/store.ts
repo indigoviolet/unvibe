@@ -28,6 +28,8 @@ export interface PersistedConversation {
   lastSeenSeq: number;
   live: boolean;
   updatedAt: number;
+  /** Issue #160: posture the session started with; absent on older rows. */
+  readOnly?: boolean;
 }
 
 export class SessionStore {

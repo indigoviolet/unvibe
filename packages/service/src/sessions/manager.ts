@@ -115,6 +115,14 @@ interface ConversationRecord {
   lastSeenSeq: number;
   live: boolean;
   lastUsedAt: number;
+  /**
+   * Issue #160: the posture this session started with. A follow-up
+   * continues the stored session only when it matches the current
+   * setting; on a mismatch the probe drops it and forks fresh.
+   * Undefined on rows persisted before posture tracking — treated as a
+   * mismatch (fork fresh once, then re-anchored).
+   */
+  readOnly?: boolean;
 }
 
 export interface SessionManagerOptions {
@@ -379,6 +387,7 @@ export class SessionManager {
       lastSeenSeq: base.logSeq,
       live: true,
       lastUsedAt: this.clock.now(),
+      readOnly: base.build.readOnly,
     };
     this.conversations.set(session.id, record);
     this.persistConversation(record);
@@ -411,6 +420,9 @@ export class SessionManager {
       lastSeenSeq: base?.logSeq ?? 0,
       live: true,
       lastUsedAt: this.clock.now(),
+      // The fork inherits its base's posture. A missing base should not
+      // happen here (the caller just ensured it); fall back to lockdown.
+      readOnly: base?.build.readOnly ?? true,
     };
     this.conversations.set(session.id, record);
     this.persistConversation(record);
@@ -430,6 +442,16 @@ export class SessionManager {
       this.persistConversation(record);
     }
     return { ...out, rebuilt: ensured.rebuilt };
+  }
+
+  /**
+   * The posture a tracked conversation session started with (issue
+   * #160), or undefined when unknown (rows persisted before posture
+   * tracking, or untracked ids). The follow-up probe treats unknown as
+   * a mismatch and forks fresh once.
+   */
+  conversationAccess(sessionId: string): boolean | undefined {
+    return this.conversations.get(sessionId)?.readOnly;
   }
 
   /**
@@ -465,6 +487,7 @@ export class SessionManager {
         record.session = rebuilt;
         record.live = true;
         record.lastUsedAt = this.clock.now();
+        record.readOnly = base.build.readOnly;
         this.conversations.delete(sessionId);
         this.conversations.set(rebuilt.id, record);
         this.persistConversation(record);
@@ -653,6 +676,7 @@ export class SessionManager {
       lastSeenSeq: record.lastSeenSeq,
       live: record.live,
       updatedAt: record.lastUsedAt,
+      ...(record.readOnly !== undefined ? { readOnly: record.readOnly } : {}),
     });
   }
 }
