@@ -1,0 +1,9 @@
+{
+  "name": "unvibe-spike-pi-runner",
+  "private": true,
+  "type": "module",
+  "description": "Spike #171: a native Pi AgentRunner (no ACP). Not a workspace; never merged.",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.2.0"
+  }
+}
