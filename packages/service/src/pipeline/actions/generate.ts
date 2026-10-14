@@ -60,6 +60,7 @@ async function enqueueGenerate(
     kind: "go-deeper",
     provider: settings.main.provider,
     model: settings.main.model,
+    ...(settings.main.effort ? { effort: settings.main.effort } : {}),
     priority: JOB_PRIORITY.userRequested,
     dedupe: { anchor: `go-deeper:${cardId}`, requestKind: "generate", baseVersion },
     cardId,

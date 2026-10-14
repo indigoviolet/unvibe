@@ -40,7 +40,7 @@ import { McpRegistry } from "./mcp/index.js";
 import { StoreReviewReader } from "./mcp/reviewReader.js";
 import { RepoStore } from "./repos/store.js";
 import { ReviewStore } from "./state/store.js";
-import { SettingsStore, StaticModelCatalog, type ModelCatalog, type OfferedModels } from "./settings/index.js";
+import { SettingsStore, StaticModelCatalog, type ModelCatalog, type OfferedModels, type OfferedThinking } from "./settings/index.js";
 import { SessionManager } from "./sessions/manager.js";
 import { SessionStore } from "./sessions/store.js";
 import { SharedContextService, setInteractionHandler } from "./sharedctx/index.js";
@@ -151,6 +151,44 @@ export class AcpModelCatalog implements ModelCatalog {
         .filter((m) => Boolean(m.id));
       if (models.length === 0) return null;
       return { models, defaultId: res.defaultId };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Live thinking-level offering (issue #172): the adapter's effort
+   * selector options, or null when unknown (no live adapter, probe
+   * failed/timed out). Null means settings skips effort validation.
+   */
+  async thinking(provider: string): Promise<OfferedThinking | null> {
+    const live = (
+      this.runner as unknown as {
+        listThinking?: (p: string) => Promise<
+          { configId: string; current: string; options: { value: string; name?: string; description?: string }[] }[]
+        >;
+      }
+    ).listThinking;
+    if (typeof live !== "function") return null;
+    try {
+      const selectors = await withTimeout(
+        live.call(this.runner, provider),
+        10_000,
+        () => Promise.reject(new Error("thinking() timed out")),
+      );
+      const first = selectors[0];
+      if (!first || first.options.length === 0) return null;
+      return {
+        label: first.configId === "reasoning_effort" ? "Reasoning effort" : "Effort",
+        options: first.options
+          .map((o) => ({
+            value: o.value,
+            ...(o.name ? { name: o.name } : {}),
+            ...(o.description ? { description: o.description } : {}),
+          }))
+          .filter((o) => Boolean(o.value)),
+        ...(first.current ? { current: first.current } : {}),
+      };
     } catch {
       return null;
     }

@@ -184,6 +184,7 @@ export class SharedContextService {
       guideRevision: guideRevisionForSnapshot(snap),
       provider: settings.main.provider,
       model: settings.main.model,
+      effort: settings.main.effort ?? "",
     });
   }
 

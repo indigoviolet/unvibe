@@ -13,8 +13,8 @@ import type { BaseKey } from "./manager.js";
 export interface PersistedBase {
   key: BaseKey;
   session: Session;
-  /** Build params needed to restart the session (cwd, system prompt, MCP). */
-  build: { cwd: string; systemPrompt: string; mcpServers: unknown[] };
+  /** Build params needed to restart the session (cwd, system prompt, MCP, effort). */
+  build: { cwd: string; systemPrompt: string; mcpServers: unknown[]; effort: string };
   pack: string;
   logSeq: number;
   live: boolean;

@@ -31,10 +31,12 @@ import { RealClock } from "../jobs/clock.js";
 import type { SessionStore } from "./store.js";
 
 /**
- * Base identity: (review, review version, guide revision, model). Per-model
- * caches. The review id is part of the key: every new review starts at `v1`
- * with the same (empty) guide revision, so without it reviews would share
- * one base session.
+ * Base identity: (review, review version, guide revision, model, effort).
+ * Per-model caches. The review id is part of the key: every new review
+ * starts at `v1` with the same (empty) guide revision, so without it
+ * reviews would share one base session. Effort is part of the key (#172):
+ * a changed thinking level builds a new base instead of reusing one that
+ * runs at another level.
  */
 export interface BaseKey {
   reviewId: string;
@@ -42,10 +44,12 @@ export interface BaseKey {
   guideRevision: string;
   provider: string;
   model: string;
+  /** Thinking level ("": adapter default). */
+  effort: string;
 }
 
 export function baseKeyString(key: BaseKey): string {
-  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model].join("|");
+  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.effort ?? ""].join("|");
 }
 
 /** Review id of a base key string (its first component). */
@@ -88,7 +92,7 @@ interface BaseRecord {
   key: BaseKey;
   keyString: string;
   session: Session;
-  build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[] };
+  build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[]; effort: string };
   pack: string;
   logSeq: number;
   live: boolean;
@@ -139,6 +143,12 @@ export class SessionManager {
       // Bases persisted before the key carried a review id cannot be told
       // apart per review: forget them, they rebuild from the pack.
       if (!b.key.reviewId) {
+        this.store.remove(b.session.id);
+        continue;
+      }
+      // Bases persisted before the key carried effort cannot be told apart
+      // per thinking level (#172): forget them, they rebuild from the pack.
+      if (typeof (b.key as { effort?: unknown }).effort !== "string") {
         this.store.remove(b.session.id);
         continue;
       }
@@ -212,7 +222,7 @@ export class SessionManager {
       }
     }
     const session = await this.openBaseSession(
-      { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
+      { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers, effort: build.key.effort },
       build.pack,
       build.signal,
       build.key,
@@ -221,7 +231,7 @@ export class SessionManager {
       key: build.key,
       keyString: baseKeyString(build.key),
       session,
-      build: { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
+      build: { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers, effort: build.key.effort },
       pack: build.pack,
       logSeq: closed?.logSeq ?? 0,
       live: true,
@@ -236,7 +246,7 @@ export class SessionManager {
 
   /** Start a session and send the base pack, waiting for "ready". */
   private async openBaseSession(
-    build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[] },
+    build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[]; effort: string },
     pack: string,
     signal: AbortSignal | undefined,
     key: BaseKey,
@@ -247,6 +257,7 @@ export class SessionManager {
       cwd: build.cwd,
       systemPrompt: build.systemPrompt,
       mcpServers: build.mcpServers,
+      ...(build.effort !== "" ? { effort: build.effort } : {}),
     });
     const { text } = await this.sendText(session, pack, signal);
     if (!/ready/i.test(text)) {
@@ -345,6 +356,7 @@ export class SessionManager {
         cwd: base.build.cwd,
         systemPrompt: base.build.systemPrompt,
         mcpServers: base.build.mcpServers,
+        ...(base.key.effort !== "" ? { effort: base.key.effort } : {}),
       });
       await this.sendText(session, base.pack, opts.signal);
     }
@@ -545,6 +557,7 @@ export class SessionManager {
       cwd: base.build.cwd,
       systemPrompt: base.build.systemPrompt,
       mcpServers: base.build.mcpServers,
+      ...(base.key.effort !== "" ? { effort: base.key.effort } : {}),
     });
     await this.drainEvents(session, base.pack);
     return session;

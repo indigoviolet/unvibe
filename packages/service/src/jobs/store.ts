@@ -13,6 +13,7 @@ const TERMINAL: ReadonlySet<JobState> = new Set(["done", "error", "cancelled"]);
 
 interface JobData {
   provider?: string;
+  effort?: string;
   promptSnapshot?: string;
   usage?: Job["usage"];
   cacheHitRate?: number;
@@ -51,6 +52,7 @@ function rowToJob(row: {
     kind: row.kind as Job["kind"],
     model: row.model,
     ...(data.provider !== undefined ? { provider: data.provider } : {}),
+    ...(data.effort !== undefined ? { effort: data.effort } : {}),
     ...(row.review_id ? { reviewId: row.review_id } : {}),
     priority: row.priority,
     state: row.state as JobState,
@@ -74,6 +76,7 @@ export class JobStore implements JobPersistence {
   save(job: Job): void {
     const data: JobData = {
       ...(job.provider !== undefined ? { provider: job.provider } : {}),
+      ...(job.effort !== undefined ? { effort: job.effort } : {}),
       ...(job.promptSnapshot !== undefined ? { promptSnapshot: job.promptSnapshot } : {}),
       ...(job.usage !== undefined ? { usage: job.usage } : {}),
       ...(job.cacheHitRate !== undefined ? { cacheHitRate: job.cacheHitRate } : {}),

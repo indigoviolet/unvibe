@@ -49,12 +49,14 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
       : undefined;
     const provider = settings?.main.provider ?? "unknown";
     const model = settings?.main.model ?? "unknown";
+    const effort = settings?.main.effort ?? "";
     const currentKey = baseKeyString({
       reviewId: id,
       reviewVersion: `v${snapshot.version.n}`,
       guideRevision: guideRevisionForSnapshot(snapshot),
       provider,
       model,
+      effort,
     });
 
     // The pack the agents actually get: same snapshot adapter and builder

@@ -433,10 +433,10 @@ function withValidation(
 
 /**
  * Find a stored second-opinion result for the identical request
- * (card, mode, model, version). Used for PRD §12 cross-request reuse (#10):
- * a repeat returns the stored result with no agent call. A deleted result
- * (removeSecondOpinion) or a new base version (version mismatch) or a
- * model change is legitimately a new request.
+ * (card, mode, model, effort, version). Used for PRD §12 cross-request
+ * reuse (#10): a repeat returns the stored result with no agent call. A
+ * deleted result (removeSecondOpinion) or a new base version (version
+ * mismatch) or a model or effort change is legitimately a new request.
  */
 export function findStoredSecondOpinion(
   snapshot: ReviewSnapshot,
@@ -445,9 +445,14 @@ export function findStoredSecondOpinion(
   provider: string,
   model: string,
   version: number,
+  effort = "",
 ): SecondOpinionResult | null {
   const matches = (s: SecondOpinionResult): boolean =>
-    s.mode === mode && s.provider === provider && s.model === model && s.version === version;
+    s.mode === mode &&
+    s.provider === provider &&
+    s.model === model &&
+    (s.effort ?? "") === effort &&
+    s.version === version;
   for (const ann of snapshot.annotations) {
     const turn = (ann.turns ?? []).find((t) => t.id === cardId);
     const hit = turn?.secondOpinions?.find(matches);
@@ -488,18 +493,19 @@ export async function requestSecondOpinion(
   const version = snapshot.version.n;
   const provider = settings.secondOpinion.provider;
   const model = settings.secondOpinion.model;
+  const effort = settings.secondOpinion.effort ?? "";
   const kind: JobKind = "second-opinion";
   // PRD §12 reuse (#10): identical stored result (same card, mode, model,
-  // base version) returns without an agent call — no job, no tokens.
-  if (findStoredSecondOpinion(snapshot, req.cardId, req.mode, provider, model, version)) {
+  // effort, base version) returns without an agent call — no job, no tokens.
+  if (findStoredSecondOpinion(snapshot, req.cardId, req.mode, provider, model, version, effort)) {
     return { reused: true };
   }
-  // Dedupe by (card, mode, model, version): identical requests share one
-  // job/result while the first is still active (PRD §12).
+  // Dedupe by (card, mode, model, effort, version): identical requests share
+  // one job/result while the first is still active (PRD §12).
   const dedupe = {
     anchor: `card:${req.cardId}`,
     requestKind: `second-opinion:${req.mode}`,
-    baseVersion: `v${version}:${provider}:${model}`,
+    baseVersion: `v${version}:${provider}:${model}:${effort}`,
   };
   const built = await buildSecondOpinionPrompt(deps, req.reviewId, req.cardId, req.mode);
   let turn = built.turn;
@@ -519,6 +525,7 @@ export async function requestSecondOpinion(
     kind,
     provider,
     model,
+    ...(effort !== "" ? { effort } : {}),
     priority: JOB_PRIORITY.userRequested,
     dedupe,
     cardId: cardIdForJob,
@@ -633,6 +640,7 @@ export async function requestSecondOpinion(
           mode: req.mode,
           provider,
           model,
+          ...(effort !== "" ? { effort } : {}),
           verdict,
           reasoning,
           blocks: fixedBlocks,

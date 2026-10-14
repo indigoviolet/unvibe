@@ -16,7 +16,7 @@
  * Without wired stores the endpoints stay 501 stubs (scaffold behaviour).
  */
 import type { FastifyInstance } from "fastify";
-import type { Settings } from "@unvibe/shared";
+import type { Settings, ThinkingResponse } from "@unvibe/shared";
 import { resolveEffectiveSettings, unsetSecondOpinion, validateSettings } from "../settings/index.js";
 import type { RouteDeps } from "./deps.js";
 
@@ -55,23 +55,45 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     // offerings (adapter down) skip validation; readiness flags the pick
     // if it later disappears.
     const offered = deps.models?.offered;
-    if (typeof offered === "function") {
+    const thinking = deps.models?.thinking;
+    if (typeof offered === "function" || typeof thinking === "function") {
       const problems: string[] = [];
       for (const role of ROLES) {
         const pick = patch[role];
         if (!pick || pick.model === "") continue;
-        try {
-          const live = await offered.call(deps.models, pick.provider);
-          if (live) {
-            const ids = live.models.map((m) => (typeof m === "string" ? m : m.id));
-            if (!ids.includes(pick.model)) {
-              problems.push(
-                `${role} model "${pick.model}" is not offered by ${pick.provider} (offers: ${ids.join(", ") || "none"}) — pick one of the offered models`,
-              );
+        if (typeof offered === "function") {
+          try {
+            const live = await offered.call(deps.models, pick.provider);
+            if (live) {
+              const ids = live.models.map((m) => (typeof m === "string" ? m : m.id));
+              if (!ids.includes(pick.model)) {
+                problems.push(
+                  `${role} model "${pick.model}" is not offered by ${pick.provider} (offers: ${ids.join(", ") || "none"}) — pick one of the offered models`,
+                );
+              }
             }
+          } catch {
+            // Probe hiccup: stored value stands; readiness flags it later.
           }
-        } catch {
-          // Probe hiccup: stored value stands; readiness flags it later.
+        }
+        // Never persist an effort value the adapter does not offer.
+        // Default (""/absent) always passes: it leaves the adapter's own
+        // setting alone.
+        const effort = pick.effort ?? "";
+        if (effort !== "" && typeof thinking === "function") {
+          try {
+            const live = await thinking.call(deps.models, pick.provider);
+            if (live) {
+              const values = live.options.map((o) => o.value);
+              if (!values.includes(effort)) {
+                problems.push(
+                  `${role} effort "${effort}" is not offered by ${pick.provider} (offers: ${values.join(", ") || "none"}) — pick one of the offered values or Default`,
+                );
+              }
+            }
+          } catch {
+            // Probe hiccup: stored value stands; the job reports it later.
+          }
         }
       }
       if (problems.length > 0) return reply.code(400).send({ errors: problems });
@@ -97,5 +119,27 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
       });
     }
     return { provider, models };
+  });
+
+  app.get("/api/thinking", async (req, reply) => {
+    if (!deps.models) return reply.code(501).send(TODO);
+    const q = req.query as Record<string, string | undefined>;
+    const provider = q["provider"];
+    if (!provider) return reply.code(400).send({ error: "missing ?provider=" });
+    const thinking = deps.models.thinking;
+    // No live adapter (replay/test runners, offline): no options, so the
+    // UI offers Default only — never an error.
+    if (typeof thinking !== "function") {
+      const body: ThinkingResponse = { provider, options: [] };
+      return body;
+    }
+    const live = await thinking.call(deps.models, provider);
+    const body: ThinkingResponse = {
+      provider,
+      options: live?.options ?? [],
+      ...(live?.label ? { label: live.label } : {}),
+      ...(live?.current ? { current: live.current } : {}),
+    };
+    return body;
   });
 }

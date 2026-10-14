@@ -221,6 +221,11 @@ export interface SecondOpinionResult {
   /** Second-opinion model that produced this result (label in the UI). */
   provider: string;
   model: string;
+  /**
+   * Thinking level the run used (issue #172); absent means the adapter
+   * default. Part of the reuse identity: a changed effort re-runs.
+   */
+  effort?: string;
   verdict: SecondOpinionVerdict;
   /** Reasoning text from the trailing JSON (plain text fallback). */
   reasoning: string;
@@ -659,6 +664,11 @@ export interface Job {
   model: string;
   /** Provider the job runs on (per-provider concurrency cap, PRD §12). */
   provider?: string;
+  /**
+   * Thinking level the job ran with (issue #172): the role's effort
+   * setting, or absent when the adapter default was used.
+   */
+  effort?: string;
   /** Review this job belongs to (for `GET /api/jobs?review=:id` + WS fan-out). */
   reviewId?: string;
   priority: number;

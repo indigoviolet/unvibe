@@ -14,6 +14,8 @@ export interface FakeScript {
 export class FakeAgentRunner implements AgentRunner {
   readonly sessions = new Map<string, Session>();
   readonly prompts: { sessionId: string; text: string }[] = [];
+  /** Start options per session, in order (tests assert the effort sent). */
+  readonly starts: { sessionId: string; provider: string; model: string; effort: string }[] = [];
   private nextId = 1;
 
   constructor(private scripts: FakeScript[] = []) {}
@@ -28,6 +30,7 @@ export class FakeAgentRunner implements AgentRunner {
     cwd: string;
     systemPrompt: string;
     mcpServers: McpServerConfig[];
+    effort?: string;
   }): Promise<Session> {
     const session: Session = {
       id: `fake-${this.nextId++}`,
@@ -35,6 +38,12 @@ export class FakeAgentRunner implements AgentRunner {
       model: opts.model,
     };
     this.sessions.set(session.id, session);
+    this.starts.push({
+      sessionId: session.id,
+      provider: opts.provider,
+      model: opts.model,
+      effort: opts.effort ?? "",
+    });
     return session;
   }
 
