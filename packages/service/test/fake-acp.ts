@@ -64,6 +64,8 @@ export interface FakeAgentState {
   resumeCalls: string[];
   forkCalls: Array<{ from: string; atMessage?: string; mcpServers?: unknown; meta?: unknown }>;
   setModelCalls: Array<{ sessionId: string; value: string }>;
+  /** Every `session/set_config_option` call (#172: model + effort alike). */
+  setConfigCalls: Array<{ sessionId: string; configId: string; value: string }>;
   cancelled: Set<string>;
   nextId: number;
   /** When true, prompts on forked sessions fail until resume() is called. */
@@ -86,6 +88,7 @@ export function createFakeState(turns: FakeTurn[] = []): FakeAgentState {
     resumeCalls: [],
     forkCalls: [],
     setModelCalls: [],
+    setConfigCalls: [],
     cancelled: new Set(),
     nextId: 1,
     forkNeedsResume: false,
@@ -203,6 +206,11 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
     .onRequest("session/set_mode", async () => ({}))
     .onRequest("session/set_config_option", async (ctx: any) => {
       state.setModelCalls.push({ sessionId: ctx.params.sessionId, value: ctx.params.value });
+      state.setConfigCalls.push({
+        sessionId: ctx.params.sessionId,
+        configId: ctx.params.configId,
+        value: ctx.params.value,
+      });
       return {};
     })
     .onNotification("session/cancel", async (ctx: any) => {

@@ -450,6 +450,17 @@ describe("card scope (#62)", () => {
     expect(interrupted[0].cardId).toBe("c-central");
     gate.resolve();
   });
+
+  it("carries effort on the job and persists it (#172); Default carries no key", async () => {
+    const { queue, store } = makeQueue({ persist: true });
+    const job = queue.enqueue(spec({ reviewId: "r1", effort: "high", run: async () => {} }));
+    expect(job.effort).toBe("high");
+    expect(queue.get(job.id)?.effort).toBe("high");
+    expect(store?.get(job.id)?.effort).toBe("high");
+    const plain = queue.enqueue(spec({ reviewId: "r1", run: async () => {} }));
+    expect("effort" in queue.get(plain.id)!).toBe(false);
+    await queue.drain();
+  });
 });
 
 describe("persistence and restart recovery", () => {

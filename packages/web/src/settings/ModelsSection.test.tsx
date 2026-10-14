@@ -45,6 +45,25 @@ function mockModels(described?: Record<string, { id: string; description?: strin
   });
 }
 
+type ThinkingMap = Record<string, { value: string; name?: string }[]>;
+
+const THINKING_BOTH: ThinkingMap = {
+  claude: [
+    { value: "low", name: "Low" },
+    { value: "high", name: "High" },
+  ],
+  codex: [
+    { value: "low", name: "Low" },
+    { value: "high", name: "High" },
+  ],
+};
+
+function mockThinking(byProvider: ThinkingMap = THINKING_BOTH): void {
+  vi.spyOn(api, "thinking").mockImplementation((provider: string) =>
+    Promise.resolve({ provider, label: "Effort", options: byProvider[provider] ?? [], current: "high" }),
+  );
+}
+
 function provSelect(role: string): HTMLSelectElement {
   return document.getElementById(`prov-${role}`) as HTMLSelectElement;
 }
@@ -53,10 +72,15 @@ function modelSelect(role: string): HTMLSelectElement {
   return document.getElementById(`model-${role}`) as HTMLSelectElement;
 }
 
+function effortSelect(role: string): HTMLSelectElement {
+  return document.getElementById(`effort-${role}`) as HTMLSelectElement;
+}
+
 describe("ModelsSection provider switch", () => {
   it("saves nothing on provider change, then saves the new provider with the chosen model", async () => {
     mockReadiness();
     mockModels();
+    mockThinking();
     const next = { ...SETTINGS, small: { provider: "codex", model: "gpt-6-luna" } } as Settings;
     const saveSettings = vi.spyOn(api, "saveSettings").mockResolvedValue(next);
     const onSaved = vi.fn();
@@ -76,6 +100,7 @@ describe("ModelsSection provider switch", () => {
 
   it("shows a disabled placeholder with no stale description while browsing; switching back restores the saved model", async () => {
     mockReadiness();
+    mockThinking();
     mockModels({
       claude: [
         { id: "opus", description: "Opus description" },
@@ -109,6 +134,7 @@ describe("ModelsSection provider switch", () => {
   it("still warns when the saved model is really gone, and hides the alert while browsing", async () => {
     mockReadiness();
     mockModels();
+    mockThinking();
     const retired = {
       ...SETTINGS,
       small: { provider: "claude", model: "retired-x" },
@@ -129,6 +155,7 @@ describe("ModelsSection provider switch", () => {
   it("failed save shows a readable error, reverts to the saved pick, and clears on the next change", async () => {
     mockReadiness();
     mockModels();
+    mockThinking();
     const saveSettings = vi
       .spyOn(api, "saveSettings")
       .mockRejectedValue(
@@ -165,6 +192,7 @@ describe("ModelsSection provider switch", () => {
   it("does not snap the browse back on a settings refetch, but still syncs when not browsing", async () => {
     mockReadiness();
     mockModels();
+    mockThinking();
     const onSaved = vi.fn();
     const { rerender } = render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
 
@@ -200,6 +228,7 @@ describe("ModelsSection provider switch", () => {
 
   it("follows the browsed provider through loading and error states", async () => {
     mockReadiness();
+    mockThinking();
     let resolveCodex!: (v: ModelsResult) => void;
     const codexGate = new Promise<ModelsResult>((res) => {
       resolveCodex = res;
@@ -223,6 +252,7 @@ describe("ModelsSection provider switch", () => {
 
   it("shows the browsed provider's list error without a false missing alert", async () => {
     mockReadiness();
+    mockThinking();
     vi.spyOn(api, "models").mockImplementation((provider: string) => {
       if (provider === "codex") {
         return Promise.reject(
@@ -248,6 +278,7 @@ describe("ModelsSection provider switch", () => {
   it("second opinion keeps its Not set state while browsing and can be set from another provider", async () => {
     mockReadiness();
     mockModels();
+    mockThinking();
     const unset = {
       ...SETTINGS,
       secondOpinion: { provider: "codex", model: "" },
@@ -285,6 +316,74 @@ describe("ModelsSection provider switch", () => {
       expect(saveSettings).toHaveBeenCalledWith({ secondOpinion: { provider: "claude", model: "opus" } }),
     );
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(next));
+  });
+});
+
+describe("ModelsSection effort per role (#172)", () => {
+  it("offers Default first, then the adapter's values, and saves the pick with the model", async () => {
+    mockReadiness();
+    mockModels();
+    mockThinking();
+    const next = { ...SETTINGS, small: { provider: "claude", model: "haiku", effort: "high" } } as Settings;
+    const saveSettings = vi.spyOn(api, "saveSettings").mockResolvedValue(next);
+    const onSaved = vi.fn();
+    render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
+
+    await waitFor(() => expect(effortSelect("small")).toHaveValue(""));
+    const options = Array.from(effortSelect("small").querySelectorAll("option")).map((o) => o.value);
+    expect(options).toEqual(["", "low", "high"]);
+
+    fireEvent.change(effortSelect("small"), { target: { value: "high" } });
+    await waitFor(() =>
+      expect(saveSettings).toHaveBeenCalledWith({ small: { provider: "claude", model: "haiku", effort: "high" } }),
+    );
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(next));
+  });
+
+  it("falls back to Default with a notice when the new model does not offer the saved effort", async () => {
+    mockReadiness();
+    mockModels();
+    // Codex offers only low: moving the small role there drops "high".
+    mockThinking({
+      claude: [
+        { value: "low", name: "Low" },
+        { value: "high", name: "High" },
+      ],
+      codex: [{ value: "low", name: "Low" }],
+    });
+    const saved = { ...SETTINGS, small: { provider: "claude", model: "haiku", effort: "high" } } as Settings;
+    const next = { ...saved, small: { provider: "codex", model: "gpt-6-luna", effort: "" } } as Settings;
+    const saveSettings = vi.spyOn(api, "saveSettings").mockResolvedValue(next);
+    render(<ModelsSection settings={saved} onSaved={vi.fn()} />);
+
+    await waitFor(() => expect(effortSelect("small")).toHaveValue("high"));
+    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
+    await screen.findByText("Pick a codex model…");
+    fireEvent.change(modelSelect("small"), { target: { value: "gpt-6-luna" } });
+    await waitFor(() =>
+      expect(saveSettings).toHaveBeenCalledWith({
+        small: { provider: "codex", model: "gpt-6-luna", effort: "" },
+      }),
+    );
+    await waitFor(() => expect(screen.getByTestId("model-small-effort-reset")).toHaveTextContent(
+      "“high” isn't available for codex — reset to Default.",
+    ));
+  });
+
+  it("warns when the saved effort is no longer offered, and stays quiet while browsing", async () => {
+    mockReadiness();
+    mockModels();
+    mockThinking();
+    const stale = { ...SETTINGS, small: { provider: "claude", model: "haiku", effort: "ultra" } } as Settings;
+    render(<ModelsSection settings={stale} onSaved={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTestId("model-small-effort-missing")).toBeInTheDocument());
+
+    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
+    await screen.findByText("Pick a codex model…");
+    expect(screen.queryByTestId("model-small-effort-missing")).not.toBeInTheDocument();
+    // The effort control waits for a model pick while browsing.
+    expect(effortSelect("small")).toBeDisabled();
   });
 });
 
