@@ -168,7 +168,6 @@ describe("ThreadView ask-about (issue #136)", () => {
     }
   });
 });
-
 describe("ThreadView authorship (owner decision: icons, not text)", () => {
   test("the user's avatar is a person icon with a screen-reader name, and no visible author text", () => {
     const found = useReview.getState().snapshot?.annotations[0] as Annotation;
@@ -179,5 +178,75 @@ describe("ThreadView authorship (owner decision: icons, not text)", () => {
     // No visible "Me"/"You" text: the icon alone is the marker.
     expect(avatar?.textContent).toBe("");
     expect(container.querySelector(".msg .who")).toBeNull();
+  });
+});
+
+describe("ThreadView suggested comments (issue #163)", () => {
+  function suggested(over: Partial<Annotation> = {}): Annotation {
+    return thread({
+      anchor: {
+        host: { kind: "diff-line", fileKey: "conn", line: 82 },
+        quotedText: "_OBSOLETE_FOLD_RE",
+        prefix: "",
+        suffix: "",
+        position: 82,
+        version: 1,
+      },
+      messages: [{ who: "ai", text: "Consider a boundary test.", suggested: true }],
+      post: false,
+      ...over,
+    });
+  }
+
+  function seedSuggested(s: Annotation): void {
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [s] });
+  }
+
+  test("an AI-suggested comment has no reply box", () => {
+    const s = suggested();
+    seedSuggested(s);
+    const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    // No composer at all: no textarea, no Reply/Save/Discard.
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Discard" })).toBeNull();
+    // The suggestion text itself still shows.
+    expect(screen.getByText("Consider a boundary test.")).toBeInTheDocument();
+  });
+
+  test("a suggestion keeps ask-about, mark-for-PR, delete and close", () => {
+    const s = suggested();
+    seedSuggested(s);
+    render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    expect(screen.getByRole("button", { name: "Ask the agent about this" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Mark for the PR/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  test("ask-about on a suggestion asks on the comment anchor, quoting the suggestion", () => {
+    const s = suggested();
+    seedSuggested(s);
+    const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
+    render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Ask the agent about this" }));
+      expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
+        kind: "ask",
+        quote: "Consider a boundary test.",
+        anchor: { where: "diff-line", fileKey: "conn", line: 82 },
+        message: "Consider a boundary test.",
+      });
+    } finally {
+      actionSpy.mockRestore();
+    }
+  });
+
+  test("a user comment keeps its reply box", () => {
+    const commenting = thread({ messages: [{ who: "you", text: "Nit" }] });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
+    render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
+    expect(screen.getByLabelText("Reply")).toBeInTheDocument();
   });
 });

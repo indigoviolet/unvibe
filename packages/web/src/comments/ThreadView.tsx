@@ -12,7 +12,10 @@
  *   survives any re-render elsewhere (the shared `ReplyBox`, debounced
  *   through `PATCH …/comments/:id` `reply`). Discard removes a new
  *   comment and clears the box on an existing one; Cmd/Ctrl+Enter sends.
- *   Replies are reviewer-written only — never agent answers.
+ *   Replies are reviewer-written only — never agent answers. Issue #163:
+ *   agent-suggested comments carry no reply box (a reply could never be
+ *   answered); selecting in the suggestion summons the toolbar instead,
+ *   and "Ask the agent about this" answers.
  * - Outdated comments show the original snippet + a link to the new code.
  * - Posted comments show their posted state and are never pending.
  */
@@ -79,6 +82,10 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   const isNew = messages.length === 0;
   const posted = thread.postedAt !== undefined;
   const successor = successsorTarget(thread);
+  // Issue #163: an agent-suggested comment (the review's findings offered
+  // as draft comments). Its text behaves like other agent text — the
+  // selection toolbar works inside it — and it carries no reply box.
+  const suggested = messages.some((m) => m.who === "ai" && m.suggested === true);
 
   const onAskAbout = (): void => {
     // The only way a comment leads to an agent reply: the usual Ask card
@@ -193,7 +200,13 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
         </div>
       ) : null}
       {messages.map((m, i) => (
-        <div className="msg" key={i}>
+        <div
+          className="msg"
+          key={i}
+          // Issue #163: selections in the suggestion summon the toolbar,
+          // anchored to this comment.
+          data-ai-comment={m.who === "ai" && m.suggested === true ? thread.id : undefined}
+        >
           <span
             className={`av ${m.who === "you" ? "you" : "ai"}`}
             role="img"
@@ -222,7 +235,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
       ) : null}
       {readOnly ? (
         <div className="hint">Viewing an older version · read-only</div>
-      ) : (
+      ) : suggested ? null : (
         <ReplyBox
           reviewId={reviewId}
           annotationId={thread.id}

@@ -107,6 +107,11 @@ export function isRevealedElement(el: HTMLElement): boolean {
  */
 export function selectionScopeElement(el: HTMLElement): Element | null {
   if (el.closest("[data-so]")) return null;
+  // Issue #163: offsets record within the suggestion text (placement
+  // falls back to text match on the comment's host — the quote comes
+  // from the suggestion, not the host).
+  const sugScope = el.closest("[data-ai-comment]");
+  if (sugScope) return sugScope as Element;
   const hunkEl = el.closest("[data-hunksum]");
   if (hunkEl) return hunkEl;
   const td = el.closest("#right table.diff td.c");
@@ -137,6 +142,21 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // blocks live on the result, not on any card or answer, so the
   // service has no block to anchor to. No toolbar there.
   if (el.closest("[data-so]")) return null;
+  // Issue #163: a selection inside an agent-suggested comment anchors to
+  // the comment itself (its own anchor) — the suggestion text is agent
+  // text, not a stable host. The toolbar's Ask/Explain/Comment then act
+  // on the comment.
+  const sug = el.closest("[data-ai-comment]");
+  if (sug) {
+    const id = (sug as HTMLElement).dataset.aiComment ?? "";
+    const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
+    const host = found && found.type === "comment" ? found.anchor.host : null;
+    if (!host) return null;
+    if (host.kind === "block") return { anchor: { where: "block", blockId: host.blockId } };
+    if (host.kind === "description") return { anchor: { where: "description", paragraphId: host.paragraphId } };
+    if (host.kind === "diff-line") return { anchor: { where: "diff-line", fileKey: host.fileKey, line: host.line } };
+    return null;
+  }
   // Issue #136: inside a conversation answer the owning unit is the
   // answer, found from the answer wrapper's attribute — not from
   // `section.card[id]`, which names the whole card.
@@ -463,6 +483,11 @@ export function SelectionToolbar() {
         const scope = selectionScopeElement(anchorEl);
         const offsets = scope ? (selectionOffsetsIn(scope, sel) ?? undefined) : undefined;
         const cardAnchor = commentCardAnchor(host.anchor);
+        // Issue #163: a selection inside a suggested comment comments on
+        // the comment's own anchor (quoting the selection into the user's
+        // own comment) — the suggestion text is not a host.
+        const inSuggested = (elementOf(anchorNode) ?? document.body).closest("[data-ai-comment]") !== null;
+        const commentAnchor = inSuggested ? host.anchor : cardAnchor;
         // Issue #138: a hunk anchor needs the touched rows mapped from
         // the hunk itself (the summary is no table row): Comment lands on
         // the hunk's first changed line without activating the summary,
@@ -488,7 +513,7 @@ export function SelectionToolbar() {
           anchor: host.anchor,
           ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
-          ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
+          ...(commentAnchor ? { commentAnchor } : {}),
           ...(hunkComment ? { commentAnchor: hunkComment } : {}),
           ...(diffRange ? { diffRange } : {}),
           ...(hunkRange ? { diffRange: hunkRange } : {}),

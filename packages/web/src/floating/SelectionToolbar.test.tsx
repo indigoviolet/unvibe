@@ -131,6 +131,70 @@ describe("selectionScopeElement (issue #166)", () => {
   });
 });
 
+describe("resolveSelectionHost inside AI-suggested comments (issue #163)", () => {
+  function seedSuggested(): void {
+    useReview.getState().clear();
+    useReview.getState().setSnapshot({
+      review: { id: "r", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+      version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
+      files: [],
+      pages: [],
+      annotations: [
+        {
+          id: "ann_sug",
+          type: "comment",
+          anchor: {
+            host: { kind: "diff-line", fileKey: "conn", line: 82 },
+            quotedText: "_OBSOLETE_FOLD_RE",
+            prefix: "",
+            suffix: "",
+            position: 82,
+            version: 1,
+          },
+          open: true,
+          messages: [{ who: "ai", text: "Consider a boundary test.", suggested: true }],
+          post: false,
+        },
+      ],
+      hunkStates: [],
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+    } as unknown as ReviewSnapshot);
+  }
+
+  test("a selection in the suggestion anchors to the comment", () => {
+    seedSuggested();
+    document.body.innerHTML =
+      `<div id="right"><table class="diff"><tbody>` +
+      `<tr id="L-conn-82"><td class="n">82</td><td class="c"><span>code</span></td></tr>` +
+      `<tr class="pr"><td colspan="3"><div class="pin"><div class="ithread" id="ann_sug">` +
+      `<div class="msg" data-ai-comment="ann_sug"><div><p><span id="in-sug">boundary test</span></p></div></div>` +
+      `</div></div></td></tr></tbody></table></div>`;
+    try {
+      expect(resolveSelectionHost(document.getElementById("in-sug")!)).toEqual({
+        anchor: { where: "diff-line", fileKey: "conn", line: 82 },
+      });
+      const scope = selectionScopeElement(document.getElementById("in-sug")!);
+      expect(scope?.getAttribute("data-ai-comment")).toBe("ann_sug");
+    } finally {
+      useReview.getState().clear();
+    }
+  });
+
+  test("an unknown suggestion id resolves to nothing", () => {
+    seedSuggested();
+    document.body.innerHTML =
+      `<div id="right"><div class="msg" data-ai-comment="ann_gone"><span id="in-gone">x</span></div></div>`;
+    try {
+      expect(resolveSelectionHost(document.getElementById("in-gone")!)).toBeNull();
+    } finally {
+      useReview.getState().clear();
+    }
+  });
+});
+
 function seedConversationCard(): void {
   const card: Annotation = {
     id: "ann_1",

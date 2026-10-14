@@ -173,6 +173,26 @@ test("an Ask card and a comment share one diff line", async ({ page }) => {
   await expect(note).toHaveClass(/ithread/);
 });
 
+test("AI-suggested comments carry no reply box; Ask opens an Ask card (issue #163)", async ({ page }) => {
+  await gotoReview(page);
+  await page.locator('#right [role="tab"]').getByText("Diff").click();
+  // The seeded suggestion on the diff (agent text, not yet for the PR).
+  const sug = page.locator("#t-sgperf");
+  await expect(sug).toBeVisible({ timeout: 15000 });
+  // No reply box on the suggestion — a reply could never be answered.
+  await expect(sug.locator("textarea")).toHaveCount(0);
+  // "Ask the agent about this", as on user comments.
+  await sug.getByRole("button", { name: "Ask the agent about this" }).click();
+  const card = page.locator('#right .dhunk [data-expansion]', { hasText: "quadratic case?" });
+  await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
+  await card.getByRole("button", { name: "Close" }).click();
+  // Selecting in the suggestion summons the toolbar, anchored to the comment.
+  await selectText(page, "#t-sgperf .msg", "quadratic");
+  await expect(page.locator("#selbar")).toBeVisible();
+  await page.locator('#selbar [data-act="ask"]').click();
+  await expect(page.locator('#right .ithread[data-pending-thread]')).toBeVisible({ timeout: 5000 });
+});
+
 test("reply drafts survive unrelated re-renders; Discard clears", async ({ page }) => {
   await gotoReview(page);
   const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
