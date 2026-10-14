@@ -9,6 +9,7 @@
  * two together without the builder importing state modules.
  */
 import type { Contribution, FileCategory, LogEntry } from "@unvibe/shared";
+import type { DescriptionParagraph } from "../ingest/description.js";
 
 /** One diff line's content, without its `+`/`-`/` ` prefix. */
 export interface ContextDiffLine {
@@ -97,6 +98,16 @@ export interface PromptReviewSnapshot {
   sourceKind: "pr" | "branch";
   /** PR description Markdown (branch reviews: undefined). */
   description?: string;
+  /**
+   * PR description paragraphs with the stable citation IDs ingest assigned
+   * (issue #110), parsed from the stored HTML with `parseDescriptionParagraphs`
+   * (issue #96) by `toPromptSnapshot` — the same function the MCP tools, the
+   * citation validator and second-opinion excerpts read, so the IDs in the
+   * base are exactly the ones those resolve. Absent when there is no
+   * ID-carrying description (branch reviews, pre-ID stored HTML): the source
+   * blurb then falls back to `description`.
+   */
+  descriptionParagraphs?: DescriptionParagraph[];
   /** Branch-only reviews: commit messages, read-only. */
   commitLog?: string;
   files: ContextFile[];
