@@ -52,6 +52,7 @@ import type {
   UpdateChannelsResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
+  UpdateDiffFilterRequest,
   UpdateHunkRequest,
   UpdateReviewResponse,
   UpdateStatusResponse,
@@ -324,6 +325,13 @@ const realApi = {
     }),
   summarizeHunk: (id: string, hash: string): Promise<SummarizeHunkResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/hunks/${encodeURIComponent(hash)}/summarize`),
+
+  /** The diff's score/plotline filter, remembered with the review. */
+  updateDiffFilter: (id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/diff-filter`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   /** Raw file lines at a commit (issue #133: diff expansion). */
   fileSlice: (

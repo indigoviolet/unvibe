@@ -1,0 +1,130 @@
+/**
+ * Hunk scores + plotlines in the diff pane (issue #169), against the mock
+ * API (`VITE_MOCK=1`): header dots and plotline tags, the Files list dots
+ * and legend, the filter dropdown's plotline/score groups (each alone,
+ * both together, composed with Hide uninteresting), persistence with the
+ * review, and markers on activated hunk cards.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { useReview } from "../../state/store.js";
+import { resetMockState, setMockLatency } from "../../mock/index.js";
+import { DiffView } from "./DiffView.js";
+
+beforeEach(() => {
+  localStorage.clear();
+  resetMockState();
+  setMockLatency(0);
+  useReview.getState().clear();
+});
+
+afterEach(() => {
+  setMockLatency(null);
+  cleanup();
+});
+
+async function renderDiff() {
+  const r = render(<DiffView reviewId="demo" />);
+  await screen.findByText("connection.py", {}, { timeout: 3000 });
+  return r;
+}
+
+const CONN = "src-urllib3-connection.py";
+const TCONN = "test-test_connection.py";
+const TSOCK = "test-with_dummyserver-test_socketlevel.py";
+const LOG = "changelog-1362.bugfix.rst";
+
+async function openFilterMenu() {
+  await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
+  await fireEvent.click(screen.getByRole("button", { name: "File filters" }));
+  return screen.getByRole("menu", { name: "File filters" });
+}
+
+describe("DiffView scores and plotlines", () => {
+  it("shows score dots and plotline tags on hunk headers", async () => {
+    await renderDiff();
+    const dots = document.querySelectorAll(".dhunk-h .score-dot");
+    expect(dots.length).toBeGreaterThan(0);
+    expect(document.querySelector('.dhunk-h .score-dot[data-score="substantive"]')).not.toBeNull();
+    expect(document.querySelector('.dhunk-h .score-dot[data-score="mechanical"]')).not.toBeNull();
+    const tags = [...document.querySelectorAll(".dhunk-h .ptag")].map((el) => el.textContent);
+    expect(tags).toContain("Unfold folded values");
+    expect(tags).toContain("Tests for unfolding");
+  });
+
+  it("shows file dots and the score legend in the Files list", async () => {
+    await renderDiff();
+    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
+    expect(document.querySelectorAll(".flist .score-dot").length).toBeGreaterThan(0);
+    const legend = document.querySelector(".legend");
+    expect(legend).not.toBeNull();
+    for (const label of ["Mechanical", "Routine", "Substantive", "Needs attention"]) {
+      expect(legend?.textContent).toContain(label);
+    }
+  });
+
+  it("filters by plotline and remembers it with the review", async () => {
+    await renderDiff();
+    const menu = await openFilterMenu();
+    const unfold = within(menu).getByRole("menuitemradio", { name: /Unfold folded values/ });
+    expect(unfold).toHaveAttribute("aria-checked", "false");
+    await fireEvent.click(unfold);
+    // Only the file with unfold hunks stays; the filter persists.
+    expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
+    expect(document.getElementById(`F-${TCONN}`)).toBeNull();
+    expect(useReview.getState().snapshot?.diffFilter).toEqual({ plotline: "unfold" });
+    // Back to all plotlines clears the stored filter.
+    const menu2 = screen.getByRole("menu", { name: "File filters" });
+    await fireEvent.click(within(menu2).getByRole("menuitemradio", { name: /All plotlines/ }));
+    expect(document.getElementById(`F-${TCONN}`)).not.toBeNull();
+    expect(useReview.getState().snapshot?.diffFilter).toBeUndefined();
+  });
+
+  it("filters by score", async () => {
+    await renderDiff();
+    const menu = await openFilterMenu();
+    await fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Mechanical/ }));
+    // Mechanical hunks live in the two test files only.
+    expect(document.getElementById(`F-${TCONN}`)).not.toBeNull();
+    expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
+    expect(document.getElementById(`F-${CONN}`)).toBeNull();
+    expect(document.getElementById(`F-${LOG}`)).toBeNull();
+    expect(useReview.getState().snapshot?.diffFilter).toEqual({ score: "mechanical" });
+  });
+
+  it("combines plotline and score, composed with Hide uninteresting", async () => {
+    await renderDiff();
+    const menu = await openFilterMenu();
+    await fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Tests for unfolding/ }));
+    // The import-only run in the tests file is unfold-tests too, so its
+    // hidden row stays while Hide uninteresting is on.
+    expect(document.querySelectorAll("button.hid")).toHaveLength(1);
+    expect(document.getElementById(`F-${CONN}`)).toBeNull();
+    const menuAfter = screen.getByRole("menu", { name: "File filters" });
+    await fireEvent.click(within(menuAfter).getByRole("menuitemradio", { name: /Substantive/ }));
+    // Only the socket-level test hunk is unfold-tests + substantive.
+    expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
+    expect(document.getElementById(`F-${TCONN}`)).toBeNull();
+    expect(document.getElementById(`F-${LOG}`)).toBeNull();
+    expect(useReview.getState().snapshot?.diffFilter).toEqual({ plotline: "unfold-tests", score: "substantive" });
+    // Nothing hidden remains under both filters.
+    expect(document.querySelectorAll("button.hid")).toHaveLength(0);
+  });
+
+  it("shows markers on activated hunk cards too", async () => {
+    await renderDiff();
+    const header = document.querySelector(`[data-hunk="${CONN}:0"]`);
+    expect(header?.querySelector(".score-dot")).not.toBeNull();
+    expect(header?.querySelector(".ptag")?.textContent).toBe("Unfold folded values");
+    // Activate the idle summary into its conversation card (no agent call).
+    const summary = document.querySelector(`[data-hunksum^="${CONN}:"]`);
+    expect(summary).not.toBeNull();
+    await fireEvent.click(summary as HTMLElement);
+    await screen.findByText("Unfolds folded header values before reading.", {}, { timeout: 3000 });
+    // The header markers belong to the hunk, not the card: still there.
+    const after = document.querySelector(`[data-hunk="${CONN}:0"]`);
+    expect(after?.querySelector(".score-dot")).not.toBeNull();
+    expect(after?.querySelector(".ptag")?.textContent).toBe("Unfold folded values");
+  });
+});
