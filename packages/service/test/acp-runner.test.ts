@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AcpAgentRunner } from "../src/agent/acp/runner.js";
+import { AcpAgentRunner, SHARED_CACHE_FIRST_TURN } from "../src/agent/acp/runner.js";
 import type { Transport } from "../src/agent/acp/connection.js";
 import type { AgentEvent } from "@unvibe/shared";
 import { createFakeState, fakeTransportFactory } from "./fake-acp.js";
@@ -205,6 +205,60 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     expect(byTitle.get("Write")?.optionId).toBe("reject");
     expect(byTitle.get("WebFetch")?.optionId).toBe("reject");
     expect(byTitle.get("Read")?.optionId).toBe("allow-once");
+    await runner.dispose();
+  });
+
+  it("cache probe (#177): empty-system-prompt jobs share one first turn", async () => {
+    // Hunk-pass / summarize / runSmall jobs start a fresh Claude session
+    // per job with systemPrompt:"". Live payload captures show the CLI
+    // puts its dynamic environment block after the first user message,
+    // with the last cache breakpoint at its end — so with the per-job
+    // prompt first, that block was re-written on every job (~7k tokens,
+    // warm). start() therefore sends SHARED_CACHE_FIRST_TURN first; the
+    // fake Claude counters below are cumulative, as live (usage.ts).
+    const state = createFakeState([
+      { match: "The task for this session arrives", chunks: [{ text: "ready" }], usage: { inputTokens: 5, cachedReadTokens: 100, cachedWriteTokens: 900, outputTokens: 10 } },
+      { match: "hunk A", chunks: [{ text: "ans A" }], usage: { inputTokens: 10, cachedReadTokens: 250, cachedWriteTokens: 950, outputTokens: 30 } },
+      { match: "hunk B", chunks: [{ text: "ans B" }], usage: { inputTokens: 10, cachedReadTokens: 250, cachedWriteTokens: 950, outputTokens: 30 } },
+    ]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const job1 = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "", mcpServers: [] });
+    const job2 = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "", mcpServers: [] });
+    // Prefix-defining meta stays identical across hunk-pass sessions.
+    expect(state.newMetas.get(job2.id)).toEqual(state.newMetas.get(job1.id));
+    await collect(runner, job1, "hunk A please");
+    await collect(runner, job2, "hunk B please");
+    // Every such session's first turn is the shared one, byte-identical;
+    // the per-job prompt comes second.
+    for (const id of [job1.id, job2.id]) {
+      const calls = state.promptCalls.filter((c) => c.sessionId === id).map((c) => c.text);
+      expect(calls[0]).toBe(SHARED_CACHE_FIRST_TURN);
+      expect(calls[1]).toContain("hunk");
+    }
+    // Sessions with real instructions get no extra turn.
+    const base = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "unvibe-instructions", mcpServers: [] });
+    expect(state.promptCalls.filter((c) => c.sessionId === base.id)).toEqual([]);
+    await runner.dispose();
+  });
+
+  it("cache probe (#177): the shared first turn's usage folds into the first real prompt", async () => {
+    const state = createFakeState([
+      { match: "The task for this session arrives", chunks: [{ text: "ready" }], usage: { inputTokens: 5, cachedReadTokens: 100, cachedWriteTokens: 900, outputTokens: 10 } },
+      { match: "hunk A", chunks: [{ text: "ans A" }], usage: { inputTokens: 10, cachedReadTokens: 250, cachedWriteTokens: 950, outputTokens: 30 } },
+    ]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "", mcpServers: [] });
+    const events = await collect(runner, s, "hunk A please");
+    // Warmup (5/100/900/10) + real-turn delta (5/150/50/20), not just either.
+    expect(events.find((e) => e.type === "usage")).toEqual({
+      type: "usage",
+      inputTokens: 10,
+      cachedReadTokens: 250,
+      cachedWriteTokens: 950,
+      outputTokens: 30,
+    });
+    // The warmup's "ready" text must not leak into the job's reply.
+    expect(events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("")).toBe("ans A");
     await runner.dispose();
   });
 
