@@ -1037,6 +1037,12 @@ export interface JobPromptResponse {
   promptSnapshot: string;
 }
 
+/** GET /api/jobs/:id/reply — the agent's reply for a failed job (#180). */
+export interface JobReplyResponse {
+  jobId: string;
+  replySnapshot: string;
+}
+
 // --- contributions -------------------------------------------------------
 /**
  * M8 settings (PRD §4.14 "Shared context", §9.5): every automatic agent

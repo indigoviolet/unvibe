@@ -14,10 +14,11 @@ export class RetryableError extends Error {
 }
 
 /**
- * A turn produced process chatter or reported itself degraded (issue
- * #51). Terminal (never retried): the reply is deterministic for the
- * session. Action handlers clear streamed partials on this error so no
- * card keeps the chatter; the message lands in the job error on the
+ * A turn failed on a fact the service observes: the answer was empty
+ * (issues #51, #180 — the reply's wording is never judged). Terminal
+ * (never retried): the reply is deterministic for the session. Action
+ * handlers clear streamed partials on this error so no card keeps a
+ * half-finished answer; the message lands in the job error on the
  * Debug page.
  */
 export class DegradedTurnError extends Error {
@@ -28,9 +29,9 @@ export class DegradedTurnError extends Error {
 }
 
 /**
- * Degraded because a review-MCP call observably failed mid-turn (#51):
- * the failure may be transient, so runInFork retries the turn once on a
- * fresh session. A second failure is terminal. Subclasses
+ * A review-MCP call observably failed to connect mid-turn (#51, #180):
+ * the failure may be transient, so the caller retries the turn once on
+ * a fresh session. A second failure is terminal. Subclasses
  * DegradedTurnError so partial-clearing applies either way.
  */
 export class DegradedConnError extends DegradedTurnError {

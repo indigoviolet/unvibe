@@ -18,6 +18,7 @@ interface JobData {
   cacheHitRate?: number;
   error?: string;
   degradedReason?: string;
+  replySnapshot?: string;
   dedupeKey?: string;
   attempts?: number;
   nextRetryAt?: number;
@@ -64,6 +65,7 @@ function rowToJob(row: {
     ...(data.cacheHitRate !== undefined ? { cacheHitRate: data.cacheHitRate } : {}),
     ...(data.error !== undefined ? { error: data.error } : {}),
     ...(data.degradedReason !== undefined ? { degradedReason: data.degradedReason } : {}),
+    ...(data.replySnapshot !== undefined ? { replySnapshot: data.replySnapshot } : {}),
     ...(data.dedupeKey !== undefined ? { dedupeKey: data.dedupeKey } : {}),
     ...(data.attempts !== undefined ? { attempts: data.attempts } : {}),
     ...(data.nextRetryAt !== undefined ? { nextRetryAt: data.nextRetryAt } : {}),
@@ -86,6 +88,7 @@ export class JobStore implements JobPersistence {
       ...(job.cacheHitRate !== undefined ? { cacheHitRate: job.cacheHitRate } : {}),
       ...(job.error !== undefined ? { error: job.error } : {}),
       ...(job.degradedReason !== undefined ? { degradedReason: job.degradedReason } : {}),
+      ...(job.replySnapshot !== undefined ? { replySnapshot: job.replySnapshot } : {}),
       ...(job.dedupeKey !== undefined ? { dedupeKey: job.dedupeKey } : {}),
       ...(job.attempts !== undefined ? { attempts: job.attempts } : {}),
       ...(job.nextRetryAt !== undefined ? { nextRetryAt: job.nextRetryAt } : {}),

@@ -31,9 +31,6 @@
  *   ones with named secrets removed and provider auth kept
  *   (`adapterEnvFor`). The limits are prompt
  *   instructions only — see docs/acp-runner.md for enforced-vs-instructed.
- * - Codex MCP-refusal flake ("I can't access that tool" without
- *   attempting) is treated as retryable in the pipeline (see
- *   `pipeline/runner.ts: isMcpRefusal`).
  */
 import fs from "node:fs";
 import os from "node:os";
