@@ -32,6 +32,12 @@ export function installSpec(channel: string, env: NodeJS.ProcessEnv = process.en
 export interface InstallOptions {
   /** `npm --prefix`: pin the install to this binary's own prefix (else npm defaults). */
   prefix?: string | null;
+  /**
+   * Extra env for the npm spawn (issue #170): the login-shell-merged PATH
+   * so version-manager wrappers (mise's reshim step) find their binaries.
+   * Undefined inherits the process env.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 /** Install the channel's ref globally. The caller reports the result. */
@@ -42,7 +48,7 @@ export async function installRef(
 ): Promise<RunResult> {
   const args = ["install", "-g", installSpec(channel)];
   if (opts.prefix) args.push("--prefix", opts.prefix);
-  return runner.run("npm", { args });
+  return runner.run("npm", { args, env: opts.env });
 }
 
 /**

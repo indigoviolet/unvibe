@@ -226,7 +226,12 @@ async function cmdUpdate(args: string[]): Promise<number> {
     console.error(`unknown flag: ${unknown.join(" ")}\n\n${UPDATE_USAGE}`);
     return 2;
   }
-  const outcome = await runUpdateChannelFlow(deps, channel);
+  // Issue #170: run npm with the login-shell-merged PATH (same merge the
+  // service uses for agents), so version-manager wrappers around npm
+  // (mise's reshim step calls bare `mise`) find their binaries. Never
+  // throws: falls back to the inherited PATH when no shell answers.
+  const { resolveUpdatePathEnv } = await import("../update/update-env.js");
+  const outcome = await runUpdateChannelFlow({ ...deps, updateEnv: await resolveUpdatePathEnv() }, channel);
   for (const line of outcome.lines) {
     if (outcome.code === 0) console.log(line);
     else console.error(line);
