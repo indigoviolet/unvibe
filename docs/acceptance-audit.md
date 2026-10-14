@@ -1470,8 +1470,30 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
  listing shells out through `gh` under the user's login (opt-in gate,
  concurrent per-ref fetch); the new static-guard entries are the
  helper's loopback health probe, the `npm` literal, and the bundle shape.
- Open: helper restart on macOS still needs the human pass in
- `docs/macos-testing.md` (see #6).
+  Open: helper restart on macOS still needs the human pass in
+  `docs/macos-testing.md` (see #6).
+
+### Fixed on this branch: version switch with mise-managed Node (issue #170)
+
+  mise wraps each Node version's `npm` so a global install runs
+  `mise reshim` afterwards (a bare `mise` call). The updater ran that npm
+  with a PATH missing `mise`, so old wrappers exited 127 after the install
+  had finished, and the switch rolled back into the same failure with the
+  app left stopped. npm now runs with the login-shell-merged PATH (same
+  merge as for agents) on both the CLI (`unvibe update`) and in-app paths;
+  the switch route snapshots the service's repaired PATH into the helper
+  args and the detached helper restores it before running npm (covers
+  login-started instances, whose units deliberately carry no PATH). A
+  nonzero npm exit with the target build verifiably in place (channel
+  changed, or the published commit now reported) continues with a plain
+  note instead of rolling back; a genuine failure names the mise wrapper
+  cause plus the terminal recovery (`unvibe update <ref>`, then
+  `unvibe start`). No reshim-skipping variable is set, so shims stay
+  fresh. Evidence: `test/update-mise-path.test.ts` (fake wrapper-shaped
+  npm through the real runner with/without `mise` on PATH, repaired-PATH
+  threading, landed/failed/same-channel classification, non-mise failures
+  unchanged) plus the `update-routes` helper-args PATH assertion. Open:
+  macOS + real mise still needs the human pass (owner's machine).
 
 ### Fixed on this branch: managed clones (#27, complete)
 
