@@ -673,7 +673,6 @@ export async function registerReviews(
         hunkStates: [],
         fileStates: [],
         viewPrefs: { showExistingComments: true },
-      viewPrefs: { showExistingComments: true },
         jobs: [],
         contributions: [],
         logTail: [],
