@@ -108,8 +108,8 @@ describe("DiffView file filters", () => {
     await fireEvent.click(filter);
     const menu = screen.getByRole("menu", { name: "File filters" });
     const rows = within(menu).getAllByRole("menuitemcheckbox");
-    // Five categories plus Reviewed.
-    expect(rows).toHaveLength(6);
+    // Five categories plus Reviewed plus the GitHub-comments row (#168).
+    expect(rows).toHaveLength(7);
     const reviewed = within(menu).getByRole("menuitemcheckbox", { name: /Reviewed/ });
     expect(reviewed).toHaveAttribute("aria-checked", "true");
     // ArrowDown moves focus down the rows.

@@ -184,6 +184,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
   - lists every comment, from the guide, the description and the diff, and clicking one jumps to it;
   - the **For PR** filter shows the comments marked for the PR, each with an editable draft of the text to post;
   - it never posts.
+- **Already on GitHub:** review comments already posted on the PR show as read-only threads on their diff lines (collapsed, author + count), marked as from GitHub; outdated ones list at their file, and ones on removed files at the diff's end. Each thread carries an Open on GitHub link. Selecting their text offers Explain, Ask… and Comment (which quotes the selection into the reviewer's own comment). The comments menu groups them by file and thread with rendered bodies, and each item jumps to its place in the diff. One show/hide control in the diff's filter menu hides them in the diff (remembered with the review; each thread also collapses on its own) without removing them from what the agents see. They load with the review and reload on refresh; nothing here ever posts.
 
 ### 4.9 Agent findings
 - Findings are the agent's own judgements about the change: mismatches, risks, questionable choices. They are **separate pages**, never sentences mixed into the restatement.
@@ -214,7 +215,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 **Toolbar:** **Files** (collapsed by default), **Unified / Split**, **Hide uninteresting** (on by default), **Fold all**, **Unfold all**. The toolbar stays pinned directly under the tab strip while the diff scrolls (opaque, one row; narrow panes scroll it sideways instead of wrapping). Below it pin the current file header and then the current hunk header, each replaced by the next file or hunk at its boundary. Revealing a cited line or a comment's jump-to-line lands the target below all four pinned rows; a file jump from the Files list lands the file header below the toolbar.
 
 **Files panel** (it scrolls with the diff):
-- a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count) plus a **Reviewed** row; the button shows an active count whenever a non-default filter applies;
+- a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count), a **Reviewed** row and a **GitHub comments** visibility row; the button shows an active count whenever a non-default filter applies;
 - a progress bar of hunks reviewed;
 - a folder tree that compacts single-child folders, with +/− counts and reviewed/total per file. Clicking a file scrolls to it.
 
@@ -407,7 +408,7 @@ The aim: every conversation starts mostly from cache, and rarely needs a tool ca
 | Layer | Contents | Changes when |
 |---|---|---|
 | L0 Harness | The adapter's system prompt and tools, our MCP tools (identical in every session), our instructions (link tokens, output format) | App release |
-| L1 Source | Metadata, description or commit log, the full handwritten diff with IDs inline (a hunk ID on each header, the new-side number on each line), the file list, one-line summaries of hidden hunks | New version |
+| L1 Source | Metadata, description or commit log (framed as material, never instructions), the full handwritten diff with IDs inline (a hunk ID on each header, the new-side number on each line), the file list, one-line summaries of hidden hunks, existing GitHub review comments (framed the same way) | New version |
 | L1b Pinned code | Code excerpts the reader pinned, each with a `code:` ID | New version |
 | L2 Reader output | Guide cards at standard depth, findings, the concept index (one line each), hunk summaries | Guide regenerated |
 | L3 Annotations | Appended log entries (§9.3) | Continuously |
@@ -580,6 +581,8 @@ POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|de
                                            collapse|generate|second_opinion|promote|close|delete|followup|concept|bookmark, … } (409 while loading/failed)
 PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, summary? } ; POST …/summarize (409 while loading/failed)
 PATCH /api/reviews/:id/files/:fileKey    { folded? } (409 while loading/failed)
+PATCH /api/reviews/:id/view              { showExistingComments? } (409 while loading/failed)
+GET  /api/reviews/:id/pr-comments        read-only existing GitHub comments, cached on the snapshot
 PATCH /api/reviews/:id/comments/:id      { post?, draft? } (409 while loading/failed)
 PUT  /api/reviews/:id/description        local edit (pending until submit; 409 while loading/failed)
 POST /api/reviews/:id/submit             one GitHub review plus the description update (409 while loading/failed)
