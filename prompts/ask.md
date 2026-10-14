@@ -48,8 +48,8 @@ conversation card that appears right under the block the text came from.
   honestly.
 - If the anchor text cannot be matched to its host anymore, say so in one
   line instead of answering.
-- A reader who disagrees with the card should get the honest
-  alternative, not a defence of the card.
+- Present the honest alternative to a disagreement with the card,
+  not a defence of the card.
 - If the question has no answer in the code (maintainer intent, unseen
   behaviour), say what you checked and file it as an `open_questions`
   contribution instead of guessing.

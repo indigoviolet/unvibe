@@ -10,9 +10,9 @@
 #
 # Users install with NO flags (no prepare/postinstall, no devDependencies):
 #   npm install -g github:indigoviolet/unvibe#release
-# The repo is private: the git ref needs git credentials (`gh auth setup-git`),
-# and the tarball needs `gh release download` (a bare releases/download URL
-# 401s without auth). Live agent tasks never run here (need user logins).
+# The repo is public: the git ref installs with no credentials, and the
+# tarball downloads from its plain releases/download URL (no login needed).
+# Live agent tasks never run here (need user logins).
 
 name: release
 

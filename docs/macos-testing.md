@@ -270,10 +270,9 @@ reasoned from package metadata, not run here):
 > from the installed copy (`global-install-check`: tarball ~4s / git ~6–7s
 > on npm 11, ~8–10s on npm 10; ~42 MB apparent / ~63 MB on disk; demo 6
 > cards, 2 findings, 8 hunk summaries; pre-rendered d2 v0.9.0 diagrams
-> served as SVG). The repo is private: run `gh auth login` and
-> `gh auth setup-git` before the git-ref install, and fetch the tarball with
-> `gh release download <tag> -p 'unvibe-*.tgz'` (a bare releases/download URL
-> 404s without auth). Candidates install from `#release-rc`
+> served as SVG). The repo is public, so the git-ref install needs no login
+> and the tarball downloads from its plain releases/download URL.
+> Candidates install from `#release-rc`
 > (`v0.0.1-rc.3` verified from GitHub: `--version` matches the tag).
 
 ## 9. Uninstall the helper and login start (30 s)

@@ -23,7 +23,7 @@ where it is: `simple` from standard, `standard` from simple or deep,
 - Rewrite the card's paragraphs in place at the target level. Keep the
   card's structure, title, examples, and diagrams untouched.
 - `simple`: shorter sentences, no jargon without an immediate gloss, one
-  idea per paragraph. The reader is new to the domain.
+  idea per paragraph, and no assumed domain knowledge.
 - `standard`: the default — precise, cites the code, assumes a working
   engineer.
 - `deep`: first principles — the underlying rule or invariant, why it has

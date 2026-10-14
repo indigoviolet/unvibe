@@ -12,9 +12,8 @@ from. Read it and reply with exactly `ready` and nothing else.
 
 ## Description
 
-Unfold obsolete folded response header values.
-
-HTTPHeaderDict and the original message are both normalized.
+- desc:d-p1: Unfold obsolete folded response header values.
+- desc:d-p2: HTTPHeaderDict and the original message are both normalized.
 
 ## Files
 

@@ -56,24 +56,37 @@ interface HunkServer {
 
 async function startHunkServer(): Promise<HunkServer> {
   const calls: HunkServer["calls"] = [];
-  const server = new McpServer({ name: "unvibe-live", version: "0.0.0" });
-  server.tool(
-    "get_hunk",
-    "Return the text of a review hunk by id (live-test stub).",
-    { id: z.string() },
-    async ({ id }) => {
-      calls.push({ at: new Date().toISOString(), id });
-      return { content: [{ type: "text" as const, text: `HUNK:${id}:live-fixed-content:alpha-bravo-42` }] };
-    },
-  );
-  // Stateful transport (one MCP session per initialize, like production
-  // `McpRegistry.issueSession`): the SDK forbids reusing a stateless
-  // transport across HTTP requests, and newer CLIs send discover/initialize/
-  // notification/GET/tools-list as separate requests. Stateless reuse 500s
-  // on the second request.
+  const makeServer = (): McpServer => {
+    const server = new McpServer({ name: "unvibe-live", version: "0.0.0" });
+    server.tool(
+      "get_hunk",
+      "Return the text of a review hunk by id (live-test stub).",
+      { id: z.string() },
+      async ({ id }) => {
+        calls.push({ at: new Date().toISOString(), id });
+        return { content: [{ type: "text" as const, text: `HUNK:${id}:live-fixed-content:alpha-bravo-42` }] };
+      },
+    );
+    return server;
+  };
+  // Stateful transports, one per client connection (mirrors production
+  // `McpRegistry` after issue #174): a single transport refuses a second
+  // client's `initialize` ("Server already initialized"), which is what
+  // forks reusing the base's MCP URL hit. Requests route by the
+  // `mcp-session-id` header; each `initialize` gets a fresh server.
   const { randomUUID } = await import("node:crypto");
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
-  await server.connect(transport);
+  const connections = new Map<string, StreamableHTTPServerTransport>();
+  const makeTransport = (): StreamableHTTPServerTransport => {
+    const holder: { transport?: StreamableHTTPServerTransport } = {};
+    holder.transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sid) => {
+        if (holder.transport) connections.set(sid, holder.transport);
+      },
+      onsessionclosed: (sid) => connections.delete(sid),
+    });
+    return holder.transport;
+  };
   const http = createServer((req: IncomingMessage, res: ServerResponse) => {
     if (req.url !== "/mcp") {
       res.writeHead(404).end("not found");
@@ -101,6 +114,24 @@ async function startHunkServer(): Promise<HunkServer> {
       if (method === "server/discover") {
         res.writeHead(200, { "content-type": "application/json" }).end(
           JSON.stringify({ jsonrpc: "2.0", id: rpcId ?? null, error: { code: -32601, message: "Method not found: server/discover" } }),
+        );
+        return;
+      }
+      if (method === "initialize") {
+        const transport = makeTransport();
+        void makeServer()
+          .connect(transport)
+          .then(() => transport.handleRequest(req, res, parsed))
+          .catch((e) => {
+            if (!res.headersSent) res.writeHead(500).end(String(e));
+          });
+        return;
+      }
+      const sid = req.headers["mcp-session-id"];
+      const transport = connections.get(Array.isArray(sid) ? sid[0] : sid ?? "");
+      if (!transport) {
+        res.writeHead(404, { "content-type": "application/json" }).end(
+          JSON.stringify({ jsonrpc: "2.0", id: rpcId ?? null, error: { code: -32001, message: "Session not found" } }),
         );
         return;
       }
@@ -241,15 +272,15 @@ describe.skipIf(!LIVE)("ACP live adapters", () => {
         }
       });
 
-      // DISABLED(#124): live-verified 2026-10-13 that a Codex fork comes up
-      // with no review tools even with mcpServers + _meta on session/fork
-      // (the model never attempts the tool: zero permission requests across
-      // 7 forks; it reports "unavailable" or hallucinates the result). The
-      // fields are still sent (pinned by the fake-transport tests in
-      // acp-runner.test.ts); un-skip this when the underlying fork-tools
-      // issue is fixed. Skipped, not expected-fail, so `test:live` burns
-      // no tokens on a known failure.
-      it.skip("#124: a fork inherits the review tools and calls one", { timeout: 300_000 }, async () => {
+      // Issue #124/#174: live-verified 2026-10-13 that a fork came up with
+      // no review tools even with mcpServers + _meta on session/fork.
+      // Root cause (#174): the fork reuses the base's MCP URL and its fresh
+      // `initialize` was refused by the base's single stateful transport
+      // ("Server already initialized") — Claude forks failed the same way
+      // ("MCP server failed to connect"), they just rarely need tools.
+      // The mount now accepts one connection per client (see McpRegistry);
+      // this test's stub mirrors that. Kept live-only (`test:live:*`).
+      it("#124: a fork inherits the review tools and calls one", { timeout: 300_000 }, async () => {
         // One small pack, one fork, one tool call: the fork must reach the
         // review tools (pre-fix Codex forks came up without `mcpServers`,
         // the probable #51 cause). At most one retry on a fresh fork for

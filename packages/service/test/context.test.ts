@@ -49,6 +49,7 @@ function shuffledSnapshot(): PromptReviewSnapshot {
     files: parsed.files,
     commitLog: parsed.commitLog,
     description: parsed.description,
+    descriptionParagraphs: parsed.descriptionParagraphs,
     sourceKind: parsed.sourceKind,
     guideRevision: parsed.guideRevision,
     baseRef: parsed.baseRef,

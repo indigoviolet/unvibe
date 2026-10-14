@@ -214,11 +214,31 @@ function renderSourceHead(snapshot: PromptReviewSnapshot): string[] {
     "",
   ];
   if (snapshot.sourceKind === "pr") {
-    head.push("## Description", "", snapshot.description ?? "(no description)", "");
+    // Issue #110: the description lists its paragraphs with the IDs ingest
+    // assigned, so agents cite them straight from the context. Paragraphs
+    // come from `toPromptSnapshot` via the single source
+    // (`parseDescriptionParagraphs`, issue #96); without them (branch
+    // reviews, pre-ID stored HTML) the plain Markdown stays.
+    const paras = snapshot.descriptionParagraphs ?? [];
+    head.push("## Description", "");
+    head.push(paras.length > 0 ? formatDescriptionParagraphs(paras) : (snapshot.description ?? "(no description)"));
+    head.push("");
   } else {
     head.push("## Commit log", "", snapshot.commitLog ?? "(no commits)", "");
   }
   return head;
+}
+
+/**
+ * Description paragraphs with their citation IDs (issue #110), one per
+ * line: `- desc:<id>: <text>`. The text is `parseDescriptionParagraphs`
+ * output verbatim (issue #96 single source), so IDs and text are exactly
+ * what the MCP tools hand out and the validator resolves.
+ */
+export function formatDescriptionParagraphs(
+  paragraphs: NonNullable<PromptReviewSnapshot["descriptionParagraphs"]>,
+): string {
+  return paragraphs.map((p) => `- desc:${p.id}: ${p.text}`).join("\n");
 }
 
 /** Source blurb with the per-file list replaced by counts (counts-only rung). */
