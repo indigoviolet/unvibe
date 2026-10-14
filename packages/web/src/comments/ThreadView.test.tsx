@@ -249,4 +249,23 @@ describe("ThreadView suggested comments (issue #163)", () => {
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
     expect(screen.getByLabelText("Reply")).toBeInTheDocument();
   });
+
+  test("a suggested question is tagged apart from findings, with no reply box", () => {
+    const s = suggested({
+      messages: [{ who: "ai", text: "Is this covered?", suggested: true, question: true }],
+    });
+    seedSuggested(s);
+    const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    expect(screen.getByText("Suggested question")).toBeInTheDocument();
+    expect(container.querySelector("textarea")).toBeNull();
+    // Same suggestion controls as findings: ask-about, mark, delete, close.
+    expect(screen.getByRole("button", { name: "Ask the agent about this" })).toBeInTheDocument();
+  });
+
+  test("a finding suggestion carries no question tag", () => {
+    const s = suggested();
+    seedSuggested(s);
+    render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    expect(screen.queryByText("Suggested question")).toBeNull();
+  });
 });

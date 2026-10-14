@@ -614,6 +614,20 @@ needed (that deviation is closed, not added).
   suggested cases, `SelectionToolbar.test.tsx` ai-comment resolution,
   `e2e/comments.spec.ts` “AI-suggested comments carry no reply box”,
   `docs/screenshots/163-suggested-comment.png`).
+- Open questions as suggestions (issue #181): a kept `open_questions`
+  contribution becomes one AI-suggested comment on the turn's source
+  (card anchor verbatim, hunk to its first line, card's first block,
+  else the guide's first block), tagged “Suggested question”, drafted
+  until accepted + submitted; same question twice is offered once
+  (anchor + stored text); dismissing marks the item dismissed (re-raises
+  dedupe, consolidate and Debug skip it) — met
+  (`comments/questions.ts`, `sharedctx-wire.ts` ingest hook,
+  `threads.ts` dismissal, `close.ts` unify, `ThreadView.tsx` tag,
+  `service/test/open-questions-181.test.ts` 7 tests,
+  `ThreadView.test.tsx` question cases,
+  `docs/screenshots/181-suggested-question.png`, one live run on the
+  demo: answer states what is not known with no “filed” narration, the
+  question suggestion created end to end).
 
 ### §4.10 Second opinion — all met
 

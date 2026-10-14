@@ -192,6 +192,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →".
 - **The finding page:** carries the same label, and its cards have a rust left border. Typical cards are Evidence (each piece cited) and Assessment.
 - **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card. A suggestion carries no reply box (a reply could never be answered); selecting in it summons the selection toolbar, and Ask opens the usual Ask card anchored to the comment. "Ask the agent about this" answers from the comment like on any other comment; accept / edit / dismiss work as before.
+- **Open questions as suggestions (#181):** an agent's unanswered question is offered the same way: an AI-suggested comment anchored where the question came from (the code, the card, or a general review comment when there is no line), tagged "Suggested question". Accept makes it the reviewer's comment for the PR (editable draft); dismissing it marks the question resolved in the shared context so agents do not raise it again. Same question twice is offered once. Nothing reaches GitHub before accept + Submit.
 
 ### 4.10 Second opinion
 - A **Second opinion** action is available on any card, finding, or conversation answer. It asks a *different* model (§12).
@@ -454,6 +455,7 @@ A new base is built when any of these happens:
   - validates citations, drops facts without them, and drops duplicates;
   - appends the rest to the log, labelled with its source;
   - shows corrections as suggestions on the target card. The user accepts (creating a new card revision) or dismisses; nothing is rewritten silently.
+  - offers kept `open_questions` as AI-suggested comments (§4.9), one per question; dismissing one marks it resolved.
 - **On each base rebuild,** the small model merges contributions: it removes duplicates, resolves superseded items, and folds accepted corrections in.
 
 ---

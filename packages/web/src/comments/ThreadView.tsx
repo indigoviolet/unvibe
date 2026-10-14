@@ -86,6 +86,9 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
   // as draft comments). Its text behaves like other agent text — the
   // selection toolbar works inside it — and it carries no reply box.
   const suggested = messages.some((m) => m.who === "ai" && m.suggested === true);
+  // Issue #181: a suggested open question. Same controls as any
+  // suggestion; the tag tells it apart from a finding.
+  const suggestedQuestion = messages.some((m) => m.who === "ai" && m.suggested === true && m.question === true);
 
   const onAskAbout = (): void => {
     // The only way a comment leads to an agent reply: the usual Ask card
@@ -129,6 +132,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
       <div className="thd">
         <span className="mq">{headerLabel(file, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
+        {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}
         {!isNew ? (
           <button
             className="ib pr"
