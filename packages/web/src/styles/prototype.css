@@ -385,6 +385,12 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
    focused (no layout shift: the row keeps its space). */
 .card.child .ans-older > .ctl { visibility: hidden; }
 .card.child .ans-older:hover > .ctl, .card.child .ans-older:focus-within > .ctl { visibility: visible; }
+/* Provisional streamed paragraphs (issue #126, experiment): citation
+   chips read as pending (dimmed) until the stored turn lands and
+   validation has run; the caption marks the answer as still being
+   written. One place to retune. */
+.exp-b.streaming .lk { opacity: .55; }
+.stream-live { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .card.child.collapsed .exp-b, .card.child.collapsed .ctl { display: none; }
 .card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
 /* Floating conversation cards (issue #167): the default clicked state.

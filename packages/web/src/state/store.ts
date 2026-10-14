@@ -141,6 +141,15 @@ interface ReviewState {
    */
   pinnedCards: Record<string, true>;
   /**
+   * Issue #126 (experiment): accumulated streamed answer text per
+   * conversation card, keyed by annotation id. Fed by WS `text` events
+   * (dropped on the floor before #126); the unified card renders
+   * completed paragraphs from it while the turn fills. Cleared when the
+   * turn's blocks land, the turn errors, or its job settles — the stored
+   * turn is always the truth afterwards.
+   */
+  streams: Record<string, { jobId: string; text: string }>;
+  /**
    * Incremented whenever a patch gap needs a server resync. `ReviewRoute`
    * refetches the snapshot on change; the fresh snapshot drains `pending`.
    */
@@ -158,6 +167,13 @@ interface ReviewState {
   clearInflight: (targetId: string) => void;
   /** Issue #167: pin a conversation card inline, or unpin it to floating. */
   setCardPinned: (cardId: string, pinned: boolean) => void;
+  /**
+   * Issue #126 (experiment): append a streamed text delta to a card's
+   * buffer. A new job id resets the buffer (repair/retry start clean).
+   */
+  appendStream: (annotationId: string, jobId: string, delta: string) => void;
+  /** Issue #126 (experiment): drop a card's streamed buffer. */
+  clearStream: (annotationId: string) => void;
   clear: () => void;
 }
 
@@ -277,6 +293,7 @@ export const useReview = create<ReviewState>()((set, get) => ({
   inflight: {},
   pending: [],
   pinnedCards: {},
+  streams: {},
   resyncSeq: 0,
   setSnapshot: (snapshot) =>
     set((s) => {
@@ -340,16 +357,41 @@ export const useReview = create<ReviewState>()((set, get) => ({
           const jobs = known
             ? s.snapshot.jobs.map((j) => (j.id === event.job.id ? event.job : j))
             : [...s.snapshot.jobs, event.job];
+          // Issue #126: a settled job ends its card's stream — the stored
+          // turn (blocks or error) is the truth from here on.
+          let streams = s.streams;
+          if (isTerminalJobState(event.job.state) && event.job.annotationId) {
+            const cur = streams[event.job.annotationId];
+            if (cur && cur.jobId === event.job.id) {
+              streams = { ...streams };
+              delete streams[event.job.annotationId];
+            }
+          }
           return {
             snapshot: { ...s.snapshot, jobs },
             inflight: reapInflight(jobs, s.inflight, Date.now()),
+            streams,
           };
         }
-        case "text":
-          // Agent stream deltas are never shown (issue #46): the processing
-          // state is a plain indicator with a fixed label. Content arrives
-          // through patches; the events themselves stay for the service.
-          return s;
+        case "text": {
+          // Issue #126 (experiment): conversation deltas accumulate per
+          // card for paragraph-by-paragraph answers. Deltas for anything
+          // else (reader/critic jobs carry a card id, not an annotation
+          // id) are still ignored — the working indicator stays a fixed
+          // label (issue #46), only answer CONTENT streams.
+          if (!event.annotationId || !event.delta) return s;
+          const cur = s.streams[event.annotationId];
+          return {
+            ...s,
+            streams: {
+              ...s.streams,
+              [event.annotationId]:
+                !cur || cur.jobId !== event.jobId
+                  ? { jobId: event.jobId, text: event.delta }
+                  : { jobId: cur.jobId, text: cur.text + event.delta },
+            },
+          };
+        }
         default:
           return s; // error handled by streaming views later
       }
@@ -437,5 +479,26 @@ export const useReview = create<ReviewState>()((set, get) => ({
       else delete next[cardId];
       return { pinnedCards: next };
     }),
-  clear: () => set({ snapshot: null, inflight: {}, pending: [], pinnedCards: {}, resyncSeq: 0 }),
+  appendStream: (annotationId, jobId, delta) =>
+    set((s) => {
+      if (!delta) return s;
+      const cur = s.streams[annotationId];
+      return {
+        streams: {
+          ...s.streams,
+          [annotationId]:
+            !cur || cur.jobId !== jobId
+              ? { jobId, text: delta }
+              : { jobId, text: cur.text + delta },
+        },
+      };
+    }),
+  clearStream: (annotationId) =>
+    set((s) => {
+      if (!s.streams[annotationId]) return s;
+      const next = { ...s.streams };
+      delete next[annotationId];
+      return { streams: next };
+    }),
+  clear: () => set({ snapshot: null, inflight: {}, pending: [], pinnedCards: {}, streams: {}, resyncSeq: 0 }),
 }));

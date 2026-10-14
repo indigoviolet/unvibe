@@ -38,6 +38,7 @@ import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index
 import { conversationTurns, isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
 import { expansionsForBlock } from "./ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansionUtils.js";
+import { useProvisionalBlocks } from "./streamedAnswer.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
 type Depth = (typeof DEPTH_ORDER)[number];
@@ -184,7 +185,9 @@ function AnswerView({
   const depthBusy = busyKind === "depth";
   // Controls that need the text stay off until it arrives (issue #97).
   const contentReady = turn.blocks.length > 0 && !controlsBusy;
-  // The latest answer shows its controls; earlier answers reveal them on
+  // Issue #126 (experiment): completed paragraphs from the live stream,
+  // shown while this turn fills and replaced by the stored turn.
+  const provisional = useProvisionalBlocks(card.id, turn, showWorking && !errorText);  // The latest answer shows its controls; earlier answers reveal them on
   // hover or keyboard focus (cheap layout choice, easy to change).
   const olderClass = isLatest ? "" : " ans-older";
   // A later turn's question reads as its heading; the first turn's answer
@@ -253,7 +256,29 @@ function AnswerView({
           </button>
         </div>
       ) : null}
-      <div className="exp-b">
+      <div className={`exp-b${provisional ? " streaming" : ""}`}>
+        {provisional?.map((block) => (
+          <BlockView
+            key={block.id}
+            block={block}
+            level={turn.level}
+            threads={[]}
+            lookupPage={lookupPage}
+            cardId={turn.id}
+            onOpenPage={onOpenPage}
+            onFollowUp={(blockId, index) => onFollowUp(turn.id, blockId, index)}
+          />
+        ))}
+        {provisional ? (
+          <div className="stream-live" role="status">
+            <span className="dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span>Still writing…</span>
+          </div>
+        ) : null}
         {turn.blocks.map((block) => {
           // Annotations on text inside this answer render under their
           // block exactly like page-card annotations do: threads (open
