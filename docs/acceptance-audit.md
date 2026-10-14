@@ -707,7 +707,13 @@ needed (that deviation is closed, not added).
   idle text — met (`service/test/hunk-cards.test.ts`,
   `source/diff/hunkAnchor.test.ts`,
   `source/diff/HunkCardActivation.test.tsx`,
-  `e2e/hunk-summary.spec.ts`). A hunk card opened as a page keeps its
+  `e2e/hunk-summary.spec.ts`). Issue #161: idle summaries carry no icons
+  and no controls at all (avatar + Delete removed; deleting the stored
+  summary text is no longer offered in the UI), and an activated card is
+  one card at the hunk's level with no `.fcard`/`.fwrap` wrapper
+  (`HunkCardActivation.test.tsx` idle/activated cases,
+  `docs/screenshots/161-idle-summary.png`,
+  `161-activated-card.png`, `hunk-summary.spec.ts` green). A hunk card opened as a page keeps its
   summary text plus a page-link chip; the summary's click/Explain/Ask
   open that page instead of a second card, and a hunk whose page is gone
   reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
