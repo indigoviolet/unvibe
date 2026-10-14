@@ -220,6 +220,63 @@ function lockdownSystemPrompt(): string {
 describe.skipIf(!LIVE)("full-access live check (#160)", () => {
   for (const provider of PROVIDERS) {
     describe(provider, () => {
+      it("ask reads code outside the diff straight from the worktree", { timeout: 300_000 }, async () => {
+        // Owner report: with review tools down (#174), a full-access Ask
+        // must fall back to reading the checkout directly. No review MCP
+        // server is configured here, so only built-in tools can serve it.
+        const dir = mkdtempSync(join(tmpdir(), "unvibe-live-fa-ask-"));
+        const git = (args: string[]): void => {
+          const r = spawnSync("git", args, { cwd: dir, encoding: "utf8" });
+          if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`);
+        };
+        git(["init", "-q"]);
+        git(["config", "user.email", "live-test@example.invalid"]);
+        git(["config", "user.name", "live-test"]);
+        writeFileSync(join(dir, "widget.txt"), "widget v1\n");
+        writeFileSync(join(dir, "notes.txt"), "baseline notes\nThe sprocket ratio is 7:1 (LIVE-NOTE).\n");
+        git(["add", "."]);
+        git(["commit", "-qm", "fixture: widget plus notes"]);
+        const runner = new AcpAgentRunner();
+        let input = 0;
+        let output = 0;
+        try {
+          const session = await runner.start({
+            provider,
+            model: MODELS[provider] ?? "default",
+            cwd: dir,
+            systemPrompt: fullSystemPrompt(),
+            mcpServers: [],
+            readOnly: false,
+          });
+          const events = await collect(
+            runner,
+            session,
+            [
+              "The diff under review touches only widget.txt (widget v1).",
+              "What ratio does the notes file give for the sprocket? Reply with just the ratio.",
+            ].join("\n"),
+          );
+          const spend = spendOf(events);
+          input = spend.input;
+          output = spend.output;
+          const reply = textOf(events);
+          console.log(`FULLACCESS-LIVE provider=${provider} ask-reply=${JSON.stringify(reply.slice(0, 500))}`);
+          console.log(
+            `FULLACCESS-LIVE provider=${provider} ask-tools=${JSON.stringify(events.filter((e) => e.type === "tool").map((e) => (e as { name: string }).name))}`,
+          );
+          expect(reply).toContain("7:1");
+          // The answer came from a tool read, not a guess: any tool start
+          // counts (Claude's shell surfaces under adapter-specific titles).
+          const toolStarts = events.filter((e) => e.type === "tool" && e.status === "start");
+          expect(toolStarts.length).toBeGreaterThan(0);
+          expect(gitStatus(dir)).toBe("");
+        } finally {
+          console.log(`FULLACCESS-LIVE provider=${provider} ask-fallback input=${input} output=${output}`);
+          await runner.dispose();
+          rmSync(dir, { recursive: true, force: true });
+        }
+      });
+
       it("session and fork can run git log, read gh, fetch the web, and call a review tool", { timeout: 300_000 }, async () => {
         const { dir, subjects } = makeFixtureRepo();
         const toolServer = await startToolServer();
