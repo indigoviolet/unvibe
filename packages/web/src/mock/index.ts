@@ -196,7 +196,7 @@ function mockExplainBlocks(quote: string): import("@unvibe/shared").Block[] {
       type: "paragraph",
       id: `b-mock-exp-${Date.now().toString(36)}`,
       text: {
-        simple: `In short: <em>${q}</em> is about unfolding folded header values.`,
+        simple: `<em>${q}</em> is about unfolding folded header values.`,
         standard: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value.`,
         deep: `Mock deep explanation of <em>${q}</em>: obs-fold handling sits at the recipient per RFC 9112 §5.2, before interpretation or forwarding, so every consumer sees one semantic value.`,
       },
@@ -3132,6 +3132,15 @@ export const mockApi = {
       throw new Error(`GET /api/jobs/${id}/prompt: 404 {"error":"no prompt snapshot for job"}`);
     }
     return { jobId: job.id, promptSnapshot: job.promptSnapshot };
+  },
+
+  jobReply: async (id: string) => {
+    const job = mockJobs.find((j) => j.id === id);
+    if (!job) throw new Error(`GET /api/jobs/${id}/reply: 404 {"error":"unknown job"}`);
+    if (job.replySnapshot === undefined) {
+      throw new Error(`GET /api/jobs/${id}/reply: 404 {"error":"no reply snapshot for job"}`);
+    }
+    return { jobId: job.id, replySnapshot: job.replySnapshot };
   },
 
   cancelJob: async (id: string) => {

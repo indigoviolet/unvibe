@@ -61,7 +61,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 `test:live:*` never runs under `check` or CI. CI (`.github/workflows/ci.yml`)
 runs on `ubuntu-latest` for every branch push except `spike/**`, and on
 `macos-latest` only nightly against `main` and on manual dispatch
-(`gh workflow run ci`, both platforms; macOS minutes bill at 10x, and
+(`gh workflow run ci`, both platforms, to keep per-push CI to one leg;
 `release.yml` also covers macOS on every `v*` tag): `check` + `build` +
 `build-freshness` + `test:slow` (slow vitest files, then Playwright),
 then the shell end-to-end (`e2e` on Linux, `e2e:macos` on
@@ -263,16 +263,20 @@ tag, or a fixed text for the first release), and attaches the tarball to the
 GitHub release (`softprops/action-gh-release`, `prerelease: true` for
 `-rc.` tags).
 
-### Private-repo install story
+### Install story
 
-The repo is private. The git-ref install needs git credentials with access
-(`gh auth login`, then `gh auth setup-git` so git uses `gh` as credential
-helper). The tarball asset is private too: a bare
-`https://github.com/…/releases/download/…` URL 404s without authentication.
-Download it first, then install the file:
+The repo is public, so installing needs no GitHub login. The git-ref
+install works anonymously:
 
 ```sh
-gh release download v0.0.1 -p 'unvibe-*.tgz'
+npm install -g github:indigoviolet/unvibe#release
+```
+
+The tarball asset downloads from its plain
+`https://github.com/…/releases/download/…` URL the same way. Download it,
+then install the file:
+
+```sh
 npm install -g ./unvibe-0.0.1.tgz
 ```
 

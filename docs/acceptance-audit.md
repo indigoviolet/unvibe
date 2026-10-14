@@ -291,31 +291,40 @@ needed (that deviation is closed, not added).
    already sees (shared "Reply hygiene" guidance in `instructions.md`;
    the `explain` "quote it back" rule is removed), with a deterministic
    exact-match strip of a leading echo line at parse time
-   (`actions-echo.test.ts`, `content-titles.test.ts`). Agent process
+   (`actions-echo.test.ts`, `content-titles.test.ts`). Replies never
+   address the reader about how to read the guide or whether to keep
+   reading (#175): no "if you only need…", "in short…" or "TL;DR"
+   framings (prompt rule in `instructions.md`; the problem card's first
+   paragraph states the problem and the central idea). Agent process
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
-   rule; failures go in the trailing `degraded` field). A job fails on
-   facts only: a process-complaint frame fails when the turn ran without
-   the review MCP server or hit a dead MCP URL — tool names and MCP/gh
-   alone never fail a job. A trailing `degraded` field with a usable body
-   (it parses and has at least one block) keeps the answer instead of
-   failing: the answer shows with the plain-words note "Some references
-   in this answer could not be linked to the code." and the raw reason
-   lands on the job (`degradedReason`) for the Debug page; only a
-   degraded answer with no usable body fails the turn. Connection-error
-   failures retry once on a fresh session (fork jobs since #51, the
-   reader since #146: fresh per-run secret + session, deterministic
-   provisional ids so the retry overwrites rather than duplicates, each
-   attempt's usage recorded once; a continued conversation turn falls
-   back to a fresh fork with the full first-turn prompt plus the stored
-   transcript, since the short follow-up prompt assumes the live
-   session's history); a retry that still reports degraded keeps its
-   usable body the same way. Everything else degraded is terminal. A
+   rule; failures go in the trailing `degraded` field). The service
+   never judges a reply by its wording (#180: the #51 phrase matching
+   is deleted, no replacement heuristic): whatever the agent writes is
+   shown. A turn fails only on facts the service observes itself — the
+   turn errored or was cancelled, the answer is empty, or a review-tool
+   call failed to connect. A trailing `degraded` field with a usable body
+   (it parses and has at least one block) keeps the answer: it shows
+   with the plain-words note "Some references in this answer could not
+   be linked to the code." and the raw reason lands on the job
+   (`degradedReason`) for the Debug page; it is never a failure when
+   there is content, and only an empty degraded answer fails the turn.
+   Connection failures retry once on a fresh session (fork jobs since
+   #51, the reader since #146: fresh per-run secret + session,
+   deterministic provisional ids so the retry overwrites rather than
+   duplicates, each attempt's usage recorded once; a continued
+   conversation turn falls back to a fresh fork with the full
+   first-turn prompt plus the stored transcript, since the short
+   follow-up prompt assumes the live session's history); a retry that
+   still reports degraded keeps its usable body the same way. A
    twice-failed reader sets a plain-words stage
    error ("The guide couldn't be started because the review details
    couldn't be reached. Please retry.") with Retry, the raw reason
-   staying on the job error for the Debug page. Streamed partials are
-   cleared and the reason lands in the job error on the Debug page
+   staying on the job error for the Debug page. Failed jobs keep the
+   agent's reply (`replySnapshot`, served at
+   `GET /api/jobs/:id/reply`) so the Debug page shows it next to the
+   prompt. Streamed partials are cleared on failure and the reason
+   lands in the job error on the Debug page
    (`degraded-turn-51.test.ts`, `reader-146-124.test.ts`). A reply anchor
    that names only the card gets one repair turn carrying the reason
    (`validate.test.ts`). The reader's citation-repair prompt (naming the
@@ -888,13 +897,32 @@ needed (that deviation is closed, not added).
 - Fork works both adapters (+Claude resume quirk handled) — met (M0
   results table 12/12 + 11/12; `runner.ts` fork/resume). Forks carry the
   same `mcpServers` + `_meta` as new/resume/load (#124, fake-transport
-  pinned); live-verified that a Codex fork still comes up with no review
-  tools (zero tool attempts across 7 forks — the drop is inside the
-  adapter/CLI fork path, a bigger fix explicitly deferred), so the live
-  fork-tools check is skipped until then (`test:live:fork-tools`).
+  pinned). Issue #174 found why forks had no working review tools: a
+  fork reuses the base's MCP URL and its fresh `initialize` was refused
+  by the base secret's single stateful transport ("Server already
+  initialized"); the mount now accepts one connection per client on a
+  secret (`mcp/registry.ts`, `mcp.test.ts` "multiple clients on one
+  secret" — ran). Live-verified before/after on 2026-10-14: Codex and
+  Claude forks both failed every attempt before (Codex reported the
+  tool unavailable or hallucinated the result; Claude reported "MCP
+  server failed to connect" — Claude only looked unaffected because
+  ordinary forks answer from the inline pack without calling tools),
+  and both called `get_hunk` on the first attempt after
+  (`test:live:fork-tools` — ran, live-only).
 - No-fork fallback (byte-identical first message, caching) — met (M0 §8
   rows; `pipeline/runner.ts:830 forkFor`; `sessions/manager.ts:271
   forkConversation`; fallback test `pipeline.test.ts:444`).
+- Small-job prompt-cache sharing (#177) — met. Fresh Claude sessions for
+  hunk-pass/summarize/runSmall jobs (`systemPrompt: ""`) re-wrote the
+  CLI's dynamic environment block (~7k tokens, warm) on every job,
+  because the CLI places it after the first user message where the
+  per-job prompt differs. `AcpAgentRunner.start` now sends a
+  byte-identical shared first turn (`SHARED_CACHE_FIRST_TURN`) for such
+  sessions, so the job prompt lands after every cache-shared block;
+  fake-transport tests pin identical `session/new` meta and first turn
+  across sessions (`acp-runner.test.ts` "cache probe (#177)" — ran).
+  Live-verified 2026-10-14 (Haiku, hunk-shaped jobs): warm per-job
+  cache writes 7,371 → 2,588 tokens, hit rate 47.2% → 79.9%.
 - Read-only permission policy asserted for both adapters — met
   (`agent/acp/permissions.ts` deny-by-default; Claude tools allowlist +
   `workspace-write` + sandbox for Codex; `docs/acp-runner.md`; unit
@@ -1058,6 +1086,19 @@ needed (that deviation is closed, not added).
   file with hunk IDs; second-opinion isolation unchanged), so the agent
   can discover files once the L1 ladder leaves the file list out; the
   tool description change is a deliberate golden update.
+- `desc:` IDs in the base context — met (#110): the base source blurb
+  lists the description's paragraphs with their IDs (`- desc:<id>: <text>`
+  per paragraph, headings omitted — they carry no anchors), produced by
+  the same `parseDescriptionParagraphs` the tools and the validator read,
+  so the IDs agree everywhere (`desc-ids-base.test.ts` asserts equality
+  with ingest IDs and validator resolution — ran). The base reads the
+  pending edit (`pendingHtml ?? html` in `toPromptSnapshot`); a later edit
+  invalidates the base through the base key (the description revision rides
+  `guideRevisionForSnapshot`, and the second-opinion base key carries it as
+  `so-<deschash>`). `prompts/instructions.md` and `prompts/reader.md` say
+  the IDs are in the context, so the reader cites them directly instead of
+  spending `search_review` round-trips (live: first card cited
+  `desc:d-p1/d-p2/d-p4`, 0 unverified, 0 MCP calls before it landed).
 - Validation (existence, ranges, anchor substring, hidden concept
   candidates) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair
@@ -1207,7 +1248,10 @@ needed (that deviation is closed, not added).
   own loads on ephemeral binds).
 - MCP per-session secrets (unguessable 256-bit, scoped per review, expire
   with session/review, pin_context reader-only) — met (`mcp/registry.ts`
-  + lifecycle fixes + `mcp.test.ts` “secret lifecycle” — ran).
+  + lifecycle fixes + `mcp.test.ts` “secret lifecycle” — ran). One secret
+  serves many simultaneous client connections (issue #174: forks share
+  the base's URL); revoking a secret closes every connection on it
+  (`mcp.test.ts` "multiple clients on one secret" — ran).
 - `get_code` + file routes traversal-proof — met (`checkPathInRepo`,
   `mcp.test.ts` traversal cases — ran).
 - Agent permission policy read-only both adapters — met (§6).
@@ -1231,9 +1275,9 @@ needed (that deviation is closed, not added).
    (readiness/doctor report path + version). Tarballs attached to GitHub
    releases install identically (verified 2026-10-11 from GitHub itself:
    `gh release download v0.0.1-rc.3` + `npm install -g` on npm 10 and 11,
-   doctor/start/demo/diagrams/stop green; the repo is private so the git ref
-   needs `gh auth setup-git` and the tarball needs `gh release download` —
-   a bare download URL 404s). Installing from the default branch (source
+   doctor/start/demo/diagrams/stop green; the repo has since gone public —
+   at the time it was private, so the git ref needed `gh auth setup-git`
+   and the tarball needed `gh release download`). Installing from the default branch (source
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).

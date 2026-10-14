@@ -29,10 +29,11 @@ re-fetch.
 ## Cards to write
 
 1. **The problem.** Lead with what was wrong before the change and why it
-   mattered. A reader who stops after this card should know whether they
-   need to read on. Cite the description paragraphs that state the problem
-   and the code that shows it (fetch their `desc:` IDs with
-   `search_review`: the description above carries no IDs).
+   mattered, in the first sentence. The first paragraph alone states the
+   problem and the central idea. Cite the description paragraphs that
+   state the problem and the code that shows it (their `desc:` IDs are
+   listed with the description above: cite them directly, no
+   `search_review` needed).
 2. **The central change.** What the change does and how, as one idea. Name
    the new helpers, the call sites, and the invariant the change
    establishes. Small tables of before/after values are welcome where the

@@ -629,6 +629,9 @@ describe("runUpdateListFlow", () => {
     });
     expect(out.code).toBe(1);
     expect(out.lines.some((l) => l.includes("gh auth login"))).toBe(true);
+    // Public repo (issue #156): the network comes first, the login second.
+    expect(out.lines.some((l) => /network/i.test(l))).toBe(true);
+    expect(out.lines.some((l) => l.includes("setup-git"))).toBe(false);
   });
 });
 

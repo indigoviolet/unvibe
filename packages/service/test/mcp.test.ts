@@ -284,6 +284,56 @@ describe("tools", () => {
   });
 });
 
+describe("multiple clients on one secret (issue #174)", () => {
+  it("a second client initializes on the same secret while the first is connected", async () => {
+    const { registry } = makeRegistry();
+    const base = await serve(registry);
+    const issued = registry.issueSession("r1", "base-r1", "session");
+    const first = await connect(base, issued);
+    try {
+      expect((await first.listTools()).tools.length).toBeGreaterThan(0);
+      // A fork reusing the base's MCP URL opens a fresh connection on the
+      // same secret: before the fix this was refused with HTTP 400
+      // "Server already initialized".
+      const second = await connect(base, issued);
+      try {
+        const res = await second.callTool({ name: "search_review", arguments: { query: "backoff" } });
+        expect(isErr(res)).toBe(false);
+        expect(textOf(res)).toContain("card:c-central");
+        // The first client is unaffected by the second's initialize.
+        const again = await first.callTool({ name: "search_review", arguments: { query: "backoff" } });
+        expect(isErr(again)).toBe(false);
+      } finally {
+        await second.close();
+      }
+      // Closing one client does not close the other's connection.
+      const after = await first.callTool({ name: "search_review", arguments: { query: "backoff" } });
+      expect(isErr(after)).toBe(false);
+    } finally {
+      await first.close();
+    }
+  });
+
+  it("revoking the secret closes every client connection on it", async () => {
+    const { registry } = makeRegistry();
+    const base = await serve(registry);
+    const issued = registry.issueSession("r1", "base-r1", "session");
+    const first = await connect(base, issued);
+    const second = await connect(base, issued);
+    try {
+      expect(registry.activitySnapshot("r1").connected).toBeGreaterThan(0);
+      registry.revokeSession(issued.secret);
+      expect(registry.hasSession(issued.secret)).toBe(false);
+      await expect(
+        second.callTool({ name: "search_review", arguments: { query: "backoff" } }),
+      ).rejects.toThrow();
+    } finally {
+      await first.close().catch(() => {});
+      await second.close().catch(() => {});
+    }
+  });
+});
+
 describe("endpoint protection", () => {
   it("needs no install token (secret is the credential) but 404s unknown secrets", async () => {
     const { registry } = makeRegistry();

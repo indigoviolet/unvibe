@@ -11,8 +11,10 @@
  *   turns instead of forking again;
  * - diagram finalize + one repair turn (`finalizeFresh` / `repairDiagrams`,
  *   #130), so a diagram in any answer renders;
- * - degraded-turn handling (`DegradedTurnError`, #51): a complaining turn
- *   fails the job and leaves no blocks behind.
+ * - failed-turn handling (`DegradedTurnError`, #51/#180): a turn that
+ *   fails on observed facts (empty answer, dead review-tool connection)
+ *   fails the job and leaves no blocks behind. The reply's wording is
+ *   never judged.
  *
  * Prompts (slice 2): the first turn of both Explain and Ask uses the
  * merged `ask.md`; later turns on a live session use the short
@@ -525,8 +527,8 @@ export async function runConversationTurn(
         turn.working = null;
         found.error = message;
         turn.error = message;
-        // A degraded turn must leave no card behind: streamed partials
-        // may already hold the chatter (#51).
+        // A failed turn must leave no card behind: streamed partials
+        // are not a finished answer (#51).
         if (err instanceof DegradedTurnError) turn.blocks = [];
         // A failed promoted turn stays retryable from the page: its
         // (emptied) blocks still mirror (issue #152).

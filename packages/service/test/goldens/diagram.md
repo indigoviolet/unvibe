@@ -35,8 +35,8 @@ standard
   no imports, no markdown labels, no layers/scenarios/steps/boards, no
   vars, no `classes:` stanzas, no tooltip:. Never name a shape `steps`,
   `layers`, `scenarios` or `boards` (call it `flow` or `steps_box`).
-- After the block, two to four lines of prose walking the reader through
-  it, with citations. Do not start that paragraph with `Caption:` — that
+- After the block, two to four lines of prose explaining the diagram
+  in order, with citations. Do not start that paragraph with `Caption:` — that
   prefix would make it the diagram's caption instead of a walkthrough.
 - Match the card's level: name the parts at `simple`, use the code's own
   names at `standard`, show the invariant at `deep`.

@@ -185,9 +185,17 @@ describe("conversation MCP connection across turns", () => {
       const forkStart = agents.starts.find((s) => s.sessionId === sessionId);
       const forkSecret = forkStart ? secretOf(forkStart.mcpServers) : null;
       expect(forkSecret).toBeTruthy();
+      // Issue #174: the fork shares the base's secret (ACP forks inherit
+      // the parent's MCP servers). The base's own client stays connected
+      // while the fork's client initializes on the same secret — before
+      // the fix the fork's initialize was refused ("Server already
+      // initialized") and its tool calls never landed.
+      const baseTools = await openTools(origin, forkSecret!);
+      expect(await callHunk(baseTools, hunkId)).toContain(file.fileKey);
       // The fork's secret serves review tools while its job runs…
       const tools = await openTools(origin, forkSecret!);
       try {
+        expect(await callHunk(baseTools, hunkId)).toContain(file.fileKey);
         expect(await callHunk(tools, hunkId)).toContain(file.fileKey);
 
         // …and still after its job ended: turn 2 continues on the same
@@ -204,6 +212,7 @@ describe("conversation MCP connection across turns", () => {
         expect(await callHunk(tools, hunkId)).toContain(file.fileKey);
       } finally {
         await tools.close().catch(() => {});
+        await baseTools.close().catch(() => {});
       }
     } finally {
       await app.close();

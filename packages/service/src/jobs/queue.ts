@@ -106,7 +106,12 @@ interface Entry {
   annotationId?: string;
   seq: number;
   abort?: AbortController;
+  /** Streamed reply text, accumulated for `replySnapshot` on failure (#180). */
+  replyText?: string;
 }
+
+/** Cap on a stored failed reply: enough to read, bounded for the DB. */
+const REPLY_SNAPSHOT_CAP = 100_000;
 
 function copy(job: Job): Job {
   return { ...job, usage: job.usage ? { ...job.usage } : undefined };
@@ -193,10 +198,12 @@ export class JobQueue {
       .sort((a, b) => a.seq - b.seq)
       .map((e) => {
         const job = copy(e.job);
-        // Prompt snapshots ride separately (`GET /api/jobs/:id/prompt`):
-        // lists stay small after hundreds of jobs (PRD §16 snapshot size).
+        // Prompt and reply snapshots ride separately
+        // (`GET /api/jobs/:id/prompt`, `GET /api/jobs/:id/reply`): lists
+        // stay small after hundreds of jobs (PRD §16 snapshot size).
         // `get()` keeps the full job.
         delete job.promptSnapshot;
+        delete job.replySnapshot;
         return job;
       });
   }
@@ -271,6 +278,7 @@ export class JobQueue {
     entry.job.state = "cancelled";
     entry.job.error = undefined;
     entry.job.nextRetryAt = undefined;
+    if (entry.replyText) entry.job.replySnapshot = entry.replyText;
     this.forgetDedupe(entry);
     this.save(entry);
     this.emit(entry);
@@ -311,6 +319,8 @@ export class JobQueue {
     entry.job.attempts = 0;
     entry.job.error = undefined;
     entry.job.nextRetryAt = undefined;
+    entry.job.replySnapshot = undefined;
+    entry.replyText = undefined;
     if (entry.job.dedupeKey) this.dedupe.set(entry.job.dedupeKey, entry.job.id);
     this.save(entry);
     this.emit(entry);
@@ -385,6 +395,7 @@ export class JobQueue {
         entry.abort?.abort();
         entry.job.state = "cancelled";
         entry.job.nextRetryAt = undefined;
+        if (entry.replyText) entry.job.replySnapshot = entry.replyText;
         this.save(entry);
         this.emit(entry);
       }
@@ -508,6 +519,10 @@ export class JobQueue {
     entry.job.state = state;
     if (state !== "backing-off") entry.job.nextRetryAt = undefined;
     if (state === "cancelled") entry.job.error = undefined;
+    // A failed job keeps its reply for the Debug page (#180).
+    if ((state === "error" || state === "cancelled") && entry.replyText) {
+      entry.job.replySnapshot = entry.replyText;
+    }
     if (isTerminal(state)) this.forgetDedupe(entry);
     this.save(entry);
     this.emit(entry);
@@ -535,6 +550,11 @@ export class JobQueue {
         this.emit(entry);
       },
       reportText: (delta) => {
+        // Keep the streamed reply so a failed job can show it on the
+        // Debug page (#180); stamped onto the job only on failure.
+        if ((entry.replyText?.length ?? 0) < REPLY_SNAPSHOT_CAP) {
+          entry.replyText = ((entry.replyText ?? "") + delta).slice(0, REPLY_SNAPSHOT_CAP);
+        }
         this.onEvent(entry.reviewId, {
           type: "text",
           jobId: job.id,

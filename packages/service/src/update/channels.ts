@@ -328,8 +328,9 @@ export const CHANNEL_META_CONCURRENCY = 4;
 
 /**
  * List every channel with its per-ref metadata. Throws when the branch
- * list itself cannot be read (the CLI turns this into the `gh auth login`
- * hint); a single unreadable ref only blanks that row.
+ * list itself cannot be read (the CLI turns this into a hint to check the
+ * network first, then the gh login); a single unreadable ref only blanks
+ * that row.
  */
 export async function listChannels(
   runner: CommandRunner,

@@ -141,7 +141,7 @@ test("1c. the reply box answers in the same conversation (issue #136)", async ({
   await expect(answers.nth(1).locator(".ans-q")).toContainText("What about ordering?");
   // Per-answer controls address the answer: depth on the second answer.
   await answers.nth(1).locator(".ctl").getByRole("button", { name: "Simpler" }).click();
-  await expect(answers.nth(1).locator(".prose").first()).toContainText("In short:", { timeout: 8000 });
+  await expect(answers.nth(1).locator(".prose").first()).toContainText("is about unfolding folded header values", { timeout: 8000 });
 });
 
 test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive", async ({

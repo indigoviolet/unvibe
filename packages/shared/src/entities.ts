@@ -698,6 +698,13 @@ export interface Job {
    * here for the Debug page, never on the card).
    */
   degradedReason?: string;
+  /**
+   * The agent's reply text for a job that ended in `error` or
+   * `cancelled` (issue #180): everything the turn streamed, kept so the
+   * Debug page can show it next to the prompt and "why did this fail"
+   * can be answered by reading it. Absent for successful jobs.
+   */
+  replySnapshot?: string;
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
   cardId?: string;
   /**
