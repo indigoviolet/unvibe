@@ -145,7 +145,7 @@ describe("concurrency cap", () => {
     await queue.drain();
   });
 
-  it("#123: small-model jobs run in their own bucket, never behind main jobs", async () => {
+  it("#123/#182: small-model jobs run in their own bucket, never behind main jobs, with the same cap", async () => {
     const { queue } = makeQueue({ cap: 1 });
     const mainGate = deferred();
     queue.enqueue(spec({ kind: "critic", run: () => mainGate.promise.then(() => {}) }));
@@ -154,20 +154,60 @@ describe("concurrency cap", () => {
       queue.enqueue(spec({ kind: "hunk-pass", run: () => g.promise.then(() => {}) })),
     );
     await flush();
-    // The main slot is full, yet both hunk jobs still run.
+    // The main slot is full, yet the first hunk job still runs; the
+    // small bucket has the same cap (1), so the second waits.
     expect(queue.get(small[0].id)?.state).toBe("running");
-    expect(queue.get(small[1].id)?.state).toBe("running");
-    // The small bucket still caps itself: a fifth small job waits while four run.
-    const extraGates = [deferred(), deferred(), deferred()];
-    const extra = extraGates.map((g) =>
-      queue.enqueue(spec({ kind: "hunk-pass", run: () => g.promise.then(() => {}) })),
+    expect(queue.get(small[1].id)?.state).toBe("queued");
+    for (const g of smallGates) g.resolve();
+    mainGate.resolve();
+    await queue.drain();
+    expect(queue.get(small[1].id)?.state).toBe("done");
+  });
+
+  it("#182: with the setting at N, N small-model jobs run at once", async () => {
+    const n = 3;
+    const { queue } = makeQueue({ cap: n });
+    let running = 0;
+    let peak = 0;
+    const gates = Array.from({ length: n + 2 }, () => deferred());
+    const jobs = gates.map((g) =>
+      queue.enqueue(
+        spec({
+          kind: "hunk-pass",
+          run: async () => {
+            running += 1;
+            peak = Math.max(peak, running);
+            await g.promise;
+            running -= 1;
+          },
+        }),
+      ),
     );
     await flush();
-    expect(queue.get(extra[0].id)?.state).toBe("running");
-    expect(queue.get(extra[1].id)?.state).toBe("running");
-    expect(queue.get(extra[2].id)?.state).toBe("queued");
-    for (const g of [...smallGates, ...extraGates]) g.resolve();
-    mainGate.resolve();
+    expect(peak).toBe(n);
+    expect(jobs.filter((j) => queue.get(j.id)?.state === "running")).toHaveLength(n);
+    expect(jobs.filter((j) => queue.get(j.id)?.state === "queued")).toHaveLength(2);
+    for (const g of gates) g.resolve();
+    await queue.drain();
+    expect(peak).toBe(n);
+  });
+
+  it("#182: raising the setting takes effect on the same queue, without a restart", async () => {
+    let cap = 1;
+    const { queue } = makeQueue({ cap: () => cap });
+    const gates = Array.from({ length: 3 }, () => deferred());
+    const jobs = gates.map((g) =>
+      queue.enqueue(spec({ kind: "summarize", run: () => g.promise.then(() => {}) })),
+    );
+    await flush();
+    expect(jobs.filter((j) => queue.get(j.id)?.state === "running")).toHaveLength(1);
+    expect(jobs.filter((j) => queue.get(j.id)?.state === "queued")).toHaveLength(2);
+    cap = 3;
+    // Re-pump the same live queue (as a fresh enqueue or settle would).
+    queue.setPriority(jobs[1].id, JOB_PRIORITY.background);
+    await flush();
+    expect(jobs.filter((j) => queue.get(j.id)?.state === "running")).toHaveLength(3);
+    for (const g of gates) g.resolve();
     await queue.drain();
   });
 });
