@@ -26,6 +26,7 @@ import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { jobCounts } from "./jobCounts.js";
+import { FullAccessMarker } from "./FullAccessMarker.js";
 import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
@@ -96,6 +97,7 @@ export function ReviewBar({
           </Link>
         ) : null}
         <PreviewBuildBadge compact />
+        <FullAccessMarker compact />
       </div>
       <span className="seg" role="group" aria-label="Panes">
         <button type="button" aria-pressed={guideOpen} onClick={onToggleGuide}>

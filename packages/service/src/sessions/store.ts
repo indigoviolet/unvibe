@@ -13,8 +13,8 @@ import type { BaseKey } from "./manager.js";
 export interface PersistedBase {
   key: BaseKey;
   session: Session;
-  /** Build params needed to restart the session (cwd, system prompt, MCP). */
-  build: { cwd: string; systemPrompt: string; mcpServers: unknown[] };
+  /** Build params needed to restart the session (cwd, system prompt, posture, MCP). */
+  build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: unknown[] };
   pack: string;
   logSeq: number;
   live: boolean;
@@ -28,6 +28,8 @@ export interface PersistedConversation {
   lastSeenSeq: number;
   live: boolean;
   updatedAt: number;
+  /** Issue #160: posture the session started with; absent on older rows. */
+  readOnly?: boolean;
 }
 
 export class SessionStore {

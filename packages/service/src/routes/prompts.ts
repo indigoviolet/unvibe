@@ -66,6 +66,8 @@ import {
   type RenderValues,
   type TemplateLibrary,
 } from "../prompts/index.js";
+import { renderSystemPrompt } from "../prompts/access.js";
+import { accessModeOf, type AccessMode } from "@unvibe/shared";
 import { formatContributionLines } from "../sharedctx/contributions.js";
 import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 
@@ -306,6 +308,11 @@ export interface PromptsRouteDeps {
   promptsDir?: string;
   /** When absent, `?review=` answers 501 until wired. */
   snapshots?: SnapshotProvider;
+  /**
+   * Issue #160: stored settings, so the `?review=` expansion previews the
+   * L0 variant the setting selects. Absent → the lock-down preview.
+   */
+  settings?: { get(): { fullAccess: boolean } };
 }
 
 /** An expanded prompt with its layer spans (extends the shared contract). */
@@ -417,14 +424,16 @@ function firstFindingCitedCode(snapshot: PromptReviewSnapshot): string {
 }
 
 /** Expand every template against the snapshot. Pure given the library. */
-export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot): ExpandedPrompt[] {
+export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, access: AccessMode = "lockdown"): ExpandedPrompt[] {
   const render = (name: string, values: RenderValues): string => {
     const t = lib.get(name);
     if (!t) throw new Error(`prompt template missing: ${name}`);
     return renderTemplate(t, values);
   };
 
-  const l0 = render("instructions", {});
+  // Issue #160: the L0 preview shows the variant the setting selects —
+  // the lock-down wording, or the full-access allowed/forbidden list.
+  const l0 = renderSystemPrompt(lib, access);
   // One ladder call (issue #107): the preview shows the same capped halves
   // the pipeline sends, from the same rung.
   const ladder = buildLadder(snapshot);
@@ -625,7 +634,8 @@ export async function registerPrompts(
       }
       if (!snapshot) return reply.code(404).send({ error: `unknown review ${query.review}` });
       try {
-        (body as PromptsResponse & { expanded: ExpandedPrompt[] }).expanded = expandAll(lib, snapshot);
+        const access = deps.settings ? accessModeOf(deps.settings.get()) : "lockdown";
+        (body as PromptsResponse & { expanded: ExpandedPrompt[] }).expanded = expandAll(lib, snapshot, access);
       } catch (err) {
         return reply
           .code(500)

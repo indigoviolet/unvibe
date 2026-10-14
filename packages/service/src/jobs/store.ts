@@ -24,6 +24,10 @@ interface JobData {
   nextRetryAt?: number;
   cardId?: string;
   annotationId?: string;
+  /** Issue #160: posture stamp, tool record, checkout-reset flag. */
+  accessMode?: Job["accessMode"];
+  tools?: Job["tools"];
+  checkoutReset?: boolean;
 }
 
 export interface JobPersistence {
@@ -67,6 +71,9 @@ function rowToJob(row: {
     ...(data.nextRetryAt !== undefined ? { nextRetryAt: data.nextRetryAt } : {}),
     ...(data.cardId !== undefined ? { cardId: data.cardId } : {}),
     ...(data.annotationId !== undefined ? { annotationId: data.annotationId } : {}),
+    ...(data.accessMode !== undefined ? { accessMode: data.accessMode } : {}),
+    ...(data.tools !== undefined ? { tools: data.tools } : {}),
+    ...(data.checkoutReset !== undefined ? { checkoutReset: data.checkoutReset } : {}),
   };
 }
 
@@ -87,6 +94,9 @@ export class JobStore implements JobPersistence {
       ...(job.nextRetryAt !== undefined ? { nextRetryAt: job.nextRetryAt } : {}),
       ...(job.cardId !== undefined ? { cardId: job.cardId } : {}),
       ...(job.annotationId !== undefined ? { annotationId: job.annotationId } : {}),
+      ...(job.accessMode !== undefined ? { accessMode: job.accessMode } : {}),
+      ...(job.tools !== undefined ? { tools: job.tools } : {}),
+      ...(job.checkoutReset !== undefined ? { checkoutReset: job.checkoutReset } : {}),
     };
     this.db
       .prepare(

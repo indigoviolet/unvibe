@@ -577,6 +577,8 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
   versionPickerEnabled: false,
+  fullAccess: false,
+  fullAccessAcknowledgedAt: null,
 };
 
 function getMockSettings(): Settings {
@@ -3064,9 +3066,18 @@ export const mockApi = {
   settings: async (): Promise<Settings> => getMockSettings(),
 
   saveSettings: async (body: Partial<Settings>): Promise<Settings> => {
-    const next = { ...getMockSettings(), ...body };
+    // Mirror the service rule (issue #160): enabling full access needs the
+    // acknowledgement in the same update; turning it off clears it.
+    if (body.fullAccess === true && body.fullAccessAcknowledgedAt == null) {
+      throw new Error(
+        'PUT /api/settings: 400 {"errors":["fullAccess needs the warning acknowledgement: send fullAccessAcknowledgedAt with the update"]}',
+      );
+    }
+    const merged: Partial<Settings> = { ...body };
+    if (body.fullAccess === false) merged.fullAccessAcknowledgedAt = null;
+    const next = { ...getMockSettings(), ...merged };
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(body));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
     } catch {
       // Non-fatal.
     }

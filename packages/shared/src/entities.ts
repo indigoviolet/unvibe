@@ -640,6 +640,17 @@ export type JobKind =
 
 export type JobState = "queued" | "running" | "backing-off" | "done" | "error" | "cancelled";
 
+/** Issue #160: one agent tool call recorded on its job. */
+export interface JobToolCall {
+  /** Tool name as reported by the adapter (e.g. "Bash", "Read", "WebFetch"). */
+  name: string;
+  /**
+   * Best-effort argument detail (e.g. the shell command or URL), when the
+   * adapter sent it with the call. Truncated by the service.
+   */
+  detail?: string;
+}
+
 /**
  * Token usage for one turn or job (#125). Cache reads and writes are split:
  * `usage.inputTokens` counts UNCACHED input only, and the hit rate the app
@@ -666,6 +677,25 @@ export interface Job {
   sessionId?: string;
   /** Snapshot of the exact prompt sent (Settings links to it). */
   promptSnapshot?: string;
+  /**
+   * Issue #160: the agent-access posture this job was enqueued under
+   * (`full` = full access on, `lockdown` = read-only lock-down). The
+   * session itself keeps the posture it started with (see the base key);
+   * this stamp says which variant the job expected.
+   */
+  accessMode?: import("./access.js").AccessMode;
+  /**
+   * Issue #160: tools the job's agent calls started, in order (capped by
+   * the service). Shown on the Debug page. Names only unless the adapter
+   * sent argument detail with the call.
+   */
+  tools?: JobToolCall[];
+  /**
+   * Issue #160: true when the post-job checkout check found the review's
+   * worktree changed and reset it to the reviewed commit. Only set when
+   * full access is on (the lock-down cannot change the checkout).
+   */
+  checkoutReset?: boolean;
   usage?: TokenUsage;
   /** Cache read share: cachedRead/(input+cachedRead+cachedWrite). input counts uncached input only (M0, #125). */
   cacheHitRate?: number;

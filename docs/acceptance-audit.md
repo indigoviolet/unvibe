@@ -892,6 +892,31 @@ needed (that deviation is closed, not added).
   (`agent/acp/permissions.ts` deny-by-default; Claude tools allowlist +
   `workspace-write` + sandbox for Codex; `docs/acp-runner.md`; unit
   permission tests in `acp-runner.test.ts` 14 tests).
+- Full-access opt-in (issue #160, this branch): setting off by default
+  with a stored warning acknowledgement (the service refuses to enable
+  without it); two system-prompt variants (`access-lockdown` byte-
+  identical to the old wording — the golden file is unchanged — plus
+  `access-full`); Claude drops the tool reduction with an allow-all
+  handler, Codex uses `agent-full-access` mode (re-applied on fork/load);
+  posture rides every session (`readOnly`), the base key (`access`), and
+  each job (`accessMode`). Owner decisions since: automatic background
+  small-model jobs (hunk pass, summarize, consolidate) always run
+  locked down — one rule (`BACKGROUND_JOB_KINDS` + `postureFor` in
+  `@unvibe/shared`, stamped `lockdown` on those jobs); a follow-up
+  continues its stored session only on a posture match, else closes it
+  and forks fresh with the transcript (both directions; the applier
+  re-anchors). Cheap checks, all three built: post-job checkout
+  verify-and-reset recorded on the job, per-job tool records on the
+  Debug page, markers on the review bar + Debug page. Adapter env:
+  lock-down spawns the base env unchanged; full access removes named
+  secrets and keeps named provider auth (`adapterEnvFor`, per-posture
+  subprocesses). Evidence: `test/full-access-160.test.ts` 34 tests
+  (posture per provider and second opinion, flip follow-ups both ways,
+  background lockdown, conn-retry posture, env rule, fs/terminal
+  refusal); live measurements in the #160 reports (small, sandboxed,
+  costs reported). Prompt-wording proof is measurement, not a gate —
+  stated in the reports. Enforced-vs-instructed lists in PRD §6.1,
+  `docs/acp-runner.md`, and the AGENTS.md submit-rule note.
 - `load` drain, `cancel` → cancelled, crash → retryable + transparent
   restart — met (`acp-runner.test.ts`: load replay drain, cancel
   mid-reply, crash/restart).
@@ -1123,9 +1148,12 @@ needed (that deviation is closed, not added).
   role consumers (readiness, pipeline, second-opinion runner, shared
   context) resolve the same effective settings as Settings (#88).
 - Second-opinion isolation (own base L0+L1, never guide text/findings/
-  contributions/pins beyond cited) — met (structural: `secondopinion/base.ts`;
-  tool-level: `registry.ts:286` restricted search/resolve; e2e asserts the
-  real prompt has no guide text).
+  contributions/pins beyond cited) — met (structural under the lock-down:
+  `secondopinion/base.ts`; tool-level: `registry.ts:286` restricted
+  search/resolve; e2e asserts the real prompt has no guide text). Under
+  full access (issue #160) the isolation is a prompt rule only — a shell
+  can read the data directory — stated in PRD §12, `docs/acp-runner.md`,
+  and the base-module header.
 - Per-provider cap 4 (setting `sessionsPerProvider`) — met
   (`jobs/queue.ts`, `settings.test.ts` cap cases).
 - Priority queue (asked > visible > background) — met (`JOB_PRIORITY`,
@@ -1162,10 +1190,15 @@ needed (that deviation is closed, not added).
 
 - Files with front matter (role/tier/variables) — met (`prompts/*.md` 17
   templates: `ask.md` first turns, `ask_turn.md` follow-ups, `explain.md`
-  deleted under #136 slice 2; `prompts/loader.ts`).
+  deleted under #136 slice 2; `prompts/loader.ts`). Issue #160 adds two
+  `{{access_policy}}` fragments (`access-lockdown.md`, `access-full.md`,
+  validated like templates but outside the §13 table) filling the new
+  instructions variable.
 - Deterministic rendering (stable order, no timestamps, golden files) —
   met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens cover
   `ask` + `ask_turn` (the old `explain` golden went with the template).
+  The instructions golden renders the lock-down variant and its file is
+  unchanged by #160 — the default stays byte-for-byte the old wording.
 - All 17 template rows present — met (17 files cover every row;
   `routes/prompts.ts` serves template + expanded).
 - Settings shows the template; the debug page shows the per-review
@@ -1307,7 +1340,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Description round-trip (unedited paragraphs byte-identical) — met
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
-  `gh-writes.test.ts`, doctor/readiness share the wrapper). Managed-clone
+  `gh-writes.test.ts`, doctor/readiness share the wrapper). Under full
+  access (issue #160) agents' own `gh` runs as the user via the keyring:
+  adapter subprocesses inherit a scrubbed environment with
+  `GITHUB_TOKEN`/`GH_TOKEN` removed (`scrubAdapterEnv`), and Unvibe's own
+  `gh` calls above are unchanged. Managed-clone
   refresh (#27) is `git fetch origin` on managed checkouts only, before
   changes listings and review ingest/refresh (best effort, 30 s freshness +
   in-flight sharing; failures degrade to stale data with a `fetchError`
@@ -1347,6 +1384,13 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Privacy: loopback-only enforced at three layers (browser CSP + suite
   network tripwires + static guards + subprocess allowlist —
   `network-*.test.ts`, `subprocess-allowlist.test.ts`, all in `check`).
+  Issue #160 adds the enforced-vs-instructed split: lock-down agents
+  cannot run commands, `gh`, or the network (enforced); full-access
+  agents can (prompt-instructed only), with the scrubbed adapter env,
+  post-job checkout reset, and tool records as the remaining enforcement.
+  What an unrestricted agent can still reach (keyring `gh` login, SSH
+  keys, the data directory) is stated in PRD §6.1 and
+  `docs/acp-runner.md`, not prevented.
   Dev-only exception (issue #29): with a Sentry DSN in the env the service
   and the Vite dev server report errors to Sentry. Releases carry neither
   SDK nor DSN (`sentry.test.ts`, dist scan in `network-guards.test.ts`).
@@ -1447,6 +1491,26 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
     PRD shape; only oversized reviews see the degraded tiers.
 
 ## Open list
+
+### Full access opt-in (branch `feat/160-full-access-opt-in`, issue #160)
+
+Global setting, off by default, with a stored warning acknowledgement;
+two prompt variants; user-facing work unrestricted when on (Claude: full
+tool set + allow-all handler; Codex: `agent-full-access` mode), while
+automatic background small-model jobs (hunk pass, summarize,
+consolidate) always stay locked down; posture on sessions, base keys
+and jobs; follow-ups never continue a session from the other mode
+(close + fresh fork with transcript, both directions); tool records +
+checkout verify-and-reset on the Debug page; markers on the review bar
++ Debug page; enforced-vs-instructed lists in PRD §6.1,
+`docs/acp-runner.md`, and the AGENTS.md submit-rule note. REPORT, not
+decided: whether the setting stays global only or can also be chosen
+per review or per repository (built global only; the natural use is "on
+for my team's repositories, off for strangers' PRs"). Open: prompt
+wording is measured by live checks, not proven; #124 (Codex forks
+without review tools) stays open; sandbox work (#104) lands under this
+when it exists; #169's plotline-assign must join `BACKGROUND_JOB_KINDS`
+when it lands.
 
 ### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
 

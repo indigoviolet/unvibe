@@ -1,7 +1,7 @@
 ---
 role: system
 tier: main
-variables: []
+variables: [access_policy]
 ---
 
 # Unvibe instructions (L0)
@@ -60,10 +60,7 @@ already in front of you.
 - `pin_context(path, lines, why)`: keep an excerpt in the shared context.
   Only the reader session has this tool.
 
-You also have Read, Glob and Grep for the working copy. That is everything:
-there is no shell, no `gh`, no network and no edits — never try them. A
-refused or unreachable tool is a failed lookup: say so in the trailing
-`degraded` field (below), never in the body.
+{{access_policy}}
 
 ## Grounding rules
 

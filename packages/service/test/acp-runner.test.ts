@@ -262,6 +262,50 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
+  it("full access (#160): sessions with instructions get no shared first turn", async () => {
+    const state = createFakeState([]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "unvibe-instructions",
+      mcpServers: [],
+      readOnly: false,
+    });
+    // Full-access meta (no tool reduction) and no warmup turn: the
+    // shared first turn fires only for empty-system-prompt sessions.
+    expect(state.newMetas.get(s.id)).toMatchObject({ systemPrompt: "unvibe-instructions" });
+    expect(state.newMetas.get(s.id)).not.toHaveProperty("claudeCode");
+    expect(state.promptCalls.filter((c) => c.sessionId === s.id)).toEqual([]);
+    await runner.dispose();
+  });
+
+  it("full access (#160): empty-system-prompt sessions still share the first turn", async () => {
+    // The #177 trigger is posture-blind by design (background jobs are
+    // always lock-down after the posture rule, so a full-access "" start
+    // cannot happen through the pipeline — but the runner treats both
+    // postures the same if one ever does).
+    const state = createFakeState([
+      { match: "The task for this session arrives", chunks: [{ text: "ready" }] },
+      { match: "hunk C", chunks: [{ text: "ans C" }] },
+    ]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "",
+      mcpServers: [],
+      readOnly: false,
+    });
+    const events = await collect(runner, s, "hunk C please");
+    const calls = state.promptCalls.filter((c) => c.sessionId === s.id).map((c) => c.text);
+    expect(calls[0]).toBe(SHARED_CACHE_FIRST_TURN);
+    expect(events[events.length - 1]).toEqual({ type: "done", stopReason: "end_turn" });
+    await runner.dispose();
+  });
+
   it("#121: session/resume and session/load carry the same _meta as session/new", async () => {
     const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
     const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });

@@ -103,13 +103,22 @@ export const SHARED_CACHE_FIRST_TURN =
   "Reply with exactly `ready` and nothing else. The task for this session arrives in the next message.";
 
 export class AcpAgentRunner implements AgentRunner {
-  private conns = new Map<ProviderId, ProviderConnection>();
+  /**
+   * One adapter subprocess per (provider, posture) — issue #160
+   * follow-up. The lock-down transport spawns with exactly the base env,
+   * so the default posture is unchanged down to the spawn env; the
+   * full-access transport spawns scrubbed. Sessions always prompt, fork
+   * and load through the transport matching their own `readOnly`, so the
+   * two postures never share a process. Lazy like before: a posture's
+   * subprocess starts on its first use.
+   */
+  private conns = new Map<string, ProviderConnection>();
   /** Live sessions (close removes). */
   private live = new Map<string, AcpSessionRecord>();
   /** Known sessions for load-after-close (survives close, cleared on dispose). */
   private known = new Map<string, AcpSessionRecord>();
-  /** Canonical policies per provider, reapplied after restarts. */
-  private policies = new Map<ProviderId, Map<string, SessionPolicy>>();
+  /** Canonical policies per transport, reapplied after restarts. */
+  private policies = new Map<string, Map<string, SessionPolicy>>();
   /** Last reported cumulative usage per session (Claude counters grow across
    *  turns; per-turn usage is the delta — see usage.ts). */
   private usageBaseline = new Map<string, TurnUsage>();
@@ -123,12 +132,17 @@ export class AcpAgentRunner implements AgentRunner {
     this.opts = opts;
   }
 
-  private conn(provider: ProviderId): ProviderConnection {
-    let c = this.conns.get(provider);
+  private connKey(provider: ProviderId, readOnly: boolean): string {
+    return `${provider}:${readOnly ? "ro" : "full"}`;
+  }
+
+  private conn(provider: ProviderId, readOnly: boolean): ProviderConnection {
+    const key = this.connKey(provider, readOnly);
+    let c = this.conns.get(key);
     if (!c) {
       const factory = this.opts.factories?.[provider] ?? this.opts.transportFactory;
-      c = new ProviderConnection(provider, factory);
-      this.conns.set(provider, c);
+      c = new ProviderConnection(provider, readOnly, factory);
+      this.conns.set(key, c);
     }
     return c;
   }
@@ -143,21 +157,22 @@ export class AcpAgentRunner implements AgentRunner {
   private remember(rec: AcpSessionRecord): void {
     this.live.set(rec.acpSessionId, rec);
     this.known.set(rec.acpSessionId, rec);
-    if (!this.policies.has(rec.provider)) this.policies.set(rec.provider, new Map());
-    this.policies.get(rec.provider)!.set(rec.acpSessionId, this.policyFor(rec));
+    const key = this.connKey(rec.provider, rec.readOnly);
+    if (!this.policies.has(key)) this.policies.set(key, new Map());
+    this.policies.get(key)!.set(rec.acpSessionId, this.policyFor(rec));
     // Push to the live transport when present (no-op before first ensure).
     try {
-      this.conns.get(rec.provider)?.setPolicy(rec.acpSessionId, this.policyFor(rec));
+      this.conns.get(key)?.setPolicy(rec.acpSessionId, this.policyFor(rec));
     } catch {
       // ignore: reapplied on next ensure()
     }
   }
 
-  private async ensureCaller(provider: ProviderId): Promise<{ request: (m: string, p: unknown) => Promise<unknown>; notify: (m: string, p: unknown) => Promise<void> }> {
-    const c = this.conn(provider);
+  private async ensureCaller(provider: ProviderId, readOnly: boolean): Promise<{ request: (m: string, p: unknown) => Promise<unknown>; notify: (m: string, p: unknown) => Promise<void> }> {
+    const c = this.conn(provider, readOnly);
     const caller = await c.ensure();
     // Reapply canonical policies: a restart drops the per-transport map.
-    const all = this.policies.get(provider);
+    const all = this.policies.get(this.connKey(provider, readOnly));
     if (all) c.reapply(all);
     // Re-set this session's policy in case the transport is fresh.
     return caller;
@@ -198,6 +213,9 @@ export class AcpAgentRunner implements AgentRunner {
           },
         };
       }
+      // Full access (issue #160): no tool reduction — the adapter defaults
+      // (the agent's full tool set) apply, and the permission handler
+      // approves. The limits live only in the system prompt.
       return meta;
     }
     // Codex: `_meta.systemPrompt` is silently ignored (spike 1a FAIL).
@@ -218,7 +236,7 @@ export class AcpAgentRunner implements AgentRunner {
   } & { readOnly?: boolean }): Promise<Session> {
     const provider = normalizeProvider(opts.provider);
     const readOnly = (opts as AcpStartOptions).readOnly ?? true;
-    const caller = await this.ensureCaller(provider);
+    const caller = await this.ensureCaller(provider, readOnly);
     const mcpServers = toAcpMcpServers(opts.mcpServers);
     const meta = this.newSessionMeta(provider, opts.systemPrompt, readOnly);
     let res: unknown;
@@ -232,7 +250,7 @@ export class AcpAgentRunner implements AgentRunner {
       // A version manager refusing the review copy (issue #105) reads as
       // raw adapter JSON; say in plain words which command failed and what
       // to do (the real path is named when the transport knows it).
-      throw new Error(friendlySessionStartError(provider, errorMessage(e), this.conn(provider).adapterBin), {
+      throw new Error(friendlySessionStartError(provider, errorMessage(e), this.conn(provider, readOnly).adapterBin), {
         cause: e,
       });
     }
@@ -288,8 +306,13 @@ export class AcpAgentRunner implements AgentRunner {
     // Restricted posture for Codex is a session mode, applied after creation
     // (INITIAL_AGENT_MODE is process-wide and cannot multiplex). See
     // applyCodexRestricted() for why this is workspace-write, not read-only.
-    if (provider === "codex" && readOnly) {
-      await this.applyCodexRestricted(rec);
+    // Full access (issue #160) uses the adapter's `agent-full-access`
+    // mode: unrestricted shell/network/files with no permission round-trip
+    // (approval "never", dangerFullAccess sandbox — verified in the
+    // adapter sources). The review MCP tools run without prompts there.
+    if (provider === "codex") {
+      if (readOnly) await this.applyCodexRestricted(rec);
+      else await this.applyCodexFullAccess(rec);
     }
     return { id: rec.acpSessionId, provider, model: rec.model };
   }
@@ -311,8 +334,19 @@ export class AcpAgentRunner implements AgentRunner {
     await this.setMode({ id: rec.acpSessionId, provider: rec.provider, model: rec.model }, "workspace-write");
   }
 
+  /**
+   * Issue #160: the adapter's `agent-full-access` mode ("Unrestricted
+   * access to the internet and any file on your computer"). Shell, network
+   * and file tools run with no permission round-trip; our review MCP tools
+   * run the same way. Nothing about this mode is enforced least-privilege:
+   * the limits are prompt instructions only.
+   */
+  private async applyCodexFullAccess(rec: AcpSessionRecord): Promise<void> {
+    await this.setMode({ id: rec.acpSessionId, provider: rec.provider, model: rec.model }, "agent-full-access");
+  }
+
   private async setConfigOption(rec: AcpSessionRecord, configId: string, value: string): Promise<void> {
-    const caller = await this.ensureCaller(rec.provider);
+    const caller = await this.ensureCaller(rec.provider, rec.readOnly);
     await caller.request("session/set_config_option", {
       sessionId: rec.acpSessionId,
       configId,
@@ -323,7 +357,7 @@ export class AcpAgentRunner implements AgentRunner {
   /** Set session mode (e.g. Codex read-only / workspace-write / agent). */
   async setMode(session: Session, modeId: string): Promise<void> {
     const rec = this.requireLive(session);
-    const caller = await this.ensureCaller(rec.provider);
+    const caller = await this.ensureCaller(rec.provider, rec.readOnly);
     try {
       await caller.request("session/set_mode", { sessionId: rec.acpSessionId, modeId });
       return;
@@ -363,7 +397,7 @@ export class AcpAgentRunner implements AgentRunner {
 
   async fork(session: Session, opts?: { atMessage?: string }): Promise<Session> {
     const parent = this.requireLive(session);
-    const caller = await this.ensureCaller(parent.provider);
+    const caller = await this.ensureCaller(parent.provider, parent.readOnly);
     // #124: a fork carries the same session-defining fields as new/resume/
     // load (one builder, `sessionMeta`). codex-acp builds the fork's config
     // from `request.mcpServers ?? []`, so a fork sent without them may come
@@ -432,8 +466,9 @@ export class AcpAgentRunner implements AgentRunner {
         }
       }
     }
-    if (parent.provider === "codex" && rec.readOnly) {
-      await this.applyCodexRestricted(rec);
+    if (parent.provider === "codex") {
+      if (rec.readOnly) await this.applyCodexRestricted(rec);
+      else await this.applyCodexFullAccess(rec);
     }
     return { id: rec.acpSessionId, provider: rec.provider, model: rec.model };
   }
@@ -446,7 +481,7 @@ export class AcpAgentRunner implements AgentRunner {
   async load(sessionId: string): Promise<Session> {
     const known = this.known.get(sessionId);
     if (!known) throw new Error(`unknown acp session ${JSON.stringify(sessionId)} (no record; cannot load)`);
-    const caller = await this.ensureCaller(known.provider);
+    const caller = await this.ensureCaller(known.provider, known.readOnly);
     try {
       await caller.request("session/load", {
         sessionId: known.acpSessionId,
@@ -461,7 +496,7 @@ export class AcpAgentRunner implements AgentRunner {
     // replay before the next prompt so stale chunks never leak into it.
     // #122.3: drain until quiet (one 20 ms window with nothing new) instead
     // of a fixed sleep, bounded by the ceiling.
-    const c = this.conn(known.provider);
+    const c = this.conn(known.provider, known.readOnly);
     const ceiling = this.opts.settleMs ?? 300;
     const t0 = Date.now();
     c.drain(known.acpSessionId);
@@ -473,8 +508,9 @@ export class AcpAgentRunner implements AgentRunner {
     }
     const rec: AcpSessionRecord = { ...known };
     this.live.set(rec.acpSessionId, rec);
-    if (rec.provider === "codex" && rec.readOnly) {
-      await this.applyCodexRestricted(rec);
+    if (rec.provider === "codex") {
+      if (rec.readOnly) await this.applyCodexRestricted(rec);
+      else await this.applyCodexFullAccess(rec);
     }
     return { id: rec.acpSessionId, provider: rec.provider, model: rec.model };
   }
@@ -484,20 +520,20 @@ export class AcpAgentRunner implements AgentRunner {
     if (!rec) return;
     this.live.delete(rec.acpSessionId);
     try {
-      const caller = await this.ensureCaller(rec.provider);
+      const caller = await this.ensureCaller(rec.provider, rec.readOnly);
       await caller.request("session/close", { sessionId: rec.acpSessionId });
     } catch {
       // close is best-effort (idle sessions may already be gone)
     }
-    this.conn(rec.provider).dropPolicy(rec.acpSessionId);
+    this.conn(rec.provider, rec.readOnly).dropPolicy(rec.acpSessionId);
   }
 
   async *prompt(session: Session, text: string, signal?: AbortSignal): AsyncIterable<AgentEvent> {
     const rec = this.requireLive(session);
-    const c = this.conn(rec.provider);
+    const c = this.conn(rec.provider, rec.readOnly);
     let caller: { request: (m: string, p: unknown) => Promise<unknown>; notify: (m: string, p: unknown) => Promise<void> };
     try {
-      caller = await this.ensureCaller(rec.provider);
+      caller = await this.ensureCaller(rec.provider, rec.readOnly);
     } catch (e) {
       yield { type: "error", message: `${rec.provider} is not connected: ${errorMessage(e)}`, retryable: true };
       return;
@@ -534,6 +570,9 @@ export class AcpAgentRunner implements AgentRunner {
           title?: string | null;
           name?: string | null;
           status?: string | null;
+          /** Adapter-sent tool arguments (shape varies by adapter). */
+          rawInput?: unknown;
+          input?: unknown;
         };
         const kind = u?.sessionUpdate;
         if (kind === "agent_message_chunk" && u?.content?.type === "text" && typeof u.content.text === "string" && u.content.text !== "") {
@@ -541,7 +580,12 @@ export class AcpAgentRunner implements AgentRunner {
         } else if (kind === "tool_call") {
           const name = u.title || u.name || u.toolCallId || "tool";
           if (u.toolCallId) seenTools.add(u.toolCallId);
-          yield { type: "tool", name, status: "start" };
+          // Issue #160: keep a best-effort record of what the agent ran
+          // (shell command, URL, …) when the adapter sends arguments with
+          // the call. Adapters that send none record the name only.
+          const detail = formatToolDetail(u.rawInput ?? u.input);
+          if (detail !== undefined) yield { type: "tool", name, status: "start", detail };
+          else yield { type: "tool", name, status: "start" };
         } else if (kind === "tool_call_update") {
           const status = (u.status ?? "") as string;
           const name = u.title || u.name || u.toolCallId || "tool";
@@ -699,7 +743,8 @@ export class AcpAgentRunner implements AgentRunner {
     const cached = this.modelCache.get(p);
     if (cached && Date.now() - cached.at < 5 * 60_000)
       return { models: cached.models, defaultId: cached.defaultId ?? null };
-    const caller = await this.ensureCaller(p);
+    // Throwaway probe sessions run on the lock-down transport (base env).
+    const caller = await this.ensureCaller(p, true);
     const res = (await caller.request("session/new", {
       cwd: tmpdir(),
       mcpServers: [],
@@ -721,7 +766,8 @@ export class AcpAgentRunner implements AgentRunner {
   /** Thinking/effort selectors the adapter exposes (Claude `effort`, Codex `reasoning_effort`). */
   async listThinking(provider: string): Promise<ThinkingInfo[]> {
     const p = normalizeProvider(provider);
-    const caller = await this.ensureCaller(p);
+    // Throwaway probe sessions run on the lock-down transport (base env).
+    const caller = await this.ensureCaller(p, true);
     const res = (await caller.request("session/new", {
       cwd: tmpdir(),
       mcpServers: [],
@@ -769,9 +815,15 @@ export class AcpAgentRunner implements AgentRunner {
     return this.live.size;
   }
 
-  /** For tests: force the provider connection to drop (simulates a crash). */
+  /**
+   * For tests: force the provider connections to drop (simulates a
+   * crash). Drops both postures: the next use restarts fresh.
+   */
   simulateCrash(provider: string): void {
-    this.conn(normalizeProvider(provider)).noteDeath();
+    const p = normalizeProvider(provider);
+    for (const [key, conn] of this.conns) {
+      if (key === this.connKey(p, true) || key === this.connKey(p, false)) conn.noteDeath();
+    }
   }
 
   /** Clear the 5-min model listing cache (Reload everything re-probes). */
@@ -813,6 +865,26 @@ export class AcpAgentRunner implements AgentRunner {
     this.known.clear();
     this.policies.clear();
     this.usageBaseline.clear();
+  }
+}
+
+/**
+ * Issue #160: best-effort tool-argument text for the job record. Strings
+ * pass through; objects stringify; anything else records nothing.
+ * Truncated: the job record names the tool, it is not a transcript.
+ */
+export function formatToolDetail(input: unknown): string | undefined {
+  if (input === undefined || input === null) return undefined;
+  const text = typeof input === "string" ? input : safeJson(input);
+  if (!text || text.trim() === "") return undefined;
+  return text.length > 300 ? `${text.slice(0, 300)}…` : text;
+}
+
+function safeJson(input: unknown): string | undefined {
+  try {
+    return JSON.stringify(input);
+  } catch {
+    return undefined;
   }
 }
 

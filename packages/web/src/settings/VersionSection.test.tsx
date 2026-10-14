@@ -28,6 +28,8 @@ const SETTINGS: Settings = {
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
   versionPickerEnabled: true,
+  fullAccess: false,
+  fullAccessAcknowledgedAt: null,
 };
 
 const BUILD = { version: "0.0.1", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null };

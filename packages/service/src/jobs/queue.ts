@@ -20,6 +20,7 @@
 import { randomUUID } from "node:crypto";
 import {
   jobDedupeKeyString,
+  type AccessMode,
   type Job,
   type JobDedupeKey,
   type JobKind,
@@ -58,6 +59,11 @@ export interface JobContext {
   setPromptSnapshot(text: string): void;
   /** Record the agent session backing this job. */
   setSessionId(id: string): void;
+  /**
+   * Issue #160: record one agent tool call on the job (shown on the
+   * Debug page). `detail` is best-effort argument text from the adapter.
+   */
+  reportTool(name: string, detail?: string): void;
   /** Record the agent's `degraded` reason for a kept answer (Debug page). */
   setDegradedReason(reason: string): void;
 }
@@ -73,6 +79,12 @@ export interface EnqueueOptions {
   dedupe?: JobDedupeKey;
   promptSnapshot?: string;
   sessionId?: string;
+  /**
+   * Issue #160: posture stamp override. Background jobs (which always
+   * run locked down — see `postureFor`) pass it explicitly; otherwise
+   * the queue's `getAccessMode` decides.
+   */
+  accessMode?: AccessMode;
   /**
    * Card the job works on, when card-scoped (depth/examples/diagram/
    * generate/concept/second-opinion). Carried on the job itself (so
@@ -96,6 +108,19 @@ export interface QueueOptions {
   /** Sink for ReviewEvents (wired to the review's EventBus by the service). */
   onEvent?: (reviewId: string, event: ReviewEvent) => void;
   persist?: JobPersistence | null;
+  /**
+   * Issue #160: the agent-access posture to stamp on each enqueued job
+   * (`job.accessMode`). Absent → no stamp (queues built directly in
+   * tests). The service wires this from settings.
+   */
+  getAccessMode?: () => AccessMode | undefined;
+  /**
+   * Issue #160: post-job hook, run after `run` resolves (success or
+   * non-abort failure) and before the job settles. Receives the live job
+   * object and may mutate it (e.g. set `checkoutReset`). Never fails the
+   * job: throws are caught and reported. Skipped for cancelled jobs.
+   */
+  afterRun?: (job: Job) => Promise<void> | void;
 }
 
 interface Entry {
@@ -114,8 +139,15 @@ interface Entry {
 const REPLY_SNAPSHOT_CAP = 100_000;
 
 function copy(job: Job): Job {
-  return { ...job, usage: job.usage ? { ...job.usage } : undefined };
+  return {
+    ...job,
+    usage: job.usage ? { ...job.usage } : undefined,
+    tools: job.tools ? job.tools.map((t) => ({ ...t })) : undefined,
+  };
 }
+
+/** Cap on tool calls recorded per job (issue #160). */
+export const MAX_JOB_TOOLS = 100;
 
 export class JobQueue {
   private readonly entries = new Map<string, Entry>();
@@ -129,6 +161,8 @@ export class JobQueue {
   private readonly getConcurrencyCap: (provider: string) => number;
   private readonly onEvent: (reviewId: string, event: ReviewEvent) => void;
   private readonly persist: JobPersistence | null;
+  private readonly getAccessMode: () => AccessMode | undefined;
+  private readonly afterRun: (job: Job) => Promise<void> | void;
   private drainWaiters: Array<() => void> = [];
 
   constructor(opts: QueueOptions = {}) {
@@ -140,6 +174,8 @@ export class JobQueue {
     this.getConcurrencyCap = opts.getConcurrencyCap ?? (() => DEFAULT_CONCURRENCY_CAP);
     this.onEvent = opts.onEvent ?? (() => {});
     this.persist = opts.persist ?? null;
+    this.getAccessMode = opts.getAccessMode ?? (() => undefined);
+    this.afterRun = opts.afterRun ?? (() => {});
   }
 
   // -- enqueue --------------------------------------------------------
@@ -169,6 +205,13 @@ export class JobQueue {
       ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
       ...(opts.cardId ? { cardId: opts.cardId } : {}),
     };
+    // Issue #160: stamp the posture this job was enqueued under. The
+    // session itself keeps the posture it started with (base key); a
+    // settings flip between enqueue and session start lands the job on
+    // the new base while this stamp still names the old one — a
+    // seconds-wide window, stated in the docs.
+    const accessMode = opts.accessMode ?? this.getAccessMode();
+    if (accessMode !== undefined) job.accessMode = accessMode;
     const entry: Entry = {
       job,
       run: opts.run,
@@ -465,6 +508,7 @@ export class JobQueue {
     const ctx = this.makeContext(entry, controller);
     try {
       await entry.run!(ctx);
+      if (!controller.signal.aborted) await this.runAfterHook(entry);
       this.settle(entry, controller, controller.signal.aborted ? "cancelled" : "done");
     } catch (err) {
       if (controller.signal.aborted || isAbortError(err)) {
@@ -477,7 +521,19 @@ export class JobQueue {
       }
       job.error = err instanceof Error ? err.message : String(err);
       reportError(err, { jobId: job.id, kind: job.kind, provider: job.provider, attempts: job.attempts });
+      // The agent may have touched the checkout before failing: verify it
+      // too, before the job settles as error.
+      await this.runAfterHook(entry);
       this.settle(entry, controller, "error");
+    }
+  }
+
+  /** Run the post-job hook; never fails the job. */
+  private async runAfterHook(entry: Entry): Promise<void> {
+    try {
+      await this.afterRun(entry.job);
+    } catch (err) {
+      reportError(err, { jobId: entry.job.id, kind: entry.job.kind, hook: "afterRun" });
     }
   }
 
@@ -570,6 +626,14 @@ export class JobQueue {
       },
       setSessionId: (id) => {
         job.sessionId = id;
+        this.save(entry);
+        this.emit(entry);
+      },
+      reportTool: (name, detail) => {
+        if ((job.tools?.length ?? 0) >= MAX_JOB_TOOLS) return;
+        const tools = [...(job.tools ?? [])];
+        tools.push(detail !== undefined ? { name, detail } : { name });
+        job.tools = tools;
         this.save(entry);
         this.emit(entry);
       },

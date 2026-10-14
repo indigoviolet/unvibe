@@ -12,7 +12,7 @@ import type { TransportFactory } from "../src/agent/acp/connection.js";
 
 export interface FakeChunk {
   text?: string;
-  toolStart?: { id: string; title: string; name?: string };
+  toolStart?: { id: string; title: string; name?: string; input?: unknown };
   toolEnd?: { id: string; title: string };
 }
 
@@ -64,6 +64,8 @@ export interface FakeAgentState {
   resumeCalls: string[];
   forkCalls: Array<{ from: string; atMessage?: string; mcpServers?: unknown; meta?: unknown }>;
   setModelCalls: Array<{ sessionId: string; value: string }>;
+  /** session/set_mode calls (mode assertions, e.g. Codex workspace-write vs agent-full-access). */
+  modeCalls: Array<{ sessionId: string; modeId: string }>;
   cancelled: Set<string>;
   nextId: number;
   /** When true, prompts on forked sessions fail until resume() is called. */
@@ -86,6 +88,7 @@ export function createFakeState(turns: FakeTurn[] = []): FakeAgentState {
     resumeCalls: [],
     forkCalls: [],
     setModelCalls: [],
+    modeCalls: [],
     cancelled: new Set(),
     nextId: 1,
     forkNeedsResume: false,
@@ -200,7 +203,10 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
       state.sessions.get(ctx.params.sessionId as string)!.closed = true;
       return {};
     })
-    .onRequest("session/set_mode", async () => ({}))
+    .onRequest("session/set_mode", async (ctx: any) => {
+      state.modeCalls.push({ sessionId: ctx.params.sessionId as string, modeId: ctx.params.modeId as string });
+      return {};
+    })
     .onRequest("session/set_config_option", async (ctx: any) => {
       state.setModelCalls.push({ sessionId: ctx.params.sessionId, value: ctx.params.value });
       return {};
@@ -300,6 +306,7 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
               title: c.toolStart.title,
               name: c.toolStart.name,
               status: "pending",
+              ...(c.toolStart.input !== undefined ? { rawInput: c.toolStart.input } : {}),
             },
           });
         }
@@ -393,6 +400,9 @@ export function fakeTransportFactory(state: FakeAgentState): TransportFactory {
     });
     return {
       caller,
+      // Agent-side requests to the client (fs/*, terminal/* refusals).
+      agentRequest: (method: string, params: unknown) =>
+        (agentConn.client.request as (m: string, p: unknown) => Promise<unknown>)(method, params),
       onDeath,
       dispose: () => {
         try {

@@ -113,6 +113,8 @@ export interface SetupOpts {
   pages?: ReviewSnapshot["pages"];
   prNumber?: number | null;
   reviewId?: string;
+  /** Agent runner override (default: a fresh FakeAgentRunner). */
+  agents?: FakeAgentRunner;
 }
 
 /** Create an app + repo + review rows + snapshot. */
@@ -125,7 +127,7 @@ export async function setupReview(
   // adapters. The static main pick (claude/claude-opus-5-5) is the base key.
   const { app, ctx, ...rest } = await createApp("tok", {
     runner,
-    agents: new FakeAgentRunner(),
+    agents: opts.agents ?? new FakeAgentRunner(),
     models: new StaticModelCatalog(),
   });
   const repo = repoRow();

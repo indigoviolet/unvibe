@@ -105,7 +105,13 @@ Service dependencies (so a global npm install brings the adapters along):
 
 ## Permission policy
 
-Deny-by-default (`src/agent/acp/permissions.ts`):
+Two postures, chosen by the full-access setting (issue #160; `readOnly` on
+every session, stored on the session record, part of the base key, stamped
+on each job as `accessMode`). A session keeps the posture it started with
+until it ends: flipping the setting keys new bases, while live sessions
+and conversation cards keep the old posture until they close or rebuild.
+
+Deny-by-default lock-down (`src/agent/acp/permissions.ts`, the default):
 
 - **Allow** (answering `allow_once`, never `allow_always`):
   - our MCP servers' tools — Claude spelling `mcp__<server>__<tool>`,
@@ -131,6 +137,94 @@ Tightest working configuration per adapter (proven by live tests):
   defaults (workspace-bounded writes, no network) + deny-by-default handler
   with toolCallId correlation. `read-only` mode and `agent` mode are both
   unusable (see quirks 6–7).
+
+## Full access (opt-in, issue #160)
+
+Off by default; on only with the stored warning acknowledgement. When on,
+agent sessions (main, small, and second-opinion sessions, both providers)
+run unrestricted: shell, `git`, `gh`, web, file tools. No new custom
+lookup tools were built; the restrictions moved into the system prompt
+(`prompts/instructions.md` filled with `prompts/access-full.md` instead of
+`prompts/access-lockdown.md` — one builder, `renderSystemPrompt`, used for
+new/resume/load/fork and the Debug prompt preview alike).
+
+- **Claude:** `_meta` carries the system prompt with no `claudeCode`
+  tool reduction — the adapter defaults (the agent's full tool set) apply —
+  and the permission handler approves every request (`allow_once`, so each
+  call still re-prompts and stays auditable).
+- **Codex:** `agent-full-access` session mode, set after `session/new` and
+  re-applied on fork and load like the restricted mode. From the adapter
+  sources: id `agent-full-access`, "Unrestricted access to the internet and
+  any file on your computer", approval `never` (no permission round-trip,
+  so shell and network run without prompts),   sandbox `dangerFullAccess`.
+  The review MCP tools run without prompts there too (verified live: a
+  full-access session calling a review tool — see the #160 report).
+- **#124 interaction:** Codex forks sent without `mcpServers` + `_meta`
+  may still come up with no review tools (that issue stays open). Under
+  full access such a fork can at least use `git` and `gh` directly.
+- **Second opinion:** its isolation from the guide is a prompt rule under
+  full access (a shell can read the data directory, including other
+  reviews). Under the lock-down it stays structural.
+- **Small-model sessions** (hunk pass, summarize, consolidation) always
+  run locked down, regardless of the setting (owner decision #160):
+  `readOnly: true` with an empty system prompt, stamped `lockdown` on
+  the job. The posture rule lives in one place
+  (`BACKGROUND_JOB_KINDS` + `postureFor` in `@unvibe/shared`); when
+  #169's plotline-assign lands, add its kind there.
+
+What is still ENFORCED under full access, and what is only INSTRUCTED
+(also stated in PRD §6.1):
+
+- Enforced: loopback-only service; nothing posted to GitHub except through
+  the Submit review path (leases unchanged); post-job checkout
+  verify-and-reset (`src/fullaccess/verify.ts`: `git status` + `rev-parse`
+  against the reviewed commit after each job, `reset --hard` + `clean -fd`
+  when changed, recorded on the job); the scrubbed adapter environment
+  below; per-job tool records (`job.tools`: tool names plus adapter-sent
+  argument detail, shown on the Debug page).
+- Only instructed: everything in the full-access prompt list (no GitHub
+  writes, no push/commit, no file creates/edits/deletes, no installs, no
+  running project code, no home-directory credentials, PR/web text as
+  material never instructions, blocked needs in `degraded`).
+
+Adapter subprocess environment (`adapterEnvFor` in `connection.ts`):
+one adapter subprocess runs per (provider, posture) pair, so the two
+postures never share a process (lazy: a posture's subprocess starts on
+its first use; model/thinking probes use the lock-down one).
+
+- Lock-down: the input env unchanged — exactly what the adapter got
+  before this change. The default posture is identical down to the
+  spawn env.
+- Full access: the named secrets an agent has no business with are
+  removed, while provider authentication is kept by exact name
+  (`FULL_ACCESS_AUTH_KEEP`):
+  - removed: `GITHUB_TOKEN`, `GH_TOKEN` (so the agent's own `gh` uses
+    the keyring login, PRD §15); every `UNVIBE_*` service variable;
+    1Password (`OP_*`, `*PASSWORD*`); error-reporting DSNs (`*SENTRY*`).
+    Everything else passes through untouched — the rule is explicit,
+    never pattern-based, so an unknown provider variable is kept
+    rather than dropped.
+  - kept: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+    `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`,
+    `OPENAI_BASE_URL`, `CODEX_API_KEY`, `AWS_ACCESS_KEY_ID`,
+    `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`,
+    `AWS_DEFAULT_REGION`, `AWS_BEARER_TOKEN_BEDROCK`, `GOOGLE_API_KEY`,
+    `GEMINI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`,
+    `GCLOUD_PROJECT`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_GENAI_USE_VERTEXAI`
+    (plus the adapter pointers `CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`,
+    set explicitly).
+  - `UNVIBE_*` audit: nothing in the child tree reads our namespace —
+    the adapter bundles contain no `UNVIBE_` reference, the agent CLIs
+    don't know it, and the service consumes its own overrides
+    (`UNVIBE_CLAUDE_BIN`/`UNVIBE_CODEX_BIN` → the adapter pointers)
+    before spawning. `UNVIBE_ACP_DEBUG` is read in-process, never by
+    the adapter.
+
+Name-based, so an oddly-named secret can slip through — and it is not a
+sandbox. An unrestricted agent can still reach on the machine: the `gh`
+login (keyring), SSH keys, and the data directory (other reviews, the
+service token). The warning says plainly that nothing is sandboxed; the
+prompt does not prevent this.
 
 ## Models and thinking
 

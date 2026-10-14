@@ -19,6 +19,7 @@ import { api, friendlyError } from "../api/client.js";
 import { TabPanel, Tabs, tabIdFromHash, useQueryTab } from "../tabs/Tabs.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import { DataSection } from "./DataSection.js";
+import { AccessSection } from "./AccessSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
@@ -31,6 +32,7 @@ import "./settings.css";
 const SETTING_TABS = [
   { id: "repositories", label: "Repos" },
   { id: "models", label: "Models" },
+  { id: "access", label: "Access" },
   { id: "environment", label: "Environment" },
   { id: "prompts", label: "Prompts" },
   { id: "limits", label: "Limits" },
@@ -110,6 +112,9 @@ export function SettingsPage(): React.JSX.Element {
               </TabPanel>
               <TabPanel idPrefix="settings" id="models" active={tab === "models"}>
                 <ModelsSection settings={settings} onSaved={setSettings} />
+              </TabPanel>
+              <TabPanel idPrefix="settings" id="access" active={tab === "access"}>
+                <AccessSection settings={settings} onSaved={setSettings} />
               </TabPanel>
               <TabPanel idPrefix="settings" id="environment" active={tab === "environment"}>
                 <EnvironmentSection />

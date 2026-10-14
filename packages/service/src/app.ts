@@ -21,13 +21,23 @@
  *   reads + our MCP tools only; edits/shell/network denied). Codex uses
  *   `workspace-write` mode (not `read-only`, which refuses MCP calls, and
  *   not `agent`, which skips permission prompts) with a deny-by-default
- *   handler. The pipeline never opts out.
+ *   handler. The pipeline opts out only under the full-access setting.
+ * - Full access (issue #160, opt-in, off by default): sessions start
+ *   `readOnly: false` with the full-access system prompt. Claude keeps
+ *   the adapter's default (full) tool set with an allow-all permission
+ *   handler; Codex uses `agent-full-access` mode (no permission
+ *   round-trip). One adapter subprocess runs per (provider, posture):
+ *   lock-down subprocesses spawn with exactly the base env, full-access
+ *   ones with named secrets removed and provider auth kept
+ *   (`adapterEnvFor`). The limits are prompt
+ *   instructions only — see docs/acp-runner.md for enforced-vs-instructed.
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRunner } from "@unvibe/shared";
+import { accessModeOf } from "@unvibe/shared";
 import type { DatabaseSync } from "./store/db.js";
 import { EventBus } from "./events.js";
 import type { CommandRunner } from "./exec/index.js";
@@ -45,6 +55,7 @@ import { SharedContextStore } from "./sharedctx/store.js";
 import { createUpdaterFromEnv, type Updater } from "./update/index.js";
 import { createAgentRunner, resolveFixturesDir } from "./agent/factory.js";
 import { FakeAgentRunner } from "./agent/fake.js";
+import { verifyCheckoutAfterJob } from "./fullaccess/verify.js";
 import { Pipeline } from "./pipeline/index.js";
 import { resolvePromptsDir } from "./prompts/index.js";
 
@@ -239,6 +250,17 @@ export function buildApp(opts: BuildAppOptions): AppContext {
         }
       },
       onEvent: (reviewId, event) => bus.publish(reviewId, event),
+      // Issue #160: stamp each job with the agent-access posture it was
+      // enqueued under, and verify the review's checkout after each job
+      // (reset + flag when full access let the agent change it).
+      getAccessMode: () => {
+        try {
+          return accessModeOf(settings.get());
+        } catch {
+          return undefined;
+        }
+      },
+      afterRun: (job) => verifyCheckoutAfterJob({ reviews, commands: runner, settings, dataDir }, job.reviewId ?? "", job),
     });
   if (!opts.jobs) {
     // Issue #117: hydrate every stored job, not just the open ones, so

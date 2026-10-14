@@ -870,6 +870,19 @@ export interface Settings {
    * opt-in.
    */
   versionPickerEnabled: boolean;
+  /**
+   * Issue #160: full access for agent sessions (shell, `git`, `gh`, web,
+   * file tools unrestricted). Off by default; the lock-down stays until
+   * this is turned on WITH `fullAccessAcknowledgedAt` in the same update
+   * (the service refuses to enable without the acknowledgement).
+   */
+  fullAccess: boolean;
+  /**
+   * Issue #160: epoch ms the full-access warning was acknowledged, stored
+   * with the setting. Null when never acknowledged. Turning full access
+   * off clears it, so turning it on again asks again.
+   */
+  fullAccessAcknowledgedAt: number | null;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */

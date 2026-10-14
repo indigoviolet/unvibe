@@ -342,3 +342,15 @@ test("version switcher views the older version read-only", async ({ page }) => {
   await expect(page).not.toHaveURL(/version=1/);
   await expect(page.locator('[data-testid="stale-banner"]')).toBeVisible();
 });
+
+test("access tab: read-only by default; the warning confirm enables and disables", async ({ page }) => {
+  await page.goto("/settings?tab=access");
+  const panel = page.getByRole("tabpanel", { name: "Access" });
+  await expect(panel.getByTestId("access-state")).toContainText("Read-only.");
+  await panel.getByRole("button", { name: "Turn on full access…" }).click();
+  await expect(panel.getByTestId("access-warning")).toContainText("nothing here is sandboxed");
+  await panel.getByRole("button", { name: "I understand, turn on full access" }).click();
+  await expect(panel.getByTestId("access-state")).toContainText("Full access is on.");
+  await panel.getByRole("button", { name: "Turn off full access" }).click();
+  await expect(panel.getByTestId("access-state")).toContainText("Read-only.");
+});

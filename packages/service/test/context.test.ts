@@ -68,7 +68,7 @@ describe("base pack", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     const instructionsTpl = lib.get("instructions");
     if (!instructionsTpl) throw new Error("missing instructions template");
-    const instructions = renderTemplate(instructionsTpl, {});
+    const instructions = renderTemplate(instructionsTpl, { access_policy: "policy (test)" });
     const a = buildBasePack(fixtureSnapshot(), instructions);
     const b = buildBasePack(fixtureSnapshot(), instructions);
     const c = buildBasePack(shuffledSnapshot(), instructions);
