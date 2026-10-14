@@ -31,6 +31,7 @@ export {
   buildLadder,
   buildSourceBlurb,
   formatDiffLine,
+  formatDescriptionParagraphs,
   formatFinding,
   formatGuideCard,
   formatHiddenHunk,
