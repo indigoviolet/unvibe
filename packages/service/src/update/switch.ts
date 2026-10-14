@@ -19,7 +19,7 @@
  *    over the live files after the install, so the old build never opens
  *    a database the new build may have migrated.
  */
-import type { CommandRunner } from "../exec/index.js";
+import type { CommandRunner, RunResult } from "../exec/index.js";
 import { isPidAlive, readLock } from "../cli/lock.js";
 import { DB_RULE, backupChannel, channelSlotDir, restoreChannel } from "./data-backup.js";
 import {
@@ -67,6 +67,57 @@ export interface SwitchCoreResult {
   from: InstalledBuild;
   /** True when an install/reinstall ran and verified (the new build needs launching). */
   installed: boolean;
+}
+
+/**
+ * Post-install wrapper-hook failure (issue #170): mise wraps each Node
+ * version's npm so a global install runs `mise reshim` afterwards. Old
+ * wrappers propagate the reshim's failure, so npm can exit 127 with a
+ * "mise ... not found" message AFTER renewing the files (newer wrappers
+ * ignore the reshim's exit code and return npm's own). Matches the
+ * wrapper's wording across shells (`mise: command not found` in bash,
+ * `mise: not found` in dash).
+ */
+function wrapperHookCause(output: string): boolean {
+  return /mise/i.test(output) && /not found/i.test(output);
+}
+
+/**
+ * True when the target build is verifiably in place despite npm's nonzero
+ * exit: across channels the channel itself changing is proof; on a
+ * same-channel reinstall only a known published commit now reported counts
+ * (an unreadable remote cannot verify, so it never counts).
+ */
+function installLanded(
+  after: InstalledBuild,
+  before: InstalledBuild,
+  channel: string,
+  remoteCommit: string | null,
+): boolean {
+  if (after.channel !== channel) return false;
+  if (before.channel !== channel) return true;
+  return remoteCommit !== null && after.commit === remoteCommit;
+}
+
+/** What looking past npm's exit code found (issue #170). */
+type InstallCheck =
+  | { landed: true; after: InstalledBuild; hookFailed: boolean }
+  | { landed: false; hookFailed: boolean };
+
+function checkInstallResult(
+  serviceScriptPath: string | undefined,
+  before: InstalledBuild,
+  channel: string,
+  remoteCommit: string | null,
+  inst: RunResult,
+): InstallCheck {
+  const output = `${inst.stdout}\n${inst.stderr}`;
+  const hookFailed = wrapperHookCause(output);
+  const after = readInstalledBuild(serviceScriptPath, before.version);
+  if (installLanded(after, before, channel, remoteCommit)) {
+    return { landed: true, after, hookFailed };
+  }
+  return { landed: false, hookFailed };
 }
 
 /** Install a channel: backup, npm install (verified), keep the live DB. Never runs live. */
@@ -117,21 +168,48 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
   const prefix = installPrefixForPackage(before.packagePath);
   log(`installing ${installSpec(req.channel)}${prefix ? ` (prefix ${prefix})` : ""} ...`);
   const inst = await installRef(req.runner, req.channel, { prefix, env: req.env });
+  let after: InstalledBuild;
+  let afterNote: string | null = null;
   if (inst.code !== 0) {
-    const tail = `${inst.stdout}\n${inst.stderr}`.trim().split("\n").slice(-10).join("\n");
-    log(`npm install failed (exit ${inst.code}):`);
-    if (tail) log(tail);
-    log(
-      backup.files.length > 0
-        ? `your data is untouched; the backup is in ${backup.dir}`
-        : "your data is untouched",
-    );
-    return done(1, before);
+    const output = `${inst.stdout}\n${inst.stderr}`;
+    const tail = output.trim().split("\n").slice(-10).join("\n");
+    const checked = checkInstallResult(req.serviceScriptPath, before, req.channel, remote.commit, inst);
+    if (!checked.landed) {
+      log(`npm install failed (exit ${inst.code}):`);
+      if (tail) log(tail);
+      if (checked.hookFailed) {
+        log(`npm's mise wrapper could not find the mise command, so the install did not finish.`);
+        log(
+          `mise-managed Node needs mise on PATH where the update runs. ` +
+            `Run the same update from a terminal, then start the service:`,
+        );
+        log(`  unvibe update ${req.channel}`);
+        log(`  unvibe start`);
+      }
+      log(
+        backup.files.length > 0
+          ? `your data is untouched; the backup is in ${backup.dir}`
+          : "your data is untouched",
+      );
+      return done(1, before);
+    }
+    // The install step completed and only the wrapper's post-install hook
+    // failed: the new build verified in place, so continue instead of
+    // rolling back into the same failure.
+    after = checked.after;
+    afterNote = checked.hookFailed
+      ? `note: npm exited ${inst.code} after the install finished — its mise wrapper could not find the mise command — ` +
+        `but the new build is in place and verified, so the switch continues. ` +
+        `If some terminals still run the old build, run \`mise reshim\` in them.`
+      : `note: npm exited ${inst.code} after the install finished, but the new build is in place and verified, ` +
+        `so the switch continues. npm said:\n${tail}`;
+  } else {
+    after = readInstalledBuild(req.serviceScriptPath, before.version);
   }
   // Verify the install landed where this binary lives: npm uses whatever
   // prefix is first on PATH, which may not be ours (multiple node
   // versions, minimal-PATH helpers). Never swap databases on a miss.
-  const after = readInstalledBuild(req.serviceScriptPath, before.version);
+  // (A verified wrapper-hook failure passes by construction.)
   if (after.channel !== req.channel || (remote.commit && after.commit !== remote.commit)) {
     const prefixOut = await npmGlobalPrefix(req.runner, req.env);
     log(`installed ${req.channel} ${after.version} (was ${before.version})`);
@@ -148,6 +226,7 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
     return done(1, before);
   }
   log(`installed ${req.channel} ${after.version} (was ${before.version})`);
+  if (afterNote) log(afterNote);
   if (req.restoreBackupOf) {
     const restored = restoreChannel(req.dataDir, req.restoreBackupOf);
     if (restored.files.length > 0) {
@@ -196,14 +275,40 @@ async function runSameChannelReinstall(
   const prefix = installPrefixForPackage(before.packagePath);
   log(`installing ${installSpec(req.channel)}${prefix ? ` (prefix ${prefix})` : ""} ...`);
   const inst = await installRef(req.runner, req.channel, { prefix, env: req.env });
+  let after: InstalledBuild;
+  let afterNote: string | null = null;
   if (inst.code !== 0) {
-    const tail = `${inst.stdout}\n${inst.stderr}`.trim().split("\n").slice(-10).join("\n");
-    log(`npm install failed (exit ${inst.code}):`);
-    if (tail) log(tail);
-    log("your data is untouched");
-    return done(1, before);
+    const output = `${inst.stdout}\n${inst.stderr}`;
+    const tail = output.trim().split("\n").slice(-10).join("\n");
+    const checked = checkInstallResult(req.serviceScriptPath, before, req.channel, remoteCommit, inst);
+    if (!checked.landed) {
+      log(`npm install failed (exit ${inst.code}):`);
+      if (tail) log(tail);
+      if (checked.hookFailed) {
+        log(`npm's mise wrapper could not find the mise command, so the install did not finish.`);
+        log(
+          `mise-managed Node needs mise on PATH where the update runs. ` +
+            `Run the same update from a terminal, then start the service:`,
+        );
+        log(`  unvibe update ${req.channel}`);
+        log(`  unvibe start`);
+      }
+      log("your data is untouched");
+      return done(1, before);
+    }
+    // The install step completed and only the wrapper's post-install hook
+    // failed: the reinstall verified against the published commit, so
+    // continue instead of rolling back into the same failure.
+    after = checked.after;
+    afterNote = checked.hookFailed
+      ? `note: npm exited ${inst.code} after the install finished — its mise wrapper could not find the mise command — ` +
+        `but the reinstall is in place and verified, so the switch continues. ` +
+        `If some terminals still run the old build, run \`mise reshim\` in them.`
+      : `note: npm exited ${inst.code} after the install finished, but the reinstall is in place and verified, ` +
+        `so the switch continues. npm said:\n${tail}`;
+  } else {
+    after = readInstalledBuild(req.serviceScriptPath, before.version);
   }
-  const after = readInstalledBuild(req.serviceScriptPath, before.version);
   if (after.channel !== req.channel || (remoteCommit && after.commit !== remoteCommit)) {
     const prefixOut = await npmGlobalPrefix(req.runner, req.env);
     log(
@@ -218,6 +323,7 @@ async function runSameChannelReinstall(
     return done(1, before);
   }
   log(`reinstalled ${req.channel} ${after.version} (was ${before.version})`);
+  if (afterNote) log(afterNote);
   if (req.restoreBackupOf) {
     const restored = restoreChannel(req.dataDir, req.restoreBackupOf);
     if (restored.files.length > 0) {
