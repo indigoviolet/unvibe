@@ -5,6 +5,7 @@
  *   restart).
  * - `GET /api/jobs/:id` — one job.
  * - `GET /api/jobs/:id/prompt` — the exact prompt snapshot the job sent.
+ * - `GET /api/jobs/:id/reply` — the agent's reply for a failed job (#180).
  * - `POST /api/jobs/:id/cancel` — cancel (AbortSignal, also while queued).
  * - `PATCH /api/jobs/:id` `{ priority }` — re-prioritise while queued.
  *
@@ -42,6 +43,17 @@ export async function registerJobs(app: FastifyInstance, deps: RouteDeps = {}): 
       return reply.code(404).send({ error: "no prompt snapshot for job" });
     }
     return { jobId: job.id, promptSnapshot: job.promptSnapshot };
+  });
+
+  app.get("/api/jobs/:id/reply", async (req, reply) => {
+    if (!deps.jobs) return reply.code(501).send(TODO);
+    const { id } = req.params as Record<string, string>;
+    const job = deps.jobs.get(id ?? "");
+    if (!job) return reply.code(404).send({ error: "unknown job" });
+    if (job.replySnapshot === undefined) {
+      return reply.code(404).send({ error: "no reply snapshot for job" });
+    }
+    return { jobId: job.id, replySnapshot: job.replySnapshot };
   });
 
   app.post("/api/jobs/:id/cancel", async (req, reply) => {

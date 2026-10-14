@@ -100,6 +100,9 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
   const [showPrompt, setShowPrompt] = useState(false);
   const [prompt, setPrompt] = useState<string | null>(job.promptSnapshot ?? null);
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [showReply, setShowReply] = useState(false);
+  const [replyText, setReplyText] = useState<string | null>(job.replySnapshot ?? null);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const [modelName, setModelName] = useState<string | null>(null);
 
   // Same display as the pickers (#21): name beside the id when known.
@@ -134,7 +137,21 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
     }
   };
 
+  const toggleReply = async (): Promise<void> => {
+    const next = !showReply;
+    setShowReply(next);
+    if (next && replyText === null) {
+      setReplyError(null);
+      try {
+        setReplyText((await api.jobReply(job.id)).replySnapshot);
+      } catch (err) {
+        setReplyError(friendlyError(err));
+      }
+    }
+  };
+
   const active = job.state === "queued" || job.state === "running" || job.state === "backing-off";
+  const failed = job.state === "error" || job.state === "cancelled";
 
   return (
     <div className="jobrow" data-testid={`job-${job.id}`}>
@@ -166,6 +183,11 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
         <button className="x" type="button" aria-expanded={showPrompt} onClick={() => void togglePrompt()}>
           {showPrompt ? "Hide prompt" : "Prompt"}
         </button>
+        {failed ? (
+          <button className="x" type="button" aria-expanded={showReply} onClick={() => void toggleReply()}>
+            {showReply ? "Hide reply" : "Reply"}
+          </button>
+        ) : null}
         {active ? (
           <button className="x" type="button" onClick={onCancel}>
             Cancel
@@ -184,6 +206,15 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
           <pre className="code">{prompt}</pre>
         ) : (
           <p className="hint">Loading prompt…</p>
+        )
+      ) : null}
+      {showReply ? (
+        replyError ? (
+          <p className="err">{replyError}</p>
+        ) : replyText !== null ? (
+          <pre className="code">{replyText}</pre>
+        ) : (
+          <p className="hint">Loading reply…</p>
         )
       ) : null}
     </div>

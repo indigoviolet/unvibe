@@ -3119,6 +3119,15 @@ export const mockApi = {
     return { jobId: job.id, promptSnapshot: job.promptSnapshot };
   },
 
+  jobReply: async (id: string) => {
+    const job = mockJobs.find((j) => j.id === id);
+    if (!job) throw new Error(`GET /api/jobs/${id}/reply: 404 {"error":"unknown job"}`);
+    if (job.replySnapshot === undefined) {
+      throw new Error(`GET /api/jobs/${id}/reply: 404 {"error":"no reply snapshot for job"}`);
+    }
+    return { jobId: job.id, replySnapshot: job.replySnapshot };
+  },
+
   cancelJob: async (id: string) => {
     const job = mockJobs.find((j) => j.id === id);
     if (!job) throw new Error(`POST /api/jobs/${id}/cancel: 404 {"error":"unknown job"}`);
