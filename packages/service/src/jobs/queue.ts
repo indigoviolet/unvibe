@@ -64,6 +64,8 @@ export interface JobContext {
    * Debug page). `detail` is best-effort argument text from the adapter.
    */
   reportTool(name: string, detail?: string): void;
+  /** Record the agent's `degraded` reason for a kept answer (Debug page). */
+  setDegradedReason(reason: string): void;
 }
 
 export type JobFn = (ctx: JobContext) => Promise<void>;
@@ -606,6 +608,11 @@ export class JobQueue {
         const tools = [...(job.tools ?? [])];
         tools.push(detail !== undefined ? { name, detail } : { name });
         job.tools = tools;
+        this.save(entry);
+        this.emit(entry);
+      },
+      setDegradedReason: (reason) => {
+        job.degradedReason = reason;
         this.save(entry);
         this.emit(entry);
       },

@@ -295,14 +295,23 @@ needed (that deviation is closed, not added).
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
    rule; failures go in the trailing `degraded` field). A job fails on
-   facts only: a `degraded` field fails terminally, and a
-   process-complaint frame fails when the turn ran without the review
-   MCP server or hit a dead MCP URL — tool names and MCP/gh alone never
-   fail a job. Connection-error failures retry once on a fresh session
-   (fork jobs since #51, the reader since #146: fresh per-run secret +
-   session, deterministic provisional ids so the retry overwrites rather
-   than duplicates, each attempt's usage recorded once); everything else
-   degraded is terminal. A twice-failed reader sets a plain-words stage
+   facts only: a process-complaint frame fails when the turn ran without
+   the review MCP server or hit a dead MCP URL — tool names and MCP/gh
+   alone never fail a job. A trailing `degraded` field with a usable body
+   (it parses and has at least one block) keeps the answer instead of
+   failing: the answer shows with the plain-words note "Some references
+   in this answer could not be linked to the code." and the raw reason
+   lands on the job (`degradedReason`) for the Debug page; only a
+   degraded answer with no usable body fails the turn. Connection-error
+   failures retry once on a fresh session (fork jobs since #51, the
+   reader since #146: fresh per-run secret + session, deterministic
+   provisional ids so the retry overwrites rather than duplicates, each
+   attempt's usage recorded once; a continued conversation turn falls
+   back to a fresh fork with the full first-turn prompt plus the stored
+   transcript, since the short follow-up prompt assumes the live
+   session's history); a retry that still reports degraded keeps its
+   usable body the same way. Everything else degraded is terminal. A
+   twice-failed reader sets a plain-words stage
    error ("The guide couldn't be started because the review details
    couldn't be reached. Please retry.") with Retry, the raw reason
    staying on the job error for the Debug page. Streamed partials are

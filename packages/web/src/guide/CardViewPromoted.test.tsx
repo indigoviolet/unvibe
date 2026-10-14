@@ -104,7 +104,9 @@ describe("CardView promoted fill states (issue #152)", () => {
   test("a failed promoted turn shows the error with Retry on the page card", () => {
     seed([card()], [link([turn({ working: null, error: "boom" })])]);
     show(card());
-    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't get an answer: boom");
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't get an answer. Retry, or see Debug for details.");
+    // The raw reason never reaches the card.
+    expect(screen.getByRole("alert").textContent).not.toContain("boom");
     const retry = screen.getByRole("button", { name: "Retry" });
     expect(retry.getAttribute("data-retry")).toBe("ans_1");
   });
