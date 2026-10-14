@@ -511,8 +511,7 @@ export interface Annotation {
   postedUrl?: string;
 }
 
-/** Where an annotation is attached (PRD §7.1). */
-export type AnchorHost =
+/** Where an annotation is attached (PRD §7.1). */export type AnchorHost =
   /**
    * A guide block, stored `<card>#<block>` (block ids repeat across cards,
    * #78). The card part is a page-card id, or — for an annotation on text
@@ -530,6 +529,17 @@ export type AnchorHost =
    */
   | { kind: "hunk"; fileKey: string; contentHash: string };
 
+/**
+ * Issue #166: a live text selection as character offsets within its host's
+ * plain text (`[start, end)`). Recorded by the client at the moment of
+ * selection and stored on the anchor; placement prefers these over text
+ * search.
+ */
+export interface SelectionOffsets {
+  start: number;
+  end: number;
+}
+
 export interface Anchor {
   host: AnchorHost;
   quotedText: string;
@@ -539,6 +549,18 @@ export interface Anchor {
   position: number;
   /** Version number the anchor was created against. */
   version: number;
+  /**
+   * Issue #166: character offsets of the selection within the host's
+   * plain text at the moment of selection (`[startOffset, endOffset)`).
+   * Present only on anchors created from a live text selection; the UI
+   * places the mark at these offsets and falls back to the nearest text
+   * match only when the host's text changed. Absent on older stored
+   * anchors and on anchors that never came from a selection (ask-about,
+   * follow-ups, hunk cards, suggestions) — those place by text match.
+   */
+  startOffset?: number;
+  /** Issue #166: end of the recorded selection (see `startOffset`). */
+  endOffset?: number;
   /**
    * M5 (PRD §8): the hunk content hash at creation, when the anchor sits
    * on diff code. Exact-hash hits remap by line shift without text search.
