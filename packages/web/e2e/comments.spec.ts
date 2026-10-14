@@ -303,20 +303,22 @@ test("GitHub thread in the diff expands at its line; the menu item jumps to it",
   await expect(page.locator("#gh-thread-101")).toContainText("consider covering bare LF");
 });
 
-test("outdated threads sit at their file; removed-file threads at the end; hiding keeps the menu", async ({
+test("outdated threads sit at their file; removed-file threads at the end; hiding folds the menu section", async ({
   page,
 }) => {
   await gotoReview(page);
   const conn = page.locator(`[id="F-${CONN}"]`);
   await expect(conn).toContainText("GitHub comments on lines no longer in the diff");
   await expect(page.locator("[data-gh-orphans]")).toContainText("review-bot · 1 comment");
-  // Hide them in the diff: threads vanish, the menu still lists them.
+  // Hide them in the diff: threads vanish, and the menu section follows
+  // the same setting — it folds to its heading with a count (#183).
   await page.getByRole("button", { name: "Show file list" }).click();
   await page.getByRole("button", { name: "File filters" }).click();
   await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
   await expect(page.locator("#gh-thread-101")).toHaveCount(0);
   await page.locator('#reviewbar [data-cm=""]').click();
-  await expect(page.locator('.cmenu [data-ghjump="101"]')).toBeVisible();
+  await expect(page.locator(".cmenu [data-ghhead]")).toContainText(/Already on GitHub · \d+ hidden/);
+  await expect(page.locator('.cmenu [data-ghjump="101"]')).toHaveCount(0);
 });
 
 test("comments dropdown is wide enough for tabs, paths and previews", async ({ page }) => {
@@ -333,6 +335,29 @@ test("comments dropdown is wide enough for tabs, paths and previews", async ({ p
   expect(all).not.toBeNull();
   expect(pr).not.toBeNull();
   expect(Math.abs((all as { y: number }).y - (pr as { y: number }).y)).toBeLessThan(2);
+});
+
+test("hide in the filter menu collapses the menu section to its count; its heading shows both again (#183)", async ({
+  page,
+}) => {
+  await gotoReview(page);
+  // Diff threads are shown to start with.
+  await expect(page.locator("#gh-thread-101")).toBeVisible();
+  // Hide existing GitHub comments from the diff's filter menu.
+  await page.getByRole("button", { name: "Show file list" }).click();
+  await page.getByRole("button", { name: "File filters" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
+  await expect(page.locator("#gh-thread-101")).toHaveCount(0);
+  // The comments menu's section collapses to its heading with a count.
+  await page.locator('#reviewbar [data-cm=""]').click();
+  const panel = page.locator(".cmenu");
+  await expect(panel.locator("[data-ghhead]")).toContainText(/Already on GitHub · \d+ hidden/);
+  await expect(panel.locator("[data-ghjump]")).toHaveCount(0);
+  // Clicking the heading shows them again, in the menu and in the diff.
+  await panel.locator("[data-ghhead]").click();
+  await expect(panel.locator('[data-ghjump="101"]')).toBeVisible();
+  await page.locator('#reviewbar [data-cm=""]').click();
+  await expect(page.locator("#gh-thread-101")).toBeVisible();
 });
 
 test("existing GitHub list: no sideways overflow and clamped rows at minimum width (#183)", async ({ page }) => {

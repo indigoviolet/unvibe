@@ -700,12 +700,16 @@ export interface ExistingReviewComment {
 }
 
 /**
- * Per-review diff view preferences (issue #168). Stored with the review;
- * the comments menu always lists every thread regardless of these.
+ * Per-review diff view preferences (issue #168). Stored with the review.
+ * The comments menu's "Already on GitHub" section follows
+ * `showExistingComments` too: hidden collapses it to its heading with a
+ * count; `existingCommentsCollapsed` folds the section while it is shown.
  */
 export interface ReviewViewPrefs {
   /** Show existing GitHub comments in the diff. */
   showExistingComments: boolean;
+  /** The comments menu's "Already on GitHub" section is collapsed. */
+  existingCommentsCollapsed: boolean;
 }
 
 export type JobKind =

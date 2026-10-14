@@ -740,7 +740,7 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
 
   // Issue #168: one show/hide control for existing GitHub comments,
   // remembered with the review. Hiding never removes them from the
-  // agents' context; the comments menu always lists every thread.
+  // agents' context; the comments menu's section follows this setting.
   const toggleGithubComments = useCallback(() => {
     const current = useReview.getState().snapshot?.viewPrefs.showExistingComments ?? true;
     api.updateView(reviewId, { showExistingComments: !current }).catch(() => {

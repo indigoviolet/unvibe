@@ -690,6 +690,7 @@ export interface UpdateFileRequest {
 /** PATCH /api/reviews/:id/view — per-review diff view preferences (issue #168). */
 export interface UpdateViewRequest {
   showExistingComments?: boolean;
+  existingCommentsCollapsed?: boolean;
 }
 
 export interface SummarizeHunkResponse {

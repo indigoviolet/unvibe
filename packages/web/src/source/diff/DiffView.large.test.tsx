@@ -93,7 +93,7 @@ function makeBigSnapshot(): import("@unvibe/shared").ReviewSnapshot {
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],

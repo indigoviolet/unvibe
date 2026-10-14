@@ -34,7 +34,7 @@ function seed(prNumber?: number): void {
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],

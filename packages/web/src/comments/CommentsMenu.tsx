@@ -286,6 +286,24 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     return [...groups.values()];
   }, [snapshot, existing]);
 
+  // Issue #183 addition: the section follows the diff's show/hide setting
+  // (`showExistingComments`). Hidden collapses it to its heading with a
+  // count, and clicking the heading shows them again (here and in the
+  // diff). While shown, the heading's chevron folds the section alone,
+  // remembered in `existingCommentsCollapsed`.
+  const ghShown = snapshot?.viewPrefs.showExistingComments ?? true;
+  const ghCollapsed = snapshot?.viewPrefs.existingCommentsCollapsed ?? false;
+  const ghCount = existing?.length ?? 0;
+  const ghOpen = ghShown && !ghCollapsed;
+  const onGhHead = (): void => {
+    const body = !ghShown
+      ? { showExistingComments: true }
+      : { existingCommentsCollapsed: !ghCollapsed };
+    api.updateView(reviewId, body).catch(() => {
+      toast("Couldn't save that change");
+    });
+  };
+
   const jumpExisting = (thread: GithubThread): void => {
     const snap = useReview.getState().snapshot;
     if (!snap) return;
@@ -356,10 +374,17 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             <span className="hint">These are drafts. Nothing reaches GitHub until you use Submit review.</span>
           ) : null}
           <div>
-            <h3 className="hint" style={{ margin: "6px 0 2px" }}>
-              Already on GitHub
-            </h3>
-            {existing === null ? (
+            <button
+              className="ghhead"
+              type="button"
+              data-ghhead=""
+              aria-expanded={ghOpen}
+              onClick={onGhHead}
+            >
+              <Icon name={ghOpen ? "down" : "right"} />
+              <span>{ghShown ? "Already on GitHub" : `Already on GitHub · ${ghCount} hidden`}</span>
+            </button>
+            {!ghOpen ? null : existing === null ? (
               <p className="hint" style={{ margin: 4 }}>
                 Loading comments from GitHub…
               </p>

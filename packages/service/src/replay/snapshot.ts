@@ -447,7 +447,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     annotations,
     hunkStates,
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [
       { id: "job-reader", kind: "reader", model: "fixture", effort: "", priority: 1, state: "done" },
       { id: "job-critic-lf", kind: "critic", model: "fixture", effort: "", priority: 2, state: "done" },

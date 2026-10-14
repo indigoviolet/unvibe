@@ -562,7 +562,7 @@ function changesFetchError(): string | null {
 
 let rev = 1;
 /** Per-review diff view preferences (issue #168): the mock persists them. */
-let mockViewPrefs: import("@unvibe/shared").ReviewViewPrefs = { showExistingComments: true };
+let mockViewPrefs: import("@unvibe/shared").ReviewViewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
 const hunkStates = seedHunkStates();
 /** Per-file fold state (issue #162): the mock persists it like the service. */
 const fileStates = new Map<string, import("@unvibe/shared").FileState>();
@@ -879,7 +879,7 @@ export function resetMockState(): void {
   hunkStates.clear();
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
   fileStates.clear();
-  mockViewPrefs = { showExistingComments: true };
+  mockViewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
   annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
   mockPages = JSON.parse(JSON.stringify(MOCK_PAGES));
   seedMockD2Diagrams(mockPages);
@@ -1696,7 +1696,7 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -1724,7 +1724,7 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -2072,7 +2072,7 @@ export const mockApi = {
         annotations: [],
         hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2127,7 +2127,7 @@ export const mockApi = {
         annotations: [],
         hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2255,7 +2255,7 @@ export const mockApi = {
             annotations: [],
             hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
             jobs: [],
             contributions: [],
             logTail: [],
@@ -2286,7 +2286,7 @@ export const mockApi = {
             annotations: [],
             hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
             jobs: [],
             contributions: [],
             logTail: [],
@@ -3045,8 +3045,14 @@ export const mockApi = {
     _id: string,
     body: import("@unvibe/shared").UpdateViewRequest,
   ): Promise<{ ok: boolean }> => {
-    if (body.showExistingComments !== undefined) {
-      mockViewPrefs = { ...mockViewPrefs, showExistingComments: body.showExistingComments };
+    if (body.showExistingComments !== undefined || body.existingCommentsCollapsed !== undefined) {
+      mockViewPrefs = {
+        ...mockViewPrefs,
+        ...(body.showExistingComments !== undefined ? { showExistingComments: body.showExistingComments } : {}),
+        ...(body.existingCommentsCollapsed !== undefined
+          ? { existingCommentsCollapsed: body.existingCommentsCollapsed }
+          : {}),
+      };
       const baseRev = rev;
       rev += 1;
       useReview.getState().applyEvent({

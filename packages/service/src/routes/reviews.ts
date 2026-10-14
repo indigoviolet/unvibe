@@ -259,7 +259,7 @@ async function runIngestBackground(
       annotations: [],
       hunkStates: [],
       fileStates: [],
-      viewPrefs: { showExistingComments: true },
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
       jobs: [],
       contributions: [],
       logTail: [],
@@ -299,7 +299,7 @@ async function runIngestBackground(
       draft.annotations = [];
       draft.hunkStates = [];
       draft.fileStates = [];
-      draft.viewPrefs = { showExistingComments: true };
+      draft.viewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
       draft.jobs = [];
       draft.contributions = [];
       draft.logTail = [];
@@ -466,7 +466,7 @@ async function beginReviewFromSource(
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -672,7 +672,7 @@ export async function registerReviews(
         annotations: [],
         hunkStates: [],
         fileStates: [],
-        viewPrefs: { showExistingComments: true },
+        viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
         jobs: [],
         contributions: [],
         logTail: [],

@@ -1,11 +1,12 @@
 /**
  * Per-review diff view preferences (issue #168).
  *
- * - `PATCH /api/reviews/:id/view` — currently only
- *   `showExistingComments` (existing GitHub comments shown in the diff).
- *   Persisted on the snapshot through `ReviewStore.mutate`, so the choice
- *   is remembered with the review. The comments menu always lists every
- *   thread; hiding never removes comments from the agents' context.
+ * - `PATCH /api/reviews/:id/view` — `showExistingComments` (existing
+ *   GitHub comments shown in the diff, and listed in the comments menu)
+ *   and `existingCommentsCollapsed` (the menu's section folded while
+ *   shown). Persisted on the snapshot through `ReviewStore.mutate`, so
+ *   the choice is remembered with the review. Hiding never removes
+ *   comments from the agents' context.
  */
 import type { FastifyInstance } from "fastify";
 import type { UpdateViewRequest } from "@unvibe/shared";
@@ -19,11 +20,14 @@ export async function registerView(app: FastifyInstance, ctx: ServiceContext): P
     if (typeof body !== "object" || Array.isArray(body)) {
       return reply.code(400).send({ error: "invalid view patch body" });
     }
-    const { showExistingComments } = body;
+    const { showExistingComments, existingCommentsCollapsed } = body;
     if (showExistingComments !== undefined && typeof showExistingComments !== "boolean") {
       return reply.code(400).send({ error: "showExistingComments must be a boolean" });
     }
-    if (showExistingComments === undefined) {
+    if (existingCommentsCollapsed !== undefined && typeof existingCommentsCollapsed !== "boolean") {
+      return reply.code(400).send({ error: "existingCommentsCollapsed must be a boolean" });
+    }
+    if (showExistingComments === undefined && existingCommentsCollapsed === undefined) {
       return reply.code(400).send({ error: "nothing to update" });
     }
 
@@ -34,7 +38,10 @@ export async function registerView(app: FastifyInstance, ctx: ServiceContext): P
 
     try {
       await ctx.reviews.mutate(id, (draft) => {
-        draft.viewPrefs.showExistingComments = showExistingComments;
+        if (showExistingComments !== undefined) draft.viewPrefs.showExistingComments = showExistingComments;
+        if (existingCommentsCollapsed !== undefined) {
+          draft.viewPrefs.existingCommentsCollapsed = existingCommentsCollapsed;
+        }
       });
     } catch (err) {
       return reply.code(404).send({ error: (err as Error).message });
