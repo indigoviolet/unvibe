@@ -14,8 +14,13 @@ export interface FakeScript {
 export class FakeAgentRunner implements AgentRunner {
   readonly sessions = new Map<string, Session>();
   readonly prompts: { sessionId: string; text: string }[] = [];
-  /** Start options per session, in order (tests assert the effort sent). */
-  readonly starts: { sessionId: string; provider: string; model: string; effort: string }[] = [];
+  /**
+   * Start options per session, in order (tests assert the effort sent).
+   * Named to avoid colliding with subclasses' own `starts` recordings
+   * (e.g. conversation-mcp-turns' MCP-server log): both push here and
+   * there independently.
+   */
+  readonly startCalls: { sessionId: string; provider: string; model: string; effort: string }[] = [];
   private nextId = 1;
 
   constructor(private scripts: FakeScript[] = []) {}
@@ -38,7 +43,7 @@ export class FakeAgentRunner implements AgentRunner {
       model: opts.model,
     };
     this.sessions.set(session.id, session);
-    this.starts.push({
+    this.startCalls.push({
       sessionId: session.id,
       provider: opts.provider,
       model: opts.model,
