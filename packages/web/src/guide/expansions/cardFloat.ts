@@ -11,8 +11,9 @@
  *   space in the flow (a zero-height `.exp-float` placeholder, so the page
  *   never reflows).
  * - A pinned card renders inline, exactly today's clicked behaviour.
- * - Pinning is per card, session-only client state (`pinnedCards` in the
- *   review store), never sent to the service. No "always pin" setting.
+ * - Pinning is per card and stored on the conversation annotation
+ *   (`pinned`, default false, set through the comment PATCH), so it
+ *   survives a reload. No "always pin" setting.
  * - Hunk-hosted cards (issue #138) are always inline: they replace their
  *   idle summary text in a slot that already exists for them, so there is
  *   nothing to float over. They get no pin control.
@@ -24,7 +25,7 @@ import { useReview } from "../../state/store.js";
 
 /**
  * Pure rule: floating unless pinned, and never for hunk-hosted cards.
- * `pinned` is the card's entry from `pinnedCards` (true = pinned).
+ * `pinned` is the card's stored `pinned` field.
  */
 export function shouldFloatConversation(card: Pick<Annotation, "id" | "anchor">, pinned: boolean): boolean {
   if (pinned) return false;
@@ -32,12 +33,7 @@ export function shouldFloatConversation(card: Pick<Annotation, "id" | "anchor">,
 }
 
 /** React binding for the rule above (re-renders the card on pin toggles). */
-export function useFloatingCard(card: Pick<Annotation, "id" | "anchor">): boolean {
-  const pinned = useReview((s) => s.pinnedCards[card.id] === true);
-  return shouldFloatConversation(card, pinned);
-}
-
-/** Toggle helper for the pin control. */
-export function setCardPinned(cardId: string, pinned: boolean): void {
-  useReview.getState().setCardPinned(cardId, pinned);
+export function useFloatingCard(card: Pick<Annotation, "id" | "anchor" | "pinned">): boolean {
+  const stored = useReview((s) => s.snapshot?.annotations.find((a) => a.id === card.id)?.pinned);
+  return shouldFloatConversation(card, stored ?? card.pinned);
 }

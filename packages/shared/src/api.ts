@@ -761,6 +761,8 @@ export interface UpdateCommentRequest {
   open?: boolean;
   /** M6: unsent reply-box content (survives re-renders); null clears it. */
   reply?: string | null;
+  /** Issue #167: pin a conversation card into the page (conversations only). */
+  pinned?: boolean;
 }
 
 /** POST /api/reviews/:id/comments — create a thread (M6). */

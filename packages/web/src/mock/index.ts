@@ -568,9 +568,31 @@ const hunkStates = seedHunkStates();
 const fileStates = new Map<string, import("@unvibe/shared").FileState>();
 /** Issue #169: the diff's score/plotline filter, remembered with the review. */
 let mockDiffFilter: DiffFilter | undefined;
-let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
-  JSON.stringify(MOCK_ANNOTATIONS),
-) as import("@unvibe/shared").Annotation[];
+/** Issue #167: pinned card ids persist across a reload, like the service. */
+const PINNED_KEY = "unvibe.mock.pinned";
+function readPinnedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(PINNED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+function writePinnedIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Non-fatal.
+  }
+}
+function seedAnnotations(): import("@unvibe/shared").Annotation[] {
+  const list = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS)) as import("@unvibe/shared").Annotation[];
+  const pinned = readPinnedIds();
+  for (const a of list) a.pinned = pinned.has(a.id);
+  return list;
+}
+let annotations: import("@unvibe/shared").Annotation[] = seedAnnotations();
 let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
   JSON.stringify(MOCK_PAGES),
 ) as import("@unvibe/shared").Page[];
@@ -880,7 +902,7 @@ export function resetMockState(): void {
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
   fileStates.clear();
   mockViewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
-  annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
+  annotations = seedAnnotations();
   mockPages = JSON.parse(JSON.stringify(MOCK_PAGES));
   seedMockD2Diagrams(mockPages);
   description = { ...MOCK_DESCRIPTION };
@@ -1315,6 +1337,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
       version: 1,
     },
     open: true,
+    pinned: false,
     messages: [],
     post: false,
     working: null,
@@ -2598,6 +2621,7 @@ export const mockApi = {
           // Ask cards open in place everywhere, like Explain (no
           // closed-thread legacy).
           open: true,
+          pinned: false,
           messages: [],
           post: false,
           working: "Thinking…",
@@ -2719,6 +2743,7 @@ export const mockApi = {
             : {}),
         },
         open: true,
+        pinned: false,
         messages: [],
         post: false,
         working: "Thinking…",
@@ -2841,6 +2866,7 @@ export const mockApi = {
           version: 1,
         },
         open: true,
+        pinned: false,
         messages: [],
         post: false,
         working: "Writing answer…",
@@ -3155,6 +3181,7 @@ export const mockApi = {
           : {}),
       },
       open: host.kind === "block" ? false : true,
+      pinned: false,
       messages: body.text ? [{ who: "you", text: body.text }] : [],
       // Mirrors the service: a Comment is for the PR by default; an Ask
       // is a conversation card, never a thread.
@@ -3187,6 +3214,13 @@ export const mockApi = {
     // comment-only.
     if (thread.type === "conversation") {
       if (body.open !== undefined) thread.open = body.open;
+      if (body.pinned !== undefined) {
+        thread.pinned = body.pinned;
+        const ids = readPinnedIds();
+        if (body.pinned) ids.add(thread.id);
+        else ids.delete(thread.id);
+        writePinnedIds(ids);
+      }
       if (body.post !== undefined || body.draft !== undefined) {
         throw new Error(`annotation ${commentId} is not a thread`);
       }
@@ -3196,6 +3230,7 @@ export const mockApi = {
       return { ok: true };
     }
     if (thread.type !== "comment") throw new Error("unknown comment");
+    if (body.pinned !== undefined) throw new Error(`annotation ${commentId} is not a conversation`);
     if (body.post !== undefined) {
       thread.post = body.post;
       if (body.post) thread.open = true;

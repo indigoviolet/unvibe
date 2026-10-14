@@ -100,6 +100,23 @@ async function openPopover(page: Page): Promise<void> {
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
 }
 
+test("pinning a card survives a reload; unpinning does too (#167)", async ({ page }) => {
+  await gotoReview(page);
+  const card = page.locator("#C-problem [data-expansion]").first();
+  await expect(card).toHaveClass(/floating/);
+  await card.getByRole("button", { name: "Pin into the page" }).click();
+  await expect(card).not.toHaveClass(/floating/);
+  await page.reload();
+  await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers");
+  const pinnedCard = page.locator("#C-problem [data-expansion]").first();
+  await expect(pinnedCard).not.toHaveClass(/floating/);
+  await pinnedCard.getByRole("button", { name: /Unpin/ }).click();
+  await expect(pinnedCard).toHaveClass(/floating/);
+  await page.reload();
+  await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers");
+  await expect(page.locator("#C-problem [data-expansion]").first()).toHaveClass(/floating/);
+});
+
 test("root page renders cards, contents and generated go-deeper cards", async ({ page }) => {
   await gotoReview(page);
   await expect(page.locator("#page h1.title")).toBeVisible();

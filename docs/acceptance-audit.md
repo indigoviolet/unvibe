@@ -472,8 +472,9 @@ needed (that deviation is closed, not added).
   `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
   Issue #167: a clicked card floats persistently above the content under
   it (zero-height `.exp-float` placeholder, no reflow; scrolls with the
-  page; pin inserts it inline; per-card session-only pin state in
-  `cardFloat.ts` + store `pinnedCards`; hunk-hosted cards stay inline;
+  page; pin inserts it inline; the pin is stored on the conversation
+  annotation (`pinned`, default false, set through the comment PATCH),
+  so it survives a reload; hunk-hosted cards stay inline;
   ×/Escape close; diff floaters render at the hunk level outside the
   hunk scroller so `.dwrap` never clips them, at `z-index: 0` so the
   pinned file/hunk headers slide over) — met (`FloatingCard.test.tsx`,

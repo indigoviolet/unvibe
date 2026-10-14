@@ -134,13 +134,6 @@ interface ReviewState {
   /** Out-of-order patches waiting for their `baseRev`. */
   pending: PatchEvent[];
   /**
-   * Issue #167: conversation cards pinned into the page, by annotation
-   * id. Present = pinned (inline, today's clicked behaviour); absent =
-   * floating above the content. Purely presentational client state:
-   * session-only, cleared with the review, never sent to the service.
-   */
-  pinnedCards: Record<string, true>;
-  /**
    * Issue #126 (experiment): accumulated streamed answer text per
    * conversation card, keyed by annotation id. Fed by WS `text` events
    * (dropped on the floor before #126); the unified card renders
@@ -165,8 +158,6 @@ interface ReviewState {
   /** Move an entry to its server id (anchor key → annotation/thread id). */
   retargetInflight: (fromId: string, toId: string) => void;
   clearInflight: (targetId: string) => void;
-  /** Issue #167: pin a conversation card inline, or unpin it to floating. */
-  setCardPinned: (cardId: string, pinned: boolean) => void;
   /**
    * Issue #126 (experiment): append a streamed text delta to a card's
    * buffer. A new job id resets the buffer (repair/retry start clean).
@@ -292,7 +283,6 @@ export const useReview = create<ReviewState>()((set, get) => ({
   connected: false,
   inflight: {},
   pending: [],
-  pinnedCards: {},
   streams: {},
   resyncSeq: 0,
   setSnapshot: (snapshot) =>
@@ -470,15 +460,6 @@ export const useReview = create<ReviewState>()((set, get) => ({
       delete next[targetId];
       return { inflight: next };
     }),
-  setCardPinned: (cardId, pinned) =>
-    set((s) => {
-      if (pinned && s.pinnedCards[cardId]) return s;
-      if (!pinned && !s.pinnedCards[cardId]) return s;
-      const next = { ...s.pinnedCards };
-      if (pinned) next[cardId] = true;
-      else delete next[cardId];
-      return { pinnedCards: next };
-    }),
   appendStream: (annotationId, jobId, delta) =>
     set((s) => {
       if (!delta) return s;
@@ -500,5 +481,5 @@ export const useReview = create<ReviewState>()((set, get) => ({
       delete next[annotationId];
       return { streams: next };
     }),
-  clear: () => set({ snapshot: null, inflight: {}, pending: [], pinnedCards: {}, streams: {}, resyncSeq: 0 }),
+  clear: () => set({ snapshot: null, inflight: {}, pending: [], streams: {}, resyncSeq: 0 }),
 }));

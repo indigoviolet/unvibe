@@ -166,6 +166,7 @@ export function suggestOpenQuestionsInDraft(
       anchor: built,
       // Guide questions start closed (marker); diff/description start open.
       open: built.host.kind === "block" ? false : true,
+      pinned: false,
       messages: [{ who: "ai", text, suggested: true, question: true }],
       post: false,
       openQuestion: { contributionId: q.contributionId, itemIndex: q.itemIndex },

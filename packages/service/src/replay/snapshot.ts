@@ -313,6 +313,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [],
       post: false,
       turns: [
@@ -338,6 +339,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [
         { who: "you", text: "Does the fast path still catch a fold that uses a bare LF?" },
       ],
@@ -355,6 +357,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [
         {
           who: "ai",
@@ -376,6 +379,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [
         {
           who: "ai",
@@ -397,6 +401,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [
         { who: "you", text: "Is the double space here intended?" },
       ],

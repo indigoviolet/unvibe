@@ -152,6 +152,7 @@ describe("resolveSelectionHost inside AI-suggested comments (issue #163)", () =>
             version: 1,
           },
           open: true,
+          pinned: false,
           messages: [{ who: "ai", text: "Consider a boundary test.", suggested: true }],
           post: false,
         },
@@ -209,6 +210,7 @@ function seedConversationCard(): void {
       version: 1,
     },
     open: true,
+    pinned: false,
     messages: [],
     post: false,
   };

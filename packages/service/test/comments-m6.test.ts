@@ -442,6 +442,55 @@ describe("comments for the PR (issue #135)", () => {
     }
   });
 
+  it("PATCH pinned stores the pin on a conversation and rejects it on a comment (#167)", async () => {
+    const runner = new FakeCommandRunner();
+    const { app, ctx, reviewId } = await setupReview(runner);
+    try {
+      await ctx.reviews.mutate(reviewId, (draft) => {
+        draft.annotations.push({
+          id: "ann_pin",
+          type: "conversation",
+          anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "q", prefix: "", suffix: "", position: 0, version: 1 },
+          open: true,
+          pinned: false,
+          messages: [],
+          post: false,
+          turns: [],
+        } as never);
+      });
+      const pin = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${reviewId}/comments/ann_pin`,
+        headers: authed,
+        payload: { pinned: true },
+      });
+      expect(pin.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(reviewId)?.annotations.find((a) => a.id === "ann_pin")?.pinned).toBe(true);
+      const unpin = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${reviewId}/comments/ann_pin`,
+        headers: authed,
+        payload: { pinned: false },
+      });
+      expect(unpin.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(reviewId)?.annotations.find((a) => a.id === "ann_pin")?.pinned).toBe(false);
+      const { id: commentId } = await createNoteThread(ctx.reviews, reviewId, {
+        anchor: { where: "diff-line", fileKey: "a-py", line: 2 },
+        quote: "y",
+        text: "why?",
+      });
+      const onComment = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${reviewId}/comments/${commentId}`,
+        headers: authed,
+        payload: { pinned: true },
+      });
+      expect(onComment.statusCode).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("marks post on a comment in both directions", async () => {
     const runner = new FakeCommandRunner();
     const { app, ctx, reviewId } = await setupReview(runner);

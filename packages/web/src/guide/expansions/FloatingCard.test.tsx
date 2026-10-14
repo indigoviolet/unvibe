@@ -44,6 +44,7 @@ function card(over: Record<string, unknown> = {}): Annotation {
       version: 1,
     },
     open: true,
+    pinned: false,
     messages: [],
     post: false,
     turns: [turn("ans_1")],
@@ -98,6 +99,19 @@ function seedSnapshot(annotations: Annotation[]): void {
     logTail: [],
     rev: 1,
   } as unknown as ReviewSnapshot);
+}
+
+/** Simulate the service PATCH: set `pinned` on the stored annotation. */
+function mockPinPatch(): void {
+  vi.spyOn(api, "updateComment").mockImplementation(async (_id: string, commentId: string, body: { pinned?: boolean }) => {
+    const snap = useReview.getState().snapshot;
+    if (!snap) throw new Error("no snapshot");
+    useReview.getState().setSnapshot({
+      ...snap,
+      annotations: snap.annotations.map((a) => (a.id === commentId ? { ...a, pinned: body.pinned ?? a.pinned } : a)),
+    } as never);
+    return { ok: true };
+  });
 }
 
 function show(c: Annotation): void {
@@ -166,6 +180,7 @@ describe("floating conversation card", () => {
   test("pin inserts the card inline; unpin returns it to floating", () => {
     const c = card();
     seedSnapshot([c]);
+    mockPinPatch();
     show(c);
     fireEvent.click(screen.getByRole("button", { name: "Pin into the page" }));
     const section = document.getElementById("B-ann_float")!;
@@ -219,9 +234,20 @@ describe("floating conversation card", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  test("a card stored pinned renders inline (pin survives a reload)", () => {
+    const c = card({ pinned: true });
+    seedSnapshot([c]);
+    show(c);
+    const section = document.getElementById("B-ann_float")!;
+    expect(section.className).not.toContain("floating");
+    expect(section.parentElement?.className).not.toBe("exp-float");
+    expect(screen.getByRole("button", { name: /Unpin/ })).toBeDefined();
+  });
+
   test("a pinned card has no Escape-to-close (× still works)", () => {
     const c = card();
     seedSnapshot([c]);
+    mockPinPatch();
     const spy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true });
     show(c);
     fireEvent.click(screen.getByRole("button", { name: "Pin into the page" }));

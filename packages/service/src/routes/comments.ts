@@ -145,7 +145,7 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
     if (typeof body !== "object" || Array.isArray(body)) {
       return reply.code(400).send({ error: "invalid comment patch body" });
     }
-    const { post, draft, open, reply: replyBox } = body;
+    const { post, draft, open, reply: replyBox, pinned } = body;
     if (post !== undefined && typeof post !== "boolean") {
       return reply.code(400).send({ error: "post must be a boolean" });
     }
@@ -158,14 +158,17 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
     if (replyBox !== undefined && replyBox !== null && typeof replyBox !== "string") {
       return reply.code(400).send({ error: "reply must be a string or null" });
     }
-    if (post === undefined && draft === undefined && open === undefined && replyBox === undefined) {
+    if (pinned !== undefined && typeof pinned !== "boolean") {
+      return reply.code(400).send({ error: "pinned must be a boolean" });
+    }
+    if (post === undefined && draft === undefined && open === undefined && replyBox === undefined && pinned === undefined) {
       return reply.code(400).send({ error: "nothing to update" });
     }
     if (!reviews.getSnapshot(id)) return reply.code(404).send({ error: `unknown review ${id}` });
     try {
       await reviews.mutate(id, (draftState) => {
         const found = (
-          draftState.annotations as Array<{ id: string; type: string; post: boolean; open: boolean; draft?: string; reply?: string }>
+          draftState.annotations as Array<{ id: string; type: string; post: boolean; open: boolean; pinned: boolean; draft?: string; reply?: string }>
         ).find((a) => a.id === commentId);
         if (!found) throw new Error(`unknown comment ${commentId}`);
         // Issue #136: `open` and the reply-box draft (`reply`) apply to
@@ -180,6 +183,9 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
           if (post !== undefined || draft !== undefined || draft === null) {
             throw new Error(`annotation ${commentId} is not a thread`);
           }
+          // Issue #167: pinning is conversation-only and stored, so it
+          // survives a reload.
+          if (pinned !== undefined) found.pinned = pinned;
           if (replyBox === null) {
             delete found.reply;
           } else if (replyBox !== undefined) {
@@ -188,10 +194,13 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
           return;
         }
         if (found.type !== "comment") {
-          if (post !== undefined || draft !== undefined || draft === null || replyBox !== undefined || replyBox === null) {
+          if (post !== undefined || draft !== undefined || draft === null || replyBox !== undefined || replyBox === null || pinned !== undefined) {
             throw new Error(`annotation ${commentId} is not a comment`);
           }
           return;
+        }
+        if (pinned !== undefined) {
+          throw new Error(`annotation ${commentId} is not a conversation`);
         }
         if (post !== undefined) {
           found.post = post;

@@ -33,7 +33,7 @@ import { blockThreads } from "../annotations.js";
 import { BlockView } from "../BlockView.js";
 import { DepthControl } from "../DepthControl.js";
 import { busyForCard, busyForConversation, inflightLabel, isFollowupAnswer, type BusyState } from "../inflight.js";
-import { setCardPinned, useFloatingCard } from "./cardFloat.js";
+import { useFloatingCard } from "./cardFloat.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
 import { conversationTurns, isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
 import { expansionsForBlock } from "./ExpansionHighlights.js";
@@ -404,12 +404,14 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
 
   // Issue #167: the pin control. Floating (default) → "Pin into the
   // page" inserts the card inline; pinned → unpin returns it to floating.
+  // The pin is stored on the annotation through the comment PATCH, so it
+  // survives a reload; the card flips when the updated snapshot lands.
   const pinButton = pinnable ? (
     <ControlButton
       icon="pin"
       label={floating ? "Pin into the page" : "Unpin (float above the content)"}
       pressed={!floating}
-      onClick={() => setCardPinned(expansion.id, floating)}
+      onClick={() => void api.updateComment(reviewId, expansion.id, { pinned: floating }).catch(() => {})}
     />
   ) : null;
 

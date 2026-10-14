@@ -283,6 +283,7 @@ export function createThreadInDraft(
     type: "comment",
     anchor,
     open,
+    pinned: false,
     messages,
     post: true,
     ...(messages.length === 0 ? { reply: "" } : {}),
@@ -314,6 +315,7 @@ export function createSuggestedCommentInDraft(
     type: "comment",
     anchor,
     open: true,
+    pinned: false,
     messages: [{ who: "ai", text: params.suggestionText, suggested: true }],
     post: false,
   };

@@ -81,7 +81,6 @@ export function useDiffExpansionBindings(
 } {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const files = useReview((s) => s.snapshot?.files);
-  const pinnedCards = useReview((s) => s.pinnedCards);
 
   const byLine = useMemo(() => {
     const map = new Map<string, Annotation[]>();
@@ -206,7 +205,7 @@ export function useDiffExpansionBindings(
       // overlay (`floatingByHunk` below); pinned cards stay here, exactly
       // today's inline position under their line.
       const open = exps.filter(
-        (a) => a.type === "conversation" && a.open && !shouldFloatConversation(a, pinnedCards[a.id] === true),
+        (a) => a.type === "conversation" && a.open && !shouldFloatConversation(a, a.pinned),
       );
       if (open.length === 0) continue;
       slots[key] = (
@@ -225,14 +224,14 @@ export function useDiffExpansionBindings(
       );
     }
     return slots;
-  }, [byLine, pinnedCards, reviewId, lookupPage, onOpenPage, onFollowUp]);
+  }, [byLine, reviewId, lookupPage, onOpenPage, onFollowUp]);
 
   const floatingByHunk = useMemo<ReadonlyMap<string, Annotation[]>>(() => {
     const map = new Map<string, Annotation[]>();
     for (const a of annotations ?? []) {
       if (a.type !== "conversation" || !a.open || a.promotedToPage) continue;
       if (a.anchor.host.kind !== "diff-line") continue;
-      if (!shouldFloatConversation(a, pinnedCards[a.id] === true)) continue;
+      if (!shouldFloatConversation(a, a.pinned)) continue;
       const host = a.anchor.host;
       const file = (files ?? []).find((f) => f.fileKey === host.fileKey);
       if (!file) continue;
@@ -244,7 +243,7 @@ export function useDiffExpansionBindings(
       map.set(key, list);
     }
     return map;
-  }, [annotations, files, pinnedCards]);
+  }, [annotations, files]);
 
   const expandedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 

@@ -184,6 +184,7 @@ export function suggestedAnnotation(
       version,
     },
     open: true,
+    pinned: false,
     messages: [{ who: "ai", suggested: true, text }],
     post: false,
   };

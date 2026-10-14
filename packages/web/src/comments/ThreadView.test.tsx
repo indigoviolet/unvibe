@@ -28,6 +28,7 @@ function thread(over: Partial<Annotation> = {}): Annotation {
       version: 1,
     },
     open: true,
+    pinned: false,
     messages: [{ who: "you", text: "First message" }],
     post: false,
     ...over,

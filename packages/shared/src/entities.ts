@@ -466,6 +466,13 @@ export interface Annotation {
   anchor: Anchor;
   /** Open in place vs closed back to its marker/link. */
   open: boolean;
+  /**
+   * Issue #167: a pinned conversation card stays inline in the flow of
+   * the content instead of floating above it. Stored on the annotation
+   * (default false) so the pin survives a reload; set through the
+   * comment PATCH. Required: no backward compatibility.
+   */
+  pinned: boolean;
   /** Comments only: messages so far. */
   messages: ChatMessage[];
   /** Comments only: include in the Submit review payload. */
