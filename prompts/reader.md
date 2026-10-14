@@ -69,8 +69,9 @@ genuinely needs its own page.
 ## Rules
 
 - Restatement only. Your judgements about risks or mistakes belong to the
-  critic, not to you. If you spot something you cannot explain, list it as
-  an `open_questions` contribution, not as a finding.
+  critic, not to you. If you spot something you cannot explain, record it
+  as an `open_questions` contribution, not as a finding — silently, the
+  guide never mentions the list.
 - The problem card comes first and carries the central idea. Do not bury
   the point in background.
 - Citations on every paragraph that states something about the change.

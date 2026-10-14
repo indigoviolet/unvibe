@@ -406,6 +406,12 @@ export interface ChatMessage {
   text?: string;
   /** Agent-drafted suggested comment not yet marked for the PR. */
   suggested?: boolean;
+  /**
+   * Issue #181: this suggested message is an agent's open question,
+   * offered as a suggested comment. Distinguishes question suggestions
+   * from finding suggestions in the UI.
+   */
+  question?: boolean;
 }
 
 /**
@@ -509,6 +515,16 @@ export interface Annotation {
   postedAt?: number;
   /** M6: GitHub review URL the thread was posted in. */
   postedUrl?: string;
+  /**
+   * Issue #181: this suggested comment is an agent's open question.
+   * Links the suggestion to its contribution item, so dismissing the
+   * suggestion marks that item dismissed (resolved) in the shared
+   * context and the question is not raised again.
+   */
+  openQuestion?: {
+    contributionId: string;
+    itemIndex: number;
+  };
 }
 
 /** Where an annotation is attached (PRD §7.1). */export type AnchorHost =
@@ -576,6 +592,12 @@ export interface ContributionItem {
   /** Corrections target `card:<id>#<block>`. */
   target?: string;
   citations: Citation[];
+  /**
+   * Issue #181: per-item resolution. Absent means active. A dismissed
+   * open question stays stored (so re-raises dedupe against it) but is
+   * filtered out of agent context.
+   */
+  status?: ContributionStatus;
 }
 
 export type ContributionStatus = "pending" | "accepted" | "dismissed" | "merged";

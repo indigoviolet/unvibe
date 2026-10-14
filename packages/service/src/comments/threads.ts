@@ -393,6 +393,14 @@ export function setReplyBoxInDraft(
 export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: string): void {
   const idx = (draft.annotations as Annotation[]).findIndex((a) => a.id === commentId);
   if (idx < 0) throw new Error(`unknown comment ${commentId}`);
+  // Issue #181: dismissing a question suggestion resolves its
+  // contribution item in the shared context, so agents do not raise it
+  // again (re-raises dedupe against stored items, whatever their status).
+  const link = (draft.annotations as Annotation[])[idx].openQuestion;
+  if (link) {
+    const item = draft.contributions.find((c) => c.id === link.contributionId)?.items[link.itemIndex];
+    if (item && item.kind === "open_question") item.status = "dismissed";
+  }
   (draft.annotations as Annotation[]).splice(idx, 1);
 }
 

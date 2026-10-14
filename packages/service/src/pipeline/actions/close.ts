@@ -9,6 +9,7 @@
  *   never carry jobs.
  */
 import type { Annotation } from "@unvibe/shared";
+import { deleteInDraft } from "../../comments/threads.js";
 import { recordInteraction } from "../../interaction/index.js";
 import { getSnapshotOrThrow, type ActionContext } from "./common.js";
 import { cancelConversationJob, holdsFillableTurns } from "./conversation.js";
@@ -74,9 +75,9 @@ export async function deleteAction(
   }
 
   await reviews.mutate(reviewId, (draft) => {
-    const idx = (draft.annotations as unknown as Annotation[]).findIndex((a) => a.id === targetId);
-    if (idx < 0) throw new Error(`unknown annotation ${targetId}`);
-    (draft.annotations as unknown as Annotation[]).splice(idx, 1);
+    // Shared with the comments route (issue #181 dismissal marking rides
+    // along for question suggestions on every delete path).
+    deleteInDraft(draft, targetId);
   });
   // A deleted item that had been shared leaves a one-line deletion entry
   // (PRD §9.3); unshared working states simply vanish.
