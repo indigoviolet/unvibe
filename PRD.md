@@ -511,7 +511,7 @@ A new base is built when any of these happens:
 - **Second-opinion model:** a different provider or model. It runs in a fresh session with its own base, containing L0 + L1 + the cited code. It never sees guide text, other findings, contributions, or the main model's pinned code beyond what's cited.
 - **Role defaults:** tiers opus | sol > sonnet | terra > haiku | luna; the newest version offered within a tier wins; Fable and Astra are never picked. Second opinion is picked from the provider main is not using, and stays unset with a single provider. One source of effective settings serves Settings, readiness, the pipeline, second opinions and shared context: a saved pick wins, an unset role takes the live default, and unfillable roles keep the stored fallback (readiness reports it plainly).
 - **Concurrency:**
-  - a per-provider session cap, starting at 4;
+  - a per-provider session cap, starting at 4, applied separately to main-model and small-model jobs (so the cap can allow that many of each at once, per provider);
   - a priority queue: what the user asked for, then what's visible on screen, then background work;
   - back off on rate limits, and show it on the job;
   - cancel a job when its card closes (ACP `session/cancel`);
