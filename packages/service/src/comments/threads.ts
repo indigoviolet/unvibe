@@ -393,6 +393,17 @@ export function setReplyBoxInDraft(
 export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: string): void {
   const idx = (draft.annotations as Annotation[]).findIndex((a) => a.id === commentId);
   if (idx < 0) throw new Error(`unknown comment ${commentId}`);
+  // Owner decision (#161): the idle hunk summary is the collapsed state
+  // of the hunk card, so deleting a hunk card removes the hunk's stored
+  // summary too — the hunk is left with no summary, in the same draft
+  // (one crash-safe mutate, logged like other deletes). Re-summarizing
+  // can make a new one; the update pass only regenerates summaries for
+  // hunks that changed.
+  const host = (draft.annotations as Annotation[])[idx].anchor.host;
+  if (host.kind === "hunk") {
+    const state = draft.hunkStates.find((s) => s.contentHash === host.contentHash);
+    if (state) delete state.summary;
+  }
   // Issue #181: dismissing a question suggestion resolves its
   // contribution item in the shared context, so agents do not raise it
   // again (re-raises dedupe against stored items, whatever their status).

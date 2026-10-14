@@ -279,6 +279,27 @@ describe("hunk summaries as content cards (#138)", () => {
     }
   });
 
+  it("deleting an activated hunk card leaves no card and no summary (#161)", { timeout: 90000 }, async () => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+    const agents = fakeAgents();
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      const { fileKey, contentHash } = await seedSummary(ctx, id, "Adds a fast path that skips values without CRLF.");
+      const activated = await postAction(app, id, { kind: "hunk_card", fileKey, contentHash });
+      expect(activated.status).toBe(200);
+      const cardId = activated.json.annotationId as string;
+      expect(hunkCards(ctx, id, fileKey, contentHash).length).toBe(1);
+
+      const deleted = await postAction(app, id, { kind: "delete", targetId: cardId });
+      expect(deleted.status).toBe(200);
+      expect(hunkCards(ctx, id, fileKey, contentHash)).toEqual([]);
+      const state = ctx.reviews.getSnapshot(id)!.hunkStates.find((s) => s.contentHash === contentHash);
+      expect(state?.summary).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
   it("unknown hunk and missing summary fail plainly", { timeout: 90000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const agents = fakeAgents();

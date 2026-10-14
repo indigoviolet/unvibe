@@ -766,8 +766,9 @@ needed (that deviation is closed, not added).
   toolbar on a hunk anchor; the first interaction activates a real
   conversation card on `h:<fileKey>:<contentHash>` from the stored text
   with no agent call, then the action runs nested; Comment lands on the
-  first changed line without activating; deleting the card returns the
-  idle text — met (`service/test/hunk-cards.test.ts`,
+  first changed line without activating; the idle text is the card's
+  collapsed state, so deleting the card removes the stored summary too,
+  leaving no summary (owner decision on #161) — met (`service/test/hunk-cards.test.ts`,
   `source/diff/hunkAnchor.test.ts`,
   `source/diff/HunkCardActivation.test.tsx`,
   `e2e/hunk-summary.spec.ts`). Issue #161: idle summaries carry no icons

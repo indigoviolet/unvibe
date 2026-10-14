@@ -5,6 +5,8 @@
  *   link; hover previews, click expands in place). On a comment it closes
  *   the comment (guide: back to its marker; diff: comment icon on the line).
  * - `delete` removes the annotation entirely (and closes its session).
+ *   On a hunk card it also removes the hunk's stored summary: the idle
+ *   summary is the card's collapsed state (#161).
  * - Close only hides the card: a running fill job keeps going and fills
  *   its turn, and `working` stays set so a reopened card still shows it
  *   is working. Only `delete` cancels a running job (PRD §12); comments
@@ -74,7 +76,8 @@ export async function deleteAction(
 
   await reviews.mutate(reviewId, (draft) => {
     // Shared with the comments route (issue #181 dismissal marking rides
-    // along for question suggestions on every delete path).
+    // along for question suggestions on every delete path; deleting a
+    // hunk card also removes its stored summary there, #161).
     deleteInDraft(draft, targetId);
   });
   // A deleted item that had been shared leaves a one-line deletion entry

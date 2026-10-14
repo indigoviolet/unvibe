@@ -2539,8 +2539,16 @@ export const mockApi = {
       // Annotation deletion (expansions + threads via the actions route).
       const annIdx = annotations.findIndex((x) => x.id === target);
       if (annIdx >= 0) {
-        annotations.splice(annIdx, 1);
+        const [removed] = annotations.splice(annIdx, 1);
         emitAnnotations();
+        // Deleting a hunk card removes its stored summary too (#161).
+        if (removed.anchor.host.kind === "hunk") {
+          const st = hunkStates.get(removed.anchor.host.contentHash);
+          if (st?.summary !== undefined) {
+            hunkStates.set(removed.anchor.host.contentHash, { ...st, summary: undefined });
+            emitHunkStates();
+          }
+        }
         return { accepted: true, annotationId: target };
       }
       throw new Error(`DELETE actions ${target}: 404 {"error":"unknown annotation"}`);
