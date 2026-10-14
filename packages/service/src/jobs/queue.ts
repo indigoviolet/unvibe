@@ -58,6 +58,8 @@ export interface JobContext {
   setPromptSnapshot(text: string): void;
   /** Record the agent session backing this job. */
   setSessionId(id: string): void;
+  /** Record the agent's `degraded` reason for a kept answer (Debug page). */
+  setDegradedReason(reason: string): void;
 }
 
 export type JobFn = (ctx: JobContext) => Promise<void>;
@@ -548,6 +550,11 @@ export class JobQueue {
       },
       setSessionId: (id) => {
         job.sessionId = id;
+        this.save(entry);
+        this.emit(entry);
+      },
+      setDegradedReason: (reason) => {
+        job.degradedReason = reason;
         this.save(entry);
         this.emit(entry);
       },

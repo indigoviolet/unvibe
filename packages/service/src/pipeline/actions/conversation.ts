@@ -27,7 +27,7 @@ import { randomBytes } from "node:crypto";
 import type { ActionAnchor, Anchor, Annotation, Block, Job, ReviewSnapshot, Turn } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
-import { mirrorPromotedAnswer, recordInteraction } from "../../interaction/index.js";
+import { mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { DegradedTurnError } from "../../jobs/errors.js";
 import {
@@ -341,6 +341,19 @@ export async function runConversationTurn(
   if (opts.transcript !== undefined) variables.thread = opts.transcript;
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: opts.replayKind } : undefined;
+  // Connection retry (#51): a continued turn that observably hits a dead
+  // review-MCP URL falls back to a fresh fork with the full first-turn
+  // prompt (the short follow-up prompt assumes the live session's
+  // history). Only built for continued turns; anything else retries on
+  // a fresh fork already. The transcript is the stored turns as text
+  // (`threadTextFor` renders comment messages, not turns).
+  const retryOwner = opts.continueSessionId ? latest.annotations.find((a) => a.id === annotationId) : undefined;
+  const retryVariables = retryOwner
+    ? await l4VariablesWithRevealed(ctx, latest, opts.anchor, { message: opts.message }).then((vars) => ({
+        ...vars,
+        thread: turnsTextFor(retryOwner),
+      }))
+    : undefined;
 
   const done = pipeline.runInFork({
     reviewId,
@@ -354,6 +367,8 @@ export async function runConversationTurn(
     // this turn's cursor (sharedctx wire advances it only on success).
     conversationKey: annotationId,
     ...(opts.continueSessionId ? { continueSessionId: opts.continueSessionId } : {}),
+    retryTemplate: "ask",
+    ...(retryVariables ? { retryVariables } : {}),
     // Issue #50: the app shows the selection in the card header; a body
     // line that merely repeats it is dropped when the reply is parsed.
     echoCandidates: opts.echoCandidates,

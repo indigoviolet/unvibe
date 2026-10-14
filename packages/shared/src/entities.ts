@@ -670,6 +670,12 @@ export interface Job {
   /** Cache read share: cachedRead/(input+cachedRead+cachedWrite). input counts uncached input only (M0, #125). */
   cacheHitRate?: number;
   error?: string;
+  /**
+   * The agent's `degraded` reason for a turn whose usable answer was kept
+   * anyway (the answer carries a plain-words note; the raw reason lives
+   * here for the Debug page, never on the card).
+   */
+  degradedReason?: string;
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
   cardId?: string;
   /**
