@@ -36,9 +36,33 @@ class RecordingAgents extends FakeAgentRunner {
   }
 }
 
+const MINIMAL_READER = `## The problem
+
+The problem paragraph.
+
+## The central change
+
+The central paragraph.
+
+\`\`\`json
+{"cardIds": ["problem", "central"]}
+\`\`\`
+`;
+
 function agents(): RecordingAgents {
   return new RecordingAgents([
     { match: BASE_PACK, events: [{ type: "text", delta: "ready" }, { type: "done", stopReason: "end_turn" }] },
+    // Real content for the turns whose success these tests wait on: an
+    // empty answer is a failed turn (#180), so the old empty catch-all
+    // left the reader failed and no base was ever built.
+    { match: "# Reader task", events: [{ type: "text", delta: MINIMAL_READER }, { type: "done", stopReason: "end_turn" }] },
+    {
+      match: "## The question",
+      events: [
+        { type: "text", delta: "The line is explained here.\n\n```json\n{}\n```\n" },
+        { type: "done", stopReason: "end_turn" },
+      ],
+    },
     { match: "", events: [{ type: "done", stopReason: "end_turn" }] },
   ]);
 }
@@ -97,9 +121,11 @@ describe("base sessions are per review", () => {
   it("after a restart the rebuilt base holds an MCP URL the registry accepts (#68)", async () => {
     type App = Awaited<ReturnType<typeof createApp>>;
     /** Explain on a diff line (needs the base), then wait for the queue to drain. */
-    async function explain({ app, ctx }: App, id: string): Promise<void> {
-      const file = ctx.reviews.getSnapshot(id)!.files[0]!;
-      const line = file.hunks[0]!.lines.find((l) => l.kind === "add")!;
+    async function explain({ app, ctx }: App, id: string, pick = 0): Promise<void> {
+      const adds = ctx.reviews
+        .getSnapshot(id)!
+        .files.flatMap((f) => f.hunks.flatMap((h) => h.lines.filter((l) => l.kind === "add").map((l) => ({ file: f, line: l }))));
+      const { file, line } = adds[pick]!;
       const res = await app.inject({
         method: "POST",
         url: `/api/reviews/${id}/actions`,
@@ -135,7 +161,10 @@ describe("base sessions are per review", () => {
     const runner2 = agents();
     const second = await createApp("tok", { agents: runner2, db });
     try {
-      await explain(second, id);
+      // A different line than the pre-restart explains: the stored
+      // answer would be reused with no job (#10), and this test needs a
+      // real job so the closed base is rebuilt on the new runner.
+      await explain(second, id, 1);
       // Same base key as before the restart: the closed base was rebuilt.
       expect(second.ctx.sessions.baseKeys()).toEqual(keys);
       const base = baseSessions(runner2);

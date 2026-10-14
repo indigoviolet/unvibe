@@ -17,8 +17,8 @@ export async function registerMcp(app: FastifyInstance, registry: McpRegistry): 
     const params = req.params as Record<string, string>;
     const secret = params["secret"] ?? "";
     if (!registry.hasSession(secret)) {
-      // Counted for degraded-turn detection (#51): a turn whose agent
-      // calls a dead URL never connects, and the model usually says so.
+      // Counted for connection-failure detection (#51/#180): a turn whose
+      // agent calls a dead URL never connects; the hit itself is the fact.
       registry.noteUnknownHit();
       reply.code(404).send({ error: "unknown mcp session" });
       return;

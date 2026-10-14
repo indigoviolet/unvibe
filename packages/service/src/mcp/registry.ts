@@ -80,11 +80,11 @@ interface SessionState extends IssuedSession {
   connections: Map<string, McpConnection>;
   /**
    * Sticky: a server was connected for this secret at least once
-   * (degraded-turn detection, #51 — `activitySnapshot` diffs this
+   * (connection-failure detection, #51/#180 — `activitySnapshot` diffs this
    * before/after a turn, so it must not drop when a client disconnects).
    */
   everConnected: boolean;
-  /** Tool calls served on this secret (degraded-turn detection, #51). */
+  /** Tool calls served on this secret (connection-failure detection, #51/#180). */
   calls: number;
 }
 
@@ -102,9 +102,9 @@ export class McpRegistry {
   private readonly byReview = new Map<string, Set<string>>();
   private readonly pins: PinRecord[] = [];
   /**
-   * Calls against unknown/revoked secrets (degraded-turn detection,
-   * #51): a turn whose agent hits a dead URL never connects, and the
-   * model usually reports it in the reply.
+   * Calls against unknown/revoked secrets (connection-failure detection,
+   * #51/#180): a turn whose agent hits a dead URL never connects;
+   * the service observes the hit itself, never the reply's wording.
    */
   private unknownHits = 0;
 
@@ -265,11 +265,11 @@ export class McpRegistry {
   }
 
   /**
-   * Review-scoped MCP activity for degraded-turn detection (#51): how
+   * Review-scoped MCP activity for connection-failure detection (#51/#180): how
    * many of the review's live secrets ever connected, how many tool
    * calls they served, and how many calls hit unknown secrets
-   * service-wide. Snapshot before a turn and diff after: no new
-   * connections or calls means the turn ran without its tools.
+   * service-wide. Snapshot before a turn and diff after: a new unknown
+   * hit means a review-tool call failed to connect this turn.
    */
   activitySnapshot(reviewId: string): { connected: number; toolCalls: number; unknownHits: number } {
     let connected = 0;

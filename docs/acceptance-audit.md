@@ -298,28 +298,33 @@ needed (that deviation is closed, not added).
    paragraph states the problem and the central idea). Agent process
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
-   rule; failures go in the trailing `degraded` field). A job fails on
-   facts only: a process-complaint frame fails when the turn ran without
-   the review MCP server or hit a dead MCP URL — tool names and MCP/gh
-   alone never fail a job. A trailing `degraded` field with a usable body
-   (it parses and has at least one block) keeps the answer instead of
-   failing: the answer shows with the plain-words note "Some references
-   in this answer could not be linked to the code." and the raw reason
-   lands on the job (`degradedReason`) for the Debug page; only a
-   degraded answer with no usable body fails the turn. Connection-error
-   failures retry once on a fresh session (fork jobs since #51, the
-   reader since #146: fresh per-run secret + session, deterministic
-   provisional ids so the retry overwrites rather than duplicates, each
-   attempt's usage recorded once; a continued conversation turn falls
-   back to a fresh fork with the full first-turn prompt plus the stored
-   transcript, since the short follow-up prompt assumes the live
-   session's history); a retry that still reports degraded keeps its
-   usable body the same way. Everything else degraded is terminal. A
+   rule; failures go in the trailing `degraded` field). The service
+   never judges a reply by its wording (#180: the #51 phrase matching
+   is deleted, no replacement heuristic): whatever the agent writes is
+   shown. A turn fails only on facts the service observes itself — the
+   turn errored or was cancelled, the answer is empty, or a review-tool
+   call failed to connect. A trailing `degraded` field with a usable body
+   (it parses and has at least one block) keeps the answer: it shows
+   with the plain-words note "Some references in this answer could not
+   be linked to the code." and the raw reason lands on the job
+   (`degradedReason`) for the Debug page; it is never a failure when
+   there is content, and only an empty degraded answer fails the turn.
+   Connection failures retry once on a fresh session (fork jobs since
+   #51, the reader since #146: fresh per-run secret + session,
+   deterministic provisional ids so the retry overwrites rather than
+   duplicates, each attempt's usage recorded once; a continued
+   conversation turn falls back to a fresh fork with the full
+   first-turn prompt plus the stored transcript, since the short
+   follow-up prompt assumes the live session's history); a retry that
+   still reports degraded keeps its usable body the same way. A
    twice-failed reader sets a plain-words stage
    error ("The guide couldn't be started because the review details
    couldn't be reached. Please retry.") with Retry, the raw reason
-   staying on the job error for the Debug page. Streamed partials are
-   cleared and the reason lands in the job error on the Debug page
+   staying on the job error for the Debug page. Failed jobs keep the
+   agent's reply (`replySnapshot`, served at
+   `GET /api/jobs/:id/reply`) so the Debug page shows it next to the
+   prompt. Streamed partials are cleared on failure and the reason
+   lands in the job error on the Debug page
    (`degraded-turn-51.test.ts`, `reader-146-124.test.ts`). A reply anchor
    that names only the card gets one repair turn carrying the reason
    (`validate.test.ts`). The reader's citation-repair prompt (naming the

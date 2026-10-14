@@ -7,9 +7,9 @@
  *
  * With the fake `AgentRunner` the review MCP server is unreachable by
  * construction, so a mid-turn `noteUnknownHit` is exactly the production
- * failure shape (a dead review-MCP URL): the turn's reply complains, the
- * degraded check throws `DegradedConnError`, and the reader must retry once
- * on a fresh session.
+ * failure shape (a dead review-MCP URL): the service observes the hit
+ * itself (#180 — the reply's wording is never judged), throws
+ * `DegradedConnError`, and the reader must retry once on a fresh session.
  */
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, ReviewSnapshot, Session } from "@unvibe/shared";
@@ -50,9 +50,9 @@ The central paragraph.
 `;
 
 /**
- * First attempt streams a real card, then complains about a lookup it
- * could not reach: the degraded check fails it with a connection error
- * (once the dead hit lands), and the provisional card must not survive.
+ * First attempt streams a real card while a review-tool call fails to
+ * connect: the observed hit fails it with a connection error, and the
+ * provisional card must not survive.
  */
 const CHATTER_WITH_CARD = `## The problem
 
@@ -78,8 +78,12 @@ The central paragraph.
 \`\`\`
 `;
 
-/** Fake that hits a dead review-MCP URL on reader turns, then answers per attempt. */
-function hittingRunner(replies: string[]): {
+/**
+ * Fake that hits a dead review-MCP URL on the first `hitCount` reader
+ * turns, then answers per attempt. Later attempts use the fresh
+ * session's working connection, so they do not hit.
+ */
+function hittingRunner(replies: string[], hitCount = 1): {
   agents: FakeAgentRunner & { readerPrompts: () => { sessionId: string; text: string }[] };
   mcp: { current: McpRegistry | null };
 } {
@@ -95,7 +99,7 @@ function hittingRunner(replies: string[]): {
         calls += 1;
         // The base records prompts; this override bypasses it, so record here.
         this.prompts.push({ sessionId: session.id, text });
-        mcp.current?.noteUnknownHit();
+        if (calls <= hitCount) mcp.current?.noteUnknownHit();
         yield* scripted[Math.min(calls, scripted.length) - 1]!;
         return;
       }
@@ -178,7 +182,7 @@ describe("reader retry (#146) + repair record (#124)", () => {
   });
 
   it("two dead connections fail terminally with a plain-words error state and Retry", { timeout: 120000 }, async () => {
-    const { agents, mcp } = hittingRunner([CHATTER_WITH_CARD, CHATTER_WITH_CARD, MINIMAL_READER]);
+    const { agents, mcp } = hittingRunner([CHATTER_WITH_CARD, CHATTER_WITH_CARD, MINIMAL_READER], 2);
     const { app, ctx, id } = await openReview(agents, mcp);
     try {
       const jobId = readerJobOf(ctx, id);
@@ -191,7 +195,9 @@ describe("reader retry (#146) + repair record (#124)", () => {
       expect(stageError).toBe("The guide couldn't be started because the review details couldn't be reached. Please retry.");
       expect(stageError).not.toMatch(/MCP/i);
       // The raw reason stays on the job error for the Debug page.
-      expect(ctx.jobs.get(jobId)?.error).toMatch(/review-MCP call failed/);
+      expect(ctx.jobs.get(jobId)?.error).toMatch(/review-MCP call failed to connect/);
+      // …and the failed job keeps its reply next to the prompt (#180).
+      expect(ctx.jobs.get(jobId)?.replySnapshot).toContain("Partial problem text.");
       // No leftover provisional cards from either attempt.
       expect(rootCardIds(ctx, id)).toEqual([]);
       // Retry (the guide's Retry control, #86) re-enqueues the reader and
@@ -252,7 +258,7 @@ The central paragraph.
     }
   });
 
-  it("a trailing degraded field stays terminal with no retry", { timeout: 90000 }, async () => {
+  it("a trailing degraded field with a usable guide keeps it, with no retry", { timeout: 90000 }, async () => {
     const agents = new FakeAgentRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(DEGRADED_FIELD_READER) },
@@ -269,9 +275,36 @@ The central paragraph.
       const id = (created.json() as ReviewSnapshot).review.id;
       const jobId = readerJobOf(ctx, id);
       await waitForJob(ctx, jobId);
+      // Kept (#180): the explicit field records the reason on the job and
+      // the guide lands; it is never a failure when there is content.
+      expect(ctx.jobs.get(jobId)?.state).toBe("done");
+      expect(ctx.jobs.get(jobId)?.degradedReason).toContain("resolve returned nothing");
+      expect(agents.prompts.filter((p) => p.text.includes("# Reader task"))).toHaveLength(1);
+      expect(rootCardIds(ctx, id).sort()).toEqual(["central", "problem"]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("an empty reader reply fails the job with no retry", { timeout: 90000 }, async () => {
+    const agents = new FakeAgentRunner([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents("") },
+    ]);
+    const { app, ctx } = await createApp("tok", { agents });
+    try {
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed,
+        payload: { repoId: "demo" },
+      } as never);
+      expect(created.statusCode).toBe(201);
+      const id = (created.json() as ReviewSnapshot).review.id;
+      const jobId = readerJobOf(ctx, id);
+      await waitForJob(ctx, jobId);
       expect(ctx.jobs.get(jobId)?.state).toBe("error");
-      expect(ctx.jobs.get(jobId)?.error).toMatch(/degraded/);
-      // Terminal, not connection-caused: a single attempt, no retry.
+      expect(ctx.jobs.get(jobId)?.error).toMatch(/empty/);
       expect(agents.prompts.filter((p) => p.text.includes("# Reader task"))).toHaveLength(1);
       expect(rootCardIds(ctx, id)).toEqual([]);
     } finally {
