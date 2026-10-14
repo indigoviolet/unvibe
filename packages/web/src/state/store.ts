@@ -134,6 +134,13 @@ interface ReviewState {
   /** Out-of-order patches waiting for their `baseRev`. */
   pending: PatchEvent[];
   /**
+   * Issue #167: conversation cards pinned into the page, by annotation
+   * id. Present = pinned (inline, today's clicked behaviour); absent =
+   * floating above the content. Purely presentational client state:
+   * session-only, cleared with the review, never sent to the service.
+   */
+  pinnedCards: Record<string, true>;
+  /**
    * Incremented whenever a patch gap needs a server resync. `ReviewRoute`
    * refetches the snapshot on change; the fresh snapshot drains `pending`.
    */
@@ -149,6 +156,8 @@ interface ReviewState {
   /** Move an entry to its server id (anchor key → annotation/thread id). */
   retargetInflight: (fromId: string, toId: string) => void;
   clearInflight: (targetId: string) => void;
+  /** Issue #167: pin a conversation card inline, or unpin it to floating. */
+  setCardPinned: (cardId: string, pinned: boolean) => void;
   clear: () => void;
 }
 
@@ -267,6 +276,7 @@ export const useReview = create<ReviewState>()((set, get) => ({
   connected: false,
   inflight: {},
   pending: [],
+  pinnedCards: {},
   resyncSeq: 0,
   setSnapshot: (snapshot) =>
     set((s) => {
@@ -418,5 +428,14 @@ export const useReview = create<ReviewState>()((set, get) => ({
       delete next[targetId];
       return { inflight: next };
     }),
-  clear: () => set({ snapshot: null, inflight: {}, pending: [], resyncSeq: 0 }),
+  setCardPinned: (cardId, pinned) =>
+    set((s) => {
+      if (pinned && s.pinnedCards[cardId]) return s;
+      if (!pinned && !s.pinnedCards[cardId]) return s;
+      const next = { ...s.pinnedCards };
+      if (pinned) next[cardId] = true;
+      else delete next[cardId];
+      return { pinnedCards: next };
+    }),
+  clear: () => set({ snapshot: null, inflight: {}, pending: [], pinnedCards: {}, resyncSeq: 0 }),
 }));

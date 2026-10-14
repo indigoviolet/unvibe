@@ -384,6 +384,32 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
 .card.child .ans-older:hover > .ctl, .card.child .ans-older:focus-within > .ctl { visibility: visible; }
 .card.child.collapsed .exp-b, .card.child.collapsed .ctl { display: none; }
 .card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
+/* Floating conversation cards (issue #167): the default clicked state.
+   `.exp-float` is a zero-height placeholder at the card's anchor site, so
+   the page never reflows; the card overlays the content below it and
+   scrolls with the page next to its anchor. Pinned cards render exactly
+   as today (no placeholder, no `floating` class). Stacking is retuned in
+   the two rules below. One place to retune how floating feels. */
+.exp-float { position: relative; height: 0; }
+.card.child.floating {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Above later page content (guide cards are positioned, so DOM order
+     alone would paint them over the card); below floating chrome (the
+     selection toolbar, popovers, toasts, the comments menu). */
+  z-index: 1;
+  margin: 0;
+  max-height: min(56vh, 520px);
+  overflow: auto;
+  box-shadow: 0 10px 28px rgb(0 0 0 / .18);
+}
+/* In the diff the pinned rows (#140: hunk header 1, file header 2,
+   actions bar 3) stay above a floating card, so they slide over it while
+   scrolling instead of being covered by it. Ordinary hunk content still
+   paints below the card. */
+.dhunk .card.child.floating { z-index: 0; }
 .card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
 .card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
 .card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }
