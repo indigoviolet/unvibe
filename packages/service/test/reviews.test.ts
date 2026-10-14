@@ -398,6 +398,30 @@ describe("hunk routes", () => {
       });
       expect(unfolded.statusCode).toBe(200);
       expect(ctx.reviews.getSnapshot(id)?.fileStates).toEqual([{ fileKey, folded: false }]);
+
+      // View preferences (issue #168): validated, persisted on the snapshot.
+      const badView = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/view`,
+        headers: authed,
+        payload: { showExistingComments: "yes" },
+      });
+      expect(badView.statusCode).toBe(400);
+      const emptyView = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/view`,
+        headers: authed,
+        payload: {},
+      });
+      expect(emptyView.statusCode).toBe(400);
+      const hidden = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/view`,
+        headers: authed,
+        payload: { showExistingComments: false },
+      });
+      expect(hidden.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)?.viewPrefs).toEqual({ showExistingComments: false });
     } finally {
       await app.close();
     }

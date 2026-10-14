@@ -108,6 +108,7 @@ function testSnapshot(
     cards: [],
     findings: [],
     concepts: [],
+    existingComments: [],
     log: [],
   };
 }
