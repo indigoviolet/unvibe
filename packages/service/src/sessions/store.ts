@@ -48,7 +48,7 @@ export class SessionStore {
     this.db
       .prepare(
         `INSERT INTO sessions (session_id, kind, base_key, data) VALUES (?, 'base', ?, ?)
-         ON CONFLICT(session_id) DO UPDATE SET base_key = excluded.base_key, data = excluded.data`,
+         ON CONFLICT(session_id) DO UPDATE SET kind = excluded.kind, base_key = excluded.base_key, data = excluded.data`,
       )
       .run(record.session.id, JSON.stringify(record.key), JSON.stringify(record));
   }
@@ -57,7 +57,7 @@ export class SessionStore {
     this.db
       .prepare(
         `INSERT INTO sessions (session_id, kind, base_key, data) VALUES (?, 'conv', ?, ?)
-         ON CONFLICT(session_id) DO UPDATE SET base_key = excluded.base_key, data = excluded.data`,
+         ON CONFLICT(session_id) DO UPDATE SET kind = excluded.kind, base_key = excluded.base_key, data = excluded.data`,
       )
       .run(record.session.id, record.baseKey, JSON.stringify(record));
   }

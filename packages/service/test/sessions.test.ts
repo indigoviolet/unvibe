@@ -344,6 +344,44 @@ describe("invalidate and restore", () => {
     expect((await mgr2.getBase(opts)).fresh).toBe(false);
   });
 
+  it("a reused session id keeps kind and data in step, and restore never crashes on a mismatched row", () => {
+    const db = openDatabase(":memory:");
+    const store = new SessionStore(db);
+    const session = { id: "fake-1", provider: "claude", model: "m" };
+    // A new process's runner can reuse an id (the replay/fake counters
+    // restart at 1): the same id is first a base, then a conversation.
+    // The row's kind must follow the latest save, or loadAll hands
+    // conversation data to the base restore, which crashed startup.
+    store.saveBase({
+      key: KEY,
+      session,
+      build: { cwd: "/r", systemPrompt: "s", readOnly: true, mcpServers: [], effort: "" },
+      pack: "P",
+      logSeq: 0,
+      live: true,
+      updatedAt: 1,
+    });
+    store.saveConversation({
+      session,
+      baseKey: baseKeyString(KEY),
+      viaFork: true,
+      lastSeenSeq: 0,
+      live: true,
+      updatedAt: 2,
+    });
+    const loaded = store.loadAll();
+    expect(loaded.bases).toEqual([]);
+    expect(loaded.conversations.map((c) => c.session.id)).toEqual(["fake-1"]);
+
+    // A row already corrupted that way (kind says base, data is a
+    // conversation) is dropped on restore, not a startup crash.
+    db.prepare("INSERT OR REPLACE INTO sessions (session_id, kind, base_key, data) VALUES (?, 'base', ?, ?)")
+      .run("fake-9", "k", JSON.stringify({ session: { id: "fake-9", provider: "claude", model: "m" }, baseKey: "k", viaFork: true, lastSeenSeq: 0, live: false, updatedAt: 1 }));
+    const mgr = new SessionManager({ runner: new StubRunner([]), store });
+    expect(() => mgr.restore()).not.toThrow();
+    expect(mgr.baseKeys()).toEqual([]);
+  });
+
   it("a conversation reopened after a restart never rebuilds the base with the old MCP URL (#68)", async () => {
     const db = openDatabase(":memory:");
     const store = new SessionStore(db);

@@ -156,6 +156,14 @@ export class SessionManager {
     this.restored = true;
     const { bases, conversations } = this.store.loadAll();
     for (const b of bases) {
+      // A row whose data does not match its kind (a session id reused
+      // across processes wrote conversation data under a base row, or
+      // vice versa) cannot be told apart per review: forget it, it
+      // rebuilds from the pack. Never crash startup over a stored row.
+      if (!b.key || typeof b.key !== "object" || !b.build || typeof b.build !== "object" || !b.session?.id) {
+        this.store.remove(b.session?.id ?? "");
+        continue;
+      }
       // Bases persisted before the key carried a review id cannot be told
       // apart per review: forget them, they rebuild from the pack.
       if (!b.key.reviewId) {
@@ -182,6 +190,12 @@ export class SessionManager {
       });
     }
     for (const c of conversations) {
+      // Rows whose data does not match their kind (see bases above) are
+      // forgotten the same way, never a startup crash.
+      if (!c.session?.id || typeof c.baseKey !== "string") {
+        this.store.remove(c.session?.id ?? "");
+        continue;
+      }
       // Conversations keyed to a pre-#160/#172 base (fewer than 7 parts)
       // belong to a dropped base: forget them, the next turn forks fresh.
       if (c.baseKey.split("|").length < 7) {
