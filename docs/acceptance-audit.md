@@ -450,14 +450,24 @@ needed (that deviation is closed, not added).
   `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
   `comments.spec.ts` “GitHub action links diff lines”).
 
-### §4.7 Explanations — all met (#136 slices 1+2, #152)
+### §4.7 Explanations — all met (#136 slices 1+2, #152, #167)
 
-- Conversation card under the source block, highlight; header (quote,
-  Open as page, Delete, Close) + one answer view per turn, each with the
+- Conversation card on the source block's anchor, highlight; header (quote,
+  Pin, Open as page, Delete, Close) + one answer view per turn, each with the
   card controls acting on that answer alone, plus a reply box answered in
   the same conversation — met (`actions/conversation.ts`,
   `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
   `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
+  Issue #167: a clicked card floats persistently above the content under
+  it (zero-height `.exp-float` placeholder, no reflow; scrolls with the
+  page; pin inserts it inline; per-card session-only pin state in
+  `cardFloat.ts` + store `pinnedCards`; hunk-hosted cards stay inline;
+  ×/Escape close; diff floaters render at the hunk level outside the
+  hunk scroller so `.dwrap` never clips them, at `z-index: 0` so the
+  pinned file/hunk headers slide over) — met (`FloatingCard.test.tsx`,
+  `docs/screenshots/167-floating-guide.png`,
+  `167-pinned-guide.png`, `167-floating-diff.png`; e2e specs that reach
+  under the seeded open card close it first).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with
