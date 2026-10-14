@@ -1,8 +1,8 @@
 # Unvibe CI: lint + typecheck + tests + build + behaviour suites.
 #
 # Linux runs on every branch push. macOS (the other supported platform,
-# AGENTS.md) bills at 10x on a private repo, so it runs only nightly against
-# `main` and on manual dispatch (both platforms); release.yml also runs it
+# AGENTS.md) runs only nightly against `main` and on manual dispatch (both
+# platforms), to keep per-push CI to one leg; release.yml also runs it
 # on every `v*` tag. `spike/**` branches never go to `main` and are not
 # run at all.
 #
