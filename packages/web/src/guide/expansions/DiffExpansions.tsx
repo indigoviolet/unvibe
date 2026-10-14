@@ -13,7 +13,7 @@
  * - anchor-stale shows the collapsed card fallback in the slot.
  */
 import { useEffect, useMemo, useReducer } from "react";
-import type { Annotation, Page } from "@unvibe/shared";
+import type { Annotation, Page, ReviewFile } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
@@ -21,6 +21,7 @@ import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
 import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionCard } from "./ExpansionCard.js";
+import { shouldFloatConversation } from "./cardFloat.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
 function makeExpMark(id: string, closed: boolean): HTMLElement {
@@ -28,6 +29,30 @@ function makeExpMark(id: string, closed: boolean): HTMLElement {
   mark.className = closed ? "anc exl" : "anc ex";
   mark.dataset.jump = id;
   return mark;
+}
+
+/**
+ * Index of the hunk containing a new-side `line` (issue #167: floating
+ * diff cards render at their hunk, outside the hunk's sideways scroller).
+ * Falls back to the old-side range (pure deletions anchor forward), then
+ * to the first hunk. Null when the file has no hunks.
+ */
+export function hunkIndexForLine(file: ReviewFile, line: number): number | null {
+  if (file.hunks.length === 0) return null;
+  for (let i = 0; i < file.hunks.length; i++) {
+    const h = file.hunks[i];
+    if (line >= h.newStart && line <= h.newEnd) return i;
+  }
+  for (let i = 0; i < file.hunks.length; i++) {
+    const h = file.hunks[i];
+    if (line >= h.oldStart && line <= h.oldEnd) return i;
+  }
+  return 0;
+}
+
+/** Key for a hunk-level floating card list (issue #167). */
+export function floatingHunkKey(fileKey: string, hunkIndex: number): string {
+  return `${fileKey}:${hunkIndex}`;
 }
 
 function makePageLink(pageId: string): HTMLElement {
@@ -43,8 +68,20 @@ export function useDiffExpansionBindings(
   lookupPage: (pageId: string) => Page | undefined,
   onOpenPage: (pageId: string) => void,
   onFollowUp: (cardId: string, blockId: string, index: number) => void,
-): { lineSlots: LineSlots; expandedLines: ReadonlySet<string> } {
+): {
+  lineSlots: LineSlots;
+  expandedLines: ReadonlySet<string>;
+  /**
+   * Issue #167: open floating cards by hunk (`floatingHunkKey`), rendered
+   * at the hunk level outside the hunk's sideways scroller (an overlay
+   * inside the table would be clipped by `.dwrap`). Pinned cards stay in
+   * `lineSlots`, exactly today's inline position under their line.
+   */
+  floatingByHunk: ReadonlyMap<string, Annotation[]>;
+} {
   const annotations = useReview((s) => s.snapshot?.annotations);
+  const files = useReview((s) => s.snapshot?.files);
+  const pinnedCards = useReview((s) => s.pinnedCards);
 
   const byLine = useMemo(() => {
     const map = new Map<string, Annotation[]>();
@@ -142,7 +179,12 @@ export function useDiffExpansionBindings(
   const lineSlots = useMemo<LineSlots>(() => {
     const slots: LineSlots = {};
     for (const [key, exps] of byLine) {
-      const open = exps.filter((a) => a.type === "conversation" && a.open);
+      // Issue #167: floating cards leave the slot row for the hunk-level
+      // overlay (`floatingByHunk` below); pinned cards stay here, exactly
+      // today's inline position under their line.
+      const open = exps.filter(
+        (a) => a.type === "conversation" && a.open && !shouldFloatConversation(a, pinnedCards[a.id] === true),
+      );
       if (open.length === 0) continue;
       slots[key] = (
         <>
@@ -160,9 +202,28 @@ export function useDiffExpansionBindings(
       );
     }
     return slots;
-  }, [byLine, reviewId, lookupPage, onOpenPage, onFollowUp]);
+  }, [byLine, pinnedCards, reviewId, lookupPage, onOpenPage, onFollowUp]);
+
+  const floatingByHunk = useMemo<ReadonlyMap<string, Annotation[]>>(() => {
+    const map = new Map<string, Annotation[]>();
+    for (const a of annotations ?? []) {
+      if (a.type !== "conversation" || !a.open || a.promotedToPage) continue;
+      if (a.anchor.host.kind !== "diff-line") continue;
+      if (!shouldFloatConversation(a, pinnedCards[a.id] === true)) continue;
+      const host = a.anchor.host;
+      const file = (files ?? []).find((f) => f.fileKey === host.fileKey);
+      if (!file) continue;
+      const index = hunkIndexForLine(file, host.line);
+      if (index === null) continue;
+      const key = floatingHunkKey(file.fileKey, index);
+      const list = map.get(key) ?? [];
+      list.push(a);
+      map.set(key, list);
+    }
+    return map;
+  }, [annotations, files, pinnedCards]);
 
   const expandedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 
-  return { lineSlots, expandedLines };
+  return { lineSlots, expandedLines, floatingByHunk };
 }

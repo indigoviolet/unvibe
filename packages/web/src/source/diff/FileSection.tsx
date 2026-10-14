@@ -26,6 +26,7 @@ import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { performAction } from "../../guide/actions.js";
 import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
+import { floatingHunkKey } from "../../guide/expansions/DiffExpansions.js";
 import {
   fileStats,
   groupHunks,
@@ -127,6 +128,14 @@ interface SectionProps {
    * page id. The hunk keeps its summary text plus a page-link chip.
    */
   promotedHunks?: ReadonlyMap<string, string>;
+  /**
+   * Issue #167: open floating conversation cards by hunk
+   * (`floatingHunkKey`). Rendered at the hunk level, right under the hunk
+   * header and outside the hunk's sideways scroller, so the overlay is
+   * never clipped by `.dwrap`. Only floating cards land here (pinning one
+   * moves it to its line slot, exactly today's inline position).
+   */
+  floatingExpansions?: ReadonlyMap<string, Annotation[]>;
   /** Page lookup + navigation + follow-ups for activated hunk cards. */
   lookupPage?: (pageId: string) => Page | undefined;
   onOpenPage?: (pageId: string) => void;
@@ -649,6 +658,16 @@ function HunkBlock(
           <Icon name="check" />
         </button>
       </div>
+      {(props.floatingExpansions?.get(floatingHunkKey(file.fileKey, index)) ?? []).map((a) => (
+        <ExpansionCard
+          key={a.id}
+          reviewId={props.reviewId}
+          expansion={a}
+          lookupPage={props.lookupPage ?? (() => undefined)}
+          onOpenPage={props.onOpenPage ?? (() => {})}
+          onFollowUp={props.onFollowUp ?? (() => {})}
+        />
+      ))}
       {summary !== undefined || note !== undefined || noteDraft !== undefined || props.hunkCards?.get(h.contentHash) !== undefined ? (
         <div className="fwrap">
           <HunkCard
