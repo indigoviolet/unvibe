@@ -44,6 +44,12 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
   bookmark: (<path d="M4.5 2.5h7v11L8 10.5l-3.5 3z" />),
+  pin: (
+    <>
+      <path d="M8 1.8a4.2 4.2 0 014.2 4.2c0 3-4.2 8.2-4.2 8.2S3.8 9 3.8 6A4.2 4.2 0 018 1.8z" />
+      <circle cx="8" cy="6" r="1.5" />
+    </>
+  ),
   reply: (
     <>
       <path d="M6.5 4L3 7.5 6.5 11" />

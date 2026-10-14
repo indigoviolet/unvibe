@@ -92,9 +92,22 @@ test.describe("guide over real service", () => {
     );
   }
 
+  /**
+   * Issue #167: the seed carries an open floating card under C-problem
+   * that overlays the controls below it — close it first, as a reader
+   * would.
+   */
+  async function closeSeedCard(page: Page): Promise<void> {
+    // The seeded service is shared by this file's tests: the card may
+    // already be closed by an earlier test.
+    const closer = page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" });
+    if ((await closer.count()) > 0) await closer.click();
+  }
+
   test("pages navigate and citations reveal over the real API", async ({ page }) => {
     test.setTimeout(120_000);
     await openSeededReview(page);
+    await closeSeedCard(page);
     await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
     await expect(page).toHaveURL(/\/review\/guide-seed\/page\/c-obs-fold/);
     await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding");
@@ -113,6 +126,7 @@ test.describe("guide over real service", () => {
   test("card collapse action applies over the real API", async ({ page }) => {
     test.setTimeout(120_000);
     await openSeededReview(page);
+    await closeSeedCard(page);
     // The actions route collapses the card to its title row; expanding restores it.
     await page.locator("#C-central > .chead").getByRole("button", { name: "Collapse" }).click();
     await expect(page.locator("#C-central")).toHaveClass(/collapsed/, { timeout: 10_000 });

@@ -430,6 +430,12 @@ export interface ChatMessage {
   text?: string;
   /** Agent-drafted suggested comment not yet marked for the PR. */
   suggested?: boolean;
+  /**
+   * Issue #181: this suggested message is an agent's open question,
+   * offered as a suggested comment. Distinguishes question suggestions
+   * from finding suggestions in the UI.
+   */
+  question?: boolean;
 }
 
 /**
@@ -533,10 +539,19 @@ export interface Annotation {
   postedAt?: number;
   /** M6: GitHub review URL the thread was posted in. */
   postedUrl?: string;
+  /**
+   * Issue #181: this suggested comment is an agent's open question.
+   * Links the suggestion to its contribution item, so dismissing the
+   * suggestion marks that item dismissed (resolved) in the shared
+   * context and the question is not raised again.
+   */
+  openQuestion?: {
+    contributionId: string;
+    itemIndex: number;
+  };
 }
 
-/** Where an annotation is attached (PRD §7.1). */
-export type AnchorHost =
+/** Where an annotation is attached (PRD §7.1). */export type AnchorHost =
   /**
    * A guide block, stored `<card>#<block>` (block ids repeat across cards,
    * #78). The card part is a page-card id, or — for an annotation on text
@@ -554,6 +569,17 @@ export type AnchorHost =
    */
   | { kind: "hunk"; fileKey: string; contentHash: string };
 
+/**
+ * Issue #166: a live text selection as character offsets within its host's
+ * plain text (`[start, end)`). Recorded by the client at the moment of
+ * selection and stored on the anchor; placement prefers these over text
+ * search.
+ */
+export interface SelectionOffsets {
+  start: number;
+  end: number;
+}
+
 export interface Anchor {
   host: AnchorHost;
   quotedText: string;
@@ -563,6 +589,18 @@ export interface Anchor {
   position: number;
   /** Version number the anchor was created against. */
   version: number;
+  /**
+   * Issue #166: character offsets of the selection within the host's
+   * plain text at the moment of selection (`[startOffset, endOffset)`).
+   * Present only on anchors created from a live text selection; the UI
+   * places the mark at these offsets and falls back to the nearest text
+   * match only when the host's text changed. Absent on older stored
+   * anchors and on anchors that never came from a selection (ask-about,
+   * follow-ups, hunk cards, suggestions) — those place by text match.
+   */
+  startOffset?: number;
+  /** Issue #166: end of the recorded selection (see `startOffset`). */
+  endOffset?: number;
   /**
    * M5 (PRD §8): the hunk content hash at creation, when the anchor sits
    * on diff code. Exact-hash hits remap by line shift without text search.
@@ -578,6 +616,12 @@ export interface ContributionItem {
   /** Corrections target `card:<id>#<block>`. */
   target?: string;
   citations: Citation[];
+  /**
+   * Issue #181: per-item resolution. Absent means active. A dismissed
+   * open question stays stored (so re-raises dedupe against it) but is
+   * filtered out of agent context.
+   */
+  status?: ContributionStatus;
 }
 
 export type ContributionStatus = "pending" | "accepted" | "dismissed" | "merged";

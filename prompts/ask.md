@@ -51,8 +51,9 @@ conversation card that appears right under the block the text came from.
 - Present the honest alternative to a disagreement with the card,
   not a defence of the card.
 - If the question has no answer in the code (maintainer intent, unseen
-  behaviour), say what you checked and file it as an `open_questions`
-  contribution instead of guessing.
+  behaviour), say what you checked and what is not known instead of
+  guessing. Record the question in the trailing block's `open_questions`
+  without mentioning that in the answer.
 - If a diagram helps, use a fenced `d2` block per the D2 convention
   (prompts/includes/d2-convention.md): short labels (at most two lines),
   `direction:` to suit the flow, link: "diff:…" cites inline on each

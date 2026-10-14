@@ -159,13 +159,15 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **GitHub** is a plain link out: on a diff selection it opens the selected lines in GitHub's file view at the review's commit (the head commit for added and unchanged lines, the base commit when the selection is only on removed lines). It starts no job and no thread, and is hidden where there is nothing unambiguous to open (prose, non-GitHub repos, the demo).
 
 ### 4.7 Explanations
-- **Explain** creates an explanation card right under the block the text came from: under the paragraph in the description, under the line in the diff. The selected text is highlighted.
-- **Header:** the quoted text, then **Open as page**, **Delete** and **Close**. Below that, one answer view per turn: each answer carries the standard card controls acting on that answer alone (the latest answer shows them; earlier answers reveal them on hover or focus), and a reply box at the bottom answers in the same conversation.
+- **Explain** creates an explanation card on the selection's anchor. The card floats persistently above the content under it: it stays open, scrolls with the page next to its anchor, and takes no space in the flow, so the page never reflows. The selected text is highlighted.
+- **Pin** inserts the card inline under its anchor (under the paragraph in the description, under the line in the diff, at the hunk in the diff) — the previous clicked behaviour; unpinning returns it to floating. Pinning is per card and lasts for the session. Hunk-hosted cards are always inline and carry no pin control.
+- **Header:** the quoted text, then **Pin**, **Open as page**, **Delete** and **Close**. Below that, one answer view per turn: each answer carries the standard card controls acting on that answer alone (the latest answer shows them; earlier answers reveal them on hover or focus), and a reply box at the bottom answers in the same conversation. A floating card is keyboard reachable in its DOM position and Escape closes it like × (except from inside its own inputs).
 - **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click expands it.
 - **If the anchor text can't be found** (for example after a depth rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
 - **Open as page** moves the content to a new page titled with the quoted text — one card per answer, the first titled with the quoted text and later ones with their questions — and the anchor text becomes a link to that page at once, in the guide, the description and the diff. Opening as a page never discards work: when the answer is still being written, its job keeps running and fills the page card (the page shows the usual working state until then, and the error with Retry when the fill fails); second opinions move to the page with the answers.
 - **Follow-up suggestions** stay on Explain answers; clicking one sends it as the next turn in the same conversation.
 - The card is never submitted to GitHub; it carries no For-PR control.
+- **Answers stream paragraph by paragraph (experiment, #126):** while an answer is being written, each completed paragraph appears when the model finishes it — never half sentences. The answer is marked as still being written until the turn ends (the fixed working label stays); citations show as pending and resolve when the turn ends and validation has run. A repair turn replaces the shown text. Applies to conversation answers only; `localStorage unvibe:no-stream-paragraphs = "1"` restores all-at-once answers.
 
 ### 4.8 Comments
 - **Ask…** opens the conversation card (§4.7) on the selection's anchor, with the question as its first turn. **Comment** starts a comment thread with no agent reply. Only Ask sends text to the agent.
@@ -190,7 +192,8 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - Findings are the agent's own judgements about the change: mismatches, risks, questionable choices. They are **separate pages**, never sentences mixed into the restatement.
 - **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →".
 - **The finding page:** carries the same label, and its cards have a rust left border. Typical cards are Evidence (each piece cited) and Assessment.
-- **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card.
+- **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card. A suggestion carries no reply box (a reply could never be answered); selecting in it summons the selection toolbar, and Ask opens the usual Ask card anchored to the comment. "Ask the agent about this" answers from the comment like on any other comment; accept / edit / dismiss work as before.
+- **Open questions as suggestions (#181):** an agent's unanswered question is offered the same way: an AI-suggested comment anchored where the question came from (the code, the card, or a general review comment when there is no line), tagged "Suggested question". Accept makes it the reviewer's comment for the PR (editable draft); dismissing it marks the question resolved in the shared context so agents do not raise it again. Same question twice is offered once. Nothing reaches GitHub before accept + Submit.
 
 ### 4.10 Second opinion
 - A **Second opinion** action is available on any card, finding, or conversation answer. It asks a *different* model (§12).
@@ -225,8 +228,8 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Hunks are git's own:** a run of changed lines plus up to 3 unchanged lines of context, with nearby runs merged.
 - **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover. It stays pinned under the file header while its hunk scrolls.
 - **Actions:** a leading fold chevron, then Summarize (agent) and a Mark reviewed checkbox.
-- **Hunk card:** the agent summary, with Delete. It exists regardless of folding. **Folding only hides code**; the header chevron is the single unfold control.
-- **Summaries are content cards:** an idle summary is plain text — selecting in it offers Explain, Ask…, Comment and GitHub like any other agent text. The first interaction (an action on selected text, or opening the summary) turns it into a real conversation card on the hunk, created from the stored summary text with no agent call, and it stays a card: reply box and per-answer controls included. A Comment attaches to the hunk's first changed line and never activates the summary. Deleting the card returns the hunk to its idle text. Opening a hunk card as a page keeps the summary text with a link to the page; the summary's actions then open that page instead of starting a second card.
+- **Hunk card:** the agent summary, with Delete from the card. It exists regardless of folding. **Folding only hides code**; the header chevron is the single unfold control.
+- **Summaries are content cards:** an idle summary is plain text with no icons and no controls — selecting in it offers Explain, Ask…, Comment and GitHub like any other agent text, and clicking the text opens it. The first interaction (an action on selected text, or opening the summary) turns it into a single real conversation card on the hunk at the hunk's level with no extra wrapper, created from the stored summary text with no agent call, and it stays a card: reply box and per-answer controls included. A Comment attaches to the hunk's first changed line and never activates the summary. Deleting the card returns the hunk to its idle text. Opening a hunk card as a page keeps the summary text with a link to the page; the summary's actions then open that page instead of starting a second card.
 - **Mark reviewed** greys the hunk and folds its code.
 
 **Hide uninteresting**
@@ -396,7 +399,9 @@ ann:<id>                                   an annotation
 - **Every anchor is tied to content**, not position. It keeps:
   - its position when created;
   - the quoted text with a few lines before and after (prefix and suffix);
+  - the selection's character offsets within its host's text, recorded at the moment of selection (anchors from a live selection only);
   - its hunk's content hash, which ignores line numbers and whitespace.
+- **Placing an anchor mark:** at its recorded offsets when present and the covered text still matches; otherwise at the text match nearest the old offsets (first match when no offsets were recorded). A mark is drawn in its own host block only, never in a nested or other card; placement is retried after the host re-renders.
 - **Each fetch that finds a new head SHA creates a version** with an old-to-new ID mapping. Older versions stay viewable.
 - **Telling branch changes from a rebase:** compare the old diff (old merge-base..old head) with the new one (new merge-base..new head) hunk by hunk, using content hashes. Use `git range-diff` to match commits for display. A rebase without conflicts comes out as "no change".
 
@@ -470,6 +475,7 @@ A new base is built when any of these happens:
   - validates citations, drops facts without them, and drops duplicates;
   - appends the rest to the log, labelled with its source;
   - shows corrections as suggestions on the target card. The user accepts (creating a new card revision) or dismisses; nothing is rewritten silently.
+  - offers kept `open_questions` as AI-suggested comments (§4.9), one per question; dismissing one marks it resolved.
 - **On each base rebuild,** the small model merges contributions: it removes duplicates, resolves superseded items, and folds accepted corrections in.
 
 ---

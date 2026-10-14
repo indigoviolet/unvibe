@@ -8,6 +8,7 @@ import {
   githubHrefForRange,
   isRevealedElement,
   resolveSelectionHost,
+  selectionScopeElement,
   type DiffRange,
 } from "./SelectionToolbar.js";
 
@@ -67,6 +68,130 @@ describe("resolveSelectionHost inside other hosts (#116)", () => {
     expect(resolveSelectionHost(document.getElementById("in-aside")!)).toEqual({
       anchor: { where: "block", blockId: "c1#b2" },
     });
+  });
+});
+
+describe("selectionScopeElement (issue #166)", () => {
+  test("guide blocks scope to their [data-top] element", () => {
+    document.body.innerHTML =
+      `<div id="page">` +
+      `<section class="card" id="C-c1"><p class="prose sel" data-top="b1">the <span id="in">fast path</span> wins</p>` +
+      `</section></div>`;
+    const scope = selectionScopeElement(document.getElementById("in")!);
+    expect(scope?.getAttribute("data-top")).toBe("b1");
+  });
+
+  test("answer blocks scope to their own [data-top], not the card", () => {
+    document.body.innerHTML =
+      `<div id="page">` +
+      `<section class="card" id="C-c1"><p data-top="b1">card</p>` +
+      `<section class="card child" id="B-ann_1"><div data-answer="ans_1">` +
+      `<p class="prose sel" data-top="b9"><span id="in-ans">answer text</span></p>` +
+      `</div></section></section></div>`;
+    const scope = selectionScopeElement(document.getElementById("in-ans")!);
+    expect(scope?.getAttribute("data-top")).toBe("b9");
+  });
+
+  test("description selections scope to the paragraph body", () => {
+    document.body.innerHTML =
+      `<div id="right"><div class="desc">` +
+      `<div data-top="p1" id="p1"><div class="dseg-body"><span id="in-desc">body text</span></div></div>` +
+      `</div></div>`;
+    const scope = selectionScopeElement(document.getElementById("in-desc")!);
+    expect(scope?.classList.contains("dseg-body")).toBe(true);
+  });
+
+  test("diff selections scope to their code cell", () => {
+    document.body.innerHTML =
+      `<div id="right"><table class="diff"><tbody><tr id="L-conn-77">` +
+      `<td class="n">77</td><td class="n new">77</td>` +
+      `<td class="c"><span><span id="in-cell">code text</span></span></td>` +
+      `</tr></tbody></table></div>`;
+    const scope = selectionScopeElement(document.getElementById("in-cell")!);
+    expect(scope?.tagName).toBe("TD");
+    expect(scope?.classList.contains("c")).toBe(true);
+  });
+
+  test("hunk summaries scope to the summary text", () => {
+    document.body.innerHTML =
+      `<div id="right"><div class="dhunk"><div class="fwrap"><div class="fcard">` +
+      `<p data-hunksum="conn:hash"><span id="in-sum">summary text</span></p>` +
+      `</div></div></div></div>`;
+    const scope = selectionScopeElement(document.getElementById("in-sum")!);
+    expect(scope?.getAttribute("data-hunksum")).toBe("conn:hash");
+  });
+
+  test("no scope inside second-opinion reasoning", () => {
+    document.body.innerHTML =
+      `<div id="page">` +
+      `<section class="card" id="C-c1">` +
+      `<section class="so" data-so="x"><span id="in-so">reasoning</span></section>` +
+      `</section></div>`;
+    expect(selectionScopeElement(document.getElementById("in-so")!)).toBeNull();
+  });
+});
+
+describe("resolveSelectionHost inside AI-suggested comments (issue #163)", () => {
+  function seedSuggested(): void {
+    useReview.getState().clear();
+    useReview.getState().setSnapshot({
+      review: { id: "r", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+      version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
+      files: [],
+      pages: [],
+      annotations: [
+        {
+          id: "ann_sug",
+          type: "comment",
+          anchor: {
+            host: { kind: "diff-line", fileKey: "conn", line: 82 },
+            quotedText: "_OBSOLETE_FOLD_RE",
+            prefix: "",
+            suffix: "",
+            position: 82,
+            version: 1,
+          },
+          open: true,
+          messages: [{ who: "ai", text: "Consider a boundary test.", suggested: true }],
+          post: false,
+        },
+      ],
+      hunkStates: [],
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+    } as unknown as ReviewSnapshot);
+  }
+
+  test("a selection in the suggestion anchors to the comment", () => {
+    seedSuggested();
+    document.body.innerHTML =
+      `<div id="right"><table class="diff"><tbody>` +
+      `<tr id="L-conn-82"><td class="n">82</td><td class="c"><span>code</span></td></tr>` +
+      `<tr class="pr"><td colspan="3"><div class="pin"><div class="ithread" id="ann_sug">` +
+      `<div class="msg" data-ai-comment="ann_sug"><div><p><span id="in-sug">boundary test</span></p></div></div>` +
+      `</div></div></td></tr></tbody></table></div>`;
+    try {
+      expect(resolveSelectionHost(document.getElementById("in-sug")!)).toEqual({
+        anchor: { where: "diff-line", fileKey: "conn", line: 82 },
+      });
+      const scope = selectionScopeElement(document.getElementById("in-sug")!);
+      expect(scope?.getAttribute("data-ai-comment")).toBe("ann_sug");
+    } finally {
+      useReview.getState().clear();
+    }
+  });
+
+  test("an unknown suggestion id resolves to nothing", () => {
+    seedSuggested();
+    document.body.innerHTML =
+      `<div id="right"><div class="msg" data-ai-comment="ann_gone"><span id="in-gone">x</span></div></div>`;
+    try {
+      expect(resolveSelectionHost(document.getElementById("in-gone")!)).toBeNull();
+    } finally {
+      useReview.getState().clear();
+    }
   });
 });
 

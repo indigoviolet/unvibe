@@ -22,6 +22,7 @@ import type {
   ReviewDescription,
   ReviewFile,
   Repo,
+  SelectionOffsets,
   Version,
 } from "./entities.js";
 import type { DiffFilter, HunkScoreLevel, Plotline } from "./scores.js";
@@ -460,10 +461,10 @@ export interface UpdateReviewResponse {
  * route by `kind` and later agents can add variants without new endpoints.
  */
 export type ReviewAction =
-  | { kind: "explain"; quote: string; anchor: ActionAnchor }
+  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets }
   /** Issue #136 slice 2: same request; creates a conversation card whose first question is the message. */
-  | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string }
-  | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string }
+  | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string; offsets?: SelectionOffsets }
+  | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
    * Issue #136: `cardId` is a page-card id or one conversation answer's
    * `ans_…` id. Depth, examples, diagram, undo and second opinion act on
@@ -772,6 +773,8 @@ export interface CreateCommentRequest {
   suffix?: string;
   /** Best-effort position at creation (line/offset). */
   position?: number;
+  /** Issue #166: selection offsets within the host's text, when selected. */
+  offsets?: SelectionOffsets;
   /** Initial user text (first message when present). */
   text?: string;
   /**

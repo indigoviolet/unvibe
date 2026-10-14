@@ -30,6 +30,7 @@ import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { performAction } from "../../guide/actions.js";
 import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
+import { floatingHunkKey } from "../../guide/expansions/DiffExpansions.js";
 import {
   fileStats,
   groupHunks,
@@ -126,6 +127,14 @@ interface SectionProps {
    * page id. The hunk keeps its summary text plus a page-link chip.
    */
   promotedHunks?: ReadonlyMap<string, string>;
+  /**
+   * Issue #167: open floating conversation cards by hunk
+   * (`floatingHunkKey`). Rendered at the hunk level, right under the hunk
+   * header and outside the hunk's sideways scroller, so the overlay is
+   * never clipped by `.dwrap`. Only floating cards land here (pinning one
+   * moves it to its line slot, exactly today's inline position).
+   */
+  floatingExpansions?: ReadonlyMap<string, Annotation[]>;
   /** Page lookup + navigation + follow-ups for activated hunk cards. */
   lookupPage?: (pageId: string) => Page | undefined;
   onOpenPage?: (pageId: string) => void;
@@ -370,7 +379,6 @@ function HunkCard({
   summary,
   hash,
   fileKey,
-  actions,
   hunkCard,
   promotedPageId,
   reviewId,
@@ -382,7 +390,6 @@ function HunkCard({
   summary: string | undefined;
   hash: string;
   fileKey: string;
-  actions: HunkActions;
   /** Activated conversation card hosted on this hunk, if any (#138). */
   hunkCard: Annotation | undefined;
   /** Page a hunk discussion moved to, if any (#138 follow-up). */
@@ -417,55 +424,55 @@ function HunkCard({
       });
   };
   return (
-    <div className={`fcard${reviewed ? " rev" : ""}`}>
+    <>
       {hunkCard && hunkCard.open ? (
-        <ExpansionCard
-          reviewId={reviewId}
-          expansion={hunkCard}
-          lookupPage={lookupPage}
-          onOpenPage={onOpenPage}
-          onFollowUp={onFollowUp}
-        />
-      ) : summary ? (
-        <div className="fsum">
-          <span className="av ai" role="img" aria-label="Agent" data-tip="Agent">
-            <Icon name="spark" />
-          </span>
-          <p
-            data-hunksum={`${fileKey}:${hash}`}
-            data-tip={showPromoted ? "Open the page" : "Open as a card"}
-            onClick={activate}
-          >
-            {summary}
-          </p>
-          {showPromoted && promotedPageId && promotedPage ? (
-            <a
-              className="cx pg"
-              data-node={promotedPageId}
-              title={promotedPage.title}
-              aria-label={`Open page: ${promotedPage.title}`}
-            >
-              {promotedPage.title}
-            </a>
+        // Issue #161: one card at the hunk's level, no extra wrapper — the
+        // conversation card replaces the idle text directly (no `.fcard`
+        // around the card's own bordered section).
+        <>
+          <ExpansionCard
+            reviewId={reviewId}
+            expansion={hunkCard}
+            lookupPage={lookupPage}
+            onOpenPage={onOpenPage}
+            onFollowUp={onFollowUp}
+          />
+        </>
+      ) : (
+        <div className={`fcard${reviewed ? " rev" : ""}`}>
+          {summary ? (
+            <>
+              {/* Issue #161: idle summaries are text only — no icons, no
+                  controls. The text activates into the card above (deleting
+                  happens from the card); the tooltip names the affordance. */}
+              <p
+                data-hunksum={`${fileKey}:${hash}`}
+                data-tip={showPromoted ? "Open the page" : "Open as a card"}
+                onClick={activate}
+              >
+                {summary}
+              </p>
+              {showPromoted && promotedPageId && promotedPage ? (
+                <a
+                  className="cx pg"
+                  data-node={promotedPageId}
+                  title={promotedPage.title}
+                  aria-label={`Open page: ${promotedPage.title}`}
+                >
+                  {promotedPage.title}
+                </a>
+              ) : null}
+            </>
+          ) : hunkCard && !hunkCard.open ? (
+            <div className="fsum">
+              <button className="tbtn xs" type="button" onClick={activate}>
+                Reopen summary card
+              </button>
+            </div>
           ) : null}
-          <button
-            className="ib"
-            type="button"
-            data-tip="Delete summary"
-            aria-label="Delete summary"
-            onClick={() => actions.deleteSummary(hash)}
-          >
-            <Icon name="trash" />
-          </button>
         </div>
-      ) : hunkCard && !hunkCard.open ? (
-        <div className="fsum">
-          <button className="tbtn xs" type="button" onClick={activate}>
-            Reopen summary card
-          </button>
-        </div>
-      ) : null}
-    </div>
+      )}
+    </>
   );
 }
 
@@ -561,6 +568,24 @@ function HunkBlock(
     onLineClick: props.onLineClick,
     toks: props.tokens?.get(h.contentHash) ?? null,
   };
+  const hunkCardState = props.hunkCards?.get(h.contentHash);
+  // Issue #161: an open hunk card renders bare at the hunk's level (no
+  // `.fwrap`, no `.fcard`); everything else keeps the `.fwrap` container.
+  const showOpenHunkCard = !!hunkCardState && hunkCardState.open;
+  const hunkCardNode = (
+    <HunkCard
+      reviewed={reviewed}
+      summary={summary}
+      hash={h.contentHash}
+      fileKey={file.fileKey}
+      hunkCard={hunkCardState}
+      promotedPageId={props.promotedHunks?.get(h.contentHash)}
+      reviewId={props.reviewId}
+      lookupPage={props.lookupPage ?? (() => undefined)}
+      onOpenPage={props.onOpenPage ?? (() => {})}
+      onFollowUp={props.onFollowUp ?? (() => {})}
+    />
+  );
   return (
     // One section per hunk (#140): the header is a direct child of the file
     // flow, outside any horizontal scroller, so its vertical stick reaches
@@ -649,22 +674,20 @@ function HunkBlock(
           onChange={() => props.actions.toggleReviewed(h.contentHash, reviewed)}
         />
       </div>
-      {summary !== undefined || props.hunkCards?.get(h.contentHash) !== undefined ? (
-        <div className="fwrap">
-          <HunkCard
-            reviewed={reviewed}
-            summary={summary}
-            hash={h.contentHash}
-            fileKey={file.fileKey}
-            actions={props.actions}
-            hunkCard={props.hunkCards?.get(h.contentHash)}
-            promotedPageId={props.promotedHunks?.get(h.contentHash)}
-            reviewId={props.reviewId}
-            lookupPage={props.lookupPage ?? (() => undefined)}
-            onOpenPage={props.onOpenPage ?? (() => {})}
-            onFollowUp={props.onFollowUp ?? (() => {})}
-          />
-        </div>
+      {(props.floatingExpansions?.get(floatingHunkKey(file.fileKey, index)) ?? []).map((a) => (
+        <ExpansionCard
+          key={a.id}
+          reviewId={props.reviewId}
+          expansion={a}
+          lookupPage={props.lookupPage ?? (() => undefined)}
+          onOpenPage={props.onOpenPage ?? (() => {})}
+          onFollowUp={props.onFollowUp ?? (() => {})}
+        />
+      ))}
+      {showOpenHunkCard ? (
+        hunkCardNode
+      ) : summary !== undefined || hunkCardState !== undefined ? (
+        <div className="fwrap">{hunkCardNode}</div>
       ) : null}
       {folded ? null : (
         <div className="dwrap">

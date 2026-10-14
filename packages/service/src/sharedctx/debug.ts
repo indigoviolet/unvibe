@@ -189,6 +189,8 @@ export function buildContributionsMarkdown(contributions: Contribution[]): strin
       // cannot break out of the list item when rendered.
       const text = item.text.replace(/\n/g, "\n  ");
       out.push(`- **${item.kind}**${target}: ${text}`);
+      // Issue #181: dismissed questions read as resolved here.
+      if (item.status) out.push(`  - status: ${item.status}`);
       if (item.citations.length > 0) {
         out.push(
           `  - cites: ${item.citations.map((cit) => `\`${cit.target}\`${cit.unverified ? " (unverified)" : ""}`).join(", ")}`,

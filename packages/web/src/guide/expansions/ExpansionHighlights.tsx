@@ -26,7 +26,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
 import { useReview } from "../../state/store.js";
-import { anchorScope, highlightAnchorInRoot, withPreservedSelection, clearMarks } from "../../comments/anchor.js";
+import { anchorScope, highlightAnchorInRoot, withPreservedSelection, clearMarks, repassUntilSettled, spotFromAnchor } from "../../comments/anchor.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
 function makeExpMark(id: string, closed: boolean): HTMLElement {
@@ -52,7 +52,19 @@ export function ExpansionHighlights() {
   useEffect(() => {
     const root = document.getElementById("page");
     if (!root) return;
-    const timer = window.setTimeout(() => {
+    // Issue #166: anchors whose host text isn't there yet are retried
+    // boundedly (same shape as GuideThreads).
+    const placeable = (annotations ?? []).filter(
+      (a) =>
+        (a.type === "conversation" || a.type === "link") &&
+        !isAnchorStale(a) &&
+        !!a.anchor.quotedText &&
+        a.anchor.host.kind === "block",
+    );
+    let pending = new Set<string>(placeable.map((a) => a.id));
+    let retryCleanup: (() => void) | null = null;
+    const runPass = (): void => {
+      pending = new Set<string>(placeable.map((a) => a.id));
       // Idempotent re-mark (issue #15): drop our own stale marks first
       // (deleted / anchor-stale / quote-gone annotations are skipped below
       // and would otherwise leave ghosts), then re-mark everything inside
@@ -67,10 +79,7 @@ export function ExpansionHighlights() {
           "mark.anc.ex[data-jump]:not(.fnote), mark.anc.exl[data-jump]:not(.fnote), a.cx.pg[data-node]:not(.fnote)",
         );
         const highlighted = new Set<string>();
-        for (const a of annotations ?? []) {
-          if (a.type !== "conversation" && a.type !== "link") continue;
-          if (isAnchorStale(a)) continue;
-          if (!a.anchor.quotedText) continue;
+        for (const a of placeable) {
           if (a.anchor.host.kind !== "block") continue;
           const pageId = a.promotedToPage ?? (a.type === "link" ? a.promotedToPage : undefined);
           if (a.type === "link" || pageId) {
@@ -79,8 +88,9 @@ export function ExpansionHighlights() {
             const { cardId, block } = splitBlock(a.anchor.host.blockId);
             const tops = cardId ? [`${cardId}#${block}`, block, a.anchor.host.blockId] : [block, a.anchor.host.blockId];
             for (const top of tops) {
-              if (highlightAnchorInRoot(anchorScope(root, a.anchor.host.blockId), top, a.anchor.quotedText, () => makePageLink(target))) {
+              if (highlightAnchorInRoot(anchorScope(root, a.anchor.host.blockId), top, spotFromAnchor(a.anchor), () => makePageLink(target))) {
                 highlighted.add(a.id);
+                pending.delete(a.id);
                 break;
               }
             }
@@ -93,8 +103,9 @@ export function ExpansionHighlights() {
           void cardId;
           const tops = [a.anchor.host.blockId, block];
           for (const top of tops) {
-            if (highlightAnchorInRoot(anchorScope(root, a.anchor.host.blockId), top, a.anchor.quotedText, () => makeExpMark(a.id, closed))) {
+            if (highlightAnchorInRoot(anchorScope(root, a.anchor.host.blockId), top, spotFromAnchor(a.anchor), () => makeExpMark(a.id, closed))) {
               highlighted.add(a.id);
+              pending.delete(a.id);
               break;
             }
           }
@@ -109,8 +120,17 @@ export function ExpansionHighlights() {
         // stays hidden.
         void pages;
       });
-    }, 0);
-    return () => window.clearTimeout(timer);
+      retryCleanup?.();
+      retryCleanup = null;
+      if (pending.size > 0) {
+        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
+      }
+    };
+    const timer = window.setTimeout(runPass, 0);
+    return () => {
+      window.clearTimeout(timer);
+      retryCleanup?.();
+    };
   }, [annotations, pages, pathname]);
 
   useEffect(() => {

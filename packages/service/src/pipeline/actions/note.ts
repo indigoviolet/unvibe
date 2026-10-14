@@ -11,6 +11,8 @@ export interface NoteRequest {
   quote: string;
   anchor: ActionAnchor;
   text?: string;
+  /** Issue #166: the client's recorded selection offsets, when selected. */
+  offsets?: { start: number; end: number };
 }
 
 export async function noteAction(
@@ -32,6 +34,9 @@ export async function noteAction(
     anchor: normalizeBlockAnchor(before, req.anchor),
     quote: req.quote,
     ...(req.text !== undefined ? { text: req.text } : {}),
+    ...(req.offsets !== undefined
+      ? { startOffset: req.offsets.start, endOffset: req.offsets.end }
+      : {}),
   });
   return { annotationId: id };
 }

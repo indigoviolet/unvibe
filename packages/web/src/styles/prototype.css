@@ -245,6 +245,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .cj .cx2 { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .ci textarea { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 4px; font: 12.5px/1.4 var(--sans); padding: 5px; resize: vertical; min-height: 56px; background: var(--surface); color: var(--ink); }
 .prtag { font-size: 10.5px; color: var(--note); border: 1px solid var(--note); border-radius: 99px; padding: 0 6px; white-space: nowrap; }
+/* Suggested open questions (issue #181): quiet tag telling them apart
+   from finding suggestions. */
+.qtag { font-size: 10.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 0 6px; white-space: nowrap; }
 .confirm { background: var(--sunk); border-radius: 6px; padding: 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 8px; }
 .desc { padding: 16px 20px 40px; font-size: 13.5px; }
 .desc.editing { outline: 2px solid var(--accent); outline-offset: -8px; border-radius: 10px; background: var(--surface); }
@@ -326,6 +329,9 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 .fcard.rev { background: var(--sunk); border-color: transparent; opacity: .65; }
 .fsum { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
 .fsum p { margin: 0; }
+/* Idle hunk summaries (issue #161) are text only: the paragraph activates
+   into its card on click, so it takes a pointer. */
+.fcard > p[data-hunksum] { margin: 0; cursor: pointer; }
 .hid { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; border: 0; border-top: 1px solid var(--line); background: var(--bg); color: var(--muted); font: 11.5px var(--sans); padding: 1px 8px; text-align: left; }
 .hid:hover { color: var(--ink); }
 .hid .ic { align-self: center; }
@@ -419,8 +425,40 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
    focused (no layout shift: the row keeps its space). */
 .card.child .ans-older > .ctl { visibility: hidden; }
 .card.child .ans-older:hover > .ctl, .card.child .ans-older:focus-within > .ctl { visibility: visible; }
+/* Provisional streamed paragraphs (issue #126, experiment): citation
+   chips read as pending (dimmed) until the stored turn lands and
+   validation has run; the caption marks the answer as still being
+   written. One place to retune. */
+.exp-b.streaming .lk { opacity: .55; }
+.stream-live { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .card.child.collapsed .exp-b, .card.child.collapsed .ctl { display: none; }
 .card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
+/* Floating conversation cards (issue #167): the default clicked state.
+   `.exp-float` is a zero-height placeholder at the card's anchor site, so
+   the page never reflows; the card overlays the content below it and
+   scrolls with the page next to its anchor. Pinned cards render exactly
+   as today (no placeholder, no `floating` class). Stacking is retuned in
+   the two rules below. One place to retune how floating feels. */
+.exp-float { position: relative; height: 0; }
+.card.child.floating {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Above later page content (guide cards are positioned, so DOM order
+     alone would paint them over the card); below floating chrome (the
+     selection toolbar, popovers, toasts, the comments menu). */
+  z-index: 1;
+  margin: 0;
+  max-height: min(56vh, 520px);
+  overflow: auto;
+  box-shadow: 0 10px 28px rgb(0 0 0 / .18);
+}
+/* In the diff the pinned rows (#140: hunk header 1, file header 2,
+   actions bar 3) stay above a floating card, so they slide over it while
+   scrolling instead of being covered by it. Ordinary hunk content still
+   paints below the card. */
+.dhunk .card.child.floating { z-index: 0; }
 .card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
 .card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
 .card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }

@@ -48,6 +48,7 @@ import type { ActionAnchor, ReviewSnapshot } from "@unvibe/shared";
 import { githubFileUrl } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
+import { selectionOffsetsIn } from "../comments/anchor.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
@@ -66,6 +67,13 @@ export interface NewThreadRequest {
   kind: "comment" | "ask";
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
+  /**
+   * Issue #166: the selection's character offsets within its host's text,
+   * recorded at the moment of selection. Attached only when the request
+   * anchor is the selection's own host (never for a remapped comment
+   * anchor); the service stores them on the anchor for offset placement.
+   */
+  offsets?: { start: number; end: number };
 }
 
 /** Ask a host to open a pending thread composer for this selection. */
@@ -94,6 +102,40 @@ export function isRevealedElement(el: HTMLElement): boolean {
 }
 
 /**
+ * Element whose plain text the selection's offsets are recorded against
+ * (issue #166): the same element placement later searches, so the text
+ * models match. Null where no selection host applies (second-opinion
+ * reasoning, gutter-only hits).
+ */
+export function selectionScopeElement(el: HTMLElement): Element | null {
+  if (el.closest("[data-so]")) return null;
+  // Issue #163: offsets record within the suggestion text (placement
+  // falls back to text match on the comment's host — the quote comes
+  // from the suggestion, not the host).
+  const sugScope = el.closest("[data-ai-comment]");
+  if (sugScope) return sugScope as Element;
+  const hunkEl = el.closest("[data-hunksum]");
+  if (hunkEl) return hunkEl;
+  const td = el.closest("#right table.diff td.c");
+  if (td) return td;
+  const top = el.closest("#page [data-top], #right [data-top]");
+  if (top) {
+    // Description marks land in the paragraph body (issue #101): record
+    // against the body, not the segment around it.
+    if (top.closest("#right .desc")) {
+      return top.querySelector(".dseg-body") ?? top;
+    }
+    return top;
+  }
+  const descNode = el.closest("#right .desc [id]");
+  if (descNode && el.closest("#right .desc")) {
+    const named = descNode as HTMLElement;
+    return named.querySelector(".dseg-body") ?? named;
+  }
+  return null;
+}
+
+/**
  * Resolve a selection anchor element to an `ActionAnchor`. Exported for
  * reuse (Explain cards resolve the same hosts).
  */
@@ -102,6 +144,21 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // blocks live on the result, not on any card or answer, so the
   // service has no block to anchor to. No toolbar there.
   if (el.closest("[data-so]")) return null;
+  // Issue #163: a selection inside an agent-suggested comment anchors to
+  // the comment itself (its own anchor) — the suggestion text is agent
+  // text, not a stable host. The toolbar's Ask/Explain/Comment then act
+  // on the comment.
+  const sug = el.closest("[data-ai-comment]");
+  if (sug) {
+    const id = (sug as HTMLElement).dataset.aiComment ?? "";
+    const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
+    const host = found && found.type === "comment" ? found.anchor.host : null;
+    if (!host) return null;
+    if (host.kind === "block") return { anchor: { where: "block", blockId: host.blockId } };
+    if (host.kind === "description") return { anchor: { where: "description", paragraphId: host.paragraphId } };
+    if (host.kind === "diff-line") return { anchor: { where: "diff-line", fileKey: host.fileKey, line: host.line } };
+    return null;
+  }
   // Issue #136: inside a conversation answer the owning unit is the
   // answer, found from the answer wrapper's attribute — not from
   // `section.card[id]`, which names the whole card.
@@ -218,6 +275,11 @@ function snapLiveSelection(sel: Selection): void {
 interface Pending {
   quote: string;
   anchor: ActionAnchor;
+  /**
+   * Issue #166: the selection's character offsets within its host's
+   * text, recorded at the moment of selection (absent when unrecordable).
+   */
+  offsets?: { start: number; end: number };
   /**
    * Issue #133: true when the selection sits in revealed context around
    * a hunk. Explain, Ask and GitHub stay; Comment hides (it could never
@@ -424,18 +486,27 @@ export function SelectionToolbar() {
         snapLiveSelection(sel);
         const quote = normalizeQuote(sel.toString());
         const anchorNode = sel.anchorNode;
-        const host = resolveSelectionHost(elementOf(anchorNode) ?? document.body);
+        const anchorEl = elementOf(anchorNode) ?? document.body;
+        const host = resolveSelectionHost(anchorEl);
         if (!quote || !validSelectionQuote(quote) || !host) {
           hide();
           return;
         }
+        // Issue #166: record where the selection sits in its host's text
+        // at this moment; placement prefers these offsets.
+        const scope = selectionScopeElement(anchorEl);
+        const offsets = scope ? (selectionOffsetsIn(scope, sel) ?? undefined) : undefined;
         const cardAnchor = commentCardAnchor(host.anchor);
         // Issue #168: a Comment on text selected inside a read-only
         // GitHub thread quotes the selection into the reviewer's own
         // comment (a reply on GitHub is out of scope).
-        const anchorEl = elementOf(anchorNode) ?? document.body;
         const inGhThread =
           host.anchor.where === "diff-line" && anchorEl.closest?.("[data-gh-thread]") != null;
+        // Issue #163: a selection inside a suggested comment comments on
+        // the comment's own anchor (quoting the selection into the user's
+        // own comment) — the suggestion text is not a host.
+        const inSuggested = anchorEl.closest("[data-ai-comment]") !== null;
+        const commentAnchor = inSuggested ? host.anchor : cardAnchor;
         // Issue #138: a hunk anchor needs the touched rows mapped from
         // the hunk itself (the summary is no table row): Comment lands on
         // the hunk's first changed line without activating the summary,
@@ -459,8 +530,9 @@ export function SelectionToolbar() {
         setPending({
           quote,
           anchor: host.anchor,
+          ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
-          ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
+          ...(commentAnchor ? { commentAnchor } : {}),
           ...(inGhThread && host.anchor.where === "diff-line" ? { commentAnchor: host.anchor } : {}),
           ...(hunkComment ? { commentAnchor: hunkComment } : {}),
           ...(diffRange ? { diffRange } : {}),
@@ -568,7 +640,12 @@ export function SelectionToolbar() {
     // request returns.
     performAction(
       reviewId,
-      { kind: "explain", quote: current.quote, anchor: current.anchor },
+      {
+        kind: "explain",
+        quote: current.quote,
+        anchor: current.anchor,
+        ...(current.offsets ? { offsets: current.offsets } : {}),
+      },
       { toast: false },
     )
       .then((res) => {
@@ -596,6 +673,9 @@ export function SelectionToolbar() {
     }
     dismiss();
     if (kind === "comment" && current.commentAnchor) {
+      // Remapped anchor (the card's own, not the selection's host):
+      // offsets recorded against the selection's host would misplace, so
+      // they are dropped — the thread places by text match.
       requestNewThread({
         anchor: current.commentAnchor,
         quote: current.quote,
@@ -604,7 +684,12 @@ export function SelectionToolbar() {
       });
       return;
     }
-    requestNewThread({ anchor: current.anchor, quote: current.quote, kind });
+    requestNewThread({
+      anchor: current.anchor,
+      quote: current.quote,
+      kind,
+      ...(current.offsets ? { offsets: current.offsets } : {}),
+    });
   };
 
   return (

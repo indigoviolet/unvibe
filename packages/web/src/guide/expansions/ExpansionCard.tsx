@@ -21,7 +21,7 @@
  *   untouched.
  */
 import type { Annotation, Page, Turn } from "@unvibe/shared";
-import { Fragment } from "react";
+import { Fragment, type KeyboardEvent } from "react";
 import { GuideBlockThreads } from "../../comments/GuideThreads.js";
 import { ReplyBox } from "../../comments/ReplyBox.js";
 import { Icon } from "../../components/Icon.js";
@@ -33,10 +33,12 @@ import { blockThreads } from "../annotations.js";
 import { BlockView } from "../BlockView.js";
 import { DepthControl } from "../DepthControl.js";
 import { busyForCard, busyForConversation, inflightLabel, isFollowupAnswer, type BusyState } from "../inflight.js";
+import { setCardPinned, useFloatingCard } from "./cardFloat.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
 import { conversationTurns, isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
 import { expansionsForBlock } from "./ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansionUtils.js";
+import { useProvisionalBlocks } from "./streamedAnswer.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
 type Depth = (typeof DEPTH_ORDER)[number];
@@ -49,7 +51,7 @@ function ControlButton({
   pressed,
   busy,
 }: {
-  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open";
+  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open" | "pin";
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -183,7 +185,9 @@ function AnswerView({
   const depthBusy = busyKind === "depth";
   // Controls that need the text stay off until it arrives (issue #97).
   const contentReady = turn.blocks.length > 0 && !controlsBusy;
-  // The latest answer shows its controls; earlier answers reveal them on
+  // Issue #126 (experiment): completed paragraphs from the live stream,
+  // shown while this turn fills and replaced by the stored turn.
+  const provisional = useProvisionalBlocks(card.id, turn, showWorking && !errorText);  // The latest answer shows its controls; earlier answers reveal them on
   // hover or keyboard focus (cheap layout choice, easy to change).
   const olderClass = isLatest ? "" : " ans-older";
   // A later turn's question reads as its heading; the first turn's answer
@@ -252,7 +256,29 @@ function AnswerView({
           </button>
         </div>
       ) : null}
-      <div className="exp-b">
+      <div className={`exp-b${provisional ? " streaming" : ""}`}>
+        {provisional?.map((block) => (
+          <BlockView
+            key={block.id}
+            block={block}
+            level={turn.level}
+            threads={[]}
+            lookupPage={lookupPage}
+            cardId={turn.id}
+            onOpenPage={onOpenPage}
+            onFollowUp={(blockId, index) => onFollowUp(turn.id, blockId, index)}
+          />
+        ))}
+        {provisional ? (
+          <div className="stream-live" role="status">
+            <span className="dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span>Still writing…</span>
+          </div>
+        ) : null}
         {turn.blocks.map((block) => {
           // Annotations on text inside this answer render under their
           // block exactly like page-card annotations do: threads (open
@@ -333,12 +359,17 @@ function fixedTurnLabel(
 export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onFollowUp, ancestorIds }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
+  const floating = useFloatingCard(expansion);
   const jobs = snapshot?.jobs ?? [];
   const turns = conversationTurns(expansion);
   if (expansion.type !== "conversation") return null;
 
   const stale = isAnchorStale(expansion);
   const cardBusy = busyForConversation(inflight, jobs, snapshot, expansion);
+  // Issue #167: floating is the default; pinning puts the card inline.
+  // Hunk-hosted cards stay inline (they replace their idle summary text)
+  // and get no pin control. The rule itself lives in `cardFloat.ts`.
+  const pinnable = expansion.anchor.host.kind !== "hunk";
 
   const onPromote = (): void => {
     void api
@@ -371,38 +402,76 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       });
   };
 
+  // Issue #167: the pin control. Floating (default) → "Pin into the
+  // page" inserts the card inline; pinned → unpin returns it to floating.
+  const pinButton = pinnable ? (
+    <ControlButton
+      icon="pin"
+      label={floating ? "Pin into the page" : "Unpin (float above the content)"}
+      pressed={!floating}
+      onClick={() => setCardPinned(expansion.id, floating)}
+    />
+  ) : null;
+
+  // Issue #167: a floating card stays reachable by keyboard (Tab order is
+  // unchanged — the card keeps its place in the DOM) and Escape closes it
+  // like ×, except from inside its own inputs where Escape keeps its
+  // local meaning.
+  const onSectionKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape") return;
+    const t = e.target;
+    if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
+    e.stopPropagation();
+    onClose();
+  };
+
   if (expansion.collapsed) {
-    return (
+    const section = (
       <section
-        className="card child collapsed"
+        className={`card child collapsed${floating ? " floating" : ""}`}
         id={`B-${expansion.id}`}
         data-expansion={expansion.id}
+        {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
       >
         <div className="exp-h">
           <ControlButton icon="right" label="Expand" onClick={() => void performAction(reviewId, { kind: "collapse", cardId: expansion.id, collapsed: false }).catch(() => {})} />
           {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
           {stale ? <span className="hint">from an earlier wording</span> : null}
           <span className="sp" />
+          {pinButton}
           <ControlButton icon="open" label="Open as page" onClick={onPromote} />
           <ControlButton icon="trash" label="Delete" onClick={onDelete} />
           <ControlButton icon="x" label="Close" onClick={onClose} />
         </div>
       </section>
     );
+    // A floating card takes no space in the flow: the zero-height
+    // placeholder keeps its DOM position (reading + Tab order, anchor
+    // proximity) while the card overlays the content below it and scrolls
+    // with the page. Pinned cards render exactly as today.
+    return floating ? (
+      <div className="exp-float" data-float={expansion.id}>
+        {section}
+      </div>
+    ) : (
+      section
+    );
   }
 
   const below = [...(ancestorIds ?? []), expansion.id];
-  return (
+  const section = (
     <section
-      className={`card child${cardBusy?.rewriting ? " rewriting" : ""}`}
+      className={`card child${cardBusy?.rewriting ? " rewriting" : ""}${floating ? " floating" : ""}`}
       id={`B-${expansion.id}`}
       data-expansion={expansion.id}
       aria-busy={cardBusy ? true : undefined}
+      {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
     >
       <div className="exp-h">
         {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
         {stale ? <span className="hint">from an earlier wording</span> : null}
         <span className="sp" />
+        {pinButton}
         <ControlButton icon="open" label="Open as page" onClick={onPromote} />
         <ControlButton icon="trash" label="Delete" onClick={onDelete} />
         <ControlButton icon="x" label="Close" onClick={onClose} />
@@ -436,6 +505,13 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         onDiscard={() => api.updateComment(reviewId, expansion.id, { reply: null })}
       />
     </section>
+  );
+  return floating ? (
+    <div className="exp-float" data-float={expansion.id}>
+      {section}
+    </div>
+  ) : (
+    section
   );
 }
 

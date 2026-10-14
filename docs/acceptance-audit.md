@@ -462,14 +462,24 @@ needed (that deviation is closed, not added).
   `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
   `comments.spec.ts` “GitHub action links diff lines”).
 
-### §4.7 Explanations — all met (#136 slices 1+2, #152)
+### §4.7 Explanations — all met (#136 slices 1+2, #152, #167)
 
-- Conversation card under the source block, highlight; header (quote,
-  Open as page, Delete, Close) + one answer view per turn, each with the
+- Conversation card on the source block's anchor, highlight; header (quote,
+  Pin, Open as page, Delete, Close) + one answer view per turn, each with the
   card controls acting on that answer alone, plus a reply box answered in
   the same conversation — met (`actions/conversation.ts`,
   `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
   `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
+  Issue #167: a clicked card floats persistently above the content under
+  it (zero-height `.exp-float` placeholder, no reflow; scrolls with the
+  page; pin inserts it inline; per-card session-only pin state in
+  `cardFloat.ts` + store `pinnedCards`; hunk-hosted cards stay inline;
+  ×/Escape close; diff floaters render at the hunk level outside the
+  hunk scroller so `.dwrap` never clips them, at `z-index: 0` so the
+  pinned file/hunk headers slide over) — met (`FloatingCard.test.tsx`,
+  `docs/screenshots/167-floating-guide.png`,
+  `167-pinned-guide.png`, `167-floating-diff.png`; e2e specs that reach
+  under the seeded open card close it first).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with
@@ -518,6 +528,17 @@ needed (that deviation is closed, not added).
   unique within each stored body (multi-card replies dedupe to `-c2`…,
   inserts take fresh IDs; matching is exact on owner + block), so one
   anchor draws exactly one card.
+- Paragraph-by-paragraph answers, experiment (#126): completed
+  paragraphs render from the live stream while the turn fills (never
+  half sentences; fences, directives and the trailer stay held), marked
+  "Still writing…" with citations dimmed-pending beside the fixed
+  working label; the stored turn replaces them at done, a repair
+  replaces cleanly, errors clear them (retry intact); kill switch
+  `unvibe:no-stream-paragraphs` — met (`shared/content/stream.ts` +
+  `content-stream.test.ts`, `streamedAnswer.ts` +
+  `StreamedAnswer.test.tsx`, `docs/screenshots/126-first-paragraph.png`,
+  paced-replay timing in the #126 comment: first paragraph ~8.3 s,
+  done ~19 s vs ~18.4 s today).
 - Deliberately off-prototype (`prototype.html` is look-and-behaviour
   reference, not code): Explain and Ask share one teal conversation
   card — the prototype's separate sand Ask thread (`.ithread`) is gone;
@@ -602,6 +623,28 @@ needed (that deviation is closed, not added).
 - Suggested comments (“Agent · suggested comment”, not for PR, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
+  Issue #163: no reply box on suggestions; the selection toolbar works
+  inside the suggestion text (anchored to the comment) and Ask opens the
+  usual Ask card on it; “Ask the agent about this” as on user comments;
+  accept / edit / dismiss unchanged — met (`ThreadView.tsx`,
+  `SelectionToolbar.tsx` ai-comment scope, `ThreadView.test.tsx`
+  suggested cases, `SelectionToolbar.test.tsx` ai-comment resolution,
+  `e2e/comments.spec.ts` “AI-suggested comments carry no reply box”,
+  `docs/screenshots/163-suggested-comment.png`).
+- Open questions as suggestions (issue #181): a kept `open_questions`
+  contribution becomes one AI-suggested comment on the turn's source
+  (card anchor verbatim, hunk to its first line, card's first block,
+  else the guide's first block), tagged “Suggested question”, drafted
+  until accepted + submitted; same question twice is offered once
+  (anchor + stored text); dismissing marks the item dismissed (re-raises
+  dedupe, consolidate and Debug skip it) — met
+  (`comments/questions.ts`, `sharedctx-wire.ts` ingest hook,
+  `threads.ts` dismissal, `close.ts` unify, `ThreadView.tsx` tag,
+  `service/test/open-questions-181.test.ts` 7 tests,
+  `ThreadView.test.tsx` question cases,
+  `docs/screenshots/181-suggested-question.png`, one live run on the
+  demo: answer states what is not known with no “filed” narration, the
+  question suggestion created end to end).
 
 ### §4.10 Second opinion — all met
 
@@ -727,7 +770,13 @@ needed (that deviation is closed, not added).
   idle text — met (`service/test/hunk-cards.test.ts`,
   `source/diff/hunkAnchor.test.ts`,
   `source/diff/HunkCardActivation.test.tsx`,
-  `e2e/hunk-summary.spec.ts`). A hunk card opened as a page keeps its
+  `e2e/hunk-summary.spec.ts`). Issue #161: idle summaries carry no icons
+  and no controls at all (avatar + Delete removed; deleting the stored
+  summary text is no longer offered in the UI), and an activated card is
+  one card at the hunk's level with no `.fcard`/`.fwrap` wrapper
+  (`HunkCardActivation.test.tsx` idle/activated cases,
+  `docs/screenshots/161-idle-summary.png`,
+  `161-activated-card.png`, `hunk-summary.spec.ts` green). A hunk card opened as a page keeps its
   summary text plus a page-link chip; the summary's click/Explain/Ask
   open that page instead of a second card, and a hunk whose page is gone
   reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
@@ -994,7 +1043,19 @@ needed (that deviation is closed, not added).
 
 - Content-tied anchors (position + quote + prefix/suffix + hunk hash) —
   met (`versions/anchors.ts`, `versions-anchors.test.ts` incl. rebase/amend
-  fixtures).
+  fixtures). Issue #166: anchors from a live selection also keep the
+  selection's character offsets; marks place by offsets (verified
+  against the quote), fall back to the nearest text match only when the
+  host text changed, draw in the anchor's own host block only (strict
+  scope: never a nested or other card), and retry boundedly after the
+  host re-renders — met (`comments/anchor.ts` spot API + retry,
+  `anchor.test.ts` offset/scope/repass cases, `SelectionToolbar.test.ts`
+  scope cases, `service/test/comments-m6.test.ts` offset storage,
+  `docs/screenshots/166-anchor-mark.png`; e2e anchor + interaction +
+  comments + diff specs green). Stored anchors without offsets (older
+  reviews, ask-about, follow-ups, hunk cards, suggestions) place by text
+  match as before; no migration — reset for exact anchors on old
+  reviews.
 - New head SHA → version + ID mapping; old versions viewable — met
   (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
   the selector rendered once in the review bar per #120 with the current

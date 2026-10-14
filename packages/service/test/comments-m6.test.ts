@@ -48,8 +48,7 @@ describe("comment threads", () => {
     }
   });
 
-  it("creates a first message on a guide block (starts closed)", async () => {
-    const runner = new FakeCommandRunner();
+  it("creates a first message on a guide block (starts closed)", async () => {    const runner = new FakeCommandRunner();
     const pages = [
       {
         id: "p1",
@@ -87,6 +86,76 @@ describe("comment threads", () => {
       const snap = ctx.reviews.getSnapshot(reviewId);
       expect(snap?.annotations[0].open).toBe(false);
       expect(snap?.annotations[0].anchor.prefix).toContain("the");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("stores the client's selection offsets on the anchor (issue #166)", async () => {
+    const runner = new FakeCommandRunner();
+    const pages = [
+      {
+        id: "p1",
+        kind: "root" as const,
+        title: "Guide",
+        saved: false,
+        cards: [
+          {
+            id: "c1",
+            pageId: "p1",
+            title: "Card",
+            level: "standard" as const,
+            read: false,
+            collapsed: false,
+            revision: 1,
+            blocks: [{ type: "paragraph", id: "b1", text: { standard: "the fast path is here" }, citations: [] }],
+            undoStack: [],
+          },
+        ],
+      },
+    ];
+    const { app, ctx, reviewId } = await setupReview(runner, { pages });
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/comments`,
+        headers: authed,
+        payload: {
+          anchor: { where: "block", blockId: "b1" },
+          quote: "fast path",
+          text: "which one?",
+          offsets: { start: 4, end: 13 },
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const snap = ctx.reviews.getSnapshot(reviewId);
+      expect(snap?.annotations[0].anchor.startOffset).toBe(4);
+      expect(snap?.annotations[0].anchor.endOffset).toBe(13);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("leaves offsets absent when the client sends none (issue #166)", async () => {
+    const runner = new FakeCommandRunner();
+    const { app, ctx, reviewId } = await setupReview(runner);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/comments`,
+        headers: authed,
+        payload: {
+          anchor: { where: "diff-line", fileKey: "a-py", line: 2 },
+          quote: "y = 2",
+          text: "why here?",
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const { id } = res.json() as { id: string };
+      const snap = ctx.reviews.getSnapshot(reviewId);
+      const t = snap?.annotations.find((a) => a.id === id);
+      expect(t?.anchor.startOffset).toBeUndefined();
+      expect(t?.anchor.endOffset).toBeUndefined();
     } finally {
       await app.close();
     }

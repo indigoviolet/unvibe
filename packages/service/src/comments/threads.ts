@@ -43,6 +43,10 @@ export interface CreateThreadParams {
   prefix?: string;
   suffix?: string;
   position?: number;
+  /** Issue #166: selection offsets within the host's text, when selected. */
+  startOffset?: number;
+  /** Issue #166: end of the recorded selection (see `startOffset`). */
+  endOffset?: number;
   /** Initial user text (first message when present). */
   text?: string;
 }
@@ -163,10 +167,17 @@ export function buildAnchor(
   snapshot: ReviewSnapshot,
   anchor: ActionAnchor,
   quote: string,
-  opts: { prefix?: string; suffix?: string; position?: number } = {},
+  opts: { prefix?: string; suffix?: string; position?: number; startOffset?: number; endOffset?: number } = {},
 ): Anchor {
   const host = actionAnchorToHost(anchor);
   const version = snapshot.version?.n ?? snapshot.review?.currentVersion ?? 1;
+  // Issue #166: the client's recorded selection offsets ride the anchor
+  // when the anchor came from a live selection; both or neither (a half
+  // offset places nothing). Absent everywhere else.
+  const recorded =
+    opts.startOffset !== undefined && opts.endOffset !== undefined
+      ? { startOffset: opts.startOffset, endOffset: opts.endOffset }
+      : {};
   if (host.kind === "block") {
     const found = findBlock(snapshot, host.blockId);
     if (!found) throw new Error(`unknown block ${host.blockId}`);
@@ -179,6 +190,7 @@ export function buildAnchor(
       suffix: opts.suffix ?? ctx.suffix,
       position: opts.position ?? 0,
       version,
+      ...recorded,
     };
   }
   if (host.kind === "description") {
@@ -196,6 +208,7 @@ export function buildAnchor(
       suffix: opts.suffix ?? ctx.suffix,
       position: opts.position ?? 0,
       version,
+      ...recorded,
     };
   }
   // diff-line: the file must exist; the line should be a real new/old-side
@@ -215,6 +228,7 @@ export function buildAnchor(
       suffix: opts.suffix ?? "",
       position: opts.position ?? 0,
       version,
+      ...recorded,
     };
   }
   if (!Number.isSafeInteger(host.line) || host.line < 1) {
@@ -233,6 +247,7 @@ export function buildAnchor(
     suffix: opts.suffix ?? (ctx?.next ?? ""),
     position: opts.position ?? host.line,
     version,
+    ...recorded,
   };
 }
 
@@ -247,7 +262,13 @@ export function createThreadInDraft(
     snapshot,
     params.anchor,
     quote,
-    { prefix: params.prefix, suffix: params.suffix, position: params.position },
+    {
+      prefix: params.prefix,
+      suffix: params.suffix,
+      position: params.position,
+      startOffset: params.startOffset,
+      endOffset: params.endOffset,
+    },
   );
   const messages: ChatMessage[] = [];
   if (params.text !== undefined && params.text !== "") {
@@ -372,6 +393,14 @@ export function setReplyBoxInDraft(
 export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: string): void {
   const idx = (draft.annotations as Annotation[]).findIndex((a) => a.id === commentId);
   if (idx < 0) throw new Error(`unknown comment ${commentId}`);
+  // Issue #181: dismissing a question suggestion resolves its
+  // contribution item in the shared context, so agents do not raise it
+  // again (re-raises dedupe against stored items, whatever their status).
+  const link = (draft.annotations as Annotation[])[idx].openQuestion;
+  if (link) {
+    const item = draft.contributions.find((c) => c.id === link.contributionId)?.items[link.itemIndex];
+    if (item && item.kind === "open_question") item.status = "dismissed";
+  }
   (draft.annotations as Annotation[]).splice(idx, 1);
 }
 
@@ -425,7 +454,15 @@ export async function createThread(
 export async function createNoteThread(
   store: ReviewStore,
   reviewId: string,
-  params: { anchor: ActionAnchor; quote: string; text?: string; prefix?: string; suffix?: string },
+  params: {
+    anchor: ActionAnchor;
+    quote: string;
+    text?: string;
+    prefix?: string;
+    suffix?: string;
+    startOffset?: number;
+    endOffset?: number;
+  },
 ): Promise<{ id: string; snapshot: ReviewSnapshot }> {
   return createThread(store, reviewId, { ...params });
 }
