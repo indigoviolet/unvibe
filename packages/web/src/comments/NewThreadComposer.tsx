@@ -24,11 +24,13 @@ interface Props {
   kind: "comment" | "ask";
   /** Prefilled text (issue #135: a Comment from an agent answer quotes the selection). */
   initialText?: string;
+  /** Issue #166: the selection's offsets within its host's text, when recorded. */
+  offsets?: { start: number; end: number };
   onDiscard: () => void;
   onCreated: (id: string) => void;
 }
 
-export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, onDiscard, onCreated }: Props) {
+export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, offsets, onDiscard, onCreated }: Props) {
   const [text, setText] = useState(initialText ?? "");
   const [sending, setSending] = useState(false);
   // Set once the question/comment is sent: annotation ids already here, so
@@ -62,7 +64,17 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
     setSent(true);
     setSending(true);
     if (ask) {
-      performAction(reviewId, { kind: "ask", anchor, quote, message: value }, { toast: false })
+      performAction(
+        reviewId,
+        {
+          kind: "ask",
+          anchor,
+          quote,
+          message: value,
+          ...(offsets ? { offsets } : {}),
+        },
+        { toast: false },
+      )
         .then((res) => {
           const id = res.annotationId;
           if (!id) throw new Error("the service didn't create the card — try again");
@@ -75,7 +87,12 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
       return;
     }
     api
-      .createComment(reviewId, { anchor, quote, text: value })
+      .createComment(reviewId, {
+        anchor,
+        quote,
+        text: value,
+        ...(offsets ? { offsets } : {}),
+      })
       .then((res) => {
         onCreated(res.id);
       })

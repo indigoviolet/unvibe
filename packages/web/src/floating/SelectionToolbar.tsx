@@ -46,6 +46,7 @@ import type { ActionAnchor, ReviewSnapshot } from "@unvibe/shared";
 import { githubFileUrl } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
+import { selectionOffsetsIn } from "../comments/anchor.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
@@ -64,6 +65,13 @@ export interface NewThreadRequest {
   kind: "comment" | "ask";
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
+  /**
+   * Issue #166: the selection's character offsets within its host's text,
+   * recorded at the moment of selection. Attached only when the request
+   * anchor is the selection's own host (never for a remapped comment
+   * anchor); the service stores them on the anchor for offset placement.
+   */
+  offsets?: { start: number; end: number };
 }
 
 /** Ask a host to open a pending thread composer for this selection. */
@@ -89,6 +97,35 @@ function elementOf(node: Node | null): HTMLElement | null {
  */
 export function isRevealedElement(el: HTMLElement): boolean {
   return el.closest("tr[data-revealed]") !== null;
+}
+
+/**
+ * Element whose plain text the selection's offsets are recorded against
+ * (issue #166): the same element placement later searches, so the text
+ * models match. Null where no selection host applies (second-opinion
+ * reasoning, gutter-only hits).
+ */
+export function selectionScopeElement(el: HTMLElement): Element | null {
+  if (el.closest("[data-so]")) return null;
+  const hunkEl = el.closest("[data-hunksum]");
+  if (hunkEl) return hunkEl;
+  const td = el.closest("#right table.diff td.c");
+  if (td) return td;
+  const top = el.closest("#page [data-top], #right [data-top]");
+  if (top) {
+    // Description marks land in the paragraph body (issue #101): record
+    // against the body, not the segment around it.
+    if (top.closest("#right .desc")) {
+      return top.querySelector(".dseg-body") ?? top;
+    }
+    return top;
+  }
+  const descNode = el.closest("#right .desc [id]");
+  if (descNode && el.closest("#right .desc")) {
+    const named = descNode as HTMLElement;
+    return named.querySelector(".dseg-body") ?? named;
+  }
+  return null;
 }
 
 /**
@@ -204,6 +241,11 @@ function snapLiveSelection(sel: Selection): void {
 interface Pending {
   quote: string;
   anchor: ActionAnchor;
+  /**
+   * Issue #166: the selection's character offsets within its host's
+   * text, recorded at the moment of selection (absent when unrecordable).
+   */
+  offsets?: { start: number; end: number };
   /**
    * Issue #133: true when the selection sits in revealed context around
    * a hunk. Explain, Ask and GitHub stay; Comment hides (it could never
@@ -410,11 +452,16 @@ export function SelectionToolbar() {
         snapLiveSelection(sel);
         const quote = normalizeQuote(sel.toString());
         const anchorNode = sel.anchorNode;
-        const host = resolveSelectionHost(elementOf(anchorNode) ?? document.body);
+        const anchorEl = elementOf(anchorNode) ?? document.body;
+        const host = resolveSelectionHost(anchorEl);
         if (!quote || !validSelectionQuote(quote) || !host) {
           hide();
           return;
         }
+        // Issue #166: record where the selection sits in its host's text
+        // at this moment; placement prefers these offsets.
+        const scope = selectionScopeElement(anchorEl);
+        const offsets = scope ? (selectionOffsetsIn(scope, sel) ?? undefined) : undefined;
         const cardAnchor = commentCardAnchor(host.anchor);
         // Issue #138: a hunk anchor needs the touched rows mapped from
         // the hunk itself (the summary is no table row): Comment lands on
@@ -439,6 +486,7 @@ export function SelectionToolbar() {
         setPending({
           quote,
           anchor: host.anchor,
+          ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
           ...(hunkComment ? { commentAnchor: hunkComment } : {}),
@@ -547,7 +595,12 @@ export function SelectionToolbar() {
     // request returns.
     performAction(
       reviewId,
-      { kind: "explain", quote: current.quote, anchor: current.anchor },
+      {
+        kind: "explain",
+        quote: current.quote,
+        anchor: current.anchor,
+        ...(current.offsets ? { offsets: current.offsets } : {}),
+      },
       { toast: false },
     )
       .then((res) => {
@@ -575,6 +628,9 @@ export function SelectionToolbar() {
     }
     dismiss();
     if (kind === "comment" && current.commentAnchor) {
+      // Remapped anchor (the card's own, not the selection's host):
+      // offsets recorded against the selection's host would misplace, so
+      // they are dropped — the thread places by text match.
       requestNewThread({
         anchor: current.commentAnchor,
         quote: current.quote,
@@ -583,7 +639,12 @@ export function SelectionToolbar() {
       });
       return;
     }
-    requestNewThread({ anchor: current.anchor, quote: current.quote, kind });
+    requestNewThread({
+      anchor: current.anchor,
+      quote: current.quote,
+      kind,
+      ...(current.offsets ? { offsets: current.offsets } : {}),
+    });
   };
 
   return (

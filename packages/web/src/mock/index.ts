@@ -2443,6 +2443,11 @@ export const mockApi = {
             suffix: "",
             position: 0,
             version: 1,
+            // Issue #166: keep the client's recorded selection offsets so
+            // mock-placed marks use them, like the service.
+            ...(a.kind === "ask" && a.offsets !== undefined
+              ? { startOffset: a.offsets.start, endOffset: a.offsets.end }
+              : {}),
           },
           // Ask cards open in place everywhere, like Explain (no
           // closed-thread legacy).
@@ -2561,6 +2566,11 @@ export const mockApi = {
           suffix: "",
           position: 0,
           version: 1,
+          // Issue #166: keep the client's recorded selection offsets so
+          // mock-placed marks use them, like the service.
+          ...(a.kind === "explain" && a.offsets !== undefined
+            ? { startOffset: a.offsets.start, endOffset: a.offsets.end }
+            : {}),
         },
         open: true,
         messages: [],
@@ -2934,6 +2944,11 @@ export const mockApi = {
         suffix: body.suffix ?? "",
         position: body.position ?? 0,
         version: 1,
+        // Issue #166: keep the client's recorded selection offsets, like
+        // the service.
+        ...(body.offsets !== undefined
+          ? { startOffset: body.offsets.start, endOffset: body.offsets.end }
+          : {}),
       },
       open: host.kind === "block" ? false : true,
       messages: body.text ? [{ who: "you", text: body.text }] : [],
