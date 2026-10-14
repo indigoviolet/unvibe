@@ -2,9 +2,11 @@
  * Diff pane (PRD §4.13): toolbar, files panel, file/hunk list.
  *
  * Behaviour ported from `prototype.html`; data comes from the review
- * snapshot (`files` + `hunkStates`). Hunk state (folded, reviewed, note,
- * summary) persists through `PATCH /api/reviews/:id/hunks/:hash`; in mock
+ * snapshot (`files` + `hunkStates` + `fileStates`). Hunk state (folded,
+ * reviewed, summary) and file fold state persist through
+ * `PATCH /api/reviews/:id/hunks/:hash` and `…/files/:fileKey`; in mock
  * mode the in-memory API applies the same change through the WS-patch path.
+ * A file's reviewed state is derived from its hunks, never stored.
  * View preferences persist in `localStorage`.
  *
  * Later milestones plug in here without touching this file's contract:
@@ -124,10 +126,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const setSnapshot = useReview((s) => s.setSnapshot);
   const [prefs, setPrefs] = useState<DiffPrefs>(loadPrefs);
   const [fq, setFq] = useState("");
-  const [fileFold, setFileFold] = useState<Record<string, boolean>>({});
   const [unhidden, setUnhidden] = useState<Record<string, boolean>>({});
   const [dirOpen, setDirOpen] = useState<Record<string, boolean>>({});
-  const [editingNote, setEditingNote] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [fileHighlight, setFileHighlight] = useState<string | null>(null);
@@ -267,6 +267,24 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [snapshot],
   );
 
+  // File fold state lives on the snapshot (issue #162), so it survives
+  // tab switches, reloads and restarts — unlike the old local state.
+  const fileFolded = useMemo(
+    () => new Map<string, boolean>((snapshot?.fileStates ?? []).map((s) => [s.fileKey, s.folded])),
+    [snapshot],
+  );
+
+  const patchFileFold = useCallback(
+    async (fileKey: string, folded: boolean) => {
+      try {
+        await api.updateFile(reviewId, fileKey, { folded });
+      } catch {
+        toast("Couldn't save file state");
+      }
+    },
+    [reviewId],
+  );
+
   // Activated hunk summaries (issue #138): content hash → conversation
   // card. Only hashes in the current files draw — a card whose hunk
   // changed stays with the old version and never renders on the new one.
@@ -378,7 +396,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         hideReviewed: p.hideReviewed && fullyReviewed ? false : p.hideReviewed,
       }));
       setFq((prev) => (file.path.toLowerCase().includes(prev.toLowerCase()) ? prev : ""));
-      setFileFold((prev) => ({ ...prev, [file.fileKey]: false }));
+      void patchFileFold(file.fileKey, false);
       setEagerFiles((prev) => new Set(prev).add(file.fileKey));
       if (target.start === undefined) {
         flash(null, file.fileKey);
@@ -399,7 +417,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       }
       flash({ fileKey: file.fileKey, start: target.start, end, nonce: Date.now() }, null);
     },
-    [reviewId, flash],
+    [reviewId, flash, patchFileFold],
   );
 
   useEffect(() => {
@@ -450,15 +468,15 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   useEffect(() => () => window.clearTimeout(hlTimer.current), []);
 
-  // Older versions are view-only for user data (reviewed, notes,
-  // summaries): those writes are refused with a pointer back. Folding only
-  // hides code, so it stays allowed while browsing history.
+  // Older versions are view-only for user data (reviewed, summaries):
+  // those writes are refused with a pointer back. Folding only hides
+  // code, so it stays allowed while browsing history.
   const readOnly =
     versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
 
   const patchHunk = useCallback(
     async (hash: string, body: UpdateHunkRequest) => {
-      if (readOnly && (body.reviewed !== undefined || body.note !== undefined || body.summary !== undefined)) {
+      if (readOnly && (body.reviewed !== undefined || body.summary !== undefined)) {
         toast("Viewing an older version · read-only");
         return;
       }
@@ -490,31 +508,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         });
       },
       deleteSummary: (hash) => void patchHunk(hash, { summary: null }),
-      beginNote: (hash, current) => {
-        setEditingNote((prev) => ({ ...prev, [hash]: current ?? "" }));
-        setTimeout(() => document.getElementById(`hn-${hash}`)?.focus(), 0);
-      },
-      changeNote: (hash, draft) => setEditingNote((prev) => ({ ...prev, [hash]: draft })),
-      saveNote: (hash) => {
-        const draft = (editingNote[hash] ?? "").trim();
-        setEditingNote((prev) => {
-          const next = { ...prev };
-          delete next[hash];
-          return next;
-        });
-        // Empty draft clears (service: explicit null deletes the note).
-        void patchHunk(hash, { note: draft === "" ? null : draft });
-      },
-      discardNote: (hash) =>
-        setEditingNote((prev) => {
-          const next = { ...prev };
-          delete next[hash];
-          return next;
-        }),
-      deleteNote: (hash) => void patchHunk(hash, { note: null }),
       toggleReviewed: (hash, reviewed) => void patchHunk(hash, { reviewed: !reviewed, folded: !reviewed }),
     }),
-    [patchHunk, reviewId, editingNote],
+    [patchHunk, reviewId],
   );
 
   const setView = useCallback(
@@ -553,22 +549,27 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         targets.push({ file: f, hunk: h });
       });
     }
-    // Fold first so the UI settles, then summarize hunks lacking one —
-    // except past the hunk-pass fan-out limit (issue #107), where Fold
-    // all folds only: requesting a summary per hunk would be exactly the
-    // fan-out the pipeline refuses to run, and the per-hunk Summarize
-    // button in the hunk header stays as the on-demand path.
+    // Fold first so the UI settles, then summarize only the hunks still
+    // lacking one — except past the hunk-pass fan-out limit (issue #107),
+    // where Fold all folds only: requesting a summary per hunk would be
+    // exactly the fan-out the pipeline refuses to run, and the per-hunk
+    // Summarize button in the hunk header stays as the on-demand path.
     await Promise.all(targets.map(({ hunk }) => api.updateHunk(reviewId, hunk.contentHash, { folded: true }).catch(() => {})));
     const totalHunks = snap.files.reduce((n, f) => n + f.hunks.length, 0);
     const overFanout = totalHunks > HUNK_PASS_FANOUT_LIMIT;
+    const foldedNoun = `${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}`;
     if (!overFanout) {
+      let missing = 0;
       for (const { hunk } of targets) {
-        if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
+        if (!st.get(hunk.contentHash)?.summary) {
+          missing += 1;
+          actions.summarize(hunk.contentHash);
+        }
       }
-      toast(`Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. Summaries appear as they are written.`);
+      toast(missing > 0 ? `Folded ${foldedNoun}. Summaries appear as they are written.` : `Folded ${foldedNoun}.`);
     } else {
       toast(
-        `Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. ` +
+        `Folded ${foldedNoun}. ` +
           "This review is past the per-hunk summary limit, so summaries stay on demand — use the spark button on any hunk.",
       );
     }
@@ -581,11 +582,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     }
     const snap = useReview.getState().snapshot;
     if (!snap) return;
-    setFileFold({});
     await Promise.all(
-        snap.files.flatMap((f) => f.hunks.map((h) => api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {}))),
-      );
-    }, [reviewId, readOnly]);
+      snap.files.flatMap((f) => [
+        api.updateFile(reviewId, f.fileKey, { folded: false }).catch(() => {}),
+        ...f.hunks.map((h) => api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {})),
+      ]),
+    );
+  }, [reviewId, readOnly]);
 
   const markFileReviewed = useCallback(
     (file: ReviewFile, allReviewed: boolean) => {
@@ -617,6 +620,18 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // Fold-all summarises per hunk only under the fan-out limit (issue
   // #107): past it the button folds without requesting summaries.
   const overFanoutLimit = snapshot.files.reduce((n, f) => n + f.hunks.length, 0) > HUNK_PASS_FANOUT_LIMIT;
+  // Fold-all wording (issue #162): only visible hunks still lacking a
+  // summary are summarized, so the tooltip promises just that — and stays
+  // quiet about summarizing when every visible hunk already has one.
+  const foldMissing = snapshot.files.reduce(
+    (n, f) => n + f.hunks.filter((h) => !isHidden(h) && states.get(h.contentHash)?.summary === undefined).length,
+    0,
+  );
+  const foldTip = overFanoutLimit
+    ? "Fold the code (this review is past the per-hunk summary limit; summaries stay on demand)"
+    : foldMissing > 0
+      ? "Fold the code; hunks still missing a summary are summarized with the agent"
+      : "Fold the code (every hunk already has a summary)";
 
   // Update banner: the local refresh result wins; otherwise the snapshot's
   // own `versionStatus` (set when a refresh created a newer version).
@@ -671,11 +686,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         <button
           className="x"
           type="button"
-          data-tip={
-            overFanoutLimit
-              ? "Fold the code (this review is past the per-hunk summary limit; summaries stay on demand)"
-              : "Summarize every hunk with the agent, then fold the code"
-          }
+          data-tip={foldTip}
           aria-label="Fold all"
           onClick={() => void foldAll()}
         >
@@ -767,7 +778,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
                     depth={row.depth}
                     reviewed={reviewedCount(row.file)}
                       onJump={(key) => {
-                      setFileFold((prev) => ({ ...prev, [key]: false }));
+                      void patchFileFold(key, false);
                       setEagerFiles((prev) => new Set(prev).add(key));
                       setTimeout(() => {
                         const el = document.getElementById(`F-${key}`);
@@ -806,10 +817,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               file={f}
               view={prefs.view}
               reviewed={reviewedCount(f)}
-              folded={!!fileFold[f.fileKey]}
+              folded={fileFolded.get(f.fileKey) ?? false}
               eager={vi < 3 || eagerFiles.has(f.fileKey)}
               busy={busy}
-              editingNote={editingNote}
               slots={slots}
               commentedLines={commentedLines ?? new Set()}
               highlight={highlight?.fileKey === f.fileKey ? { start: highlight.start, end: highlight.end } : null}
@@ -828,7 +838,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               isHidden={isHidden}
               actions={actions}
               onLineClick={onLineClick}
-              onToggleFileFold={(key) => setFileFold((prev) => ({ ...prev, [key]: !prev[key] }))}
+              onToggleFileFold={(key) => void patchFileFold(key, !(fileFolded.get(key) ?? false))}
               onMarkFileReviewed={markFileReviewed}
               onUnhide={(hashes) => setUnhidden((prev) => ({ ...prev, ...Object.fromEntries(hashes.map((h) => [h, true])) }))}
             />

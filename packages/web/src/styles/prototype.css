@@ -309,6 +309,8 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 .hid .hidb { min-width: 12em; flex: 1; font-style: italic; }
 .hid .hidb code { font-style: normal; font-size: 10.5px; }
 .x[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+/* Reviewed checkboxes (issue #162): native boxes, accent-tinted. */
+.revbox { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; flex: none; }
 .folded { border: 0; background: var(--bg); color: var(--muted); font: 12px var(--sans); padding: 3px 10px; text-align: left; width: 100%; }
 .folded:hover { color: var(--ink); }
 
