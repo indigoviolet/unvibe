@@ -275,11 +275,40 @@ describe("in-flight action lifecycle", () => {
     });
   });
 
-  test("text events no longer accumulate stream state", () => {
+  test("text events accumulate stream state per annotation (#126)", () => {
     const api = useReview.getState();
     api.setSnapshot(snap(1));
+    // Deltas without an annotation id (reader/critic working text) are
+    // still ignored: they never touch the snapshot or the streams.
     useReview.getState().applyEvent({ type: "text", jobId: "job-1", cardId: "c1", delta: "Thinking…" });
     expect(useReview.getState().snapshot?.jobs).toEqual([]);
-    expect("streams" in useReview.getState()).toBe(false);
+    expect(useReview.getState().streams).toEqual({});
+    // Answer content accumulates per annotation, in order.
+    useReview.getState().applyEvent({ type: "text", jobId: "job-1", annotationId: "ann_1", delta: "First " });
+    useReview.getState().applyEvent({ type: "text", jobId: "job-1", annotationId: "ann_1", delta: "paragraph." });
+    useReview.getState().applyEvent({ type: "text", jobId: "job-1", annotationId: "ann_2", delta: "Other card." });
+    expect(useReview.getState().streams["ann_1"]).toEqual({ jobId: "job-1", text: "First paragraph." });
+    expect(useReview.getState().streams["ann_2"]).toEqual({ jobId: "job-1", text: "Other card." });
+    // A new job for the same annotation starts a clean buffer.
+    useReview.getState().applyEvent({ type: "text", jobId: "job-2", annotationId: "ann_1", delta: "Repaired." });
+    expect(useReview.getState().streams["ann_1"]).toEqual({ jobId: "job-2", text: "Repaired." });
+  });
+
+  test("stream state clears on settle and never leaks (#126)", () => {
+    const api = useReview.getState();
+    api.setSnapshot(snap(1, [job({ annotationId: "ann_1" })]));
+    useReview.getState().applyEvent({ type: "text", jobId: "job-1", annotationId: "ann_1", delta: "Draft…" });
+    expect(useReview.getState().streams["ann_1"]).toBeDefined();
+    // The job settles: the stored turn (blocks or error) is the truth.
+    useReview.getState().applyEvent({ type: "job", job: job({ state: "done", annotationId: "ann_1" }) });
+    expect(useReview.getState().streams["ann_1"]).toBeUndefined();
+    // Blocks/error landing clears through clearStream (StreamedAnswer).
+    useReview.getState().applyEvent({ type: "text", jobId: "job-1", annotationId: "ann_1", delta: "Draft…" });
+    useReview.getState().clearStream("ann_1");
+    expect(useReview.getState().streams["ann_1"]).toBeUndefined();
+    // No leak after a full clear either.
+    useReview.getState().applyEvent({ type: "text", jobId: "job-1", annotationId: "ann_1", delta: "Draft…" });
+    useReview.getState().clear();
+    expect(useReview.getState().streams).toEqual({});
   });
 });
