@@ -95,9 +95,9 @@ test("file filter dropdown filters by type with counts and an active state", asy
   await filter.click();
   const menu = page.getByRole("menu", { name: "File filters" });
   await expect(menu).toBeVisible();
-  // Five categories plus Reviewed, each a checkable row with a count.
-  await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(6);
-  for (const name of ["Code", "Tests", "Docs", "Config", "Generated", "Reviewed"]) {
+  // Five categories plus Reviewed plus GitHub comments, each a checkable row with a count.
+  await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(7);
+  for (const name of ["Code", "Tests", "Docs", "Config", "Generated", "Reviewed", "GitHub comments"]) {
     await expect(menu.getByRole("menuitemcheckbox", { name: new RegExp(name) })).toBeVisible();
   }
   // Deselect Tests: its files hide and the button shows the active count.
