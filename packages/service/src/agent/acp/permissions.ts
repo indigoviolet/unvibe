@@ -87,17 +87,25 @@ function isReadOnlyFileTool(title: string, name: string | undefined): boolean {
 }
 
 /**
- * Decide a permission request. `readOnly` sessions allow only MCP + file
- * reads; normal sessions additionally allow the agent's own file/network
- * tools the user would otherwise approve — but this runner still denies
- * everything except MCP + reads by default, because Unvibe agents must only
- * read code and call our MCP tools (PRD non-goal: no editing).
+ * Decide a permission request.
+ *
+ * - Lock-down (`readOnly: true`): allow only our MCP tools + read-only
+ *   file tools; deny everything else (edits, shell, network, subagents,
+ *   terminals). Unvibe agents must only read code and call our MCP tools.
+ * - Full access (`readOnly: false`, issue #160): allow everything the
+ *   adapter asks about. The limits live only as instructions in the
+ *   system prompt — nothing here enforces them.
  */
 export function decidePermission(
   query: PermissionQuery,
   opts: { mcpServers: readonly string[]; readOnly: boolean },
 ): PermissionDecision {
-  void opts.readOnly; // same allowlist either way today; kept for future modes
+  if (!opts.readOnly) {
+    const opt = query.options.find((o) => o.kind === "allow_once") ??
+      query.options.find((o) => /^allow/i.test(o.kind));
+    if (opt) return { type: "allow", optionId: opt.optionId };
+    return { type: "deny" }; // no allow option offered: cancel below
+  }
   // Identity is title/name based (recovered via toolCallId correlation when
   // the adapter sends an empty toolCall, as Codex does in workspace-write).
   // The `mcpApproval` flag is supporting evidence only: an MCP approval for

@@ -179,6 +179,9 @@ export class AcpAgentRunner implements AgentRunner {
           },
         };
       }
+      // Full access (issue #160): no tool reduction — the adapter defaults
+      // (the agent's full tool set) apply, and the permission handler
+      // approves. The limits live only in the system prompt.
       return meta;
     }
     // Codex: `_meta.systemPrompt` is silently ignored (spike 1a FAIL).
@@ -250,8 +253,13 @@ export class AcpAgentRunner implements AgentRunner {
     // Restricted posture for Codex is a session mode, applied after creation
     // (INITIAL_AGENT_MODE is process-wide and cannot multiplex). See
     // applyCodexRestricted() for why this is workspace-write, not read-only.
-    if (provider === "codex" && readOnly) {
-      await this.applyCodexRestricted(rec);
+    // Full access (issue #160) uses the adapter's `agent-full-access`
+    // mode: unrestricted shell/network/files with no permission round-trip
+    // (approval "never", dangerFullAccess sandbox — verified in the
+    // adapter sources). The review MCP tools run without prompts there.
+    if (provider === "codex") {
+      if (readOnly) await this.applyCodexRestricted(rec);
+      else await this.applyCodexFullAccess(rec);
     }
     return { id: rec.acpSessionId, provider, model: rec.model };
   }
@@ -271,6 +279,17 @@ export class AcpAgentRunner implements AgentRunner {
    */
   private async applyCodexRestricted(rec: AcpSessionRecord): Promise<void> {
     await this.setMode({ id: rec.acpSessionId, provider: rec.provider, model: rec.model }, "workspace-write");
+  }
+
+  /**
+   * Issue #160: the adapter's `agent-full-access` mode ("Unrestricted
+   * access to the internet and any file on your computer"). Shell, network
+   * and file tools run with no permission round-trip; our review MCP tools
+   * run the same way. Nothing about this mode is enforced least-privilege:
+   * the limits are prompt instructions only.
+   */
+  private async applyCodexFullAccess(rec: AcpSessionRecord): Promise<void> {
+    await this.setMode({ id: rec.acpSessionId, provider: rec.provider, model: rec.model }, "agent-full-access");
   }
 
   private async setConfigOption(rec: AcpSessionRecord, configId: string, value: string): Promise<void> {
@@ -394,8 +413,9 @@ export class AcpAgentRunner implements AgentRunner {
         }
       }
     }
-    if (parent.provider === "codex" && rec.readOnly) {
-      await this.applyCodexRestricted(rec);
+    if (parent.provider === "codex") {
+      if (rec.readOnly) await this.applyCodexRestricted(rec);
+      else await this.applyCodexFullAccess(rec);
     }
     return { id: rec.acpSessionId, provider: rec.provider, model: rec.model };
   }
@@ -435,8 +455,9 @@ export class AcpAgentRunner implements AgentRunner {
     }
     const rec: AcpSessionRecord = { ...known };
     this.live.set(rec.acpSessionId, rec);
-    if (rec.provider === "codex" && rec.readOnly) {
-      await this.applyCodexRestricted(rec);
+    if (rec.provider === "codex") {
+      if (rec.readOnly) await this.applyCodexRestricted(rec);
+      else await this.applyCodexFullAccess(rec);
     }
     return { id: rec.acpSessionId, provider: rec.provider, model: rec.model };
   }
@@ -496,6 +517,9 @@ export class AcpAgentRunner implements AgentRunner {
           title?: string | null;
           name?: string | null;
           status?: string | null;
+          /** Adapter-sent tool arguments (shape varies by adapter). */
+          rawInput?: unknown;
+          input?: unknown;
         };
         const kind = u?.sessionUpdate;
         if (kind === "agent_message_chunk" && u?.content?.type === "text" && typeof u.content.text === "string" && u.content.text !== "") {
@@ -503,7 +527,12 @@ export class AcpAgentRunner implements AgentRunner {
         } else if (kind === "tool_call") {
           const name = u.title || u.name || u.toolCallId || "tool";
           if (u.toolCallId) seenTools.add(u.toolCallId);
-          yield { type: "tool", name, status: "start" };
+          // Issue #160: keep a best-effort record of what the agent ran
+          // (shell command, URL, …) when the adapter sends arguments with
+          // the call. Adapters that send none record the name only.
+          const detail = formatToolDetail(u.rawInput ?? u.input);
+          if (detail !== undefined) yield { type: "tool", name, status: "start", detail };
+          else yield { type: "tool", name, status: "start" };
         } else if (kind === "tool_call_update") {
           const status = (u.status ?? "") as string;
           const name = u.title || u.name || u.toolCallId || "tool";
@@ -762,6 +791,26 @@ export class AcpAgentRunner implements AgentRunner {
     this.known.clear();
     this.policies.clear();
     this.usageBaseline.clear();
+  }
+}
+
+/**
+ * Issue #160: best-effort tool-argument text for the job record. Strings
+ * pass through; objects stringify; anything else records nothing.
+ * Truncated: the job record names the tool, it is not a transcript.
+ */
+export function formatToolDetail(input: unknown): string | undefined {
+  if (input === undefined || input === null) return undefined;
+  const text = typeof input === "string" ? input : safeJson(input);
+  if (!text || text.trim() === "") return undefined;
+  return text.length > 300 ? `${text.slice(0, 300)}…` : text;
+}
+
+function safeJson(input: unknown): string | undefined {
+  try {
+    return JSON.stringify(input);
+  } catch {
+    return undefined;
   }
 }
 

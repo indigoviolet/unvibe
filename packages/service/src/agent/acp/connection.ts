@@ -108,6 +108,33 @@ export interface Transport {
 
 export type TransportFactory = (provider: ProviderId) => Promise<Transport>;
 
+/**
+ * Issue #160: scrub the environment an adapter subprocess inherits.
+ *
+ * Removed (name-based): every `UNVIBE_*` service variable, 1Password
+ * (`OP_*`, `*1PASSWORD*`), error-reporting DSNs (`*SENTRY*`), and any
+ * `*TOKEN*` / `*SECRET*` (notably `GITHUB_TOKEN` / `GH_TOKEN`, which
+ * would otherwise override the keyring login for the agent's own `gh`).
+ * Kept: the adapter pointers (`CLAUDE_CODE_EXECUTABLE`, `CODEX_PATH`),
+ * `PATH`/`HOME`, and provider API keys the CLIs log in with.
+ *
+ * Name-based, so an oddly-named secret can slip through — and it is not
+ * a sandbox: an unrestricted shell reads the keyring, SSH keys and the
+ * data directory regardless. See docs/acp-runner.md.
+ */
+export function scrubAdapterEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) continue;
+    if (key.startsWith("UNVIBE_")) continue;
+    if (key.startsWith("OP_") || /1PASSWORD/i.test(key)) continue;
+    if (/SENTRY/i.test(key)) continue;
+    if (/TOKEN/i.test(key) || /SECRET/i.test(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 export interface ClientMaps {
   policies: Map<string, SessionPolicy>;
   queues: Map<string, unknown[]>;
@@ -303,11 +330,23 @@ export async function spawnAdapterTransport(
   // MISE_IGNORED_CONFIG_PATHS before any config file, so pointing it at
   // our own worktrees directory keeps the shim working from a global
   // default there without ever trusting the review copy.
-  const spawnEnv = {
+  //
+  // Third layer (issue #160): the adapter inherits a scrubbed environment.
+  // Agent sessions must not be handed anything they did not already have:
+  // service tokens and internal paths (UNVIBE_*), the 1Password service
+  // account, error-reporting DSNs, and any *TOKEN*/*SECRET* the user
+  // exported (notably GITHUB_TOKEN, which would otherwise override the
+  // keyring login for the agent's own `gh`, against PRD §15). Provider
+  // API keys (ANTHROPIC_API_KEY, …) and HOME/PATH stay: the CLIs need
+  // them, and the agent's shell would have them anyway. This stops
+  // casual leakage through the environment — it does NOT sandbox: an
+  // unrestricted shell can still read the keyring-backed `gh` login,
+  // SSH keys, and the data directory. See docs/acp-runner.md.
+  const spawnEnv = scrubAdapterEnv({
     ...process.env,
     ...AutoBins,
     ...(opts?.env ?? {}),
-  };
+  });
   let worktreesIgnore: Record<string, string> = {};
   try {
     worktreesIgnore = miseIgnoreEnv(loadConfig().dataDir, spawnEnv);
