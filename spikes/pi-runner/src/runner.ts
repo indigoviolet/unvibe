@@ -39,14 +39,28 @@ import type {
   McpServerConfig,
   Session,
 } from "../../../packages/shared/src/agent.ts";
+import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { bridgeMcpServers, type BridgedTools } from "./mcp-bridge.ts";
+
+// Pi loads OAuth flows through a variable import specifier that a bundler
+// cannot follow; register them statically so an esbuild bundle (how the
+// service ships its adapters) can refresh the ChatGPT token.
+registerBunOAuthFlows();
 
 /** Unvibe provider id for "ChatGPT subscription through Pi". */
 export const PI_PROVIDER = "pi";
-/** Pi's provider id for the ChatGPT/Codex subscription. */
-const PI_UPSTREAM_PROVIDER = "openai-codex";
+/**
+ * Pi's two ways onto a ChatGPT subscription:
+ * - "openai-codex": the Codex backend (chatgpt.com/backend-api) with the
+ *   Codex CLI's OAuth client; Pi calls it legacy.
+ * - "openai": "Sign in with ChatGPT" on the OpenAI Responses API
+ *   (api.openai.com), a registered agent client.
+ */
+export type PiUpstream = "openai-codex" | "openai";
 
 export interface PiRunnerOptions {
+  /** Which subscription route (default "openai-codex"). */
+  upstream?: PiUpstream;
   /** Pi agent dir: holds `auth.json` (the ChatGPT OAuth token). Unvibe-owned, never ~/.pi. */
   agentDir: string;
   /** Where session JSONL files and sidecars live. */
@@ -94,8 +108,10 @@ export class PiAgentRunner implements AgentRunner {
   private runtime?: Promise<ModelRuntime>;
   private readonly live = new Map<string, Live>();
   private readonly bridges = new Map<string, SharedBridge>();
+  private readonly upstream: PiUpstream;
 
   constructor(private readonly opts: PiRunnerOptions) {
+    this.upstream = opts.upstream ?? "openai-codex";
     fs.mkdirSync(path.join(opts.sessionDir, "unvibe"), { recursive: true });
   }
 
@@ -110,12 +126,12 @@ export class PiAgentRunner implements AgentRunner {
   /** Doctor/readiness: is a ChatGPT login stored for Pi? */
   async loginStatus(): Promise<{ configured: boolean; oauth: boolean }> {
     const rt = await this.modelRuntime();
-    return { configured: rt.hasConfiguredAuth(PI_UPSTREAM_PROVIDER), oauth: rt.isUsingOAuth(PI_UPSTREAM_PROVIDER) };
+    return { configured: rt.hasConfiguredAuth(this.upstream), oauth: rt.isUsingOAuth(this.upstream) };
   }
 
   async listModels(): Promise<string[]> {
     const rt = await this.modelRuntime();
-    return rt.getModels(PI_UPSTREAM_PROVIDER).map((m) => m.id);
+    return rt.getModels(this.upstream).map((m) => m.id);
   }
 
   async start(opts: {
@@ -175,8 +191,8 @@ export class PiAgentRunner implements AgentRunner {
 
   private async open(meta: Sidecar, manager: SessionManager): Promise<Session> {
     const rt = await this.modelRuntime();
-    let model = rt.getModel(PI_UPSTREAM_PROVIDER, meta.model);
-    if (!model) throw new Error(`unknown ${PI_UPSTREAM_PROVIDER} model ${meta.model}`);
+    let model = rt.getModel(this.upstream, meta.model);
+    if (!model) throw new Error(`unknown ${this.upstream} model ${meta.model}`);
     if (this.opts.mapModel) model = this.opts.mapModel(model);
 
     const bridgeKey = JSON.stringify(meta.mcpServers);
