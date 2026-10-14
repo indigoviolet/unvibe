@@ -182,12 +182,39 @@ What is still ENFORCED under full access, and what is only INSTRUCTED
   running project code, no home-directory credentials, PR/web text as
   material never instructions, blocked needs in `degraded`).
 
-Adapter subprocess environment (`scrubAdapterEnv` in `connection.ts`,
-applied to every adapter spawn, either posture): drops all `UNVIBE_*`,
-`OP_*` / `*1PASSWORD*`, `*SENTRY*`, and any `*TOKEN*` / `*SECRET*`
-(notably `GITHUB_TOKEN` / `GH_TOKEN`, so the agent's own `gh` uses the
-keyring login like the user's). Kept: `CLAUDE_CODE_EXECUTABLE` /
-`CODEX_PATH`, `PATH`, `HOME`, and provider API keys the CLIs log in with.
+Adapter subprocess environment (`adapterEnvFor` in `connection.ts`):
+one adapter subprocess runs per (provider, posture) pair, so the two
+postures never share a process (lazy: a posture's subprocess starts on
+its first use; model/thinking probes use the lock-down one).
+
+- Lock-down: the input env unchanged — exactly what the adapter got
+  before this change. The default posture is identical down to the
+  spawn env.
+- Full access: the named secrets an agent has no business with are
+  removed, while provider authentication is kept by exact name
+  (`FULL_ACCESS_AUTH_KEEP`):
+  - removed: `GITHUB_TOKEN`, `GH_TOKEN` (so the agent's own `gh` uses
+    the keyring login, PRD §15); every `UNVIBE_*` service variable;
+    1Password (`OP_*`, `*PASSWORD*`); error-reporting DSNs (`*SENTRY*`).
+    Everything else passes through untouched — the rule is explicit,
+    never pattern-based, so an unknown provider variable is kept
+    rather than dropped.
+  - kept: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+    `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`,
+    `OPENAI_BASE_URL`, `CODEX_API_KEY`, `AWS_ACCESS_KEY_ID`,
+    `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`,
+    `AWS_DEFAULT_REGION`, `AWS_BEARER_TOKEN_BEDROCK`, `GOOGLE_API_KEY`,
+    `GEMINI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`,
+    `GCLOUD_PROJECT`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_GENAI_USE_VERTEXAI`
+    (plus the adapter pointers `CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`,
+    set explicitly).
+  - `UNVIBE_*` audit: nothing in the child tree reads our namespace —
+    the adapter bundles contain no `UNVIBE_` reference, the agent CLIs
+    don't know it, and the service consumes its own overrides
+    (`UNVIBE_CLAUDE_BIN`/`UNVIBE_CODEX_BIN` → the adapter pointers)
+    before spawning. `UNVIBE_ACP_DEBUG` is read in-process, never by
+    the adapter.
+
 Name-based, so an oddly-named secret can slip through — and it is not a
 sandbox. An unrestricted agent can still reach on the machine: the `gh`
 login (keyring), SSH keys, and the data directory (other reviews, the

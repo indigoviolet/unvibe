@@ -400,6 +400,9 @@ export function fakeTransportFactory(state: FakeAgentState): TransportFactory {
     });
     return {
       caller,
+      // Agent-side requests to the client (fs/*, terminal/* refusals).
+      agentRequest: (method: string, params: unknown) =>
+        (agentConn.client.request as (m: string, p: unknown) => Promise<unknown>)(method, params),
       onDeath,
       dispose: () => {
         try {

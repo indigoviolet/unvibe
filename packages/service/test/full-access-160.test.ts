@@ -24,7 +24,7 @@ import { loadTemplatesDirSync } from "../src/prompts/index.js";
 import { accessPolicyText, renderSystemPrompt } from "../src/prompts/access.js";
 import { decidePermission } from "../src/agent/acp/permissions.js";
 import { formatToolDetail, AcpAgentRunner } from "../src/agent/acp/runner.js";
-import { scrubAdapterEnv } from "../src/agent/acp/connection.js";
+import { adapterEnvFor, FULL_ACCESS_AUTH_KEEP } from "../src/agent/acp/connection.js";
 import { FakeCommandRunner } from "../src/exec/index.js";
 import { verifyCheckoutAfterJob } from "../src/fullaccess/verify.js";
 import { JobQueue } from "../src/jobs/queue.js";
@@ -288,6 +288,82 @@ describe("ACP sessions per posture (fake transport)", () => {
     await runner.dispose();
   });
 
+  it("lock-down and full access use separate adapter subprocesses", async () => {
+    const state = createFakeState([]);
+    const factoryCalls: Array<{ provider: string; readOnly: boolean }> = [];
+    const inner = fakeTransportFactory(state);
+    const runner = new AcpAgentRunner({
+      settleMs: 0,
+      factories: {
+        claude: (async (provider, readOnly) => {
+          factoryCalls.push({ provider, readOnly });
+          return inner(provider, readOnly);
+        }),
+      },
+    });
+    await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
+    await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "s",
+      mcpServers: [],
+      readOnly: false,
+    });
+    // One subprocess per posture, created with the right flag.
+    expect(factoryCalls).toEqual([
+      { provider: "claude", readOnly: true },
+      { provider: "claude", readOnly: false },
+    ]);
+    // A third session on an existing posture reuses its subprocess.
+    await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
+    expect(factoryCalls).toHaveLength(2);
+    await runner.dispose();
+  });
+
+  it("client fs/terminal requests stay refused on a full-access transport", async () => {
+    const state = createFakeState([]);
+    const inner = fakeTransportFactory(state);
+    const seen: unknown[] = [];
+    const runner = new AcpAgentRunner({
+      settleMs: 0,
+      factories: {
+        claude: (async (provider, readOnly) => {
+          const t = (await inner(provider, readOnly)) as unknown as {
+            caller: unknown;
+            onDeath: Promise<void>;
+            dispose: () => void;
+            agentRequest: (method: string, params: unknown) => Promise<unknown>;
+          };
+          seen.push(t);
+          return t;
+        }),
+      },
+    });
+    // A live full-access session on this transport: the permission
+    // handler approves agent tools, but client fs/terminal capabilities
+    // are refused unconditionally (policy-independent by design).
+    await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "s",
+      mcpServers: [],
+      readOnly: false,
+    });
+    const transport = seen[0] as { agentRequest: (method: string, params: unknown) => Promise<unknown> };
+    await expect(
+      transport.agentRequest("fs/write_text_file", { sessionId: "s", path: "/tmp/x", content: "y" }),
+    ).rejects.toThrow("denied by Unvibe policy");
+    await expect(
+      transport.agentRequest("fs/read_text_file", { sessionId: "s", path: "/tmp/x" }),
+    ).rejects.toThrow("denied by Unvibe policy");
+    await expect(
+      transport.agentRequest("terminal/create", { sessionId: "s", command: "id" }),
+    ).rejects.toThrow("denied by Unvibe policy");
+    await runner.dispose();
+  });
+
   it("tool-call arguments travel as detail on the event", async () => {
     const state = createFakeState([
       {
@@ -324,34 +400,72 @@ describe("formatToolDetail", () => {
   });
 });
 
-describe("scrubAdapterEnv", () => {
-  it("drops service, token, secret and 1Password values; keeps CLI needs", () => {
-    const out = scrubAdapterEnv({
-      UNVIBE_DATA_DIR: "/home/u/.local/share/unvibe",
-      UNVIBE_PORT: "4517",
-      UNVIBE_AGENT: "replay",
-      GITHUB_TOKEN: "ghs_x",
-      GH_TOKEN: "gho_y",
-      MY_API_TOKEN: "z",
-      DB_SECRET: "s",
-      OP_SERVICE_ACCOUNT_TOKEN: "op",
-      OP_ENVIRONMENT_ID: "e",
-      SENTRY_DSN_SERVICE: "d",
-      CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude",
-      CODEX_PATH: "/usr/bin/codex",
-      PATH: "/usr/bin:/bin",
-      HOME: "/home/u",
-      ANTHROPIC_API_KEY: "k",
-      LANG: "en_US.UTF-8",
+describe("adapterEnvFor", () => {
+  const BASE = {
+    UNVIBE_DATA_DIR: "/home/u/.local/share/unvibe",
+    UNVIBE_PORT: "4517",
+    UNVIBE_AGENT: "replay",
+    UNVIBE_CLAUDE_BIN: "/usr/bin/claude",
+    GITHUB_TOKEN: "ghs_x",
+    GH_TOKEN: "gho_y",
+    OP_SERVICE_ACCOUNT_TOKEN: "op",
+    OP_ENVIRONMENT_ID: "e",
+    ONEPASSWORD_FOO: "1p",
+    SENTRY_DSN_SERVICE: "d",
+    SENTRY_ENVIRONMENT: "development",
+    CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude",
+    CODEX_PATH: "/usr/bin/codex",
+    CLAUDE_CODE_OAUTH_TOKEN: "claude-oauth",
+    ANTHROPIC_API_KEY: "ak",
+    ANTHROPIC_AUTH_TOKEN: "aat",
+    OPENAI_API_KEY: "ok",
+    AWS_BEARER_TOKEN_BEDROCK: "bedrock",
+    PATH: "/usr/bin:/bin",
+    HOME: "/home/u",
+    LANG: "en_US.UTF-8",
+    MY_API_TOKEN: "z",
+    DB_SECRET: "s",
+  };
+
+  it("lock-down spawns with exactly the base env (no scrub)", () => {
+    expect(adapterEnvFor(true, BASE)).toEqual(BASE);
+  });
+
+  it("full access drops the named secrets and keeps provider auth", () => {
+    const out = adapterEnvFor(false, BASE);
+    // Dropped: gh tokens, every UNVIBE_*, 1Password, Sentry.
+    for (const key of [
+      "GITHUB_TOKEN",
+      "GH_TOKEN",
+      "UNVIBE_DATA_DIR",
+      "UNVIBE_PORT",
+      "UNVIBE_AGENT",
+      "UNVIBE_CLAUDE_BIN",
+      "OP_SERVICE_ACCOUNT_TOKEN",
+      "OP_ENVIRONMENT_ID",
+      "ONEPASSWORD_FOO",
+      "SENTRY_DSN_SERVICE",
+      "SENTRY_ENVIRONMENT",
+    ]) {
+      expect(out, key).not.toHaveProperty(key);
+    }
+    // Kept: adapter pointers, every allowlisted provider-auth name, and
+    // everything else (the rule is explicit, never pattern-based).
+    for (const key of [...FULL_ACCESS_AUTH_KEEP, "CLAUDE_CODE_EXECUTABLE", "CODEX_PATH", "PATH", "HOME", "LANG", "MY_API_TOKEN", "DB_SECRET"]) {
+      if (!(key in BASE)) continue;
+      expect(out, key).toHaveProperty(key, BASE[key as keyof typeof BASE]);
+    }
+    // Allowlisted names pass through even when they look secret-y.
+    expect(adapterEnvFor(false, { AWS_BEARER_TOKEN_BEDROCK: "b", GOOGLE_APPLICATION_CREDENTIALS: "/k.json" })).toEqual({
+      AWS_BEARER_TOKEN_BEDROCK: "b",
+      GOOGLE_APPLICATION_CREDENTIALS: "/k.json",
     });
-    expect(out).toEqual({
-      CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude",
-      CODEX_PATH: "/usr/bin/codex",
-      PATH: "/usr/bin:/bin",
-      HOME: "/home/u",
-      ANTHROPIC_API_KEY: "k",
-      LANG: "en_US.UTF-8",
-    });
+  });
+
+  it("keeps the named provider logins individually", () => {
+    for (const key of ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"]) {
+      expect(adapterEnvFor(false, { [key]: "v" })).toEqual({ [key]: "v" });
+    }
   });
 });
 

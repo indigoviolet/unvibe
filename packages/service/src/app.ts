@@ -26,8 +26,10 @@
  *   `readOnly: false` with the full-access system prompt. Claude keeps
  *   the adapter's default (full) tool set with an allow-all permission
  *   handler; Codex uses `agent-full-access` mode (no permission
- *   round-trip). Adapter subprocesses inherit a scrubbed environment (no
- *   UNVIBE_*, tokens, or 1Password values). The limits are prompt
+ *   round-trip). One adapter subprocess runs per (provider, posture):
+ *   lock-down subprocesses spawn with exactly the base env, full-access
+ *   ones with named secrets removed and provider auth kept
+ *   (`adapterEnvFor`). The limits are prompt
  *   instructions only — see docs/acp-runner.md for enforced-vs-instructed.
  * - Codex MCP-refusal flake ("I can't access that tool" without
  *   attempting) is treated as retryable in the pipeline (see

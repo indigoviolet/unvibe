@@ -106,30 +106,92 @@ export interface Transport {
   adapterBin?: string;
 }
 
-export type TransportFactory = (provider: ProviderId) => Promise<Transport>;
+export type TransportFactory = (provider: ProviderId, readOnly: boolean) => Promise<Transport>;
 
 /**
- * Issue #160: scrub the environment an adapter subprocess inherits.
+ * Provider authentication that must survive the full-access scrub
+ * (issue #160 follow-up): dropping these would break agent logins that
+ * use tokens instead of files. Exact names only — nothing pattern-based,
+ * so an unknown provider variable is kept rather than dropped.
  *
- * Removed (name-based): every `UNVIBE_*` service variable, 1Password
- * (`OP_*`, `*1PASSWORD*`), error-reporting DSNs (`*SENTRY*`), and any
- * `*TOKEN*` / `*SECRET*` (notably `GITHUB_TOKEN` / `GH_TOKEN`, which
- * would otherwise override the keyring login for the agent's own `gh`).
- * Kept: the adapter pointers (`CLAUDE_CODE_EXECUTABLE`, `CODEX_PATH`),
- * `PATH`/`HOME`, and provider API keys the CLIs log in with.
- *
- * Name-based, so an oddly-named secret can slip through — and it is not
- * a sandbox: an unrestricted shell reads the keyring, SSH keys and the
- * data directory regardless. See docs/acp-runner.md.
+ * - Claude Code / Anthropic API: `CLAUDE_CODE_OAUTH_TOKEN` (long-lived
+ *   login from `claude setup-token`), `ANTHROPIC_API_KEY`,
+ *   `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` (custom endpoint).
+ * - Codex / OpenAI API: `OPENAI_API_KEY`, `OPENAI_BASE_URL`,
+ *   `CODEX_API_KEY`.
+ * - Bedrock: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+ *   `AWS_SESSION_TOKEN`, `AWS_REGION`, `AWS_DEFAULT_REGION`,
+ *   `AWS_BEARER_TOKEN_BEDROCK`.
+ * - Vertex / Gemini: `GOOGLE_API_KEY`, `GEMINI_API_KEY`,
+ *   `GOOGLE_APPLICATION_CREDENTIALS`, `GCLOUD_PROJECT`,
+ *   `GOOGLE_CLOUD_PROJECT`, `GOOGLE_GENAI_USE_VERTEXAI`.
  */
-export function scrubAdapterEnv(env: Record<string, string | undefined>): Record<string, string> {
+export const FULL_ACCESS_AUTH_KEEP: ReadonlySet<string> = new Set([
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "CODEX_API_KEY",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "AWS_REGION",
+  "AWS_DEFAULT_REGION",
+  "AWS_BEARER_TOKEN_BEDROCK",
+  "GOOGLE_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "GCLOUD_PROJECT",
+  "GOOGLE_CLOUD_PROJECT",
+  "GOOGLE_GENAI_USE_VERTEXAI",
+]);
+
+/** Exact secret names removed from the full-access adapter environment. */
+const FULL_ACCESS_DROP_EXACT: ReadonlySet<string> = new Set(["GITHUB_TOKEN", "GH_TOKEN"]);
+
+/**
+ * Issue #160: the environment an adapter subprocess inherits, by posture.
+ *
+ * - Lock-down (`readOnly: true`): the input env unchanged — exactly what
+ *   the adapter got before this change. The default posture is
+ *   byte-identical down to the spawn env.
+ * - Full access: the named secrets an agent has no business with are
+ *   removed — `GITHUB_TOKEN`/`GH_TOKEN` (so the agent's own `gh` uses the
+ *   keyring login, PRD §15), every `UNVIBE_*` service variable, 1Password
+ *   (`OP_*`, `*PASSWORD*`), and error-reporting DSNs (`*SENTRY*`) — while
+ *   the provider-auth allowlist above is kept. Everything else passes
+ *   through untouched.
+ *
+ * `UNVIBE_*` audit (follow-up): nothing in the child tree reads our
+ * namespace — the adapter bundles contain no `UNVIBE_` reference, the
+ * agent CLIs don't know it, and the service consumes its own overrides
+ * (`UNVIBE_CLAUDE_BIN`/`UNVIBE_CODEX_BIN` → `CLAUDE_CODE_EXECUTABLE` /
+ * `CODEX_PATH`, set explicitly below) before spawning. `UNVIBE_ACP_DEBUG`
+ * is read in-process, never by the adapter.
+ *
+ * Name-based and not a sandbox: an unrestricted shell still reaches the
+ * keyring, SSH keys and the data directory regardless. See
+ * docs/acp-runner.md.
+ */
+export function adapterEnvFor(
+  readOnly: boolean,
+  env: Record<string, string | undefined>,
+): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
-    if (key.startsWith("UNVIBE_")) continue;
-    if (key.startsWith("OP_") || /1PASSWORD/i.test(key)) continue;
-    if (/SENTRY/i.test(key)) continue;
-    if (/TOKEN/i.test(key) || /SECRET/i.test(key)) continue;
+    if (!readOnly) {
+      if (FULL_ACCESS_AUTH_KEEP.has(key)) {
+        out[key] = value;
+        continue;
+      }
+      if (FULL_ACCESS_DROP_EXACT.has(key)) continue;
+      if (key.startsWith("UNVIBE_")) continue;
+      if (key.startsWith("OP_") || /PASSWORD/i.test(key)) continue;
+      if (/SENTRY/i.test(key)) continue;
+    }
     out[key] = value;
   }
   return out;
@@ -248,7 +310,7 @@ export function connectClient(stream: acp.Stream): {
 /** Production transport: spawn the adapter over stdio. */
 export async function spawnAdapterTransport(
   provider: ProviderId,
-  opts?: { env?: Record<string, string>; onStderr?: (s: string) => void },
+  opts?: { env?: Record<string, string>; onStderr?: (s: string) => void; readOnly?: boolean },
 ): Promise<Transport> {
   const loginPath = await loginPathEnv();
   const basePath = process.env.PATH ?? "";
@@ -331,18 +393,14 @@ export async function spawnAdapterTransport(
   // our own worktrees directory keeps the shim working from a global
   // default there without ever trusting the review copy.
   //
-  // Third layer (issue #160): the adapter inherits a scrubbed environment.
-  // Agent sessions must not be handed anything they did not already have:
-  // service tokens and internal paths (UNVIBE_*), the 1Password service
-  // account, error-reporting DSNs, and any *TOKEN*/*SECRET* the user
-  // exported (notably GITHUB_TOKEN, which would otherwise override the
-  // keyring login for the agent's own `gh`, against PRD §15). Provider
-  // API keys (ANTHROPIC_API_KEY, …) and HOME/PATH stay: the CLIs need
-  // them, and the agent's shell would have them anyway. This stops
-  // casual leakage through the environment — it does NOT sandbox: an
-  // unrestricted shell can still read the keyring-backed `gh` login,
-  // SSH keys, and the data directory. See docs/acp-runner.md.
-  const spawnEnv = scrubAdapterEnv({
+  // Third layer (issue #160, follow-up): the full-access adapter
+  // inherits a scrubbed environment (named secrets removed, provider
+  // auth kept — see `adapterEnvFor`). The lock-down adapter inherits
+  // the base env unchanged. Either way this stops casual leakage
+  // through the environment — it does NOT sandbox: an unrestricted
+  // shell can still read the keyring-backed `gh` login, SSH keys, and
+  // the data directory. See docs/acp-runner.md.
+  const spawnEnv = adapterEnvFor(opts?.readOnly ?? true, {
     ...process.env,
     ...AutoBins,
     ...(opts?.env ?? {}),
@@ -433,15 +491,28 @@ export class ProviderConnection {
   private disposed = false;
   private stderrTail = "";
 
+  /**
+   * Managed connection for one (provider, posture) pair — issue #160
+   * follow-up. `readOnly` selects the spawn env (lock-down: base env
+   * unchanged; full access: scrubbed); sessions of one posture never
+   * share a subprocess with the other.
+   */
   constructor(
     readonly provider: ProviderId,
-    private factory: TransportFactory = (p) =>
+    readonly readOnly: boolean = true,
+    private factory: TransportFactory = (p, ro) =>
       spawnAdapterTransport(p, {
         onStderr: (s) => {
           this.stderrTail = (this.stderrTail + s).slice(-4000);
         },
+        readOnly: ro,
       }),
   ) {}
+
+  /** The posture this connection spawns for ("lockdown" or "full"). */
+  get posture(): string {
+    return this.readOnly ? "lockdown" : "full";
+  }
 
   get stderr(): string {
     return this.stderrTail;
@@ -473,7 +544,7 @@ export class ProviderConnection {
   }
 
   private async start(): Promise<void> {
-    const t = (await this.factory(this.provider)) as Transport & {
+    const t = (await this.factory(this.provider, this.readOnly)) as Transport & {
       policies: Map<string, SessionPolicy>;
       queues: Map<string, unknown[]>;
       subs: Map<string, Set<UpdateCallback>>;
