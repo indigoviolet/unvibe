@@ -48,12 +48,33 @@ Then a **hidden concept pass**: for each domain concept the guide will need
 `concept:` slug, a title, one line of meaning, and where it is mentioned.
 These stay hidden until first opened.
 
-Then the change's **plotlines**: 2 to 8 named threads of the work (for
-example "retry logic for failed uploads"), each with a one-line
-description and the IDs of the hunks that belong to it (the `h:…` IDs on
-the hunk headers above). Cover every hunk you can; hunks you leave out
-read as "other". A hunk belongs to exactly one plotline — when it could
-fit two, pick the closest.
+Then the change's **plotlines**. A plotline is a thread of change with
+its own purpose: the unit a careful author would have made a separate
+commit, or a separate PR in a stack — for example "introduce the retry
+helper", "switch the upload path to use it", "rename the settings
+module", "fix the off-by-one in pagination". Threads may interact (one
+builds on another) but are mostly distinct: each could be reviewed,
+reverted or landed on its own, in some order.
+
+A plotline is never a file type or a layer. Tests, docs and config
+belong to the thread they serve: the test for the retry helper is in
+"introduce the retry helper", not in "tests". A plotline named after a
+kind of file ("tests", "docs", "config") is wrong — that is the bad
+example; the good example is one name per purpose, with the tests and
+docs that serve that purpose inside it.
+
+List plotlines in the order they could be landed (foundations first).
+For each one give: a one-line description, a one-line "why" — why it is
+separate, why it could land as its own commit or stacked PR — and, when
+it depends on an earlier plotline, `"buildsOn": "<that plotline's id>"`.
+Keep them few and honest: a small PR may have one plotline; do not
+invent threads. Mechanical churn that serves no thread (formatting,
+generated files, lock files) goes to "other": leave its hunks out.
+
+Each plotline also lists the IDs of the hunks that belong to it (the
+`h:…` IDs on the hunk headers above). Cover every hunk you can; hunks
+you leave out read as "other". A hunk belongs to exactly one plotline —
+when it could fit two, pick the closest.
 
 ## Output shape
 
@@ -67,7 +88,7 @@ cards:
 ```json
 {"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
  "concepts": [{"slug": "obs-fold", "title": "...", "summary": "..."}],
- "plotlines": [{"id": "retry-logic", "name": "...", "description": "...", "hunks": ["h:<fileKey>:<hash>"]}]}
+ "plotlines": [{"id": "retry-logic", "name": "...", "description": "...", "why": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}]}
 ```
 
 Concept slugs are short kebab-case (`obs-fold`). Linking an unknown slug
