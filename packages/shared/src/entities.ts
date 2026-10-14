@@ -6,7 +6,7 @@
  * columns where noted in the service's migration 001.
  */
 import type { SecondOpinionMode } from "./prompts.js";
-import type { DiffFilter, HunkScoreLevel, Plotline } from "./scores.js";
+import type { HunkScoreLevel } from "./scores.js";
 
 /** A local checkout / GitHub repo the user can open reviews from. */
 export interface Repo {
