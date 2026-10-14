@@ -291,7 +291,11 @@ needed (that deviation is closed, not added).
    already sees (shared "Reply hygiene" guidance in `instructions.md`;
    the `explain` "quote it back" rule is removed), with a deterministic
    exact-match strip of a leading echo line at parse time
-   (`actions-echo.test.ts`, `content-titles.test.ts`). Agent process
+   (`actions-echo.test.ts`, `content-titles.test.ts`). Replies never
+   address the reader about how to read the guide or whether to keep
+   reading (#175): no "if you only need…", "in short…" or "TL;DR"
+   framings (prompt rule in `instructions.md`; the problem card's first
+   paragraph states the problem and the central idea). Agent process
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
    rule; failures go in the trailing `degraded` field). A job fails on

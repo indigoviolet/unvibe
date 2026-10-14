@@ -109,6 +109,16 @@ describe("repo prompts/ directory", () => {
     expect(lib.get("access-lockdown")?.variables).toEqual([]);
   });
 
+  it("reader prompts describe content, not how to read the guide (#175)", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const reader = lib.get("reader")?.body ?? "";
+    const instructions = lib.get("instructions")?.body ?? "";
+    expect(reader).toContain("The first paragraph alone states the");
+    expect(reader).not.toContain("need to read on");
+    expect(instructions).toContain("Never address the reader about how to read the guide");
+    expect(instructions).toContain('"TL;DR" framings');
+  });
+
   it("resolvePromptsDir finds the repo prompts from the service package", () => {
     const serviceDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     expect(resolvePromptsDir(serviceDir)).toBe(REPO_PROMPTS);

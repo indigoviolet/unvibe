@@ -1,6 +1,6 @@
 # Hunk pass
 
-Summarise one diff hunk for a code reader, and judge whether it is
+Summarise one diff hunk, and judge whether it is
 interesting. You see only this hunk: do not speculate about the rest of the
 change.
 

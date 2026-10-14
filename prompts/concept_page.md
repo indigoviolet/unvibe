@@ -25,8 +25,8 @@ level at a time.
 2. Why it matters here: the decision, risk, or mechanism it explains.
 3. A concrete example: before/after values, a short trace, or a minimal
    snippet from the change. Prefer values from the actual code.
-4. A `### Follow-ups` section with at most three questions a reader of
-   this change would ask next.
+4. A `### Follow-ups` section with at most three follow-up questions
+   on this change.
 
 Keep it to what this review needs. If a diagram helps, use a fenced `d2`
 block per the D2 convention (prompts/includes/d2-convention.md):
