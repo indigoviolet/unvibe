@@ -8,10 +8,13 @@
  *   (`{ provider: "codex", model: "" }`); the UI explains a different
  *   model from main is needed.
  * - `PUT /api/settings` — partial update; 400 with `{ errors }` when
- *   invalid (including a model id the adapter does not offer), otherwise
- *   the full updated settings.
+ *   invalid (including a model id or effort value the adapter does not
+ *   offer), otherwise the full updated settings.
  * - `GET /api/models?provider=:id` — models the provider offers (live, or
  *   the static fallback offline).
+ * - `GET /api/thinking?provider=:id` — thinking levels the provider's
+ *   adapter offers (issue #172; empty options with no live adapter, so the
+ *   UI offers Default only).
  *
  * Without wired stores the endpoints stay 501 stubs (scaffold behaviour).
  */

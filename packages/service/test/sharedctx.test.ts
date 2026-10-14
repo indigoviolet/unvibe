@@ -742,7 +742,7 @@ describe("base growth observability (PRD §4.14, §9.3)", () => {
     try {
       const settings = setup.ctx.settings.get();
       const guideRev = guideRevisionForSnapshot(setup.ctx.reviews.getSnapshot(setup.reviewId)!);
-      const baseKey = `${setup.reviewId}|v1|${guideRev}|${settings.main.provider}|${settings.main.model}`;
+      const baseKey = `${setup.reviewId}|v1|${guideRev}|${settings.main.provider}|${settings.main.model}|${settings.main.effort ?? ""}`;
       await setup.ctx.sessions.getBase({
         key: {
           reviewId: setup.reviewId,

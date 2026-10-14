@@ -161,6 +161,16 @@ medium/high/xhigh/max`), Codex `reasoning_effort` (default `medium`;
 `setMode(session, modeId)` maps to `session/set_mode` (fallback: config
 option `mode`). Model selection also runs at `start()`.
 
+Effort per role (issue #172) arrives as `start({ effort })` (`""` =
+Default: nothing is sent and the adapter's own setting stands). The
+value is stored on the session record: forks inherit it and re-apply it
+explicitly for both providers, `load` re-applies it after reopening,
+and the `prompt()` fork-before-resume retry re-applies it after the
+resume — so new, fork, resume and load all carry the setting (pinned by
+fake-transport tests in `test/acp-runner.test.ts`). Live-verified per
+provider in `test/acp-live.test.ts` ("a non-default effort reaches the
+session").
+
 ## Background noise (session titling)
 
 Both adapters fire a background titling call after the first turn (Claude:

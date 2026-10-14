@@ -358,9 +358,9 @@ describe("live settings defaults + validation", () => {
         small: { provider: string; model: string };
         secondOpinion: { provider: string; model: string };
       };
-      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
-      expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5" });
-      expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+      expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "" });
     } finally {
       await app.close();
     }
@@ -380,7 +380,7 @@ describe("live settings defaults + validation", () => {
         secondOpinion: { provider: string; model: string };
       };
       expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5" });
-      expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
+      expect(body.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "" });
     } finally {
       await app.close();
     }
@@ -470,7 +470,7 @@ describe("live settings defaults + validation", () => {
     expect(resolved.secondOpinion).toEqual({ provider: "codex", model: "gpt-6.1-sol" });
     // Nothing persisted: no role counts as saved and stored values stand.
     expect(settings.savedKeys()).toEqual([]);
-    expect(settings.get().main).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    expect(settings.get().main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
   });
 });
 

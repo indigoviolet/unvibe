@@ -253,11 +253,11 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 **New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
 
 ### 4.14 Settings page
-- **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers. A role never explicitly saved takes a live default picked from what the adapters offer, ranked by tier (opus | sol > sonnet | terra > haiku | luna, newest version offered within a tier, never Fable or Astra); second opinion comes from the provider main is not using, and stays unset with one provider. Saved picks always win; defaults are never written into settings.
+- **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers. A role never explicitly saved takes a live default picked from what the adapters offer, ranked by tier (opus | sol > sonnet | terra > haiku | luna, newest version offered within a tier, never Fable or Astra); second opinion comes from the provider main is not using, and stays unset with one provider. Saved picks always win; defaults are never written into settings. Each role also has an effort control with the thinking levels its adapter offers, Default first (leave the adapter's own setting alone); when the model changes and the saved effort is not offered, it falls back to Default. The small role stays at the adapter default unless changed — its jobs run many times per review.
 - **Prompts:** each template (Template view): the raw text with its variables marked. View-only to start. The per-review "Expanded for this review" view — the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart — lives on the debug page below.
 - **Limits:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
 - **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
-  - **Jobs:** running, queued and finished jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate and provider. Finished jobs stay listed after a restart, with their prompts and results.
+  - **Jobs:** running, queued and finished jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate, provider, model and the effort it ran with. Finished jobs stay listed after a restart, with their prompts and results.
   - **Shared context** as a rendered Markdown document — the base session(s) with the current base pack, the append-only log (§9.3), and every contribution (§9.5) with the thread it came from — plus delete for any item. No formatting beyond Markdown rendering.
   - **Re-do guide:** delete the review and open the same PR or branch again in one step, reusing both paths. Confirms first and states what is lost (the guide, comments, notes and jobs; anything already on GitHub stays). The review gets a new id and the page lands on its loading state. Refused while a submit is in flight; never offered for the demo review or while the review is still opening.
 
@@ -309,7 +309,7 @@ ACP (Agent Client Protocol) comes first, through `@agentclientprotocol/sdk`, wit
 ```ts
 interface AgentRunner {
   start(opts: { provider: string; model: string; cwd: string; systemPrompt: string;
-                mcpServers: McpServerConfig[] }): Promise<Session>;
+                mcpServers: McpServerConfig[]; effort?: string }): Promise<Session>;
   fork?(session: Session, opts?: { atMessage?: string }): Promise<Session>; // optional capability
   load(sessionId: string): Promise<Session>;                                 // reopen after idle close
   prompt(session: Session, text: string, signal?: AbortSignal): AsyncIterable<AgentEvent>;
@@ -349,7 +349,7 @@ type AgentEvent =
 | Annotation | id, type (conversation, comment, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for comments: messages, `post`, draft; plus for links moved mid-fill: the unsettled turns with their page-card mapping until they settle. A conversation can host on a hunk (`h:…`), created from the hunk's summary text with no agent call. |
 | Anchor | host (block ID, description paragraph, diff line, or hunk), quoted text, prefix/suffix, position at creation, version |
 | Contribution | id, source session, items (fact, correction, open question, reader note), citations, replaces, status |
-| Job | id, kind, model, priority, state, session ID, prompt snapshot, usage, error, card/annotation address |
+| Job | id, kind, model, effort, priority, state, session ID, prompt snapshot, usage, error, card/annotation address |
 | LogEntry | seq, kind, payload, scope (global, or local to a card) |
 
 ### 7.2 ID grammar
@@ -510,6 +510,7 @@ A new base is built when any of these happens:
 - **Small model:** hunk summaries, the uninteresting classification, consolidating contributions, titles. These jobs get only what they need and don't fork the base.
 - **Second-opinion model:** a different provider or model. It runs in a fresh session with its own base, containing L0 + L1 + the cited code. It never sees guide text, other findings, contributions, or the main model's pinned code beyond what's cited.
 - **Role defaults:** tiers opus | sol > sonnet | terra > haiku | luna; the newest version offered within a tier wins; Fable and Astra are never picked. Second opinion is picked from the provider main is not using, and stays unset with a single provider. One source of effective settings serves Settings, readiness, the pipeline, second opinions and shared context: a saved pick wins, an unset role takes the live default, and unfillable roles keep the stored fallback (readiness reports it plainly).
+- **Effort (thinking level) per role:** the adapter's effort values (Claude `effort`, Codex `reasoning_effort`), Default first. The setting rides `AgentRunner.start`, so any runner can honour it; forks inherit it, reopened sessions keep it, and a changed level builds a new base session. Second-opinion reuse matches on it, and each job records the effort it ran with.
 - **Concurrency:**
   - a per-provider session cap, starting at 4;
   - a priority queue: what the user asked for, then what's visible on screen, then background work;
