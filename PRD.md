@@ -377,7 +377,9 @@ ann:<id>                                   an annotation
 - **Every anchor is tied to content**, not position. It keeps:
   - its position when created;
   - the quoted text with a few lines before and after (prefix and suffix);
+  - the selection's character offsets within its host's text, recorded at the moment of selection (anchors from a live selection only);
   - its hunk's content hash, which ignores line numbers and whitespace.
+- **Placing an anchor mark:** at its recorded offsets when present and the covered text still matches; otherwise at the text match nearest the old offsets (first match when no offsets were recorded). A mark is drawn in its own host block only, never in a nested or other card; placement is retried after the host re-renders.
 - **Each fetch that finds a new head SHA creates a version** with an old-to-new ID mapping. Older versions stay viewable.
 - **Telling branch changes from a rebase:** compare the old diff (old merge-base..old head) with the new one (new merge-base..new head) hunk by hunk, using content hashes. Use `git range-diff` to match commits for display. A rebase without conflicts comes out as "no change".
 

@@ -925,7 +925,19 @@ needed (that deviation is closed, not added).
 
 - Content-tied anchors (position + quote + prefix/suffix + hunk hash) —
   met (`versions/anchors.ts`, `versions-anchors.test.ts` incl. rebase/amend
-  fixtures).
+  fixtures). Issue #166: anchors from a live selection also keep the
+  selection's character offsets; marks place by offsets (verified
+  against the quote), fall back to the nearest text match only when the
+  host text changed, draw in the anchor's own host block only (strict
+  scope: never a nested or other card), and retry boundedly after the
+  host re-renders — met (`comments/anchor.ts` spot API + retry,
+  `anchor.test.ts` offset/scope/repass cases, `SelectionToolbar.test.ts`
+  scope cases, `service/test/comments-m6.test.ts` offset storage,
+  `docs/screenshots/166-anchor-mark.png`; e2e anchor + interaction +
+  comments + diff specs green). Stored anchors without offsets (older
+  reviews, ask-about, follow-ups, hunk cards, suggestions) place by text
+  match as before; no migration — reset for exact anchors on old
+  reviews.
 - New head SHA → version + ID mapping; old versions viewable — met
   (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
   the selector rendered once in the review bar per #120 with the current
