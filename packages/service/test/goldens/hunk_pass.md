@@ -29,7 +29,7 @@ Adds a fast path that skips values without CRLF.
 ```
 
 ```json
-{"hunk": {"summary": "Adds a fast path that skips values without CRLF.", "hiddenReason": null}}
+{"hunk": {"summary": "Adds a fast path that skips values without CRLF.", "hiddenReason": null, "score": "routine"}}
 ```
 
 Always send the summary line first, then the `json` block — never the
@@ -40,6 +40,12 @@ import-only changes, or docs/config churn (e.g. `"import-only change"`);
 otherwise null. Never mark uninteresting: a hunk cited by the guide, a
 hunk with a one-line functional change, or anything you are unsure about.
 When unsure, it is interesting.
+
+Set `score` to one ordered level for how much the hunk matters to a
+reader: `mechanical` (renames, formatting, generated, imports),
+`routine` (ordinary code with no surprises), `substantive` (behaviour
+changes), or `needs attention` (risky: concurrency, security, data
+loss, public API). When unsure, pick `routine`.
 
 Citations: use `[[...]]` tokens only for IDs that appear in the hunk text
 above. Never invent one.

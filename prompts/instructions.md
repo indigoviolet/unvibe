@@ -136,8 +136,8 @@ the body, and never repeat a diagram's caption in its walkthrough.
 - Tables use GitHub Markdown syntax; lists may be ordered or unordered,
   one item per line.
 - The trailing block holds only the keys the task needs (`title`,
-  `finding`, `contribute`, `depth`, `hunk`, `secondOpinion`, `concepts`,
-  `pendingCards`, `anchor`, `degraded`):
+  `finding`, `contribute`, `depth`, `hunk`, `plotlines`,
+  `secondOpinion`, `concepts`, `pendingCards`, `anchor`, `degraded`):
   - `degraded`: one line saying what you could not do (a tool you could
     not reach, a lookup that came back empty, a refused call) and what
     the reply is weaker for. A usable answer is still shown, with a note
@@ -151,8 +151,12 @@ the body, and never repeat a diagram's caption in its walkthrough.
     `reasoning`, and `missed` (anything the card missed).
   - `depth`: the `level` written (`simple`, `standard` or `deep`) and the
     `cardId`.
-  - `hunk`: `summary` plus `hiddenReason` (a one-line reason, or null when
-    the hunk is interesting).
+  - `hunk`: `summary`, `hiddenReason` (a one-line reason, or null when
+    the hunk is interesting), and `score` (one of `mechanical`,
+    `routine`, `substantive`, `needs-attention`).
+  - `plotlines`: the reader's threads — `id`, `name`, a one-line
+    `description`, and the `h:` `hunks` each covers (a hunk in exactly
+    one; hunks left out read as "other").
 - Example shape:
 
   ```markdown

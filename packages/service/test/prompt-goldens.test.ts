@@ -50,6 +50,10 @@ function goldenValues(): Record<string, RenderValues> {
     base_pack: { source, diff_inline: diff, pinned_code: pinned, guide, concepts, hunk_summaries: hunkSummaries },
     critic: {},
     hunk_pass: { hunk: formatHunk(firstHunk), path: snap.files[0].path },
+    plotline_assign: {
+      plotlines: "- retry-logic: Retry failed uploads — retries with backoff",
+      hunks: "- h:conn:h111 src/conn.py: Adds a fast path that skips values without CRLF.",
+    },
     concept_stub: {
       concept: "obs-fold — Obsolete line folding: a header value continued on the next line.",
       mentions: "- problem card [[card:c-problem]]\n- diff [[diff:conn:650-651]]",
