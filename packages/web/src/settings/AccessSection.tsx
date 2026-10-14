@@ -49,6 +49,7 @@ export function AccessSection({
             Only keep this on for code you trust. Turning it off clears the acknowledgement: turning
             it on again asks again.
           </p>
+          <p className="hint">Automatic hunk summaries always run locked down.</p>
           <button
             className="btn"
             type="button"

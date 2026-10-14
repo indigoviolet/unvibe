@@ -894,15 +894,24 @@ needed (that deviation is closed, not added).
   `access-full`); Claude drops the tool reduction with an allow-all
   handler, Codex uses `agent-full-access` mode (re-applied on fork/load);
   posture rides every session (`readOnly`), the base key (`access`), and
-  each job (`accessMode`); live sessions keep their posture across a flip.
-  Cheap checks, both built: post-job checkout verify-and-reset recorded
-  on the job, per-job tool records on the Debug page, markers on the
-  review bar + Debug page. Adapter env scrubbed (`scrubAdapterEnv`).
-  Evidence: `test/full-access-160.test.ts` 24 tests; live measurement in
-  the #160 report (small, sandboxed, cost reported). Prompt-wording proof
-  is one injection measurement, not a gate — stated in the report.
-  Enforced-vs-instructed lists in PRD §6.1, `docs/acp-runner.md`, and the
-  AGENTS.md submit-rule note.
+  each job (`accessMode`). Owner decisions since: automatic background
+  small-model jobs (hunk pass, summarize, consolidate) always run
+  locked down — one rule (`BACKGROUND_JOB_KINDS` + `postureFor` in
+  `@unvibe/shared`, stamped `lockdown` on those jobs); a follow-up
+  continues its stored session only on a posture match, else closes it
+  and forks fresh with the transcript (both directions; the applier
+  re-anchors). Cheap checks, all three built: post-job checkout
+  verify-and-reset recorded on the job, per-job tool records on the
+  Debug page, markers on the review bar + Debug page. Adapter env:
+  lock-down spawns the base env unchanged; full access removes named
+  secrets and keeps named provider auth (`adapterEnvFor`, per-posture
+  subprocesses). Evidence: `test/full-access-160.test.ts` 34 tests
+  (posture per provider and second opinion, flip follow-ups both ways,
+  background lockdown, conn-retry posture, env rule, fs/terminal
+  refusal); live measurements in the #160 reports (small, sandboxed,
+  costs reported). Prompt-wording proof is measurement, not a gate —
+  stated in the reports. Enforced-vs-instructed lists in PRD §6.1,
+  `docs/acp-runner.md`, and the AGENTS.md submit-rule note.
 - `load` drain, `cancel` → cancelled, crash → retryable + transparent
   restart — met (`acp-runner.test.ts`: load replay drain, cancel
   mid-reply, crash/restart).
@@ -1481,17 +1490,22 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 ### Full access opt-in (branch `feat/160-full-access-opt-in`, issue #160)
 
 Global setting, off by default, with a stored warning acknowledgement;
-two prompt variants; both providers unrestricted when on (Claude: full
-tool set + allow-all handler; Codex: `agent-full-access` mode); posture
-on sessions, base keys and jobs; tool records + checkout verify-and-reset
-on the Debug page; markers on the review bar + Debug page; enforced-vs-
-instructed lists in PRD §6.1, `docs/acp-runner.md`, and the AGENTS.md
-submit-rule note. REPORT, not decided: whether the setting stays global
-only or can also be chosen per review or per repository (built global
-only; the natural use is "on for my team's repositories, off for
-strangers' PRs"). Open: prompt wording is measured by one injection
-check, not proven; #124 (Codex forks without review tools) stays open;
-sandbox work (#104) lands under this when it exists.
+two prompt variants; user-facing work unrestricted when on (Claude: full
+tool set + allow-all handler; Codex: `agent-full-access` mode), while
+automatic background small-model jobs (hunk pass, summarize,
+consolidate) always stay locked down; posture on sessions, base keys
+and jobs; follow-ups never continue a session from the other mode
+(close + fresh fork with transcript, both directions); tool records +
+checkout verify-and-reset on the Debug page; markers on the review bar
++ Debug page; enforced-vs-instructed lists in PRD §6.1,
+`docs/acp-runner.md`, and the AGENTS.md submit-rule note. REPORT, not
+decided: whether the setting stays global only or can also be chosen
+per review or per repository (built global only; the natural use is "on
+for my team's repositories, off for strangers' PRs"). Open: prompt
+wording is measured by live checks, not proven; #124 (Codex forks
+without review tools) stays open; sandbox work (#104) lands under this
+when it exists; #169's plotline-assign must join `BACKGROUND_JOB_KINDS`
+when it lands.
 
 ### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
 

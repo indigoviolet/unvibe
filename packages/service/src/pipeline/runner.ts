@@ -18,6 +18,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  AccessMode,
   AgentRunner,
   Block,
   Job,
@@ -28,7 +29,7 @@ import type {
   TokenUsage,
 } from "@unvibe/shared";
 import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
-import { accessModeOf } from "@unvibe/shared";
+import { postureFor } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { DegradedConnError, DegradedTurnError, RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
@@ -405,7 +406,7 @@ export class Pipeline {
           guideRevision: guideRevisionForSnapshot(snapshot),
           provider,
           model,
-          access: accessModeOf(settings),
+          access: postureFor(settings),
         }),
       )?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
@@ -629,6 +630,10 @@ export class Pipeline {
     const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     const provider = settings.small.provider;
     const model = settings.small.model;
+    // Background small-model jobs always run locked down (owner decision
+    // #160): the session posture and the job stamp below both say so,
+    // regardless of the setting.
+    const access = postureFor(settings, o.kind);
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -647,6 +652,7 @@ export class Pipeline {
       ...(o.cardId ? { cardId: o.cardId } : {}),
       ...(o.annotationId ? { annotationId: o.annotationId } : {}),
       promptSnapshot: prompt,
+      accessMode: access,
       run: async (ctx) => {
         for (let attempt = 0; ; attempt++) {
           try {
@@ -656,7 +662,7 @@ export class Pipeline {
               model,
               cwd: this.worktreeOf(o.reviewId),
               systemPrompt: "",
-              readOnly: accessModeOf(settings) !== "full",
+              readOnly: access !== "full",
               mcpServers: [],
             });
             ctx.setSessionId(session.id);
@@ -949,6 +955,7 @@ export class Pipeline {
       model: settings.small.model,
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `hunk:${contentHash}`, requestKind: "summarize", baseVersion: `v${snapshot.version.n}` },
+      accessMode: postureFor(settings, "summarize"),
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const session = await this.opts.runner.start({
@@ -956,7 +963,7 @@ export class Pipeline {
           model: settings.small.model,
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
-          readOnly: accessModeOf(settings) !== "full",
+          readOnly: postureFor(settings, "summarize") !== "full",
           mcpServers: [],
         });
         ctx.setSessionId(session.id);
@@ -1301,7 +1308,7 @@ private throwIfDegradedTurn(
     const settings = await this.effectiveSettings();
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructions = renderSystemPrompt(lib, accessModeOf(settings));
+    const instructions = renderSystemPrompt(lib, postureFor(settings));
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
     // The base pack instructs the agent to answer "ready" (SessionManager
     // waits for it). buildBasePack's user is L1+L1b+L2; prefix the ready
@@ -1313,7 +1320,7 @@ private throwIfDegradedTurn(
       guideRevision: guideRevisionForSnapshot(snapshot),
       provider: settings.main.provider,
       model: settings.main.model,
-      access: accessModeOf(settings),
+      access: postureFor(settings),
     };
     const mcp = this.opts.mcp.issueSession(reviewId, `base-${reviewId}`, "session");
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
@@ -1321,7 +1328,7 @@ private throwIfDegradedTurn(
       key,
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
-      readOnly: accessModeOf(settings) !== "full",
+      readOnly: postureFor(settings) !== "full",
       mcpServers,
       pack: packText,
     });
@@ -1422,7 +1429,7 @@ private throwIfDegradedTurn(
             guideRevision: guideRevisionForSnapshot(snapshot),
             provider: settings.main.provider,
             model: settings.main.model,
-            access: accessModeOf(settings),
+            access: postureFor(settings),
           },
           forked.viaFork,
         );
@@ -1440,7 +1447,7 @@ private throwIfDegradedTurn(
     const settings = await this.effectiveSettings();
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructions = renderSystemPrompt(lib, accessModeOf(settings));
+    const instructions = renderSystemPrompt(lib, postureFor(settings));
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
     const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
     const base = await this.opts.sessions.getBase({
@@ -1450,11 +1457,11 @@ private throwIfDegradedTurn(
         guideRevision: guideRevisionForSnapshot(snapshot),
         provider: settings.main.provider,
         model: settings.main.model,
-        access: accessModeOf(settings),
+        access: postureFor(settings),
       },
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
-      readOnly: accessModeOf(settings) !== "full",
+      readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}/api/mcp/fallback` }],
       pack: packText,
     });
@@ -1473,7 +1480,7 @@ private throwIfDegradedTurn(
       model: settings.main.model,
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
-      readOnly: accessModeOf(settings) !== "full",
+      readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
     });
     for await (const ev of runner.prompt(session, packText)) {
@@ -1496,7 +1503,7 @@ private throwIfDegradedTurn(
     const source = ladder.source;
     const diff = ladder.diff;
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructions = renderSystemPrompt(lib, accessModeOf(settings));
+    const instructions = renderSystemPrompt(lib, postureFor(settings));
     let prompt = renderTemplate(lib.get("reader")!, {
       source,
       diff_inline: diff.text,
@@ -1531,7 +1538,7 @@ private throwIfDegradedTurn(
             model: settings.main.model,
             cwd: this.worktreeOf(reviewId),
             systemPrompt: instructions,
-            readOnly: accessModeOf(settings) !== "full",
+            readOnly: postureFor(settings) !== "full",
             mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
           });
           ctx.setSessionId(session.id);
@@ -2099,9 +2106,9 @@ private throwIfDegradedTurn(
       return [];
     }
     this.hunkPassCompleted.set(reviewId, 0);
-    const hunkPassReadOnly = accessModeOf(settings) !== "full";
+    const hunkPassAccess = postureFor(settings, "hunk-pass");
     return targets.map(({ file, hunk }) =>
-      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length, hunkPassReadOnly),
+      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length, hunkPassAccess),
     );
   }
 
@@ -2112,7 +2119,7 @@ private throwIfDegradedTurn(
     hunk: ReviewSnapshot["files"][number]["hunks"][number],
     small: { provider: string; model: string },
     expectedJobs: number,
-    readOnly: boolean,
+    access: AccessMode,
   ): Job {
     const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
     const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
@@ -2129,6 +2136,7 @@ private throwIfDegradedTurn(
       model: small.model,
       priority: JOB_PRIORITY.background,
       dedupe: { anchor: `hunk:${hunk.contentHash}`, requestKind: "hunk-pass", baseVersion: `v${snapshot.version.n}` },
+      accessMode: access,
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const session = await this.opts.runner.start({
@@ -2136,7 +2144,7 @@ private throwIfDegradedTurn(
           model: small.model,
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
-          readOnly,
+          readOnly: access !== "full",
           mcpServers: [],
         });
         ctx.setSessionId(session.id);

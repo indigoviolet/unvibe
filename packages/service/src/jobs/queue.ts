@@ -80,6 +80,12 @@ export interface EnqueueOptions {
   promptSnapshot?: string;
   sessionId?: string;
   /**
+   * Issue #160: posture stamp override. Background jobs (which always
+   * run locked down — see `postureFor`) pass it explicitly; otherwise
+   * the queue's `getAccessMode` decides.
+   */
+  accessMode?: AccessMode;
+  /**
    * Card the job works on, when card-scoped (depth/examples/diagram/
    * generate/concept/second-opinion). Carried on the job itself (so
    * snapshots, WS events and the debug views can match it) as well as on
@@ -199,7 +205,7 @@ export class JobQueue {
     // settings flip between enqueue and session start lands the job on
     // the new base while this stamp still names the old one — a
     // seconds-wide window, stated in the docs.
-    const accessMode = this.getAccessMode();
+    const accessMode = opts.accessMode ?? this.getAccessMode();
     if (accessMode !== undefined) job.accessMode = accessMode;
     const entry: Entry = {
       job,

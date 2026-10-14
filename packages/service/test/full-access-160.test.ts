@@ -847,12 +847,14 @@ describe("follow-ups across a posture flip (owner report)", () => {
       { type: "usage", inputTokens: 10, cachedReadTokens: 5, cachedWriteTokens: 0, outputTokens: 10 },
       { type: "done", stopReason: "end_turn" },
     ];
+    const hunkReply = `Adds a line.\n\n\`\`\`json\n{"hunk": {"summary": "Adds a line", "hiddenReason": null}}\n\`\`\`\n`;
     return new FakeAgentRunner([
       { match: "reply with exactly", events: eventsFor("ready") },
       // "tell me more" first: the reply prompt also carries the anchor
       // quote, and the fake matches first-match-wins.
       { match: "tell me more", events: eventsFor(SECOND) },
       { match: "folds headers", events: eventsFor(FIRST) },
+      { match: "Hunk pass", events: eventsFor(hunkReply) },
     ]);
   }
 
@@ -955,5 +957,43 @@ describe("follow-ups across a posture flip (owner report)", () => {
     expect(bases).toHaveLength(2);
     expect(bases[bases.length - 1].readOnly).toBe(true);
     expect(bases[bases.length - 1].systemPrompt).toContain("there is no shell, no `gh`, no network and no edits");
+  });
+
+  it("with full access on, background hunk work stays lock-down while Explain goes full", async () => {
+    const agents = scriptedAgents();
+    const { app, ctx, reviewId } = await setupReview(new FakeCommandRunner(), { agents, pages: GUIDE_PAGES });
+    const enabled = ctx.settings.update({ fullAccess: true, fullAccessAcknowledgedAt: Date.now() });
+    expect(enabled.errors).toBeUndefined();
+    try {
+      const auth = { authorization: "Bearer tok" };
+      const ex = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/actions`,
+        headers: auth,
+        payload: { kind: "explain", quote: "folds headers", anchor: { where: "block", blockId: "b1" } },
+      } as never);
+      expect(ex.statusCode).toBe(200);
+      await waitJob(ctx, (ex.json() as { jobId: string }).jobId);
+      const sum = await ctx.pipeline.summarizeHunk(reviewId, "h1");
+      expect("reused" in sum).toBe(false);
+      await ctx.jobs.drain();
+      // The hunk turn really ran (not vacuous).
+      expect(ctx.reviews.getSnapshot(reviewId)!.hunkStates.find((s) => s.contentHash === "h1")?.summary).toBe(
+        "Adds a line",
+      );
+      const jobs = ctx.jobs.listByReview(reviewId);
+      const explainJob = jobs.find((j) => j.id === (ex.json() as { jobId: string }).jobId)!;
+      const hunkJob = jobs.find((j) => j.kind === "summarize")!;
+      expect(explainJob.accessMode).toBe("full");
+      expect(hunkJob.accessMode).toBe("lockdown");
+      // Sessions: the main base went full; every empty-system-prompt
+      // session (fork + hunk pass) stayed lock-down.
+      const baseStarts = agents.starts.filter((s) => s.systemPrompt !== "");
+      expect(baseStarts).toHaveLength(1);
+      expect(baseStarts[0].readOnly).toBe(false);
+      expect(agents.starts.filter((s) => s.systemPrompt === "").every((s) => s.readOnly === true)).toBe(true);
+    } finally {
+      await app.close();
+    }
   });
 });

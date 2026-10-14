@@ -165,8 +165,12 @@ new/resume/load/fork and the Debug prompt preview alike).
 - **Second opinion:** its isolation from the guide is a prompt rule under
   full access (a shell can read the data directory, including other
   reviews). Under the lock-down it stays structural.
-- **Small-model sessions** (hunk summaries, consolidation) follow the same
-  setting with an empty system prompt — uniform posture, no carve-outs.
+- **Small-model sessions** (hunk pass, summarize, consolidation) always
+  run locked down, regardless of the setting (owner decision #160):
+  `readOnly: true` with an empty system prompt, stamped `lockdown` on
+  the job. The posture rule lives in one place
+  (`BACKGROUND_JOB_KINDS` + `postureFor` in `@unvibe/shared`); when
+  #169's plotline-assign lands, add its kind there.
 
 What is still ENFORCED under full access, and what is only INSTRUCTED
 (also stated in PRD §6.1):
