@@ -388,55 +388,10 @@ function HunkCard({
         toast(`Couldn't open the summary: ${friendlyError(err)}`);
       });
   };
-  return (
-    <div className={`fcard${reviewed ? " rev" : ""}`}>
-      {hunkCard && hunkCard.open ? (
-        <ExpansionCard
-          reviewId={reviewId}
-          expansion={hunkCard}
-          lookupPage={lookupPage}
-          onOpenPage={onOpenPage}
-          onFollowUp={onFollowUp}
-        />
-      ) : summary ? (
-        <div className="fsum">
-          <span className="av ai" role="img" aria-label="Agent" data-tip="Agent">
-            <Icon name="spark" />
-          </span>
-          <p
-            data-hunksum={`${fileKey}:${hash}`}
-            data-tip={showPromoted ? "Open the page" : "Open as a card"}
-            onClick={activate}
-          >
-            {summary}
-          </p>
-          {showPromoted && promotedPageId && promotedPage ? (
-            <a
-              className="cx pg"
-              data-node={promotedPageId}
-              title={promotedPage.title}
-              aria-label={`Open page: ${promotedPage.title}`}
-            >
-              {promotedPage.title}
-            </a>
-          ) : null}
-          <button
-            className="ib"
-            type="button"
-            data-tip="Delete summary"
-            aria-label="Delete summary"
-            onClick={() => actions.deleteSummary(hash)}
-          >
-            <Icon name="trash" />
-          </button>
-        </div>
-      ) : hunkCard && !hunkCard.open ? (
-        <div className="fsum">
-          <button className="tbtn xs" type="button" onClick={activate}>
-            Reopen summary card
-          </button>
-        </div>
-      ) : null}
+  // Note UI (unchanged by #161): the reviewer's own note keeps its
+  // avatar and delete control in every state.
+  const noteUI = (
+    <>
       {note && noteDraft === undefined ? (
         <div className="fsum">
           <span className="av you" role="img" aria-label="You" data-tip="You">
@@ -476,7 +431,60 @@ function HunkCard({
           </div>
         </div>
       ) : null}
-    </div>
+    </>
+  );
+  return (
+    <>
+      {hunkCard && hunkCard.open ? (
+        // Issue #161: one card at the hunk's level, no extra wrapper — the
+        // conversation card replaces the idle text directly (no `.fcard`
+        // around the card's own bordered section).
+        <>
+          <ExpansionCard
+            reviewId={reviewId}
+            expansion={hunkCard}
+            lookupPage={lookupPage}
+            onOpenPage={onOpenPage}
+            onFollowUp={onFollowUp}
+          />
+          {noteUI}
+        </>
+      ) : (
+        <div className={`fcard${reviewed ? " rev" : ""}`}>
+          {summary ? (
+            <>
+              {/* Issue #161: idle summaries are text only — no icons, no
+                  controls. The text activates into the card above (deleting
+                  happens from the card); the tooltip names the affordance. */}
+              <p
+                data-hunksum={`${fileKey}:${hash}`}
+                data-tip={showPromoted ? "Open the page" : "Open as a card"}
+                onClick={activate}
+              >
+                {summary}
+              </p>
+              {showPromoted && promotedPageId && promotedPage ? (
+                <a
+                  className="cx pg"
+                  data-node={promotedPageId}
+                  title={promotedPage.title}
+                  aria-label={`Open page: ${promotedPage.title}`}
+                >
+                  {promotedPage.title}
+                </a>
+              ) : null}
+            </>
+          ) : hunkCard && !hunkCard.open ? (
+            <div className="fsum">
+              <button className="tbtn xs" type="button" onClick={activate}>
+                Reopen summary card
+              </button>
+            </div>
+          ) : null}
+          {noteUI}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -570,6 +578,28 @@ function HunkBlock(
     onLineClick: props.onLineClick,
     toks: props.tokens?.get(h.contentHash) ?? null,
   };
+  const hunkCardState = props.hunkCards?.get(h.contentHash);
+  // Issue #161: an open hunk card renders bare at the hunk's level (no
+  // `.fwrap`, no `.fcard`); everything else keeps the `.fwrap` container.
+  const showOpenHunkCard = !!hunkCardState && hunkCardState.open;
+  const hunkCardNode = (
+    <HunkCard
+      reviewed={reviewed}
+      summary={summary}
+      note={note}
+      noteStale={noteStale}
+      noteDraft={noteDraft}
+      hash={h.contentHash}
+      fileKey={file.fileKey}
+      actions={props.actions}
+      hunkCard={hunkCardState}
+      promotedPageId={props.promotedHunks?.get(h.contentHash)}
+      reviewId={props.reviewId}
+      lookupPage={props.lookupPage ?? (() => undefined)}
+      onOpenPage={props.onOpenPage ?? (() => {})}
+      onFollowUp={props.onFollowUp ?? (() => {})}
+    />
+  );
   return (
     // One section per hunk (#140): the header is a direct child of the file
     // flow, outside any horizontal scroller, so its vertical stick reaches
@@ -668,25 +698,10 @@ function HunkBlock(
           onFollowUp={props.onFollowUp ?? (() => {})}
         />
       ))}
-      {summary !== undefined || note !== undefined || noteDraft !== undefined || props.hunkCards?.get(h.contentHash) !== undefined ? (
-        <div className="fwrap">
-          <HunkCard
-            reviewed={reviewed}
-            summary={summary}
-            note={note}
-            noteStale={noteStale}
-            noteDraft={noteDraft}
-            hash={h.contentHash}
-            fileKey={file.fileKey}
-            actions={props.actions}
-            hunkCard={props.hunkCards?.get(h.contentHash)}
-            promotedPageId={props.promotedHunks?.get(h.contentHash)}
-            reviewId={props.reviewId}
-            lookupPage={props.lookupPage ?? (() => undefined)}
-            onOpenPage={props.onOpenPage ?? (() => {})}
-            onFollowUp={props.onFollowUp ?? (() => {})}
-          />
-        </div>
+      {showOpenHunkCard ? (
+        hunkCardNode
+      ) : summary !== undefined || note !== undefined || noteDraft !== undefined || hunkCardState !== undefined ? (
+        <div className="fwrap">{hunkCardNode}</div>
       ) : null}
       {folded ? (
         <button

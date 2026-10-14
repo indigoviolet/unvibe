@@ -302,6 +302,9 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 .fcard.rev { background: var(--sunk); border-color: transparent; opacity: .65; }
 .fsum { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
 .fsum p { margin: 0; }
+/* Idle hunk summaries (issue #161) are text only: the paragraph activates
+   into its card on click, so it takes a pointer. */
+.fcard > p[data-hunksum] { margin: 0; cursor: pointer; }
 .hid { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; border: 0; border-top: 1px solid var(--line); background: var(--bg); color: var(--muted); font: 11.5px var(--sans); padding: 1px 8px; text-align: left; }
 .hid:hover { color: var(--ink); }
 .hid .ic { align-self: center; }

@@ -173,30 +173,40 @@ afterEach(() => {
 });
 
 describe("hunk summary activation (issue #138)", () => {
-  test("idle: plain text with data-hunk, no card chrome mounted", async () => {
+  test("idle: plain text with data-hunk, no icons, no controls", async () => {
     seed([]);
     render(<Harness cards={new Map()} />);
     await settle();
     const wrap = fwrap();
     const p = wrap.querySelector('p[data-hunksum="f1:hash-sum-1"]');
     expect(p?.textContent).toContain("Unfolds folded header values.");
-    // Nothing mounted per hunk beyond the text: no card, no controls.
+    // Nothing mounted per hunk beyond the text: no card, no controls —
+    // and (issue #161) no icons or buttons of any kind.
     expect(wrap.querySelector("[data-expansion]")).toBeNull();
     expect(wrap.querySelector(".card")).toBeNull();
     expect(wrap.querySelector(".ctl")).toBeNull();
     expect(wrap.querySelector("textarea")).toBeNull();
+    expect(wrap.querySelector("button")).toBeNull();
+    expect(wrap.querySelector("svg")).toBeNull();
   });
 
-  test("activated: the conversation card renders in place of the text", async () => {
+  test("activated: one card at the hunk's level, no extra wrapper", async () => {
     const ann = card(true);
     seed([ann]);
     render(<Harness cards={new Map([[HASH, ann]])} />);
     await settle();
-    const wrap = fwrap();
-    expect(wrap.querySelector("[data-expansion='ann_hunk']")).not.toBeNull();
-    expect(wrap.querySelector('p[data-hunksum="f1:hash-sum-1"]')).toBeNull();
+    const section = document.querySelector("[data-expansion='ann_hunk']");
+    expect(section).not.toBeNull();
+    expect(document.querySelector('p[data-hunksum="f1:hash-sum-1"]')).toBeNull();
+    // Issue #161: the conversation card replaces the idle text directly —
+    // no `.fcard` around the card's own bordered section, no `.fwrap`
+    // container either: the card sits at the hunk's level.
+    expect(section!.closest(".fcard")).toBeNull();
+    expect(section!.closest(".fwrap")).toBeNull();
+    expect(section!.parentElement?.className).toBe("dhunk");
+    expect(section!.classList.contains("card")).toBe(true);
     // The card carries its reply box and per-answer controls.
-    expect(wrap.querySelector("textarea[aria-label='Ask a follow-up']")).not.toBeNull();
+    expect(document.querySelector("textarea[aria-label='Ask a follow-up']")).not.toBeNull();
   });
 
   test("closed: back to the idle text (clicking reopens)", async () => {
