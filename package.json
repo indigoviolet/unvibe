@@ -1,0 +1,31 @@
+{
+  "name": "unvibe",
+  "version": "0.0.5-preview.feat-169-hunk-scores-plotlines.e400768",
+  "description": "Reader for code changes: localhost service + installable web app.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "unvibe": "./packages/service/dist/index.js"
+  },
+  "dependencies": {
+    "fastify": "5.12.5",
+    "@fastify/static": "8.3.0",
+    "@fastify/websocket": "11.3.4",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "immer": "11.1.21",
+    "ws": "8.22.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "unvibe": {
+    "channel": "preview/feat-169-hunk-scores-plotlines",
+    "commit": "e4007680bdfbe379169255d3509edd02eba0630c",
+    "builtAt": "2026-10-14T10:02:37.349Z",
+    "sourceBranch": "feat/169-hunk-scores-plotlines",
+    "sourceVersion": "0.0.5",
+    "sourceCommit": "e4007680bdfbe379169255d3509edd02eba0630c",
+    "baseBranch": "main",
+    "baseCommit": "e1f159e39fb0154eb0bc9c78e5d0a53eec83028e"
+  }
+}
