@@ -257,6 +257,7 @@ async function runIngestBackground(
       pages: [],
       annotations: [],
       hunkStates: [],
+      fileStates: [],
       jobs: [],
       contributions: [],
       logTail: [],
@@ -295,6 +296,7 @@ async function runIngestBackground(
       draft.pages = [];
       draft.annotations = [];
       draft.hunkStates = [];
+      draft.fileStates = [];
       draft.jobs = [];
       draft.contributions = [];
       draft.logTail = [];
@@ -442,6 +444,7 @@ async function beginReviewFromSource(
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
     jobs: [],
     contributions: [],
     logTail: [],
@@ -646,6 +649,7 @@ export async function registerReviews(
         ],
         annotations: [],
         hunkStates: [],
+        fileStates: [],
         jobs: [],
         contributions: [],
         logTail: [],
