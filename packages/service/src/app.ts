@@ -22,9 +22,6 @@
  *   `workspace-write` mode (not `read-only`, which refuses MCP calls, and
  *   not `agent`, which skips permission prompts) with a deny-by-default
  *   handler. The pipeline never opts out.
- * - Codex MCP-refusal flake ("I can't access that tool" without
- *   attempting) is treated as retryable in the pipeline (see
- *   `pipeline/runner.ts: isMcpRefusal`).
  */
 import fs from "node:fs";
 import os from "node:os";

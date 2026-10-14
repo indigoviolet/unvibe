@@ -152,20 +152,6 @@ function attachDegradedNote(cards: { blocks: { id: string }[] }[]): void {
 }
 
 /**
- * Codex MCP-refusal flake (docs/acp-runner.md quirk 6): the model answers
- * "I can't access that tool" without attempting an MCP call. Our sessions
- * must call MCP tools, so treat it as retryable (a fresh retry usually
- * attempts the tool). Only checked on MCP-capable turns (reader, forks,
- * update); small-model hunk jobs carry no MCP servers.
- */
-const MCP_REFUSAL_RE = /can'?t access (that )?tool/i;
-function throwIfMcpRefusal(text: string): void {
-  if (MCP_REFUSAL_RE.test(text)) {
-    throw new RetryableError("codex MCP refusal flake (no tool attempt); retrying");
-  }
-}
-
-/**
  * Fence-tag language for a pinned path. No shared helper exists (pin
  * producers are the only excerpt source that derives it), so the map
  * lives with the single producer below.
@@ -447,7 +433,6 @@ export class Pipeline {
                 }
               },
             );
-            throwIfMcpRefusal(text);
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
             // Facts only (#180): the reply's wording is never judged. A
             // kept degraded answer (explicit field + usable body) skips
@@ -489,7 +474,6 @@ export class Pipeline {
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
               usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
               usage.outputTokens += repair.usage.outputTokens;
-              throwIfMcpRefusal(repair.text);
               finalText = repair.text;
               const second = this.parseAndValidate(o.reviewId, repair.text, o.echoCandidates);
               finalCards = second.cards;
@@ -828,7 +812,6 @@ export class Pipeline {
           ctx.reportText(d),
         );
         ctx.reportUsage(usage);
-        throwIfMcpRefusal(text);
         await this.recordUsage(reviewId, usage);
         // Issue #50: match the page title (an echo of the concept name).
         const { cards, data, validation } = this.parseAndValidate(reviewId, text, [
@@ -1153,7 +1136,6 @@ export class Pipeline {
       );
       onUsage?.(usage);
       await this.recordUsage(reviewId, usage);
-      throwIfMcpRefusal(text);
       const second = this.parseAndValidate(reviewId, text);
       const merged = mergeRepairedDiagrams(first.blocks, second.cards.flatMap((c) => c.blocks));
       return (await finalizeFresh(actx, merged)).blocks;
@@ -1467,7 +1449,7 @@ export class Pipeline {
             let buffer = "";
             const streamed = new Set<number>();
             const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
-            const { text, usage } = await collectStreaming(
+            const { usage } = await collectStreaming(
               this.opts.runner,
               session,
               prompt,
@@ -1498,7 +1480,6 @@ export class Pipeline {
               },
             );
             ctx.reportUsage(usage);
-            throwIfMcpRefusal(text);
             await this.recordUsage(reviewId, usage);
             // Issue #50: reader cards match their own `##` titles.
             const { cards, data, validation } = this.parseAndValidate(reviewId, buffer, []);
@@ -1545,7 +1526,6 @@ export class Pipeline {
               usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
               usage.outputTokens += repair.usage.outputTokens;
               ctx.reportUsage(repair.usage);
-              throwIfMcpRefusal(repair.text);
               await this.recordUsage(reviewId, repair.usage);
               const second = this.parseAndValidate(reviewId, repair.text, []);
               finalCards = second.cards;
@@ -1828,7 +1808,6 @@ export class Pipeline {
               ctx.reportText(d),
             );
             ctx.reportUsage(usage);
-            throwIfMcpRefusal(text);
             await this.recordUsage(reviewId, usage);
             // Issue #50: finding cards match their own `##` titles.
             const { cards, data, validation } = this.parseAndValidate(reviewId, text, []);
@@ -1959,7 +1938,6 @@ export class Pipeline {
             ctx.reportText(d),
           );
           ctx.reportUsage(usage);
-          throwIfMcpRefusal(text);
           await this.recordUsage(reviewId, usage);
           const { data } = this.parseAndValidate(reviewId, text);
           const concepts = ((data?.["concepts"] as { slug?: string; title?: string; summary?: string }[] | undefined) ?? []).filter(
@@ -2170,7 +2148,6 @@ export class Pipeline {
     ctx?.setSessionId(forked.session.id);
     const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, signal, onText);
     ctx?.reportUsage(usage);
-    throwIfMcpRefusal(text);
     await this.recordUsage(reviewId, usage);
     // Issue #50: match the placeholder label (the card's future title).
     const { cards, data, validation } = this.parseAndValidate(reviewId, text, [card.pending.label]);
@@ -2237,7 +2214,6 @@ export class Pipeline {
     void base;
     const forked = await this.forkFor(reviewId);
     const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, undefined, () => {});
-    throwIfMcpRefusal(text);
     await this.recordUsage(reviewId, usage);
     // Issue #50: match the page title (an echo of the concept name).
     const { cards, data, validation } = this.parseAndValidate(reviewId, text, [
@@ -2609,7 +2585,6 @@ export class Pipeline {
                   (d) => ctx.reportText(d),
                 );
                 ctx.reportUsage(usage);
-                throwIfMcpRefusal(text);
                 await this.recordUsage(opts.reviewId, usage);
                 resolveText(text);
                 return;
