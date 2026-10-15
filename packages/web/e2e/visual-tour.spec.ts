@@ -164,6 +164,25 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
         return `reply input clipped by its card: input=${Math.round(r.top)}-${Math.round(r.bottom)} card=${Math.round(c.top)}-${Math.round(c.bottom)}`;
       }
       if (r.left < -1 || r.right > window.innerWidth + 1) return "reply input outside viewport horizontally";
+      // The footer must sit flush at the card's bottom: sample the
+      // strip below the composer (if any) — answer content visible
+      // there means scrolled text shows past the sticky footer.
+      const composer = ta.closest(".composer");
+      if (composer) {
+        const f = composer.getBoundingClientRect();
+        for (let y = f.bottom + 2; y < c.bottom - 1; y += 4) {
+          for (let x = c.left + 16; x < c.right - 8; x += 60) {
+            const hit = document.elementFromPoint(x, y);
+            if (!hit) continue;
+            if (composer.contains(hit) || hit === card) continue;
+            // A descendant card over the strip is allowed; this
+            // card's own answer content showing there is the bug.
+            const hitCard: Element | null = hit.closest(".card.child.floating");
+            if (hitCard && hitCard !== card && card.contains(hitCard)) continue;
+            return `content below the reply footer at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} footer=${Math.round(f.bottom)} card=${Math.round(c.bottom)}`;
+          }
+        }
+      }
       const pts: [number, number][] = [
         [r.left + 6, r.top + 6],
         [r.right - 6, r.top + 6],
@@ -271,8 +290,8 @@ async function stepChecks(page: Page, step: string): Promise<void> {
 for (const combo of [
   { name: "1440-light", width: 1440, dark: false },
   { name: "1440-dark", width: 1440, dark: true },
-  { name: "900-light", width: 900, dark: false },
-  { name: "900-dark", width: 900, dark: true },
+  { name: "960-light", width: 960, dark: false },
+  { name: "960-dark", width: 960, dark: true },
 ] as const) {
   test(`visual tour (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
@@ -331,6 +350,43 @@ for (const combo of [
     await shot(page, "diff-nested", suffix, "Why is this here?");
     await diffChild.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
     await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+
+    // Top-level diff card with a LONG answer (the dedicated replay
+    // recording), scrolled to its middle and then its bottom inside
+    // the card: the gutter must not paint over it and no answer text
+    // may show below its sticky reply footer.
+    await selectText(page, "#right table.diff", "_normalize_header_values");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const longCard = page.locator(".dhunk .card.child.floating").first();
+    await expect(longCard).toBeVisible({ timeout: 15_000 });
+    await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    await expect(longCard).toContainText("The tests around the helper mirror that split");
+    // Frame the whole card in the pane (its footer included), as the
+    // reader would scrolling to it, then scroll inside the card.
+    await longCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(300);
+    await longCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    await stepChecks(page, "diff-long-mid");
+    await shot(page, "diff-long-mid", suffix);
+    await longCard.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await stepChecks(page, "diff-long-bottom");
+    await shot(page, "diff-long-bottom", suffix, "In short: read first");
+    await longCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+
+    // Same long card in split view, scrolled inside its card.
+    await page.getByRole("button", { name: "Split" }).click();
+    await selectText(page, "#right table.diff.split", "_normalize_header_values");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const splitCard = page.locator(".dhunk .card.child.floating").first();
+    await expect(splitCard).toBeVisible({ timeout: 15_000 });
+    await expect(splitCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    await splitCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(300);
+    await splitCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    await stepChecks(page, "diff-long-split");
+    await shot(page, "diff-long-split", suffix);
+    await splitCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await page.getByRole("button", { name: "Unified" }).click();
 
     // Deep-anchored card in the long socket-level hunk.
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
