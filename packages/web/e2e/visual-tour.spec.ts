@@ -23,7 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { selectText } from "./select-text.js";
+import { selectDiffRows, selectText } from "./select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 
 const exec = promisify(execFile);
@@ -596,16 +596,7 @@ for (const combo of [
     // select across three rows, Explain, close — the range stays
     // tinted with a gutter marker, and clicking it reopens the card.
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
-    const mlFrom = page.locator('[id="L-src-urllib3-connection.py-86"] td.c');
-    const mlTo = page.locator('[id="L-src-urllib3-connection.py-88"] td.c');
-    await mlFrom.scrollIntoViewIfNeeded();
-    const mlA = await mlFrom.boundingBox();
-    const mlB = await mlTo.boundingBox();
-    if (!mlA || !mlB) throw new Error("no multi-line drag boxes");
-    await page.mouse.move(mlA.x + 6, mlA.y + mlA.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(mlA.x + 6 + 120, mlB.y + mlB.height / 2, { steps: 12 });
-    await page.mouse.up();
+    await selectDiffRows(page, "src-urllib3-connection.py", 86, 88);
     await page.locator('#selbar [data-act="explain"]').click();
     const mlCard = page.locator(".dhunk .card.child.floating").first();
     await expect(mlCard).toBeVisible({ timeout: 15_000 });
@@ -615,7 +606,7 @@ for (const combo of [
     const mlMarker = page.locator("mark.anc.range[data-jump]").first();
     await expect(mlMarker).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-multiline-closed");
-    await shot(page, "diff-multiline-closed", suffix, "_normalize_header_value");
+    await shot(page, "diff-multiline-closed", suffix, "↪");
     await mlMarker.click();
     await expect(mlCard).toBeVisible({ timeout: 15_000 });
     await mlCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});

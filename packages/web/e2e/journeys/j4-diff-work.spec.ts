@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { selectDiffRows } from "../select-text.js";
 import { apiJson, createDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -90,17 +91,7 @@ test.describe("J4 diff work", () => {
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 10_000 }).catch(() => {});
 
     const dragSelect = async (fromLine: number, toLine: number): Promise<void> => {
-      const from = page.locator(`[id="L-${CONN}-${fromLine}"] td.c`);
-      const to = page.locator(`[id="L-${CONN}-${toLine}"] td.c`);
-      await from.scrollIntoViewIfNeeded();
-      const a = await from.boundingBox();
-      const b = await to.boundingBox();
-      if (!a || !b) throw new Error("no drag boxes");
-      await page.mouse.move(a.x + 6, a.y + a.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(b.x + Math.min(120, b.width - 6), b.y + b.height / 2, { steps: 12 });
-      await page.mouse.up();
-      await expect(page.locator("#selbar")).toBeVisible({ timeout: 10_000 });
+      await selectDiffRows(page, CONN, fromLine, toLine);
     };
     const explainAndClose = async (): Promise<void> => {
       await page.locator('#selbar [data-act="explain"]').click();
@@ -122,12 +113,13 @@ test.describe("J4 diff work", () => {
     await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
     await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click();
 
-    // Across a hunk boundary (last row of hunk 1 to first row of hunk 2).
-    await dragSelect(108, 650);
+    // Across a hunk boundary (last row of hunk 1 to an early row of
+    // hunk 2; short lines, so the quote stays under the toolbar's cap).
+    await dragSelect(113, 648);
     await explainAndClose();
     const boundaryMarker = page.locator("mark.anc.range[data-jump]").last();
     await expect(boundaryMarker).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator(`[id="L-${CONN}-650"]`)).toHaveClass(/rng/);
+    await expect(page.locator(`[id="L-${CONN}-648"]`)).toHaveClass(/rng/);
     await boundaryMarker.click();
     await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
   });

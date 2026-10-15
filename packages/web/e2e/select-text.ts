@@ -19,6 +19,60 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+/**
+ * Select diff code from the first text of row `fromLine`'s code cell to
+ * the last text of row `toLine`'s code cell (issue #189: multi-line and
+ * cross-hunk selections), then wait for `#selbar` like `selectText`.
+ * A real mouse drag over far-apart rows is not reliable headless, so
+ * this builds the same Range a drag would and fires the same mouseup.
+ */
+export async function selectDiffRows(page: Page, fileKey: string, fromLine: number, toLine: number): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const found = await page.evaluate(
+          ({ fileKey, fromLine, toLine }) => {
+            const startCell = document.querySelector(`[id="L-${fileKey}-${fromLine}"] td.c`);
+            const endCell = document.querySelector(`[id="L-${fileKey}-${toLine}"] td.c`);
+            if (!startCell || !endCell) return false;
+            startCell.scrollIntoView({ block: "center" });
+            const edgeText = (root: Element, last: boolean): Text | null => {
+              const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+              let found: Text | null = null;
+              for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                if ((node as Text).data.trim() === "") continue;
+                found = node as Text;
+                if (!last) break;
+              }
+              return found;
+            };
+            const s = edgeText(startCell, false);
+            const e = edgeText(endCell, true);
+            if (!s || !e) return false;
+            const range = document.createRange();
+            try {
+              range.setStart(s, 0);
+              range.setEnd(e, e.data.length);
+            } catch {
+              return false;
+            }
+            const sel = getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+            endCell.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+            return true;
+          },
+          { fileKey, fromLine, toLine },
+        );
+        if (!found) return "not-found";
+        await page.waitForTimeout(150);
+        return (await page.locator("#selbar").isVisible()) ? "shown" : "hidden-again";
+      },
+      { timeout: 15000 },
+    )
+    .toBe("shown");
+}
+
 export async function selectText(
   page: Page,
   rootSelector: string,
