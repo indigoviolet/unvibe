@@ -505,6 +505,17 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
    itself sits above the code rows and the line-number gutter (1), so a
    card overlapping the gutter paints over the numbers, not under them. */
 .dhunk .card.child.floating { z-index: 2; }
+/* A floating card is capped in height and scrolls inside, so without
+   this its reply box can end up cut in half at the bottom edge. Keep
+   the composer stuck to the card's bottom (opaque, above the scrolled
+   answers) so it is always fully visible and usable. */
+.card.child.floating .composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding-bottom: 4px;
+}
 .card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
 .card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
 .card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }
