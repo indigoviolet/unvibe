@@ -448,6 +448,24 @@ async function checkGutters(page: Page, step: string): Promise<void> {
       if (r.width === 0 || r.height === 0) continue;
       if (r.bottom <= pv.top || r.top >= pv.bottom) continue;
       const row = cell.closest("tr")?.id ?? "(no id)";
+      // Opacity, not just position: `elementFromPoint` cannot see a
+      // translucent cell, so assert the computed style directly —
+      // a sticky gutter cell (its background and the cell as a whole)
+      // must be fully opaque, or code shows through it while the
+      // hunk is scrolled sideways.
+      const cs = getComputedStyle(cell);
+      const bgInner = cs.backgroundColor.match(/(?:rgba?|color)\(([^)]+)\)/)?.[1] ?? "";
+      let bgAlpha = 1;
+      if (bgInner.includes("/")) {
+        const a = (bgInner.split("/").pop() ?? "1").trim();
+        bgAlpha = a.endsWith("%") ? Number.parseFloat(a) / 100 : Number.parseFloat(a);
+      } else if (bgInner.includes(",")) {
+        bgAlpha = Number.parseFloat(bgInner.split(",").pop() ?? "1");
+      }
+      if (cs.backgroundColor === "transparent" || bgAlpha < 1) {
+        return `line-number cell background not opaque: ${cs.backgroundColor} row=${row}`;
+      }
+      if (Number.parseFloat(cs.opacity) < 1) return `line-number cell translucent: opacity=${cs.opacity} row=${row}`;
       if (r.left < pv.left - 1 || r.right > pv.right + 1) {
         return `line-number cell outside the pane: left=${Math.round(r.left)} right=${Math.round(r.right)} pane=${Math.round(pv.left)}-${Math.round(pv.right)} row=${row}`;
       }
