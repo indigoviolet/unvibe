@@ -514,8 +514,14 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
   bottom: 0;
   z-index: 1;
   background: var(--surface);
-  padding-bottom: 4px;
+  padding-bottom: 10px;
 }
+/* With the card's own bottom padding in place, the sticky footer
+   sticks to the content-box bottom and scrolled answer text shows
+   in the padding strip below it. Drop that padding on floating
+   cards with a composer; the composer's own padding (above) takes
+   its place, flush with the card's bottom border. */
+.card.child.floating:has(> .composer) { padding-bottom: 0; }
 /* A nested child card floats fully above its parent — including the
    parent's sticky reply footer above, which would otherwise paint
    across the child's body and header (same z-index, later in DOM).
