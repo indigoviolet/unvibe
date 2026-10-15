@@ -4,7 +4,8 @@ Changelog entry for the fix. [[diff:log:1-3]]
 {
   "hunk": {
     "summary": "Changelog entry for the fix.",
-    "hiddenReason": "docs / config"
+    "hiddenReason": "docs / config",
+    "score": "routine"
   }
 }
 ```

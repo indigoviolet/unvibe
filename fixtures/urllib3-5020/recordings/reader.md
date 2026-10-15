@@ -68,6 +68,10 @@ Two properties are enforced together: a semantic one (no CR or LF in values) and
     {"id": "g-regex", "label": "The pattern: why the lookbehind matters", "why": "What each part of the regex matches, and the backtracking it avoids."},
     {"id": "g-check", "label": "Review checklist", "why": "Concrete things to verify, each linked to the line that answers it."}
   ],
+  "plotlines": [
+    {"id": "unfold", "name": "Unfold folded values", "description": "Normalize obsolete folds before reading headers.", "hunks": ["h:src-urllib3-connection.py:fa60105d7fcbe8fe", "h:src-urllib3-connection.py:b355d2096d4d7f39"]},
+    {"id": "unfold-tests", "name": "Prove the unfolding works", "description": "Unit and socket-level coverage for the new behaviour.", "buildsOn": "unfold", "hunks": ["h:test-test_connection.py:6cfb09ec98cba6ba", "h:test-test_connection.py:92cf4ca541bdb0f2", "h:test-test_connection.py:b33779988cee5f8a", "h:test-with_dummyserver-test_socketlevel.py:949dda852e448b55"]}
+  ],
   "cardIds": ["problem", "central"]
 }
 ```

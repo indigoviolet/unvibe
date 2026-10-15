@@ -27,6 +27,8 @@ export interface RunningService {
   /** Path of the tee'd service log (kept under test-results/ for CI upload). */
   logFile: string;
   stop: () => Promise<void>;
+  /** SIGKILL the child (restart journeys, #188 J6). */
+  killHard: () => void;
 }
 
 export interface StartServiceOptions {
@@ -104,6 +106,7 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
     origin,
     token,
     logFile,
+    killHard: () => proc.kill("SIGKILL"),
     stop: () =>
       new Promise<void>((resolve) => {
         log(`--- stop at ${new Date().toISOString()} ---\n`);

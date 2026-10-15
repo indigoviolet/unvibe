@@ -4,7 +4,8 @@ Imports `HTTPMessage` for the new unit test. [[diff:tconn:5]]
 {
   "hunk": {
     "summary": "Imports `HTTPMessage` for the new unit test.",
-    "hiddenReason": "imports"
+    "hiddenReason": "imports",
+    "score": "mechanical"
   }
 }
 ```

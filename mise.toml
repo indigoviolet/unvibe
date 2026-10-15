@@ -69,6 +69,11 @@ description = "Playwright behaviour tests against mock mode (needs browsers: mis
 depends = ["build"]
 run = "npm run test:e2e --workspace @unvibe/web --if-present"
 
+[tasks.journeys]
+description = "Real-service journeys J1-J7 plus the visual tour (#188): one spec per journey against the built service"
+depends = ["build"]
+run = "npx --workspace @unvibe/web playwright test e2e/journeys/ e2e/visual-tour.spec.ts"
+
 [tasks."visual-tour"]
 description = "Visual tour against the real built service (demo + replay agent, browser): screenshots in packages/web/visual-tour/ (owner reviews every one)"
 depends = ["build"]

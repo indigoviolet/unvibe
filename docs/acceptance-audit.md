@@ -1560,7 +1560,13 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 3. Suggested-comment links are app-built `comment-link` blocks, not
    agent-written inline text — `docs/reply-format.md` §7b.
 4. `UNVIBE_AGENT` (`replay`/`none`/ACP) runner selection — test/demo seam
-   with no PRD counterpart; production default is ACP.
+   with no PRD counterpart; production default is ACP. Since #188 the real
+   fall-through (unset or mistyped value, or direct `AcpAgentRunner`
+   construction with no fake transport) throws unless
+   `UNVIBE_ALLOW_LIVE_AGENT=1`, which only `serve()` and the
+   `test:live:*` tasks set; the readiness route never calls the factory.
+   Real-service journeys J1–J7 live in `packages/web/e2e/journeys/` under
+   `mise run journeys` (with the visual tour, J8).
 5. Queued jobs come back *interrupted* after restart, not orphaned
    (this branch): nothing rebinds runs, and orphans blocked resume via
    dedupe. Retry paths are `resumeReview` + action rebuilds.
