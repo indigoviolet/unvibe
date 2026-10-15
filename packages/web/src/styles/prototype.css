@@ -326,16 +326,27 @@ table.diff.split col.cn { width: 3.6em; }
 table.diff.split td.c { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* The line-number gutter (issue #140): above the code rows in the diff
    layer order (see the stacking context on `#right.col`), below floating
-   cards — a card overlapping the gutter paints over the numbers. */
-table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select: none; opacity: .75; position: relative; z-index: 1; }
+   cards — a card overlapping the gutter paints over the numbers. The
+   gutter sticks to the left edge of its hunk's sideways scroller
+   (`.dwrap`), so a hunk scrolled sideways keeps its numbers — and the
+   reopen marker (#189) that lives in the first gutter cell. Sticky
+   cells need their own opaque background, or code slides visibly
+   underneath them; add/del row tints below still win for their rows. */
+table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select: none; opacity: .75; position: sticky; z-index: 1; background: var(--surface); }
 /* Per-hunk tables share their file's line-number width (issue #140:
    `--lnw`, digit count, on `.dfile`), so code columns start at the same x
    in every hunk instead of sizing per hunk. Old-side numbers never carry
    the comment icon (padding only); new-side numbers reserve its slot too,
-   matching the old single-table sizing. Unified only: split tables are
-   fixed-layout with identical colgroups already. */
-table.diff:not(.split) td.n { min-width: calc(var(--lnw, 4ch) + 16px); }
-table.diff:not(.split) td.n.new { min-width: calc(var(--lnw, 4ch) + 30px); }
+   matching the old single-table sizing. The unified widths are exact
+   (border-box) so the second column's sticky offset is exact too.
+   Split tables are fixed-layout with identical colgroups already;
+   their old gutter sticks at the edge and the new-side gutter sticks
+   beside it if the table ever scrolls sideways. */
+table.diff:not(.split) td.n { box-sizing: border-box; width: calc(var(--lnw, 4ch) + 16px); left: 0; }
+table.diff:not(.split) td.n:nth-child(2) { left: calc(var(--lnw, 4ch) + 16px); }
+table.diff:not(.split) td.n.new { width: calc(var(--lnw, 4ch) + 30px); }
+table.diff.split td.n:first-child { left: 0; }
+table.diff.split td.n:nth-child(3) { left: 3.6em; }
 table.diff td.n.new { cursor: pointer; }
 table.diff td.n.new:hover { color: var(--note); opacity: 1; text-decoration: underline; }
 table.diff td.n.hc { color: var(--note); opacity: 1; }
@@ -628,6 +639,9 @@ mark.anc.on { outline: 2px solid var(--note); }
    first row that reopens the closed card (the marker is a mark.anc,
    so the existing click-to-reopen handler owns it). */
 #right tr.rng td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+/* Sticky gutter cells composite the range tint over the pane surface
+   instead: a translucent cell would let scrolled code show through. */
+#right tr.rng td.n { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 #right tr.rng td.n:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 mark.anc.range { background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 0 3px; margin-right: 3px; font-size: 10px; line-height: 1.4; cursor: pointer; text-decoration: none; }
 mark.anc.range.closed { background: none; border: 1px solid var(--accent); }
