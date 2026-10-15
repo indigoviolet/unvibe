@@ -21,7 +21,7 @@
  *   untouched.
  */
 import type { Annotation, Page, Turn } from "@unvibe/shared";
-import { Fragment, type KeyboardEvent } from "react";
+import { Fragment, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { GuideBlockThreads } from "../../comments/GuideThreads.js";
 import { ReplyBox } from "../../comments/ReplyBox.js";
 import { Icon } from "../../components/Icon.js";
@@ -360,6 +360,34 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
   const floating = useFloatingCard(expansion);
+  // A card opened from inside a floating card (#186) is clipped by its
+  // parent's own scrolling box, so the diff rows paint where its lower
+  // half should be. When nested inside another floating card, the card
+  // is taken out of that clip with fixed positioning synced to its
+  // zero-height placeholder: it stays next to its anchor inside the
+  // parent, paints above the diff (it stays in the parent's stacking
+  // context), and follows the parent on any scroll.
+  const floatWrapRef = useRef<HTMLDivElement>(null);
+  const [nestedPos, setNestedPos] = useState<CSSProperties | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!floating) return;
+    const el = floatWrapRef.current;
+    if (!el || !el.parentElement?.closest(".card.child.floating")) return;
+    const measure = (): void => {
+      const r = el.getBoundingClientRect();
+      setNestedPos((prev) => {
+        const next: CSSProperties = { position: "fixed", top: r.top, left: r.left, width: r.width, right: "auto" };
+        return prev && prev.top === next.top && prev.left === next.left && prev.width === next.width ? prev : next;
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    document.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("scroll", measure, true);
+    };
+  });
   const jobs = snapshot?.jobs ?? [];
   const turns = conversationTurns(expansion);
   if (expansion.type !== "conversation") return null;
@@ -433,6 +461,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         className={`card child collapsed${floating ? " floating" : ""}`}
         id={`B-${expansion.id}`}
         data-expansion={expansion.id}
+        style={nestedPos}
         {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
       >
         <div className="exp-h">
@@ -452,7 +481,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     // proximity) while the card overlays the content below it and scrolls
     // with the page. Pinned cards render exactly as today.
     return floating ? (
-      <div className="exp-float" data-float={expansion.id}>
+      <div className="exp-float" data-float={expansion.id} ref={floatWrapRef}>
         {section}
       </div>
     ) : (
@@ -466,6 +495,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       className={`card child${cardBusy?.rewriting ? " rewriting" : ""}${floating ? " floating" : ""}`}
       id={`B-${expansion.id}`}
       data-expansion={expansion.id}
+      style={nestedPos}
       aria-busy={cardBusy ? true : undefined}
       {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
     >
@@ -509,7 +539,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     </section>
   );
   return floating ? (
-    <div className="exp-float" data-float={expansion.id}>
+    <div className="exp-float" data-float={expansion.id} ref={floatWrapRef}>
       {section}
     </div>
   ) : (

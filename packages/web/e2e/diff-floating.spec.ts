@@ -88,39 +88,77 @@ test("selecting inside a floating card in the diff opens a floating child above 
   await expect(parent).toHaveClass(/floating/);
 });
 
-test("floating card paints above the line-number gutter", async ({ page }) => {
+/**
+ * Stacking, sampled properly: every 40px across the card's whole
+ * visible box, `elementFromPoint` must land inside the card — never on
+ * a gutter cell (either column), a code row or a slot row. Points
+ * covered by a pinned header or the actions bar are the one allowed
+ * exception (they slide over cards by design). This replaces the old
+ * one-point gutter check, which only sampled the first gutter cell
+ * under a top-level unified card and missed nested cards entirely.
+ */
+async function expectCardOnTop(page: Page, card: import("@playwright/test").Locator, label: string): Promise<void> {
+  const handle = await card.elementHandle();
+  if (!handle) throw new Error(`no card for ${label}`);
+  const bad = await handle.evaluate((cardEl: Element) => {
+    const r = cardEl.getBoundingClientRect();
+    const x0 = Math.max(r.left, 0);
+    const x1 = Math.min(r.right, window.innerWidth);
+    const y0 = Math.max(r.top, 0);
+    const y1 = Math.min(r.bottom, window.innerHeight);
+    const out: string[] = [];
+    for (let y = y0 + 8; y < y1; y += 40) {
+      for (let x = x0 + 8; x < x1; x += 40) {
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || cardEl.contains(hit)) continue;
+        if (hit.closest(".dfile-h, .dhunk-h, .dtool")) continue;
+        out.push(
+          `${Math.round(x)},${Math.round(y)} -> ${hit.tagName.toLowerCase()}.${(hit as HTMLElement).className.toString().slice(0, 40)}`,
+        );
+      }
+    }
+    return out.slice(0, 12);
+  });
+  expect(bad, `${label}: ${bad.join(" | ")}`).toEqual([]);
+}
+
+async function openExplainCard(page: Page): Promise<void> {
+  await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+  await page.locator('#selbar [data-act="explain"]').click();
+  await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 8000 });
+}
+
+for (const mode of ["unified", "split"] as const) {
+  test(`no gutter or row paints over a floating card (${mode}, top-level)`, async ({ page }) => {
+    await gotoDiff(page);
+    if (mode === "split") await page.getByRole("button", { name: "Split" }).click();
+    await openExplainCard(page);
+    await expectCardOnTop(page, page.locator(".dhunk .card.child.floating").first(), `${mode} top-level`);
+  });
+
+  test(`no gutter or row paints over a card opened inside a floating card (${mode}, nested)`, async ({ page }) => {
+    await gotoDiff(page);
+    if (mode === "split") await page.getByRole("button", { name: "Split" }).click();
+    await openExplainCard(page);
+    await selectText(page, ".dhunk .card.child.floating [data-answer]", "Mock explanation");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const composer = page.locator(".dhunk .ithread[data-pending-thread]");
+    await composer.locator("textarea").fill("Why is this here?");
+    await composer.getByRole("button", { name: "Ask" }).click();
+    const child = page.locator(".dhunk [data-expansion]", { hasText: "Why is this here?" }).last();
+    await expect(child).toContainText("Mock explanation", { timeout: 8000 });
+    await expectCardOnTop(page, child, `${mode} nested`);
+  });
+}
+
+test("no gutter or row paints over a deep-anchored card (split, narrow)", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
   await gotoDiff(page);
-  // An anchor with plain code rows below it (the regex anchor further up
-  // has a comment slot row below it, which has no gutter cell to cover).
-  await selectText(page, "#right table.diff", "headers_changed = True");
+  await page.getByRole("button", { name: "Split" }).click();
+  const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
+  await selectText(page, scope, 'msg["fold-mixed-repeated"]');
   await page.locator('#selbar [data-act="explain"]').click();
   const card = page.locator(".dhunk .card.child.floating").first();
   await expect(card).toBeVisible({ timeout: 8000 });
-  await card.scrollIntoViewIfNeeded();
-
-  // A point inside the card that lies over the gutter column of a row
-  // below the anchor: the topmost element there must be the card, not a
-  // line number.
-  const hit = await page.evaluate(() => {
-    const cardEl = document.querySelector(".dhunk .card.child.floating");
-    if (!cardEl) return { ok: false, why: "no floating card" };
-    const cr = cardEl.getBoundingClientRect();
-    for (const n of document.querySelectorAll("table.diff td.n")) {
-      const r = n.getBoundingClientRect();
-      const x = r.left + r.width / 2;
-      const y = r.top + r.height / 2;
-      const inViewport = x >= 0 && x < window.innerWidth && y >= 0 && y < window.innerHeight;
-      if (inViewport && x >= cr.left && x <= cr.right && y >= cr.top && y <= cr.bottom) {
-        const el = document.elementFromPoint(x, y);
-        return {
-          ok: !!el && (el === cardEl || cardEl.contains(el)),
-          why: el ? `${el.tagName}.${el.className}` : "nothing",
-          x,
-          y,
-        };
-      }
-    }
-    return { ok: false, why: "no gutter cell under the card" };
-  });
-  expect(hit.ok, `elementFromPoint over the gutter returned ${hit.why}`).toBe(true);
+  await expectCardOnTop(page, card, "deep split narrow");
 });
