@@ -511,17 +511,20 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
    itself sits above the code rows and the line-number gutter (1), so a
    card overlapping the gutter paints over the numbers, not under them. */
 .dhunk .card.child.floating { z-index: 5; }
-/* The pinned band's opaque backing: a sticky strip exactly the file
-   slot + hunk slot tall, sitting above floating cards (5) and below
-   the marked headers (7/8). During a file hand-off there are scroll
-   offsets where no header physically covers a strip of the band;
-   without this, card text shows through those strips. It takes no
-   flow space (negative margin) and sticks at the file slot's top. */
+/* The pinned band's opaque backing: one sticky strip from the
+   pane's top edge to the hunk slot's bottom, sitting above floating
+   cards (5) and below the tab strip (10), the actions bar (9) and
+   the marked headers (7/8), which paint over its top parts. The
+   whole top stack — tab strip, actions bar, band — is then one
+   opaque, gapless block: at any scroll offset, including mid
+   hand-off between files where no header physically covers a strip,
+   no seam between the sticky layers can show card text. It takes
+   no flow space (negative margin). */
 .dband {
   position: sticky;
-  top: var(--dfile-top, 83px);
-  height: calc(var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px));
-  margin-bottom: calc(-1 * (var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px)));
+  top: 0;
+  height: calc(var(--dhunk-top, 117px) + var(--dhunk-h, 31px));
+  margin-bottom: calc(-1 * (var(--dhunk-top, 117px) + var(--dhunk-h, 31px)));
   z-index: 6;
   background: var(--surface);
 }
