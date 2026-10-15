@@ -278,6 +278,69 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
   }
 }
 
+/**
+ * Generic check (diff scenes): when diff rows are visible at the top
+ * of the pane, the pinned slot must be occupied — the file header of
+ * the file owning the first visible row, and that row's hunk header,
+ * stuck at their sticky offsets and topmost there (a floating card
+ * covering the stuck slot fails; pinned headers slide over cards).
+ */
+async function checkPinnedSlots(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const pv = pane.getBoundingClientRect();
+    const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
+    const strip = hh(".rstick");
+    const bar = hh(".dtool");
+    const fileSlot = pv.top + strip + bar;
+    const hunkSlot = fileSlot + hh(".dfile-h");
+    const slotBottom = hunkSlot + hh(".dhunk-h");
+    // First visible diff row below the actions bar: painted, not
+    // merely laid out — a row hidden under a floating card does not
+    // count, the first row the reader can actually see does.
+    let firstRow: Element | null = null;
+    let firstTop = Infinity;
+    pane.querySelectorAll(".dfile table.diff tr").forEach((tr) => {
+      const r = tr.getBoundingClientRect();
+      if (r.bottom <= pv.top + strip + bar || r.top >= pv.bottom || r.top >= firstTop) return;
+      const x = Math.min(Math.max(pv.left + pv.width / 2, r.left + 20), r.right - 20);
+      const y = Math.min(Math.max((r.top + r.bottom) / 2, pv.top + strip + bar + 2), pv.bottom - 2);
+      const hit = document.elementFromPoint(x, y);
+      if (hit && tr.contains(hit)) {
+        firstTop = r.top;
+        firstRow = tr;
+      }
+    });
+    if (!firstRow) return null;
+    // Rows only reach the slot area once the pane has scrolled into
+    // the file; before that the headers sit in place above the rows.
+    const dfile = (firstRow as Element).closest(".dfile");
+    const dhunk = (firstRow as Element).closest(".dhunk");
+    const fh = dfile?.querySelector(".dfile-h");
+    const kh = dhunk?.querySelector(".dhunk-h");
+    if (!fh || !kh) return "first visible row has no file/hunk header";
+    const fr = fh.getBoundingClientRect();
+    const kr = kh.getBoundingClientRect();
+    // Only once a header has scrolled up to its slot band must the
+    // slot be occupied and topmost; a header still in place further
+    // down (its hunk's tail visible under a card) is not there yet.
+    if (fr.top > fileSlot + fr.height || kr.top > hunkSlot + kr.height) return null;
+    if (Math.abs(fr.top - fileSlot) > fr.height) return `file header not in its slot: top=${Math.round(fr.top)} slot=${Math.round(fileSlot)}`;
+    if (Math.abs(kr.top - hunkSlot) > kr.height) return `hunk header not in its slot: top=${Math.round(kr.top)} slot=${Math.round(hunkSlot)}`;
+    for (const [el, r, what] of [[fh, fr, "file"], [kh, kr, "hunk"]] as const) {
+      const x = Math.min(Math.max(pv.left + pv.width / 2, r.left + 20), r.right - 20);
+      const y = r.top + r.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || !el.contains(hit)) {
+        return `${what} header not topmost in its slot at ${Math.round(x)},${Math.round(y)}: ${hit ? hit.tagName + "." + (hit as HTMLElement).className.toString().slice(0, 40) : "nothing"}`;
+      }
+    }
+    return null;
+  });
+  expect(bad, `${step}: pinned slot ${bad ?? ""}`).toBeNull();
+}
+
 async function shot(page: Page, name: string, suffix: string, expectedText?: string): Promise<void> {
   // Never screenshot an empty or still-loading scene: each scene
   // names one piece of real content that must be visible first.
@@ -303,6 +366,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
     await page.waitForTimeout(300);
   }
   await checkNoPageOverflow(page, step);
+  await checkPinnedSlots(page, step);
   await checkCards(page, step);
   await checkCardHeaders(page, step);
   await checkReplyBoxes(page, step);
