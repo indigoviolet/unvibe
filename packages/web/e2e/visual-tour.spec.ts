@@ -130,9 +130,12 @@ async function checkCards(page: Page, step: string): Promise<void> {
         for (const x of xs) {
           const hit = document.elementFromPoint(x, y);
           if (!hit || cardEl.contains(hit)) continue;
-          // Another floating card over this one is by design (a child
-          // floats above its parent).
-          if (hit.closest(".card.child.floating")) continue;
+          // The only allowed cover is a DESCENDANT card floating over
+          // its ancestor (a child above its parent). An ancestor — or
+          // any part of it, such as its sticky reply footer — covering
+          // a descendant, or an unrelated card covering this one, fails.
+          const hitCard = hit.closest(".card.child.floating");
+          if (hitCard && cardEl.contains(hitCard)) continue;
           if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick")) continue;
           return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} rect=${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}`;
         }
@@ -173,12 +176,55 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
         const hit = document.elementFromPoint(x, y);
         if (!hit) return `nothing at reply input ${Math.round(x)},${Math.round(y)}`;
         if (ta.contains(hit) || (ta as HTMLElement).parentElement?.contains(hit)) continue;
-        if (hit.closest(".card.child.floating")) continue;
+        // Only a descendant card may cover this card's reply input;
+        // an ancestor's footer (or anything else) over it fails.
+        const hitCard = hit.closest(".card.child.floating");
+        if (hitCard && card.contains(hitCard)) continue;
         return `reply input not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
       }
       return null;
     });
     expect(bad, `${step}: reply box ${i} ${bad ?? ""}`).toBeNull();
+  }
+}
+
+/**
+ * Generic check: every open card's header row (its quote and its
+ * Close button) is visible and topmost — sampled at the header's
+ * left, centre and right and at the Close button's centre. The only
+ * allowed cover is a descendant card, as in the grid check.
+ */
+async function checkCardHeaders(page: Page, step: string): Promise<void> {
+  const cards = page.locator(".card.child.floating:visible");
+  for (let i = 0; i < (await cards.count()); i++) {
+    const bad = await cards.nth(i).evaluate((cardEl: Element) => {
+      const header = cardEl.querySelector(":scope > .exp-h");
+      if (!header) return null;
+      const h = header.getBoundingClientRect();
+      if (h.bottom < 0 || h.top > window.innerHeight) return null;
+      const pts: [number, number][] = [
+        [h.left + 12, h.top + h.height / 2],
+        [h.left + h.width / 2, h.top + h.height / 2],
+        [h.right - 12, h.top + h.height / 2],
+      ];
+      const close = header.querySelector('button[aria-label="Close"]');
+      if (close) {
+        const b = close.getBoundingClientRect();
+        pts.push([b.left + b.width / 2, b.top + b.height / 2]);
+      }
+      for (const [x, y] of pts) {
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+        const hit = document.elementFromPoint(x, y);
+        if (!hit) return `nothing at header ${Math.round(x)},${Math.round(y)}`;
+        if (cardEl.contains(hit)) {
+          const hitCard = hit.closest(".card.child.floating");
+          if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
+        }
+        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id}`;
+      }
+      return null;
+    });
+    expect(bad, `${step}: card header ${i} ${bad ?? ""}`).toBeNull();
   }
 }
 
@@ -208,6 +254,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   }
   await checkNoPageOverflow(page, step);
   await checkCards(page, step);
+  await checkCardHeaders(page, step);
   await checkReplyBoxes(page, step);
   await checkMenus(page, step);
 }
