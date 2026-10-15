@@ -52,27 +52,38 @@ test.skip("fold and unfold a hunk", async ({ page }) => {
 test("reviewed progress fills the toolbar bottom border; counts only in its label", async ({ page }) => {
   const bar = page.getByRole("progressbar");
   await expect(bar).toHaveAttribute("aria-label", "1 of 8 hunks reviewed");
-  const frac = await bar.evaluate((el) => {
-    const fill = el.querySelector("i")!;
-    return { fill: fill.getBoundingClientRect().width, bar: el.getBoundingClientRect().width, tip: el.getAttribute("data-tip") };
-  });
-  expect(Math.abs(frac.fill / frac.bar - 1 / 8)).toBeLessThan(0.02);
-  expect(frac.tip).toBe("1 of 8 hunks reviewed");
+  // Poll: the fill has a short width transition.
+  await expect
+    .poll(async () =>
+      bar.evaluate((el) => {
+        const fill = el.querySelector("i")!;
+        return fill.getBoundingClientRect().width / el.getBoundingClientRect().width;
+      }),
+    )
+    .toBeCloseTo(1 / 8, 1);
+  expect(await bar.getAttribute("data-tip")).toBe("1 of 8 hunks reviewed");
   // No text line for the counts anywhere.
   await expect(page.getByText(/\d+\/8 hunks reviewed/)).toHaveCount(0);
   await page.locator(connFile).getByRole("checkbox", { name: "Mark reviewed" }).first().click();
   await expect(bar).toHaveAttribute("aria-label", "2 of 8 hunks reviewed");
-  const frac2 = await bar.evaluate((el) => {
-    const fill = el.querySelector("i")!;
-    return fill.getBoundingClientRect().width / el.getBoundingClientRect().width;
-  });
-  expect(Math.abs(frac2 - 2 / 8)).toBeLessThan(0.02);
+  await expect
+    .poll(async () =>
+      bar.evaluate((el) => {
+        const fill = el.querySelector("i")!;
+        return fill.getBoundingClientRect().width / el.getBoundingClientRect().width;
+      }),
+    )
+    .toBeCloseTo(2 / 8, 1);
 });
 
 test("the toolbar stays on one row at a narrow pane width", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 });
   const rows = await page.locator(".dtool").evaluate((el) => {
-    const tops = new Set([...el.children].map((c) => Math.round((c as HTMLElement).getBoundingClientRect().top)));
+    const tops = new Set(
+      [...el.children]
+        .filter((c) => !c.classList.contains("rprog"))
+        .map((c) => { const r = (c as HTMLElement).getBoundingClientRect(); return Math.round(r.top + r.height / 2); }),
+    );
     return { tops: tops.size, height: el.getBoundingClientRect().height };
   });
   expect(rows.tops).toBe(1);
