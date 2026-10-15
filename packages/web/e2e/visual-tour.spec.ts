@@ -384,6 +384,48 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
         }
       }
     }
+    // Coverage test: the union of the opaque top-stack layers (tab
+    // strip, actions bar, band backing) must cover the whole stack
+    // interval with no sub-interval left open. A card behind an open
+    // sub-interval shows through it as a sliver of text, even when
+    // the gap is sub-pixel and hit sampling lands on a layer edge.
+    const cover = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dband")]
+      .filter((el): el is Element => !!el)
+      .map((el) => el.getBoundingClientRect())
+      .sort((a, b) => a.top - b.top);
+    const cards = [...pane.querySelectorAll(".card.child.floating")].map((c) => c.getBoundingClientRect());
+    let coveredTo = bandTop;
+    for (const r of cover) {
+      if (r.top > coveredTo + 0.2) {
+        const hit = cards.find((c) => c.bottom > coveredTo && c.top < r.top);
+        if (hit) return `uncovered seam in top stack at y=${Math.round(coveredTo)}-${Math.round(r.top)} with a card behind it`;
+      }
+      coveredTo = Math.max(coveredTo, r.bottom);
+      if (coveredTo >= bandBottom) break;
+    }
+    if (coveredTo < bandBottom - 0.2) {
+      const hit = cards.find((c) => c.bottom > coveredTo && c.top < bandBottom);
+      if (hit) return `uncovered top-stack bottom at y=${Math.round(coveredTo)}-${Math.round(bandBottom)} with a card behind it`;
+    }
+    // Seam test: any positive gap between consecutive top-stack
+    // layers (tab strip, actions bar, band backing) whose midpoint
+    // lands in a card fails — a text line aligned with a sub-pixel
+    // seam shows exactly that sliver, and 2px sampling can miss it.
+    const layers = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dband")]
+      .filter((el): el is Element => !!el)
+      .map((el) => el.getBoundingClientRect())
+      .sort((a, b) => a.top - b.top);
+    for (let i = 0; i + 1 < layers.length; i++) {
+      const gap = layers[i + 1].top - layers[i].bottom;
+      if (gap <= 0.2) continue;
+      const y = (layers[i].bottom + layers[i + 1].top) / 2;
+      for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && hit.closest(".card.child.floating")) {
+          return `card in top-stack seam at ${Math.round(x)},${y.toFixed(1)}: gap=${gap.toFixed(1)}px ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
+        }
+      }
+    }
     return null;
   });
   expect(bad, `${step}: pinned band ${bad ?? ""}`).toBeNull();
