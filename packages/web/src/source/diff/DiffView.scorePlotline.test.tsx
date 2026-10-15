@@ -51,15 +51,16 @@ describe("DiffView scores and plotlines", () => {
     expect(tag?.getAttribute("data-tip")).toBe("Show only Unfold folded values");
   });
 
-  it("shows file dots and the score legend in the Files list", async () => {
+  it("keeps score dots and the legend out of the Files list (#184)", async () => {
     await renderDiff();
     await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
-    expect(document.querySelectorAll(".flist .score-dot").length).toBeGreaterThan(0);
-    const legend = document.querySelector(".legend");
-    expect(legend).not.toBeNull();
-    for (const label of ["Mechanical", "Routine", "Substantive", "Needs attention"]) {
-      expect(legend?.textContent).toContain(label);
-    }
+    expect(document.querySelectorAll(".flist .score-dot")).toHaveLength(0);
+    expect(document.querySelector(".legend")).toBeNull();
+    expect(document.querySelector(".prog")).toBeNull();
+    // The level lives on the hunk dot's own tooltip instead.
+    const dot = document.querySelector('.dhunk-h [data-scorepick="substantive"]');
+    expect(dot?.getAttribute("data-tip")).toBe("Show only substantive hunks");
+
   });
 
   it("filters by plotline from a header chip and remembers it with the review", async () => {
@@ -78,21 +79,10 @@ describe("DiffView scores and plotlines", () => {
     expect(document.querySelector('[data-filterchip="plotline"]')).toBeNull();
   });
 
-  it("filters by score from the legend and clears from the actions-bar chip", async () => {
+  it("filters by score from a hunk dot and clears from the actions-bar chip", async () => {
     await renderDiff();
-    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
-    await fireEvent.click(document.querySelector('.legend [data-scorepick="mechanical"]') as HTMLElement);
-    // Mechanical hunks live in the two test files only.
-    expect(document.getElementById(`F-${TCONN}`)).not.toBeNull();
-    expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
-    expect(document.getElementById(`F-${CONN}`)).toBeNull();
-    expect(document.getElementById(`F-${LOG}`)).toBeNull();
-    expect(useReview.getState().snapshot?.diffFilter).toEqual({ score: "mechanical" });
-    expect(document.querySelector('[data-filterchip="score"]')?.textContent).toContain("Score: mechanical");
-    // The chip's × clears it.
-    await fireEvent.click(screen.getByRole("button", { name: "Clear score filter" }));
-    expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
-    expect(useReview.getState().snapshot?.diffFilter).toBeUndefined();
+    await fireEvent.click(document.querySelector('.dhunk-h [data-scorepick="mechanical"]') as HTMLElement);
+
   });
 
   it("combines plotline and score, composed with Hide uninteresting", async () => {

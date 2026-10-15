@@ -2119,7 +2119,7 @@ Not a PRD requirement: an experiment the owner tries on a preview and
 adopts or drops. Hunk-pass scores (mechanical / routine / substantive /
 needs attention, deterministic rules on top: one-line never mechanical,
 hiding still follows `hiddenReason` alone) shown as colour-blind-safe
-dots on hunk headers + Files list with legend; reader plotlines (2–8,
+dots on hunk headers (each dot's tooltip names its level); reader plotlines (2–8,
 hunk IDs validated, first wins, rest reads "other", large-PR assign step
 under a 200-hunk cap) as header tags + guide-root box; filtering by
 plotline and/or score, remembered with the review, ANDed with all
@@ -2137,7 +2137,13 @@ the thread they serve. The reader prompt (`prompts/reader.md`, and
 `plotline_assign.md` for the fallback) defines this with a good and a
 bad example; each stored plotline carries an optional `buildsOn`
 and is listed in landing order. The guide Plotlines box shows the
-order and a short "Builds on" line. Scoring + classification behind
+order and a short "Builds on" line. Toolbar and file tree (#184): the
+file list's filter is an icon menu of file types only; the reviewed
+progress line, score legend and per-file dots left the tree (progress
+is now the pinned toolbar's bottom border, counts only in its tooltip
+and accessible label); Hide uninteresting, Fold all, Unfold all,
+Unified/Split and Refresh are icon buttons; a second toolbar filter
+icon holds Reviewed and GitHub comments. Scoring + classification behind
 `packages/shared/src/scores.ts` so a later source replaces them without
 touching UI or stored shape (`HunkState.score/plotline`,
 snapshot `plotlines`/`diffFilter`; pre-feature reviews reset, no second

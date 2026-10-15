@@ -186,9 +186,16 @@ code { font-family: var(--mono); font-size: .86em; }
 .files { border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
 .frow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .files input[type="search"] { flex: 1 1 160px; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font: 12.5px var(--sans); background: var(--surface); color: var(--ink); }
-.prog { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
-.bar { flex: 1; height: 4px; background: var(--sunk); border-radius: 2px; overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--ok); }
+/* Reviewed progress (issue #184): the pinned toolbar's bottom border is
+   a thin line filling left to right in proportion to reviewed hunks.
+   The counts live only in its tooltip and accessible label. */
+.dtool .rprog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--line); }
+.dtool .rprog i { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
+@media (prefers-reduced-motion: reduce) { .dtool .rprog i { transition: none; } }
+/* Icon filter buttons in the diff toolbar and file list (issue #184). */
+.tbtn.fbtn { padding: 3px 7px; }
+.tbtn.fbtn .count { font-size: 11px; color: var(--muted); }
+.dtool .x[aria-pressed="true"] { background: var(--sunk); color: var(--ink); border-color: var(--ink); }
 .flist { max-height: 34vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 3px 0; }
 .fr { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; text-align: left; padding: 2px 10px; font: 12.5px/1.5 var(--sans); white-space: nowrap; }
 .fr:hover { background: var(--sunk); }
@@ -240,12 +247,8 @@ code { font-family: var(--mono); font-size: .86em; }
 .ptag-pick { cursor: pointer; background: none; font: inherit; font-size: 10.5px; }
 .ptag-pick:hover { background: var(--sunk); }
 .ptag-pick.sel { color: var(--ink); border-color: var(--ink); background: var(--sunk); font-weight: 600; }
-/* Score legend row in the Files panel. */
-.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 4px 10px; font-size: 11.5px; color: var(--muted); }
-.legend .leg { display: inline-flex; align-items: center; gap: 5px; }
-.legend button.leg { border: 1px solid transparent; background: none; border-radius: 99px; padding: 1px 7px; font: inherit; color: inherit; cursor: pointer; }
-.legend button.leg:hover { background: var(--sunk); }
-.legend button.leg.sel { border-color: var(--ink); background: var(--sunk); color: var(--ink); font-weight: 600; }
+/* Score dots carry their level in their own tooltip (issue #184: the
+   legend no longer lives in the file tree). */
 /* The one visible active-filter chip in the pinned actions bar: what is
    filtered, how much it hides, and a clear button. */
 .fchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--sunk); color: var(--ink); border-radius: 99px; padding: 2px 4px 2px 10px; font-size: 12px; white-space: nowrap; flex: none; }

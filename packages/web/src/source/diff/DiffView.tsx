@@ -17,7 +17,7 @@
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DiffFilter, Hunk, HunkScoreLevel, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { HUNK_SCORE_LABELS, HUNK_SCORE_LEVELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
+import { HUNK_SCORE_LABELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -35,7 +35,6 @@ import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } fr
 import {
   buildFileTree,
   citedHunkHashes,
-  fileTopScore,
   filterFiles,
   hunkOverlaps,
   shouldHideHunk,
@@ -492,10 +491,6 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
 
   const plotlines: Plotline[] = useMemo(() => snapshot?.plotlines ?? [], [snapshot?.plotlines]);
   const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
-  const hasScores = useMemo(
-    () => (snapshot?.hunkStates ?? []).some((s) => s.score !== undefined),
-    [snapshot?.hunkStates],
-  );
 
   const doReveal = useCallback(
     (target: RevealTarget) => {
@@ -829,12 +824,46 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
           <Icon name={prefs.filesOpen ? "down" : "right"} />
           Files <span className="hint">{visible.length}/{snapshot.files.length}</span>
         </button>
+        <FilterMenuButton
+          label="Review filters"
+          tip="Reviewed and GitHub comment filters"
+          icon="check"
+          activeCount={(prefs.hideReviewed ? 1 : 0) + (snapshot.viewPrefs.showExistingComments ? 0 : 1)}
+          rows={[
+            {
+              key: "__reviewed",
+              label: "Reviewed",
+              checked: !prefs.hideReviewed,
+              count: snapshot.files.filter((f) => reviewedCount(f) === f.hunks.length).length,
+              toggle: () => setPrefs((p) => ({ ...p, hideReviewed: !p.hideReviewed })),
+            },
+            {
+              key: "__github",
+              label: "GitHub comments",
+              checked: snapshot.viewPrefs.showExistingComments,
+              count: snapshot.existingComments?.length ?? 0,
+              toggle: toggleGithubComments,
+            },
+          ]}
+        />
         <span className="seg" role="group" aria-label="Diff view">
-          <button type="button" aria-pressed={prefs.view === "unified"} onClick={() => setView("unified")}>
-            Unified
+          <button
+            type="button"
+            aria-pressed={prefs.view === "unified"}
+            aria-label="Unified"
+            data-tip="Unified"
+            onClick={() => setView("unified")}
+          >
+            <Icon name="unified" />
           </button>
-          <button type="button" aria-pressed={prefs.view === "split"} onClick={() => setView("split")}>
-            Split
+          <button
+            type="button"
+            aria-pressed={prefs.view === "split"}
+            aria-label="Split"
+            data-tip="Split"
+            onClick={() => setView("split")}
+          >
+            <Icon name="split" />
           </button>
         </span>
         <button
@@ -850,7 +879,7 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
             })
           }
         >
-          {prefs.hideUninteresting ? "✓ " : ""}Hide uninteresting
+          <Icon name="hide" />
         </button>
         <button
           className="x"
@@ -860,7 +889,6 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
           onClick={() => void foldAll()}
         >
           <Icon name="spark" />
-          Fold all
         </button>
         <button
           className="x"
@@ -869,7 +897,7 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
           aria-label="Unfold all"
           onClick={() => void unfoldAll()}
         >
-          Unfold all
+          <Icon name="downDown" />
         </button>
         <button
           className="x"
@@ -879,8 +907,19 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
           disabled={refreshing || readOnly}
           onClick={() => void doRefresh()}
         >
-          {refreshing ? "Refreshing…" : "Refresh"}
+          <Icon name="refresh" />
         </button>
+        <span
+          className="rprog"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.reviewed}
+          aria-label={`${progress.reviewed} of ${progress.total} hunks reviewed`}
+          data-tip={`${progress.reviewed} of ${progress.total} hunks reviewed`}
+        >
+          <i style={{ width: `${progress.total === 0 ? 0 : (100 * progress.reviewed) / progress.total}%` }} />
+        </span>
       </div>
       {readOnly ? (
         <div className="dbar" role="status">
@@ -901,49 +940,24 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
               value={fq}
               onChange={(e) => setFq(e.target.value)}
             />
-            <FilterDropdown
-              cats={cats}
-              hideReviewed={prefs.hideReviewed}
-              catCount={catCount}
-              reviewedFiles={snapshot.files.filter((f) => reviewedCount(f) === f.hunks.length).length}
-              onToggleCat={(k) =>
-                setPrefs((p) => ({
-                  ...p,
-                  cats: p.cats.includes(k) ? p.cats.filter((x) => x !== k) : [...p.cats, k],
-                }))
-              }
-              onToggleReviewed={() => setPrefs((p) => ({ ...p, hideReviewed: !p.hideReviewed }))}
-              showGithub={snapshot.viewPrefs.showExistingComments}
-              githubCount={snapshot.existingComments?.length ?? 0}
-              onToggleGithub={toggleGithubComments}
+            <FilterMenuButton
+              label="File filters"
+              tip="Filter files by type"
+              icon="filter"
+              activeCount={CATS.length - cats.size}
+              rows={CATS.map((c) => ({
+                key: c.k,
+                label: c.l,
+                checked: cats.has(c.k),
+                count: catCount(c.k),
+                toggle: () =>
+                  setPrefs((p) => ({
+                    ...p,
+                    cats: p.cats.includes(c.k) ? p.cats.filter((x) => x !== c.k) : [...p.cats, c.k],
+                  })),
+              }))}
             />
           </div>
-          <div className="prog">
-            <span>
-              {progress.reviewed}/{progress.total} hunks reviewed
-            </span>
-            <span className="bar">
-              <i style={{ width: `${progress.total === 0 ? 0 : Math.round((100 * progress.reviewed) / progress.total)}%` }} />
-            </span>
-          </div>
-          {hasScores ? (
-            <div className="legend" aria-label="Hunk score legend">
-              {HUNK_SCORE_LEVELS.map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  className={`leg score-leg${plotFilter.score === l ? " sel" : ""}`}
-                  aria-pressed={plotFilter.score === l}
-                  data-scorepick={l}
-                  data-tip={plotFilter.score === l ? "Show all hunks" : `Show only ${HUNK_SCORE_LABELS[l].toLowerCase()} hunks`}
-                  onClick={() => toggleScore(l)}
-                >
-                  <span className="score-dot" data-score={l} aria-hidden="true" />
-                  {HUNK_SCORE_LABELS[l]}
-                </button>
-              ))}
-            </div>
-          ) : null}
           <div className="flist">
             {tree.length > 0 ? (
               tree.map((row) =>
@@ -967,9 +981,6 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
                     file={row.file}
                     depth={row.depth}
                     reviewed={reviewedCount(row.file)}
-                    score={fileTopScore(row.file, (hash) => states.get(hash))}
-                    scoreSel={plotFilter.score}
-                    onSelectScore={toggleScore}
                     onJump={(key) => {
                       void patchFileFold(key, false);
                       setEagerFiles((prev) => new Set(prev).add(key));
@@ -1058,59 +1069,36 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
   );
 }
 
-function FilterDropdown({
-  cats,
-  hideReviewed,
-  catCount,
-  reviewedFiles,
-  onToggleCat,
-  onToggleReviewed,
-  showGithub,
-  githubCount,
-  onToggleGithub,
+interface FilterRow {
+  key: string;
+  label: string;
+  checked: boolean;
+  count: number;
+  toggle: () => void;
+}
+
+/**
+ * One icon-button filter menu (issue #184): the file-tree menu holds
+ * file types only; the toolbar's second filter holds the review-state
+ * rows (Reviewed, GitHub comments). Checked = shown.
+ */
+function FilterMenuButton({
+  label,
+  tip,
+  icon,
+  rows,
+  activeCount,
 }: {
-  cats: ReadonlySet<string>;
-  hideReviewed: boolean;
-  catCount: (k: string) => number;
-  reviewedFiles: number;
-  onToggleCat: (k: string) => void;
-  onToggleReviewed: () => void;
-  /** Issue #168: one show/hide row for existing GitHub comments. */
-  showGithub: boolean;
-  githubCount: number;
-  onToggleGithub: () => void;
+  label: string;
+  tip: string;
+  icon: "filter" | "check";
+  rows: FilterRow[];
+  activeCount: number;
 }): ReactNode {
   const [open, setOpen] = useState(false);
   const ctlRef = useRef<HTMLSpanElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  // Checked = shown. Default: every category + Reviewed shown.
-  const rows: { key: string; label: string; checked: boolean; count: number; toggle: () => void }[] = [
-    ...CATS.map((c) => ({
-      key: c.k,
-      label: c.l,
-      checked: cats.has(c.k),
-      count: catCount(c.k),
-      toggle: () => onToggleCat(c.k),
-    })),
-    {
-      key: "__reviewed",
-      label: "Reviewed",
-      checked: !hideReviewed,
-      count: reviewedFiles,
-      toggle: onToggleReviewed,
-    },
-    {
-      key: "__github",
-      label: "GitHub comments",
-      checked: showGithub,
-      count: githubCount,
-      toggle: onToggleGithub,
-    },
-  ];
-
-  const activeCount = CATS.length - cats.size + (hideReviewed ? 1 : 0) + (showGithub ? 0 : 1);
   const active = activeCount > 0;
   const itemCount = rows.length;
 
@@ -1152,13 +1140,13 @@ function FilterDropdown({
     <span className="fctl" ref={ctlRef}>
       <button
         ref={btnRef}
-        className="tbtn"
+        className="tbtn fbtn"
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-pressed={active}
-        aria-label="File filters"
-        title="Filter files by type"
+        aria-label={label}
+        data-tip={tip}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && !open) {
@@ -1167,14 +1155,14 @@ function FilterDropdown({
           }
         }}
       >
-        Filter
+        <Icon name={icon} />
         {active ? <span className="count">{activeCount}</span> : null}
       </button>
       {open ? (
         <div
           className="fmenu"
           role="menu"
-          aria-label="File filters"
+          aria-label={label}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
               e.preventDefault();
@@ -1219,17 +1207,11 @@ function FileTreeRow({
   file,
   depth,
   reviewed,
-  score,
-  scoreSel,
-  onSelectScore,
   onJump,
 }: {
   file: ReviewFile;
   depth: number;
   reviewed: number;
-  score: HunkScoreLevel | undefined;
-  scoreSel: HunkScoreLevel | undefined;
-  onSelectScore: (level: HunkScoreLevel) => void;
   onJump: (fileKey: string) => void;
 }): ReactNode {
   const total = file.hunks.length;
@@ -1237,19 +1219,6 @@ function FileTreeRow({
   const removed = file.hunks.reduce((s, h) => s + h.removed, 0);
   return (
     <div className="fr" style={{ paddingLeft: 10 + depth * 14 + 20 }} title={file.path}>
-      {score ? (
-        <button
-          type="button"
-          className={`score-pick${scoreSel === score ? " sel" : ""}`}
-          aria-pressed={scoreSel === score}
-          aria-label={`Show only ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks`}
-          data-scorepick={score}
-          data-tip={scoreSel === score ? "Show all hunks" : `Show only ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks`}
-          onClick={() => onSelectScore(score)}
-        >
-          <span className="score-dot" data-score={score} aria-hidden="true" />
-        </button>
-      ) : null}
       <button className="fr-main" type="button" onClick={() => onJump(file.fileKey)}>
         <span className="nm">{file.path.split("/").pop()}</span>
         {file.category === "generated" ? <span className="gtag">gen</span> : null}
@@ -1260,4 +1229,5 @@ function FileTreeRow({
       </button>
     </div>
   );
+
 }

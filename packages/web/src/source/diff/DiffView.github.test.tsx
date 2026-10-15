@@ -69,8 +69,7 @@ describe("DiffView GitHub threads", () => {
   it("hides threads through the filter menu, remembered with the review", async () => {
     await renderDiff();
     expect(screen.getByText("teammate · 2 comments")).toBeInTheDocument();
-    await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
-    await fireEvent.click(screen.getByRole("button", { name: "File filters" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Review filters" }));
     await fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /GitHub comments/ }));
     await waitFor(() => expect(screen.queryByText("teammate · 2 comments")).not.toBeInTheDocument());
     expect(screen.queryByText("GitHub comments on lines no longer in the diff")).not.toBeInTheDocument();

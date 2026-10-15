@@ -105,6 +105,20 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M4 6.5V13.5h8V6.5" />
     </>
   ),
+  filter: (<path d="M2.5 3h11l-4.3 4.9v4.8L6.8 13.8V7.9z" />),
+  unified: (
+    <>
+      <path d="M3 3.5h10" />
+      <path d="M3 8h10" />
+      <path d="M3 12.5h10" />
+    </>
+  ),
+  split: (
+    <>
+      <path d="M8 2.5v11" />
+      <path d="M2.5 5h3M2.5 8h3M2.5 11h3M10.5 5h3M10.5 8h3M10.5 11h3" />
+    </>
+  ),
 };
 
 /**

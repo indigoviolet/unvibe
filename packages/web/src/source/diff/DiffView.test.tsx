@@ -75,10 +75,13 @@ describe("DiffView", () => {
   it("marks a hunk reviewed (greys + folds) and advances progress", async () => {
     await renderDiff();
     await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
-    expect(await screen.findByText("1/8 hunks reviewed")).toBeInTheDocument();
+    // Progress is the toolbar's bottom line; counts only in its label.
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-label", "1 of 8 hunks reviewed");
     const conn = within(connSection());
     await fireEvent.click(conn.getAllByRole("checkbox", { name: "Mark reviewed" })[0]);
-    expect(await screen.findByText("2/8 hunks reviewed")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("progressbar")).toHaveAttribute("aria-label", "2 of 8 hunks reviewed"),
+    );
   });
 
   it("derives file reviewed from its hunks with a partial checkbox state", async () => {
