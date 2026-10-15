@@ -199,7 +199,7 @@ code { font-family: var(--mono); font-size: .86em; }
 /* Filter menus render in a portal at the top layer (positioned from
    their button, clamped into the viewport), never clipped by the
    toolbar's sideways scroller. */
-.fmenu.portal { z-index: 30; }
+.fmenu.portal { z-index: 30; width: 240px; }
 .dtool .x[aria-pressed="true"] { background: var(--sunk); color: var(--ink); border-color: var(--ink); }
 .flist { max-height: 34vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 3px 0; }
 .fr { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; text-align: left; padding: 2px 10px; font: 12.5px/1.5 var(--sans); white-space: nowrap; }
