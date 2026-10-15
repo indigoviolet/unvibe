@@ -79,4 +79,56 @@ test.describe("J4 diff work", () => {
       await expect(page.locator(".flist")).toContainText("connection.py", { timeout: 15_000 });
     }
   });
+
+  test("multi-line Explain keeps a reopen marker when closed (#189)", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    const connFile = page.locator(`[id="F-${CONN}"]`);
+    await expect(connFile).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 10_000 }).catch(() => {});
+
+    const dragSelect = async (fromLine: number, toLine: number): Promise<void> => {
+      const from = page.locator(`[id="L-${CONN}-${fromLine}"] td.c`);
+      const to = page.locator(`[id="L-${CONN}-${toLine}"] td.c`);
+      await from.scrollIntoViewIfNeeded();
+      const a = await from.boundingBox();
+      const b = await to.boundingBox();
+      if (!a || !b) throw new Error("no drag boxes");
+      await page.mouse.move(a.x + 6, a.y + a.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(b.x + Math.min(120, b.width - 6), b.y + b.height / 2, { steps: 12 });
+      await page.mouse.up();
+      await expect(page.locator("#selbar")).toBeVisible({ timeout: 10_000 });
+    };
+    const explainAndClose = async (): Promise<void> => {
+      await page.locator('#selbar [data-act="explain"]').click();
+      const card = page.locator(".dhunk .card.child.floating").first();
+      await expect(card).toBeVisible({ timeout: 15_000 });
+      await expect(card.locator(".working")).toHaveCount(0, { timeout: 30_000 });
+      await card.getByRole("button", { name: "Close" }).click();
+      await expect(card).toBeHidden({ timeout: 10_000 });
+    };
+
+    // Across three rows inside one hunk.
+    await dragSelect(86, 88);
+    await explainAndClose();
+    const marker = page.locator("mark.anc.range[data-jump]").first();
+    await expect(marker).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`[id="L-${CONN}-87"]`)).toHaveClass(/rng/);
+    // The marker reopens the card.
+    await marker.click();
+    await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
+    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click();
+
+    // Across a hunk boundary (last row of hunk 1 to first row of hunk 2).
+    await dragSelect(108, 650);
+    await explainAndClose();
+    const boundaryMarker = page.locator("mark.anc.range[data-jump]").last();
+    await expect(boundaryMarker).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`[id="L-${CONN}-650"]`)).toHaveClass(/rng/);
+    await boundaryMarker.click();
+    await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
+  });
 });
