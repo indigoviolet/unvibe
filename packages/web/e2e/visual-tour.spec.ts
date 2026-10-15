@@ -136,7 +136,29 @@ async function checkCards(page: Page, step: string): Promise<void> {
           // a descendant, or an unrelated card covering this one, fails.
           const hitCard = hit.closest(".card.child.floating");
           if (hitCard && cardEl.contains(hitCard)) continue;
-          if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick")) continue;
+          // A header may cover a card only while it is actually stuck
+          // in its pinned slot at the top of the pane (its top equals
+          // its sticky offset, ±1px). A header in place mid-pane — the
+          // next hunk's or file's, where an overflowing card reaches —
+          // must paint below the card, like its rows and gutters.
+          const hdr = hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick");
+          if (hdr) {
+            const pane = document.getElementById("right");
+            if (pane) {
+              const pt = pane.getBoundingClientRect().top;
+              const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
+              const want = hdr.classList.contains("rstick")
+                ? pt
+                : hdr.classList.contains("dtool")
+                  ? pt + hh(".rstick")
+                  : hdr.classList.contains("dfile-h")
+                    ? pt + hh(".rstick") + hh(".dtool")
+                    : pt + hh(".rstick") + hh(".dtool") + hh(".dfile-h");
+              if (Math.abs(hdr.getBoundingClientRect().top - want) <= 1) continue;
+              return `unpinned header over card at ${Math.round(x)},${Math.round(y)}: ${hdr.className.toString().slice(0, 40)} top=${Math.round(hdr.getBoundingClientRect().top)} pinnedTop=${Math.round(want)} card=${cardEl.id}`;
+            }
+            continue;
+          }
           return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} rect=${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}`;
         }
       }
@@ -387,6 +409,22 @@ for (const combo of [
     await shot(page, "diff-long-split", suffix);
     await splitCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
     await page.getByRole("button", { name: "Unified" }).click();
+
+    // Long card anchored in the file's LAST hunk (the call site at
+    // the end of connection.py), overflowing into the NEXT FILE's
+    // section: its header and rows must paint below the card too.
+    await selectText(page, "#right table.diff", "_normalize_header_values(http");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const fileCard = page.locator(".dhunk .card.child.floating").first();
+    await expect(fileCard).toBeVisible({ timeout: 15_000 });
+    await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    await expect(fileCard).toContainText("The tests around the helper mirror that split");
+    await fileCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(300);
+    await fileCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    await stepChecks(page, "diff-long-file");
+    await shot(page, "diff-long-file", suffix);
+    await fileCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
 
     // Deep-anchored card in the long socket-level hunk.
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
