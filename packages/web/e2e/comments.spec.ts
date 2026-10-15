@@ -312,8 +312,7 @@ test("outdated threads sit at their file; removed-file threads at the end; hidin
   await expect(page.locator("[data-gh-orphans]")).toContainText("review-bot · 1 comment");
   // Hide them in the diff: threads vanish, and the menu section follows
   // the same setting — it folds to its heading with a count (#183).
-  await page.getByRole("button", { name: "Show file list" }).click();
-  await page.getByRole("button", { name: "File filters" }).click();
+  await page.getByRole("button", { name: "Review filters" }).click();
   await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
   await expect(page.locator("#gh-thread-101")).toHaveCount(0);
   await page.locator('#reviewbar [data-cm=""]').click();
@@ -344,8 +343,7 @@ test("hide in the filter menu collapses the menu section to its count; its headi
   // Diff threads are shown to start with.
   await expect(page.locator("#gh-thread-101")).toBeVisible();
   // Hide existing GitHub comments from the diff's filter menu.
-  await page.getByRole("button", { name: "Show file list" }).click();
-  await page.getByRole("button", { name: "File filters" }).click();
+  await page.getByRole("button", { name: "Review filters" }).click();
   await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
   await expect(page.locator("#gh-thread-101")).toHaveCount(0);
   // The comments menu's section collapses to its heading with a count.

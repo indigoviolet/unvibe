@@ -1,6 +1,6 @@
 /**
  * Hunk scores + plotlines (issue #169) against mock mode: header dots and
- * plotline tags, the Files list dots and legend, the dots and chips as
+ * plotline tags, the dots and chips as
  * the filter selectors (owner direction: no radio groups in the filter
  * menu), the active-filter chip in the actions bar, and the guide's
  * plotlines box as a selector too.
@@ -25,14 +25,13 @@ test("hunk headers carry score dots and plotline tags", async ({ page }) => {
   await expect(page.locator(".dhunk-h .ptag", { hasText: "Prove the unfolding works" }).first()).toBeVisible();
 });
 
-test("Files list shows file dots and the score legend", async ({ page }) => {
+test("Files list has no score dots or legend (#184)", async ({ page }) => {
   await page.getByRole("button", { name: "Show file list" }).click();
-  await expect(page.locator(".flist .score-dot").first()).toBeVisible();
-  const legend = page.locator(".legend");
-  await expect(legend).toBeVisible();
-  for (const label of ["Mechanical", "Routine", "Substantive", "Needs attention"]) {
-    await expect(legend.getByText(label)).toBeVisible();
-  }
+  await expect(page.locator(".flist .score-dot")).toHaveCount(0);
+  await expect(page.locator(".legend")).toHaveCount(0);
+  // The level lives on the hunk dot's tooltip instead.
+  const dot = page.locator('.dhunk-h [data-scorepick="substantive"]').first();
+  await expect(dot).toHaveAttribute("data-tip", "Show only substantive hunks");
 });
 
 test("clicking a score dot filters to that score; the chip shows and its × clears", async ({ page }) => {

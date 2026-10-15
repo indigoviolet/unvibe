@@ -49,12 +49,40 @@ test.skip("fold and unfold a hunk", async ({ page }) => {
   await expect(conn.getByRole("button", { name: "Show code" })).toHaveCount(0);
 });
 
+test("reviewed progress fills the toolbar bottom border; counts only in its label", async ({ page }) => {
+  const bar = page.getByRole("progressbar");
+  await expect(bar).toHaveAttribute("aria-label", "1 of 8 hunks reviewed");
+  const frac = await bar.evaluate((el) => {
+    const fill = el.querySelector("i")!;
+    return { fill: fill.getBoundingClientRect().width, bar: el.getBoundingClientRect().width, tip: el.getAttribute("data-tip") };
+  });
+  expect(Math.abs(frac.fill / frac.bar - 1 / 8)).toBeLessThan(0.02);
+  expect(frac.tip).toBe("1 of 8 hunks reviewed");
+  // No text line for the counts anywhere.
+  await expect(page.getByText(/\d+\/8 hunks reviewed/)).toHaveCount(0);
+  await page.locator(connFile).getByRole("checkbox", { name: "Mark reviewed" }).first().click();
+  await expect(bar).toHaveAttribute("aria-label", "2 of 8 hunks reviewed");
+  const frac2 = await bar.evaluate((el) => {
+    const fill = el.querySelector("i")!;
+    return fill.getBoundingClientRect().width / el.getBoundingClientRect().width;
+  });
+  expect(Math.abs(frac2 - 2 / 8)).toBeLessThan(0.02);
+});
+
+test("the toolbar stays on one row at a narrow pane width", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  const rows = await page.locator(".dtool").evaluate((el) => {
+    const tops = new Set([...el.children].map((c) => Math.round((c as HTMLElement).getBoundingClientRect().top)));
+    return { tops: tops.size, height: el.getBoundingClientRect().height };
+  });
+  expect(rows.tops).toBe(1);
+});
+
 // DISABLED(#119): same as the DiffView.test.tsx progress test (also in real-service.spec.ts)
 test.skip("mark reviewed advances the hunks-reviewed progress", async ({ page }) => {
-  await page.getByRole("button", { name: "Show file list" }).click();
-  await expect(page.getByText("1/8 hunks reviewed")).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "1 of 8 hunks reviewed");
   await page.locator(connFile).getByRole("checkbox", { name: "Mark reviewed" }).first().click();
-  await expect(page.getByText("2/8 hunks reviewed")).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "2 of 8 hunks reviewed");
 });
 
 test("hide uninteresting collapses runs to one row per run", async ({ page }) => {
@@ -95,11 +123,22 @@ test("file filter dropdown filters by type with counts and an active state", asy
   await filter.click();
   const menu = page.getByRole("menu", { name: "File filters" });
   await expect(menu).toBeVisible();
-  // Five categories plus Reviewed plus GitHub comments, each a checkable row with a count.
-  await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(7);
-  for (const name of ["Code", "Tests", "Docs", "Config", "Generated", "Reviewed", "GitHub comments"]) {
+  // File types only (#184): Reviewed and GitHub comments left this menu.
+  await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(5);
+  for (const name of ["Code", "Tests", "Docs", "Config", "Generated"]) {
     await expect(menu.getByRole("menuitemcheckbox", { name: new RegExp(name) })).toBeVisible();
   }
+  await expect(menu.getByRole("menuitemcheckbox", { name: /Reviewed|GitHub/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // The toolbar's second filter holds Reviewed and GitHub comments.
+  const reviewFilter = page.getByRole("button", { name: "Review filters" });
+  await reviewFilter.click();
+  const reviewMenu = page.getByRole("menu", { name: "Review filters" });
+  await expect(reviewMenu.getByRole("menuitemcheckbox")).toHaveCount(2);
+  await expect(reviewMenu.getByRole("menuitemcheckbox", { name: /Reviewed/ })).toBeVisible();
+  await expect(reviewMenu.getByRole("menuitemcheckbox", { name: /GitHub comments/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await filter.click();
   // Deselect Tests: its files hide and the button shows the active count.
   await menu.getByRole("menuitemcheckbox", { name: /Tests/ }).click();
   await expect(page.locator(connFile)).toBeVisible();
