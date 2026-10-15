@@ -139,6 +139,21 @@ export function selectionScopeElement(el: HTMLElement): Element | null {
  * Resolve a selection anchor element to an `ActionAnchor`. Exported for
  * reuse (Explain cards resolve the same hosts).
  */
+/**
+ * Issue #186: whether a selection target sits in a selectable host.
+ * Floating cards render in a floating layer — in the diff that layer
+ * sits at the hunk level, outside the diff table — so `.exp-float`
+ * (and the whole `.dhunk`) counts, or selections inside a floating
+ * card never show the toolbar even though they resolve fine.
+ */
+export function inSelectionScope(el: Element): boolean {
+  return (
+    el.closest(
+      "#page, .exp-float, #right .desc:not(.editing), #right table.diff, #right .dhunk, #right .ghfile",
+    ) !== null
+  );
+}
+
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // Second-opinion reasoning is attached content, not a host (#116): its
   // blocks live on the result, not on any card or answer, so the
@@ -466,9 +481,7 @@ export function SelectionToolbar() {
 
     const onMouseUp = (e: MouseEvent): void => {
       if ((e.target as Element | null)?.closest?.("#selbar")) return;
-      const scope = (e.target as Element | null)?.closest?.(
-        "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk .fwrap, #right .ghfile",
-      );
+      const scope = (e.target as Element | null) !== null && inSelectionScope(e.target as Element);
       if (
         !scope ||
         (e.target as Element | null)?.closest?.("button, a, input, textarea") ||

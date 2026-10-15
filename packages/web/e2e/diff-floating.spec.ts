@@ -54,6 +54,40 @@ for (const mode of ["unified", "split"] as const) {
   });
 }
 
+test("selecting inside a floating card in the diff opens a floating child above it (#186)", async ({ page }) => {
+  await gotoDiff(page);
+  await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+  await page.locator('#selbar [data-act="explain"]').click();
+  const parent = page.locator(".dhunk .card.child.floating").first();
+  await expect(parent).toBeVisible({ timeout: 8000 });
+  // Select the card's answer text: the toolbar appears inside the card,
+  // and Comment works from it as it does from a pinned card.
+  await selectText(page, ".dhunk .card.child.floating [data-answer]", "Mock explanation");
+  await page.locator('#selbar [data-act="note"]').click();
+  const note = page.locator(".dhunk .ithread[data-pending-thread]").first();
+  await expect(note).toBeVisible();
+  await note.getByRole("button", { name: "Discard" }).click();
+  await expect(page.locator(".dhunk .ithread[data-pending-thread]")).toHaveCount(0);
+  await selectText(page, ".dhunk .card.child.floating [data-answer]", "Mock explanation");
+  await page.locator('#selbar [data-act="ask"]').click();
+  const composer = page.locator(".dhunk .ithread[data-pending-thread]");
+  await expect(composer).toBeVisible();
+  await composer.locator("textarea").fill("Why is this here?");
+  await composer.getByRole("button", { name: "Ask" }).click();
+  const child = page.locator(".dhunk [data-expansion]", { hasText: "Why is this here?" }).last();
+  await expect(child).toContainText("Mock explanation", { timeout: 8000 });
+  await expect(child).toHaveClass(/floating/);
+  await expect(parent).toHaveClass(/floating/);
+  // Pinning the child inserts it inline inside the parent.
+  await child.getByRole("button", { name: "Pin into the page" }).click();
+  await expect(child).not.toHaveClass(/floating/);
+  await expect(parent).toHaveClass(/floating/);
+  // Closing it leaves the parent floating.
+  await child.getByRole("button", { name: "Close" }).click();
+  await expect(parent).toBeVisible();
+  await expect(parent).toHaveClass(/floating/);
+});
+
 test("floating card paints above the line-number gutter", async ({ page }) => {
   await gotoDiff(page);
   // An anchor with plain code rows below it (the regex anchor further up

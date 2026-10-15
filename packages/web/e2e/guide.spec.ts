@@ -9,6 +9,7 @@
  */
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
+import { selectText } from "./select-text.js";
 
 const CONN = "src-urllib3-connection.py";
 
@@ -115,6 +116,41 @@ test("pinning a card survives a reload; unpinning does too (#167)", async ({ pag
   await page.reload();
   await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers");
   await expect(page.locator("#C-problem [data-expansion]").first()).toHaveClass(/floating/);
+});
+
+test("Ask inside a floating card opens a floating child above it; pinning puts it inline (#186)", async ({ page }) => {
+  await gotoReview(page);
+  const parent = page.locator("#B-x-seed");
+  await expect(parent).toHaveClass(/floating/);
+  // Select answer text inside the floating card: the toolbar appears.
+  await selectText(page, "#B-x-seed [data-answer]", "HTTP/1.1 originally let a server continue");
+  await page.locator('#selbar [data-act="ask"]').click();
+  const composer = page.locator("#B-x-seed .ithread[data-pending-thread]");
+  await expect(composer).toBeVisible();
+  await composer.locator("textarea").fill("Why does this matter?");
+  await composer.getByRole("button", { name: "Ask" }).click();
+  const child = page.locator("#B-x-seed [data-expansion]", { hasText: "Why does this matter?" });
+  await expect(child).toContainText("Mock explanation", { timeout: 8000 });
+  await expect(child).toHaveClass(/floating/);
+  // The child paints above the parent: the point at its centre hits the
+  // child, not the parent underneath.
+  const above = await page.evaluate(() => {
+    const childEl = document.querySelector("#B-x-seed [data-expansion]")!;
+    const r = childEl.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 30);
+    return hit ? childEl.contains(hit) && hit !== childEl : false;
+  });
+  expect(above).toBe(true);
+  await expect(parent).toHaveClass(/floating/);
+  // Pinning the child inserts it inline inside the parent.
+  await child.getByRole("button", { name: "Pin into the page" }).click();
+  await expect(child).not.toHaveClass(/floating/);
+  await expect(parent).toHaveClass(/floating/);
+  // Closing it leaves the parent floating, as it was.
+  await child.getByRole("button", { name: "Close" }).click();
+  await expect(child).toBeHidden();
+  await expect(parent).toBeVisible();
+  await expect(parent).toHaveClass(/floating/);
 });
 
 test("root page renders cards, contents and generated go-deeper cards", async ({ page }) => {

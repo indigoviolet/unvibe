@@ -6,6 +6,7 @@ import {
   commentCardAnchor,
   diffRangeForSelection,
   githubHrefForRange,
+  inSelectionScope,
   isRevealedElement,
   resolveSelectionHost,
   selectionScopeElement,
@@ -68,6 +69,36 @@ describe("resolveSelectionHost inside other hosts (#116)", () => {
     expect(resolveSelectionHost(document.getElementById("in-aside")!)).toEqual({
       anchor: { where: "block", blockId: "c1#b2" },
     });
+  });
+});
+
+describe("selections inside a floating card (#186)", () => {
+  test("a floating card in the diff resolves its answer block and is in scope", () => {
+    // The diff floating layer: at the hunk level, outside the table.
+    document.body.innerHTML =
+      `<div id="right"><div class="dhunk"><div class="dhunk-float"><div class="exp-float">` +
+      `<section class="card child floating" id="B-ann_p"><div data-answer="ans_1">` +
+      `<p class="prose sel" data-top="b9"><span id="in-float">answer text</span></p>` +
+      `</div></section></div></div></div></div>`;
+    const el = document.getElementById("in-float")!;
+    expect(resolveSelectionHost(el)).toEqual({ anchor: { where: "block", blockId: "ans_1#b9" } });
+    expect(inSelectionScope(el)).toBe(true);
+  });
+
+  test("a floating card in the guide is in scope", () => {
+    document.body.innerHTML =
+      `<div id="page"><section class="card" id="C-c1">` +
+      `<div class="exp-float"><section class="card child floating" id="B-ann_g"><div data-answer="ans_2">` +
+      `<p class="prose sel" data-top="b3"><span id="in-guide-float">text</span></p>` +
+      `</div></section></div></section></div>`;
+    const el = document.getElementById("in-guide-float")!;
+    expect(resolveSelectionHost(el)).toEqual({ anchor: { where: "block", blockId: "ans_2#b3" } });
+    expect(inSelectionScope(el)).toBe(true);
+  });
+
+  test("plain page chrome is out of scope", () => {
+    document.body.innerHTML = `<div><span id="chrome">text</span></div>`;
+    expect(inSelectionScope(document.getElementById("chrome")!)).toBe(false);
   });
 });
 
