@@ -63,6 +63,32 @@ export async function createDemoReview(svc: RunningService, timeoutMs = 90_000):
   }
 }
 
+/** Fake `gh` for PR journeys: answers pr view/user, records review posts. */
+export function writeFakeGh(binDir: string, logDir: string, headSha: string): void {
+  const body = ["First paragraph of the PR body.", "", "Second paragraph with details."].join("\n");
+  const script = `#!/bin/sh
+LOG="${logDir}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  cat <<EOF
+{"title":"Journey test PR","body":${JSON.stringify(body)},"author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${headSha}"}
+EOF
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"author"}'; exit 0; fi
+case "$*" in *pulls/1/comments*) echo '[]'; exit 0 ;; esac
+case "$*" in *pulls/1/reviews*) cat > "$LOG/review-stdin.json"; echo '{"html_url":"https://example.invalid/pr/1"}'; exit 0 ;; esac
+if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then
+  prev=""
+  for arg in "$@"; do if [ "$prev" = "--body-file" ]; then cp "$arg" "$LOG/body.md"; fi; prev="$arg"; done
+  echo '{}'; exit 0
+fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`;
+  writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
+}
+
 /** Register a scratch repo and open its feature/PR review; returns review id. */
 export async function createScratchReview(
   svc: RunningService,
