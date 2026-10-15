@@ -133,6 +133,29 @@ export function observeDiffPinned(): () => void {
     pane.querySelectorAll(".dhunk-h").forEach((h) => {
       h.classList.toggle("stuck", Math.abs(h.getBoundingClientRect().top - (paneTop + strip + bar + file)) <= 1);
     });
+    // Context marking: during the hand-off between two files, neither
+    // header sits exactly in its slot — the outgoing one is pushed
+    // above it, the incoming one is a few px short of sticking. Their
+    // rows fill the pane, so their headers are the reader's context
+    // and must still paint above a floating card (which would
+    // otherwise hide them in place). Mark the file and hunk owning
+    // the flow point at the bottom of the pinned slot the same way.
+    const hunk = measuredHeight(pane.querySelector(".dhunk-h"), DHUNK_FALLBACK);
+    const flowTop = (el: Element): number => el.getBoundingClientRect().top - paneTop + pane.scrollTop;
+    const point = pane.scrollTop + strip + bar + file + hunk;
+    let curFile: Element | null = null;
+    pane.querySelectorAll(".dfile").forEach((f) => {
+      if (flowTop(f) <= point + 1) curFile = f;
+    });
+    if (curFile) {
+      const fileEl: Element = curFile;
+      fileEl.querySelector(".dfile-h")?.classList.add("stuck");
+      let curHunk: Element | null = null;
+      fileEl.querySelectorAll(".dhunk").forEach((h) => {
+        if (flowTop(h) <= point + 1) curHunk = h;
+      });
+      if (curHunk) (curHunk as Element).querySelector(".dhunk-h")?.classList.add("stuck");
+    }
   };
   let raf = 0;
   const onScroll = (): void => {
