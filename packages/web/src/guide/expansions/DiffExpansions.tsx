@@ -161,12 +161,20 @@ export function useDiffExpansionBindings(
           if (!host.endLine || host.endLine <= host.line) continue;
           if (isAnchorStale(a)) continue;
           let firstRow: Element | null = null;
+          let complete = true;
           for (let n = host.line; n <= host.endLine; n++) {
             const row = document.getElementById(`L-${host.fileKey}-${n}`);
-            if (!row) continue;
+            if (!row) {
+              complete = false;
+              continue;
+            }
             row.classList.add("rng");
             if (!firstRow) firstRow = row;
           }
+          // Rows of a lazily rendered section may not exist yet; keep
+          // the annotation pending so the bounded repass (and the row
+          // observer below) re-apply the range when they land.
+          if (!complete) pending.add(a.id);
           if (firstRow && a.type !== "comment") {
             firstRow.classList.add("rng-first");
             const cell = firstRow.querySelector("td.n");
@@ -210,8 +218,34 @@ export function useDiffExpansionBindings(
       }
     };
     const timer = window.setTimeout(runPass, 0);
+    // Lazy hunk bodies render long after the bounded repass gives up:
+    // re-run the pass when diff rows land in the pane. Only row
+    // additions count — the pass's own mark edits are element and
+    // attribute changes inside cells, never new rows.
+    const pane = document.getElementById("right");
+    let observer: MutationObserver | null = null;
+    let scheduled = 0;
+    if (pane && typeof MutationObserver !== "undefined") {
+      observer = new MutationObserver((records) => {
+        const rowsAdded = records.some((rec) =>
+          [...rec.addedNodes].some(
+            (node) =>
+              node instanceof Element &&
+              ((node instanceof HTMLTableRowElement && node.id.startsWith("L-")) || node.querySelector('tr[id^="L-"]') !== null),
+          ),
+        );
+        if (!rowsAdded || scheduled) return;
+        scheduled = window.setTimeout(() => {
+          scheduled = 0;
+          runPass();
+        }, 100);
+      });
+      observer.observe(pane, { childList: true, subtree: true });
+    }
     return () => {
       window.clearTimeout(timer);
+      if (scheduled) window.clearTimeout(scheduled);
+      observer?.disconnect();
       retryCleanup?.();
     };
   }, [byLine, annotations, hlTick]);
