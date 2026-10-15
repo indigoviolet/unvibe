@@ -49,5 +49,7 @@ export {
   turnsTextFor,
   l4Variables,
   cardPromptText,
+  excerptQuote,
+  quoteForPrompt,
 } from "./l4.js";
 

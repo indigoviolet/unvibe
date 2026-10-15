@@ -32,6 +32,28 @@ function blockPlainText(block: Block): string {
   }
 }
 
+/** One-line excerpt of a quote for labels and headings. */
+export function excerptQuote(q: string, max = 240): string {
+  return q.length > max ? `${q.slice(0, max)}…` : q;
+}
+
+/**
+ * The quote as inlined in a prompt. Selections can run to 10,000
+ * characters; past 2,000 the prompt gets the head and tail plus the
+ * selection's size and (for diff lines) its line range — the full
+ * selection always travels in the host block below it.
+ */
+export function quoteForPrompt(anchor: Annotation["anchor"]): string {
+  const q = anchor.quotedText ?? "";
+  if (q.length <= 2000) return q;
+  const host = anchor.host;
+  const where =
+    host.kind === "diff-line"
+      ? `lines ${host.line}–${host.endLine ?? host.line} of ${host.fileKey}`
+      : "the host block below";
+  return `${q.slice(0, 900)}\n\n[… ${q.length} characters selected (${where}); the full selection is in the host block below …]\n\n${q.slice(-300)}`;
+}
+
 function shortBlockId(raw: string): string {
   if (raw.includes("#")) return raw.split("#").pop()!;
   if (raw.includes(":")) return raw.split(":").pop()!;
@@ -152,11 +174,20 @@ export function hostBlockText(snapshot: ReviewSnapshot, anchor: Annotation["anch
   }
   const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
   if (!file) return `(unknown file ${host.fileKey})`;
+  // A multi-line selection's host block is the whole selected range,
+  // so a prompt excerpt of the quote still leaves the agent the full
+  // text it was asked about.
+  const end = host.endLine ?? host.line;
   const rows: string[] = [];
   for (const hunk of file.hunks ?? []) {
     for (const row of hunk.lines) {
       const num = row.newLine ?? row.oldLine;
-      if (num === host.line) rows.push(`${row.kind === "add" ? "+" : row.kind === "del" ? "-" : " "}${row.text}`);
+      if (num === undefined) continue;
+      const inRange =
+        host.endLine !== undefined
+          ? row.newLine !== undefined && row.newLine >= host.line && row.newLine <= end
+          : num === host.line;
+      if (inRange) rows.push(`${row.kind === "add" ? "+" : row.kind === "del" ? "-" : " "}${row.text}`);
     }
   }
   return rows.length > 0 ? rows.join("\n") : `(line ${host.line} not in diff)`;
@@ -218,12 +249,12 @@ export function nearbyAnnotationsText(
     .map((a) => {
       if (a.type === "comment") {
         const msgs = a.messages.map((m) => `${m.who === "you" ? "Reader" : "Agent"}: ${m.text ?? ""}`).join("\n");
-        return `Comment [[ann:${a.id}]] on "${a.anchor.quotedText}":\n${msgs}`;
+        return `Comment [[ann:${a.id}]] on "${excerptQuote(a.anchor.quotedText ?? "")}":\n${msgs}`;
       }
       const body = (a.turns ?? [])
         .map((t) => `${t.question === null ? "(the default question)" : `Reader: ${t.question}`}\nAgent: ${t.blocks.map(blockPlainText).join("\n\n")}`)
         .join("\n\n");
-      return `Conversation [[ann:${a.id}]] on "${a.anchor.quotedText}":\n${body || "(empty)"}`;
+      return `Conversation [[ann:${a.id}]] on "${excerptQuote(a.anchor.quotedText ?? "")}":\n${body || "(empty)"}`;
     })
     .join("\n\n");
 }
@@ -263,7 +294,7 @@ export function l4Variables(
 ): Record<string, unknown> {
   return {
     anchor: {
-      quote: anchor.quotedText,
+      quote: quoteForPrompt(anchor),
       block: hostBlockText(snapshot, anchor),
     },
     card: cardTextFor(snapshot, anchor),
@@ -301,7 +332,7 @@ export function cardPromptText(snapshot: ReviewSnapshot, cardId: string): string
   const ans = findAnswer(snapshot, cardId);
   if (ans) {
     const body = ans.turn.blocks.map((b) => blockPlainText(b)).join("\n\n");
-    const head = ans.turn.question ?? ans.annotation.anchor.quotedText;
+    const head = ans.turn.question ?? excerptQuote(ans.annotation.anchor.quotedText ?? "");
     return `### ${head} [[ann:${ans.annotation.id}]] (level: ${ans.turn.level}, revision ${ans.turn.revision})\n\n${body}`;
   }
   throw new Error(`unknown card ${cardId}`);

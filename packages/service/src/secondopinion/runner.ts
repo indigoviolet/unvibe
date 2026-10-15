@@ -224,10 +224,11 @@ export function resolveTarget(snapshot: ReviewSnapshot, cardId: string): Resolve
     const blocks = turn.blocks;
     const citedIds = [...new Set(collectTargets(blocks).citations)];
     const markdown = renderMarkdown(blocks).trim();
+    const claimQuote = ann.anchor.quotedText ?? "";
     const claimText = turn.question
       ? `${turn.question}\n\n${markdown}`.trim()
-      : ann.anchor.quotedText
-        ? `“${ann.anchor.quotedText}”\n\n${markdown}`.trim()
+      : claimQuote
+        ? `“${claimQuote.length > 600 ? `${claimQuote.slice(0, 600)}…` : claimQuote}”\n\n${markdown}`.trim()
         : markdown;
     // Parent page for the blind/check default + prompt context: the page
     // hosting the anchor block when known, else root.

@@ -29,7 +29,7 @@ import { randomBytes } from "node:crypto";
 import type { ActionAnchor, Anchor, Annotation, Block, Job, ReviewSnapshot, Turn } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
-import { mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
+import { excerptQuote, mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { DegradedTurnError } from "../../jobs/errors.js";
 import {
@@ -700,7 +700,7 @@ export async function explainAction(
     dedupeKey: key,
     echoCandidates: questionEchoCandidates(req.quote, DEFAULT_QUESTION),
     replayKind: "explain",
-    cardLabel: `Explain: ${req.quote}`,
+    cardLabel: `Explain: ${excerptQuote(req.quote)}`,
     workingLabel: "Thinking…",
   });
   return { annotationId, turnId, ...res };
@@ -876,7 +876,7 @@ export async function retryAction(
     skipDedupe: true,
     echoCandidates: questionEchoCandidates(found.anchor.quotedText, message),
     replayKind: firstTurn ? "explain" : "ask",
-    cardLabel: firstTurn ? `Explain: ${found.anchor.quotedText}` : message,
+    cardLabel: firstTurn ? `Explain: ${excerptQuote(found.anchor.quotedText ?? "")}` : message,
     workingLabel: firstTurn ? "Thinking…" : "Writing reply…",
   });
   if (res.jobId && found.type === "link") {
