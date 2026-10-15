@@ -21,6 +21,9 @@ import { migrate, openDatabase } from "./store/index.js";
 import { initSentry } from "./telemetry/sentry.js";
 
 export async function serve(): Promise<void> {
+  // Product entry (#188): only this path and `mise run test:live:*` may
+  // start real agents. Set before buildApp composes the runner.
+  process.env.UNVIBE_ALLOW_LIVE_AGENT = "1";
   // Dev-only error reporting (issue #29): on only with SENTRY_DSN_SERVICE.
   const sentry = await initSentry();
   const config = loadConfig();

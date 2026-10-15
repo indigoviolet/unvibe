@@ -31,6 +31,7 @@ import {
   type SessionPolicy,
   type TransportFactory,
 } from "./connection.js";
+import { assertLiveAgentAllowed } from "../live-guard.js";
 import { friendlySessionStartError } from "../../exec/shim-resolve.js";
 import { toAcpMcpServers } from "./mcp.js";
 import { aggregateTurnUsage, deltaTurnUsage, type TurnUsage } from "./usage.js";
@@ -48,6 +49,8 @@ export interface AcpRunnerOptions {
   transportFactory?: TransportFactory;
   /** Override per-provider transports (tests). */
   factories?: Partial<Record<ProviderId, TransportFactory>>;
+  /** Env for the live-agent guard (#188); defaults to process.env. */
+  env?: NodeJS.ProcessEnv;
   /**
    * Ceiling for notification-settling waits after every prompt and in
    * load() (ms; default 300). The waits end early once notifications are
@@ -135,6 +138,10 @@ export class AcpAgentRunner implements AgentRunner {
 
   constructor(opts: AcpRunnerOptions = {}) {
     this.opts = opts;
+    // Direct construction with no fake transport would spawn real CLIs
+    // (#188): require the live flag eagerly. Fake-injected runners pass.
+    const hasFake = Boolean(opts.transportFactory) || Boolean(opts.factories && Object.keys(opts.factories).length > 0);
+    if (!hasFake) assertLiveAgentAllowed(opts.env ?? process.env);
   }
 
   private connKey(provider: ProviderId, readOnly: boolean): string {
@@ -146,6 +153,9 @@ export class AcpAgentRunner implements AgentRunner {
     let c = this.conns.get(key);
     if (!c) {
       const factory = this.opts.factories?.[provider] ?? this.opts.transportFactory;
+      // Partial-fake guard (#188): a provider with no injected fake would
+      // spawn the real adapter for that provider.
+      if (!factory) assertLiveAgentAllowed(this.opts.env ?? process.env);
       c = new ProviderConnection(provider, readOnly, factory);
       this.conns.set(key, c);
     }
