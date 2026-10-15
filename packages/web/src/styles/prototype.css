@@ -525,7 +525,7 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
   position: sticky;
   top: calc(var(--dfile-top, 83px) - 6px);
   height: calc(var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px) + 6px);
-  margin-bottom: calc(-1 * (var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px)));
+  margin-bottom: calc(-1 * (var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px) + 6px));
   z-index: 6;
   background: var(--surface);
 }
