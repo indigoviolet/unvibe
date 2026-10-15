@@ -167,7 +167,7 @@ code { font-family: var(--mono); font-size: .86em; }
 .tfoot { display: flex; gap: 2px; align-items: center; margin-top: 2px; flex-wrap: wrap; }
 
 /* ---------- right pane ---------- */
-.rstick { position: sticky; top: 0; z-index: 6; background: var(--surface); border-bottom: 1px solid var(--line); }
+.rstick { position: sticky; top: 0; z-index: 10; background: var(--surface); border-bottom: 1px solid var(--line); }
 .tabs { display: flex; gap: 2px; padding: 6px 12px 0; }
 .tab { border: 0; background: none; padding: 6px 10px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; }
 .tab[aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
@@ -181,7 +181,7 @@ code { font-family: var(--mono); font-size: .86em; }
    narrow panes scroll the bar sideways instead of wrapping (sticky never
    clips, and the Files panel + filter dropdown live outside this bar with
    their own, higher stacking). */
-.dtool { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; padding: 6px 12px 8px; overflow-x: auto; position: sticky; top: var(--diffbar-top, 40px); left: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.dtool { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; padding: 6px 12px 8px; overflow-x: auto; position: sticky; top: var(--diffbar-top, 40px); left: 0; z-index: 9; background: var(--surface); border-bottom: 1px solid var(--line); }
 .dtool > * { flex: none; }
 .files { border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
 .frow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -304,6 +304,11 @@ code { font-family: var(--mono); font-size: .86em; }
    overlay (25+). Opaque background + hairline separate it from the content
    scrolling under it. */
 .dfile-h { background: var(--sunk); padding: 4px 8px; font-family: var(--mono); font-size: 12px; display: flex; gap: 6px; align-items: center; border-block: 1px solid var(--line); position: sticky; top: var(--dfile-top, 83px); left: 0; z-index: 4; }
+/* Only a header actually stuck in its pinned slot (marked `.stuck`
+   by `observeDiffPinned`) paints above a floating card; in place,
+   the next file's header stays below an overflowing card, like its
+   rows and gutters. */
+.dfile-h.stuck { z-index: 8; }
 .dfile-h .path { display: flex; min-width: 0; flex: 1; white-space: nowrap; }
 .dfile-h .path .dir { overflow: hidden; text-overflow: ellipsis; color: var(--muted); min-width: 0; }
 .dfile-h .path b { font-weight: 500; flex: none; }
@@ -353,6 +358,7 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
    and below every app overlay (25+). Opaque
    background so code, cards and threads scroll under it. */
 .dhunk-h { position: sticky; top: var(--dhunk-top, 117px); z-index: 3; background: var(--sunk); }
+.dhunk-h.stuck { z-index: 7; }
 /* Hidden-hunk runs are plain blocks between the hunk sections: they scroll
    under the pinned headers, never pin. The button spans the pane width. */
 .dhid .hid { width: 100%; box-sizing: border-box; }
@@ -504,7 +510,7 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
    over it while scrolling instead of being covered by it. The card
    itself sits above the code rows and the line-number gutter (1), so a
    card overlapping the gutter paints over the numbers, not under them. */
-.dhunk .card.child.floating { z-index: 2; }
+.dhunk .card.child.floating { z-index: 5; }
 /* A floating card is capped in height and scrolls inside, so without
    this its reply box can end up cut in half at the bottom edge. Keep
    the composer stuck to the card's bottom (opaque, above the scrolled

@@ -115,7 +115,39 @@ export function observeDiffPinned(): () => void {
   const pane = diffPane();
   if (!pane || typeof ResizeObserver === "undefined") return () => {};
   refreshDiffPinned();
-  const ro = new ResizeObserver(refreshDiffPinned);
+  // Stuck marking (owner's floating-card rule): a file/hunk header may
+  // paint above a floating card only while it is actually stuck in its
+  // pinned slot; in place, later sections stay below the card. CSS
+  // cannot select "stuck", so mark it from the same live measurements
+  // as the sticky offsets: a header is stuck when its top sits at its
+  // sticky offset (±1px). Recomputed on scroll (rAF-throttled) and on
+  // every resize refresh.
+  const updateStuck = (): void => {
+    const paneTop = pane.getBoundingClientRect().top;
+    const strip = measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
+    const bar = measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
+    const file = measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK);
+    pane.querySelectorAll(".dfile-h").forEach((h) => {
+      h.classList.toggle("stuck", Math.abs(h.getBoundingClientRect().top - (paneTop + strip + bar)) <= 1);
+    });
+    pane.querySelectorAll(".dhunk-h").forEach((h) => {
+      h.classList.toggle("stuck", Math.abs(h.getBoundingClientRect().top - (paneTop + strip + bar + file)) <= 1);
+    });
+  };
+  let raf = 0;
+  const onScroll = (): void => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      updateStuck();
+    });
+  };
+  pane.addEventListener("scroll", onScroll, { passive: true });
+  updateStuck();
+  const ro = new ResizeObserver(() => {
+    refreshDiffPinned();
+    updateStuck();
+  });
   ro.observe(pane);
   const stick = pane.querySelector(".rstick");
   const bar = pane.querySelector(".dtool");
@@ -124,7 +156,11 @@ export function observeDiffPinned(): () => void {
   if (typeof document !== "undefined" && document.fonts) {
     document.fonts.ready.then(refreshDiffPinned).catch(() => {});
   }
-  return () => ro.disconnect();
+  return () => {
+    pane.removeEventListener("scroll", onScroll);
+    if (raf) cancelAnimationFrame(raf);
+    ro.disconnect();
+  };
 }
 
 /**
