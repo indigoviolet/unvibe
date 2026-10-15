@@ -146,7 +146,9 @@ test("Ask inside a floating card opens a floating child above it; pinning puts i
   await child.getByRole("button", { name: "Pin into the page" }).click();
   await expect(child).not.toHaveClass(/floating/);
   await expect(parent).toHaveClass(/floating/);
-  // Closing it leaves the parent floating, as it was.
+  // Closing it leaves the parent floating, as it was. Scroll the
+  // pinned child into view inside the parent's own scroller first.
+  await child.evaluate((el) => el.scrollIntoView({ block: "nearest" }));
   await child.getByRole("button", { name: "Close" }).click();
   await expect(child).toBeHidden();
   await expect(parent).toBeVisible();

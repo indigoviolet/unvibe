@@ -469,7 +469,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         className={`card child collapsed${floating ? " floating" : ""}`}
         id={`B-${expansion.id}`}
         data-expansion={expansion.id}
-        style={nestedPos}
+        style={floating ? nestedPos : undefined}
         {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
       >
         <div className="exp-h">
@@ -503,7 +503,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       className={`card child${cardBusy?.rewriting ? " rewriting" : ""}${floating ? " floating" : ""}`}
       id={`B-${expansion.id}`}
       data-expansion={expansion.id}
-      style={nestedPos}
+      style={floating ? nestedPos : undefined}
       aria-busy={cardBusy ? true : undefined}
       {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
     >
