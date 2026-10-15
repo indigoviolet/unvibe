@@ -431,6 +431,42 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
   expect(bad, `${step}: pinned band ${bad ?? ""}`).toBeNull();
 }
 
+/**
+ * Generic check (diff scenes): every visible code row's line-number
+ * cells sit inside the pane and are topmost at their centre — a hunk
+ * scrolled sideways must keep its gutter (the #189 reopen marker
+ * lives there). Floating cards and the pinned top stack may
+ * legitimately cover the gutter; code rows may not.
+ */
+async function checkGutters(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const pv = pane.getBoundingClientRect();
+    for (const cell of pane.querySelectorAll("table.diff td.n")) {
+      const r = cell.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.bottom <= pv.top || r.top >= pv.bottom) continue;
+      const row = cell.closest("tr")?.id ?? "(no id)";
+      if (r.left < pv.left - 1 || r.right > pv.right + 1) {
+        return `line-number cell outside the pane: left=${Math.round(r.left)} right=${Math.round(r.right)} pane=${Math.round(pv.left)}-${Math.round(pv.right)} row=${row}`;
+      }
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      // Only a cell whose centre is inside the pane's visible band
+      // counts; cells half under the top stack are the stack's.
+      if (y < pv.top || y > pv.bottom) continue;
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || cell.contains(hit)) continue;
+      if (hit.closest(".card.child.floating")) continue;
+      if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dband, .fmenu, .cmenu, #pop")) continue;
+      return `line-number cell not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} row=${row}`;
+    }
+    return null;
+  });
+  expect(bad, `${step}: gutter ${bad ?? ""}`).toBeNull();
+}
+
 async function shot(page: Page, name: string, suffix: string, expectedText?: string): Promise<void> {
   // Never screenshot an empty or still-loading scene: each scene
   // names one piece of real content that must be visible first.
@@ -458,6 +494,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   await checkNoPageOverflow(page, step);
   await checkPinnedSlots(page, step);
   await checkPinnedBand(page, step);
+  await checkGutters(page, step);
   await checkCards(page, step);
   await checkCardHeaders(page, step);
   await checkReplyBoxes(page, step);
@@ -610,6 +647,15 @@ for (const combo of [
     await mlMarker.click();
     await expect(mlCard).toBeVisible({ timeout: 15_000 });
     await mlCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+
+    // Sideways-scrolled hunk: the line-number gutter — and the #189
+    // reopen marker in its first cell — sticks to the pane's left
+    // edge instead of scrolling away with the code.
+    await page.locator('[id="F-src-urllib3-connection.py"] .dwrap').first().evaluate((el) => {
+      el.scrollLeft = 260;
+    });
+    await stepChecks(page, "diff-hscroll");
+    await shot(page, "diff-hscroll", suffix, "↪");
 
     // Deep-anchored card in the long socket-level hunk.
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
