@@ -55,6 +55,21 @@ export function floatingHunkKey(fileKey: string, hunkIndex: number): string {
   return `${fileKey}:${hunkIndex}`;
 }
 
+/**
+ * Issue #189: a multi-line anchor's quote spans rows, so no single code
+ * cell can wrap it and a closed card/thread had no way back. The range
+ * gets a per-row highlight plus this marker in the first row's gutter;
+ * the existing mark click handler reopens it.
+ */
+function makeRangeMark(id: string, closed: boolean): HTMLElement {
+  const mark = document.createElement("mark");
+  mark.className = closed ? "anc range closed" : "anc range";
+  mark.dataset.jump = id;
+  mark.textContent = "↪";
+  mark.title = closed ? "Reopen the explanation" : "Explanation";
+  return mark;
+}
+
 function makePageLink(pageId: string): HTMLElement {
   const a = document.createElement("a");
   a.className = "cx pg";
@@ -127,6 +142,37 @@ export function useDiffExpansionBindings(
       pending = new Set<string>([...byLine.values()].flat().map((a) => a.id));
       const scope = document.body;
       withPreservedSelection(scope, () => {
+        // Issue #189: clear the previous range artifacts (idempotent —
+        // React re-renders and highlight upgrades wipe rows freely).
+        for (const el of document.querySelectorAll("#right mark.anc.range")) el.remove();
+        for (const el of document.querySelectorAll("#right tr.rng")) {
+          el.classList.remove("rng", "rng-first");
+        }
+        // Multi-line ranges: highlight every row of the range (hunks
+        // and revealed context rows alike; rows not rendered are
+        // skipped) and put a reopen marker in the first row's gutter.
+        // Comment threads already reopen from their line-number icon,
+        // so they get the highlight only.
+        for (const a of annotations ?? []) {
+          if (a.type !== "conversation" && a.type !== "link" && a.type !== "comment") continue;
+          if (a.anchor.host.kind !== "diff-line") continue;
+          if (a.type === "link" && !a.promotedToPage) continue;
+          const host = a.anchor.host;
+          if (!host.endLine || host.endLine <= host.line) continue;
+          if (isAnchorStale(a)) continue;
+          let firstRow: Element | null = null;
+          for (let n = host.line; n <= host.endLine; n++) {
+            const row = document.getElementById(`L-${host.fileKey}-${n}`);
+            if (!row) continue;
+            row.classList.add("rng");
+            if (!firstRow) firstRow = row;
+          }
+          if (firstRow && a.type !== "comment") {
+            firstRow.classList.add("rng-first");
+            const cell = firstRow.querySelector("td.n");
+            if (cell) cell.prepend(makeRangeMark(a.id, !a.open));
+          }
+        }
         for (const [key, exps] of byLine) {
           const [fileKey, lineStr] = key.split(":");
           const row = document.getElementById(`L-${fileKey}-${lineStr}`);
