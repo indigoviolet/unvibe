@@ -17,6 +17,7 @@ const PREVIEW: HealthResponse = {
   version: "0.0.1-preview.feat-x.abc1234",
   build: {
     version: "0.0.1-preview.feat-x.abc1234",
+    channel: "preview/feat-x",
     sourceBranch: "feat/x",
     sourceCommit: "abc1234def5678",
     baseBranch: "main",
@@ -48,17 +49,28 @@ describe("PreviewBuildBadge", () => {
     expect(screen.queryByTestId("preview-marker")).toBeNull();
   });
 
-  it("full pill names the branch and links to Settings → Version", async () => {
-    stubHealth(PREVIEW.build);
+  it("full pill is short: preview, branch and short commit, full detail on hover", async () => {
+    stubHealth({
+      version: "0.0.1-preview.main-rc.6818b23",
+      channel: "preview/main-rc",
+      sourceBranch: "main-rc",
+      sourceCommit: "6818b23aaaaaaa",
+      baseBranch: "main",
+      baseCommit: "c562ed1bbbbbbb",
+      commit: "ffff000011112222",
+      builtAt: new Date().toISOString(),
+    });
     render(
       <MemoryRouter initialEntries={["/"]}>
         <PreviewBuildBadge />
       </MemoryRouter>,
     );
     const badge = await screen.findByTestId("preview-badge");
-    expect(badge).toHaveTextContent("feat/x");
+    expect(badge.textContent?.trim()).toBe("preview · main-rc · 6818b23");
     expect(badge).toHaveAttribute("href", "/settings?tab=version");
-    expect(badge.getAttribute("title")).toMatch("Preview build");
+    expect(badge.getAttribute("title")).toContain("Preview build 0.0.1-preview.main-rc.6818b23");
+    expect(badge.getAttribute("title")).toContain("main@c562ed1 + main-rc@6818b23");
+    expect(badge.getAttribute("title")).toContain("built");
   });
 
   it("compact marker is one quiet word with the full text on hover", async () => {

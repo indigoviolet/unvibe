@@ -199,6 +199,7 @@ describe("build identity", () => {
       resolveBuildInfo({ dataDir: dir, serviceScriptPath: scriptPath, serviceVersion: "0.0.1", env: {} }),
     ).toEqual({
       version: "0.0.1-preview.x.y",
+      channel: "preview/x",
       sourceBranch: "x",
       sourceCommit: null,
       baseBranch: null,

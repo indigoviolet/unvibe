@@ -1,8 +1,11 @@
 /** Version-picker display helpers: grouping, short shas, relative times, outcome copy. */
 import { describe, expect, it } from "vitest";
 import {
+  badgeLabel,
+  badgeTitle,
   blockedJobLine,
   buildLine,
+  channelRowState,
   isNewerAvailable,
   mergedProvenance,
   outcomeLine,
@@ -51,7 +54,7 @@ describe("versionFormat", () => {
   });
 
   it("flags a newer published build on the installed channel only", () => {
-    const build = { version: "0.0.1", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: "aaa", builtAt: null };
+    const build = { version: "0.0.1", channel: "preview/a", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: "aaa", builtAt: null };
     const row = (commit: string | null, current: boolean): UpdateChannel => ({
       ref: "preview/a",
       kind: "preview",
@@ -75,7 +78,7 @@ describe("versionFormat", () => {
     expect(buildLine(null, "0.0.1")).toBe("on 0.0.1");
     expect(
       buildLine(
-        { version: "0.0.1-preview.feat-x.abc1234", sourceBranch: "feat/x", sourceCommit: null, baseBranch: null, baseCommit: null, commit: "abc1234def", builtAt: null },
+        { version: "0.0.1-preview.feat-x.abc1234", channel: "preview/feat-x", sourceBranch: "feat/x", sourceCommit: null, baseBranch: null, baseCommit: null, commit: "abc1234def", builtAt: null },
         "0.0.1",
       ),
     ).toBe("on 0.0.1-preview.feat-x.abc1234 (feat/x · abc1234)");
@@ -102,7 +105,7 @@ describe("versionFormat", () => {
     };
     expect(mergedProvenance(merged)).toBe("main@bbb2222 + feat/x@aaa1111");
     expect(
-      buildLine({ version: "0.0.1-preview.feat-x.abc1234", ...merged, commit: "merge9999", builtAt: null }, "0.0.1"),
+      buildLine({ version: "0.0.1-preview.feat-x.abc1234", channel: "preview/feat-x", ...merged, commit: "merge9999", builtAt: null }, "0.0.1"),
     ).toBe("on 0.0.1-preview.feat-x.abc1234 (main@bbb2222 + feat/x@aaa1111)");
     expect(mergedProvenance(null)).toBeNull();
     expect(mergedProvenance({ ...merged, baseCommit: null })).toBeNull();
@@ -137,6 +140,43 @@ describe("versionFormat", () => {
         finishedAt: new Date(NOW - 60_000).toISOString(),
       }),
     ).toContain("3 jobs interrupted");
+  });
+
+  it("classifies channel rows: up to date, newer available, other channel", () => {
+    const build = { version: "0.0.1", channel: "preview/a", sourceBranch: "a", sourceCommit: null, baseBranch: null, baseCommit: null, commit: "aaa1111", builtAt: null };
+    const row = (commit: string | null, current: boolean): UpdateChannel => ({
+      ref: "preview/a",
+      kind: "preview",
+      version: "0.0.1",
+      commit,
+      sourceBranch: "a",
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
+      builtAt: null,
+      current,
+    });
+    expect(channelRowState(row("aaa1111", true), build)).toBe("installed");
+    expect(channelRowState(row("bbb2222", true), build)).toBe("update-available");
+    expect(channelRowState(row("bbb2222", false), build)).toBe("other");
+  });
+
+  it("keeps the badge short and puts bases and build time in the title", () => {
+    const build = {
+      version: "0.0.1-preview.main-rc.6818b23",
+      channel: "preview/main-rc",
+      sourceBranch: "main-rc",
+      sourceCommit: "6818b23aaaaaaa",
+      baseBranch: "main",
+      baseCommit: "c562ed1bbbbbbb",
+      commit: "ffff000011112222",
+      builtAt: new Date(NOW - 3 * 3600_000).toISOString(),
+    };
+    expect(badgeLabel(build)).toBe("preview · main-rc · 6818b23");
+    const title = badgeTitle(build, NOW);
+    expect(title).toContain("0.0.1-preview.main-rc.6818b23");
+    expect(title).toContain("main@c562ed1 + main-rc@6818b23");
+    expect(title).toContain("built 3h ago");
   });
 
   it("renders one blocked job as a quiet line", () => {

@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { Settings, UpdateChannel, UpdateStatusResponse } from "@unvibe/shared";
+import type { Settings, UpdateBuildInfo, UpdateChannel, UpdateStatusResponse } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
 import { VersionSection } from "./VersionSection.js";
@@ -32,7 +32,7 @@ const SETTINGS: Settings = {
   fullAccessAcknowledgedAt: null,
 };
 
-const BUILD = { version: "0.0.1", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null };
+const BUILD = { version: "0.0.1", channel: "release", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null };
 
 const CHANNELS: UpdateChannel[] = [
   { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null, current: true },
@@ -53,6 +53,92 @@ const CHANNELS: UpdateChannel[] = [
 function statusWith(outcome: UpdateStatusResponse["outcome"]): UpdateStatusResponse {
   return { enabled: true, build: BUILD, pending: null, outcome };
 }
+
+describe("VersionSection installed and channel states", () => {
+  function renderWith(build: UpdateBuildInfo, channels: UpdateChannel[]): void {
+    vi.spyOn(api, "health").mockResolvedValue({ ok: true, version: build.version, build });
+    vi.spyOn(api, "updateChannels").mockResolvedValue({ channels });
+    vi.spyOn(api, "updateStatus").mockResolvedValue({ enabled: true, build, pending: null, outcome: null });
+    vi.spyOn(api, "updateSwitch").mockResolvedValue({ from: "release", to: "release" });
+    render(<VersionSection settings={SETTINGS} onSaved={() => {}} />);
+  }
+
+  const running = {
+    version: "0.0.1-preview.feat-x.6818b23",
+    channel: "preview/feat-x",
+    sourceBranch: "feat/x",
+    sourceCommit: "6818b23aaaaaaa",
+    baseBranch: "main",
+    baseCommit: "c562ed1bbbbbbb",
+    commit: "6818b23aaaaaaa",
+    builtAt: new Date(Date.now() - 3 * 86400_000).toISOString(),
+  };
+  const currentRow = (commit: string): UpdateChannel => ({
+    ref: "preview/feat-x",
+    kind: "preview",
+    version: "0.0.1-preview.feat-x.b535a30",
+    commit,
+    sourceBranch: "feat/x",
+    sourceCommit: commit,
+    baseBranch: "main",
+    baseCommit: "dddd4444eeee5555",
+    builtAt: new Date(Date.now() - 3600_000).toISOString(),
+    current: true,
+  });
+  const otherRow: UpdateChannel = {
+    ref: "release",
+    kind: "release",
+    version: "0.0.1",
+    commit: "eeee5555ffff6666",
+    sourceBranch: null,
+    sourceCommit: null,
+    baseBranch: null,
+    baseCommit: null,
+    builtAt: new Date(Date.now() - 7200_000).toISOString(),
+    current: false,
+  };
+
+  it("Installed shows the running build, never the published head", async () => {
+    renderWith(running, [currentRow("b535a30ccccccc"), otherRow]);
+    const line = await screen.findByTestId("update-current-version");
+    expect(line).toHaveTextContent("preview/feat-x");
+    expect(line).toHaveTextContent("6818b23");
+    expect(line).toHaveTextContent("main@c562ed1 + feat/x@6818b23");
+    expect(line).not.toHaveTextContent("b535a30");
+  });
+
+  it("up to date: INSTALLED pill and no Update button", async () => {
+    renderWith(running, [currentRow("6818b23aaaaaaa"), otherRow]);
+    await screen.findByTestId("update-current-version");
+    await waitFor(() => expect(document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')).not.toBeNull());
+    const row = document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')!;
+    expect(row.querySelector('[data-testid="update-current"]')).not.toBeNull();
+    expect(row.querySelector('[data-testid="update-available"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Update preview/feat-x" })).toBeNull();
+  });
+
+  it("newer available: Update available state, latest commit and age, Update button, no INSTALLED pill", async () => {
+    renderWith(running, [currentRow("b535a30ccccccc"), otherRow]);
+    await screen.findByTestId("update-current-version");
+    await waitFor(() => expect(document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')).not.toBeNull());
+    const row = document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')!;
+    expect(row.querySelector('[data-testid="update-current"]')).toBeNull();
+    expect(row.querySelector('[data-testid="update-available"]')).not.toBeNull();
+    expect(row).toHaveTextContent("b535a30");
+    expect(row).toHaveTextContent("built 1h ago");
+    expect(screen.getByRole("button", { name: "Update preview/feat-x" })).toHaveTextContent("Update");
+  });
+
+  it("other channel: no pill, Switch button", async () => {
+    renderWith(running, [currentRow("6818b23aaaaaaa"), otherRow]);
+    await screen.findByTestId("update-current-version");
+    await waitFor(() => expect(document.querySelector('[data-testid="update-channel"][data-ref="release"]')).not.toBeNull());
+    const row = document.querySelector('[data-testid="update-channel"][data-ref="release"]')!;
+    expect(row.querySelector('[data-testid="update-current"]')).toBeNull();
+    expect(row.querySelector('[data-testid="update-available"]')).toBeNull();
+    expect(screen.getByRole("button", { name: "Switch to release" })).toHaveTextContent("Switch");
+  });
+});
 
 describe("VersionSection switch anyway", () => {
   it("refused switch shows the jobs inline; Switch anyway re-posts with force", async () => {

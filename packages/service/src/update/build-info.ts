@@ -35,6 +35,7 @@ export function fakeBuildInfo(dataDir: string): UpdateBuildInfo | null {
   if (!found || typeof found.version !== "string" || found.version === "") return null;
   return {
     version: found.version,
+    channel: current,
     sourceBranch: typeof found.sourceBranch === "string" ? found.sourceBranch : null,
     sourceCommit: typeof found.sourceCommit === "string" ? found.sourceCommit : null,
     baseBranch: typeof found.baseBranch === "string" ? found.baseBranch : null,
@@ -53,6 +54,7 @@ export function resolveBuildInfo(inputs: BuildInfoInputs): UpdateBuildInfo | nul
   if (!installed.channel) return null;
   return {
     version: installed.version,
+    channel: installed.channel,
     sourceBranch: installed.sourceBranch,
     sourceCommit: installed.sourceCommit,
     baseBranch: installed.baseBranch,

@@ -22,7 +22,7 @@ import type {
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { putErrors } from "./LimitsSection.js";
-import { blockedJobLine, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
+import { blockedJobLine, channelRowState, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
 const SWITCH_POLL_MS = 1000;
@@ -330,9 +330,11 @@ export function VersionSection({
 }
 
 /**
- * The running version in one line: the current row's ref when one is
- * marked, else the build version from status/health. The long version
- * string rides on the name's `title`, not as a second column.
+ * The running version in one line, from the running build's own record:
+ * channel, commit, built-at and its bases. The channel row only names
+ * the channel when the build carries none; its commit and build time
+ * are the published head and must never stand in for the running build.
+ * The long version string rides on the name's `title`.
  */
 function CurrentVersion({
   row,
@@ -343,19 +345,18 @@ function CurrentVersion({
   build: UpdateBuildInfo | null;
   fallback: string | null;
 }): React.JSX.Element | null {
-  const name = row?.ref ?? build?.version ?? fallback;
+  const name = build?.channel ?? row?.ref ?? build?.version ?? fallback;
   if (!name) return null;
-  const sha = shortCommit(row?.commit ?? build?.commit);
-  const builtAt = row?.builtAt ?? build?.builtAt;
+  const sha = shortCommit(build?.commit);
+  const builtAt = build?.builtAt;
   const built = builtAt ? (timeAgoIso(builtAt) ?? builtAt) : null;
-  const branch = row?.sourceBranch ?? build?.sourceBranch;
-  // Merged previews (issue #41) name both sides; older builds keep the
-  // single-side line.
-  const merged = mergedProvenance(row) ?? mergedProvenance(build);
+  const branch = build?.sourceBranch;
+  // Merged previews name both sides; older builds keep the single side.
+  const merged = mergedProvenance(build);
   return (
     <p className="ver-current" data-testid="update-current-version">
       Installed:{" "}
-      <code className="ver-name" title={row?.version ?? name}>
+      <code className="ver-name" title={build?.version ?? name}>
         {name}
       </code>
       {sha ? <> · {sha}</> : null}
@@ -446,6 +447,7 @@ function VersionRow({
   // published one gets an Update action (same switch flow, from === to,
   // no DB swap).
   const newerAvailable = isNewerAvailable(c, build);
+  const rowState = channelRowState(c, build);
   const confirming = confirmRef === c.ref;
   const isBlocked = blocked?.ref === c.ref;
   const verb = newerAvailable ? "update" : "switch";
@@ -460,9 +462,13 @@ function VersionRow({
       </span>
       <span className="ver-built">{built ? `built ${built}` : "—"}</span>
       <span className="ver-action">
-        {c.current ? (
+        {rowState === "installed" ? (
           <span className="st" data-testid="update-current">
             installed
+          </span>
+        ) : rowState === "update-available" ? (
+          <span className="st" data-testid="update-available">
+            update available
           </span>
         ) : switchingTo ? (
           <span className="hint">…</span>
@@ -503,11 +509,6 @@ function VersionRow({
       ) : isBlocked && blocked ? (
         <span className="ver-note">
           <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
-        </span>
-      ) : newerAvailable && build && c.current && !switchingTo ? (
-        <span className="ver-note warnline" data-testid="update-available">
-          Newer build available (installed {shortCommit(build.commit)} vs {shortCommit(c.commit)}
-          {c.builtAt ? `, built ${timeAgoIso(c.builtAt) ?? c.builtAt}` : ""})
         </span>
       ) : null}
     </div>
