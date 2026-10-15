@@ -119,6 +119,9 @@ async function checkCards(page: Page, step: string): Promise<void> {
         for (let x = x0 + 8; x < x1; x += 40) {
           const hit = document.elementFromPoint(x, y);
           if (!hit || cardEl.contains(hit)) continue;
+          // Another floating card over this one is by design (a child
+          // floats above its parent).
+          if (hit.closest(".card.child.floating")) continue;
           if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick")) continue;
           return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
         }
@@ -134,6 +137,8 @@ async function shot(page: Page, name: string, suffix: string): Promise<void> {
 }
 
 async function stepChecks(page: Page, step: string): Promise<void> {
+  // Let streamed answers and fixed-position sync settle before sampling.
+  await page.waitForTimeout(350);
   await checkNoPageOverflow(page, step);
   await checkCards(page, step);
   await checkMenus(page, step);
