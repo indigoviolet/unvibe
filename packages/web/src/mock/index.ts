@@ -1450,6 +1450,8 @@ const UPDATE_KEY = "unvibe.mock.update";
 const UPDATE_FAIL_KEY = "unvibe.mock.update.fail";
 /** Opt-in running-jobs refusal for the switch-anyway flow (`"1"` refuses). */
 const UPDATE_BLOCK_JOBS_KEY = "unvibe.mock.update.blockJobs";
+/** Test hook: pretend the running build is this older commit, so the picker shows an update. */
+const UPDATE_INSTALLED_COMMIT_KEY = "unvibe.mock.update.installedCommit";
 
 // Distinct build times (issue #73): the picker sorts newest first, so the
 // list order is preview/feat-x, preview/fix-y, release-rc, release.
@@ -1458,7 +1460,7 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     ref: "release",
     kind: "release",
     version: "0.0.1",
-    commit: null,
+    commit: "b535a30ccccccc",
     sourceBranch: null,
     sourceCommit: null,
     baseBranch: null,
@@ -1540,14 +1542,21 @@ function mockUpdateBuild(): UpdateBuildInfo | null {
   const { current } = readUpdatePersisted();
   const found = MOCK_UPDATE_CHANNELS.find((c) => c.ref === current);
   if (!found?.version) return null;
+  let staleCommit: string | null = null;
+  try {
+    staleCommit = localStorage.getItem(UPDATE_INSTALLED_COMMIT_KEY);
+  } catch {
+    staleCommit = null;
+  }
   return {
     version: found.version,
+    channel: found.ref,
     sourceBranch: found.sourceBranch,
-    sourceCommit: found.sourceCommit,
+    sourceCommit: staleCommit ?? found.sourceCommit,
     baseBranch: found.baseBranch,
     baseCommit: found.baseCommit,
-    commit: found.commit,
-    builtAt: found.builtAt,
+    commit: staleCommit ?? found.commit,
+    builtAt: staleCommit ? new Date(NOW - 3 * 86400_000).toISOString() : found.builtAt,
   };
 }
 
