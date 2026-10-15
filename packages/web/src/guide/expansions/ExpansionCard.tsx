@@ -375,8 +375,16 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     if (!el || !el.parentElement?.closest(".card.child.floating")) return;
     const measure = (): void => {
       const r = el.getBoundingClientRect();
+      // Indent by shrinking, never by shifting past the edge: the
+      // placeholder sits inside the parent, so the same width at its
+      // left would overshoot the parent's right edge — and the
+      // viewport's. Cap the right edge at the parent's (and 8px
+      // inside the viewport).
+      const parent = el.closest(".card.child.floating")?.getBoundingClientRect();
+      const rightLimit = Math.min(parent ? parent.right : window.innerWidth, window.innerWidth - 8);
+      const width = Math.max(160, Math.min(r.width, rightLimit - r.left));
       setNestedPos((prev) => {
-        const next: CSSProperties = { position: "fixed", top: r.top, left: r.left, width: r.width, right: "auto" };
+        const next: CSSProperties = { position: "fixed", top: r.top, left: r.left, width, right: "auto" };
         return prev && prev.top === next.top && prev.left === next.left && prev.width === next.width ? prev : next;
       });
     };

@@ -79,14 +79,14 @@ describe("DiffView file filters", () => {
     expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();
     expect(document.getElementById(`F-${TSOCK}`)).toBeNull();
-    // The file filter counts deselected categories only (4); the
-    // review filter counts hide-reviewed (1).
+    // No count badge: the active state is aria-pressed (accent icon),
+    // and the tooltip names what is hidden.
     const filter = screen.getByRole("button", { name: /File filters/ });
     expect(filter).toHaveAttribute("aria-pressed", "true");
-    expect(filter).toHaveTextContent("4");
+    expect(filter.getAttribute("data-tip")).toContain("Hiding:");
     const reviewFilter = screen.getByRole("button", { name: /Review filters/ });
     expect(reviewFilter).toHaveAttribute("aria-pressed", "true");
-    expect(reviewFilter).toHaveTextContent("1");
+    expect(reviewFilter.getAttribute("data-tip")).toContain("Reviewed");
     // Stored prefs survive the render untouched.
     const stored = JSON.parse(localStorage.getItem("unvibe.diff.prefs.v1") as string) as {
       hideReviewed: boolean;
@@ -100,9 +100,8 @@ describe("DiffView file filters", () => {
     await renderDiff();
     await fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
     const filter = screen.getByRole("button", { name: "File filters" });
-    // Default: everything shown, no active badge.
+    // Default: everything shown, no active state.
     expect(filter).toHaveAttribute("aria-pressed", "false");
-    expect(filter).not.toHaveTextContent("1");
     await fireEvent.click(filter);
     const menu = screen.getByRole("menu", { name: "File filters" });
     const tests = within(menu).getByRole("menuitemcheckbox", { name: /Tests/ });
@@ -112,7 +111,7 @@ describe("DiffView file filters", () => {
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();
     expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
     expect(filter).toHaveAttribute("aria-pressed", "true");
-    expect(filter).toHaveTextContent("1");
+    expect(filter.getAttribute("data-tip")).toBe("Hiding: Tests");
     await fireEvent.click(tests);
     expect(document.getElementById(`F-${TCONN}`)).not.toBeNull();
     expect(filter).toHaveAttribute("aria-pressed", "false");
@@ -136,7 +135,7 @@ describe("DiffView file filters", () => {
     // Enter toggles the focused row (Tests off).
     await fireEvent.click(document.activeElement as HTMLElement);
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();
-    expect(filter).toHaveTextContent("1");
+    expect(filter.getAttribute("data-tip")).toBe("Hiding: Tests");
     // Esc closes and returns focus to the button.
     await fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "File filters" })).toBeNull();

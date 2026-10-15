@@ -15,7 +15,8 @@
  * - line-number clicks emit `onLineClick` ("start a comment" hook);
  * - the guide agent jumps here via `revealSource("diff:…")`.
  */
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { DiffFilter, Hunk, HunkScoreLevel, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
 import { HUNK_SCORE_LABELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
@@ -826,9 +827,12 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
         </button>
         <FilterMenuButton
           label="Review filters"
-          tip="Reviewed and GitHub comment filters"
+          tip={
+            prefs.hideReviewed || !snapshot.viewPrefs.showExistingComments
+              ? `Hiding: ${[prefs.hideReviewed ? "Reviewed" : null, !snapshot.viewPrefs.showExistingComments ? "GitHub comments" : null].filter(Boolean).join(", ")}`
+              : "Reviewed and GitHub comment filters"
+          }
           icon="check"
-          activeCount={(prefs.hideReviewed ? 1 : 0) + (snapshot.viewPrefs.showExistingComments ? 0 : 1)}
           rows={[
             {
               key: "__reviewed",
@@ -942,9 +946,12 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
             />
             <FilterMenuButton
               label="File filters"
-              tip="Filter files by type"
+              tip={
+                CATS.some((c) => !cats.has(c.k))
+                  ? `Hiding: ${CATS.filter((c) => !cats.has(c.k)).map((c) => c.l).join(", ")}`
+                  : "Filter files by type"
+              }
               icon="filter"
-              activeCount={CATS.length - cats.size}
               rows={CATS.map((c) => ({
                 key: c.k,
                 label: c.l,
@@ -1087,27 +1094,54 @@ function FilterMenuButton({
   tip,
   icon,
   rows,
-  activeCount,
 }: {
   label: string;
+  /** Tooltip naming what is hidden when active (owner: no badge). */
   tip: string;
   icon: "filter" | "check";
   rows: FilterRow[];
-  activeCount: number;
 }): ReactNode {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ctlRef = useRef<HTMLSpanElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const active = activeCount > 0;
+  const active = rows.some((r) => !r.checked);
   const itemCount = rows.length;
+
+  // The menu renders in a portal at the top layer, positioned from its
+  // button and clamped into the viewport: the pinned toolbar scrolls
+  // sideways (overflow), which used to clip it at the pane edge.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = (): void => {
+      const btn = btnRef.current;
+      const menu = menuRef.current;
+      if (!btn || !menu) return;
+      const br = btn.getBoundingClientRect();
+      const w = menu.offsetWidth;
+      const h = menu.offsetHeight;
+      const left = Math.max(8, Math.min(br.right - w, window.innerWidth - w - 8));
+      const top = br.bottom + h + 8 <= window.innerHeight ? br.bottom + 4 : Math.max(8, br.top - h - 4);
+      setPos((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left }));
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("scroll", place, true);
+    };
+  }, [open ]);
 
   // Close on outside press or Escape, like the other dropdowns
   // (SecondOpinionControl, CommentsMenu).
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent): void => {
-      if (!ctlRef.current?.contains(e.target as Node)) setOpen(false);
+      const n = e.target as Node;
+      if (!ctlRef.current?.contains(n) && !menuRef.current?.contains(n)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
@@ -1136,6 +1170,50 @@ function FilterMenuButton({
     itemRefs.current[next]?.focus();
   };
 
+  const menu = open ? (
+    <div
+      ref={menuRef}
+      className="fmenu portal"
+      role="menu"
+      aria-label={label}
+      style={pos ? { position: "fixed", top: pos.top, left: pos.left } : { position: "fixed", visibility: "hidden" }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          move(1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          move(-1);
+        } else if (e.key === "Home") {
+          e.preventDefault();
+          itemRefs.current[0]?.focus();
+        } else if (e.key === "End") {
+          e.preventDefault();
+          itemRefs.current[itemCount - 1]?.focus();
+        }
+      }}
+    >
+      {rows.map((r, i) => (
+        <button
+          key={r.key}
+          ref={(el) => {
+            itemRefs.current[i] = el;
+          }}
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={r.checked}
+          onClick={r.toggle}
+        >
+          <span className="tick" aria-hidden="true">
+            {r.checked ? "✓" : ""}
+          </span>
+          <span className="lbl">{r.label}</span>
+          <span className="cnt">{r.count}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <span className="fctl" ref={ctlRef}>
       <button
@@ -1156,49 +1234,8 @@ function FilterMenuButton({
         }}
       >
         <Icon name={icon} />
-        {active ? <span className="count">{activeCount}</span> : null}
       </button>
-      {open ? (
-        <div
-          className="fmenu"
-          role="menu"
-          aria-label={label}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              move(1);
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              move(-1);
-            } else if (e.key === "Home") {
-              e.preventDefault();
-              itemRefs.current[0]?.focus();
-            } else if (e.key === "End") {
-              e.preventDefault();
-              itemRefs.current[itemCount - 1]?.focus();
-            }
-          }}
-        >
-          {rows.map((r, i) => (
-            <button
-              key={r.key}
-              ref={(el) => {
-                itemRefs.current[i] = el;
-              }}
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={r.checked}
-              onClick={r.toggle}
-            >
-              <span className="tick" aria-hidden="true">
-                {r.checked ? "✓" : ""}
-              </span>
-              <span className="lbl">{r.label}</span>
-              <span className="cnt">{r.count}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {menu ? createPortal(menu, document.body) : null}
     </span>
   );
 }
