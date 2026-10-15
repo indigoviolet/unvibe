@@ -137,8 +137,20 @@ async function shot(page: Page, name: string, suffix: string): Promise<void> {
 }
 
 async function stepChecks(page: Page, step: string): Promise<void> {
-  // Let streamed answers and fixed-position sync settle before sampling.
-  await page.waitForTimeout(350);
+  // Let streamed answers and fixed-position sync settle: wait until
+  // every open card's rect is unchanged across two samples.
+  let last = "";
+  for (let i = 0; i < 10; i++) {
+    const now = await page.evaluate(() =>
+      [...document.querySelectorAll(".card.child.floating")].map((c) => {
+        const r = c.getBoundingClientRect();
+        return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+      }).join("|"),
+    );
+    if (now === last && i > 0) break;
+    last = now;
+    await page.waitForTimeout(300);
+  }
   await checkNoPageOverflow(page, step);
   await checkCards(page, step);
   await checkMenus(page, step);
