@@ -1158,6 +1158,8 @@ export interface UpdateChannel {
  */
 export interface UpdateBuildInfo {
   version: string;
+  /** Installed channel ("release" | "release-rc" | "preview/<slug>") of the running build; null when unknown. */
+  channel: string | null;
   sourceBranch: string | null;
   /** Branch-side commit (for a merged preview, the branch head — see `UpdateChannel.sourceCommit`); null when unknown. */
   sourceCommit: string | null;

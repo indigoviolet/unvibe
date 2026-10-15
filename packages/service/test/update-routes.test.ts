@@ -170,7 +170,7 @@ describe("update status", () => {
       expect(body.pending).toBeNull();
       expect(body.outcome).toBeNull();
       // Installed build identity comes from the installed package.
-      expect(body.build).toEqual({ version: "0.0.1", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null });
+      expect(body.build).toEqual({ version: "0.0.1", channel: "release", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null });
     } finally {
       await h.close();
     }
