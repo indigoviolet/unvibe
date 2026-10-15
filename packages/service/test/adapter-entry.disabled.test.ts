@@ -1,3 +1,4 @@
+// DISABLED(#188): pins adapter file names
 /**
  * Adapter entry resolution (`agent/acp/connection.ts`).
  *

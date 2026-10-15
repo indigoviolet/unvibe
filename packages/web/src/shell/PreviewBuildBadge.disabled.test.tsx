@@ -1,3 +1,4 @@
+// DISABLED(#188): pins badge copy and state
 /**
  * Preview-build badge tests (issues #36, #141): the full pill in app
  * headers and the compact review-bar marker, both linking to

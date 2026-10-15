@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J1/J2
 /**
  * Revealed-line host text (issue #133): Explain/Ask anchored outside any
  * hunk reads the line through the file-slice source instead of

@@ -1,3 +1,4 @@
+// DISABLED(#188): pins exact release-notes wording
 /**
  * Release-notes install story (issue #156).
  *

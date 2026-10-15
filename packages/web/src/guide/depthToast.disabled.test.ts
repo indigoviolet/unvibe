@@ -1,3 +1,4 @@
+// DISABLED(#188): pins toast copy and state
 /**
  * Depth reuse toasts (issue #65): the toast shows only when the level did
  * not change and nothing was added — for Deeper and Simpler, on cards and

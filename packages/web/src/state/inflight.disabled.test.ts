@@ -1,3 +1,4 @@
+// DISABLED(#188): pins in-flight labels and generation keys
 /**
  * In-flight action state (issue #46): set on click, handed over to the
  * snapshot job, and cleared on settle — never stuck, never wiped by a

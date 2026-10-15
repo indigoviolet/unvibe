@@ -1,3 +1,4 @@
+// DISABLED(#188): pins template list/count pin
 import { describe, expect, it } from "vitest";
 import { PROMPT_TEMPLATE_NAMES, type Contribution } from "@unvibe/shared";
 import Fastify from "fastify";

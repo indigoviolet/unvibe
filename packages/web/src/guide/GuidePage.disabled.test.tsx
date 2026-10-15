@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J1
 /**
  * Guide-page error boundary (issue #101): a throw in the page view shows a
  * guide-sized notice and the boundary resets when the review changes.

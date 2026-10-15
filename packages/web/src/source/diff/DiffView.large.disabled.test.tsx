@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J7
 /**
  * Large-diff behaviour (`VITE_MOCK=1`): split out of DiffView.test.tsx
  * (issue #119) so the 300-file render runs on its own vitest worker.

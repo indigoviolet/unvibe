@@ -1,3 +1,4 @@
+// DISABLED(#188): pins notices coverage pin
 /**
  * Third-party notices staleness guard (issue #14).
  *

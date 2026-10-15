@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J5
 /**
  * Limits validation errors (issue #86, finding 11): the service names
  * the internal key; the UI shows the field's label instead.

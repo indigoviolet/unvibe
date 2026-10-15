@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J1/J4
 /**
  * Source-pane error boundary (issue #101): a throw in the tab body shows a
  * pane-sized notice while the tab bar stays usable.

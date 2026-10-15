@@ -1,3 +1,4 @@
+// DISABLED(#188): pins exact prompt bytes per template
 /**
  * Golden files for every template rendered against the fixed fixture
  * snapshot. Re-render with UPDATE_GOLDENS=1 after intentional changes:

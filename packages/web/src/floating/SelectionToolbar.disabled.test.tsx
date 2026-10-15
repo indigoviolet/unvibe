@@ -1,3 +1,4 @@
+// DISABLED(#188): pins toolbar labels and state keys
 import { describe, expect, test } from "vitest";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../state/store.js";

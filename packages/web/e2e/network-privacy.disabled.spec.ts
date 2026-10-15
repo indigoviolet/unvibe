@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J1-J8 (network-guard fixture on every journey)
 /**
  * Dedicated network-privacy walk (PRD §16): front screen, a review with
  * guide + diff + a D2 diagram, and settings — asserting zero

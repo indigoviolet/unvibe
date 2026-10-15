@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J1
 /**
  * End-to-end ingest against a temporary git repo: real `git`, fake `gh`.
  * Covers branch and PR sources, merge-base diffing, hashing, categories,

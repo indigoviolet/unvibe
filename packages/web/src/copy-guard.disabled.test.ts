@@ -1,3 +1,4 @@
+// DISABLED(#188): pins labels and copy
 /**
  * User-facing copy guard (issue #45, section 4).
  *

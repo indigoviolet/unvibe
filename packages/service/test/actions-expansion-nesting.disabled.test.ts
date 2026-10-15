@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J2
 /**
  * Explain, Ask and Note on text inside a conversation answer (#116, #136).
  *

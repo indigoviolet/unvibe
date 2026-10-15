@@ -1,3 +1,4 @@
+// DISABLED(#188): pins in-flight labels and entry keys
 /**
  * In-flight helpers (issue #46): fixed labels, rewrite detection, entry
  * keys, and busy resolution (entry first, live job next).

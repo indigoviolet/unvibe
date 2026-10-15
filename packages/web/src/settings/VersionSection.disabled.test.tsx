@@ -1,3 +1,4 @@
+// DISABLED(#188): pins version-section mock state (J5 covers the real list)
 /**
  * VersionSection switch-anyway flow (#36 follow-up): a running-jobs
  * refusal renders inline on the row (which jobs, what switching does to

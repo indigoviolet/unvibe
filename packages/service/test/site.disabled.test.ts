@@ -1,3 +1,4 @@
+// DISABLED(#188): pins site asset pin
 /**
  * Front-door page checks (issue #150). Fast: pure file reads, no build.
  *

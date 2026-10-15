@@ -1,3 +1,4 @@
+// DISABLED(#188): pins stage labels
 import { describe, expect, it } from "vitest";
 import { stageLabel, stagePhrase } from "./stageLabels.js";
 

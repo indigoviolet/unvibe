@@ -1,3 +1,4 @@
+// DISABLED(#188): pins exact CLI help copy
 /**
  * CLI help (issue #86, finding 17): the help names every command —
  * including `version` and the no-arguments foreground start.

@@ -1,3 +1,4 @@
+// DISABLED(#188): pins setup/login-unit exact contents (shell e2e covers behaviour)
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";

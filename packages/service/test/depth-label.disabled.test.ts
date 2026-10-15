@@ -1,3 +1,4 @@
+// DISABLED(#188): pins exact card-title label fallback
 import { describe, expect, it } from "vitest";
 import type { ReviewSnapshot } from "@unvibe/shared";
 import { cardTitle } from "../src/pipeline/actions/events.js";

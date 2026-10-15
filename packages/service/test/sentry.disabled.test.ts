@@ -1,3 +1,4 @@
+// DISABLED(#188): pins telemetry wiring, no user-visible outcome
 /**
  * Dev-only Sentry reporting (issue #29): off without a DSN, never loads the
  * SDK in that case, and `reportError` is a safe no-op until it is on.

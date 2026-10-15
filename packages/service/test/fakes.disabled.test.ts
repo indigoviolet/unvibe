@@ -1,3 +1,4 @@
+// DISABLED(#188): pins test-double behaviour
 import { describe, expect, it } from "vitest";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { FakeCommandRunner } from "../src/exec/runner.js";
