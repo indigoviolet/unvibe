@@ -35,6 +35,7 @@ const onlyCase = caseIdx >= 0 ? args[caseIdx + 1] : null;
 const DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-live-plot-data-"));
 const ENV = { ...process.env, UNVIBE_DATA_DIR: DATA, UNVIBE_PORT: String(PORT), UNVIBE_IDLE_MS: "0" };
 delete ENV.UNVIBE_AGENT; // default ACP runner (real agents)
+ENV.UNVIBE_ALLOW_LIVE_AGENT = "1"; // default ACP runner (real agents)
 
 const CASES = [
   { name: "demo", create: { repoId: "demo" }, budgetMs: 15 * 60_000 },

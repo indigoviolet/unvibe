@@ -52,6 +52,7 @@ const ENV = {
   UNVIBE_IDLE_MS: "0",
 };
 delete ENV.UNVIBE_AGENT; // default ACP runner (real agents)
+ENV.UNVIBE_ALLOW_LIVE_AGENT = "1"; // default ACP runner (real agents)
 
 function git(gitArgs, cwd = REPO) {
   const r = spawnSync("git", gitArgs, { cwd, encoding: "utf8" });

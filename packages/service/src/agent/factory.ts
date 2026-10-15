@@ -34,6 +34,7 @@ import type { AgentRunner } from "@unvibe/shared";
 import { NoAgentRunner } from "./none.js";
 import { ReplayAgentRunner } from "../replay/runner.js";
 import { createAcpRunner } from "./acp-runner.js";
+import { assertLiveAgentAllowed } from "./live-guard.js";
 
 export interface CreateRunnerOptions {
   env?: NodeJS.ProcessEnv;
@@ -112,7 +113,11 @@ export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
           : { delayMs: 5 }),
     });
   }
-  return createAcpRunner();
+  // Real fall-through (#188): any other value (unset or mistyped) would
+  // start real agents and spend tokens, so it fails loudly unless the
+  // product entry or a test:live:* task set UNVIBE_ALLOW_LIVE_AGENT=1.
+  assertLiveAgentAllowed(env);
+  return createAcpRunner({ env });
 }
 
 /** True when the runner serves recordings (replay/demo path). */

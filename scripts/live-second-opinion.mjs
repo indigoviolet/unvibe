@@ -95,7 +95,7 @@ function seed(dataDir) {
 function startService(dataDir) {
   return new Promise((resolve, reject) => {
     const proc = spawn(process.execPath, [SERVICE_ENTRY], {
-      env: { ...process.env, UNVIBE_DATA_DIR: dataDir, UNVIBE_PORT: "0", UNVIBE_REPO_ROOTS: "" },
+      env: { ...process.env, UNVIBE_DATA_DIR: dataDir, UNVIBE_PORT: "0", UNVIBE_REPO_ROOTS: "", UNVIBE_ALLOW_LIVE_AGENT: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";

@@ -69,6 +69,11 @@ description = "Playwright behaviour tests against mock mode (needs browsers: mis
 depends = ["build"]
 run = "npm run test:e2e --workspace @unvibe/web --if-present"
 
+[tasks.journeys]
+description = "Real-service journeys J1-J7 plus the visual tour (#188): one spec per journey against the built service"
+depends = ["build"]
+run = "npx --workspace @unvibe/web playwright test e2e/journeys/ e2e/visual-tour.spec.ts"
+
 [tasks."visual-tour"]
 description = "Visual tour against the real built service (demo + replay agent, browser): screenshots in packages/web/visual-tour/ (owner reviews every one)"
 depends = ["build"]
@@ -203,7 +208,7 @@ mise run check-global-install
 
 [tasks."test:live"]
 description = "Live ACP adapter tests (needs claude/codex logins; small token spend)"
-run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 npm run test:live --workspace @unvibe/service"
+run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 npm run test:live --workspace @unvibe/service"
 
 [tasks.lint]
 description = "Run ESLint"
@@ -263,32 +268,32 @@ run = "node scripts/release-tag.mjs"
 
 [tasks."test:live:installed"]
 description = "Live sessions per provider from the installed copy (needs logins; tiny spend; never run by check)"
-run = "mise run release && UNVIBE_LIVE=1 node scripts/live-installed.mjs"
+run = "mise run release && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-installed.mjs"
 
 [tasks."test:live:submit"]
 description = "Live M6 submit test on indigoviolet/lvu (draft PR only; never run by check)"
-run = "node ./scripts/live-submit.mjs"
+run = "UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 node ./scripts/live-submit.mjs"
 
 [tasks."test:live:pipeline"]
 description = "Live M3 pipeline smoke on real agents (claude+codex; token spend; never run by check)"
-run = "mise run build && node scripts/live-pipeline.mjs"
+run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-pipeline.mjs"
 
 [tasks."test:live:plotlines"]
 description = "Live #169 evaluation: hunk scores + plotlines on the demo and public flask PRs (real agents; token spend; read-only, never posts; never run by check)"
-run = "mise run build && node scripts/live-plotlines-169.mjs"
+run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-plotlines-169.mjs"
 
 [tasks."test:live:second-opinion"]
 description = "Live second-opinion check: blind on one finding with real agents (main=Claude, second=Codex; small token spend; never run by check)"
-run = "mise run build && node scripts/live-second-opinion.mjs"
+run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-second-opinion.mjs"
 
 [tasks."test:live:diagram"]
 description = "Live D2 diagram check: real diagram action per provider with cite + render asserts (needs logins, d2; small token spend; never run by check)"
-run = "mise run build && node scripts/live-diagram.mjs"
+run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-diagram.mjs"
 
 [tasks."test:live:full-access"]
 description = "Live full-access check (#160): session+fork git/gh/web/tool run plus the injection measurement (needs logins; small token spend; never run by check)"
-run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 npm run test:live:full-access --workspace @unvibe/service"
+run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 npm run test:live:full-access --workspace @unvibe/service"
 
 [tasks."test:live:fork-tools"]
 description = "Live #124 check: a Codex fork calls a review tool (needs codex login; tiny spend; never run by check)"
-run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_LIVE_PROVIDERS=codex npm run test:live:fork-tools --workspace @unvibe/service"
+run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 UNVIBE_LIVE_PROVIDERS=codex npm run test:live:fork-tools --workspace @unvibe/service"

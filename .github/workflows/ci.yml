@@ -37,6 +37,9 @@ jobs:
         os: ${{ fromJSON(github.event_name == 'push' && '["ubuntu-latest"]' || github.event_name == 'schedule' && '["macos-latest"]' || '["ubuntu-latest", "macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      UNVIBE_LIVE: ""
+      UNVIBE_ALLOW_LIVE_AGENT: ""
     steps:
       - uses: actions/checkout@v4
 

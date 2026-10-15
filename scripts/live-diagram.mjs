@@ -39,7 +39,8 @@ if (PROVIDERS.length === 0) {
 
 const DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-live-diagram-data-"));
 const ENV = { ...process.env, UNVIBE_DATA_DIR: DATA, UNVIBE_PORT: String(PORT), UNVIBE_IDLE_MS: "0" };
-delete ENV.UNVIBE_AGENT;
+delete ENV.UNVIBE_AGENT; // default ACP runner (real agents)
+ENV.UNVIBE_ALLOW_LIVE_AGENT = "1";
 
 function api(method, apiPath, body, token) {
   return new Promise((resolve, reject) => {

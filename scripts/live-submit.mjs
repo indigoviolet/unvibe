@@ -139,7 +139,7 @@ async function main() {
     if (!fs.existsSync(distIndex)) throw new Error(`build missing: ${distIndex} (run mise run build first)`);
     const port = 4519;
     child = spawn("node", [distIndex], {
-      env: { ...process.env, UNVIBE_DATA_DIR: dataDir, UNVIBE_PORT: String(port) },
+      env: { ...process.env, UNVIBE_DATA_DIR: dataDir, UNVIBE_PORT: String(port), UNVIBE_ALLOW_LIVE_AGENT: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stdout.on("data", (d) => process.stdout.write(`[service] ${d}`));
