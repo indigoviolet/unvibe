@@ -115,15 +115,17 @@ async function checkCards(page: Page, step: string): Promise<void> {
       const x1 = Math.min(r.right, window.innerWidth);
       const y0 = Math.max(r.top, 0);
       const y1 = Math.min(r.bottom, window.innerHeight);
-      for (let y = y0 + 8; y < y1; y += 40) {
-        for (let x = x0 + 8; x < x1; x += 40) {
+      // Inset past the card's rounded corners (a corner sample would
+      // legitimately hit whatever is underneath the cutout).
+      for (let y = y0 + 14; y < y1 - 6; y += 40) {
+        for (let x = x0 + 14; x < x1 - 6; x += 40) {
           const hit = document.elementFromPoint(x, y);
           if (!hit || cardEl.contains(hit)) continue;
           // Another floating card over this one is by design (a child
           // floats above its parent).
           if (hit.closest(".card.child.floating")) continue;
           if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick")) continue;
-          return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
+          return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} rect=${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}`;
         }
       }
       return null;
