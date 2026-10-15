@@ -911,6 +911,7 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 #selbar a[data-act] { border: 0; background: none; color: var(--surface); font-size: 12.5px; padding: 4px 9px; border-radius: 5px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 #selbar a[data-act]:hover { background: rgb(255 255 255 / .14); }
 #selbar .sep { width: 1px; background: rgb(255 255 255 / .2); margin: 3px 2px; }
+#selbar .sel-note { color: var(--surface); font-size: 12.5px; padding: 4px 9px; white-space: normal; max-width: 320px; }
 #pop { position: fixed; z-index: 35; width: max-content; max-width: min(420px, calc(100vw - 16px)); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgb(0 0 0 / .16); padding: 8px 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
 .cite { display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left; border: 0; background: none; padding: 2px 6px; border-radius: 4px; }
 .cite:hover { background: var(--sunk); }

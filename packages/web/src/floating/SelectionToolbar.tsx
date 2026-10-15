@@ -50,7 +50,7 @@ import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { selectionOffsetsIn } from "../comments/anchor.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
-import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
+import { parseLineElementId, snapWordOffsets, normalizeQuote, MAX_QUOTE_CHARS } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { showGuidePane } from "../shell/panes.js";
@@ -442,6 +442,9 @@ export const SCROLL_GRACE_MS = 500;
 
 export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
+  // Over-cap selections show a plain note in the bar instead of the
+  // bar silently never appearing.
+  const [notice, setNotice] = useState<string | null>(null);
   const readOnly = useIsReadOnlyVersion();
   const snapshot = useReview((s) => s.snapshot);
   const navigate = useNavigate();
@@ -477,7 +480,10 @@ export function SelectionToolbar() {
 
   useEffect(() => {
     const bar = (): HTMLElement | null => barRef.current;
-    const hide = (): void => setPending(null);
+    const hide = (): void => {
+      setPending(null);
+      setNotice(null);
+    };
 
     const onMouseUp = (e: MouseEvent): void => {
       if ((e.target as Element | null)?.closest?.("#selbar")) return;
@@ -501,8 +507,15 @@ export function SelectionToolbar() {
         const anchorNode = sel.anchorNode;
         const anchorEl = elementOf(anchorNode) ?? document.body;
         const host = resolveSelectionHost(anchorEl);
-        if (!quote || !validSelectionQuote(quote) || !host) {
+        if (!quote || quote.length < 2 || !host) {
           hide();
+          return;
+        }
+        if (quote.length > MAX_QUOTE_CHARS) {
+          setPending(null);
+          setNotice("That selection is too long. Select less text to Explain, Ask or Comment.");
+          shownAt.current = Date.now();
+          window.setTimeout(place, 0);
           return;
         }
         // Issue #166: record where the selection sits in its host's text
@@ -560,6 +573,7 @@ export function SelectionToolbar() {
           ...(diffRange ? { diffRange } : {}),
           ...(hunkRange ? { diffRange: hunkRange } : {}),
         });
+        setNotice(null);
         shownAt.current = Date.now();
         // Position after render (needs the bar's size).
         window.setTimeout(place, 0);
@@ -618,6 +632,7 @@ export function SelectionToolbar() {
 
   const dismiss = (): void => {
     setPending(null);
+    setNotice(null);
     window.getSelection()?.removeAllRanges();
   };
 
@@ -715,22 +730,28 @@ export function SelectionToolbar() {
   };
 
   return (
-    <div id="selbar" ref={barRef} hidden={pending === null || readOnly}>
-      <button type="button" data-act="explain" onClick={onExplain}>
-        Explain
-      </button>
-      <span className="sep" />
-      <button type="button" data-act="ask" onClick={() => onAskNote("ask")}>
-        Ask…
-      </button>
-      {pending?.revealed ? null : (
-        <button type="button" data-act="note" onClick={() => onAskNote("comment")}>
-          Comment
-        </button>
+    <div id="selbar" ref={barRef} hidden={(pending === null && notice === null) || readOnly}>
+      {notice !== null ? (
+        <span className="sel-note">{notice}</span>
+      ) : (
+        <>
+          <button type="button" data-act="explain" onClick={onExplain}>
+            Explain
+          </button>
+          <span className="sep" />
+          <button type="button" data-act="ask" onClick={() => onAskNote("ask")}>
+            Ask…
+          </button>
+          {pending?.revealed ? null : (
+            <button type="button" data-act="note" onClick={() => onAskNote("comment")}>
+              Comment
+            </button>
+          )}
+          {pending?.diffRange ? (
+            <GithubAction snapshot={snapshot} repo={githubRepo} diffRange={pending.diffRange} onOpen={dismiss} />
+          ) : null}
+        </>
       )}
-      {pending?.diffRange ? (
-        <GithubAction snapshot={snapshot} repo={githubRepo} diffRange={pending.diffRange} onOpen={dismiss} />
-      ) : null}
     </div>
   );
 }
