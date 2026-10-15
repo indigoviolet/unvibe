@@ -202,10 +202,19 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
       if (!header) return null;
       const h = header.getBoundingClientRect();
       if (h.bottom < 0 || h.top > window.innerHeight) return null;
+      // Only the header's visible part counts: a header scrolled out
+      // of its own card's box is not covered, it is just scrolled away.
+      const c = cardEl.getBoundingClientRect();
+      const vt = Math.max(h.top, c.top);
+      const vb = Math.min(h.bottom, c.bottom);
+      const vl = Math.max(h.left, c.left);
+      const vr = Math.min(h.right, c.right);
+      if (vb - vt < 4 || vr - vl < 24) return null;
+      const midY = (vt + vb) / 2;
       const pts: [number, number][] = [
-        [h.left + 12, h.top + h.height / 2],
-        [h.left + h.width / 2, h.top + h.height / 2],
-        [h.right - 12, h.top + h.height / 2],
+        [vl + 12, midY],
+        [(vl + vr) / 2, midY],
+        [vr - 12, midY],
       ];
       const close = header.querySelector('button[aria-label="Close"]');
       if (close) {
@@ -220,7 +229,7 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
           const hitCard = hit.closest(".card.child.floating");
           if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
         }
-        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id}`;
+        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".card.child.floating")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
     });
