@@ -299,7 +299,6 @@ async function checkPinnedSlots(page: Page, step: string): Promise<void> {
     const bar = hh(".dtool");
     const fileSlot = pv.top + strip + bar;
     const hunkSlot = fileSlot + hh(".dfile-h");
-    const slotBottom = hunkSlot + hh(".dhunk-h");
     // First visible diff row below the actions bar: painted, not
     // merely laid out — a row hidden under a floating card does not
     // count, the first row the reader can actually see does.
