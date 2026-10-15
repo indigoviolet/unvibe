@@ -516,6 +516,12 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
   background: var(--surface);
   padding-bottom: 4px;
 }
+/* A nested child card floats fully above its parent — including the
+   parent's sticky reply footer above, which would otherwise paint
+   across the child's body and header (same z-index, later in DOM).
+   The child is position:fixed inside the parent's stacking context,
+   so a higher z-index here orders it over every part of the parent. */
+.card.child.floating .card.child.floating { z-index: 3; }
 .card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
 .card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
 .card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }
