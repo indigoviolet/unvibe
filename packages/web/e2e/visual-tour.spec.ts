@@ -116,9 +116,18 @@ async function checkCards(page: Page, step: string): Promise<void> {
       const y0 = Math.max(r.top, 0);
       const y1 = Math.min(r.bottom, window.innerHeight);
       // Inset past the card's rounded corners (a corner sample would
-      // legitimately hit whatever is underneath the cutout).
-      for (let y = y0 + 14; y < y1 - 6; y += 40) {
-        for (let x = x0 + 14; x < x1 - 6; x += 40) {
+      // legitimately hit whatever is underneath the cutout). Sample
+      // the FULL box, parents included: the regular grid plus explicit
+      // rows/columns at the bottom and right edges, so a code row
+      // painted across a card's bottom strip (its reply box) is caught.
+      const ys = new Set<number>();
+      const xs = new Set<number>();
+      if (y1 - y0 > 20) { ys.add(y0 + 14); ys.add(y1 - 8); }
+      if (x1 - x0 > 20) { xs.add(x0 + 14); xs.add(x1 - 8); }
+      for (let y = y0 + 14; y < y1 - 6; y += 40) ys.add(y);
+      for (let x = x0 + 14; x < x1 - 6; x += 40) xs.add(x);
+      for (const y of ys) {
+        for (const x of xs) {
           const hit = document.elementFromPoint(x, y);
           if (!hit || cardEl.contains(hit)) continue;
           // Another floating card over this one is by design (a child
@@ -134,7 +143,51 @@ async function checkCards(page: Page, step: string): Promise<void> {
   }
 }
 
-async function shot(page: Page, name: string, suffix: string): Promise<void> {
+/**
+ * Generic check: every open card's reply input (if it has one) is
+ * fully inside its card — never cut in half at the card's bottom edge —
+ * and topmost at its centre and corners (a child card floating over
+ * its parent is the one allowed cover, as in the grid check).
+ */
+async function checkReplyBoxes(page: Page, step: string): Promise<void> {
+  const boxes = page.locator(".card.child.floating textarea:visible");
+  for (let i = 0; i < (await boxes.count()); i++) {
+    const bad = await boxes.nth(i).evaluate((ta: Element) => {
+      const card = ta.closest(".card.child.floating");
+      if (!card) return "reply input not inside a floating card";
+      const r = ta.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      if (r.top < c.top - 1 || r.bottom > c.bottom + 1 || r.left < c.left - 1 || r.right > c.right + 1) {
+        return `reply input clipped by its card: input=${Math.round(r.top)}-${Math.round(r.bottom)} card=${Math.round(c.top)}-${Math.round(c.bottom)}`;
+      }
+      if (r.left < -1 || r.right > window.innerWidth + 1) return "reply input outside viewport horizontally";
+      const pts: [number, number][] = [
+        [r.left + 6, r.top + 6],
+        [r.right - 6, r.top + 6],
+        [r.left + 6, r.bottom - 6],
+        [r.right - 6, r.bottom - 6],
+        [r.left + r.width / 2, r.top + r.height / 2],
+      ];
+      for (const [x, y] of pts) {
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+        const hit = document.elementFromPoint(x, y);
+        if (!hit) return `nothing at reply input ${Math.round(x)},${Math.round(y)}`;
+        if (ta.contains(hit) || (ta as HTMLElement).parentElement?.contains(hit)) continue;
+        if (hit.closest(".card.child.floating")) continue;
+        return `reply input not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
+      }
+      return null;
+    });
+    expect(bad, `${step}: reply box ${i} ${bad ?? ""}`).toBeNull();
+  }
+}
+
+async function shot(page: Page, name: string, suffix: string, expectedText?: string): Promise<void> {
+  // Never screenshot an empty or still-loading scene: each scene
+  // names one piece of real content that must be visible first.
+  if (expectedText) {
+    await expect(page.getByText(expectedText).first(), `${name}: expected visible text "${expectedText}"`).toBeVisible({ timeout: 15_000 });
+  }
   await page.screenshot({ path: path.join(SHOTS, `${name}-${suffix}.png`) });
 }
 
@@ -155,6 +208,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   }
   await checkNoPageOverflow(page, step);
   await checkCards(page, step);
+  await checkReplyBoxes(page, step);
   await checkMenus(page, step);
 }
 
@@ -183,7 +237,7 @@ for (const combo of [
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await stepChecks(page, "guide-floating");
-    await shot(page, "guide-floating", suffix);
+    await shot(page, "guide-floating", suffix, "HTTP/1.1 originally");
 
     // A card opened from inside the floating card (guide).
     await selectText(page, "#page .card.child.floating [data-answer]", "fold");
@@ -195,15 +249,15 @@ for (const combo of [
     const guideChild = page.locator("#page [data-expansion]", { hasText: "Why does this matter?" }).last();
     await expect(guideChild).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "guide-nested");
-    await shot(page, "guide-nested", suffix);
-    await guideChild.getByRole("button", { name: "Close" }).click().catch(() => {});
-    await seedCard.getByRole("button", { name: "Close" }).click().catch(() => {});
+    await shot(page, "guide-nested", suffix, "Why does this matter?");
+    await guideChild.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await seedCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
 
     // Diff, unified.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-unified");
-    await shot(page, "diff-unified", suffix);
+    await shot(page, "diff-unified", suffix, "_OBSOLETE_FOLD_RE");
 
     // Floating card + nested card in the diff.
     await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
@@ -218,9 +272,9 @@ for (const combo of [
     const diffChild = page.locator(".dhunk [data-expansion]", { hasText: "Why is this here?" }).last();
     await expect(diffChild).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-nested");
-    await shot(page, "diff-nested", suffix);
-    await diffChild.getByRole("button", { name: "Close" }).click().catch(() => {});
-    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click().catch(() => {});
+    await shot(page, "diff-nested", suffix, "Why is this here?");
+    await diffChild.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
 
     // Deep-anchored card in the long socket-level hunk.
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
@@ -228,38 +282,38 @@ for (const combo of [
     await page.locator('#selbar [data-act="explain"]').click();
     await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-deep");
-    await shot(page, "diff-deep", suffix);
-    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click().catch(() => {});
+    await shot(page, "diff-deep", suffix, "fold-mixed-repeated");
+    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
 
     // Split.
     await page.getByRole("button", { name: "Split" }).click();
     await stepChecks(page, "diff-split");
-    await shot(page, "diff-split", suffix);
+    await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
     await page.getByRole("button", { name: "Unified" }).click();
 
     // Menus: file-type filter, then Reviewed/GitHub filter.
-    await page.getByRole("button", { name: "Show file list" }).click().catch(() => {});
+    await page.getByRole("button", { name: "Show file list" }).click({ timeout: 5_000 }).catch(() => {});
     await page.getByRole("button", { name: "File filters" }).click();
     await expect(page.getByRole("menu", { name: "File filters" })).toBeVisible();
     await stepChecks(page, "menu-file-filter");
-    await shot(page, "menu-file-filter", suffix);
+    await shot(page, "menu-file-filter", suffix, "Generated");
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Review filters" }).click();
     await expect(page.getByRole("menu", { name: "Review filters" })).toBeVisible();
     await stepChecks(page, "menu-review-filter");
-    await shot(page, "menu-review-filter", suffix);
+    await shot(page, "menu-review-filter", suffix, "GitHub comments");
     await page.keyboard.press("Escape");
 
     // Comments menu.
     await page.getByRole("button", { name: /Comments/ }).first().click();
     await stepChecks(page, "menu-comments");
-    await shot(page, "menu-comments", suffix);
+    await shot(page, "menu-comments", suffix, "Already on GitHub");
     await page.keyboard.press("Escape");
 
     // Settings → Version.
     await page.goto(`${svc!.origin}/settings?tab=version&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });
     await checkNoPageOverflow(page, "settings-version");
-    await shot(page, "settings-version", suffix);
+    await shot(page, "settings-version", suffix, "Installed:");
   });
 }
