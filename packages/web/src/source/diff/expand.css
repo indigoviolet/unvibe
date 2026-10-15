@@ -12,8 +12,11 @@ table.diff tr[data-revealed] td.c {
   background: var(--sunk);
 }
 
+/* Revealed numbers sit on the sunk wash like their code cells. No
+   `opacity` here either: the sticky gutter cell must stay fully
+   opaque over code sliding underneath it. */
 table.diff tr[data-revealed] td.n {
-  opacity: 0.55;
+  background: var(--sunk);
 }
 
 /* Highlighted revealed rows keep the mark wash over the sunk tint. */
@@ -39,10 +42,19 @@ table.diff tr.xsep td.xgutter {
   padding-left: 2px;
 }
 
+/* Zero width with visible overflow: the caret buttons must not size
+   the gutter column (one vs two buttons would push different hunks'
+   code columns sideways); they spill over the empty separator row
+   instead. The buttons keep their fixed size (`flex: none`). */
 .xicons {
   display: inline-flex;
+  width: 0;
+  overflow: visible;
   gap: 2px;
   align-items: center;
+}
+.xicons > * {
+  flex: none;
 }
 
 /* Quiet icon buttons: 20px hit area, muted like line numbers at rest,
