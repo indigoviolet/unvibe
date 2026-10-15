@@ -413,7 +413,9 @@ for (const combo of [
     // Long card anchored in the file's LAST hunk (the call site at
     // the end of connection.py), overflowing into the NEXT FILE's
     // section: its header and rows must paint below the card too.
-    await selectText(page, "#right table.diff", "_normalize_header_values(http");
+    // The call site sits in the file's folded last hunk; unfold all.
+    await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
+    await selectText(page, "#right", "_normalize_header_values(http");
     await page.locator('#selbar [data-act="explain"]').click();
     const fileCard = page.locator(".dhunk .card.child.floating").first();
     await expect(fileCard).toBeVisible({ timeout: 15_000 });
