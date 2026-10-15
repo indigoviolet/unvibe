@@ -522,7 +522,14 @@ export type ActionAnchor =
    */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
-  | { where: "diff-line"; fileKey: string; line: number }
+  | {
+      where: "diff-line";
+      fileKey: string;
+      line: number;
+      /** Issue #189: last line of a multi-line selection (range marker). */
+      endLine?: number;
+      side?: "LEFT" | "RIGHT";
+    }
   /**
    * Issue #138: a hunk, addressed `h:<fileKey>:<contentHash>`. Explain
    * and Ask with a hunk anchor first turn the hunk's idle summary into a

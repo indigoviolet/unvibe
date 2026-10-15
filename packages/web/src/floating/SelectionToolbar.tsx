@@ -540,9 +540,18 @@ export function SelectionToolbar() {
           const touched = diffRangeForSelection(sel);
           if (touched && touched.fileKey === host.anchor.fileKey) diffRange = touched;
         }
+        // Issue #189: carry the selection's last line so the stored
+        // anchor knows its full range (the reopen marker needs it).
+        const endLine =
+          host.anchor.where === "diff-line" && diffRange && diffRange.newLines.length > 0
+            ? Math.max(...diffRange.newLines)
+            : undefined;
         setPending({
           quote,
-          anchor: host.anchor,
+          anchor:
+            endLine !== undefined && host.anchor.where === "diff-line" && endLine > host.anchor.line
+              ? { ...host.anchor, endLine }
+              : host.anchor,
           ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(commentAnchor ? { commentAnchor } : {}),

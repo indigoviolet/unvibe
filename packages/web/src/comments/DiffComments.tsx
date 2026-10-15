@@ -31,6 +31,8 @@ export { slotKey };
 interface Pending {
   fileKey: string;
   line: number;
+  /** Issue #189: last line of a multi-line selection, when any. */
+  endLine?: number;
   quote: string;
   kind: "comment" | "ask";
   initialText?: string;
@@ -87,6 +89,7 @@ export function useDiffCommentBindings(reviewId: string): {
       setPending({
         fileKey: req.anchor.fileKey,
         line: req.anchor.line,
+        ...(req.anchor.endLine !== undefined ? { endLine: req.anchor.endLine } : {}),
         quote: req.quote,
         kind: req.kind,
         ...(req.initialText !== undefined ? { initialText: req.initialText } : {}),
@@ -156,7 +159,7 @@ export function useDiffCommentBindings(reviewId: string): {
             <NewThreadComposer
               key="pending"
               reviewId={reviewId}
-              anchor={pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
+              anchor={pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line, ...(pending.endLine !== undefined ? { endLine: pending.endLine } : {}) }}
               quote={pending.quote}
               kind={pending.kind}
               initialText={pending.initialText}
@@ -173,7 +176,7 @@ export function useDiffCommentBindings(reviewId: string): {
         <NewThreadComposer
               key="pending"
           reviewId={reviewId}
-          anchor={pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line }}
+          anchor={pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line, ...(pending.endLine !== undefined ? { endLine: pending.endLine } : {}) }}
           quote={pending.quote}
           kind={pending.kind}
           initialText={pending.initialText}
