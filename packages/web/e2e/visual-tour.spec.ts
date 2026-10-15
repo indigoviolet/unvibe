@@ -344,6 +344,35 @@ async function checkPinnedSlots(page: Page, step: string): Promise<void> {
   expect(bad, `${step}: pinned slot ${bad ?? ""}`).toBeNull();
 }
 
+/**
+ * Generic check (diff scenes): the pinned band — from the actions
+ * bar's bottom to the hunk slot's bottom, across the pane width —
+ * must never show a floating card. During a file hand-off the
+ * outgoing and incoming headers together cover the band; card text
+ * flickering through the strips around them fails. Sampled on a
+ * horizontal line every 4px.
+ */
+async function checkPinnedBand(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const pv = pane.getBoundingClientRect();
+    const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
+    const bandTop = pv.top + hh(".rstick") + hh(".dtool");
+    const bandBottom = bandTop + hh(".dfile-h") + hh(".dhunk-h");
+    for (let y = bandTop + 2; y < bandBottom - 1; y += 4) {
+      for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && hit.closest(".card.child.floating")) {
+          return `card in pinned band at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} band=${Math.round(bandTop)}-${Math.round(bandBottom)}`;
+        }
+      }
+    }
+    return null;
+  });
+  expect(bad, `${step}: pinned band ${bad ?? ""}`).toBeNull();
+}
+
 async function shot(page: Page, name: string, suffix: string, expectedText?: string): Promise<void> {
   // Never screenshot an empty or still-loading scene: each scene
   // names one piece of real content that must be visible first.
@@ -370,6 +399,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   }
   await checkNoPageOverflow(page, step);
   await checkPinnedSlots(page, step);
+  await checkPinnedBand(page, step);
   await checkCards(page, step);
   await checkCardHeaders(page, step);
   await checkReplyBoxes(page, step);
@@ -493,6 +523,15 @@ for (const combo of [
     await fileCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
     await stepChecks(page, "diff-long-file");
     await shot(page, "diff-long-file", suffix);
+    // Two scroll offsets around the file boundary, mid hand-off.
+    await page.evaluate(() => { const pane = document.getElementById("right"); if (pane) pane.scrollTop += 24; });
+    await page.waitForTimeout(300);
+    await stepChecks(page, "diff-long-file-h1");
+    await shot(page, "diff-long-file-h1", suffix);
+    await page.evaluate(() => { const pane = document.getElementById("right"); if (pane) pane.scrollTop += 48; });
+    await page.waitForTimeout(300);
+    await stepChecks(page, "diff-long-file-h2");
+    await shot(page, "diff-long-file-h2", suffix);
     await fileCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
 
     // Deep-anchored card in the long socket-level hunk.
