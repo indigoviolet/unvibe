@@ -1010,6 +1010,7 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
           </div>
         </div>
       ) : null}
+      <div className="dband" aria-hidden="true" />
       {visible.length > 0 ? (
         visible.map((f, vi) => (
           // One boundary per file section: a file that fails to render

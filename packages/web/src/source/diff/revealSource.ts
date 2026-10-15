@@ -98,9 +98,11 @@ export function refreshDiffPinned(): void {
   const strip = measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
   const bar = measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
   const file = measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK);
+  const hunk = measuredHeight(pane.querySelector(".dhunk-h"), DHUNK_FALLBACK);
   pane.style.setProperty("--diffbar-top", `${strip}px`);
   pane.style.setProperty("--dfile-top", `${strip + bar}px`);
   pane.style.setProperty("--dhunk-top", `${strip + bar + file}px`);
+  pane.style.setProperty("--dhunk-h", `${hunk}px`);
 }
 
 /**
@@ -127,35 +129,19 @@ export function observeDiffPinned(): () => void {
     const strip = measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
     const bar = measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
     const file = measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK);
-    pane.querySelectorAll(".dfile-h").forEach((h) => {
-      h.classList.toggle("stuck", Math.abs(h.getBoundingClientRect().top - (paneTop + strip + bar)) <= 1);
-    });
-    pane.querySelectorAll(".dhunk-h").forEach((h) => {
-      h.classList.toggle("stuck", Math.abs(h.getBoundingClientRect().top - (paneTop + strip + bar + file)) <= 1);
-    });
-    // Context marking: during the hand-off between two files, neither
-    // header sits exactly in its slot — the outgoing one is pushed
-    // above it, the incoming one is a few px short of sticking. Their
-    // rows fill the pane, so their headers are the reader's context
-    // and must still paint above a floating card (which would
-    // otherwise hide them in place). Mark the file and hunk owning
-    // the flow point at the bottom of the pinned slot the same way.
     const hunk = measuredHeight(pane.querySelector(".dhunk-h"), DHUNK_FALLBACK);
-    const flowTop = (el: Element): number => el.getBoundingClientRect().top - paneTop + pane.scrollTop;
-    const point = pane.scrollTop + strip + bar + file + hunk;
-    let curFile: Element | null = null;
-    pane.querySelectorAll(".dfile").forEach((f) => {
-      if (flowTop(f) <= point + 1) curFile = f;
+    // The pinned band: from the actions bar's bottom to the hunk
+    // slot's bottom. Every header intersecting it — stuck, incoming
+    // (a few px short of sticking) or outgoing (being pushed out) —
+    // is marked `.stuck` and so paints above floating cards. The
+    // band is then always covered by headers, never card text, at
+    // every scroll offset including mid hand-off between files.
+    const bandTop = paneTop + strip + bar;
+    const bandBottom = bandTop + file + hunk;
+    pane.querySelectorAll(".dfile-h, .dhunk-h").forEach((h) => {
+      const r = h.getBoundingClientRect();
+      h.classList.toggle("stuck", r.bottom > bandTop && r.top < bandBottom);
     });
-    if (curFile) {
-      const fileEl: Element = curFile;
-      fileEl.querySelector(".dfile-h")?.classList.add("stuck");
-      let curHunk: Element | null = null;
-      fileEl.querySelectorAll(".dhunk").forEach((h) => {
-        if (flowTop(h) <= point + 1) curHunk = h;
-      });
-      if (curHunk) (curHunk as Element).querySelector(".dhunk-h")?.classList.add("stuck");
-    }
   };
   let raf = 0;
   const onScroll = (): void => {
