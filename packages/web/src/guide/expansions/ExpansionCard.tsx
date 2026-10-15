@@ -384,7 +384,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       const rightLimit = Math.min(parent ? parent.right : window.innerWidth, window.innerWidth - 8);
       const width = Math.max(160, Math.min(r.width, rightLimit - r.left));
       setNestedPos((prev) => {
-        const next: CSSProperties = { position: "fixed", top: r.top, left: r.left, width, right: "auto" };
+        const next: CSSProperties = { position: "fixed", top: r.top, left: r.left, width, right: "auto", boxSizing: "border-box" };
         return prev && prev.top === next.top && prev.left === next.left && prev.width === next.width ? prev : next;
       });
     };

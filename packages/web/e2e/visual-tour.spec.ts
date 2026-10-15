@@ -156,24 +156,29 @@ for (const combo of [
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
-    const seedCard: Locator = page.locator("#B-x-seed");
-    await expect(seedCard).toHaveClass(/floating/, { timeout: 15_000 });
+    // Open a floating card the way a reader does: select guide text
+    // and Explain it.
+    await selectText(page, "#C-problem", "used to let a server continue");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const seedCard: Locator = page.locator("#page .card.child.floating").first();
+    await expect(seedCard).toBeVisible({ timeout: 15_000 });
+    await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await stepChecks(page, "guide-floating");
     await shot(page, "guide-floating", suffix);
 
     // A card opened from inside the floating card (guide).
-    await selectText(page, "#B-x-seed [data-answer]", "HTTP/1.1 originally let a server continue");
+    await selectText(page, "#page .card.child.floating [data-answer]", "fold");
     await page.locator('#selbar [data-act="ask"]').click();
-    const composer = page.locator("#B-x-seed .ithread[data-pending-thread]");
+    const composer = page.locator("#page .ithread[data-pending-thread]");
     await expect(composer).toBeVisible();
     await composer.locator("textarea").fill("Why does this matter?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const guideChild = page.locator("#B-x-seed [data-expansion]", { hasText: "Why does this matter?" });
-    await expect(guideChild).toContainText("Mock explanation", { timeout: 15_000 }).catch(() => {});
+    const guideChild = page.locator("#page [data-expansion]", { hasText: "Why does this matter?" }).last();
     await expect(guideChild).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "guide-nested");
     await shot(page, "guide-nested", suffix);
     await guideChild.getByRole("button", { name: "Close" }).click().catch(() => {});
+    await seedCard.getByRole("button", { name: "Close" }).click().catch(() => {});
 
     // Diff, unified.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
@@ -185,7 +190,7 @@ for (const combo of [
     await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
     await page.locator('#selbar [data-act="explain"]').click();
     await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
-    await selectText(page, ".dhunk .card.child.floating [data-answer]", "Mock explanation");
+    await selectText(page, ".dhunk .card.child.floating [data-answer]", "fold");
     await page.locator('#selbar [data-act="ask"]').click();
     const dComposer = page.locator(".dhunk .ithread[data-pending-thread]");
     await expect(dComposer).toBeVisible();
