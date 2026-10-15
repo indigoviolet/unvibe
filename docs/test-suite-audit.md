@@ -45,6 +45,16 @@ Proposed result (after owner review, journeys built, replaced tests disabled not
 | Playwright wall | 278 tests, unmeasured here; config global timeout 10 min, CI step allows 30 min | ≈4–7 min sequential, ≈2–3 min at 4 workers (estimate) |
 | Mock-only tests remaining | 270 unit + 242 e2e = 512 | 0 in regular gates |
 
+Token safety (owner's addition, full section below): `check`, `test:slow`
+and `restart-resilience` cannot spend agent tokens as written — every agent
+path in them is forced to the replay runner, the scripted fake, a fake ACP
+transport, or `none`, and only `test:live:*` sets `UNVIBE_LIVE=1`. Three
+edges are safe by convention, not by force (a mistyped `UNVIBE_AGENT`
+reaching the factory's real fall-through, the readiness-route factory
+fallback, and shell e2e not forcing the runner); a one-flag guard
+(`UNVIBE_ALLOW_LIVE_AGENT=1`, set only by `test:live:*` and the product's
+own CLI entry) is proposed to make all three fail loudly.
+
 Recommendation: keep the 109 KEEP-UNIT files untouched, build journeys J1–J7 below
 (J8, the visual tour, is being built by another agent on `main-rc` — reference it, do
 not duplicate it), then disable the 158 COVERED/PINS/MOCK/E2E-MOCK files with the
@@ -620,6 +630,162 @@ sharing the harness and the demo fixture. When the tour lands, the
 MOCK-ONLY-UI files whose only value was "the mock DOM contains X" (49 files,
 270 tests) lose their last justification; several are already only reachable
 through the mock the tour does not use.
+
+## Token safety: no non-live test can reach a real agent today — with three unforced edges
+
+Owner's addition: "make sure we're not burning tokens for these tests, by
+using a stubbed agent that returns content". Verdict: **`check`, `test:slow`
+and `restart-resilience` cannot spend agent tokens as written**, because every
+path that starts an agent in those gates is forced to the replay runner
+(recorded content, `fixtures/urllib3-5020/`), the scripted `FakeAgentRunner`,
+a fake ACP transport, or `UNVIBE_AGENT=none`. Only `test:live:*` tasks set
+`UNVIBE_LIVE=1`, and only they may reach a real provider. Three edges are
+safe by convention rather than by force (R1–R3 below); a cheap guard that
+turns the convention into a failure is proposed at the end of this section.
+
+### How the runner is chosen (evidence)
+
+- Factory: `packages/service/src/agent/factory.ts:89`
+  `createAgentRunner()` returns `NoAgentRunner` for `UNVIBE_AGENT=none`,
+  `ReplayAgentRunner` for `=replay`, and otherwise — unset **or any other
+  value** — `createAcpRunner()`, the real claude/codex subprocess runner.
+- Composition root: `packages/service/src/app.ts:271`
+  `buildApp` substitutes `FakeAgentRunner` + `StaticModelCatalog` +
+  `TestCommandGuard` under vitest (`VITEST`/`NODE_ENV=test`) **only when
+  `UNVIBE_AGENT` is exactly unset**; `replay`/`none` pass through (both
+  hermetic), and explicitly injected runners are never replaced.
+- Live self-gating: `acp-live.test.ts:175` and `full-access-live.test.ts:220`
+  are `describe.skipIf(!LIVE)` with `LIVE = UNVIBE_LIVE === "1"`, and the
+  service `test`/`test:fast` scripts additionally `--exclude` both files.
+  The vitest config deliberately does not exclude them (a config exclude
+  broke `test:live`); the two script excludes plus the self-skip are the gate.
+- Playwright real-service harness:
+  `packages/web/e2e/service-harness.ts:68`
+  always sets `UNVIBE_AGENT: opts.agent ?? "none"` on the spawned service
+  and deletes `GITHUB_TOKEN` from its env. Every `*-service` spec either
+  passes `agent: "replay"` (9 specs) or takes the `none` default (5 specs);
+  no spec passes any other value, and mock specs spawn only the Vite mock.
+- Scripts in the wider `gate`: `restart-resilience.mjs:61` and
+  `global-install-check.mjs:259` force `UNVIBE_AGENT: "replay"`.
+
+### Gate-by-gate confirmation
+
+| Gate | Agent path | Can it reach a real provider? |
+| --- | --- | --- |
+| `check` (service/shared/web fast vitest) | `buildApp` fake substitution; tests inject `FakeAgentRunner`/scripted fakes; `acp-runner.test.ts` and `full-access-160.test.ts` construct `AcpAgentRunner` only with `fakeTransportFactory` transports | No. Tripwired by `no-real-spawn.test.ts` (recording `claude`/`codex`/`gh` shims must never execute). |
+| `test:slow:unit` (4 slow files) | None of the 4 files builds an app or a runner (verified by search: no `buildApp`/`createAgentRunner`/`AcpAgentRunner`) | No agent at all. `diagnostics-api.slow` runs real readiness probes (`--version`/auth-style checks, no prompt), so it spawns CLIs but cannot spend generation tokens. |
+| `test:slow` Playwright | Mock Vite (34 files) or `service-harness` with `none`/`replay` forced (14 files) | No. |
+| `restart-resilience` | Built service spawned with `UNVIBE_AGENT: "replay"` in its env (`restart-resilience.mjs:57-61`) | No. |
+| Rest of `gate` (`e2e`/`e2e:macos`, d2 seed, `check-global-install`) | `check-global-install` forces `replay`; shell e2e forces nothing — see R3 | No review is opened in shell e2e, so no session starts today; not forced. |
+
+### Anything that could reach a real agent (the full list found)
+
+- **R1 — Factory fall-through on a mistyped value.** `isReplayEnv`/`isNoneEnv`
+  compare the lower-cased value exactly, with no trim and no allowlist
+  (`factory.ts:77-83, 115`). `UNVIBE_AGENT=replayy`, `" replay"`, or any
+  ambient value exported in a developer shell makes `createAgentRunner()`
+  return the real ACP runner. `buildApp`'s vitest guard does not catch this:
+  it only substitutes when the value is exactly `""` (`app.ts:272`).
+- **R2 — Readiness-route fallback bypasses `buildApp`.**
+  `packages/service/src/routes/readiness.ts:29`
+  calls `createAgentRunner()` directly when a route context has no `agents`,
+  and the readiness agent probe is "initialise + list models"
+  (`checks.ts:321`), which starts a real ACP subprocess. No prompt is sent
+  (no generation tokens), and `buildApp` always supplies `agents` in
+  practice, but a scaffold-context test hitting `GET /api/readiness` with an
+  unset or mistyped `UNVIBE_AGENT` would spawn the real CLI binaries.
+- **R3 — Shell e2e does not force the runner.** `scripts/e2e-linux.mjs`
+  builds its service env from `...process.env` with no `UNVIBE_AGENT`, and
+  `scripts/e2e-macos.mjs` explicitly deletes `UNVIBE_AGENT` for the helper
+  start. Today both only check `/api/health`, status and idle exit — no
+  review, no session, no tokens — but the first future step that opens a
+  demo review in shell e2e would silently use real agents.
+- **R4 — Ambient `UNVIBE_LIVE=1` leaks into `check`.** Nothing in `check`,
+  `test:fast` or CI unsets `UNVIBE_LIVE`. A shell that exported it (e.g.
+  after a live run) plus a vitest invocation that bypasses the package
+  scripts' `--exclude` (plain `npx vitest run` in `packages/service`, whose
+  config includes the live files) would run `acp-live`/`full-access-live`
+  for real. Through `mise run check` itself the script `--exclude` still
+  protects service tests; this is a direct-invocation hazard, not a gate hazard.
+- **R5 — Partial fake transports in direct `AcpAgentRunner` use.**
+  `conn()` falls back to the real transport factory for a provider with no
+  injected fake (`acp/runner.ts:148`). Current unit tests always inject the
+  provider they use, but a test that injects only `claude` and then starts
+  a `codex` session would spawn the real adapter. No current test does this.
+- Not hazards: `live-*.mjs` scripts delete `UNVIBE_AGENT` on purpose — they
+  are only reachable through `test:live:*` tasks, which is exactly the
+  allowed path; web unit tests run the mock API client (`VITE_MOCK=1`) and
+  never spawn a service; shared tests contain no agent code.
+
+### Replay / fake content per journey, and where recordings are missing
+
+All eight journeys use the replay runner (realistic recorded content) or
+`none`/the scripted fake — none needs a real provider. Replay matching is by
+explicit `replay-kind:`/`replay-key:` marker, then by kind keywords and
+quoted text (`replay/runner.ts:147`); an unmatched prompt returns a visible
+`[replay placeholder: …]` text, so a journey asserting answer content fails
+loudly rather than silently passing on empty content. The fixture carries
+55 recordings: reader ×1, explain ×9, ask ×11, hunk ×8, concept-page ×7,
+depth ×5, go-deeper ×4, second-opinion ×3, critic ×2, examples ×2,
+diagram ×2, concept-stubs ×1.
+
+| Journey | Runner | Recorded content it needs | Gap |
+| --- | --- | --- | --- |
+| J1 open + guide | `replay` (demo), `none` (scratch repo) | reader, concept-page, hunk | None for the demo. On a scratch repo replay writes fixture guide text unrelated to that diff (factory comment, `factory.ts:5-10`), so the scratch-repo variant must stay `none` and assert diff/open only. |
+| J2 Explain/Ask/follow-up/nested | `replay` | explain ×9, ask ×11, depth, second-opinion ×3 | Follow-up and nested-Explain prompts must quote text the recordings match (e.g. the obs-fold/http-headers selections); an invented follow-up question hits the placeholder. No new recording needed if the journey reuses recorded questions; one new `ask` recording is the cheap fix if a specific follow-up wording is wanted. |
+| J3 comments + Submit | `none` (human comments), `replay` only for the suggested-comment half | — | AI-suggested comments come from contributions, not from any current recording (fixture `contributions: []`); either seed the snapshot as `guide-service.spec.ts` already does, or keep that one assertion on the scripted fake at service level. Human comment + Submit needs no agent content. |
+| J4 diff + scores/plotlines | `replay` for hunk summaries | hunk ×8 | **Real gap.** The hunk recordings predate #169: their JSON has `summary`/`hiddenReason` and no `score`, and there is no `plotline_assign` recording, so over replay every hunk reads as "routine/other" and the plotline selector has nothing to select. J4 needs 2–3 new hand-written hunk recordings carrying `score` + a plotline id (still stubbed content, no tokens — recordings are fixture markdown) or a seeded scored snapshot. |
+| J5 settings/effort/full-access/version | `none` + fake updater backend | — | None. Effort/full-access assertions are on persisted settings, the shell marker and prompt-variant selection, never on live agent output. |
+| J6 restart mid-answer | `replay` with pacing overrides | ask/explain | None. Use the existing test-only `UNVIBE_REPLAY_DELAY_MS`/`UNVIBE_REPLAY_CHUNK_CHARS` pacing (`factory.ts:96-112`) so the answer is reliably mid-stream at the kill, as `restart-resilience` already does. |
+| J7 huge PR | `none` | — | **Real gap if a guide is asserted.** Synthetic huge-PR hunks match no recording keys and would return placeholder summaries. Run J7 with `none` (assert navigability, counts, folding) and do not assert guide/summary content there; the prompt-ladder arithmetic stays KEEP-UNIT in `huge-pr-107`. |
+| J8 visual tour | `replay` (seeded demo snapshot) | reader/pages as seeded | None; owned by the other agent on `main-rc`. |
+
+### Proposed cheap guard (for the implementing issue, not this spike)
+
+One factory change, one entry-point line, task-env additions, and two unit
+tests — no new infrastructure:
+
+1. **Factory throws on the real fall-through.** In `createAgentRunner`
+   (`factory.ts:115`), replace `return createAcpRunner()` with: throw unless
+   `env.UNVIBE_ALLOW_LIVE_AGENT === "1"`, with an error naming
+   `mise run test:live:*` as the way to allow it. `replay`/`none` selection
+   is unchanged and never needs the flag.
+2. **The product entry sets it for itself.** `serve()` in
+   `packages/service/src/serve.ts` (reached only from the CLI's
+   `start`/foreground path in `src/index.ts`) sets
+   `process.env.UNVIBE_ALLOW_LIVE_AGENT = "1"` before `buildApp`, so the
+   installed product keeps working exactly as today. This does not reopen
+   the test-spawned-service hole: `service-harness` already forces
+   `UNVIBE_AGENT=none|replay` on every child, so a spawned child never
+   reaches the fall-through; add a harness assertion that `opts.agent` is
+   only ever `undefined`, `"none"` or `"replay"` to keep it that way.
+3. **Only `test:live:*` tasks set it.** Add `UNVIBE_ALLOW_LIVE_AGENT=1`
+   alongside the existing `UNVIBE_LIVE=1` in the `test:live:*` mise tasks
+   and in the `live-*.mjs` scripts' env (they currently just delete
+   `UNVIBE_AGENT`), and add `UNVIBE_LIVE`/`UNVIBE_ALLOW_LIVE_AGENT` to the
+   env scrub in CI so an ambient export cannot arm the live files (closes R4).
+4. **Force the shell-e2e runner.** Set `UNVIBE_AGENT: "none"` in
+   `e2e-linux.mjs`'s `ENV` and stop deleting it in `e2e-macos.mjs` (pass
+   `none` through instead) — they open no reviews, so behaviour is
+   unchanged (closes R3).
+5. **Gate the direct-construction path too.** At the real-transport spawn
+   point (`acp/runner.ts:148`, when neither `factories[provider]` nor
+   `transportFactory` was injected), apply the same
+   `UNVIBE_ALLOW_LIVE_AGENT` check, so `acp-live` (which constructs
+   `AcpAgentRunner` directly and will carry the flag via its task) still
+   works while a partial-fake unit test fails loudly instead of spawning
+   (closes R5). `acp-runner.test.ts` always injects fakes, so it is unaffected.
+6. **Two tests, both in `no-real-spawn.test.ts` (KEEP-UNIT):**
+   `createAgentRunner({ env: {} })` and `createAgentRunner({ env:
+   { UNVIBE_AGENT: "replayy" } })` both throw (closes R1/R2 at the factory —
+   the readiness fallback then throws instead of spawning); and the existing
+   recording-shim tripwire stays as the end-to-end proof. With the guard,
+   R2's fallback should also be deleted so readiness always uses the
+   composed runner — one less caller of the factory.
+
+Estimated cost: under a day including the live-task smoke check
+(`mise run test:live` must still pass, which is the positive control that
+the flag, and only the flag, re-enables real agents).
 
 ## Estimate of the result
 
