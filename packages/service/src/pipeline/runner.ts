@@ -2247,7 +2247,7 @@ export class Pipeline {
     const plotlineList = plotlines
       .map(
         (p) =>
-          `- ${p.id}: ${p.name}${p.description ? ` — ${p.description}` : ""} (why separate: ${p.why}${p.buildsOn ? `; builds on ${p.buildsOn}` : ""})`,
+          `- ${p.id}: ${p.name}${p.description ? ` — ${p.description}` : ""}${p.buildsOn ? ` (builds on ${p.buildsOn})` : ""}`,
       )
       .join("\n");
     const hunkList = unassigned

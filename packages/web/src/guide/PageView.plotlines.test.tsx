@@ -55,11 +55,10 @@ describe("PageView plotlines", () => {
     expect(box?.textContent).toContain("Unfold folded values");
     expect(box?.textContent).toContain("Prove the unfolding works");
     expect(box?.textContent).toContain("Other");
-    // The box explains what a plotline is, in landing order, with the
-    // why-separate line and builds-on for each thread.
-    expect(box?.textContent).toContain("could land as its own commit or stacked PR");
-    expect(box?.textContent).toContain("The behaviour change itself");
+    // Landing order and builds-on for each thread, with no explanation
+    // line and no why-separate text.
     expect(box?.textContent).toContain("Builds on Unfold folded values");
+    expect(box?.querySelector(".plnote")).toBeNull();
     const items = [...(box?.querySelectorAll("li") ?? [])].map((li) => li.textContent ?? "");
     expect(items[0]).toMatch(/^1\. Unfold folded values/);
     expect(items[1]).toMatch(/^2\. Prove the unfolding works/);

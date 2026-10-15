@@ -2133,11 +2133,9 @@ thread of change with its own purpose (the unit of a separate commit
 or stacked PR), never a file type — tests, docs and config belong to
 the thread they serve. The reader prompt (`prompts/reader.md`, and
 `plotline_assign.md` for the fallback) defines this with a good and a
-bad example; each stored plotline carries a required one-line
-"why separate" (`why`) and an optional `buildsOn`, listed in landing
-order. The hunk tag's tooltip shows the why line; the guide Plotlines
-box shows order, why and builds-on, plus a one-line explanation of
-what a plotline is. Scoring + classification behind
+bad example; each stored plotline carries an optional `buildsOn`
+and is listed in landing order. The guide Plotlines box shows the
+order and a short "Builds on" line. Scoring + classification behind
 `packages/shared/src/scores.ts` so a later source replaces them without
 touching UI or stored shape (`HunkState.score/plotline`,
 snapshot `plotlines`/`diffFilter`; pre-feature reviews reset, no second

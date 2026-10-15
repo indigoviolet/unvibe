@@ -492,7 +492,6 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
 
   const plotlines: Plotline[] = useMemo(() => snapshot?.plotlines ?? [], [snapshot?.plotlines]);
   const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
-  const plotlineWhys = useMemo(() => new Map(plotlines.map((p) => [p.id, p.why])), [plotlines]);
   const hasScores = useMemo(
     () => (snapshot?.hunkStates ?? []).some((s) => s.score !== undefined),
     [snapshot?.hunkStates],
@@ -1032,7 +1031,6 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
               onFollowUp={onFollowUp ?? (() => {})}
               plotFilter={plotActive ? plotFilter : undefined}
               plotlineNames={plotlineNames}
-              plotlineWhys={plotlineWhys}
               onSelectScore={toggleScore}
               onSelectPlotline={togglePlotline}
               isHidden={isHidden}

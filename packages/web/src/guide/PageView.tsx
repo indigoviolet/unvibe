@@ -100,7 +100,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
       order: i + 1,
       name: p.name,
       desc: p.description,
-      why: p.why,
       buildsOnName: nameOf(p.buildsOn),
       count: countOf(p.id),
       ref: firstRefOf(p.id),
@@ -112,7 +111,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
             order: undefined as number | undefined,
             name: "Other",
             desc: "Hunks no plotline claimed.",
-            why: "",
             buildsOnName: undefined as string | undefined,
             count: otherCount,
             ref: firstRefOf(undefined),
@@ -123,10 +121,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   return (
     <section className="plotlines" aria-label="Plotlines">
       <h2>Plotlines</h2>
-      <p className="plnote">
-        A plotline is one thread of the change — the part that could land as its own commit or stacked PR. Tests and docs
-        sit with the thread they serve.
-      </p>
       <ul>
         {rows.map((r) => (
           <li key={r.id}>
@@ -159,7 +153,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                 <span className="plcount">
                   {r.count} {r.count === 1 ? "hunk" : "hunks"}
                 </span>
-                {r.why ? <span className="plwhy">{r.why}</span> : null}
                 {r.buildsOnName ? <span className="plbuilds">Builds on {r.buildsOnName}</span> : null}
               </button>
             ) : (
@@ -168,7 +161,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                 <span className="plname">{r.name}</span>
                 {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
                 <span className="plcount">no hunks</span>
-                {r.why ? <span className="plwhy">{r.why}</span> : null}
                 {r.buildsOnName ? <span className="plbuilds">Builds on {r.buildsOnName}</span> : null}
               </span>
             )}

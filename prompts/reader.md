@@ -64,12 +64,11 @@ example; the good example is one name per purpose, with the tests and
 docs that serve that purpose inside it.
 
 List plotlines in the order they could be landed (foundations first).
-For each one give: a one-line description, a one-line "why" — why it is
-separate, why it could land as its own commit or stacked PR — and, when
-it depends on an earlier plotline, `"buildsOn": "<that plotline's id>"`.
-Keep them few and honest: a small PR may have one plotline; do not
-invent threads. Mechanical churn that serves no thread (formatting,
-generated files, lock files) goes to "other": leave its hunks out.
+For each one give a one-line description and, when it depends on an
+earlier plotline, `"buildsOn": "<that plotline's id>"`. Keep them few
+and honest: a small PR may have one plotline; do not invent threads.
+Mechanical churn that serves no thread (formatting, generated files,
+lock files) goes to "other": leave its hunks out.
 
 Each plotline also lists the IDs of the hunks that belong to it (the
 `h:…` IDs on the hunk headers above). Cover every hunk you can; hunks
@@ -88,7 +87,7 @@ cards:
 ```json
 {"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
  "concepts": [{"slug": "obs-fold", "title": "...", "summary": "..."}],
- "plotlines": [{"id": "retry-logic", "name": "...", "description": "...", "why": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}]}
+ "plotlines": [{"id": "retry-logic", "name": "...", "description": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}]}
 ```
 
 Concept slugs are short kebab-case (`obs-fold`). Linking an unknown slug

@@ -70,9 +70,8 @@ test("guide root lists plotlines with hunk counts", async ({ page }) => {
   await expect(box.locator(".plname", { hasText: "Prove the unfolding works" })).toBeVisible();
   await expect(box.getByText("Other")).toBeVisible();
   await expect(box.getByText(/hunks?/).first()).toBeVisible();
-  // Landing order, the why-separate line, builds-on, and the box's
-  // one-line explanation of what a plotline is.
-  await expect(box.locator(".plnote")).toContainText("could land as its own commit or stacked PR");
+  // Landing order and builds-on, with no explanation line.
+  await expect(box.locator(".plnote")).toHaveCount(0);
   await expect(box.locator(".plbuilds")).toContainText("Builds on Unfold folded values");
   await expect(box.locator("li").first()).toContainText("1. Unfold folded values");
 });

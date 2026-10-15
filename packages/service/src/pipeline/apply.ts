@@ -34,7 +34,7 @@ export interface ReaderApply {
    * review's hunk IDs by the caller — unknown IDs dropped, first
    * plotline wins a hunk claimed twice).
    */
-  plotlines: { id?: string; name?: string; description?: string; why?: string; buildsOn?: string; hunks?: string[] }[];
+  plotlines: { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[];
 }
 
 /**
@@ -108,12 +108,11 @@ export function readerApply(
     }),
   ).filter((c) => c.slug);
   const plotlines = (
-    (data?.["plotlines"] as { id?: string; name?: string; description?: string; why?: string; buildsOn?: string; hunks?: string[] }[] | undefined) ?? []
+    (data?.["plotlines"] as { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[] | undefined) ?? []
   ).map((p) => ({
     ...(p.id !== undefined ? { id: p.id } : {}),
     ...(p.name !== undefined ? { name: p.name } : {}),
     ...(p.description !== undefined ? { description: p.description } : {}),
-    ...(p.why !== undefined ? { why: p.why } : {}),
     ...(p.buildsOn !== undefined ? { buildsOn: p.buildsOn } : {}),
     ...(p.hunks !== undefined ? { hunks: p.hunks } : {}),
   }));

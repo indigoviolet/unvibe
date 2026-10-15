@@ -147,8 +147,6 @@ interface SectionProps {
   plotFilter?: DiffFilter;
   /** Issue #169: plotline id → display name, for the hunk header tag. */
   plotlineNames?: ReadonlyMap<string, string>;
-  /** Issue #169: plotline id → why-separate line, for the tag tooltip. */
-  plotlineWhys?: ReadonlyMap<string, string>;
   /** Owner direction (#169): the header dot/chip are the filter selectors. */
   onSelectScore?: (level: HunkScoreLevel) => void;
   onSelectPlotline?: (id: string) => void;
@@ -558,7 +556,6 @@ function HunkBlock(
   const score = st?.score;
   const plotName =
     st?.plotline !== undefined ? (props.plotlineNames?.get(st.plotline) ?? st.plotline) : undefined;
-  const plotWhy = st?.plotline !== undefined ? props.plotlineWhys?.get(st.plotline) : undefined;
   const changedSinceReviewed = st?.stale === true;
   const summaryPending = st?.needsSummary === true && !summary;
   const busy = !!props.busy[h.contentHash];
@@ -642,13 +639,7 @@ function HunkBlock(
               className={`ptag ptag-pick${props.plotFilter?.plotline === st?.plotline ? " sel" : ""}`}
               aria-pressed={props.plotFilter?.plotline === st?.plotline}
               data-plotpick={st?.plotline}
-              data-tip={
-                props.plotFilter?.plotline === st?.plotline
-                  ? "Show all hunks"
-                  : plotWhy
-                    ? `${plotWhy} Show only ${plotName}`
-                    : `Show only ${plotName}`
-              }
+              data-tip={props.plotFilter?.plotline === st?.plotline ? "Show all hunks" : `Show only ${plotName}`}
               onClick={() => {
                 if (st?.plotline !== undefined) props.onSelectPlotline?.(st.plotline);
               }}

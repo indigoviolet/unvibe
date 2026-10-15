@@ -59,13 +59,13 @@ describe("normalizePlotlines", () => {
   it("assigns hunk IDs to named plotlines", () => {
     const got = normalizePlotlines(
       [
-        { id: "retry", name: "Retry logic", description: "Retries failed uploads.", why: "It can land on its own.", hunks: ["h:conn:aaa"] },
-        { name: "Prove retries work", description: "Coverage.", why: "Proof kept apart from the change.", buildsOn: "retry", hunks: ["h:tst:ccc"] },
+        { id: "retry", name: "Retry logic", description: "Retries failed uploads.", hunks: ["h:conn:aaa"] },
+        { name: "Prove retries work", description: "Coverage.", buildsOn: "retry", hunks: ["h:tst:ccc"] },
       ],
       KNOWN,
     );
     expect(got.plotlines).toHaveLength(2);
-    expect(got.plotlines[0]).toMatchObject({ id: "retry", name: "Retry logic", why: "It can land on its own." });
+    expect(got.plotlines[0]).toMatchObject({ id: "retry", name: "Retry logic" });
     expect(got.plotlines[1].buildsOn).toBe("retry");
     expect(got.plotlines[1].id).toBe("prove-retries-work");
     expect(got.assignment).toEqual({ "h:conn:aaa": "retry", "h:tst:ccc": "prove-retries-work" });
@@ -74,7 +74,7 @@ describe("normalizePlotlines", () => {
 
   it("drops unknown hunk IDs and keeps the rest", () => {
     const got = normalizePlotlines(
-      [{ name: "Retry logic", why: "Separate thread.", hunks: ["h:conn:aaa", "h:nope:zzz", "diff:conn:1-2", "garbage"] }],
+      [{ name: "Retry logic", hunks: ["h:conn:aaa", "h:nope:zzz", "diff:conn:1-2", "garbage"] }],
       KNOWN,
     );
     expect(got.assignment).toEqual({ "h:conn:aaa": "retry-logic" });
@@ -84,8 +84,8 @@ describe("normalizePlotlines", () => {
   it("keeps the first plotline for a twice-claimed hunk", () => {
     const got = normalizePlotlines(
       [
-        { name: "First", why: "One.", hunks: ["h:conn:aaa"] },
-        { name: "Second", why: "Two.", hunks: ["h:conn:aaa", "h:conn:bob"] },
+        { name: "First", hunks: ["h:conn:aaa"] },
+        { name: "Second", hunks: ["h:conn:aaa", "h:conn:bob"] },
       ],
       KNOWN,
     );
@@ -100,7 +100,7 @@ describe("normalizePlotlines", () => {
   });
 
   it(`caps at ${MAX_PLOTLINES} plotlines`, () => {
-    const input = Array.from({ length: 10 }, (_, i) => ({ name: `Thread ${i}`, why: "Separate.", hunks: [] }));
+    const input = Array.from({ length: 10 }, (_, i) => ({ name: `Thread ${i}`, hunks: [] }));
     const got = normalizePlotlines(input, KNOWN);
     expect(got.plotlines).toHaveLength(MAX_PLOTLINES);
     expect(got.dropped.extraPlotlines).toBe(2);
@@ -108,18 +108,17 @@ describe("normalizePlotlines", () => {
 
   it("drops nameless entries and dedupes ids", () => {
     const got = normalizePlotlines(
-      [{ description: "no name", why: "x", hunks: [] }, { name: "Same", why: "x", hunks: [] }, { name: "Same", why: "x", hunks: [] }],
+      [{ description: "no name", hunks: [] }, { name: "Same", hunks: [] }, { name: "Same", hunks: [] }],
       KNOWN,
     );
     expect(got.plotlines.map((p) => p.id)).toEqual(["same", "same-2"]);
   });
 
-  it("drops entries without a why, and unknown or self buildsOn", () => {
+  it("drops unknown or self buildsOn references", () => {
     const got = normalizePlotlines(
       [
-        { name: "No why", hunks: ["h:conn:aaa"] },
-        { name: "Self", why: "x", buildsOn: "self", hunks: ["h:conn:bob"] },
-        { name: "Dangling", why: "x", buildsOn: "nope", hunks: ["h:tst:ccc"] },
+        { name: "Self", buildsOn: "self", hunks: ["h:conn:bob"] },
+        { name: "Dangling", buildsOn: "nope", hunks: ["h:tst:ccc"] },
       ],
       KNOWN,
     );
@@ -131,7 +130,7 @@ describe("normalizePlotlines", () => {
 
   it("cleans names and descriptions to short single lines", () => {
     const got = normalizePlotlines(
-      [{ name: "  Retry\nlogic  ", description: "Line one.\nLine two.", why: "Why\nseparate.", hunks: [] }],
+      [{ name: "  Retry\nlogic  ", description: "Line one.\nLine two.", hunks: [] }],
       KNOWN,
     );
     expect(got.plotlines[0].name).toBe("Retry logic");
