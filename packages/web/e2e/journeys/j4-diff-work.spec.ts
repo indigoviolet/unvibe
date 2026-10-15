@@ -113,13 +113,13 @@ test.describe("J4 diff work", () => {
     await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
     await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click();
 
-    // Across a hunk boundary (last row of hunk 1 to an early row of
-    // hunk 2; short lines, so the quote stays under the toolbar's cap).
-    await dragSelect(113, 648);
+    // Across a hunk boundary, over long lines: the selection runs to
+    // several hundred characters, well past the old 300-char cap.
+    await dragSelect(108, 650);
     await explainAndClose();
     const boundaryMarker = page.locator("mark.anc.range[data-jump]").last();
     await expect(boundaryMarker).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator(`[id="L-${CONN}-648"]`)).toHaveClass(/rng/);
+    await expect(page.locator(`[id="L-${CONN}-650"]`)).toHaveClass(/rng/);
     await boundaryMarker.click();
     await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
   });
