@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J14 (re-do a review)
 /**
  * Re-do guide (#115): `POST /api/reviews/:id/redo` deletes + re-creates
  * through the existing paths and answers with the new review's loading

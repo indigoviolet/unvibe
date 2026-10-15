@@ -1,3 +1,4 @@
+// DISABLED(#188): useless — pins internal outline class-clearing detail, no user-visible outcome
 /**
  * Hover-outline regression (issue #111): the guide's mouseover handlers
  * must not strip the depth stepper pips (`.pips i.on`, owned by React).

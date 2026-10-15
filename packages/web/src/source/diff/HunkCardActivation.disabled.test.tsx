@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J13 (hunk summary activation)
 /**
  * Hunk summary activation (issue #138): idle summaries are plain text
  * with a `data-hunk` attribute and mount nothing per hunk; an activated

@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J3/J9 (comment lifecycle and Submit)
 /**
  * M6 comments: create (reviewer / suggested), reply, open/close, mark
  * For PR, edit draft, delete — all through `ReviewStore.mutate` — plus

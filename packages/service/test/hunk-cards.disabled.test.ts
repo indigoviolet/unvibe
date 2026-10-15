@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J13 (hunk summary activation)
 /**
  * Hunk summaries as content cards (issue #138): the first interaction
  * with an idle summary activates it into a real conversation card hosted

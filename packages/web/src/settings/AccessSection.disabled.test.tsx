@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J11 (full-access toggle)
 /**
  * AccessSection (issue #160): read-only state, the warning confirm step,
  * enabling with the acknowledgement, and turning it off again.

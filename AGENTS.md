@@ -10,6 +10,7 @@ Details live in `DEVELOPMENT.md` (setup, tasks, tests, releases) and `ARCHITECTU
 - Node + TypeScript (strict, ESM), **npm workspaces**. No pnpm/yarn/bun.
 - Tests: **vitest**. UI behaviour tests: Playwright (only where a milestone asks for it).
 - UI behaviour is tested against the **real service** (built app + bundled demo + browser, the `*-service.spec.ts` pattern and `mise run visual-tour`); mock-mode tests are only for quick component checks. Do not write a million unit tests for UI behaviour — prefer real testing. Before publishing any preview that changes UI, run `mise run visual-tour` and look at every screenshot.
+- A feature or fix that changes what the user sees adds or extends a journey against the real service (`packages/web/e2e/journeys/`), not a new unit test, and the visual tour covers any screen it touches. Unit tests are for pure logic.
 - SQLite through the built-in `node:sqlite` (no native addons, so `npm install -g` needs no compiler).
 - Must work on **macOS and Linux**. No platform-only shell tricks, no GNU-only flags, use `node:path`/`node:os`, never hard-code `/home/...`.
 

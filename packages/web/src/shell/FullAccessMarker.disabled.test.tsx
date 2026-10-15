@@ -1,3 +1,4 @@
+// DISABLED(#188): covered by J11 (full-access marker)
 /**
  * FullAccessMarker (issue #160): renders nothing when the setting is off
  * or unreadable; a quiet pill linking to Settings → Access when it is on.
