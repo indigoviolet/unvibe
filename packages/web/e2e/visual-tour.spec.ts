@@ -358,7 +358,7 @@ async function checkPinnedSlots(page: Page, step: string): Promise<void> {
 
 /**
  * Generic check (diff scenes): the pinned band — from the actions
- * bar's bottom to the hunk slot's bottom, across the pane width —
+ * top edge to the hunk slot's bottom, across the pane width —
  * must never show a floating card. During a file hand-off the
  * outgoing and incoming headers together cover the band; card text
  * flickering through the strips around them fails. Sampled on a
@@ -370,9 +370,13 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
     if (!pane || !pane.querySelector("table.diff")) return null;
     const pv = pane.getBoundingClientRect();
     const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
-    const bandTop = pv.top + hh(".rstick") + hh(".dtool");
-    const bandBottom = bandTop + hh(".dfile-h") + hh(".dhunk-h");
-    for (let y = bandTop + 2; y < bandBottom - 1; y += 4) {
+    // The whole top stack, from the pane's top edge (just below the
+    // app's top bar) to the band's bottom: the tab strip, the actions
+    // bar and the band must be one opaque, gapless stack — a sliver
+    // of card text in a seam between sticky layers fails.
+    const bandTop = pv.top;
+    const bandBottom = pv.top + hh(".rstick") + hh(".dtool") + hh(".dfile-h") + hh(".dhunk-h");
+    for (let y = bandTop + 1; y < bandBottom - 1; y += 2) {
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
         if (hit && hit.closest(".card.child.floating")) {
