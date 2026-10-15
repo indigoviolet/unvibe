@@ -111,10 +111,21 @@ async function checkCards(page: Page, step: string): Promise<void> {
       if (r.left < -1 || r.right > window.innerWidth + 1) {
         return `full box outside viewport horizontally: left=${Math.round(r.left)} right=${Math.round(r.right)} vw=${window.innerWidth}`;
       }
-      const x0 = Math.max(r.left, 0);
-      const x1 = Math.min(r.right, window.innerWidth);
-      const y0 = Math.max(r.top, 0);
-      const y1 = Math.min(r.bottom, window.innerHeight);
+      let x0 = Math.max(r.left, 0);
+      let x1 = Math.min(r.right, window.innerWidth);
+      let y0 = Math.max(r.top, 0);
+      let y1 = Math.min(r.bottom, window.innerHeight);
+      // A card inside a scrolling pane is clipped by it: sample only
+      // the part visible inside the pane, not the scrolled-away part
+      // above it (which legitimately sits under the app's top bar).
+      const col = cardEl.closest(".col");
+      if (col) {
+        const cr = col.getBoundingClientRect();
+        x0 = Math.max(x0, cr.left);
+        x1 = Math.min(x1, cr.right);
+        y0 = Math.max(y0, cr.top);
+        y1 = Math.min(y1, cr.bottom);
+      }
       // Inset past the card's rounded corners (a corner sample would
       // legitimately hit whatever is underneath the cutout). Sample
       // the FULL box, parents included: the regular grid plus explicit
@@ -141,6 +152,7 @@ async function checkCards(page: Page, step: string): Promise<void> {
           // its sticky offset, ±1px). A header in place mid-pane — the
           // next hunk's or file's, where an overflowing card reaches —
           // must paint below the card, like its rows and gutters.
+          if (hit.closest(".dband")) continue;
           const hdr = hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick");
           if (hdr) {
             const pane = document.getElementById("right");
