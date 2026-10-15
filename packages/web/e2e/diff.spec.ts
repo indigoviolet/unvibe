@@ -129,7 +129,8 @@ test("file filter dropdown filters by type with counts and an active state", asy
   await page.getByRole("button", { name: "Show file list" }).click();
   const filter = page.getByRole("button", { name: "File filters" });
   await expect(filter).toBeVisible();
-  // Default: no active badge.
+  // Default: no active state, and no count badge anywhere.
+  await expect(filter).toHaveAttribute("aria-pressed", "false");
   await expect(filter.locator(".count")).toHaveCount(0);
   await filter.click();
   const menu = page.getByRole("menu", { name: "File filters" });
@@ -155,12 +156,12 @@ test("file filter dropdown filters by type with counts and an active state", asy
   await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
   await expect(filter).toHaveAttribute("aria-pressed", "true");
-  await expect(filter.locator(".count")).toHaveText("1");
+  await expect(filter).toHaveAttribute("data-tip", "Hiding: Tests");
   // Stored prefs survive a reload.
   await page.reload();
   await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "File filters" }).locator(".count")).toHaveText("1");
+  await expect(page.getByRole("button", { name: "File filters" })).toHaveAttribute("data-tip", "Hiding: Tests");
 });
 
 test("file filter dropdown is keyboard-usable and closes on Escape", async ({ page }) => {

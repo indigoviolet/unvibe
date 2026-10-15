@@ -1160,8 +1160,8 @@ function FilterMenuButton({
   // Focus the first row on open so Arrow keys work immediately; Esc
   // returns focus to the button above.
   useEffect(() => {
-    if (open) itemRefs.current[0]?.focus();
-  }, [open ]);
+    if (open && pos) (itemRefs.current[0] ?? menuRef.current?.querySelector("button"))?.focus();
+  }, [open, pos]);
 
   const move = (dir: 1 | -1): void => {
     const el = document.activeElement as HTMLElement | null;
