@@ -1,8 +1,8 @@
 /**
  * Preview-build badge (issue #36, step 2): when the running build is a
- * preview, a small quiet pill naming the source branch + short commit,
- * linking to Settings → Version (where you switch back). Renders nothing
- * otherwise. Shown full-size in the Settings/Start headers; on a review
+ * preview, a short pill (preview · source branch · short commit) linking
+ * to Settings → Version, with the full detail in its tooltip. Renders
+ * nothing otherwise. Shown full-size in the Settings/Start headers; on a review
  * page (issue #141, no application top bar there) only a compact "preview"
  * marker in the review bar carries the full text as its hover title.
  */
@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { UpdateBuildInfo } from "@unvibe/shared";
 import { api } from "../api/client.js";
-import { mergedProvenance, shortCommit } from "../settings/versionFormat.js";
+import { badgeLabel, badgeTitle } from "../settings/versionFormat.js";
 
 export function PreviewBuildBadge({ compact }: { compact?: boolean }): React.JSX.Element | null {
   const [build, setBuild] = useState<UpdateBuildInfo | null>(null);
@@ -31,11 +31,7 @@ export function PreviewBuildBadge({ compact }: { compact?: boolean }): React.JSX
   }, []);
 
   if (!build?.sourceBranch) return null;
-  // Prefer the branch-side commit (the merge result in `commit` names no
-  // branch); fall back to it for older builds without the field.
-  const sha = shortCommit(build.sourceCommit ?? build.commit);
-  const merged = mergedProvenance(build);
-  const full = `Preview build ${build.version} from ${merged ?? build.sourceBranch}${sha && !merged ? ` (${sha})` : ""} — open Settings → Version to switch back.`;
+  const full = badgeTitle(build);
   if (compact) {
     return (
       <Link
@@ -55,8 +51,7 @@ export function PreviewBuildBadge({ compact }: { compact?: boolean }): React.JSX
       to="/settings?tab=version"
       title={full}
     >
-      preview · {merged ?? build.sourceBranch}
-      {sha ? ` · ${sha}` : ""}
+      {badgeLabel(build)}
     </Link>
   );
 }

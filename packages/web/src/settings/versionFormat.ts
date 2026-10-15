@@ -57,6 +57,33 @@ export function isNewerAvailable(row: UpdateChannel, build: UpdateBuildInfo | nu
   return row.current && !!build?.commit && !!row.commit && build.commit !== row.commit;
 }
 
+/** Display state of one channel row for the installed channel and the rest. */
+export type ChannelRowState = "update-available" | "installed" | "other";
+
+export function channelRowState(row: UpdateChannel, build: UpdateBuildInfo | null): ChannelRowState {
+  if (!row.current) return "other";
+  return isNewerAvailable(row, build) ? "update-available" : "installed";
+}
+
+/** Short header badge for a preview build, e.g. "preview · main-rc · 6818b23". */
+export function badgeLabel(build: Pick<UpdateBuildInfo, "sourceBranch" | "sourceCommit" | "commit">): string {
+  const sha = shortCommit(build.sourceCommit ?? build.commit);
+  if (!build.sourceBranch) return sha ? `preview · ${sha}` : "preview";
+  return sha ? `preview · ${build.sourceBranch} · ${sha}` : `preview · ${build.sourceBranch}`;
+}
+
+/** Full badge detail for the tooltip: version, both bases and build time. */
+export function badgeTitle(build: UpdateBuildInfo, now: number = Date.now()): string {
+  const merged = mergedProvenance(build);
+  const sha = shortCommit(build.sourceCommit ?? build.commit);
+  const from = merged ?? (build.sourceBranch ? (sha ? `${build.sourceBranch} · ${sha}` : build.sourceBranch) : null);
+  const built = build.builtAt ? (timeAgoIso(build.builtAt, now) ?? build.builtAt) : null;
+  const parts = [`Preview build ${build.version}`];
+  if (from) parts.push(`from ${from}`);
+  if (built) parts.push(`built ${built}`);
+  return `${parts.join(" · ")} — open Settings → Version to switch back.`;
+}
+
 /**
  * One blocked job as a quiet line ("explain · demo · running —
  * Streaming answer…"). The service caps the list; the panel adds

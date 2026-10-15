@@ -40,12 +40,33 @@ test("enable lists one aligned row per version with the current one marked", asy
   await expect(feat.getByRole("button", { name: "Switch to preview/feat-x" })).toHaveText("Switch");
   const release = page.locator('[data-testid="update-channel"][data-ref="release"]');
   await expect(release.getByTestId("update-current")).toBeVisible();
+  await expect(release.getByRole("button", { name: "Update release" })).toHaveCount(0);
+  await expect(feat.getByTestId("update-current")).toHaveCount(0);
+  await expect(feat.getByTestId("update-available")).toHaveCount(0);
   await expect(page.getByTestId("update-refresh")).toHaveText("Refresh");
   // Newest build first (issue #73).
   const refs = await page
     .locator('[data-testid="update-channel"]')
     .evaluateAll((els) => els.map((el) => el.getAttribute("data-ref")));
   expect(refs).toEqual(["preview/feat-x", "preview/fix-y", "release-rc", "release"]);
+});
+
+test("newer build on the installed channel: Update available, no INSTALLED pill, Installed shows the running build", async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem("unvibe.mock.update.installedCommit", "6818b23aaaaaaa");
+  });
+  await enablePicker(page);
+  await expect(page.getByTestId("update-current-version")).toContainText("6818b23");
+  await expect(page.getByTestId("update-current-version")).not.toContainText("b535a30");
+  const release = page.locator('[data-testid="update-channel"][data-ref="release"]');
+  await expect(release.getByTestId("update-available")).toBeVisible();
+  await expect(release.getByTestId("update-current")).toHaveCount(0);
+  await expect(release).toContainText("b535a30");
+  await expect(release.getByRole("button", { name: "Update release" })).toHaveText("Update");
+  const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+  await expect(feat.getByTestId("update-current")).toHaveCount(0);
+  await expect(feat.getByTestId("update-available")).toHaveCount(0);
+  await expect(feat.getByRole("button", { name: "Switch to preview/feat-x" })).toHaveText("Switch");
 });
 
 test("switch moves to the preview: confirm, restart wait, reload, badge", async ({ page }) => {
@@ -56,8 +77,8 @@ test("switch moves to the preview: confirm, restart wait, reload, badge", async 
   await expect(page.getByText("The service restarts. Your data is kept and backed up first.")).toBeVisible();
   await page.getByRole("button", { name: "Confirm switch to preview/feat-x" }).click();
   await expect(page.getByTestId("update-switching")).toBeVisible();
-  // The page reloads once the new build reports; the badge names the branch.
-  await expect(page.getByTestId("preview-badge")).toContainText("feat/x", { timeout: 30_000 });
+  // The page reloads once the new build reports; the badge is short.
+  await expect(page.getByTestId("preview-badge")).toHaveText("preview · feat/x · abc1234", { timeout: 30_000 });
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
   await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]').getByTestId("update-current")).toBeVisible();
   await expect(page.getByTestId("update-outcome")).toContainText("Switched to preview/feat-x");
