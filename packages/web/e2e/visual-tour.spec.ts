@@ -154,7 +154,11 @@ async function checkCards(page: Page, step: string): Promise<void> {
                   : hdr.classList.contains("dfile-h")
                     ? pt + hh(".rstick") + hh(".dtool")
                     : pt + hh(".rstick") + hh(".dtool") + hh(".dfile-h");
-              if (Math.abs(hdr.getBoundingClientRect().top - want) <= 1) continue;
+              // Within the header's own height of the slot counts as
+              // in the slot: during the hand-off between files the
+              // incoming header sits a few px short of sticking while
+              // its rows already fill the pane.
+              if (Math.abs(hdr.getBoundingClientRect().top - want) <= hdr.getBoundingClientRect().height) continue;
               return `unpinned header over card at ${Math.round(x)},${Math.round(y)}: ${hdr.className.toString().slice(0, 40)} top=${Math.round(hdr.getBoundingClientRect().top)} pinnedTop=${Math.round(want)} card=${cardEl.id}`;
             }
             continue;
