@@ -181,7 +181,7 @@ code { font-family: var(--mono); font-size: .86em; }
    narrow panes scroll the bar sideways instead of wrapping (sticky never
    clips, and the Files panel + filter dropdown live outside this bar with
    their own, higher stacking). */
-.dtool { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; padding: 6px 12px 8px; overflow-x: auto; position: sticky; top: var(--diffbar-top, 40px); left: 0; z-index: 9; background: var(--surface); border-bottom: 1px solid var(--line); margin-top: -2px; }
+.dtool { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; padding: 6px 12px 8px; overflow-x: auto; position: sticky; top: calc(var(--diffbar-top, 40px) - 2px); left: 0; z-index: 9; background: var(--surface); border-bottom: 1px solid var(--line); }
 .dtool > * { flex: none; }
 .files { border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
 .frow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -517,15 +517,14 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
    offsets where no header physically covers a strip of the band;
    without this, card text shows through those strips. It takes no
    flow space (negative margins). The whole top stack is gapless:
-   each sticky layer overlaps the one above it by 2px (the actions
-   bar's and the band's negative top margins, against the layer
-   above's higher z-index), so no seam between tab strip, actions
+   each sticky layer's `top` sits 2px above its slot, so its box
+   overlaps the layer above it (which has the higher z-index and
+   paints over the overlap), and no seam between tab strip, actions
    bar and band can show card text at any scroll offset. */
 .dband {
   position: sticky;
-  top: var(--dfile-top, 83px);
-  height: calc(var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px));
-  margin-top: -2px;
+  top: calc(var(--dfile-top, 83px) - 6px);
+  height: calc(var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px) + 6px);
   margin-bottom: calc(-1 * (var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px)));
   z-index: 6;
   background: var(--surface);
