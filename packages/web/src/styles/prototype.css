@@ -472,6 +472,11 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
    as today (no placeholder, no `floating` class). Stacking is retuned in
    the two rules below. One place to retune how floating feels. */
 .exp-float { position: relative; height: 0; }
+/* Issue #185: in the diff, the floating layer sits at the hunk level
+   (outside the sideways scroller); this zero-height wrapper is shifted
+   to the card's anchored row, so the card floats just below that line
+   instead of at the top of the hunk. */
+.dhunk-float { position: relative; height: 0; }
 .card.child.floating {
   position: absolute;
   top: 0;

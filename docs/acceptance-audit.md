@@ -476,8 +476,10 @@ needed (that deviation is closed, not added).
   annotation (`pinned`, default false, set through the comment PATCH),
   so it survives a reload; hunk-hosted cards stay inline;
   ×/Escape close; diff floaters render at the hunk level outside the
-  hunk scroller so `.dwrap` never clips them, at `z-index: 0` so the
-  pinned file/hunk headers slide over) — met (`FloatingCard.test.tsx`,
+  hunk scroller so `.dwrap` never clips them, above the gutter and
+  below the pinned file/hunk headers, and are shifted to their anchored
+  row (`AnchoredFloat`, #185) so a card deep in a long hunk floats just
+  below its line, not at the hunk top) — met (`FloatingCard.test.tsx`,
   `docs/screenshots/167-floating-guide.png`,
   `167-pinned-guide.png`, `167-floating-diff.png`; e2e specs that reach
   under the seeded open card close it first).

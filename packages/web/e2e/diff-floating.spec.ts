@@ -18,9 +18,47 @@ async function gotoDiff(page: Page): Promise<void> {
   await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 8000 });
 }
 
+for (const mode of ["unified", "split"] as const) {
+  test(`floating card opens at its anchored row deep in a hunk (${mode})`, async ({ page }) => {
+    await gotoDiff(page);
+    if (mode === "split") await page.getByRole("button", { name: "Split" }).click();
+    // The socket-level hunk runs ~60 rows: pick a token near its end, far
+    // below the hunk header, and Explain it.
+    const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
+    await selectText(page, scope, 'msg["fold-mixed-repeated"]');
+    await page.locator('#selbar [data-act="explain"]').click();
+    const card = page.locator(".dhunk .card.child.floating").first();
+    await expect(card).toBeVisible({ timeout: 8000 });
+
+    // The card's top sits at the anchored row's bottom (within a few px),
+    // not at the top of the hunk. Both rects move together on scroll, so
+    // viewport coordinates compare directly without scrolling the card.
+    const gap = await page.evaluate(() => {
+      const cardEl = document.querySelector(".dhunk .card.child.floating");
+      if (!cardEl) return { ok: false, why: "no floating card" };
+      let row: Element | null = null;
+      for (const tr of document.querySelectorAll('tr[id^="L-test-with_dummyserver-test_socketlevel.py-"]')) {
+        if ((tr.textContent ?? "").includes('msg["fold-mixed-repeated"]')) row = tr;
+      }
+      if (!row) return { ok: false, why: "no anchored row" };
+      const cr = cardEl.getBoundingClientRect();
+      const rr = (row as Element).getBoundingClientRect();
+      const header = document.querySelector(".dhunk-h");
+      const hr = header?.getBoundingClientRect();
+      return {
+        ok: Math.abs(cr.top - rr.bottom) <= 6 && (!hr || cr.top > hr.bottom + 100),
+        why: `cardTop=${Math.round(cr.top)} rowBottom=${Math.round(rr.bottom)} headerBottom=${hr ? Math.round(hr.bottom) : "?"}`,
+      };
+    });
+    expect(gap.ok, gap.why).toBe(true);
+  });
+}
+
 test("floating card paints above the line-number gutter", async ({ page }) => {
   await gotoDiff(page);
-  await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+  // An anchor with plain code rows below it (the regex anchor further up
+  // has a comment slot row below it, which has no gutter cell to cover).
+  await selectText(page, "#right table.diff", "headers_changed = True");
   await page.locator('#selbar [data-act="explain"]').click();
   const card = page.locator(".dhunk .card.child.floating").first();
   await expect(card).toBeVisible({ timeout: 8000 });
