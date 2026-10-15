@@ -69,6 +69,11 @@ description = "Playwright behaviour tests against mock mode (needs browsers: mis
 depends = ["build"]
 run = "npm run test:e2e --workspace @unvibe/web --if-present"
 
+[tasks."visual-tour"]
+description = "Visual tour against the real built service (demo + replay agent, browser): screenshots in packages/web/visual-tour/ (owner reviews every one)"
+depends = ["build"]
+run = "npx --workspace @unvibe/web playwright test e2e/visual-tour.spec.ts"
+
 [tasks."playwright-install"]
 description = "Install Playwright browsers for e2e tests"
 run = "npx --workspace @unvibe/web playwright install chromium"

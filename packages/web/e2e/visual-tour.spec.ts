@@ -1,0 +1,241 @@
+/**
+ * Visual tour against the REAL built service (owner: real testing
+ * wherever possible). One spec, four passes (1440px and ~900px, light
+ * and dark): the guide with a floating card, a card opened from inside
+ * a floating card in the guide and in the diff, the diff in unified
+ * and split, a deep-anchored card, every toolbar/file-tree menu, the
+ * comments menu, and Settings → Version. Screenshots land in the
+ * git-ignored `visual-tour/` folder for the owner to look at.
+ *
+ * At every step, three generic checks (no per-feature asserts):
+ * - every open menu/popover is fully inside the viewport and topmost
+ *   at its corners and centre;
+ * - every open card's FULL box is inside the viewport horizontally
+ *   and topmost across a grid (pinned headers excepted);
+ * - no horizontal page overflow.
+ *
+ * Requires `mise run build` first. Run via `mise run visual-tour`.
+ */
+import { execFile } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { selectText } from "./select-text.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+
+const exec = promisify(execFile);
+const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
+
+test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+
+async function apiJson(origin: string, token: string, method: string, urlPath: string, body?: unknown): Promise<unknown> {
+  const args = ["-s", "-X", method, `${origin}${urlPath}`, "-H", `Authorization: Bearer ${token}`, "-H", "content-type: application/json"];
+  if (body !== undefined) args.push("-d", JSON.stringify(body));
+  const { stdout } = await exec("curl", args);
+  return JSON.parse(stdout);
+}
+
+let dataDir = "";
+let svc: RunningService | null = null;
+let reviewId = "";
+
+test.beforeAll(async () => {
+  mkdirSync(SHOTS, { recursive: true });
+  dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-data-"));
+  svc = await startService(dataDir, { agent: "replay" });
+  const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+    review: { id: string };
+  };
+  reviewId = created.review.id;
+  const deadline = Date.now() + 90_000;
+  for (;;) {
+    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
+      pages: { id: string; cards: { id: string; blocks: unknown[] }[] }[];
+    };
+    const root = snap.pages.find((p) => p.id === "root");
+    if (root?.cards.some((c) => c.id === "problem" && c.blocks.length > 0) && root?.cards.some((c) => c.id === "central" && c.blocks.length > 0)) break;
+    if (Date.now() > deadline) throw new Error("guide did not fill in time");
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+});
+
+test.afterAll(async () => {
+  await svc?.stop().catch(() => {});
+  svc = null;
+  rmSync(dataDir, { recursive: true, force: true });
+});
+
+/** Generic check: no horizontal page overflow. */
+async function checkNoPageOverflow(page: Page, step: string): Promise<void> {
+  const overflow = await page.evaluate(() => {
+    return Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) - window.innerWidth;
+  });
+  expect(overflow, `${step}: horizontal page overflow ${overflow}px`).toBeLessThanOrEqual(1);
+}
+
+/** Generic check: menus/popovers fully in the viewport and topmost. */
+async function checkMenus(page: Page, step: string): Promise<void> {
+  const menus = page.locator(".fmenu:visible, .cmenu:visible, #pop:visible");
+  for (let i = 0; i < (await menus.count()); i++) {
+    const bad = await menus.nth(i).evaluate((el: Element) => {
+      const r = el.getBoundingClientRect();
+      if (r.left < -1 || r.right > window.innerWidth + 1 || r.top < -1 || r.bottom > window.innerHeight + 1) {
+        return `outside viewport ${JSON.stringify({ l: r.left, r: r.right, t: r.top, b: r.bottom })}`;
+      }
+      const pts: [number, number][] = [
+        [r.left + 5, r.top + 5],
+        [r.right - 5, r.top + 5],
+        [r.left + 5, r.bottom - 5],
+        [r.right - 5, r.bottom - 5],
+        [r.left + r.width / 2, r.top + r.height / 2],
+      ];
+      for (const [x, y] of pts) {
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || !el.contains(hit)) return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit ? hit.tagName + "." + (hit as HTMLElement).className : "nothing"}`;
+      }
+      return null;
+    });
+    expect(bad, `${step}: menu ${i} ${bad ?? ""}`).toBeNull();
+  }
+}
+
+/** Generic check: open cards fully inside horizontally + topmost grid. */
+async function checkCards(page: Page, step: string): Promise<void> {
+  const cards = page.locator(".card.child.floating:visible");
+  for (let i = 0; i < (await cards.count()); i++) {
+    const bad = await cards.nth(i).evaluate((cardEl: Element) => {
+      const r = cardEl.getBoundingClientRect();
+      if (r.left < -1 || r.right > window.innerWidth + 1) {
+        return `full box outside viewport horizontally: left=${Math.round(r.left)} right=${Math.round(r.right)} vw=${window.innerWidth}`;
+      }
+      const x0 = Math.max(r.left, 0);
+      const x1 = Math.min(r.right, window.innerWidth);
+      const y0 = Math.max(r.top, 0);
+      const y1 = Math.min(r.bottom, window.innerHeight);
+      for (let y = y0 + 8; y < y1; y += 40) {
+        for (let x = x0 + 8; x < x1; x += 40) {
+          const hit = document.elementFromPoint(x, y);
+          if (!hit || cardEl.contains(hit)) continue;
+          if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick")) continue;
+          return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
+        }
+      }
+      return null;
+    });
+    expect(bad, `${step}: card ${i} ${bad ?? ""}`).toBeNull();
+  }
+}
+
+async function shot(page: Page, name: string, suffix: string): Promise<void> {
+  await page.screenshot({ path: path.join(SHOTS, `${name}-${suffix}.png`) });
+}
+
+async function stepChecks(page: Page, step: string): Promise<void> {
+  await checkNoPageOverflow(page, step);
+  await checkCards(page, step);
+  await checkMenus(page, step);
+}
+
+for (const combo of [
+  { name: "1440-light", width: 1440, dark: false },
+  { name: "1440-dark", width: 1440, dark: true },
+  { name: "900-light", width: 900, dark: false },
+  { name: "900-dark", width: 900, dark: true },
+] as const) {
+  test(`visual tour (${combo.name})`, async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: combo.width, height: 900 });
+    if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+    const suffix = combo.name;
+
+    // Guide with a floating card open (the seeded one).
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    const seedCard: Locator = page.locator("#B-x-seed");
+    await expect(seedCard).toHaveClass(/floating/, { timeout: 15_000 });
+    await stepChecks(page, "guide-floating");
+    await shot(page, "guide-floating", suffix);
+
+    // A card opened from inside the floating card (guide).
+    await selectText(page, "#B-x-seed [data-answer]", "HTTP/1.1 originally let a server continue");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const composer = page.locator("#B-x-seed .ithread[data-pending-thread]");
+    await expect(composer).toBeVisible();
+    await composer.locator("textarea").fill("Why does this matter?");
+    await composer.getByRole("button", { name: "Ask" }).click();
+    const guideChild = page.locator("#B-x-seed [data-expansion]", { hasText: "Why does this matter?" });
+    await expect(guideChild).toContainText("Mock explanation", { timeout: 15_000 }).catch(() => {});
+    await expect(guideChild).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "guide-nested");
+    await shot(page, "guide-nested", suffix);
+    await guideChild.getByRole("button", { name: "Close" }).click().catch(() => {});
+
+    // Diff, unified.
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "diff-unified");
+    await shot(page, "diff-unified", suffix);
+
+    // Floating card + nested card in the diff.
+    await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+    await page.locator('#selbar [data-act="explain"]').click();
+    await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
+    await selectText(page, ".dhunk .card.child.floating [data-answer]", "Mock explanation");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const dComposer = page.locator(".dhunk .ithread[data-pending-thread]");
+    await expect(dComposer).toBeVisible();
+    await dComposer.locator("textarea").fill("Why is this here?");
+    await dComposer.getByRole("button", { name: "Ask" }).click();
+    const diffChild = page.locator(".dhunk [data-expansion]", { hasText: "Why is this here?" }).last();
+    await expect(diffChild).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "diff-nested");
+    await shot(page, "diff-nested", suffix);
+    await diffChild.getByRole("button", { name: "Close" }).click().catch(() => {});
+    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click().catch(() => {});
+
+    // Deep-anchored card in the long socket-level hunk.
+    const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
+    await selectText(page, scope, 'msg["fold-mixed-repeated"]');
+    await page.locator('#selbar [data-act="explain"]').click();
+    await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "diff-deep");
+    await shot(page, "diff-deep", suffix);
+    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click().catch(() => {});
+
+    // Split.
+    await page.getByRole("button", { name: "Split" }).click();
+    await stepChecks(page, "diff-split");
+    await shot(page, "diff-split", suffix);
+    await page.getByRole("button", { name: "Unified" }).click();
+
+    // Menus: file-type filter, then Reviewed/GitHub filter.
+    await page.getByRole("button", { name: "Show file list" }).click().catch(() => {});
+    await page.getByRole("button", { name: "File filters" }).click();
+    await expect(page.getByRole("menu", { name: "File filters" })).toBeVisible();
+    await stepChecks(page, "menu-file-filter");
+    await shot(page, "menu-file-filter", suffix);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Review filters" }).click();
+    await expect(page.getByRole("menu", { name: "Review filters" })).toBeVisible();
+    await stepChecks(page, "menu-review-filter");
+    await shot(page, "menu-review-filter", suffix);
+    await page.keyboard.press("Escape");
+
+    // Comments menu.
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await stepChecks(page, "menu-comments");
+    await shot(page, "menu-comments", suffix);
+    await page.keyboard.press("Escape");
+
+    // Settings → Version.
+    await page.goto(`${svc!.origin}/settings?tab=version&token=${svc.token}`);
+    await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    await checkNoPageOverflow(page, "settings-version");
+    await shot(page, "settings-version", suffix);
+  });
+}

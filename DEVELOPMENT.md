@@ -47,6 +47,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `fixture-snapshot` | Rebuild `fixtures/urllib3-5020/snapshot.json`; fails on unverified citations | — |
 | `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `playwright-install` | Install the Playwright Chromium browser | — |
+| `visual-tour` | Visual tour against the real built service (demo + replay agent): screenshots in `packages/web/visual-tour/` (git-ignored), generic viewport/stacking/overflow checks at 1440px and ~900px in light and dark | `build` (auto) + browsers |
 | `e2e` | Linux shell end-to-end (setup --no-login, handler, reuse, idle exit, uninstall, in temp HOME/port; the login unit's contents + enable commands are pinned by `setup.test.ts`, not here) | Linux |
 | `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
 | `check-global-install` | `release`, then install the tarball and the `#release` git ref into temp prefixes (npm 10 and 11, no flags) | npm 10 + 11 |
