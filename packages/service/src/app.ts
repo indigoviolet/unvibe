@@ -80,7 +80,7 @@ export interface AppContext {
   promptsDir: string;
   fixturesDir: string;
   mcpBaseUrl: string;
-  updateRunner: { runUpdatePrompt: (prompt: string, opts: { reviewId: string; toVersion: number; signal?: AbortSignal }) => Promise<string> };
+  updateRunner: import("./versions/update.js").UpdateBaseRunner;
 }
 
 export interface BuildAppOptions {

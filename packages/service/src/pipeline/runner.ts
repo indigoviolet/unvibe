@@ -134,6 +134,20 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Issue #194: run one agent turn inside the job's turn timings. */
+async function timedTurn<T>(
+  ctx: { beginTurn(label: string): void; endTurn(): void },
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  ctx.beginTurn(label);
+  try {
+    return await fn();
+  } finally {
+    ctx.endTurn();
+  }
+}
+
 /** Optional tool-call relay for contexts that may not report tools. */
 function reportToolFrom(ctx?: {
   reportTool?: (name: string, detail?: string) => void;
@@ -444,7 +458,8 @@ export class Pipeline {
             // Per-attempt evidence: a retry must observe *its own* turn's
             // tool activity, not the previous attempt's.
             const mcpBefore = this.opts.mcp.activitySnapshot(o.reviewId);
-            const { text, usage } = await collectStreaming(
+            const { text, usage } = await timedTurn(ctx, "first", () =>
+              collectStreaming(
               this.opts.runner,
               forked.session,
               prompt,
@@ -462,6 +477,7 @@ export class Pipeline {
                 }
               },
               (name, detail) => ctx.reportTool(name, detail),
+              ),
             );
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
             // Facts only (#180): the reply's wording is never judged. A
@@ -497,9 +513,11 @@ export class Pipeline {
                   .join("\n") +
                 anchorProblem +
                 `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
-              const repair = await collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
-                ctx.reportText(d),
-                (name, detail) => ctx.reportTool(name, detail),
+              const repair = await timedTurn(ctx, "repair", () =>
+                collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail) => ctx.reportTool(name, detail),
+                ),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -649,9 +667,11 @@ export class Pipeline {
             });
             ctx.setSessionId(session.id);
             try {
-              const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
-                ctx.reportText(d),
-                (name, detail) => ctx.reportTool(name, detail),
+              const { text, usage } = await timedTurn(ctx, "first", () =>
+                collectStreaming(this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail) => ctx.reportTool(name, detail),
+                ),
               );
               const first = this.parseAndValidate(o.reviewId, text);
               let finalText = text;
@@ -668,9 +688,11 @@ export class Pipeline {
                     .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                     .join("\n") +
                   `\nReply with the same one-line summary and corrected citations. End with the same trailing JSON block.`;
-                const repair = await collectStreaming(this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
-                  ctx.reportText(d),
-                  (name, detail) => ctx.reportTool(name, detail),
+                const repair = await timedTurn(ctx, "repair", () =>
+                  collectStreaming(this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
+                    ctx.reportText(d),
+                    (name, detail) => ctx.reportTool(name, detail),
+                  ),
                 );
                 usage.inputTokens += repair.usage.inputTokens;
                 usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -1510,7 +1532,8 @@ export class Pipeline {
             let buffer = "";
             const streamed = new Set<number>();
             const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
-            const { usage } = await collectStreaming(
+            const { usage } = await timedTurn(ctx, "first", () =>
+              collectStreaming(
               this.opts.runner,
               session,
               prompt,
@@ -1540,6 +1563,7 @@ export class Pipeline {
                 ctx.reportTool(name, detail);
                 if (!/^## /m.test(buffer)) buffer = "";
               },
+              ),
             );
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
@@ -1580,9 +1604,11 @@ export class Pipeline {
               // it on the job's stored prompt — the Debug page then shows
               // what failed (prompt wording, an ID shape, or the validator).
               ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
-              const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
-                ctx.reportText(d),
-                (name, detail) => ctx.reportTool(name, detail),
+              const repair = await timedTurn(ctx, "repair", () =>
+                collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail) => ctx.reportTool(name, detail),
+                ),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -2798,58 +2824,53 @@ export class Pipeline {
   }
 
   updateRunner(): {
-    runUpdatePrompt: (prompt: string, opts: { reviewId: string; toVersion: number; signal?: AbortSignal }) => Promise<string>;
+    runUpdatePrompt: (
+      prompt: string,
+      opts: {
+        reviewId: string;
+        toVersion: number;
+        signal?: AbortSignal;
+        hooks?: {
+          setSessionId(id: string): void;
+          reportText(delta: string): void;
+          reportTool(name: string, detail?: string): void;
+          reportUsage(usage: TokenUsage): void;
+        };
+      },
+    ) => Promise<string>;
   } {
     return {
-      // The versions module renders `update_pass.md` already; run the
-      // rendered prompt in a fork of the new base as an `update-pass` job.
+      // The versions module renders `update_pass.md` already and encloses
+      // this call in the single `update-pass` job. Run directly in that
+      // job — enqueuing a second update-pass job here deadlocked on the
+      // enclosing job's dedupe key (issue #194: RUNNING forever, no
+      // token counts). Retryable errors retry the turn in place.
       runUpdatePrompt: async (prompt, opts) => {
-        const settings = await this.effectiveSettings();
-        let resolveText!: (s: string) => void;
-        let rejectText!: (e: Error) => void;
-        const done = new Promise<string>((res, rej) => {
-          resolveText = res;
-          rejectText = rej;
-        });
-        this.opts.jobs.enqueue({
-          reviewId: opts.reviewId,
-          kind: "update-pass",
-          ...roleFields(settings.main),
-          priority: JOB_PRIORITY.userRequested,
-          dedupe: { anchor: "update", requestKind: "update-pass", baseVersion: `v${opts.toVersion}` },
-          promptSnapshot: prompt,
-          run: async (ctx) => {
-            for (let attempt = 0; ; attempt++) {
-              try {
-                ctx.setPromptSnapshot(prompt);
-                const base = await this.ensureBase(opts.reviewId);
-                void base;
-                const forked = await this.forkFor(opts.reviewId);
-                ctx.setSessionId(forked.session.id);
-                const { text, usage } = await collectStreaming(
-                  this.opts.runner,
-                  forked.session,
-                  prompt,
-                  opts.signal ?? ctx.signal,
-                  (d) => ctx.reportText(d),
-                  (name, detail) => ctx.reportTool(name, detail),
-                );
-                ctx.reportUsage(usage);
-                await this.recordUsage(opts.reviewId, usage);
-                resolveText(text);
-                return;
-              } catch (err) {
-                if (err instanceof RetryableError && attempt < 3) {
-                  await sleepMs(50 * (attempt + 1));
-                  continue;
-                }
-                rejectText(err as Error);
-                throw err;
-              }
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const base = await this.ensureBase(opts.reviewId);
+            void base;
+            const forked = await this.forkFor(opts.reviewId);
+            opts.hooks?.setSessionId(forked.session.id);
+            const { text, usage } = await collectStreaming(
+              this.opts.runner,
+              forked.session,
+              prompt,
+              opts.signal,
+              (d) => opts.hooks?.reportText(d),
+              (name, detail) => opts.hooks?.reportTool(name, detail),
+            );
+            opts.hooks?.reportUsage(usage);
+            await this.recordUsage(opts.reviewId, usage);
+            return text;
+          } catch (err) {
+            if (err instanceof RetryableError && attempt < 3) {
+              await sleepMs(50 * (attempt + 1));
+              continue;
             }
-          },
-        });
-        return done;
+            throw err;
+          }
+        }
       },
     };
   }
