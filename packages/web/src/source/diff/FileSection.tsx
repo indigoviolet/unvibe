@@ -1108,9 +1108,7 @@ export function FileSection(props: SectionProps): ReactNode {
                 </div>
               ) : null}
             </>
-          ) : (
-            <div style={{ minHeight: 28 }} aria-hidden="true" />
-          )}
+          ) : null}
         </div>
       )}
     </div>
