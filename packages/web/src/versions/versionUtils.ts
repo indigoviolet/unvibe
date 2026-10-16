@@ -57,6 +57,62 @@ export function pooledTokens(jobs: Job[]): { input: number; output: number; read
   return { input, output, read, written };
 }
 
+/** Issue #194: local clock time for an epoch-ms stamp, "—" when absent. */
+export function formatLocalTime(ms: number | undefined): string {
+  if (ms === undefined || !Number.isFinite(ms)) return "—";
+  return new Date(ms).toLocaleTimeString([], { hour12: false });
+}
+
+/** Issue #194: compact duration, e.g. "0.4s", "12s", "2m 05s", "1h 03m". */
+export function formatDurationMs(ms: number | undefined): string {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return "—";
+  const secs = ms / 1000;
+  if (secs < 10) return `${secs.toFixed(1)}s`;
+  if (secs < 60) return `${Math.round(secs)}s`;
+  const totalSecs = Math.round(secs);
+  if (totalSecs < 3600) return `${Math.floor(totalSecs / 60)}m ${String(totalSecs % 60).padStart(2, "0")}s`;
+  return `${Math.floor(totalSecs / 3600)}h ${String(Math.floor((totalSecs % 3600) / 60)).padStart(2, "0")}m`;
+}
+
+/** Issue #194: duration of a timed step; live (to `now`) while unfinished. */
+export function stepDurationMs(step: { startedAt: number; finishedAt?: number }, now: number): number {
+  return (step.finishedAt ?? now) - step.startedAt;
+}
+
+/** Issue #194: a job's elapsed time — finished, live while running, queued wait while queued. */
+export function jobElapsedMs(job: Job, now: number): number | undefined {
+  if (job.finishedAt !== undefined && job.startedAt !== undefined) return job.finishedAt - job.startedAt;
+  if (job.startedAt !== undefined) return now - job.startedAt;
+  if (job.queuedAt !== undefined) return now - job.queuedAt;
+  return undefined;
+}
+
+/** Issue #194: median finished duration for one job kind (needs both stamps). */
+export function medianFinishedDurationMs(jobs: Job[], kind: Job["kind"]): number | undefined {
+  const durations = jobs
+    .filter((j) => j.kind === kind && j.startedAt !== undefined && j.finishedAt !== undefined)
+    .map((j) => (j.finishedAt as number) - (j.startedAt as number))
+    .sort((a, b) => a - b);
+  if (durations.length === 0) return undefined;
+  const mid = Math.floor(durations.length / 2);
+  return durations.length % 2 === 1 ? durations[mid] : ((durations[mid - 1] ?? 0) + (durations[mid] ?? 0)) / 2;
+}
+
+/**
+ * Issue #194: a running job is marked when it has run over 3× the recent
+ * median for its kind (median over this list's finished jobs of the kind;
+ * needs at least 3 samples so a single fast job cannot mark everything).
+ */
+export function isLongRunning(job: Job, jobs: Job[], now: number): boolean {
+  if (job.state !== "running" && job.state !== "backing-off") return false;
+  const samples = jobs.filter((j) => j.kind === job.kind && j.startedAt !== undefined && j.finishedAt !== undefined).length;
+  if (samples < 3) return false;
+  const median = medianFinishedDurationMs(jobs, job.kind);
+  const elapsed = jobElapsedMs(job, now);
+  if (median === undefined || median <= 0 || elapsed === undefined) return false;
+  return elapsed > 3 * median;
+}
+
 /** "retry in 45s" / "retry in 2m" for a backing-off job; "—" when unknown. */
 export function formatRetryIn(nextRetryAt: number | undefined, now = Date.now()): string {
   if (nextRetryAt === undefined || !Number.isFinite(nextRetryAt)) return "—";

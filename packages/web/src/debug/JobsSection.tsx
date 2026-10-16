@@ -13,11 +13,16 @@ import { api, friendlyError } from "../api/client.js";
 import { connectEvents } from "../api/ws.js";
 import {
   formatCacheRate,
+  formatDurationMs,
+  formatLocalTime,
   formatRetryIn,
   formatTokens,
+  isLongRunning,
+  jobElapsedMs,
   pooledCacheRate,
   pooledTokens,
   reduceJobs,
+  stepDurationMs,
 } from "../versions/versionUtils.js";
 
 export function JobsSection({ reviewId }: { reviewId: string | null }): React.JSX.Element {
@@ -62,6 +67,16 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
     }
   };
 
+  // Issue #194: tick once a second while anything is active so live
+  // elapsed times and the long-running marker stay current.
+  const [now, setNow] = useState(() => Date.now());
+  const anyActive = (jobs ?? []).some((j) => j.state === "queued" || j.state === "running" || j.state === "backing-off");
+  useEffect(() => {
+    if (!anyActive) return () => {};
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [anyActive]);
+
   const totals = pooledTokens(jobs ?? []);
   const rate = pooledCacheRate(jobs ?? []);
 
@@ -77,8 +92,33 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
         <p className="hint">No jobs for this review.</p>
       ) : (
         <div className="card" style={{ padding: "4px 14px" }}>
+          {snapshot?.refreshTimings ? (
+            <div style={{ padding: "8px 0" }} data-testid="refresh-steps">
+              <div className="frow" style={{ gap: 8 }}>
+                <span className="kind">Refresh steps</span>
+                <span className="hint">{formatLocalTime(snapshot.refreshTimings.at)}</span>
+              </div>
+              {[...snapshot.refreshTimings.steps]
+                .sort((a, b) => a.startedAt - b.startedAt)
+                .map((s, i) => (
+                  <div className="frow" style={{ gap: 8 }} key={`${s.label}-${i}`}>
+                    <span className="hint">
+                      {s.label} · started {formatLocalTime(s.startedAt)} · {formatDurationMs(stepDurationMs(s, now))}
+                      {s.finishedAt === undefined ? " · running" : ""}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          ) : null}
           {jobs.map((j) => (
-            <JobRow key={j.id} job={j} diagramErrors={diagramErrorsFor(snapshot, j)} onCancel={() => void cancel(j.id)} />
+            <JobRow
+              key={j.id}
+              job={j}
+              now={now}
+              longRunning={isLongRunning(j, jobs, now)}
+              diagramErrors={diagramErrorsFor(snapshot, j)}
+              onCancel={() => void cancel(j.id)}
+            />
           ))}
           <div className="frow" style={{ gap: 8, padding: "8px 0" }} data-testid="jobs-totals">
             <span className="hint">
@@ -96,7 +136,19 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
   );
 }
 
-function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: string[]; onCancel: () => void }): React.JSX.Element {
+function JobRow({
+  job,
+  now,
+  longRunning,
+  diagramErrors,
+  onCancel,
+}: {
+  job: Job;
+  now: number;
+  longRunning: boolean;
+  diagramErrors: string[];
+  onCancel: () => void;
+}): React.JSX.Element {
   const [showPrompt, setShowPrompt] = useState(false);
   const [prompt, setPrompt] = useState<string | null>(job.promptSnapshot ?? null);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -175,6 +227,38 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
           <span className="hint">no token counts yet</span>
         )}
       </div>
+      <div className="frow" style={{ gap: 8 }} data-testid="job-times">
+        <span className="hint">
+          Queued {formatLocalTime(job.queuedAt)} · Started {formatLocalTime(job.startedAt)} · Finished{" "}
+          {formatLocalTime(job.finishedAt)} · Duration {formatDurationMs(jobElapsedMs(job, now))}
+        </span>
+        {longRunning ? (
+          <span className="err" data-testid="long-running">
+            Running much longer than usual for {job.kind}
+          </span>
+        ) : null}
+      </div>
+      {(job.attemptTimings?.length ?? 0) > 0 ? (
+        <div className="frow" style={{ gap: 8 }}>
+          <span className="hint">
+            {(job.attemptTimings ?? [])
+              .map(
+                (a) =>
+                  `Attempt ${a.attempt}: ${formatLocalTime(a.startedAt)} → ${formatLocalTime(a.finishedAt)} (${formatDurationMs(stepDurationMs(a, now))})`,
+              )
+              .join(" · ")}
+          </span>
+        </div>
+      ) : null}
+      {(job.turns?.length ?? 0) > 0 ? (
+        <div className="frow" style={{ gap: 8 }}>
+          <span className="hint">
+            {(job.turns ?? [])
+              .map((t) => `${t.label}: started ${formatLocalTime(t.startedAt)} · ${formatDurationMs(stepDurationMs(t, now))}`)
+              .join(" · ")}
+          </span>
+        </div>
+      ) : null}
       <div className="frow" style={{ gap: 8 }}>
         {job.progress ? <span className="hint">{job.progress}</span> : null}
         {job.error && job.state !== "backing-off" ? <span className="err">{job.error}</span> : null}
@@ -201,7 +285,9 @@ function JobRow({ job, diagramErrors, onCancel }: { job: Job; diagramErrors: str
             {job.accessMode === "full" ? "Full access" : job.accessMode === "lockdown" ? "Read-only" : ""}
             {job.accessMode && job.tools && job.tools.length > 0 ? " · " : ""}
             {job.tools && job.tools.length > 0
-              ? `Tools: ${job.tools.map((t) => (t.detail ? `${t.name} (${t.detail})` : t.name)).join(", ")}`
+              ? `Tools: ${job.tools
+                  .map((t) => `${t.name}${t.detail ? ` (${t.detail})` : ""}${t.startedAt !== undefined ? ` ${formatLocalTime(t.startedAt)}` : ""}`)
+                  .join(", ")}`
               : ""}
             {(job.accessMode || (job.tools && job.tools.length > 0)) && job.checkoutReset ? " · " : ""}
             {job.checkoutReset ? "The checkout changed and was reset after this job" : ""}
