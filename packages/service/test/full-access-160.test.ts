@@ -504,7 +504,11 @@ describe("queue: access stamp, tool record, after-run hook", () => {
     await queue.drain();
     const done = queue.get(job.id);
     expect(done?.state).toBe("done");
-    expect(done?.tools).toEqual([{ name: "Bash", detail: "git log" }, { name: "Read" }]);
+    // Tool records also carry their start time (#194 timings).
+    expect(done?.tools).toEqual([
+      { name: "Bash", detail: "git log", startedAt: expect.any(Number) },
+      { name: "Read", startedAt: expect.any(Number) },
+    ]);
     expect(done?.checkoutReset).toBe(true);
     expect(seen).toEqual([job.id]);
   });
