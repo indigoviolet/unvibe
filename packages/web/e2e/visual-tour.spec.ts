@@ -276,10 +276,21 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
       if (scrollTop > 12 && Math.abs(h.top - c.top) > 3) {
         return `header not at the top of a scrolled card: headerTop=${Math.round(h.top)} cardTop=${Math.round(c.top)} card=${cardEl.id}`;
       }
-      const vt = Math.max(h.top, c.top);
-      const vb = Math.min(h.bottom, c.bottom);
-      const vl = Math.max(h.left, c.left);
-      const vr = Math.min(h.right, c.right);
+      let vt = Math.max(h.top, c.top);
+      let vb = Math.min(h.bottom, c.bottom);
+      let vl = Math.max(h.left, c.left);
+      let vr = Math.min(h.right, c.right);
+      // The card is clipped by its pane: the part above the pane's
+      // top edge sits under the app's top bar, not under anything
+      // the header check should blame.
+      const col = cardEl.closest(".col");
+      if (col) {
+        const cr = col.getBoundingClientRect();
+        vt = Math.max(vt, cr.top);
+        vb = Math.min(vb, cr.bottom);
+        vl = Math.max(vl, cr.left);
+        vr = Math.min(vr, cr.right);
+      }
       if (vb - vt < 4 || vr - vl < 24) return null;
       const midY = (vt + vb) / 2;
       const pts: [number, number][] = [
