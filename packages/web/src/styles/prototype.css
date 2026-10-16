@@ -512,7 +512,9 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: clamp(25px, 3
    nested child card (z-index 3). */
 .card.child.floating > .exp-h {
   position: sticky;
-  top: 0;
+  /* The card's top padding (8px): stick flush under the top border,
+     not at the content-box top, so no scrolled text shows above it. */
+  top: -8px;
   z-index: 2;
   background: var(--surface);
 }

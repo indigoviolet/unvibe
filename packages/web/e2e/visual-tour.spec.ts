@@ -270,7 +270,10 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
       if (scrollTop > 4 && h.top < c.top - 1) {
         return `header scrolled away in a scrolled card: headerTop=${Math.round(h.top)} cardTop=${Math.round(c.top)} scrollTop=${Math.round(scrollTop)} card=${cardEl.id}`;
       }
-      if (scrollTop > 4 && Math.abs(h.top - c.top) > 3) {
+      // Past the card's top padding the header must sit flush at the
+      // card's top border; part-way through the padding strip it is
+      // still travelling the last few px into place.
+      if (scrollTop > 12 && Math.abs(h.top - c.top) > 3) {
         return `header not at the top of a scrolled card: headerTop=${Math.round(h.top)} cardTop=${Math.round(c.top)} card=${cardEl.id}`;
       }
       const vt = Math.max(h.top, c.top);
