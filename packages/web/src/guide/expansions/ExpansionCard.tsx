@@ -369,11 +369,26 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   // context), and follows the parent on any scroll.
   const floatWrapRef = useRef<HTMLDivElement>(null);
   const [nestedPos, setNestedPos] = useState<CSSProperties | undefined>(undefined);
+  const nestedPosRef = useRef<CSSProperties | undefined>(undefined);
   useLayoutEffect(() => {
     if (!floating) return;
     const el = floatWrapRef.current;
     if (!el || !el.parentElement?.closest(".card.child.floating")) return;
-    const measure = (): void => {
+    // Measuring synchronously in this effect (it runs after every
+    // render) can cascade: a changed measure re-renders, which
+    // measures again. While an answer streams, the placeholder's rect
+    // genuinely moves (parent scroll resets, reflow above it, scroll
+    // anchoring around the parent's sticky header), and the cascade
+    // hits React's update-depth limit (#185) and the card dies. So
+    // measures are frame-throttled — at most one per frame, never
+    // inside the render cascade — and a runaway streak (the value
+    // changing on dozens of consecutive frames) freezes the sync
+    // until the next real scroll or resize.
+    let raf = 0;
+    let frozen = false;
+    let rapidChanges = 0;
+    let lastChangeAt = 0;
+    const computeNext = (): CSSProperties | null => {
       const r = el.getBoundingClientRect();
       // Indent by shrinking, never by shifting past the edge: the
       // placeholder sits inside the parent, so the same width at its
@@ -382,18 +397,45 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       // inside the viewport).
       const parent = el.closest(".card.child.floating")?.getBoundingClientRect();
       const rightLimit = Math.min(parent ? parent.right : window.innerWidth, window.innerWidth - 8);
-      const width = Math.max(160, Math.min(r.width, rightLimit - r.left));
-      setNestedPos((prev) => {
-        const next: CSSProperties = { position: "fixed", top: r.top, left: r.left, width, right: "auto", boxSizing: "border-box" };
-        return prev && prev.top === next.top && prev.left === next.left && prev.width === next.width ? prev : next;
-      });
+      // Whole px: sub-pixel float jitter must not read as movement.
+      const width = Math.round(Math.max(160, Math.min(r.width, rightLimit - r.left)));
+      return { position: "fixed", top: Math.round(r.top), left: Math.round(r.left), width, right: "auto", boxSizing: "border-box" };
     };
-    measure();
-    window.addEventListener("resize", measure);
-    document.addEventListener("scroll", measure, true);
+    const applyMeasure = (): void => {
+      raf = 0;
+      if (frozen) return;
+      const next = computeNext();
+      if (!next) return;
+      const prev = nestedPosRef.current;
+      if (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width) {
+        rapidChanges = 0;
+        return;
+      }
+      const now = performance.now();
+      rapidChanges = now - lastChangeAt < 100 ? rapidChanges + 1 : 0;
+      lastChangeAt = now;
+      if (rapidChanges > 30) {
+        frozen = true;
+        return;
+      }
+      nestedPosRef.current = next;
+      setNestedPos(next);
+    };
+    const schedule = (): void => {
+      if (!raf && !frozen) raf = requestAnimationFrame(applyMeasure);
+    };
+    const onEvent = (): void => {
+      frozen = false;
+      rapidChanges = 0;
+      schedule();
+    };
+    schedule();
+    window.addEventListener("resize", onEvent);
+    document.addEventListener("scroll", onEvent, true);
     return () => {
-      window.removeEventListener("resize", measure);
-      document.removeEventListener("scroll", measure, true);
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onEvent);
+      document.removeEventListener("scroll", onEvent, true);
     };
   });
   const jobs = snapshot?.jobs ?? [];
