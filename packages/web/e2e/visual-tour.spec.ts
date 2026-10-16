@@ -262,6 +262,17 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
       // Only the header's visible part counts: a header scrolled out
       // of its own card's box is not covered, it is just scrolled away.
       const c = cardEl.getBoundingClientRect();
+      // Issue #192: in a card scrolled internally, the header row
+      // (quote, pin, close) must stay at the card's top — a header
+      // that scrolled away with the content fails even though the
+      // samples below would just skip it.
+      const scrollTop = (cardEl as HTMLElement).scrollTop;
+      if (scrollTop > 4 && h.top < c.top - 1) {
+        return `header scrolled away in a scrolled card: headerTop=${Math.round(h.top)} cardTop=${Math.round(c.top)} scrollTop=${Math.round(scrollTop)} card=${cardEl.id}`;
+      }
+      if (scrollTop > 4 && Math.abs(h.top - c.top) > 3) {
+        return `header not at the top of a scrolled card: headerTop=${Math.round(h.top)} cardTop=${Math.round(c.top)} card=${cardEl.id}`;
+      }
       const vt = Math.max(h.top, c.top);
       const vb = Math.min(h.bottom, c.bottom);
       const vl = Math.max(h.left, c.left);
@@ -485,6 +496,85 @@ async function checkGutters(page: Page, step: string): Promise<void> {
   expect(bad, `${step}: gutter ${bad ?? ""}`).toBeNull();
 }
 
+/**
+ * Generic check (diff scenes, issue #191): on a settled pane nothing
+ * animates forever. Any running infinite animation inside the diff
+ * pane fails — unless a working indicator (the dots or a spinner) is
+ * visible, meaning a job is genuinely running and motion is the
+ * point. One-shot animations (a card rising into place) are not
+ * continuous and never count.
+ */
+async function checkAnimations(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const working = [...pane.querySelectorAll(".dots, .spin")].some((el) => el.getBoundingClientRect().height > 0);
+    if (working) return null;
+    const running = document
+      .getAnimations()
+      .filter((a) => {
+        if (a.playState !== "running") return false;
+        const target = (a.effect as { target?: Element } | null)?.target;
+        if (!target || !pane.contains(target)) return false;
+        try {
+          return a.effect?.getComputedTiming().iterations === Infinity;
+        } catch {
+          return false;
+        }
+      })
+      .map((a) => {
+        const target = (a.effect as { target?: Element } | null)?.target as Element;
+        const name = (a as { animationName?: string }).animationName ?? "transition";
+        return `${target.tagName}.${target.className.toString().slice(0, 40)}:${name}`;
+      });
+    return running.length > 0 ? `continuous animations on a settled pane: ${running.join(", ")}` : null;
+  });
+  expect(bad, `${step}: animations ${bad ?? ""}`).toBeNull();
+}
+
+/**
+ * Generic check (diff scenes, issue #191): no empty block above a
+ * file's first hunk. Every element between the file header and the
+ * first hunk's content (and inside that hunk, before its summary or
+ * table) must carry text or a control — a bare spacer taller than
+ * 8px fails.
+ */
+async function checkEmptyAboveHunk(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const isEmptyBlock = (el: Element): boolean => {
+      const r = el.getBoundingClientRect();
+      if (r.height <= 8 || r.width <= 40) return false;
+      if ((el.textContent ?? "").trim() !== "") return false;
+      if (el.querySelector("svg, img, button, input, textarea, select, a, mark")) return false;
+      return true;
+    };
+    for (const file of pane.querySelectorAll(".dfile")) {
+      const firstHunk = file.querySelector(".dhunk");
+      if (!firstHunk) continue;
+      for (const el of file.querySelectorAll(".dbody *")) {
+        if (firstHunk.contains(el)) break;
+        if (isEmptyBlock(el)) {
+          return `empty block above the first hunk in ${file.id}: ${el.tagName}.${(el as HTMLElement).className.toString().slice(0, 40)} h=${Math.round(el.getBoundingClientRect().height)}`;
+        }
+      }
+      const anchor = firstHunk.querySelector(".fwrap, table.diff, .fcard");
+      if (anchor) {
+        for (const el of firstHunk.children) {
+          if (el === anchor || el.contains(anchor)) break;
+          if (el.classList.contains("dhunk-h") || el.classList.contains("dhunk-float")) continue;
+          if (isEmptyBlock(el)) {
+            return `empty block above the first summary in ${file.id}: ${el.tagName}.${(el as HTMLElement).className.toString().slice(0, 40)} h=${Math.round(el.getBoundingClientRect().height)}`;
+          }
+        }
+      }
+    }
+    return null;
+  });
+  expect(bad, `${step}: empty block ${bad ?? ""}`).toBeNull();
+}
+
 async function shot(page: Page, name: string, suffix: string, expectedText?: string): Promise<void> {
   // Never screenshot an empty or still-loading scene: each scene
   // names one piece of real content that must be visible first.
@@ -513,6 +603,8 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   await checkPinnedSlots(page, step);
   await checkPinnedBand(page, step);
   await checkGutters(page, step);
+  await checkAnimations(page, step);
+  await checkEmptyAboveHunk(page, step);
   await checkCards(page, step);
   await checkCardHeaders(page, step);
   await checkReplyBoxes(page, step);
