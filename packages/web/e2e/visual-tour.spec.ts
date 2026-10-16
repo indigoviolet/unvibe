@@ -300,6 +300,11 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
           const hitCard = hit.closest(".card.child.floating");
           if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
         }
+        // The pinned top stack (tab strip, actions bar, band, and any
+        // header stuck in its slot) slides over cards, header included.
+        if (hit.closest(".rstick, .dtool, .dband")) continue;
+        const stuckHdr = hit.closest(".dfile-h.stuck, .dhunk-h.stuck");
+        if (stuckHdr) continue;
         return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".card.child.floating")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
