@@ -89,5 +89,35 @@ test.describe("J16 refresh carry-over", () => {
     await expect(page.getByText("Carry this comment over the refresh.")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
     await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
+
+    // #194: the update pass finishes (it used to sit RUNNING with no
+    // token counts — the nested update-pass job deadlocked on the
+    // enclosing job's dedupe key). Terminal either way under replay.
+    await page.locator('[data-testid="stale-banner"]').getByRole("button", { name: "Update" }).click();
+    const jobDeadline = Date.now() + 90_000;
+    let updateJob: { id: string; kind: string; state: string; finishedAt?: number } | undefined;
+    for (;;) {
+      const res = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
+      const jobs = (res.json as { jobs: { id: string; kind: string; state: string; finishedAt?: number }[] }).jobs ?? [];
+      updateJob = jobs.find((j) => j.kind === "update-pass");
+      if (updateJob && (updateJob.state === "done" || updateJob.state === "error" || updateJob.state === "cancelled")) break;
+      if (Date.now() > jobDeadline) throw new Error(`update-pass job never finished: ${JSON.stringify(updateJob)}`);
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(typeof updateJob?.finishedAt).toBe("number");
+
+    // #194: Debug page shows job timings and the refresh's timed steps.
+    await page.goto(`${svc.origin}/review/${reviewId}/debug?token=${svc.token}`);
+    const steps = page.locator('[data-testid="refresh-steps"]');
+    await expect(steps).toBeVisible({ timeout: 30_000 });
+    for (const label of ["Fetch", "Building the new version", "Range diff", "Remapping anchors", "Remapping citations", "Remapping pins"]) {
+      await expect(steps).toContainText(label);
+    }
+    await expect(steps).toContainText("started");
+    await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Queued", { timeout: 30_000 });
+    await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Duration");
+    const updateRow = page.locator(`[data-testid="job-${updateJob!.id}"]`);
+    await expect(updateRow).toContainText("Finished", { timeout: 30_000 });
+    await expect(updateRow).toContainText("update:");
   });
 });

@@ -825,6 +825,13 @@ for (const combo of [
     await shot(page, "menu-comments", suffix, "Already on GitHub");
     await page.keyboard.press("Escape");
 
+    // Debug page (#194): job timings in local time with durations.
+    await page.goto(`${svc!.origin}/review/${reviewId}/debug?token=${svc.token}`);
+    await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Queued", { timeout: 30_000 });
+    await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Duration");
+    await checkNoPageOverflow(page, "debug");
+    await shot(page, "debug", suffix, "Queued");
+
     // Settings → Version.
     await page.goto(`${svc!.origin}/settings?tab=version&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });

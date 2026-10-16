@@ -902,6 +902,18 @@ needed (that deviation is closed, not added).
   Issue #172 adds the effort each job ran with next to the model
   (`jobs.test.ts` "carries effort on the job and persists it"; required,
   "" = adapter default).
+  Issue #194 adds timings: each job shows queued/started/finished in
+  local time plus duration (live while running), per-attempt and
+  per-turn (first/repair/update) timings, and tool-call start times; a
+  job running over 3× its kind's median finished duration is marked.
+  The refresh's non-agent steps (fetch, building the new version, range
+  diff, remapping anchors/citations/pins) are timed and shown on the
+  Debug page from the snapshot's `refreshTimings`. The update pass no
+  longer enqueues a nested update-pass job (it deadlocked on the
+  enclosing job's dedupe key and sat RUNNING with no token counts); it
+  runs directly in the one job. Evidence: `jobs.test.ts` "timings
+  (#194)", `versionUtils.test.ts` "timing helpers (#194)", journey
+  `j16-refresh-carryover.spec.ts`, visual-tour `debug` scene.
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log lines
   verbatim in fenced blocks under in-base/ready/waiting headings (issue

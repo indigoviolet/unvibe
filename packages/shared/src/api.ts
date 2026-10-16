@@ -314,6 +314,12 @@ export interface ReviewSnapshot {
    * `GET /api/reviews/:id/pr-comments`; absent until first fetch.
    */
   existingComments?: ExistingReviewComment[];
+  /**
+   * Issue #194: timed non-agent steps of the most recent refresh that
+   * created a version (fetch, range diff, building, remapping). Shown on
+   * the Debug page; absent until a refresh moves the head.
+   */
+  refreshTimings?: { at: number; steps: import("./entities.js").TimedStep[] };
 }
 
 export type ReviewResponse = ReviewSnapshot;

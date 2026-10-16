@@ -22,6 +22,7 @@ import type {
   FindingVerdict,
   Job,
   ReviewSnapshot,
+  TokenUsage,
   UpdatePassResult,
 } from "@unvibe/shared";
 import { JOB_PRIORITY } from "@unvibe/shared";
@@ -34,10 +35,19 @@ import {
 import type { JobQueue } from "../jobs/index.js";
 import type { ReviewStore } from "../state/store.js";
 
+/** Issue #194: live reporting hooks from the enclosing job, so a direct
+ * (non-enqueued) update run still streams text, tools and usage. */
+export interface UpdateRunHooks {
+  setSessionId(id: string): void;
+  reportText(delta: string): void;
+  reportTool(name: string, detail?: string): void;
+  reportUsage(usage: TokenUsage): void;
+}
+
 export interface UpdateBaseRunner {
   runUpdatePrompt(
     prompt: string,
-    opts: { reviewId: string; toVersion: number; signal?: AbortSignal },
+    opts: { reviewId: string; toVersion: number; signal?: AbortSignal; hooks?: UpdateRunHooks },
   ): Promise<string>;
 }
 
@@ -362,12 +372,26 @@ export function enqueueUpdatePass(
       const vars = buildUpdateVariables(deps.reviews.getSnapshot(opts.reviewId) ?? snapshot);
       const prompt = renderUpdatePrompt(promptsDir, vars);
       ctx.setPromptSnapshot(prompt);
-      const reply = await deps.baseRunner.runUpdatePrompt(prompt, {
-        reviewId: opts.reviewId,
-        toVersion: opts.toVersion,
-        signal: ctx.signal,
-      });
-      ctx.reportText(reply.slice(0, 2000));
+      // Issue #194: the runner executes directly in this job (no nested
+      // enqueue — that deadlocked on this job's own dedupe key and sat
+      // RUNNING with no token counts). Hooks stream its progress here.
+      ctx.beginTurn("update");
+      let reply: string;
+      try {
+        reply = await deps.baseRunner.runUpdatePrompt(prompt, {
+          reviewId: opts.reviewId,
+          toVersion: opts.toVersion,
+          signal: ctx.signal,
+          hooks: {
+            setSessionId: (id) => ctx.setSessionId(id),
+            reportText: (d) => ctx.reportText(d),
+            reportTool: (n, d) => ctx.reportTool(n, d),
+            reportUsage: (u) => ctx.reportUsage(u),
+          },
+        });
+      } finally {
+        ctx.endTurn();
+      }
       const result = deps.parser.parseReply(reply);
       await applyUpdateResult(deps.reviews, opts.reviewId, result);
     },

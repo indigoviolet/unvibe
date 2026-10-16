@@ -68,6 +68,10 @@ export interface JobContext {
   reportTool(name: string, detail?: string): void;
   /** Record the agent's `degraded` reason for a kept answer (Debug page). */
   setDegradedReason(reason: string): void;
+  /** Issue #194: start a timed agent turn (e.g. "first", "repair"). */
+  beginTurn(label: string): void;
+  /** Issue #194: finish the current timed turn started by `beginTurn`. */
+  endTurn(): void;
 }
 
 export type JobFn = (ctx: JobContext) => Promise<void>;
@@ -147,6 +151,8 @@ function copy(job: Job): Job {
     ...job,
     usage: job.usage ? { ...job.usage } : undefined,
     tools: job.tools ? job.tools.map((t) => ({ ...t })) : undefined,
+    attemptTimings: job.attemptTimings ? job.attemptTimings.map((t) => ({ ...t })) : undefined,
+    turns: job.turns ? job.turns.map((t) => ({ ...t })) : undefined,
   };
 }
 
@@ -204,6 +210,7 @@ export class JobQueue {
       priority: opts.priority,
       state: "queued",
       attempts: 0,
+      queuedAt: this.clock.now(),
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.promptSnapshot !== undefined ? { promptSnapshot: opts.promptSnapshot } : {}),
       ...(dedupeKey ? { dedupeKey } : {}),
@@ -323,6 +330,8 @@ export class JobQueue {
     const entry = this.required(id);
     if (isTerminal(entry.job.state)) return copy(entry.job);
     entry.abort?.abort();
+    this.closeAttempt(entry);
+    entry.job.finishedAt = this.clock.now();
     entry.job.state = "cancelled";
     entry.job.error = undefined;
     entry.job.nextRetryAt = undefined;
@@ -365,6 +374,11 @@ export class JobQueue {
     if (!entry.run) throw new Error(`JobQueue.retry: no run function for job ${id}`);
     entry.job.state = "queued";
     entry.job.attempts = 0;
+    entry.job.queuedAt = this.clock.now();
+    entry.job.startedAt = undefined;
+    entry.job.finishedAt = undefined;
+    entry.job.attemptTimings = undefined;
+    entry.job.turns = undefined;
     entry.job.error = undefined;
     entry.job.nextRetryAt = undefined;
     entry.job.replySnapshot = undefined;
@@ -441,6 +455,8 @@ export class JobQueue {
     for (const entry of this.entries.values()) {
       if (!isTerminal(entry.job.state)) {
         entry.abort?.abort();
+        this.closeAttempt(entry);
+        entry.job.finishedAt = this.clock.now();
         entry.job.state = "cancelled";
         entry.job.nextRetryAt = undefined;
         if (entry.replyText) entry.job.replySnapshot = entry.replyText;
@@ -508,11 +524,26 @@ export class JobQueue {
     }
   }
 
+  /** Issue #194: close the open attempt timing and any open turn. */
+  private closeAttempt(entry: Entry): void {
+    const now = this.clock.now();
+    const timings = entry.job.attemptTimings;
+    const open = timings?.[timings.length - 1];
+    if (open && open.finishedAt === undefined) open.finishedAt = now;
+    for (const turn of entry.job.turns ?? []) {
+      if (turn.finishedAt === undefined) turn.finishedAt = now;
+    }
+  }
+
   private async execute(entry: Entry): Promise<void> {
     const job = entry.job;
     job.state = "running";
     job.attempts = (job.attempts ?? 0) + 1;
     job.nextRetryAt = undefined;
+    // Issue #194: timing stamps (first start kept across back-off retries).
+    const now = this.clock.now();
+    if (job.startedAt === undefined) job.startedAt = now;
+    job.attemptTimings = [...(job.attemptTimings ?? []), { attempt: job.attempts, startedAt: now }];
     const controller = new AbortController();
     entry.abort = controller;
     this.save(entry);
@@ -552,6 +583,7 @@ export class JobQueue {
 
   private async backOff(entry: Entry, controller: AbortController, err: RetryableError): Promise<void> {
     const job = entry.job;
+    this.closeAttempt(entry);
     const attemptIndex = (job.attempts ?? 1) - 1;
     const delay = computeBackoffDelay(attemptIndex, this.backoffBaseMs, this.backoffMaxMs, this.random.next());
     job.state = "backing-off";
@@ -585,6 +617,8 @@ export class JobQueue {
 
   private settle(entry: Entry, controller: AbortController, state: Job["state"]): void {
     if (entry.abort === controller) entry.abort = undefined;
+    this.closeAttempt(entry);
+    if (isTerminal(state)) entry.job.finishedAt = this.clock.now();
     entry.job.state = state;
     if (state !== "backing-off") entry.job.nextRetryAt = undefined;
     if (state === "cancelled") entry.job.error = undefined;
@@ -645,10 +679,24 @@ export class JobQueue {
       reportTool: (name, detail) => {
         if ((job.tools?.length ?? 0) >= MAX_JOB_TOOLS) return;
         const tools = [...(job.tools ?? [])];
-        tools.push(detail !== undefined ? { name, detail } : { name });
+        tools.push({ name, ...(detail !== undefined ? { detail } : {}), startedAt: this.clock.now() });
         job.tools = tools;
         this.save(entry);
         this.emit(entry);
+      },
+      beginTurn: (label) => {
+        job.turns = [...(job.turns ?? []), { label, startedAt: this.clock.now() }];
+        this.save(entry);
+        this.emit(entry);
+      },
+      endTurn: () => {
+        const turns = job.turns;
+        const open = turns?.[turns.length - 1];
+        if (open && open.finishedAt === undefined) {
+          open.finishedAt = this.clock.now();
+          this.save(entry);
+          this.emit(entry);
+        }
       },
       setDegradedReason: (reason) => {
         job.degradedReason = reason;

@@ -6,8 +6,11 @@ import { describe, expect, it } from "vitest";
 import type { Job } from "@unvibe/shared";
 import {
   formatCacheRate,
+  formatDurationMs,
+  formatLocalTime,
   formatRetryIn,
   formatTokens,
+  isLongRunning,
   pooledCacheRate,
   pooledTokens,
   reduceJobs,
@@ -148,5 +151,27 @@ describe("version copy", () => {
         fetchedAt: 0,
       }),
     ).toBe("New commits on this branch: v1 → v2 (1 changed · 2 new · 0 removed hunks)");
+  });
+});
+
+describe("timing helpers (#194)", () => {
+  it("formats durations", () => {
+    expect(formatDurationMs(400)).toBe("0.4s");
+    expect(formatDurationMs(12_000)).toBe("12s");
+    expect(formatDurationMs(125_000)).toBe("2m 05s");
+    expect(formatDurationMs(undefined)).toBe("—");
+    expect(formatLocalTime(undefined)).toBe("—");
+    expect(formatLocalTime(0)).toMatch(/\d/);
+  });
+
+  it("marks a running job over 3x its kind's median", () => {
+    const finished = [1000, 2000, 3000].map((d, i) =>
+      job({ id: `f${i}`, state: "done", startedAt: 0, finishedAt: d }),
+    );
+    const slow = job({ id: "slow", state: "running", startedAt: 0, queuedAt: 0 });
+    expect(isLongRunning(slow, [...finished, slow], 6001)).toBe(true);
+    expect(isLongRunning(slow, [...finished, slow], 5999)).toBe(false);
+    // Fewer than 3 samples never marks.
+    expect(isLongRunning(slow, [finished[0]!, slow], 999_999)).toBe(false);
   });
 });
