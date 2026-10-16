@@ -476,10 +476,20 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     schedule();
     window.addEventListener("resize", schedule);
     document.addEventListener("scroll", schedule, true);
+    // The pinned stack's membership changes as headers stick and
+    // unstick during a hand-off; re-apply when it does, or the header
+    // can be left resting under a newly stuck header.
+    const pane = sectionElRef.current?.closest(".col");
+    let observer: MutationObserver | null = null;
+    if (pane && typeof MutationObserver !== "undefined") {
+      observer = new MutationObserver(schedule);
+      observer.observe(pane, { attributes: true, attributeFilter: ["class"], subtree: true });
+    }
     return () => {
       if (raf) cancelAnimationFrame(raf);
       window.removeEventListener("resize", schedule);
       document.removeEventListener("scroll", schedule, true);
+      observer?.disconnect();
     };
   });
 
