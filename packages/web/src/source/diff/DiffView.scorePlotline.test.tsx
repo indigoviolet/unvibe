@@ -59,7 +59,7 @@ describe("DiffView scores and plotlines", () => {
     expect(document.querySelector(".prog")).toBeNull();
     // The level lives on the hunk dot's own tooltip instead.
     const dot = document.querySelector('.dhunk-h [data-scorepick="substantive"]');
-    expect(dot?.getAttribute("data-tip")).toBe("Show only substantive hunks");
+    expect(dot?.getAttribute("data-tip")).toBe("Show substantive hunks or higher");
 
   });
 

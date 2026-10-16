@@ -72,8 +72,10 @@ describe("PageView plotlines", () => {
     const first = box.querySelectorAll("li button")[0];
     expect(first.textContent).toContain("Unfold folded values");
     await fireEvent.click(first);
-    const ref = takePendingReveal();
-    expect(ref).toMatch(/^diff:src-urllib3-connection\.py:\d+$/);
+    const pending = takePendingReveal();
+    expect(pending?.ref).toMatch(/^diff:src-urllib3-connection\.py:\d+$/);
+    // A plotline pick is a filter action: the jump keeps other filters.
+    expect(pending?.keepFilters).toBe(true);
   });
 
   it("filters the diff to the plotline and reveals its first hunk", async () => {

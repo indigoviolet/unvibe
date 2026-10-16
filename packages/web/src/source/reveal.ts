@@ -34,7 +34,7 @@ function flashParagraph(paragraphId: string): void {
   }, 60);
 }
 
-export function revealSource(target: string): void {
+export function revealSource(target: string, opts?: { keepFilters?: boolean }): void {
   const snapshot = useReview.getState().snapshot;
   const canonical = snapshot ? canonicalRevealTarget(snapshot, target) : target;
   if (target.startsWith("desc:")) {
@@ -47,7 +47,7 @@ export function revealSource(target: string): void {
       toast("The review is still loading");
       return;
     }
-    if (diffReveal(canonical)) return;
+    if (diffReveal(canonical, opts)) return;
     toast("Couldn't find the cited code in this version");
     return;
   }

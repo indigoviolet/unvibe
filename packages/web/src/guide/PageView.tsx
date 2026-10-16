@@ -140,7 +140,10 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                   api
                     .updateDiffFilter(reviewId, body)
                     .then(() => {
-                      if (!active) revealSource(r.ref as string);
+                      // A plotline pick is a filter action (#190):
+                      // jump to its first hunk without clearing the
+                      // file tree's own filters.
+                      if (!active) revealSource(r.ref as string, { keepFilters: true });
                     })
                     .catch(() => {
                       toast("Couldn't save the filter");

@@ -494,24 +494,29 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
   const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
 
   const doReveal = useCallback(
-    (target: RevealTarget) => {
+    (target: RevealTarget, keepFilters = false) => {
       const snap = useReview.getState().snapshot;
       if (!snap) return;
       const file = snap.files.find((f) => f.fileKey === target.fileKey);
       if (!file) return;
       const st = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
       const fullyReviewed = file.hunks.every((h) => st.get(h.contentHash)?.reviewed);
-      setPrefs((p) => ({
-        ...p,
-        cats: p.cats.includes(file.category) ? p.cats : [...p.cats, file.category],
-        hideReviewed: p.hideReviewed && fullyReviewed ? false : p.hideReviewed,
-      }));
-      setFq((prev) => (file.path.toLowerCase().includes(prev.toLowerCase()) ? prev : ""));
+      // Citation reveals clear whatever filter hides the target (the
+      // line was promised); filter actions jumping to their own first
+      // hunk (#190) keep every filter exactly as the user left it.
+      if (!keepFilters) {
+        setPrefs((p) => ({
+          ...p,
+          cats: p.cats.includes(file.category) ? p.cats : [...p.cats, file.category],
+          hideReviewed: p.hideReviewed && fullyReviewed ? false : p.hideReviewed,
+        }));
+        setFq((prev) => (file.path.toLowerCase().includes(prev.toLowerCase()) ? prev : ""));
+      }
       // A jump target the score/plotline filter would hide clears the
       // filter (citations promise the line will show). The stored filter
       // is the freshest copy (a selector in the guide may have just set
       // it), so check against the snapshot, not local state.
-      if (target.start !== undefined) {
+      if (!keepFilters && target.start !== undefined) {
         const end = target.end ?? target.start;
         const activeFilter = snap.diffFilter ?? plotFilter;
         const seen = file.hunks.some(
@@ -549,14 +554,14 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
 
   useEffect(() => {
     if (!snapshot) return;
-    const ref = takePendingReveal();
-    if (ref) {
-      const t = parseDiffRef(ref);
-      if (t) doReveal(t);
+    const p = takePendingReveal();
+    if (p) {
+      const t = parseDiffRef(p.ref);
+      if (t) doReveal(t, p.keepFilters);
     }
   }, [snapshot, doReveal]);
 
-  useEffect(() => onRevealSource((_ref, target) => doReveal(target)), [doReveal]);
+  useEffect(() => onRevealSource((_ref, target, opts) => doReveal(target, opts?.keepFilters ?? false)), [doReveal]);
 
   // Mock-mode hook for Playwright: `window.__revealSource("diff:conn:82")`.
   useEffect(() => {
@@ -784,7 +789,7 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
       <div className="dtool">
         {plotFilter.score !== undefined ? (
           <span className="fchip" data-filterchip="score">
-            Score: {HUNK_SCORE_LABELS[plotFilter.score].toLowerCase()} · {hiddenHunks} hidden
+            Score: {HUNK_SCORE_LABELS[plotFilter.score].toLowerCase()} or higher · {hiddenHunks} hidden
             <button
               type="button"
               aria-label="Clear score filter"

@@ -208,10 +208,20 @@ export function ensureDiffVisible(el: HTMLElement): void {
   }
 }
 
-type Listener = (ref: string, target: RevealTarget) => void;
+export interface RevealOptions {
+  /**
+   * Filter actions that also jump (a guide plotline pick, #190) keep
+   * every active filter as it is: the reveal scrolls but never clears
+   * the file-type, name, reviewed or score/plotline filters. Citation
+   * reveals leave this off — their promise is that the line shows.
+   */
+  keepFilters?: boolean;
+}
+
+type Listener = (ref: string, target: RevealTarget, opts: RevealOptions) => void;
 
 const listeners = new Set<Listener>();
-let pending: string | null = null;
+let pending: { ref: string; keepFilters: boolean } | null = null;
 
 /** Subscribe to reveal requests. Returns an unsubscribe function. */
 export function onRevealSource(fn: Listener): () => void {
@@ -222,20 +232,20 @@ export function onRevealSource(fn: Listener): () => void {
 }
 
 /** Reveal a `diff:` location in the diff pane. See module docs. */
-export function revealSource(ref: string): boolean {
+export function revealSource(ref: string, opts: RevealOptions = {}): boolean {
   const target = parseDiffRef(ref);
   if (!target) return false;
-  pending = ref;
-  for (const fn of [...listeners]) fn(ref, target);
+  pending = { ref, keepFilters: opts.keepFilters ?? false };
+  for (const fn of [...listeners]) fn(ref, target, opts);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref } }));
   }
   return true;
 }
 
-/** Take the reveal ref waiting for a freshly mounted DiffView, if any. */
-export function takePendingReveal(): string | null {
-  const ref = pending;
+/** Take the reveal waiting for a freshly mounted DiffView, if any. */
+export function takePendingReveal(): { ref: string; keepFilters: boolean } | null {
+  const p = pending;
   pending = null;
-  return ref;
+  return p;
 }

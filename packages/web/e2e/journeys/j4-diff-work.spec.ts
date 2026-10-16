@@ -10,6 +10,7 @@ import { apiJson, createDemoReview } from "./journey-helpers.js";
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const CONN = "src-urllib3-connection.py";
 const TCONN = "test-test_connection.py";
+const TSOCK = "test-with_dummyserver-test_socketlevel.py";
 
 test.describe("J4 diff work", () => {
   let dataDir = "";
@@ -79,6 +80,64 @@ test.describe("J4 diff work", () => {
       await filterBtn.first().click();
       await expect(page.locator(".flist")).toContainText("connection.py", { timeout: 15_000 });
     }
+  });
+
+  test("filters combine: file type AND plotline AND level (#190)", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    const connFile = page.locator(`[id="F-${CONN}"]`);
+    await expect(connFile).toBeVisible({ timeout: 60_000 });
+    // Wait for the hunk pass so every hunk carries a score and plotline.
+    await expect
+      .poll(
+        async () => {
+          const snap = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+          const states = (snap.json as { hunkStates?: { score?: string }[] }).hunkStates ?? [];
+          return states.filter((s) => s.score).length;
+        },
+        { timeout: 90_000 },
+      )
+      .toBe(8);
+    await expect(page.locator('.dhunk-h [data-scorepick="substantive"]').first()).toBeVisible({ timeout: 30_000 });
+
+    // File-type filter first: Tests off hides both test files.
+    await page.getByRole("button", { name: "Show file list" }).click();
+    await page.getByRole("button", { name: "File filters" }).click();
+    const menu = page.getByRole("menu", { name: "File filters" });
+    await menu.getByText("Tests", { exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+    await expect(page.locator(`[id="F-${TSOCK}"]`)).toHaveCount(0);
+    await expect(connFile).toBeVisible();
+
+    // Plotline on top: the conn file stays, the test files stay hidden.
+    await page.locator('[data-plotpick="unfold"]').first().click();
+    await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Unfold folded values", { timeout: 15_000 });
+    await expect(connFile).toBeVisible();
+    await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+    await expect(page.locator(`[id="F-${TSOCK}"]`)).toHaveCount(0);
+
+    // Level on top of both; the chip names it as a floor.
+    await page.locator('.dhunk-h [data-scorepick="substantive"]').first().click();
+    await expect(page.locator('[data-filterchip="score"]')).toContainText("Score: substantive or higher", { timeout: 15_000 });
+    await expect(connFile).toBeVisible();
+    await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+
+    // Clearing one filter leaves the others exactly as they were.
+    await page.locator('[data-filterchip="plotline"] button').click();
+    await expect(page.locator('[data-filterchip="score"]')).toContainText("Score: substantive or higher");
+    await expect(connFile).toBeVisible();
+    await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+    await page.locator('[data-filterchip="score"] button').click();
+    await expect(connFile).toBeVisible();
+    await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+
+    // Turning Tests back on brings the test files back.
+    await page.getByRole("button", { name: "File filters" }).click();
+    await page.getByRole("menu", { name: "File filters" }).getByText("Tests", { exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(`[id="F-${TCONN}"]`)).toBeVisible({ timeout: 15_000 });
   });
 
   test("multi-line Explain keeps a reopen marker when closed (#189)", async ({ page }) => {

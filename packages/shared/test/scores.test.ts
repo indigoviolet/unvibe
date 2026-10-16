@@ -144,8 +144,10 @@ describe("hunkMatchesFilter", () => {
     expect(hunkMatchesFilter("mechanical", "x", {})).toBe(true);
   });
 
-  it("matches by score level", () => {
+  it("matches by score level or higher", () => {
     expect(hunkMatchesFilter("routine", undefined, { score: "routine" })).toBe(true);
+    expect(hunkMatchesFilter("substantive", undefined, { score: "routine" })).toBe(true);
+    expect(hunkMatchesFilter("needs-attention", undefined, { score: "substantive" })).toBe(true);
     expect(hunkMatchesFilter("mechanical", undefined, { score: "routine" })).toBe(false);
   });
 

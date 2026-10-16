@@ -210,10 +210,11 @@ export interface DiffFilter {
 }
 
 /**
- * True when a hunk with this score/plotline passes the filter. A hunk
- * with no score yet (its pass has not landed) matches any score, so
- * pending work is never filtered away; a hunk with no plotline reads
- * as "other".
+ * True when a hunk with this score/plotline passes the filter. The
+ * score level is a floor, not an exact match: choosing a level shows
+ * that level or higher. A hunk with no score yet (its pass has not
+ * landed) matches any score, so pending work is never filtered away;
+ * a hunk with no plotline reads as "other".
  */
 export function hunkMatchesFilter(
   score: HunkScoreLevel | undefined,
@@ -221,7 +222,7 @@ export function hunkMatchesFilter(
   filter: DiffFilter | undefined,
 ): boolean {
   if (!filter) return true;
-  if (filter.score !== undefined && score !== undefined && score !== filter.score) return false;
+  if (filter.score !== undefined && score !== undefined && hunkScoreRank(score) < hunkScoreRank(filter.score)) return false;
   if (filter.plotline !== undefined) {
     const have = plotline ?? PLOTLINE_OTHER_ID;
     if (have !== filter.plotline) return false;

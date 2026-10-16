@@ -31,18 +31,18 @@ test("Files list has no score dots or legend (#184)", async ({ page }) => {
   await expect(page.locator(".legend")).toHaveCount(0);
   // The level lives on the hunk dot's tooltip instead.
   const dot = page.locator('.dhunk-h [data-scorepick="substantive"]').first();
-  await expect(dot).toHaveAttribute("data-tip", "Show only substantive hunks");
+  await expect(dot).toHaveAttribute("data-tip", "Show substantive hunks or higher");
 });
 
-test("clicking a score dot filters to that score; the chip shows and its × clears", async ({ page }) => {
-  await page.locator('.dhunk-h [data-scorepick="mechanical"]').first().click();
-  // Mechanical hunks live in the two test files only.
-  await expect(page.locator(`[id="F-${TCONN}"]`)).toBeVisible();
+test("clicking a score dot filters to that level or higher; the chip shows and its × clears", async ({ page }) => {
+  await page.locator('.dhunk-h [data-scorepick="substantive"]').first().click();
+  // Substantive hunks live in the conn file and one socket-level test hunk.
+  await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TSOCK}"]`)).toBeVisible();
-  await expect(page.locator(connFile)).toHaveCount(0);
+  await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
   // The pinned bar shows what is filtered and how much it hides.
   const chip = page.locator('[data-filterchip="score"]');
-  await expect(chip).toContainText("Score: mechanical");
+  await expect(chip).toContainText("Score: substantive or higher");
   await expect(chip).toContainText(/· \d+ hidden/);
   // × clears it.
   await chip.getByRole("button", { name: "Clear score filter" }).click();
