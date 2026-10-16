@@ -746,6 +746,25 @@ export interface JobToolCall {
    * adapter sent it with the call. Truncated by the service.
    */
   detail?: string;
+  /** Issue #194: epoch ms when the call started (Debug page timings). */
+  startedAt?: number;
+}
+
+/**
+ * Issue #194: one timed step — an agent turn inside a job, or a non-agent
+ * step of a refresh. `finishedAt` absent while the step is still running.
+ */
+export interface TimedStep {
+  label: string;
+  startedAt: number;
+  finishedAt?: number;
+}
+
+/** Issue #194: one queue attempt of a job (initial run = attempt 1). */
+export interface JobAttemptTiming {
+  attempt: number;
+  startedAt: number;
+  finishedAt?: number;
 }
 
 /**
@@ -834,6 +853,16 @@ export interface Job {
   attempts?: number;
   /** Epoch ms of the next retry while `backing-off`. */
   nextRetryAt?: number;
+  /** Issue #194: epoch ms when the job was queued. */
+  queuedAt?: number;
+  /** Issue #194: epoch ms when the first attempt started running. */
+  startedAt?: number;
+  /** Issue #194: epoch ms when the job reached a terminal state. */
+  finishedAt?: number;
+  /** Issue #194: per-attempt timings (one entry per queue attempt). */
+  attemptTimings?: JobAttemptTiming[];
+  /** Issue #194: per-turn timings (first turn, repair turn, …). */
+  turns?: TimedStep[];
 }
 
 /**

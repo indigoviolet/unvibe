@@ -634,3 +634,35 @@ describe("persistence and restart recovery", () => {
     expect(q.get(job.id)?.promptSnapshot).toBe("P".repeat(1000));
   });
 });
+
+describe("timings (#194)", () => {
+  it("stamps queued/started/finished, attempts, turns and tools", async () => {
+    const { queue, clock } = makeQueue({ persist: true });
+    const gate = deferred();
+    const job = queue.enqueue(
+      spec({
+        run: async (ctx: JobContext) => {
+          ctx.beginTurn("first");
+          ctx.reportTool("Read", "a.py");
+          await gate.promise;
+          ctx.endTurn();
+        },
+      }),
+    );
+    expect(queue.get(job.id)?.queuedAt).toBe(0);
+    await flush();
+    expect(queue.get(job.id)?.startedAt).toBe(0);
+    await clock.advance(5000);
+    gate.resolve();
+    await flush();
+    const done = queue.get(job.id);
+    expect(done?.state).toBe("done");
+    expect(done?.finishedAt).toBe(5000);
+    expect(done?.attemptTimings).toEqual([{ attempt: 1, startedAt: 0, finishedAt: 5000 }]);
+    expect(done?.turns).toEqual([{ label: "first", startedAt: 0, finishedAt: 5000 }]);
+    expect(done?.tools?.[0]).toMatchObject({ name: "Read", startedAt: 0 });
+    // Persisted through the store as well.
+    const listed = queue.listByReview("r1");
+    expect(listed[0]?.finishedAt).toBe(5000);
+  });
+});

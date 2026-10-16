@@ -29,6 +29,12 @@ interface JobData {
   accessMode?: Job["accessMode"];
   tools?: Job["tools"];
   checkoutReset?: boolean;
+  /** Issue #194: timing stamps. */
+  queuedAt?: number;
+  startedAt?: number;
+  finishedAt?: number;
+  attemptTimings?: Job["attemptTimings"];
+  turns?: Job["turns"];
 }
 
 export interface JobPersistence {
@@ -76,6 +82,11 @@ function rowToJob(row: {
     ...(data.accessMode !== undefined ? { accessMode: data.accessMode } : {}),
     ...(data.tools !== undefined ? { tools: data.tools } : {}),
     ...(data.checkoutReset !== undefined ? { checkoutReset: data.checkoutReset } : {}),
+    ...(data.queuedAt !== undefined ? { queuedAt: data.queuedAt } : {}),
+    ...(data.startedAt !== undefined ? { startedAt: data.startedAt } : {}),
+    ...(data.finishedAt !== undefined ? { finishedAt: data.finishedAt } : {}),
+    ...(data.attemptTimings !== undefined ? { attemptTimings: data.attemptTimings } : {}),
+    ...(data.turns !== undefined ? { turns: data.turns } : {}),
   };
 }
 
@@ -100,6 +111,11 @@ export class JobStore implements JobPersistence {
       ...(job.accessMode !== undefined ? { accessMode: job.accessMode } : {}),
       ...(job.tools !== undefined ? { tools: job.tools } : {}),
       ...(job.checkoutReset !== undefined ? { checkoutReset: job.checkoutReset } : {}),
+      ...(job.queuedAt !== undefined ? { queuedAt: job.queuedAt } : {}),
+      ...(job.startedAt !== undefined ? { startedAt: job.startedAt } : {}),
+      ...(job.finishedAt !== undefined ? { finishedAt: job.finishedAt } : {}),
+      ...(job.attemptTimings !== undefined ? { attemptTimings: job.attemptTimings } : {}),
+      ...(job.turns !== undefined ? { turns: job.turns } : {}),
     };
     this.db
       .prepare(
