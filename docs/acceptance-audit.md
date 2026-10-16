@@ -2153,7 +2153,16 @@ icon holds Reviewed and GitHub comments. Scoring + classification behind
 `packages/shared/src/scores.ts` so a later source replaces them without
 touching UI or stored shape (`HunkState.score/plotline`,
 snapshot `plotlines`/`diffFilter`; pre-feature reviews reset, no second
-shape). Evidence: `test/hunk-plotlines-169.test.ts` (fake runner: score
+shape). Plotlines from commits (#193): ingest stores the PR/branch
+commits (subjects, bodies, files, PR hunks each touched, by range overlap
+or shared changed lines) on snapshot `commits`; L1 renders a compact
+Commits section for the reader and the assign fallback gets the same
+list. The prompts treat commits as evidence, not the answer (clean
+commits may map one-to-one, squashed/wip/fix subjects yield to content,
+fixups fold into the thread they fix). Evidence: `test/commits-193.test.ts`,
+refreshed prompt goldens, and the #193 live run (clean two-commit PR →
+one plotline folding tests+changelog into the fix; single-commit PR →
+two content-split plotlines with `buildsOn`). Evidence: `test/hunk-plotlines-169.test.ts` (fake runner: score
 valid/invalid, rules on top, plotlines valid/unknown/empty/>8,
 fallback fires/capped, stored shape, filter PATCH),
 `packages/shared/test/scores.test.ts`, `DiffView.scorePlotline.test.tsx`,
