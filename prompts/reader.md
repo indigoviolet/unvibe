@@ -63,6 +63,17 @@ kind of file ("tests", "docs", "config") is wrong — that is the bad
 example; the good example is one name per purpose, with the tests and
 docs that serve that purpose inside it.
 
+Use the commit list in the source above as evidence, not as the
+answer. Each commit names the hunks it touched: when the commits are
+clean and single-purpose, they may map one-to-one onto plotlines.
+When the change is squashed into one commit, or the subjects say
+little ("wip", "fix", "address review"), ignore the commit threading
+and split by the content instead. A fixup or fix commit folds into
+the thread it fixes — same files and hunks, a subject that only
+repairs an earlier step — never into a plotline of its own, and a
+merge commit carries no thread at all. When there is no commit list,
+judge from the diff alone.
+
 List plotlines in the order they could be landed (foundations first).
 For each one give a one-line description and, when it depends on an
 earlier plotline, `"buildsOn": "<that plotline's id>"`. Keep them few

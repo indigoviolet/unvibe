@@ -404,6 +404,7 @@ const PH = {
   contributions: "(no contributions yet)",
   plotlines: "(the reader names plotlines when the guide runs)",
   unassignedHunks: "(hunks the reader did not see are listed here after the guide runs)",
+  commits: "(the review's commits are listed here when the assign step runs)",
 };
 
 /**
@@ -598,7 +599,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     {
       layer: "L2",
       label: "plotline_assign",
-      text: render("plotline_assign", { plotlines: PH.plotlines, hunks: PH.unassignedHunks }),
+      text: render("plotline_assign", { plotlines: PH.plotlines, hunks: PH.unassignedHunks, commits: PH.commits }),
       cached: false,
     },
   ]);

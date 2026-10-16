@@ -49,6 +49,7 @@ function shuffledSnapshot(): PromptReviewSnapshot {
     pinnedCode: parsed.pinnedCode,
     existingComments: parsed.existingComments,
     files: parsed.files,
+    commits: parsed.commits,
     commitLog: parsed.commitLog,
     description: parsed.description,
     descriptionParagraphs: parsed.descriptionParagraphs,
