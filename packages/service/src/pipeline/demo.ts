@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Review, ReviewDescription, ReviewFile, Version } from "@unvibe/shared";
+import type { Review, ReviewCommit, ReviewDescription, ReviewFile, Version } from "@unvibe/shared";
 import { buildReviewFiles, parseUnifiedDiff } from "@unvibe/shared";
 import { renderMarkdownBlocks } from "../ingest/index.js";
 import { newReviewId } from "../ingest/index.js";
@@ -18,6 +18,8 @@ export interface DemoIngested {
   version: Version;
   files: ReviewFile[];
   description: ReviewDescription;
+  /** Fixture carries no commit list; the reader prompt omits the section. */
+  commits: ReviewCommit[];
   worktreePath: string;
   title: string;
 }
@@ -94,5 +96,5 @@ export function ingestDemo(fixturesDir: string, reviewId: string = newReviewId()
   } catch {
     // ignore
   }
-  return { review, version, files, description, worktreePath, title: meta.title };
+  return { review, version, files, description, commits: [], worktreePath, title: meta.title };
 }

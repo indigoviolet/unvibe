@@ -293,6 +293,26 @@ export function toPromptSnapshot(
     sourceKind: review.prNumber !== undefined ? "pr" : "branch",
     ...(description ? { description } : {}),
     ...(descriptionParagraphs.length > 0 ? { descriptionParagraphs } : {}),
+    // Issue #193: commit evidence for plotlines (subjects, bodies, files/hunks).
+    ...((snap.commits ?? []).length > 0
+      ? {
+          commits: (snap.commits ?? []).map((c) => ({
+            sha: c.sha,
+            subject: c.subject,
+            body: c.body,
+            files: [...c.files],
+            hunks: [...c.hunks],
+          })),
+        }
+      : {}),
+    // Branch reviews: the commit log the L1 head shows when there is no PR description.
+    ...(review.prNumber === undefined && (snap.commits ?? []).length > 0
+      ? {
+          commitLog: (snap.commits ?? [])
+            .map((c) => `${c.sha.slice(0, 7)} ${c.subject}${c.body ? `\n${c.body}` : ""}`)
+            .join("\n\n"),
+        }
+      : {}),
     files,
     pinnedCode,
     cards,

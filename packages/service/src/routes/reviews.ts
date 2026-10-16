@@ -255,6 +255,7 @@ async function runIngestBackground(
       version: ingested.version,
       files: ingested.files,
       description: ingested.description,
+      commits: ingested.commits,
       pages: [],
       annotations: [],
       hunkStates: [],
@@ -295,6 +296,7 @@ async function runIngestBackground(
       draft.version = { ...snapshot.version! };
       draft.files = snapshot.files as ReviewSnapshot["files"];
       draft.description = snapshot.description ? { ...snapshot.description } : undefined;
+      draft.commits = snapshot.commits ? snapshot.commits.map((c) => ({ ...c })) : undefined;
       draft.pages = [];
       draft.annotations = [];
       draft.hunkStates = [];
