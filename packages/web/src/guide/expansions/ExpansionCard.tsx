@@ -438,6 +438,51 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       document.removeEventListener("scroll", onEvent, true);
     };
   });
+  const sectionElRef = useRef<HTMLElement | null>(null);
+  const headerElRef = useRef<HTMLDivElement | null>(null);
+  // Issue #192, in the pane: the sticky header sticks at the card's own
+  // top, but when the card's top slides under the diff pane's pinned
+  // stack (or out of any pane), the header would hide behind the
+  // stack with the controls unreachable. Shift it down (a transform —
+  // no layout, no state, no re-render) so it rests just below the
+  // pinned band, or at the pane's top edge where there is no band.
+  // Frame-throttled like the nested position sync, and it only ever
+  // writes a DOM style, so it cannot feed a render loop.
+  useLayoutEffect(() => {
+    if (!floating) return;
+    let raf = 0;
+    const apply = (): void => {
+      raf = 0;
+      const card = sectionElRef.current;
+      const head = headerElRef.current;
+      if (!card || !head) return;
+      const pane = card.closest(".col");
+      let limit = pane ? pane.getBoundingClientRect().top : 0;
+      if (pane?.id === "right") {
+        // The pinned stack's true bottom: the band's backing can sit
+        // a few px above a stuck header's lower edge, so rest below
+        // the lowest of band, stuck headers and bars.
+        for (const el of pane.querySelectorAll(".dband, .dfile-h.stuck, .dhunk-h.stuck, .dtool, .rstick")) {
+          limit = Math.max(limit, el.getBoundingClientRect().bottom);
+        }
+      }
+      const shift = Math.max(0, Math.round(limit - card.getBoundingClientRect().top));
+      const next = shift > 0 ? `translateY(${shift}px)` : "";
+      if (head.style.transform !== next) head.style.transform = next;
+    };
+    const schedule = (): void => {
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    schedule();
+    window.addEventListener("resize", schedule);
+    document.addEventListener("scroll", schedule, true);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", schedule);
+      document.removeEventListener("scroll", schedule, true);
+    };
+  });
+
   const jobs = snapshot?.jobs ?? [];
   const turns = conversationTurns(expansion);
   if (expansion.type !== "conversation") return null;
@@ -508,13 +553,14 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   if (expansion.collapsed) {
     const section = (
       <section
+        ref={sectionElRef}
         className={`card child collapsed${floating ? " floating" : ""}`}
         id={`B-${expansion.id}`}
         data-expansion={expansion.id}
         style={floating ? nestedPos : undefined}
         {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
       >
-        <div className="exp-h">
+        <div className="exp-h" ref={headerElRef}>
           <ControlButton icon="right" label="Expand" onClick={() => void performAction(reviewId, { kind: "collapse", cardId: expansion.id, collapsed: false }).catch(() => {})} />
           {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
           {stale ? <span className="hint">from an earlier wording</span> : null}
@@ -542,6 +588,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   const below = [...(ancestorIds ?? []), expansion.id];
   const section = (
     <section
+      ref={sectionElRef}
       className={`card child${cardBusy?.rewriting ? " rewriting" : ""}${floating ? " floating" : ""}`}
       id={`B-${expansion.id}`}
       data-expansion={expansion.id}
@@ -549,7 +596,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       aria-busy={cardBusy ? true : undefined}
       {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
     >
-      <div className="exp-h">
+      <div className="exp-h" ref={headerElRef}>
         {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
         {stale ? <span className="hint">from an earlier wording</span> : null}
         <span className="sp" />
