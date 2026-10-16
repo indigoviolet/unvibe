@@ -31,6 +31,9 @@ const portIdx = args.indexOf("--port");
 const PORT = portIdx >= 0 ? Number(args[portIdx + 1]) : 4596;
 const caseIdx = args.indexOf("--case");
 const onlyCase = caseIdx >= 0 ? args[caseIdx + 1] : null;
+// Issue #193: stop as soon as the reader lands (plotlines + its usage),
+// instead of waiting out the whole pipeline.
+const readerOnly = args.includes("--reader-only");
 
 const DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-live-plot-data-"));
 const ENV = { ...process.env, UNVIBE_DATA_DIR: DATA, UNVIBE_PORT: String(PORT), UNVIBE_IDLE_MS: "0" };
@@ -42,6 +45,9 @@ const CASES = [
   { name: "urllib3-small-5310", repoUrl: "https://github.com/urllib3/urllib3", pr: 5310, budgetMs: 20 * 60_000 },
   { name: "urllib3-medium-5245", repoUrl: "https://github.com/urllib3/urllib3", pr: 5245, budgetMs: 30 * 60_000 },
   { name: "urllib3-large-5278", repoUrl: "https://github.com/urllib3/urllib3", pr: 5278, budgetMs: 40 * 60_000 },
+  // Issue #193: clean two-commit PR (fix + changelog) vs one-commit squashed PR.
+  { name: "clean-5310", repoUrl: "https://github.com/urllib3/urllib3", pr: 5310, budgetMs: 20 * 60_000 },
+  { name: "squashed-5259", repoUrl: "https://github.com/urllib3/urllib3", pr: 5259, budgetMs: 20 * 60_000 },
 ];
 
 function api(method, apiPath, body, token) {
@@ -147,7 +153,7 @@ async function runCase(c, token, repoCache) {
     let snap = null;
     let retried = false;
     for (;;) {
-      await sleep(30000);
+      await sleep(readerOnly ? 5000 : 30000);
       const got = await api("GET", `/api/reviews/${id}`, undefined, token);
       if (got.code !== 200) {
         out.failures.push(`GET review -> ${got.code}`);
@@ -165,6 +171,7 @@ async function runCase(c, token, repoCache) {
           `hunks=${hunks} scored=${scored} plotlines=${(snap.plotlines ?? []).length} busy=${busy}`,
       );
       const core = ["reader", "base", "critic", "concepts", "hunk-pass"];
+      if (readerOnly && snap.ingest?.status === "ready" && stages.reader === "done") break;
       if (snap.ingest?.status === "ready" && core.every((k) => stages[k] === "done") && !busy) break;
       if (snap.ingest?.status === "failed") {
         out.failures.push(`ingest failed: ${(snap.ingest?.error ?? "").slice(0, 300)}`);
@@ -229,6 +236,13 @@ async function runCase(c, token, repoCache) {
         }
       }
     }
+    // Issue #193: the commit evidence the reader actually had.
+    out.commits = (snap.commits ?? []).map((c) => ({
+      sha: c.sha.slice(0, 7),
+      subject: c.subject,
+      files: c.files,
+      hunks: (c.hunks ?? []).length,
+    }));
     out.plotlines = (snap.plotlines ?? []).map((p) => ({
       id: p.id,
       name: p.name,
