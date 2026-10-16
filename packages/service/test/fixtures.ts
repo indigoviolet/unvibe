@@ -32,6 +32,23 @@ export function fixtureSnapshot(): PromptReviewSnapshot {
     sourceKind: "pr",
     description,
     descriptionParagraphs: renderMarkdownBlocks(description).paragraphs,
+    // Issue #193: commit evidence as ingest stores it (landing order).
+    commits: [
+      {
+        sha: "aaa1114def5678abc1234def5678abc1234def5",
+        subject: "Unfold obsolete folded header values",
+        body: "Normalize both views of the parsed headers.",
+        files: ["src/urllib3/connection.py"],
+        hunks: ["h:conn:h111", "h:conn:h222"],
+      },
+      {
+        sha: "bbb2224def5678abc1234def5678abc1234def5",
+        subject: "Add unfold tests",
+        body: "",
+        files: ["test/test_connection.py"],
+        hunks: ["h:tconn:h333"],
+      },
+    ],
     files: [
       {
         fileKey: "conn",

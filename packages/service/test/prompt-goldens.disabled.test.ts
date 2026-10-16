@@ -55,6 +55,7 @@ function goldenValues(): Record<string, RenderValues> {
     plotline_assign: {
       plotlines: "- retry-logic: Retry failed uploads — retries with backoff",
       hunks: "- h:conn:h111 src/conn.py: Adds a fast path that skips values without CRLF.",
+      commits: "- `aaa1114` Unfold obsolete folded header values — hunks: h:conn:h111, h:conn:h222",
     },
     concept_stub: {
       concept: "obs-fold — Obsolete line folding: a header value continued on the next line.",

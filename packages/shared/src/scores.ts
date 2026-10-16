@@ -71,6 +71,23 @@ export function resolveHunkScore(raw: HunkScoreLevel | null, opts: { isOneLine: 
   return level;
 }
 
+/**
+ * Issue #193: one PR/branch commit as plotline evidence. Ingest (#92)
+ * already reads subjects and bodies; this adds the files each commit
+ * touched and the PR hunks it overlaps, so the reader sees the author's
+ * own threading before naming plotlines. Stored on the snapshot in
+ * landing order (oldest first).
+ */
+export interface ReviewCommit {
+  sha: string;
+  subject: string;
+  body: string;
+  /** Changed paths (new-side), in diff order. */
+  files: string[];
+  /** Canonical `h:<fileKey>:<hash>` PR hunk IDs this commit touches. */
+  hunks: string[];
+}
+
 // --- plotlines -------------------------------------------------------------
 
 /** Most plotlines the reader may name (the rest are dropped, reported). */

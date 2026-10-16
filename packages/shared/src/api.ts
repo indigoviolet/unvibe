@@ -25,7 +25,7 @@ import type {
   SelectionOffsets,
   Version,
 } from "./entities.js";
-import type { DiffFilter, HunkScoreLevel, Plotline } from "./scores.js";
+import type { DiffFilter, HunkScoreLevel, Plotline, ReviewCommit } from "./scores.js";
 
 /** Health is the only unauthenticated route. */
 export interface HealthResponse {
@@ -270,6 +270,8 @@ export interface ReviewSnapshot {
   logTail: LogEntry[];
   /** Monotonic revision of this snapshot; WS patches carry baseRev/headRev. */
   rev: number;
+  /** Issue #193: PR/branch commits in landing order, as plotline evidence. Absent on pre-#193 snapshots. */
+  commits?: ReviewCommit[];
   /**
    * Issue #169: the reader's plotlines (empty/absent = none named yet;
    * every hunk reads as "other"). Per-hunk assignment lives on

@@ -1,7 +1,7 @@
 ---
 role: user
 tier: small
-variables: [plotlines, hunks]
+variables: [plotlines, hunks, commits]
 ---
 
 # Plotline assign
@@ -16,9 +16,18 @@ or invent new ones. A hunk that serves no thread (mechanical churn:
 formatting, generated files, lock files) goes to no plotline — omit it,
 and it reads as "other".
 
+The commit list is evidence for closest fit, not the answer: a hunk
+the same commit touched as a plotline's known hunks usually belongs
+with them, and a fixup commit's hunks belong to the thread it fixes.
+Commit subjects never override a plotline's stated purpose.
+
 ## Plotlines
 
 {{plotlines}}
+
+## Commits (subject, hunks each touched)
+
+{{commits}}
 
 ## Hunks (hunk ID, file, one-line summary)
 

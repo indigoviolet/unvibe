@@ -10,6 +10,7 @@
 import { randomBytes } from "node:crypto";
 import type {
   Review,
+  ReviewCommit,
   ReviewDescription,
   ReviewFile,
   Version,
@@ -19,6 +20,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { buildReviewFiles } from "@unvibe/shared";
 import { renderCommitMessages, renderMarkdownBlocks } from "./description.js";
 import { parseUnifiedDiff } from "./diff.js";
+import { buildReviewCommits, readCommitDiffs } from "./commits.js";
 import { resolveSource, type IngestSource } from "./source.js";
 import { splitRawBlocks } from "../submit/description.js";
 
@@ -29,7 +31,8 @@ export { classifyFile, fileKeyForPath } from "./classify.js";
 export { uninterestingReason } from "./uninteresting.js";
 export { buildReviewFiles } from "@unvibe/shared";
 export { renderCommitMessages, renderMarkdownBlocks, renderInline } from "./description.js";
-export { baseRefCandidates, resolveHead, resolvePrMergeBase, resolveSource } from "./source.js";
+export { baseRefCandidates, readCommitMessages, resolveHead, resolvePrMergeBase, resolveSource } from "./source.js";
+export { buildReviewCommits, readCommitDiffs, MAX_COMMIT_DIFFS } from "./commits.js";
 
 export interface IngestDeps {
   runner: CommandRunner;
@@ -42,6 +45,8 @@ export interface IngestedReview {
   version: Version;
   files: ReviewFile[];
   description: ReviewDescription;
+  /** Issue #193: commits with per-commit files/hunks, landing order. */
+  commits: ReviewCommit[];
   worktreePath: string;
   /** Display title: PR title or branch name (stored in reviews.data for the front-screen list). */
   title: string;
@@ -103,6 +108,9 @@ export async function ingestReview(
   // classify → key → hash → hidden_reason via the shared pure pipeline
   // (the web mock fixture builds its files through this same function).
   const files: ReviewFile[] = buildReviewFiles(parsed, { linguistGenerated: gen });
+  // Issue #193: per-commit files/hunks for the reader's plotline evidence.
+  const commitDiffs = await readCommitDiffs(deps.runner, source.repoPath, resolved.commits);
+  const commits = buildReviewCommits(resolved.commits, commitDiffs, files);
 
   const now = Date.now();
   const prNumber = resolved.prNumber;
@@ -154,7 +162,7 @@ export async function ingestReview(
     };
   }
 
-  return { review, version, files, description, worktreePath: resolved.worktreePath, title: resolved.title };
+  return { review, version, files, description, commits, worktreePath: resolved.worktreePath, title: resolved.title };
 }
 
 /** Persist the review + version-1 rows (snapshot goes via `ReviewStore`). */

@@ -2256,7 +2256,17 @@ export class Pipeline {
         return `- h:${file.fileKey}:${hunk.contentHash} ${file.path}: ${summary ?? hunk.header}`;
       })
       .join("\n");
-    const prompt = this.render("plotline_assign", { plotlines: plotlineList, hunks: hunkList });
+    // Issue #193: commit evidence for closest-fit (subject + its hunks).
+    const commitList =
+      (snapshot.commits ?? []).length > 0
+        ? (snapshot.commits ?? [])
+            .map(
+              (c) =>
+                `- \`${c.sha.slice(0, 7)}\` ${c.subject.replace(/\s+/g, " ").trim()}${c.hunks.length > 0 ? ` — hunks: ${c.hunks.join(", ")}` : ""}`,
+            )
+            .join("\n")
+        : "(no commit list)";
+    const prompt = this.render("plotline_assign", { plotlines: plotlineList, hunks: hunkList, commits: commitList });
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "plotline-assign",

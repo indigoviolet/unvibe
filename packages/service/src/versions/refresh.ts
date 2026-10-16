@@ -29,10 +29,13 @@ import { assertReadySnapshot, summarizeComparison } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import {
   baseRefCandidates,
+  buildReviewCommits,
   classifyFile,
   fileKeyForPath,
   hashHunkLines,
   parseUnifiedDiff,
+  readCommitDiffs,
+  readCommitMessages,
   resolveHead,
   resolvePrMergeBase,
 } from "../ingest/index.js";
@@ -306,6 +309,13 @@ export async function refreshReview(
   );
   if (!diff.ok) throw new Error(`git diff failed for ${head.headSha}`);
   const newFiles = await buildFiles(deps.runner, repoPath, head.headSha, diff.stdout);
+  // Issue #193: refresh the commit evidence for the new range.
+  const newCommitMessages = await readCommitMessages(deps.runner, repoPath, newBaseSha, head.headSha);
+  const newCommits = buildReviewCommits(
+    newCommitMessages,
+    await readCommitDiffs(deps.runner, repoPath, newCommitMessages),
+    newFiles,
+  );
 
   const cmp = compareHunks(oldFiles, newFiles);
   const rangeDiff = await getRangeDiff(
@@ -397,6 +407,7 @@ export async function refreshReview(
   // One mutate so the UI gets one patch (PRD §8.4).
   await deps.reviews.mutate(reviewId, (draft) => {
     draft.files = newFiles as ReviewSnapshot["files"];
+    draft.commits = newCommits;
     draft.version = { ...version };
     draft.review.versions = [...draft.review.versions, { ...version }];
     draft.review.currentVersion = version.n;
