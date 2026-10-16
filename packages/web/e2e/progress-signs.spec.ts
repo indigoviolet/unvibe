@@ -3,9 +3,10 @@
  * shows a running / queued job count while jobs are live and hides it
  * when idle, linking to the Debug jobs list; while anything runs a
  * highlight travels around the pill's border with the inside calm. The
- * working dots run a visible sequential pulse in full motion and an
- * opacity-only fade under reduced motion; the depth stepper never
- * animates in either mode.
+ * working dots run a visible sequential pulse in full motion; under
+ * reduced motion nothing animates at all (#191) — the dots and pill
+ * simply appear, still. The depth stepper never animates in either
+ * mode.
  *
  * The mock demo seeds 1 running + 1 queued + 1 backing-off job, so the
  * count reads "1 running, 2 queued" on load.
@@ -170,17 +171,17 @@ test("nothing inside the depth stepper animates", async ({ page }) => {
 test.describe("reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
 
-  test("dots and pill fade in place with no movement", async ({ page }) => {
+  test("dots and pill appear with no animation and nothing moves", async ({ page }) => {
     await gotoDemo(page);
     const bar = page.locator("#reviewbar");
     const count = bar.getByRole("link", { name: "1 running, 2 queued" });
     await expect(count).toBeVisible();
-    // The pill body is calm; its border highlight fades in place.
+    // Still, not fading: the pill and its border carry no animation.
     await expect(count).toHaveCSS("animation-name", "none");
-    await expect.poll(() => pillBorderAnimation(page), { timeout: 8000 }).toBe("jcount-fade 2.2s");
+    await expect.poll(() => pillBorderAnimation(page), { timeout: 8000 }).toBe("none 0s");
     await page.locator("#C-g-flow .follow button").first().click();
-    await expect.poll(() => dotsAnimation(page), { timeout: 8000 }).toBe("dot-fade 1.8s");
-    // No transform animates on the dots while they fade.
+    await expect.poll(() => dotsAnimation(page), { timeout: 8000 }).toBe("none 0s");
+    // And nothing moves.
     await expect.poll(() => dotsTransforms(page), { timeout: 8000 }).toBe("none / none / none / none / none");
   });
 
