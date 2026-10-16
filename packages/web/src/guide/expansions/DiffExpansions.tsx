@@ -218,29 +218,43 @@ export function useDiffExpansionBindings(
       }
     };
     const timer = window.setTimeout(runPass, 0);
-    // Lazy hunk bodies render long after the bounded repass gives up:
-    // re-run the pass when diff rows land in the pane. Only row
-    // additions count — the pass's own mark edits are element and
-    // attribute changes inside cells, never new rows.
+    // Lazy hunk bodies render long after the bounded repass gives up,
+    // and React re-renders freely rewrite a row's class attribute,
+    // wiping the imperatively added range class. Watch structure and
+    // row classes across the pane, and re-run the pass whenever a
+    // range is left unsatisfied. A pass leaves every range satisfied,
+    // so its own edits never reschedule it — no loop.
     const pane = document.getElementById("right");
     let observer: MutationObserver | null = null;
     let scheduled = 0;
+    const rangesSatisfied = (): boolean => {
+      for (const a of annotations ?? []) {
+        if (a.type !== "conversation" && a.type !== "link" && a.type !== "comment") continue;
+        if (a.anchor.host.kind !== "diff-line") continue;
+        if (a.type === "link" && !a.promotedToPage) continue;
+        const host = a.anchor.host;
+        if (!host.endLine || host.endLine <= host.line) continue;
+        if (isAnchorStale(a)) continue;
+        let firstRow: Element | null = null;
+        for (let n = host.line; n <= host.endLine; n++) {
+          const row = document.getElementById(`L-${host.fileKey}-${n}`);
+          if (!row) continue;
+          if (!row.classList.contains("rng")) return false;
+          if (!firstRow) firstRow = row;
+        }
+        if (a.type !== "comment" && firstRow && !firstRow.querySelector("mark.anc.range")) return false;
+      }
+      return true;
+    };
     if (pane && typeof MutationObserver !== "undefined") {
-      observer = new MutationObserver((records) => {
-        const rowsAdded = records.some((rec) =>
-          [...rec.addedNodes].some(
-            (node) =>
-              node instanceof Element &&
-              ((node instanceof HTMLTableRowElement && node.id.startsWith("L-")) || node.querySelector('tr[id^="L-"]') !== null),
-          ),
-        );
-        if (!rowsAdded || scheduled) return;
+      observer = new MutationObserver(() => {
+        if (scheduled || rangesSatisfied()) return;
         scheduled = window.setTimeout(() => {
           scheduled = 0;
           runPass();
-        }, 100);
+        }, 80);
       });
-      observer.observe(pane, { childList: true, subtree: true });
+      observer.observe(pane, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     }
     return () => {
       window.clearTimeout(timer);
