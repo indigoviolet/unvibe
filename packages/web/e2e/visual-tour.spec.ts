@@ -263,18 +263,15 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
       // of its own card's box is not covered, it is just scrolled away.
       const c = cardEl.getBoundingClientRect();
       // Issue #192: in a card scrolled internally, the header row
-      // (quote, pin, close) must stay at the card's top — a header
-      // that scrolled away with the content fails even though the
-      // samples below would just skip it.
+      // (quote, pin, close) must stay REACHABLE: it sticks at the
+      // card's own top, and when that top slides under the pane's
+      // pinned stack it rests just below the band instead. Either
+      // way it must be visible inside the pane and topmost — never
+      // merely present behind the stack.
       const scrollTop = (cardEl as HTMLElement).scrollTop;
-      if (scrollTop > 4 && h.top < c.top - 1) {
+      const scrolledCard = scrollTop > 4;
+      if (scrolledCard && h.top < c.top - 1) {
         return `header scrolled away in a scrolled card: headerTop=${Math.round(h.top)} cardTop=${Math.round(c.top)} scrollTop=${Math.round(scrollTop)} card=${cardEl.id}`;
-      }
-      // Past the card's top padding the header must sit flush at the
-      // card's top border; part-way through the padding strip it is
-      // still travelling the last few px into place.
-      if (scrollTop > 12 && Math.abs(h.top - c.top) > 3) {
-        return `header not at the top of a scrolled card: headerTop=${Math.round(h.top)} cardTop=${Math.round(c.top)} card=${cardEl.id}`;
       }
       let vt = Math.max(h.top, c.top);
       let vb = Math.min(h.bottom, c.bottom);
@@ -291,7 +288,11 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
         vl = Math.max(vl, cr.left);
         vr = Math.min(vr, cr.right);
       }
-      if (vb - vt < 4 || vr - vl < 24) return null;
+      if (vb - vt < 4 || vr - vl < 24) {
+        return scrolledCard
+          ? `header not visible in a scrolled card: visiblePart=${Math.round(vb - vt)}px card=${cardEl.id} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)} cardTop=${Math.round(c.top)}`
+          : null;
+      }
       const midY = (vt + vb) / 2;
       const pts: [number, number][] = [
         [vl + 12, midY],
@@ -312,10 +313,14 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
           if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
         }
         // The pinned top stack (tab strip, actions bar, band, and any
-        // header stuck in its slot) slides over cards, header included.
-        if (hit.closest(".rstick, .dtool, .dband")) continue;
-        const stuckHdr = hit.closest(".dfile-h.stuck, .dhunk-h.stuck");
-        if (stuckHdr) continue;
+        // header stuck in its slot) slides over cards — but not over
+        // a SCROLLED card's header: that header must have moved below
+        // the band and be topmost itself (issue #192).
+        if (!scrolledCard) {
+          if (hit.closest(".rstick, .dtool, .dband")) continue;
+          const stuckHdr = hit.closest(".dfile-h.stuck, .dhunk-h.stuck");
+          if (stuckHdr) continue;
+        }
         return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".card.child.floating")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
