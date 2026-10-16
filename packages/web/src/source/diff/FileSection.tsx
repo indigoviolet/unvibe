@@ -656,9 +656,9 @@ function HunkBlock(
             type="button"
             className={`score-pick${props.plotFilter?.score === score ? " sel" : ""}`}
             aria-pressed={props.plotFilter?.score === score}
-            aria-label={`Show only ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks`}
+            aria-label={`Show ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks or higher`}
             data-scorepick={score}
-            data-tip={props.plotFilter?.score === score ? "Show all hunks" : `Show only ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks`}
+            data-tip={props.plotFilter?.score === score ? "Show all hunks" : `Show ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks or higher`}
             onClick={() => props.onSelectScore?.(score)}
           >
             <span className="score-dot" data-score={score} aria-hidden="true" />
