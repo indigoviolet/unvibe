@@ -57,6 +57,16 @@ describe("demo working copy (#176)", () => {
       );
       expect(slice).not.toHaveProperty("error");
       if ("text" in slice) expect(slice.text).toContain("_normalize_header_value");
+      // A range the fixture does not know (blank padding) has no content.
+      const unknown = await readCodeSlice(
+        real,
+        ingested.worktreePath,
+        ingested.version.headSha,
+        "src/urllib3/connection.py",
+        200,
+        210,
+      );
+      expect(unknown).toEqual({ error: "not-found" });
       const missing = await readCodeSlice(
         real,
         ingested.worktreePath,
