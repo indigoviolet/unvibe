@@ -31,14 +31,14 @@ describe("SettingsStore", () => {
   it("persists the UI theme and rejects unknown themes (issue #196)", () => {
     const store = makeStore();
     expect(store.get().uiTheme).toBe("default");
-    const res = store.update({ uiTheme: "midnight" });
+    const res = store.update({ uiTheme: "studio" });
     expect(res.errors).toBeUndefined();
-    expect(res.settings?.uiTheme).toBe("midnight");
-    expect(store.get().uiTheme).toBe("midnight");
+    expect(res.settings?.uiTheme).toBe("studio");
+    expect(store.get().uiTheme).toBe("studio");
     expect(store.update({ uiTheme: "nope" as never }).errors).toMatchObject([
       expect.stringContaining("uiTheme"),
     ]);
-    expect(store.get().uiTheme).toBe("midnight");
+    expect(store.get().uiTheme).toBe("studio");
   });
 
   it("rejects invalid updates", () => {

@@ -11,7 +11,7 @@
   var theme = "default";
   try {
     var saved = localStorage.getItem("unvibe:ui-theme");
-    if (saved === "default" || saved === "midnight") theme = saved;
+    if (saved === "default" || saved === "studio" || saved === "console") theme = saved;
   } catch {
     /* storage unavailable: the default theme stands */
   }

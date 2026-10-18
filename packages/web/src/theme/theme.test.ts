@@ -14,10 +14,10 @@ afterEach(() => {
 
 describe("ui theme", () => {
   it("applies the theme to <html> and mirrors it for the boot script", () => {
-    applyUiTheme("midnight");
-    expect(document.documentElement.getAttribute("data-ui-theme")).toBe("midnight");
-    expect(localStorage.getItem(UI_THEME_STORAGE_KEY)).toBe("midnight");
-    expect(currentUiTheme()).toBe("midnight");
+    applyUiTheme("studio");
+    expect(document.documentElement.getAttribute("data-ui-theme")).toBe("studio");
+    expect(localStorage.getItem(UI_THEME_STORAGE_KEY)).toBe("studio");
+    expect(currentUiTheme()).toBe("studio");
   });
 
   it("falls back to the default theme for a missing or unknown attribute", () => {
@@ -27,8 +27,8 @@ describe("ui theme", () => {
   });
 
   it("syncs from the persisted setting and rejects unknown values to the default", () => {
-    expect(syncUiThemeFromSettings("midnight")).toBe("midnight");
-    expect(currentUiTheme()).toBe("midnight");
+    expect(syncUiThemeFromSettings("studio")).toBe("studio");
+    expect(currentUiTheme()).toBe("studio");
     expect(syncUiThemeFromSettings("nope")).toBe("default");
     expect(currentUiTheme()).toBe("default");
     expect(localStorage.getItem(UI_THEME_STORAGE_KEY)).toBe("default");
@@ -36,7 +36,7 @@ describe("ui theme", () => {
 
   it("never touches the independent light/dark axis", () => {
     document.documentElement.setAttribute("data-theme", "dark");
-    applyUiTheme("midnight");
+    applyUiTheme("studio");
     syncUiThemeFromSettings("default");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
