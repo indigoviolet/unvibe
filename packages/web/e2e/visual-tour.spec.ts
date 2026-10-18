@@ -78,6 +78,47 @@ async function checkNoPageOverflow(page: Page, step: string): Promise<void> {
   expect(overflow, `${step}: horizontal page overflow ${overflow}px`).toBeLessThanOrEqual(1);
 }
 
+
+/**
+ * Syntax-token contrast (issue #196 review): a string/comment token in
+ * a diff row must read against its row background in every theme and
+ * scheme. The light palette on a dark add row scores ~1-2, the correct
+ * dark palette ~5+, so a ratio floor of 3 catches a mis-scoped palette.
+ */
+async function checkTokenContrast(page: Page, step: string): Promise<void> {
+  await page.waitForSelector("table.diff td.c .shk-str", { timeout: 15_000 });
+  const found = await page.evaluate(() => {
+    const lum = (rgb: string): number => {
+      const m = rgb.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0];
+      const f = (v: number): number => {
+        const c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * f(m[0] ?? 0) + 0.7152 * f(m[1] ?? 0) + 0.0722 * f(m[2] ?? 0);
+    };
+    const out: { cls: string; color: string; bg: string; ratio: number }[] = [];
+    for (const cls of ["shk-str", "shk-com"]) {
+      const el = document.querySelector(`table.diff td.c .${cls}`);
+      if (!el) continue;
+      const color = getComputedStyle(el).color;
+      let bg = "rgba(0, 0, 0, 0)";
+      let node: Element | null = el.closest("td");
+      while (node) {
+        const b = getComputedStyle(node).backgroundColor;
+        if (b && b !== "rgba(0, 0, 0, 0)" && b !== "transparent") { bg = b; break; }
+        node = node.parentElement;
+      }
+      const [hi, lo] = [lum(color), lum(bg)].sort((a, b) => b - a);
+      out.push({ cls, color, bg, ratio: (hi + 0.05) / (lo + 0.05) });
+    }
+    return out;
+  });
+  expect(found.length, `${step}: no syntax tokens found`).toBeGreaterThan(0);
+  for (const t of found) {
+    expect(t.ratio, `${step}: ${t.cls} ${t.color} on ${t.bg} ratio ${t.ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+  }
+}
+
 /** Generic check: menus/popovers fully in the viewport and topmost. */
 async function checkMenus(page: Page, step: string): Promise<void> {
   const menus = page.locator(".fmenu:visible, .cmenu:visible, #pop:visible");
@@ -717,6 +758,7 @@ for (const combo of [
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-unified");
+    await checkTokenContrast(page, "diff-unified");
     await shot(page, "diff-unified", suffix, "_OBSOLETE_FOLD_RE");
 
     // Floating card + nested card in the diff.
@@ -929,6 +971,7 @@ for (const combo of [
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
     await checkNoPageOverflow(page, `theme-${combo.theme}-diff`);
+    await checkTokenContrast(page, `theme-${combo.theme}-diff`);
     await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
 
     await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);

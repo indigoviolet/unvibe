@@ -19,8 +19,11 @@
   --shk-param: #953800;
   --shk-link: #0b6e78;
 }
+/* The dark syntax palette is theme-independent (issue #196 review):
+   it applies under every `data-ui-theme`; a theme only overrides the
+   accent-tied link colour below, in its own higher-specificity blocks. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-ui-theme="studio"]):not([data-ui-theme="console"]) {
+  :root:not([data-theme="light"]) {
     --shk-kw: #ff7b72;
     --shk-str: #a5d6ff;
     --shk-com: #9198a1;
@@ -30,7 +33,7 @@
     --shk-link: #56c2cb;
   }
 }
-:root[data-theme="dark"]:not([data-ui-theme="studio"]):not([data-ui-theme="console"]) {
+:root[data-theme="dark"] {
   --shk-kw: #ff7b72;
   --shk-str: #a5d6ff;
   --shk-com: #9198a1;
