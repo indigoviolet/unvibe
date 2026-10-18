@@ -81,12 +81,13 @@ test.describe("J11 settings combos", () => {
     const themeSelect = page.locator('[data-testid="ui-theme"]');
     await expect(themeSelect).toBeVisible({ timeout: 15_000 });
     await expect(themeSelect).toHaveValue("default");
-    await themeSelect.selectOption("midnight");
+    await expect(themeSelect.locator("option")).toHaveText(["Default", "Studio", "Console"]);
+    await themeSelect.selectOption("studio");
     await page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
     );
-    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "midnight");
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "studio");
     const accent = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
     );
@@ -96,7 +97,7 @@ test.describe("J11 settings combos", () => {
       mirror: localStorage.getItem("unvibe:ui-theme"),
       bg: getComputedStyle(document.body).backgroundColor,
     }));
-    expect(before.mirror).toBe("midnight");
+    expect(before.mirror).toBe("studio");
     await page.reload();
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
     const after = await page.evaluate(async () => {
@@ -109,9 +110,9 @@ test.describe("J11 settings combos", () => {
         serverTheme: settings.uiTheme,
       };
     });
-    expect(after.attr).toBe("midnight");
+    expect(after.attr).toBe("studio");
     expect(after.bg).toBe(before.bg);
-    expect(after.serverTheme).toBe("midnight");
+    expect(after.serverTheme).toBe("studio");
     // Back to the default theme for the rest of the journey.
     await page.getByRole("tab", { name: "Appearance" }).click();
     await page.locator('[data-testid="ui-theme"]').selectOption("default");

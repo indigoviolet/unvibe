@@ -893,13 +893,15 @@ for (const combo of [
   });
 }
 
-// Placeholder second theme (issue #196): one scene per theme axis —
-// the Midnight theme in light and dark at 1440px, applied before first
-// paint through the boot script's localStorage mirror. The default
-// theme's scenes are the four passes above.
+// Studio and Console themes (issues #196/#164): one scene set per
+// theme in light and dark at 1440px, applied before first paint
+// through the boot script's localStorage mirror. The default theme's
+// scenes are the four passes above.
 for (const combo of [
-  { name: "midnight-1440-light", dark: false },
-  { name: "midnight-1440-dark", dark: true },
+  { theme: "studio", name: "studio-1440-light", dark: false },
+  { theme: "studio", name: "studio-1440-dark", dark: true },
+  { theme: "console", name: "console-1440-light", dark: false },
+  { theme: "console", name: "console-1440-dark", dark: true },
 ] as const) {
   test(`visual tour theme (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
@@ -908,32 +910,32 @@ for (const combo of [
     if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
     // Persist the theme server-side (the source of truth) and mirror
     // it locally, exactly as Settings -> Appearance leaves the browser.
-    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "midnight" });
-    await page.addInitScript(() => {
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+    await page.addInitScript((theme) => {
       try {
-        localStorage.setItem("unvibe:ui-theme", "midnight");
+        localStorage.setItem("unvibe:ui-theme", theme);
       } catch {
         // Boot falls back to the default theme; the assert below fails.
       }
-    });
+    }, combo.theme);
     const suffix = combo.name;
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
-    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "midnight");
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
     await page.evaluate(() => document.fonts.ready).catch(() => {});
-    await checkNoPageOverflow(page, "theme-midnight-guide");
-    await shot(page, "theme-midnight-guide", suffix, "Unfold obsolete folded response headers");
+    await checkNoPageOverflow(page, `theme-${combo.theme}-guide`);
+    await shot(page, `theme-${combo.theme}-guide`, suffix, "Unfold obsolete folded response headers");
 
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
-    await checkNoPageOverflow(page, "theme-midnight-diff");
-    await shot(page, "theme-midnight-diff", suffix, "_OBSOLETE_FOLD_RE");
+    await checkNoPageOverflow(page, `theme-${combo.theme}-diff`);
+    await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
 
     await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[data-testid="ui-theme"]')).toHaveValue("midnight", { timeout: 15_000 });
-    await checkNoPageOverflow(page, "theme-midnight-settings");
-    await shot(page, "theme-midnight-settings", suffix, "Theme");
+    await expect(page.locator('[data-testid="ui-theme"]')).toHaveValue(combo.theme, { timeout: 15_000 });
+    await checkNoPageOverflow(page, `theme-${combo.theme}-settings`);
+    await shot(page, `theme-${combo.theme}-settings`, suffix, "Theme");
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
   });
 }
