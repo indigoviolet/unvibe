@@ -20,7 +20,7 @@
   --shk-link: #0b6e78;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-ui-theme="midnight"]) {
     --shk-kw: #ff7b72;
     --shk-str: #a5d6ff;
     --shk-com: #9198a1;
@@ -30,7 +30,7 @@
     --shk-link: #56c2cb;
   }
 }
-:root[data-theme="dark"] {
+:root[data-theme="dark"]:not([data-ui-theme="midnight"]) {
   --shk-kw: #ff7b72;
   --shk-str: #a5d6ff;
   --shk-com: #9198a1;
@@ -38,6 +38,37 @@
   --shk-const: #79c0ff;
   --shk-param: #ffa657;
   --shk-link: #56c2cb;
+}
+/* Midnight (issue #196): token colours follow the theme's accent where
+   the default palette tied them to it; the rest shift warmer. */
+:root[data-ui-theme="midnight"] {
+  --shk-kw: #b42318;
+  --shk-str: #0b4f8a;
+  --shk-com: #5b6b84;
+  --shk-fn: #7c3aed;
+  --shk-const: #0550ae;
+  --shk-param: #953800;
+  --shk-link: #c2410c;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-theme="midnight"]:not([data-theme="light"]) {
+    --shk-kw: #ff9d8a;
+    --shk-str: #a5d6ff;
+    --shk-com: #93a5c4;
+    --shk-fn: #d2a8ff;
+    --shk-const: #79c0ff;
+    --shk-param: #ffa657;
+    --shk-link: #ffa257;
+  }
+}
+:root[data-ui-theme="midnight"][data-theme="dark"] {
+  --shk-kw: #ff9d8a;
+  --shk-str: #a5d6ff;
+  --shk-com: #93a5c4;
+  --shk-fn: #d2a8ff;
+  --shk-const: #79c0ff;
+  --shk-param: #ffa657;
+  --shk-link: #ffa257;
 }
 
 table.diff td.c .shk-kw { color: var(--shk-kw); }
