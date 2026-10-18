@@ -209,6 +209,10 @@ export class SessionManager {
         lastSeenSeq: c.lastSeenSeq,
         live: false,
         lastUsedAt: c.updatedAt,
+        // Issue #143: the stored posture must survive a restart, or the
+        // follow-up probe treats every restored session as a mode
+        // mismatch and drops it without ever trying `load`.
+        ...(c.readOnly !== undefined ? { readOnly: c.readOnly } : {}),
       });
     }
   }

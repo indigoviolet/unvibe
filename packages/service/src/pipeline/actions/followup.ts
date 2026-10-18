@@ -60,7 +60,7 @@ export async function followupAction(
     if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
     const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing answer…");
     const probe = await probeConversationSessionFor(ctx, card);
-    const live = probe.continueSessionId !== undefined;
+    const live = probe.continueSessionId !== undefined && !probe.rebuilt;
     const res = await runConversationTurn(ctx, annotationId, turnId, {
       anchor: card.anchor,
       template: live ? "ask_turn" : "ask",
