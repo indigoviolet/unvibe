@@ -139,7 +139,10 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
   // prefs). Local state applies at once; the PATCH persists it and the
   // snapshot echo converges back through the effect below.
   const [plotFilter, setPlotFilter] = useState<DiffFilter>({});
-  const lastSentFilter = useRef<string>("{}");
+  // Keys of filter values this pane itself sent and has not yet seen
+  // echoed back: their echoes must never be adopted over local state
+  // (see the adoption effect below).
+  const ownFilterEchoes = useRef<Set<string>>(new Set());
   const [unhidden, setUnhidden] = useState<Record<string, boolean>>({});
   const [dirOpen, setDirOpen] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
@@ -185,13 +188,25 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
   }, [prefs]);
 
   // Adopt the review's stored filter when it arrives or changes
-  // server-side; ignore the echo of our own change (tracked above).
+  // server-side (e.g. a plotline picked in the guide); ignore echoes
+  // of our own changes. An echo is not necessarily the latest value
+  // we sent: on a slow client the snapshot patch for change N can be
+  // applied after change N+1 already landed locally, and adopting it
+  // would resurrect the dimension N+1 cleared (#195). Own echoes are
+  // recognised by value and consumed, never adopted — local state is
+  // already at or past them.
   const storedFilterKey = JSON.stringify(snapshot?.diffFilter ?? {});
   useEffect(() => {
-    if (lastSentFilter.current !== storedFilterKey) {
-      lastSentFilter.current = storedFilterKey;
-      setPlotFilter(snapshot?.diffFilter ? { ...snapshot.diffFilter } : {});
+    ownFilterEchoes.current.clear();
+  }, [reviewId]);
+  useEffect(() => {
+    if (ownFilterEchoes.current.has(storedFilterKey)) {
+      ownFilterEchoes.current.delete(storedFilterKey);
+      return;
     }
+    // A genuinely external value supersedes any echoes still pending.
+    ownFilterEchoes.current.clear();
+    setPlotFilter(snapshot?.diffFilter ? { ...snapshot.diffFilter } : {});
   }, [reviewId, storedFilterKey, snapshot?.diffFilter]);
 
   // Snapshot: the guide column fetches it too; fetch here when absent so the
@@ -449,7 +464,7 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
   const setPlotFilterAndPersist = useCallback(
     (next: DiffFilter) => {
       setPlotFilter(next);
-      lastSentFilter.current = JSON.stringify(next);
+      ownFilterEchoes.current.add(JSON.stringify(next));
       // Read-only history: the choice still applies to this view, it just
       // is not remembered with the review.
       if (readOnly) return;
