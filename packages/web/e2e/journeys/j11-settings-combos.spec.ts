@@ -73,6 +73,54 @@ test.describe("J11 settings combos", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator('[data-testid="full-access-marker"]')).toHaveCount(0, { timeout: 30_000 });
 
+    // Appearance (issue #196): switch the UI theme, reload, and it is
+    // applied before first paint (boot script + localStorage mirror) and
+    // persisted server-side; light/dark stays a separate axis.
+    await page.goto(`${svc.origin}/settings?token=${svc.token}`);
+    await page.getByRole("tab", { name: "Appearance" }).click();
+    const themeSelect = page.locator('[data-testid="ui-theme"]');
+    await expect(themeSelect).toBeVisible({ timeout: 15_000 });
+    await expect(themeSelect).toHaveValue("default");
+    await themeSelect.selectOption("midnight");
+    await page.waitForResponse(
+      (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
+      { timeout: 15_000 },
+    );
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "midnight");
+    const accent = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
+    );
+    expect(accent).not.toBe("");
+    const before = await page.evaluate(() => ({
+      attr: document.documentElement.getAttribute("data-ui-theme"),
+      mirror: localStorage.getItem("unvibe:ui-theme"),
+      bg: getComputedStyle(document.body).backgroundColor,
+    }));
+    expect(before.mirror).toBe("midnight");
+    await page.reload();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    const after = await page.evaluate(async () => {
+      const token = new URLSearchParams(location.search).get("token") ?? "";
+      const r = await fetch("/api/settings", { headers: { authorization: `Bearer ${token}` } });
+      const settings = (await r.json()) as { uiTheme?: string };
+      return {
+        attr: document.documentElement.getAttribute("data-ui-theme"),
+        bg: getComputedStyle(document.body).backgroundColor,
+        serverTheme: settings.uiTheme,
+      };
+    });
+    expect(after.attr).toBe("midnight");
+    expect(after.bg).toBe(before.bg);
+    expect(after.serverTheme).toBe("midnight");
+    // Back to the default theme for the rest of the journey.
+    await page.getByRole("tab", { name: "Appearance" }).click();
+    await page.locator('[data-testid="ui-theme"]').selectOption("default");
+    await page.waitForResponse(
+      (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
+      { timeout: 15_000 },
+    );
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "default");
+
     // Repos: add a second checkout in Settings, remove it, folder intact.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Repos" }).click();

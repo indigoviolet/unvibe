@@ -886,6 +886,14 @@ needed (that deviation is closed, not added).
   `GET /api/prompts` ran 200 from the global install).
 - Limits/budgets (sessions per provider, inline budget, rebuild
   thresholds) — met (`settings.spec.ts` “limits persist across reload”).
+- UI theme (issue #196) — met: the current look is the named `default`
+  theme in `prototype.css` (every themeable colour, radius, shadow and
+  base font size is a CSS variable; light/dark stays a separate axis),
+  Settings → Appearance picks `Settings.uiTheme` (`UI_THEME_IDS` in
+  shared, validated in the settings store), applied before first paint
+  by `public/theme-init.js` from its localStorage mirror, with the
+  placeholder `midnight` theme proving switching end to end
+  (`theme.test.ts`, `settings.test.ts`, J11, visual-tour theme scenes).
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
   (issue #32; on the per-review debug page's Jobs tab now, relocated
   unchanged from Settings apart from the redundant divider: `e2e/debug.spec.ts`,
