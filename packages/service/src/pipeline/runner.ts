@@ -28,7 +28,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { DegradedConnError, DegradedTurnError, RetryableError } from "../jobs/errors.js";
@@ -48,7 +48,7 @@ import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
-import { lookupForSnapshot } from "./lookup.js";
+import { lookupForSnapshot, resolveCodeFileLengths } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
 import { criticApply, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
@@ -479,7 +479,7 @@ export class Pipeline {
               (name, detail) => ctx.reportTool(name, detail),
               ),
             );
-            const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
+            const first = await this.parseAndValidateWithCode(o.reviewId, text, o.echoCandidates);
             // Facts only (#180): the reply's wording is never judged. A
             // kept degraded answer (explicit field + usable body) skips
             // the repair turn — no repair can fix what the agent declared
@@ -524,7 +524,7 @@ export class Pipeline {
               usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
               usage.outputTokens += repair.usage.outputTokens;
               finalText = repair.text;
-              const second = this.parseAndValidate(o.reviewId, repair.text, o.echoCandidates);
+              const second = await this.parseAndValidateWithCode(o.reviewId, repair.text, o.echoCandidates);
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
@@ -673,7 +673,7 @@ export class Pipeline {
                   (name, detail) => ctx.reportTool(name, detail),
                 ),
               );
-              const first = this.parseAndValidate(o.reviewId, text);
+              const first = await this.parseAndValidateWithCode(o.reviewId, text);
               let finalText = text;
               let finalCards = first.cards;
               let finalData = first.data;
@@ -699,7 +699,7 @@ export class Pipeline {
                 usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
                 usage.outputTokens += repair.usage.outputTokens;
                 finalText = repair.text;
-                const second = this.parseAndValidate(o.reviewId, repair.text);
+                const second = await this.parseAndValidateWithCode(o.reviewId, repair.text);
                 finalCards = second.cards;
                 finalData = second.data;
                 finalValidation = second.validation;
@@ -1066,6 +1066,7 @@ export class Pipeline {
     reviewId: string,
     text: string,
     echoCandidates?: string[],
+    codeLengths?: Record<string, number>,
   ): { cards: ParsedCard[]; data: ReplyData | null; validation: ReturnType<typeof validateReply>; body: string } {
     const split = splitReply(text);
     // Malformed / non-object trailers are job-visible errors (reply-format
@@ -1081,7 +1082,7 @@ export class Pipeline {
       echoCandidates === undefined ? parseCards(body) : parseCards(body, { echoCandidates });
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const lookup = this.lookupWithAliases(snapshot);
+    const lookup = this.lookupWithAliases(snapshot, codeLengths);
     const blocks = cards.flatMap((c) => c.blocks);
     const anchor =
       split.ok && typeof split.data === "object" && split.data !== null
@@ -1091,6 +1092,42 @@ export class Pipeline {
       ...(anchor?.quote && anchor?.host ? { anchor: { quote: anchor.quote, host: anchor.host } } : {}),
     });
     return { cards, data: split.ok ? (split.data as ReplyData) : null, validation, body };
+  }
+
+  /**
+   * `parseAndValidate` with `code:` ranges checked against the real file
+   * at the cited commit (#178, PRD §10). The snapshot lookup alone only
+   * knows hunk-covered lines, so every `code:` citation to a file outside
+   * the diff used to come back unverified and burn a repair turn. Lengths
+   * are resolved through `git show` (the `get_code` source) first; files
+   * that cannot be read stay unverified, exactly as before.
+   */
+  private async parseAndValidateWithCode(
+    reviewId: string,
+    text: string,
+    echoCandidates?: string[],
+  ): Promise<ReturnType<typeof this.parseAndValidate>> {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+    let codeLengths: Record<string, number> | undefined;
+    try {
+      const split = splitReply(text);
+      const cards =
+        echoCandidates === undefined ? parseCards(split.body) : parseCards(split.body, { echoCandidates });
+      const collected = collectTargets(cards.flatMap((c) => c.blocks));
+      const targets = [...collected.citations, ...collected.links];
+      if (targets.some((t) => t.startsWith("code:"))) {
+        codeLengths = await resolveCodeFileLengths(
+          this.opts.commands,
+          this.worktreeOf(reviewId),
+          snapshot.version.headSha,
+          targets,
+        );
+      }
+    } catch {
+      codeLengths = undefined;
+    }
+    return this.parseAndValidate(reviewId, text, echoCandidates, codeLengths);
   }
 
   /** Alias-aware lookup for diagram cite validation (demo fixture keys). */
@@ -1226,10 +1263,13 @@ export class Pipeline {
     }
   }
 
-  private lookupWithAliases(snapshot: ReviewSnapshot): ReturnType<typeof lookupForSnapshot> {
+  private lookupWithAliases(
+    snapshot: ReviewSnapshot,
+    codeLengths?: Record<string, number>,
+  ): ReturnType<typeof lookupForSnapshot> {
     const aliases = aliasesForReview(snapshot, this.opts.fixturesDir);
-    if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot);
-    const base = lookupForSnapshot(snapshot);
+    if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot, { fileLengths: codeLengths });
+    const base = lookupForSnapshot(snapshot, { fileLengths: codeLengths });
     const inner = base.resolveFileKey.bind(base);
     return {
       ...base,
@@ -1568,7 +1608,7 @@ export class Pipeline {
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
             // Issue #50: reader cards match their own `##` titles.
-            const { cards, data, validation } = this.parseAndValidate(reviewId, buffer, []);
+            const { cards, data, validation } = await this.parseAndValidateWithCode(reviewId, buffer, []);
             let finalCards = cards;
             let finalData = data;
             let finalValidation = validation;
@@ -1616,7 +1656,7 @@ export class Pipeline {
               usage.outputTokens += repair.usage.outputTokens;
               ctx.reportUsage(repair.usage);
               await this.recordUsage(reviewId, repair.usage);
-              const second = this.parseAndValidate(reviewId, repair.text, []);
+              const second = await this.parseAndValidateWithCode(reviewId, repair.text, []);
               finalCards = second.cards;
               finalData = second.data;
               finalValidation = second.validation;
