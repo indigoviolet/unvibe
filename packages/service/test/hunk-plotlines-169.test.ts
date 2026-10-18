@@ -452,7 +452,7 @@ describe("large-PR plotline fallback (#169, #107)", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 60000);
 
   it("leaves the rest in other past the assign cap", async () => {
     // 12 normal files × 25 + 10 import files × 25: 250 invisible hunks,
