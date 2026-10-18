@@ -105,6 +105,8 @@ interface BaseRecord {
   logSeq: number;
   live: boolean;
   lastUsedAt: number;
+  /** Turns currently streaming on this session; never swept mid-turn. */
+  inUse: number;
   /**
    * Loaded from the store and not reopened since: `build.mcpServers` was
    * issued by a previous process, so its MCP secret is gone (#68).
@@ -119,6 +121,8 @@ interface ConversationRecord {
   lastSeenSeq: number;
   live: boolean;
   lastUsedAt: number;
+  /** Turns currently streaming on this session; never swept mid-turn. */
+  inUse: number;
   /**
    * Issue #160: the posture this session started with. A follow-up
    * continues the stored session only when it matches the current
@@ -186,6 +190,7 @@ export class SessionManager {
         logSeq: b.logSeq,
         live: false,
         lastUsedAt: b.updatedAt,
+        inUse: 0,
         restored: true,
       });
     }
@@ -209,6 +214,7 @@ export class SessionManager {
         lastSeenSeq: c.lastSeenSeq,
         live: false,
         lastUsedAt: c.updatedAt,
+        inUse: 0,
         // Issue #143: the stored posture must survive a restart, or the
         // follow-up probe treats every restored session as a mode
         // mismatch and drops it without ever trying `load`.
@@ -277,6 +283,7 @@ export class SessionManager {
       logSeq: closed?.logSeq ?? 0,
       live: true,
       lastUsedAt: this.clock.now(),
+      inUse: 0,
     };
     this.bases.set(record.keyString, record);
     this.persistBase(record);
@@ -411,6 +418,7 @@ export class SessionManager {
       lastSeenSeq: base.logSeq,
       live: true,
       lastUsedAt: this.clock.now(),
+      inUse: 0,
       readOnly: base.build.readOnly,
     };
     this.conversations.set(session.id, record);
@@ -444,6 +452,7 @@ export class SessionManager {
       lastSeenSeq: base?.logSeq ?? 0,
       live: true,
       lastUsedAt: this.clock.now(),
+      inUse: 0,
       // The fork inherits its base's posture. A missing base should not
       // happen here (the caller just ensured it); fall back to lockdown.
       readOnly: base?.build.readOnly ?? true,
@@ -571,13 +580,48 @@ export class SessionManager {
   // -- idle ---------------------------------------------------------------
 
   /**
+   * Mark a turn as streaming on a session. While any turn is in flight
+   * the session is never swept, however long the turn runs; when the
+   * last in-flight turn ends, `lastUsedAt` refreshes, so idle means
+   * time since the last turn finished. Untracked ids are a no-op (a
+   * session being built is not a record yet, so it cannot be swept).
+   */
+  beginSessionUse(sessionId: string): void {
+    const record = this.conversations.get(sessionId) ?? [...this.bases.values()].find((b) => b.session.id === sessionId);
+    if (record) record.inUse += 1;
+  }
+
+  /** End a turn started with {@link beginSessionUse}. */
+  endSessionUse(sessionId: string): void {
+    const conv = this.conversations.get(sessionId);
+    if (conv) {
+      conv.inUse = Math.max(0, conv.inUse - 1);
+      if (conv.inUse === 0) {
+        conv.lastUsedAt = this.clock.now();
+        this.persistConversation(conv);
+      }
+      return;
+    }
+    const base = [...this.bases.values()].find((b) => b.session.id === sessionId);
+    if (base) {
+      base.inUse = Math.max(0, base.inUse - 1);
+      if (base.inUse === 0) {
+        base.lastUsedAt = this.clock.now();
+        this.persistBase(base);
+      }
+    }
+  }
+
+  /**
    * Close sessions idle longer than `idleAfterMs` (provider cache
-   * lifetime setting). They reopen lazily via `load`/rebuild.
+   * lifetime setting). They reopen lazily via `load`/rebuild. A session
+   * with a turn in flight is never closed, however long it has been
+   * since the turn started.
    */
   async sweepIdle(now: number, idleAfterMs: number): Promise<{ closed: string[] }> {
     const closed: string[] = [];
     for (const record of this.bases.values()) {
-      if (record.live && now - record.lastUsedAt >= idleAfterMs) {
+      if (record.live && record.inUse === 0 && now - record.lastUsedAt >= idleAfterMs) {
         await this.closeQuietly(record.session);
         record.live = false;
         this.persistBase(record);
@@ -585,7 +629,7 @@ export class SessionManager {
       }
     }
     for (const record of this.conversations.values()) {
-      if (record.live && now - record.lastUsedAt >= idleAfterMs) {
+      if (record.live && record.inUse === 0 && now - record.lastUsedAt >= idleAfterMs) {
         await this.closeQuietly(record.session);
         record.live = false;
         this.persistConversation(record);
@@ -657,18 +701,23 @@ export class SessionManager {
   ): Promise<{ text: string; usage: TokenUsage }> {
     let out = "";
     const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
-    for await (const event of this.runner.prompt(session, text, signal)) {
-      const e: AgentEvent = event;
-      if (e.type === "text") out += e.delta;
-      else if (e.type === "usage") {
-        usage.inputTokens += e.inputTokens;
-        usage.cachedReadTokens += e.cachedReadTokens;
-        usage.cachedWriteTokens += e.cachedWriteTokens;
-        usage.outputTokens += e.outputTokens;
-      } else if (e.type === "error") {
-        if (e.retryable) throw new RetryableError(e.message);
-        throw new Error(e.message);
+    this.beginSessionUse(session.id);
+    try {
+      for await (const event of this.runner.prompt(session, text, signal)) {
+        const e: AgentEvent = event;
+        if (e.type === "text") out += e.delta;
+        else if (e.type === "usage") {
+          usage.inputTokens += e.inputTokens;
+          usage.cachedReadTokens += e.cachedReadTokens;
+          usage.cachedWriteTokens += e.cachedWriteTokens;
+          usage.outputTokens += e.outputTokens;
+        } else if (e.type === "error") {
+          if (e.retryable) throw new RetryableError(e.message);
+          throw new Error(e.message);
+        }
       }
+    } finally {
+      this.endSessionUse(session.id);
     }
     return { text: out, usage };
   }

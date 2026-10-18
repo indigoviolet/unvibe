@@ -106,6 +106,95 @@ describe("session manager restore (#143)", () => {
   });
 });
 
+describe("idle sweep never closes a session mid-turn (#143)", () => {
+  it("a turn streaming past the threshold survives; after it ends, the threshold runs from the end", async () => {
+    const clock = new ManualClock(0);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let started = false;
+    class GatedRunner extends FakeAgentRunner {
+      override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
+        if (text.includes("long turn")) {
+          this.prompts.push({ sessionId: session.id, text });
+          started = true;
+          await gate;
+          yield { type: "text", delta: "long done" };
+          yield { type: "done", stopReason: "end_turn" };
+          return;
+        }
+        yield* super.prompt(session, text);
+      }
+    }
+    const runner = new GatedRunner([
+      { match: "BASE PACK", events: textEvents("ready") },
+      { match: "hello", events: textEvents("hi") },
+    ]);
+    const mgr = new SessionManager({ runner, clock });
+    const build = { key: KEY, cwd: "/r", systemPrompt: "s", readOnly: true, mcpServers: [], pack: "BASE PACK" };
+    const base = await mgr.getBase(build);
+    const conv = await mgr.forkConversation(base.key, "hello");
+
+    const turn = mgr.sendOnConversation(conv.session.id, "long turn");
+    await waitFor(() => started);
+    // The turn is still streaming long past the idle threshold.
+    await clock.advance(10 * 60 * 1000);
+    const mid = await mgr.sweepIdle(clock.now(), 5 * 60 * 1000);
+    expect(mid.closed).not.toContain(conv.session.id);
+
+    release();
+    await turn;
+    // Idle runs from when the turn finished, not from when it started.
+    await clock.advance(4 * 60 * 1000);
+    const afterEnd = await mgr.sweepIdle(clock.now(), 5 * 60 * 1000);
+    expect(afterEnd.closed).not.toContain(conv.session.id);
+    await clock.advance(2 * 60 * 1000);
+    const later = await mgr.sweepIdle(clock.now(), 5 * 60 * 1000);
+    expect(later.closed).toContain(conv.session.id);
+  });
+
+  it("a long pipeline turn is not swept mid-stream, and is swept after it finishes", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let started = false;
+    class LongRunner extends FakeAgentRunner {
+      override async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
+        if (text.includes("long question")) {
+          this.prompts.push({ sessionId: session.id, text });
+          started = true;
+          yield { type: "text", delta: "partial" };
+          await gate;
+          yield { type: "text", delta: "Long answer.\n\n```json\n{}\n```\n" };
+          yield { type: "usage", inputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 5 };
+          yield { type: "done", stopReason: "end_turn" };
+          return;
+        }
+        yield* super.prompt(session, text);
+      }
+    }
+    const agents = new LongRunner(baseScripts());
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      const res = await postAction(app, id, { kind: "ask", quote: "central paragraph", anchor: { where: "block", blockId: "central#b1" }, message: "long question" });
+      expect(res.status).toBe(200);
+      await waitFor(() => started);
+      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => (a.turns ?? []).some((t) => t.question === "long question"));
+      // Find the session the running job is on from its prompt record.
+      const sessionId = agents.prompts.find((p) => p.text.includes("long question"))!.sessionId;
+      void card;
+      const mid = await ctx.sessions.sweepIdle(Date.now() + 10 * 60 * 1000, 5 * 60 * 1000);
+      expect(mid.closed).not.toContain(sessionId);
+      expect(agents.sessions.has(sessionId)).toBe(true);
+      release();
+      await waitJob(ctx, res.json.jobId as string);
+      expect(ctx.jobs.get(res.json.jobId as string)?.state).toBe("done");
+      const after = await ctx.sessions.sweepIdle(Date.now() + 10 * 60 * 1000, 5 * 60 * 1000);
+      expect(after.closed).toContain(sessionId);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("fork registration and idle sweep (#143)", () => {
   it("one-shot forks (critic/concepts) are registered and swept, not leaked", async () => {
     const agents = new FakeAgentRunner(baseScripts());

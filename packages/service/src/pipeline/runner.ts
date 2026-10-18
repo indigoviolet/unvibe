@@ -136,6 +136,29 @@ async function collectStreaming(
   return { text, usage };
 }
 
+/**
+ * `collectStreaming` on a managed session: the session is in use for
+ * the whole turn, so the idle sweep never closes it mid-stream, and
+ * its idle clock restarts when the turn ends (#143 supervisor fix).
+ * Untracked sessions (reader, small, hunk) are a no-op in the manager.
+ */
+async function collectTracked(
+  sessions: SessionManager,
+  runner: AgentRunner,
+  session: Session,
+  prompt: string,
+  signal: AbortSignal | undefined,
+  onDelta: (delta: string) => void,
+  onTool?: (name: string, detail?: string) => void,
+): Promise<{ text: string; usage: TokenUsage }> {
+  sessions.beginSessionUse(session.id);
+  try {
+    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool);
+  } finally {
+    sessions.endSessionUse(session.id);
+  }
+}
+
 /** Append one more sent prompt to a job's snapshot (issue #151). */
 function appendPromptSnapshot(
   ctx: { setPromptSnapshot(text: string): void },
@@ -480,8 +503,7 @@ export class Pipeline {
             // tool activity, not the previous attempt's.
             const mcpBefore = this.opts.mcp.activitySnapshot(o.reviewId);
             const { text, usage } = await timedTurn(ctx, "first", () =>
-              collectStreaming(
-              this.opts.runner,
+              collectTracked(this.opts.sessions, this.opts.runner,
               forked.session,
               prompt,
               o.signal ?? ctx.signal,
@@ -542,7 +564,7 @@ export class Pipeline {
                 `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
               snapshotText = appendPromptSnapshot(ctx, snapshotText, "repair turn", repairPrompt);
               const repair = await timedTurn(ctx, "repair", () =>
-                collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
+                collectTracked(this.opts.sessions, this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                   ctx.reportText(d),
                   (name, detail) => ctx.reportTool(name, detail),
                 ),
@@ -704,7 +726,7 @@ export class Pipeline {
             ctx.setSessionId(session.id);
             try {
               const { text, usage } = await timedTurn(ctx, "first", () =>
-                collectStreaming(this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
+                collectTracked(this.opts.sessions, this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
                   ctx.reportText(d),
                   (name, detail) => ctx.reportTool(name, detail),
                 ),
@@ -726,7 +748,7 @@ export class Pipeline {
                   `\nReply with the same one-line summary and corrected citations. End with the same trailing JSON block.`;
                 snapshotText = appendPromptSnapshot(ctx, snapshotText, "repair turn", repairPrompt);
                 const repair = await timedTurn(ctx, "repair", () =>
-                  collectStreaming(this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
+                  collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                     ctx.reportText(d),
                     (name, detail) => ctx.reportTool(name, detail),
                   ),
@@ -912,7 +934,7 @@ export class Pipeline {
         ctx.setPromptSnapshot(prompt);
         const forked = await this.forkFor(reviewId);
         ctx.setSessionId(forked.session.id);
-        const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
+        const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
           ctx.reportText(d),
           (name, detail) => ctx.reportTool(name, detail),
         );
@@ -1009,7 +1031,7 @@ export class Pipeline {
         });
         ctx.setSessionId(session.id);
         try {
-          const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
+          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
             (name, detail) => ctx.reportTool(name, detail),
           );
@@ -1244,8 +1266,7 @@ export class Pipeline {
     const actx = this.actionContextFor(reviewId);
     try {
       const variables = buildRepairVariables(card, level, first.messages, first.blocks);
-      const { text, usage } = await collectStreaming(
-        this.opts.runner,
+      const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner,
         session,
         this.render("diagram", variables),
         signal,
@@ -1585,8 +1606,7 @@ export class Pipeline {
             const streamed = new Set<number>();
             const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
             const { usage } = await timedTurn(ctx, "first", () =>
-              collectStreaming(
-              this.opts.runner,
+              collectTracked(this.opts.sessions, this.opts.runner,
               session,
               prompt,
               ctx.signal,
@@ -1657,7 +1677,7 @@ export class Pipeline {
               // what failed (prompt wording, an ID shape, or the validator).
               ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
               const repair = await timedTurn(ctx, "repair", () =>
-                collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
+                collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
                   ctx.reportText(d),
                   (name, detail) => ctx.reportTool(name, detail),
                 ),
@@ -1981,7 +2001,7 @@ export class Pipeline {
           const forked = await this.forkFor(reviewId);
           ctx.setSessionId(forked.session.id);
           try {
-            const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
+            const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
               ctx.reportText(d),
               (name, detail) => ctx.reportTool(name, detail),
             );
@@ -2112,7 +2132,7 @@ export class Pipeline {
         const forked = await this.forkFor(reviewId);
         ctx.setSessionId(forked.session.id);
         try {
-          const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
+          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
             (name, detail) => ctx.reportTool(name, detail),
           );
@@ -2237,7 +2257,7 @@ export class Pipeline {
         });
         ctx.setSessionId(session.id);
         try {
-          const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
+          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
             (name, detail) => ctx.reportTool(name, detail),
           );
@@ -2373,7 +2393,7 @@ export class Pipeline {
         });
         ctx.setSessionId(session.id);
         try {
-          const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
+          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
           );
           ctx.reportUsage(usage);
@@ -2487,7 +2507,7 @@ export class Pipeline {
     void base;
     const forked = await this.forkFor(reviewId);
     ctx?.setSessionId(forked.session.id);
-    const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, signal, onText, (name, detail) =>
+    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, signal, onText, (name, detail) =>
       ctx?.reportTool?.(name, detail),
     );
     ctx?.reportUsage(usage);
@@ -2557,7 +2577,7 @@ export class Pipeline {
     const base = await this.ensureBase(reviewId);
     void base;
     const forked = await this.forkFor(reviewId);
-    const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, undefined, () => {});
+    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, undefined, () => {});
     await this.recordUsage(reviewId, usage);
     // Issue #50: match the page title (an echo of the concept name).
     const { cards, data, validation } = this.parseAndValidate(reviewId, text, [
@@ -2939,8 +2959,7 @@ export class Pipeline {
             void base;
             const forked = await this.forkFor(opts.reviewId);
             opts.hooks?.setSessionId(forked.session.id);
-            const { text, usage } = await collectStreaming(
-              this.opts.runner,
+            const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner,
               forked.session,
               prompt,
               opts.signal,

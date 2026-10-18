@@ -297,6 +297,24 @@ async function collectStreaming(
   return { text, usage };
 }
 
+/** `collectStreaming` with the session marked in use (never swept mid-turn). */
+async function collectTracked(
+  sessions: SessionManager,
+  runner: AgentRunner,
+  session: { id: string; provider: string; model: string },
+  prompt: string,
+  signal: AbortSignal | undefined,
+  onDelta: (delta: string) => void,
+  onTool?: (name: string, detail?: string) => void,
+): Promise<{ text: string; usage: TokenUsage }> {
+  sessions.beginSessionUse(session.id);
+  try {
+    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool);
+  } finally {
+    sessions.endSessionUse(session.id);
+  }
+}
+
 function worktreeOf(dataDir: string, reviewId: string): string {
   return path.join(dataDir, "worktrees", reviewId);
 }
@@ -556,8 +574,7 @@ export async function requestSecondOpinion(
       );
       ctx.setSessionId(forked.session.id);
       try {
-        const { text, usage } = await collectStreaming(
-          deps.runner,
+        const { text, usage } = await collectTracked(deps.sessions, deps.runner,
           forked.session,
           turn,
           req.signal ?? ctx.signal,
@@ -595,7 +612,7 @@ export async function requestSecondOpinion(
             repairPrompt = withReplayMark(repairPrompt, { kind: "second-opinion", key: replayKey });
           }
           ctx.setPromptSnapshot(`${turn}\n\n--- repair turn ---\n${repairPrompt}`);
-          const repair = await collectStreaming(deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
+          const repair = await collectTracked(deps.sessions, deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
             ctx.reportText(d),
             (name, detail) => ctx.reportTool(name, detail),
           );
