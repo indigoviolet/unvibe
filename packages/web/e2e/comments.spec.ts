@@ -173,6 +173,26 @@ test("an Ask card and a comment share one diff line", async ({ page }) => {
   await expect(note).toHaveClass(/ithread/);
 });
 
+test("AI-suggested comments carry no reply box; Ask opens an Ask card (issue #163)", async ({ page }) => {
+  await gotoReview(page);
+  await page.locator('#right [role="tab"]').getByText("Diff").click();
+  // The seeded suggestion on the diff (agent text, not yet for the PR).
+  const sug = page.locator("#t-sgperf");
+  await expect(sug).toBeVisible({ timeout: 15000 });
+  // No reply box on the suggestion — a reply could never be answered.
+  await expect(sug.locator("textarea")).toHaveCount(0);
+  // "Ask the agent about this", as on user comments.
+  await sug.getByRole("button", { name: "Ask the agent about this" }).click();
+  const card = page.locator('#right .dhunk [data-expansion]', { hasText: "quadratic case?" });
+  await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
+  await card.getByRole("button", { name: "Close" }).click();
+  // Selecting in the suggestion summons the toolbar, anchored to the comment.
+  await selectText(page, "#t-sgperf .msg", "quadratic");
+  await expect(page.locator("#selbar")).toBeVisible();
+  await page.locator('#selbar [data-act="ask"]').click();
+  await expect(page.locator('#right .ithread[data-pending-thread]')).toBeVisible({ timeout: 5000 });
+});
+
 test("reply drafts survive unrelated re-renders; Discard clears", async ({ page }) => {
   await gotoReview(page);
   const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
@@ -268,6 +288,38 @@ test("existing GitHub comments render read-only under their own heading", async 
   await expect(page.locator(".cmenu")).toContainText("Already on GitHub: consider covering bare LF");
 });
 
+test("GitHub thread in the diff expands at its line; the menu item jumps to it", async ({ page }) => {
+  await gotoReview(page);
+  const thread = page.locator("#gh-thread-101");
+  await expect(thread).toBeVisible();
+  await expect(thread).toContainText("teammate · 2 comments");
+  await thread.getByRole("button", { name: "Expand comments from teammate" }).click();
+  await expect(thread).toContainText("consider covering bare LF");
+  await expect(thread.getByText("Open on GitHub")).toHaveCount(2);
+  // The menu item jumps back to the thread in the diff.
+  await page.locator('#reviewbar [data-cm=""]').click();
+  await page.locator('.cmenu [data-ghjump="101"]').click();
+  await expect(page.locator(".cmenu")).toHaveCount(0);
+  await expect(page.locator("#gh-thread-101")).toContainText("consider covering bare LF");
+});
+
+test("outdated threads sit at their file; removed-file threads at the end; hiding folds the menu section", async ({
+  page,
+}) => {
+  await gotoReview(page);
+  const conn = page.locator(`[id="F-${CONN}"]`);
+  await expect(conn).toContainText("GitHub comments on lines no longer in the diff");
+  await expect(page.locator("[data-gh-orphans]")).toContainText("review-bot · 1 comment");
+  // Hide them in the diff: threads vanish, and the menu section follows
+  // the same setting — it folds to its heading with a count (#183).
+  await page.getByRole("button", { name: "Review filters" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
+  await expect(page.locator("#gh-thread-101")).toHaveCount(0);
+  await page.locator('#reviewbar [data-cm=""]').click();
+  await expect(page.locator(".cmenu [data-ghhead]")).toContainText(/Already on GitHub · \d+ hidden/);
+  await expect(page.locator('.cmenu [data-ghjump="101"]')).toHaveCount(0);
+});
+
 test("comments dropdown is wide enough for tabs, paths and previews", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#reviewbar [data-cm=""]').click();
@@ -282,6 +334,51 @@ test("comments dropdown is wide enough for tabs, paths and previews", async ({ p
   expect(all).not.toBeNull();
   expect(pr).not.toBeNull();
   expect(Math.abs((all as { y: number }).y - (pr as { y: number }).y)).toBeLessThan(2);
+});
+
+test("hide in the filter menu collapses the menu section to its count; its heading shows both again (#183)", async ({
+  page,
+}) => {
+  await gotoReview(page);
+  // Diff threads are shown to start with.
+  await expect(page.locator("#gh-thread-101")).toBeVisible();
+  // Hide existing GitHub comments from the diff's filter menu.
+  await page.getByRole("button", { name: "Review filters" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
+  await expect(page.locator("#gh-thread-101")).toHaveCount(0);
+  // The comments menu's section collapses to its heading with a count.
+  await page.locator('#reviewbar [data-cm=""]').click();
+  const panel = page.locator(".cmenu");
+  await expect(panel.locator("[data-ghhead]")).toContainText(/Already on GitHub · \d+ hidden/);
+  await expect(panel.locator("[data-ghjump]")).toHaveCount(0);
+  // Clicking the heading shows them again, in the menu and in the diff.
+  await panel.locator("[data-ghhead]").click();
+  await expect(panel.locator('[data-ghjump="101"]')).toBeVisible();
+  await page.locator('#reviewbar [data-cm=""]').click();
+  await expect(page.locator("#gh-thread-101")).toBeVisible();
+});
+
+test("existing GitHub list: no sideways overflow and clamped rows at minimum width (#183)", async ({ page }) => {
+  // Narrow window: the menu sits at its minimum width.
+  await page.setViewportSize({ width: 800, height: 700 });
+  await gotoReview(page);
+  if (!(await page.locator("#right").isVisible())) {
+    await page.locator("#toggleRight").click();
+  }
+  await page.locator('#reviewbar [data-cm=""]').click();
+  const panel = page.locator(".cmenu");
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('[data-ghjump="105"]')).toBeVisible();
+  const overflow = await panel.evaluate((el) => el.scrollWidth <= el.clientWidth);
+  expect(overflow).toBe(true);
+  // Rows are clamped: the long made-up body shows at most a few lines.
+  const body = panel.locator('[data-ghjump="105"] .ghmenu');
+  const lines = await body.evaluate((el) => {
+    const h = el.getBoundingClientRect().height;
+    const lh = Number.parseFloat(getComputedStyle(el).lineHeight) || 18;
+    return h / lh;
+  });
+  expect(lines).toBeLessThanOrEqual(3.5);
 });
 
 test("comments dropdown stays inside the viewport in a narrow window", async ({ page }) => {

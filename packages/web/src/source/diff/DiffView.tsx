@@ -2,9 +2,11 @@
  * Diff pane (PRD §4.13): toolbar, files panel, file/hunk list.
  *
  * Behaviour ported from `prototype.html`; data comes from the review
- * snapshot (`files` + `hunkStates`). Hunk state (folded, reviewed, note,
- * summary) persists through `PATCH /api/reviews/:id/hunks/:hash`; in mock
+ * snapshot (`files` + `hunkStates` + `fileStates`). Hunk state (folded,
+ * reviewed, summary) and file fold state persist through
+ * `PATCH /api/reviews/:id/hunks/:hash` and `…/files/:fileKey`; in mock
  * mode the in-memory API applies the same change through the WS-patch path.
+ * A file's reviewed state is derived from its hunks, never stored.
  * View preferences persist in `localStorage`.
  *
  * Later milestones plug in here without touching this file's contract:
@@ -13,9 +15,10 @@
  * - line-number clicks emit `onLineClick` ("start a comment" hook);
  * - the guide agent jumps here via `revealSource("diff:…")`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Hunk, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import type { DiffFilter, Hunk, HunkScoreLevel, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import { HUNK_SCORE_LABELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -38,6 +41,7 @@ import {
   shouldHideHunk,
   type TreeRow,
 } from "./diffLogic.js";
+import { useGithubThreads } from "../../comments/GithubThreads.js";
 import { useLineSlots, type LineSlots } from "./lineSlots.js";
 import {
   observeDiffPinned,
@@ -98,6 +102,12 @@ export interface DiffViewProps {
   reviewId: string;
   /** Extra rows under a diff line, keyed `${fileKey}:${newSideLine}`. */
   lineSlots?: LineSlots;
+  /**
+   * Issue #167: open floating conversation cards by hunk
+   * (`floatingHunkKey`), rendered at the hunk level outside the hunk's
+   * sideways scroller. Optional so DiffView stays usable standalone.
+   */
+  floatingExpansions?: ReadonlyMap<string, import("@unvibe/shared").Annotation[]>;
   /** New-side lines that already have a comment (shows the comment icon). */
   commentedLines?: ReadonlySet<string>;
   /** "Start a comment" hook: fired when a new-side line number is clicked. */
@@ -119,15 +129,19 @@ interface Highlight {
   nonce: number;
 }
 
-export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, lookupPage, onOpenPage, onFollowUp }: DiffViewProps): ReactNode {
+export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLines, onLineClick, lookupPage, onOpenPage, onFollowUp }: DiffViewProps): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
   const setSnapshot = useReview((s) => s.setSnapshot);
   const [prefs, setPrefs] = useState<DiffPrefs>(loadPrefs);
   const [fq, setFq] = useState("");
-  const [fileFold, setFileFold] = useState<Record<string, boolean>>({});
+  // Issue #169: the score/plotline filter — one dropdown in the filter
+  // menu, remembered with the review (snapshot `diffFilter`, not local
+  // prefs). Local state applies at once; the PATCH persists it and the
+  // snapshot echo converges back through the effect below.
+  const [plotFilter, setPlotFilter] = useState<DiffFilter>({});
+  const lastSentFilter = useRef<string>("{}");
   const [unhidden, setUnhidden] = useState<Record<string, boolean>>({});
   const [dirOpen, setDirOpen] = useState<Record<string, boolean>>({});
-  const [editingNote, setEditingNote] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [fileHighlight, setFileHighlight] = useState<string | null>(null);
@@ -143,7 +157,24 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const [briefs, setBriefs] = useState<Record<string, string> | null>(null);
   const hlTimer = useRef<number | undefined>(undefined);
   const ctxSlots = useLineSlots();
-  const slots = useMemo(() => ({ ...ctxSlots, ...lineSlots }), [ctxSlots, lineSlots]);
+  const gh = useGithubThreads();
+  // A user thread and a GitHub thread share a line's slot row: merge
+  // the content instead of letting one map overwrite the other.
+  const slots = useMemo(() => {
+    const merged: LineSlots = { ...ctxSlots, ...lineSlots };
+    for (const [key, node] of Object.entries(gh.lineSlots)) {
+      const prev = merged[key];
+      merged[key] = prev ? (
+        <Fragment key={key}>
+          {prev}
+          {node}
+        </Fragment>
+      ) : (
+        node
+      );
+    }
+    return merged;
+  }, [ctxSlots, lineSlots, gh.lineSlots]);
 
   useEffect(() => {
     try {
@@ -152,6 +183,16 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       // Private mode: prefs just don't persist.
     }
   }, [prefs]);
+
+  // Adopt the review's stored filter when it arrives or changes
+  // server-side; ignore the echo of our own change (tracked above).
+  const storedFilterKey = JSON.stringify(snapshot?.diffFilter ?? {});
+  useEffect(() => {
+    if (lastSentFilter.current !== storedFilterKey) {
+      lastSentFilter.current = storedFilterKey;
+      setPlotFilter(snapshot?.diffFilter ? { ...snapshot.diffFilter } : {});
+    }
+  }, [reviewId, storedFilterKey, snapshot?.diffFilter]);
 
   // Snapshot: the guide column fetches it too; fetch here when absent so the
   // diff pane works standalone (tests, deep links). `?version=n` views an
@@ -267,6 +308,24 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [snapshot],
   );
 
+  // File fold state lives on the snapshot (issue #162), so it survives
+  // tab switches, reloads and restarts — unlike the old local state.
+  const fileFolded = useMemo(
+    () => new Map<string, boolean>((snapshot?.fileStates ?? []).map((s) => [s.fileKey, s.folded])),
+    [snapshot],
+  );
+
+  const patchFileFold = useCallback(
+    async (fileKey: string, folded: boolean) => {
+      try {
+        await api.updateFile(reviewId, fileKey, { folded });
+      } catch {
+        toast("Couldn't save file state");
+      }
+    },
+    [reviewId],
+  );
+
   // Activated hunk summaries (issue #138): content hash → conversation
   // card. Only hashes in the current files draw — a card whose hunk
   // changed stays with the old version and never renders on the new one.
@@ -319,10 +378,27 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   );
 
   const cats = useMemo(() => new Set(prefs.cats), [prefs.cats]);
+  const hunkStateOf = useCallback(
+    (contentHash: string) => {
+      const s = states.get(contentHash);
+      return s ? { score: s.score, plotline: s.plotline } : undefined;
+    },
+    [states],
+  );
+  const plotActive = plotFilter.plotline !== undefined || plotFilter.score !== undefined;
   const visible = useMemo(
     () =>
-      snapshot ? filterFiles(snapshot.files, { query: fq, cats, hideReviewed: prefs.hideReviewed, reviewedCount }) : [],
-    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount],
+      snapshot
+        ? filterFiles(snapshot.files, {
+            query: fq,
+            cats,
+            hideReviewed: prefs.hideReviewed,
+            reviewedCount,
+            ...(plotActive ? { plot: plotFilter } : {}),
+            hunkStateOf,
+          })
+        : [],
+    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount, plotActive, plotFilter, hunkStateOf],
   );
 
   const progress = useMemo(() => {
@@ -364,21 +440,95 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     }, 2600);
   }, []);
 
+  // Older versions are view-only for user data (reviewed, summaries):
+  // those writes are refused with a pointer back. Folding only hides
+  // code, so it stays allowed while browsing history.
+  const readOnly =
+    versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
+
+  const setPlotFilterAndPersist = useCallback(
+    (next: DiffFilter) => {
+      setPlotFilter(next);
+      lastSentFilter.current = JSON.stringify(next);
+      // Read-only history: the choice still applies to this view, it just
+      // is not remembered with the review.
+      if (readOnly) return;
+      const body = {
+        ...(next.plotline !== undefined ? { plotline: next.plotline } : { plotline: null }),
+        ...(next.score !== undefined ? { score: next.score } : { score: null }),
+      };
+      api.updateDiffFilter(reviewId, body).catch(() => {
+        toast("Couldn't save the filter");
+      });
+    },
+    [reviewId, readOnly],
+  );
+
+  // Owner direction (#169): dots and chips are the selectors — clicking
+  // one toggles that dimension of the stored filter; there are no radio
+  // groups in the filter menu any more.
+  const toggleScore = useCallback(
+    (level: HunkScoreLevel) => {
+      const next: DiffFilter = { ...plotFilter };
+      if (next.score === level) delete next.score;
+      else next.score = level;
+      setPlotFilterAndPersist(next);
+    },
+    [plotFilter, setPlotFilterAndPersist],
+  );
+  const togglePlotline = useCallback(
+    (id: string) => {
+      const next: DiffFilter = { ...plotFilter };
+      if (next.plotline === id) delete next.plotline;
+      else next.plotline = id;
+      setPlotFilterAndPersist(next);
+    },
+    [plotFilter, setPlotFilterAndPersist],
+  );
+  const hiddenHunks = useMemo(() => {
+    const shown = visible.reduce((s, f) => s + f.hunks.length, 0);
+    return Math.max(0, progress.total - shown);
+  }, [visible, progress.total]);
+
+  const plotlines: Plotline[] = useMemo(() => snapshot?.plotlines ?? [], [snapshot?.plotlines]);
+  const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
+
   const doReveal = useCallback(
-    (target: RevealTarget) => {
+    (target: RevealTarget, keepFilters = false) => {
       const snap = useReview.getState().snapshot;
       if (!snap) return;
       const file = snap.files.find((f) => f.fileKey === target.fileKey);
       if (!file) return;
       const st = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
       const fullyReviewed = file.hunks.every((h) => st.get(h.contentHash)?.reviewed);
-      setPrefs((p) => ({
-        ...p,
-        cats: p.cats.includes(file.category) ? p.cats : [...p.cats, file.category],
-        hideReviewed: p.hideReviewed && fullyReviewed ? false : p.hideReviewed,
-      }));
-      setFq((prev) => (file.path.toLowerCase().includes(prev.toLowerCase()) ? prev : ""));
-      setFileFold((prev) => ({ ...prev, [file.fileKey]: false }));
+      // Citation reveals clear whatever filter hides the target (the
+      // line was promised); filter actions jumping to their own first
+      // hunk (#190) keep every filter exactly as the user left it.
+      if (!keepFilters) {
+        setPrefs((p) => ({
+          ...p,
+          cats: p.cats.includes(file.category) ? p.cats : [...p.cats, file.category],
+          hideReviewed: p.hideReviewed && fullyReviewed ? false : p.hideReviewed,
+        }));
+        setFq((prev) => (file.path.toLowerCase().includes(prev.toLowerCase()) ? prev : ""));
+      }
+      // A jump target the score/plotline filter would hide clears the
+      // filter (citations promise the line will show). The stored filter
+      // is the freshest copy (a selector in the guide may have just set
+      // it), so check against the snapshot, not local state.
+      if (!keepFilters && target.start !== undefined) {
+        const end = target.end ?? target.start;
+        const activeFilter = snap.diffFilter ?? plotFilter;
+        const seen = file.hunks.some(
+          (h) =>
+            hunkOverlaps(h, target.start as number, end) &&
+            hunkMatchesFilter(st.get(h.contentHash)?.score, st.get(h.contentHash)?.plotline, activeFilter),
+        );
+        if (!seen && (activeFilter.plotline !== undefined || activeFilter.score !== undefined)) {
+          setPlotFilterAndPersist({});
+        }
+      }
+      void patchFileFold(file.fileKey, false);
       setEagerFiles((prev) => new Set(prev).add(file.fileKey));
       if (target.start === undefined) {
         flash(null, file.fileKey);
@@ -399,19 +549,19 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       }
       flash({ fileKey: file.fileKey, start: target.start, end, nonce: Date.now() }, null);
     },
-    [reviewId, flash],
+    [reviewId, flash, patchFileFold, plotActive, plotFilter, setPlotFilterAndPersist],
   );
 
   useEffect(() => {
     if (!snapshot) return;
-    const ref = takePendingReveal();
-    if (ref) {
-      const t = parseDiffRef(ref);
-      if (t) doReveal(t);
+    const p = takePendingReveal();
+    if (p) {
+      const t = parseDiffRef(p.ref);
+      if (t) doReveal(t, p.keepFilters);
     }
   }, [snapshot, doReveal]);
 
-  useEffect(() => onRevealSource((_ref, target) => doReveal(target)), [doReveal]);
+  useEffect(() => onRevealSource((_ref, target, opts) => doReveal(target, opts?.keepFilters ?? false)), [doReveal]);
 
   // Mock-mode hook for Playwright: `window.__revealSource("diff:conn:82")`.
   useEffect(() => {
@@ -450,15 +600,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   useEffect(() => () => window.clearTimeout(hlTimer.current), []);
 
-  // Older versions are view-only for user data (reviewed, notes,
-  // summaries): those writes are refused with a pointer back. Folding only
-  // hides code, so it stays allowed while browsing history.
-  const readOnly =
-    versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
-
   const patchHunk = useCallback(
     async (hash: string, body: UpdateHunkRequest) => {
-      if (readOnly && (body.reviewed !== undefined || body.note !== undefined || body.summary !== undefined)) {
+      if (readOnly && (body.reviewed !== undefined || body.summary !== undefined)) {
         toast("Viewing an older version · read-only");
         return;
       }
@@ -490,31 +634,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         });
       },
       deleteSummary: (hash) => void patchHunk(hash, { summary: null }),
-      beginNote: (hash, current) => {
-        setEditingNote((prev) => ({ ...prev, [hash]: current ?? "" }));
-        setTimeout(() => document.getElementById(`hn-${hash}`)?.focus(), 0);
-      },
-      changeNote: (hash, draft) => setEditingNote((prev) => ({ ...prev, [hash]: draft })),
-      saveNote: (hash) => {
-        const draft = (editingNote[hash] ?? "").trim();
-        setEditingNote((prev) => {
-          const next = { ...prev };
-          delete next[hash];
-          return next;
-        });
-        // Empty draft clears (service: explicit null deletes the note).
-        void patchHunk(hash, { note: draft === "" ? null : draft });
-      },
-      discardNote: (hash) =>
-        setEditingNote((prev) => {
-          const next = { ...prev };
-          delete next[hash];
-          return next;
-        }),
-      deleteNote: (hash) => void patchHunk(hash, { note: null }),
       toggleReviewed: (hash, reviewed) => void patchHunk(hash, { reviewed: !reviewed, folded: !reviewed }),
     }),
-    [patchHunk, reviewId, editingNote],
+    [patchHunk, reviewId],
   );
 
   const setView = useCallback(
@@ -539,6 +661,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       cats: new Set(prefs.cats),
       hideReviewed: prefs.hideReviewed,
       reviewedCount,
+      ...(plotActive ? { plot: plotFilter } : {}),
+      hunkStateOf: (hash) => {
+        const s = st.get(hash);
+        return s ? { score: s.score, plotline: s.plotline } : undefined;
+      },
     })) {
       f.hunks.forEach((h) => {
         if (
@@ -550,29 +677,37 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         ) {
           return;
         }
+        if (!hunkMatchesFilter(st.get(h.contentHash)?.score, st.get(h.contentHash)?.plotline, plotFilter)) {
+          return;
+        }
         targets.push({ file: f, hunk: h });
       });
     }
-    // Fold first so the UI settles, then summarize hunks lacking one —
-    // except past the hunk-pass fan-out limit (issue #107), where Fold
-    // all folds only: requesting a summary per hunk would be exactly the
-    // fan-out the pipeline refuses to run, and the per-hunk Summarize
-    // button in the hunk header stays as the on-demand path.
+    // Fold first so the UI settles, then summarize only the hunks still
+    // lacking one — except past the hunk-pass fan-out limit (issue #107),
+    // where Fold all folds only: requesting a summary per hunk would be
+    // exactly the fan-out the pipeline refuses to run, and the per-hunk
+    // Summarize button in the hunk header stays as the on-demand path.
     await Promise.all(targets.map(({ hunk }) => api.updateHunk(reviewId, hunk.contentHash, { folded: true }).catch(() => {})));
     const totalHunks = snap.files.reduce((n, f) => n + f.hunks.length, 0);
     const overFanout = totalHunks > HUNK_PASS_FANOUT_LIMIT;
+    const foldedNoun = `${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}`;
     if (!overFanout) {
+      let missing = 0;
       for (const { hunk } of targets) {
-        if (!st.get(hunk.contentHash)?.summary) actions.summarize(hunk.contentHash);
+        if (!st.get(hunk.contentHash)?.summary) {
+          missing += 1;
+          actions.summarize(hunk.contentHash);
+        }
       }
-      toast(`Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. Summaries appear as they are written.`);
+      toast(missing > 0 ? `Folded ${foldedNoun}. Summaries appear as they are written.` : `Folded ${foldedNoun}.`);
     } else {
       toast(
-        `Folded ${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}. ` +
+        `Folded ${foldedNoun}. ` +
           "This review is past the per-hunk summary limit, so summaries stay on demand — use the spark button on any hunk.",
       );
     }
-  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions]);
+  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions, plotActive, plotFilter]);
 
   const unfoldAll = useCallback(async () => {
     if (readOnly) {
@@ -581,11 +716,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     }
     const snap = useReview.getState().snapshot;
     if (!snap) return;
-    setFileFold({});
     await Promise.all(
-        snap.files.flatMap((f) => f.hunks.map((h) => api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {}))),
-      );
-    }, [reviewId, readOnly]);
+      snap.files.flatMap((f) => [
+        api.updateFile(reviewId, f.fileKey, { folded: false }).catch(() => {}),
+        ...f.hunks.map((h) => api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {})),
+      ]),
+    );
+  }, [reviewId, readOnly]);
 
   const markFileReviewed = useCallback(
     (file: ReviewFile, allReviewed: boolean) => {
@@ -602,6 +739,16 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [reviewId, readOnly],
   );
 
+  // Issue #168: one show/hide control for existing GitHub comments,
+  // remembered with the review. Hiding never removes them from the
+  // agents' context; the comments menu's section follows this setting.
+  const toggleGithubComments = useCallback(() => {
+    const current = useReview.getState().snapshot?.viewPrefs.showExistingComments ?? true;
+    api.updateView(reviewId, { showExistingComments: !current }).catch(() => {
+      toast("Couldn't save that change");
+    });
+  }, [reviewId]);
+
   if (!snapshot) {
     return (
       <div>
@@ -617,6 +764,18 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // Fold-all summarises per hunk only under the fan-out limit (issue
   // #107): past it the button folds without requesting summaries.
   const overFanoutLimit = snapshot.files.reduce((n, f) => n + f.hunks.length, 0) > HUNK_PASS_FANOUT_LIMIT;
+  // Fold-all wording (issue #162): only visible hunks still lacking a
+  // summary are summarized, so the tooltip promises just that — and stays
+  // quiet about summarizing when every visible hunk already has one.
+  const foldMissing = snapshot.files.reduce(
+    (n, f) => n + f.hunks.filter((h) => !isHidden(h) && states.get(h.contentHash)?.summary === undefined).length,
+    0,
+  );
+  const foldTip = overFanoutLimit
+    ? "Fold the code (this review is past the per-hunk summary limit; summaries stay on demand)"
+    : foldMissing > 0
+      ? "Fold the code; hunks still missing a summary are summarized with the agent"
+      : "Fold the code (every hunk already has a summary)";
 
   // Update banner: the local refresh result wins; otherwise the snapshot's
   // own `versionStatus` (set when a refresh created a newer version).
@@ -628,6 +787,32 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   return (
     <div>
       <div className="dtool">
+        {plotFilter.score !== undefined ? (
+          <span className="fchip" data-filterchip="score">
+            Score: {HUNK_SCORE_LABELS[plotFilter.score].toLowerCase()} or higher · {hiddenHunks} hidden
+            <button
+              type="button"
+              aria-label="Clear score filter"
+              data-tip="Clear filter"
+              onClick={() => toggleScore(plotFilter.score as HunkScoreLevel)}
+            >
+              ×
+            </button>
+          </span>
+        ) : null}
+        {plotFilter.plotline !== undefined ? (
+          <span className="fchip" data-filterchip="plotline">
+            Plotline: {plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline} · {hiddenHunks} hidden
+            <button
+              type="button"
+              aria-label="Clear plotline filter"
+              data-tip="Clear filter"
+              onClick={() => togglePlotline(plotFilter.plotline as string)}
+            >
+              ×
+            </button>
+          </span>
+        ) : null}
         <button
           className="tbtn"
           type="button"
@@ -645,12 +830,49 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           <Icon name={prefs.filesOpen ? "down" : "right"} />
           Files <span className="hint">{visible.length}/{snapshot.files.length}</span>
         </button>
+        <FilterMenuButton
+          label="Review filters"
+          tip={
+            prefs.hideReviewed || !snapshot.viewPrefs.showExistingComments
+              ? `Hiding: ${[prefs.hideReviewed ? "Reviewed" : null, !snapshot.viewPrefs.showExistingComments ? "GitHub comments" : null].filter(Boolean).join(", ")}`
+              : "Reviewed and GitHub comment filters"
+          }
+          icon="check"
+          rows={[
+            {
+              key: "__reviewed",
+              label: "Reviewed",
+              checked: !prefs.hideReviewed,
+              count: snapshot.files.filter((f) => reviewedCount(f) === f.hunks.length).length,
+              toggle: () => setPrefs((p) => ({ ...p, hideReviewed: !p.hideReviewed })),
+            },
+            {
+              key: "__github",
+              label: "GitHub comments",
+              checked: snapshot.viewPrefs.showExistingComments,
+              count: snapshot.existingComments?.length ?? 0,
+              toggle: toggleGithubComments,
+            },
+          ]}
+        />
         <span className="seg" role="group" aria-label="Diff view">
-          <button type="button" aria-pressed={prefs.view === "unified"} onClick={() => setView("unified")}>
-            Unified
+          <button
+            type="button"
+            aria-pressed={prefs.view === "unified"}
+            aria-label="Unified"
+            data-tip="Unified"
+            onClick={() => setView("unified")}
+          >
+            <Icon name="unified" />
           </button>
-          <button type="button" aria-pressed={prefs.view === "split"} onClick={() => setView("split")}>
-            Split
+          <button
+            type="button"
+            aria-pressed={prefs.view === "split"}
+            aria-label="Split"
+            data-tip="Split"
+            onClick={() => setView("split")}
+          >
+            <Icon name="split" />
           </button>
         </span>
         <button
@@ -666,21 +888,16 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             })
           }
         >
-          {prefs.hideUninteresting ? "✓ " : ""}Hide uninteresting
+          <Icon name="hide" />
         </button>
         <button
           className="x"
           type="button"
-          data-tip={
-            overFanoutLimit
-              ? "Fold the code (this review is past the per-hunk summary limit; summaries stay on demand)"
-              : "Summarize every hunk with the agent, then fold the code"
-          }
+          data-tip={foldTip}
           aria-label="Fold all"
           onClick={() => void foldAll()}
         >
           <Icon name="spark" />
-          Fold all
         </button>
         <button
           className="x"
@@ -689,7 +906,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           aria-label="Unfold all"
           onClick={() => void unfoldAll()}
         >
-          Unfold all
+          <Icon name="downDown" />
         </button>
         <button
           className="x"
@@ -699,8 +916,19 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           disabled={refreshing || readOnly}
           onClick={() => void doRefresh()}
         >
-          {refreshing ? "Refreshing…" : "Refresh"}
+          <Icon name="refresh" />
         </button>
+        <span
+          className="rprog"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.reviewed}
+          aria-label={`${progress.reviewed} of ${progress.total} hunks reviewed`}
+          data-tip={`${progress.reviewed} of ${progress.total} hunks reviewed`}
+        >
+          <i style={{ width: `${progress.total === 0 ? 0 : (100 * progress.reviewed) / progress.total}%` }} />
+        </span>
       </div>
       {readOnly ? (
         <div className="dbar" role="status">
@@ -721,27 +949,26 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               value={fq}
               onChange={(e) => setFq(e.target.value)}
             />
-            <FilterDropdown
-              cats={cats}
-              hideReviewed={prefs.hideReviewed}
-              catCount={catCount}
-              reviewedFiles={snapshot.files.filter((f) => reviewedCount(f) === f.hunks.length).length}
-              onToggleCat={(k) =>
-                setPrefs((p) => ({
-                  ...p,
-                  cats: p.cats.includes(k) ? p.cats.filter((x) => x !== k) : [...p.cats, k],
-                }))
+            <FilterMenuButton
+              label="File filters"
+              tip={
+                CATS.some((c) => !cats.has(c.k))
+                  ? `Hiding: ${CATS.filter((c) => !cats.has(c.k)).map((c) => c.l).join(", ")}`
+                  : "Filter files by type"
               }
-              onToggleReviewed={() => setPrefs((p) => ({ ...p, hideReviewed: !p.hideReviewed }))}
+              icon="filter"
+              rows={CATS.map((c) => ({
+                key: c.k,
+                label: c.l,
+                checked: cats.has(c.k),
+                count: catCount(c.k),
+                toggle: () =>
+                  setPrefs((p) => ({
+                    ...p,
+                    cats: p.cats.includes(c.k) ? p.cats.filter((x) => x !== c.k) : [...p.cats, c.k],
+                  })),
+              }))}
             />
-          </div>
-          <div className="prog">
-            <span>
-              {progress.reviewed}/{progress.total} hunks reviewed
-            </span>
-            <span className="bar">
-              <i style={{ width: `${progress.total === 0 ? 0 : Math.round((100 * progress.reviewed) / progress.total)}%` }} />
-            </span>
           </div>
           <div className="flist">
             {tree.length > 0 ? (
@@ -766,8 +993,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
                     file={row.file}
                     depth={row.depth}
                     reviewed={reviewedCount(row.file)}
-                      onJump={(key) => {
-                      setFileFold((prev) => ({ ...prev, [key]: false }));
+                    onJump={(key) => {
+                      void patchFileFold(key, false);
                       setEagerFiles((prev) => new Set(prev).add(key));
                       setTimeout(() => {
                         const el = document.getElementById(`F-${key}`);
@@ -788,6 +1015,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           </div>
         </div>
       ) : null}
+      <div className="dband" aria-hidden="true" />
       {visible.length > 0 ? (
         visible.map((f, vi) => (
           // One boundary per file section: a file that fails to render
@@ -806,10 +1034,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               file={f}
               view={prefs.view}
               reviewed={reviewedCount(f)}
-              folded={!!fileFold[f.fileKey]}
+              folded={fileFolded.get(f.fileKey) ?? false}
               eager={vi < 3 || eagerFiles.has(f.fileKey)}
               busy={busy}
-              editingNote={editingNote}
               slots={slots}
               commentedLines={commentedLines ?? new Set()}
               highlight={highlight?.fileKey === f.fileKey ? { start: highlight.start, end: highlight.end } : null}
@@ -822,13 +1049,19 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               states={states}
               hunkCards={hunkCards}
               promotedHunks={promotedHunks}
+              floatingExpansions={floatingExpansions}
               lookupPage={lookupPage ?? (() => undefined)}
               onOpenPage={onOpenPage ?? (() => {})}
               onFollowUp={onFollowUp ?? (() => {})}
+              plotFilter={plotActive ? plotFilter : undefined}
+              plotlineNames={plotlineNames}
+              onSelectScore={toggleScore}
+              onSelectPlotline={togglePlotline}
               isHidden={isHidden}
               actions={actions}
               onLineClick={onLineClick}
-              onToggleFileFold={(key) => setFileFold((prev) => ({ ...prev, [key]: !prev[key] }))}
+              fileTop={gh.fileTops[f.fileKey]}
+              onToggleFileFold={(key) => void patchFileFold(key, !(fileFolded.get(key) ?? false))}
               onMarkFileReviewed={markFileReviewed}
               onUnhide={(hashes) => setUnhidden((prev) => ({ ...prev, ...Object.fromEntries(hashes.map((h) => [h, true])) }))}
             />
@@ -839,56 +1072,82 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           No files match the filters.
         </p>
       )}
+      {gh.orphans ? (
+        <div className="ghfile" data-gh-orphans="">
+          <span className="hint">GitHub comments on files no longer in the diff</span>
+          {gh.orphans}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function FilterDropdown({
-  cats,
-  hideReviewed,
-  catCount,
-  reviewedFiles,
-  onToggleCat,
-  onToggleReviewed,
+interface FilterRow {
+  key: string;
+  label: string;
+  checked: boolean;
+  count: number;
+  toggle: () => void;
+}
+
+/**
+ * One icon-button filter menu (issue #184): the file-tree menu holds
+ * file types only; the toolbar's second filter holds the review-state
+ * rows (Reviewed, GitHub comments). Checked = shown.
+ */
+function FilterMenuButton({
+  label,
+  tip,
+  icon,
+  rows,
 }: {
-  cats: ReadonlySet<string>;
-  hideReviewed: boolean;
-  catCount: (k: string) => number;
-  reviewedFiles: number;
-  onToggleCat: (k: string) => void;
-  onToggleReviewed: () => void;
+  label: string;
+  /** Tooltip naming what is hidden when active (owner: no badge). */
+  tip: string;
+  icon: "filter" | "check";
+  rows: FilterRow[];
 }): ReactNode {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ctlRef = useRef<HTMLSpanElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const active = rows.some((r) => !r.checked);
+  const itemCount = rows.length;
 
-  // Checked = shown. Default: every category + Reviewed shown.
-  const rows: { key: string; label: string; checked: boolean; count: number; toggle: () => void }[] = [
-    ...CATS.map((c) => ({
-      key: c.k,
-      label: c.l,
-      checked: cats.has(c.k),
-      count: catCount(c.k),
-      toggle: () => onToggleCat(c.k),
-    })),
-    {
-      key: "__reviewed",
-      label: "Reviewed",
-      checked: !hideReviewed,
-      count: reviewedFiles,
-      toggle: onToggleReviewed,
-    },
-  ];
-  const activeCount = CATS.length - cats.size + (hideReviewed ? 1 : 0);
-  const active = activeCount > 0;
+  // The menu renders in a portal at the top layer, positioned from its
+  // button and clamped into the viewport: the pinned toolbar scrolls
+  // sideways (overflow), which used to clip it at the pane edge.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = (): void => {
+      const btn = btnRef.current;
+      const menu = menuRef.current;
+      if (!btn || !menu) return;
+      const br = btn.getBoundingClientRect();
+      const w = menu.offsetWidth;
+      const h = menu.offsetHeight;
+      const left = Math.max(8, Math.min(br.right - w, window.innerWidth - w - 8));
+      const top = br.bottom + h + 8 <= window.innerHeight ? br.bottom + 4 : Math.max(8, br.top - h - 4);
+      setPos((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left }));
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("scroll", place, true);
+    };
+  }, [open ]);
 
   // Close on outside press or Escape, like the other dropdowns
   // (SecondOpinionControl, CommentsMenu).
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent): void => {
-      if (!ctlRef.current?.contains(e.target as Node)) setOpen(false);
+      const n = e.target as Node;
+      if (!ctlRef.current?.contains(n) && !menuRef.current?.contains(n)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
@@ -907,27 +1166,71 @@ function FilterDropdown({
   // Focus the first row on open so Arrow keys work immediately; Esc
   // returns focus to the button above.
   useEffect(() => {
-    if (open) itemRefs.current[0]?.focus();
-  }, [open ]);
+    if (open && pos) (itemRefs.current[0] ?? menuRef.current?.querySelector("button"))?.focus();
+  }, [open, pos]);
 
   const move = (dir: 1 | -1): void => {
     const el = document.activeElement as HTMLElement | null;
     const at = itemRefs.current.findIndex((b) => b === el);
-    const next = at < 0 ? (dir === 1 ? 0 : rows.length - 1) : (at + dir + rows.length) % rows.length;
+    const next = at < 0 ? (dir === 1 ? 0 : itemCount - 1) : (at + dir + itemCount) % itemCount;
     itemRefs.current[next]?.focus();
   };
+
+  const menu = open ? (
+    <div
+      ref={menuRef}
+      className="fmenu portal"
+      role="menu"
+      aria-label={label}
+      style={pos ? { position: "fixed", top: pos.top, left: pos.left } : { position: "fixed", visibility: "hidden" }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          move(1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          move(-1);
+        } else if (e.key === "Home") {
+          e.preventDefault();
+          itemRefs.current[0]?.focus();
+        } else if (e.key === "End") {
+          e.preventDefault();
+          itemRefs.current[itemCount - 1]?.focus();
+        }
+      }}
+    >
+      {rows.map((r, i) => (
+        <button
+          key={r.key}
+          ref={(el) => {
+            itemRefs.current[i] = el;
+          }}
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={r.checked}
+          onClick={r.toggle}
+        >
+          <span className="tick" aria-hidden="true">
+            {r.checked ? "✓" : ""}
+          </span>
+          <span className="lbl">{r.label}</span>
+          <span className="cnt">{r.count}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <span className="fctl" ref={ctlRef}>
       <button
         ref={btnRef}
-        className="tbtn"
+        className="tbtn fbtn"
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-pressed={active}
-        aria-label="File filters"
-        title="Filter files by type"
+        aria-label={label}
+        data-tip={tip}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && !open) {
@@ -936,50 +1239,9 @@ function FilterDropdown({
           }
         }}
       >
-        Filter
-        {active ? <span className="count">{activeCount}</span> : null}
+        <Icon name={icon} />
       </button>
-      {open ? (
-        <div
-          className="fmenu"
-          role="menu"
-          aria-label="File filters"
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              move(1);
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              move(-1);
-            } else if (e.key === "Home") {
-              e.preventDefault();
-              itemRefs.current[0]?.focus();
-            } else if (e.key === "End") {
-              e.preventDefault();
-              itemRefs.current[rows.length - 1]?.focus();
-            }
-          }}
-        >
-          {rows.map((r, i) => (
-            <button
-              key={r.key}
-              ref={(el) => {
-                itemRefs.current[i] = el;
-              }}
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={r.checked}
-              onClick={r.toggle}
-            >
-              <span className="tick" aria-hidden="true">
-                {r.checked ? "✓" : ""}
-              </span>
-              <span className="lbl">{r.label}</span>
-              <span className="cnt">{r.count}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {menu ? createPortal(menu, document.body) : null}
     </span>
   );
 }
@@ -999,19 +1261,16 @@ function FileTreeRow({
   const added = file.hunks.reduce((s, h) => s + h.added, 0);
   const removed = file.hunks.reduce((s, h) => s + h.removed, 0);
   return (
-    <button
-      className="fr"
-      type="button"
-      style={{ paddingLeft: 10 + depth * 14 + 20 }}
-      title={file.path}
-      onClick={() => onJump(file.fileKey)}
-    >
-      <span className="nm">{file.path.split("/").pop()}</span>
-      {file.category === "generated" ? <span className="gtag">gen</span> : null}
-      <span className="st">
-        <span className="a">+{added}</span> <span className="d">−{removed}</span>
-      </span>
-      <span className={`rv${reviewed === total ? " done" : ""}`}>{reviewed === total ? "✓" : `${reviewed}/${total}`}</span>
-    </button>
+    <div className="fr" style={{ paddingLeft: 10 + depth * 14 + 20 }} title={file.path}>
+      <button className="fr-main" type="button" onClick={() => onJump(file.fileKey)}>
+        <span className="nm">{file.path.split("/").pop()}</span>
+        {file.category === "generated" ? <span className="gtag">gen</span> : null}
+        <span className="st">
+          <span className="a">+{added}</span> <span className="d">−{removed}</span>
+        </span>
+        <span className={`rv${reviewed === total ? " done" : ""}`}>{reviewed === total ? "✓" : `${reviewed}/${total}`}</span>
+      </button>
+    </div>
   );
+
 }

@@ -313,6 +313,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [],
       post: false,
       turns: [
@@ -338,6 +339,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [
         { who: "you", text: "Does the fast path still catch a fold that uses a bare LF?" },
       ],
@@ -355,6 +357,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [
         {
           who: "ai",
@@ -376,6 +379,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [
         {
           who: "ai",
@@ -397,6 +401,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
+      pinned: false,
       messages: [
         { who: "you", text: "Is the double space here intended?" },
       ],
@@ -414,7 +419,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     Object.assign(s, patch);
   };
   setState(meta.keyAliases["tconn"], 2, { reviewed: true, folded: true });
-  setState(meta.keyAliases["conn"], 1, { note: "Only call site; everything else is the helper." });
 
   const version = {
     n: 1,
@@ -447,11 +451,13 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     pages,
     annotations,
     hunkStates,
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [
-      { id: "job-reader", kind: "reader", model: "fixture", priority: 1, state: "done" },
-      { id: "job-critic-lf", kind: "critic", model: "fixture", priority: 2, state: "done" },
-      { id: "job-critic-perf", kind: "critic", model: "fixture", priority: 2, state: "done" },
-      { id: "job-hunk-pass", kind: "hunk-pass", model: "fixture", priority: 3, state: "done" },
+      { id: "job-reader", kind: "reader", model: "fixture", effort: "", priority: 1, state: "done" },
+      { id: "job-critic-lf", kind: "critic", model: "fixture", effort: "", priority: 2, state: "done" },
+      { id: "job-critic-perf", kind: "critic", model: "fixture", effort: "", priority: 2, state: "done" },
+      { id: "job-hunk-pass", kind: "hunk-pass", model: "fixture", effort: "", priority: 3, state: "done" },
     ],
     contributions: [],
     logTail: [],

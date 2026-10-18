@@ -27,7 +27,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { clearMarks, markTextInElement, withPreservedSelection } from "../../comments/anchor.js";
+import { clearMarks, placeAnchorSpot, repassUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../../comments/readOnly.js";
 import { showGuidePane } from "../../shell/panes.js";
@@ -320,7 +320,12 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   useEffect(() => {
     const root = innerRef.current;
     if (!root) return;
-    const timer = window.setTimeout(() => {
+    // Issue #166: retry boundedly when a paragraph body isn't there yet.
+    const allIds = [...byPara.values()].flat().map((t) => t.id);
+    let pending = new Set<string>(allIds);
+    let retryCleanup: (() => void) | null = null;
+    const runPass = (): void => {
+      pending = new Set<string>([...byPara.values()].flat().map((t) => t.id));
       withPreservedSelection(root, () => {
         clearMarks(root, "mark.anc[data-thr]");
         const found = new Set<string>();
@@ -329,15 +334,25 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
           if (!body) continue;
           for (const thread of threads) {
             if (!thread.anchor.quotedText) continue;
-            if (markTextInElement(body, thread.anchor.quotedText, () => makeMark(thread.id)) > 0) {
+            if (placeAnchorSpot(body, spotFromAnchor(thread.anchor), () => makeMark(thread.id)) > 0) {
               found.add(thread.id);
+              pending.delete(thread.id);
             }
           }
         }
         setHighlighted((prev: ReadonlySet<string>) => (sameSet(prev, found) ? prev : found));
       });
-    }, 0);
-    return () => window.clearTimeout(timer);
+      retryCleanup?.();
+      retryCleanup = null;
+      if (pending.size > 0) {
+        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
+      }
+    };
+    const timer = window.setTimeout(runPass, 0);
+    return () => {
+      window.clearTimeout(timer);
+      retryCleanup?.();
+    };
   }, [byPara, segments, setHighlighted]);
 
   const openThread = (id: string): void => {

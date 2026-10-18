@@ -294,24 +294,22 @@ describe("hunk routes", () => {
         method: "PATCH",
         url: `/api/reviews/${id}/hunks/${hash}`,
         headers: authed,
-        payload: { reviewed: true, folded: true, note: "looks good" },
+        payload: { reviewed: true, folded: true },
       });
       expect(patched.statusCode).toBe(200);
       expect(patched.json()).toEqual({ ok: true });
 
       const after = ctx.reviews.getSnapshot(id);
-      expect(after?.hunkStates).toEqual([
-        { contentHash: hash, folded: true, reviewed: true, note: "looks good" },
-      ]);
+      expect(after?.hunkStates).toEqual([{ contentHash: hash, folded: true, reviewed: true }]);
 
-      // Explicit null clears the note.
-      const cleared = await app.inject({
+      // Hunk notes are gone (issue #162): the field is rejected.
+      const noted = await app.inject({
         method: "PATCH",
         url: `/api/reviews/${id}/hunks/${hash}`,
         headers: authed,
-        payload: { note: null },
+        payload: { note: "looks good" },
       });
-      expect(cleared.statusCode).toBe(200);
+      expect(noted.statusCode).toBe(400);
       expect(ctx.reviews.getSnapshot(id)?.hunkStates).toEqual([
         { contentHash: hash, folded: true, reviewed: true },
       ]);
@@ -360,6 +358,70 @@ describe("hunk routes", () => {
         await new Promise((r) => setTimeout(r, 50));
       }
       expect(agents.prompts.length).toBeGreaterThan(0);
+
+      // File fold state (issue #162): validated, persisted on the snapshot.
+      const fileKey = snap.files[0].fileKey;
+      const badFile = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/files/${fileKey}`,
+        headers: authed,
+        payload: { folded: "yes" },
+      });
+      expect(badFile.statusCode).toBe(400);
+      const emptyFile = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/files/${fileKey}`,
+        headers: authed,
+        payload: {},
+      });
+      expect(emptyFile.statusCode).toBe(400);
+      const unknownFile = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/nope/files/${fileKey}`,
+        headers: authed,
+        payload: { folded: true },
+      });
+      expect(unknownFile.statusCode).toBe(404);
+      const folded = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/files/${fileKey}`,
+        headers: authed,
+        payload: { folded: true },
+      });
+      expect(folded.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)?.fileStates).toEqual([{ fileKey, folded: true }]);
+      const unfolded = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/files/${fileKey}`,
+        headers: authed,
+        payload: { folded: false },
+      });
+      expect(unfolded.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)?.fileStates).toEqual([{ fileKey, folded: false }]);
+
+      // View preferences (issue #168): validated, persisted on the snapshot.
+      const badView = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/view`,
+        headers: authed,
+        payload: { showExistingComments: "yes" },
+      });
+      expect(badView.statusCode).toBe(400);
+      const emptyView = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/view`,
+        headers: authed,
+        payload: {},
+      });
+      expect(emptyView.statusCode).toBe(400);
+      const hidden = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/view`,
+        headers: authed,
+        payload: { showExistingComments: false, existingCommentsCollapsed: false },
+      });
+      expect(hidden.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)?.viewPrefs).toEqual({ showExistingComments: false, existingCommentsCollapsed: false });
     } finally {
       await app.close();
     }

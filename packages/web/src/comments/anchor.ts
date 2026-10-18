@@ -51,6 +51,30 @@ export interface QuoteSegment {
 }
 
 /**
+ * Issue #166: an anchor's quoted text plus its recorded selection
+ * offsets. Offsets are present only when the anchor came from a live
+ * text selection; everything else places by text match.
+ */
+export interface AnchorSpot {
+  quote: string;
+  startOffset?: number;
+  endOffset?: number;
+}
+
+/** Read a spot off a stored anchor (or action payload). */
+export function spotFromAnchor(a: {
+  quotedText: string;
+  startOffset?: number;
+  endOffset?: number;
+}): AnchorSpot {
+  return {
+    quote: a.quotedText,
+    ...(a.startOffset !== undefined ? { startOffset: a.startOffset } : {}),
+    ...(a.endOffset !== undefined ? { endOffset: a.endOffset } : {}),
+  };
+}
+
+/**
  * Locate `quote` in `texts.join("")`. Returns the covering per-node
  * segments, or `null` when the quote is absent (callers fall back to the
  * comment marker). Empty quotes never match.
@@ -60,7 +84,12 @@ export function locateQuoteSegments(texts: string[], quote: string): QuoteSegmen
   const joined = texts.join("");
   const at = joined.indexOf(quote);
   if (at < 0) return null;
-  const end = at + quote.length;
+  return segmentsAt(texts, at, quote.length);
+}
+
+/** Per-node segments covering `[at, at + length)` of `texts.join("")`. */
+function segmentsAt(texts: string[], at: number, length: number): QuoteSegment[] | null {
+  const end = at + length;
   const segments: QuoteSegment[] = [];
   let offset = 0;
   for (let i = 0; i < texts.length; i++) {
@@ -76,6 +105,71 @@ export function locateQuoteSegments(texts: string[], quote: string): QuoteSegmen
     if (nodeEnd >= end) break;
   }
   return segments.length > 0 ? segments : null;
+}
+
+/** Every start index of `needle` in `haystack` (empty needle: none). */
+function allOccurrences(haystack: string, needle: string): number[] {
+  if (!needle) return [];
+  const out: number[] = [];
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(needle, from);
+    if (at < 0) return out;
+    out.push(at);
+    from = at + 1;
+  }
+}
+
+/**
+ * Locate `quote` at the occurrence nearest `near` (a recorded offset).
+ * Returns the covering per-node segments, or `null` when absent. With
+ * `near` 0 this is the first occurrence — today's behaviour for anchors
+ * without recorded offsets.
+ */
+export function locateNearestQuoteSegments(
+  texts: string[],
+  quote: string,
+  near: number,
+): QuoteSegment[] | null {
+  if (!quote) return null;
+  const joined = texts.join("");
+  const occ = allOccurrences(joined, quote);
+  if (occ.length === 0) return null;
+  let best = occ[0];
+  for (const at of occ) {
+    if (Math.abs(at - near) < Math.abs(best - near)) best = at;
+  }
+  return segmentsAt(texts, best, quote.length);
+}
+
+/** Collapse whitespace and trim (matches the toolbar's quote form). */
+function normalizeForCompare(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+/** Plain text covered by `segments` of `texts`. */
+function coveredSegmentsText(texts: string[], segments: QuoteSegment[]): string {
+  return segments.map((s) => texts[s.node].slice(s.start, s.end)).join("");
+}
+
+/** Wrap `segments` of `nodes` in `make()` marks (last first). Returns the count. */
+function wrapSegments(nodes: Text[], segments: QuoteSegment[], make: () => Element): number {
+  let created = 0;
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const seg = segments[i];
+    const node = nodes[seg.node];
+    try {
+      const range = document.createRange();
+      range.setStart(node, seg.start);
+      range.setEnd(node, seg.end);
+      range.surroundContents(make());
+      created++;
+    } catch {
+      // A range splitting an element (shouldn't happen for single-text-node
+      // slices) is skipped rather than breaking the whole highlight.
+    }
+  }
+  return created;
 }
 
 /** Split `text` around the first occurrence of `quote` (pure helper). */
@@ -112,6 +206,10 @@ function collectTextNodes(el: Element): Text[] {
  * Marks from other makers (thread vs expansion, different ids) are left
  * alone. Stale marks for a quote that no longer resolves are removed and
  * 0 is returned.
+ *
+ * Issue #166: prefer `placeAnchorSpot` for anchors — it places by
+ * recorded offsets and scopes strictly; this stays for callers with a
+ * bare quote.
  */
 export function markTextInElement(el: Element, quote: string, make: () => Element): number {
   if (!quote) return 0;
@@ -123,40 +221,88 @@ export function markTextInElement(el: Element, quote: string, make: () => Elemen
   const segments = locateQuoteSegments(nodes.map((n) => n.data), quote);
   if (!segments) return 0;
   // Wrap from the last segment backwards so earlier offsets stay valid.
-  let created = 0;
-  for (let i = segments.length - 1; i >= 0; i--) {
-    const seg = segments[i];
-    const node = nodes[seg.node];
-    try {
-      const range = document.createRange();
-      range.setStart(node, seg.start);
-      range.setEnd(node, seg.end);
-      range.surroundContents(make());
-      created++;
-    } catch {
-      // A range splitting an element (shouldn't happen for single-text-node
-      // slices) is skipped rather than breaking the whole highlight.
-    }
-  }
-  return created;
+  return wrapSegments(nodes, segments, make);
 }
 
 /**
- * Highlight `quote` under the first `[data-top="top"]` host in `root` that
- * contains it. Returns true when highlighted (no marker needed), false when
+ * Issue #166: place an anchor's mark inside `host` by its recorded
+ * selection offsets, falling back to the nearest text match only when
+ * the host's text changed (or no offsets were recorded).
+ *
+ * - Offsets are verified: the covered text must equal the quote
+ *   (whitespace-insensitive, the toolbar's form), or the text changed and
+ *   the nearest occurrence to the old offset wins.
+ * - Without offsets the first occurrence wins — today's behaviour.
+ * - Returns the number of marks created (0 = quote gone; the caller falls
+ *   back to the comment marker / footnote chip). Like `markTextInElement`
+ *   this is idempotent per maker and works on the same opaque-host model
+ *   (issue #101).
+ */
+export function placeAnchorSpot(host: Element, spot: AnchorSpot, make: () => Element): number {
+  if (!spot.quote) return 0;
+  const probe = make();
+  unwrapOwnMarks(host, probe);
+  if (typeof (host as Element).normalize === "function") (host as Element).normalize();
+  const nodes = collectTextNodes(host);
+  if (nodes.length === 0) return 0;
+  const texts = nodes.map((n) => n.data);
+  const total = texts.reduce((s, t) => s + t.length, 0);
+  const s = spot.startOffset;
+  const e = spot.endOffset;
+  if (
+    s !== undefined &&
+    e !== undefined &&
+    Number.isInteger(s) &&
+    Number.isInteger(e) &&
+    s >= 0 &&
+    s < e &&
+    e <= total
+  ) {
+    const segs = segmentsAt(texts, s, e - s);
+    if (
+      segs &&
+      normalizeForCompare(coveredSegmentsText(texts, segs)) === normalizeForCompare(spot.quote)
+    ) {
+      return wrapSegments(nodes, segs, make);
+    }
+    // Recorded slice no longer matches: the text changed — fall through
+    // to the nearest text match.
+  }
+  const near = s !== undefined && Number.isInteger(s) && s >= 0 ? s : 0;
+  const segs = locateNearestQuoteSegments(texts, spot.quote, near);
+  if (!segs) return 0;
+  return wrapSegments(nodes, segs, make);
+}
+
+/**
+ * Highlight `spot` under the first `[data-top="top"]` host in `root` that
+ * takes it. Returns true when highlighted (no marker needed), false when
  * the caller should fall back to the comment marker (PRD §4.8: anchor text
  * that can no longer be found).
+ *
+ * Issue #166: when `root` is a card/answer scope (see `anchorScope`), a
+ * host counts only when it belongs to that scope — its nearest card or
+ * answer ancestor must be the scope itself. A mark is drawn in its own
+ * host block only, never in a nested or other card, even when block ids
+ * repeat. Bare scopes (unknown card) keep today's first-match behaviour.
  */
 export function highlightAnchorInRoot(
   root: ParentNode,
   top: string,
-  quote: string,
+  spot: AnchorSpot,
   make: () => Element,
 ): boolean {
-  if (!quote) return false;
-  const hosts = root.querySelectorAll(`[data-top="${CSS.escape(top)}"]`);
+  if (!spot.quote) return false;
+  let hosts: NodeListOf<Element>;
+  try {
+    hosts = root.querySelectorAll(`[data-top="${CSS.escape(top)}"]`);
+  } catch {
+    return false;
+  }
+  const strict = root instanceof Element && root.closest("section.card[id], [data-answer]") === root;
   for (const host of hosts) {
-    if (markTextInElement(host, quote, make) > 0) return true;
+    if (strict && host.closest("section.card[id], [data-answer]") !== root) continue;
+    if (placeAnchorSpot(host, spot, make) > 0) return true;
   }
   return false;
 }
@@ -333,8 +479,81 @@ function restoreSelection(root: ParentNode, saved: SavedSelection): void {
   }
 }
 
-/** True when `el` was created by the same maker as `probe`. */
-function isOwnMark(el: Element, probe: Element): boolean {
+/**
+ * Issue #166: read a live selection as character offsets within `host`'s
+ * plain text — the same text-node model placement uses (element text
+ * nodes, `.lo` marker rows excluded). Both endpoints must be text nodes
+ * of the host; anything else (element endpoints, selections outside the
+ * host, collapsed ranges) returns null and the caller omits offsets, so
+ * placement falls back to text match. Never throws.
+ */
+export function selectionOffsetsIn(
+  host: Element,
+  sel: Selection,
+): { start: number; end: number } | null {
+  try {
+    if (!sel.rangeCount || sel.isCollapsed) return null;
+    const nodes = collectTextNodes(host);
+    const point = (node: Node | null, offset: number): number | null => {
+      if (!node || node.nodeType !== 3) return null;
+      const text = node as Text;
+      const idx = nodes.indexOf(text);
+      if (idx < 0) return null;
+      let acc = 0;
+      for (let k = 0; k < idx; k++) acc += nodes[k].data.length;
+      return acc + Math.min(offset, text.data.length);
+    };
+    const a = point(sel.anchorNode, sel.anchorOffset);
+    const f = point(sel.focusNode, sel.focusOffset);
+    if (a === null || f === null) return null;
+    return { start: Math.min(a, f), end: Math.max(a, f) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Issue #166: bounded re-pass for anchors whose host text wasn't there
+ * yet (the pass ran before a re-render landed). Re-checks `isSettled`
+ * and re-runs `repass` up to `attempts` times, `delayMs` apart, then
+ * gives up quietly — the next snapshot/route change passes again anyway.
+ * Returns a cleanup that cancels the pending retry (call it when the
+ * pass re-runs or unmounts). Never throws.
+ */
+export function repassUntilSettled(
+  isSettled: () => boolean,
+  repass: () => void,
+  attempts = 3,
+  delayMs = 250,
+): () => void {
+  let remaining = attempts;
+  let timer = 0;
+  const tick = (): void => {
+    timer = 0;
+    let done = true;
+    try {
+      done = isSettled();
+    } catch {
+      done = true;
+    }
+    if (done) return;
+    try {
+      repass();
+    } catch {
+      // A failing re-pass must not cancel the remaining attempts.
+    }
+    remaining -= 1;
+    if (remaining <= 0) return;
+    timer = window.setTimeout(tick, delayMs);
+  };
+  timer = window.setTimeout(tick, delayMs);
+  return () => {
+    if (timer) window.clearTimeout(timer);
+    timer = 0;
+  };
+}
+
+/** True when `el` was created by the same maker as `probe`. */function isOwnMark(el: Element, probe: Element): boolean {
   if (el.tagName !== probe.tagName) return false;
   const a = (probe as HTMLElement).dataset ?? {};
   const b = (el as HTMLElement).dataset ?? {};

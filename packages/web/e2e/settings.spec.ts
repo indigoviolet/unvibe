@@ -222,7 +222,7 @@ test("model pickers list provider models and warn on same-model second opinion",
   // the selected value + the attached placeholder option instead).
   const secondModel = second.locator("select").nth(1);
   await expect(secondModel).toHaveValue("");
-  await expect(second.locator('option[disabled][value=""]')).toBeAttached();
+  await expect(secondModel.locator('option[disabled][value=""]')).toBeAttached();
   await expect(secondModel).toBeVisible();
   await second.locator("select").nth(1).selectOption("mock-main");
   await expect(page.getByText(/same model as main/)).toBeVisible();
@@ -232,7 +232,7 @@ test("model pickers list provider models and warn on same-model second opinion",
   await page.addInitScript(() => {
     localStorage.setItem(
       "unvibe.mock.settings",
-      JSON.stringify({ main: { provider: "custom", model: "custom-1" } }),
+      JSON.stringify({ main: { provider: "custom", model: "custom-1", effort: "" } }),
     );
   });
   await page.goto("/settings");
@@ -341,4 +341,16 @@ test("version switcher views the older version read-only", async ({ page }) => {
   await page.locator("#version-pick").selectOption("2");
   await expect(page).not.toHaveURL(/version=1/);
   await expect(page.locator('[data-testid="stale-banner"]')).toBeVisible();
+});
+
+test("access tab: read-only by default; the warning confirm enables and disables", async ({ page }) => {
+  await page.goto("/settings?tab=access");
+  const panel = page.getByRole("tabpanel", { name: "Access" });
+  await expect(panel.getByTestId("access-state")).toContainText("Read-only.");
+  await panel.getByRole("button", { name: "Turn on full access…" }).click();
+  await expect(panel.getByTestId("access-warning")).toContainText("nothing here is sandboxed");
+  await panel.getByRole("button", { name: "I understand, turn on full access" }).click();
+  await expect(panel.getByTestId("access-state")).toContainText("Full access is on.");
+  await panel.getByRole("button", { name: "Turn off full access" }).click();
+  await expect(panel.getByTestId("access-state")).toContainText("Read-only.");
 });

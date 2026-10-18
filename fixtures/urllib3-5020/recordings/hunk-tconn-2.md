@@ -4,7 +4,8 @@ Unit tests: the value helper on four inputs (including two adjacent folds), and 
 {
   "hunk": {
     "summary": "Unit tests: the value helper on four inputs (including two adjacent folds), and the message helper preserving order, duplicates, payload, defects and policy.",
-    "hiddenReason": null
+    "hiddenReason": null,
+    "score": "routine"
   }
 }
 ```

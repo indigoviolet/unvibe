@@ -147,6 +147,18 @@ export class ReplayAgentRunner extends FakeAgentRunner {
   resolve(prompt: string): ResolvedRecording {
     const explicit = explicitMarker(prompt);
     if (explicit) {
+      // A kind-only marker (the pipeline's explain/ask jobs) keeps the
+      // pattern matching below in play: the quoted selection decides
+      // which recording answers, and only an unmatched prompt falls
+      // back to the kind's first entry. A keyed marker is exact.
+      if (explicit.key === null && (explicit.kind === "explain" || explicit.kind === "ask")) {
+        for (const e of this.entries) {
+          if (e.kind !== explicit.kind || !e.pattern) continue;
+          if (new RegExp(e.pattern, "i").test(prompt) && this.texts.has(e.file)) {
+            return { kind: explicit.kind, key: e.key ?? null, file: e.file, placeholder: false };
+          }
+        }
+      }
       const hit = this.entries.find(
         (e) =>
           e.kind === explicit.kind && (explicit.key === null || e.key === explicit.key),

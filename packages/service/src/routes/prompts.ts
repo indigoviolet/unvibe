@@ -66,6 +66,8 @@ import {
   type RenderValues,
   type TemplateLibrary,
 } from "../prompts/index.js";
+import { renderSystemPrompt } from "../prompts/access.js";
+import { accessModeOf, type AccessMode } from "@unvibe/shared";
 import { formatContributionLines } from "../sharedctx/contributions.js";
 import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 
@@ -291,11 +293,40 @@ export function toPromptSnapshot(
     sourceKind: review.prNumber !== undefined ? "pr" : "branch",
     ...(description ? { description } : {}),
     ...(descriptionParagraphs.length > 0 ? { descriptionParagraphs } : {}),
+    // Issue #193: commit evidence for plotlines (subjects, bodies, files/hunks).
+    ...((snap.commits ?? []).length > 0
+      ? {
+          commits: (snap.commits ?? []).map((c) => ({
+            sha: c.sha,
+            subject: c.subject,
+            body: c.body,
+            files: [...c.files],
+            hunks: [...c.hunks],
+          })),
+        }
+      : {}),
+    // Branch reviews: the commit log the L1 head shows when there is no PR description.
+    ...(review.prNumber === undefined && (snap.commits ?? []).length > 0
+      ? {
+          commitLog: (snap.commits ?? [])
+            .map((c) => `${c.sha.slice(0, 7)} ${c.subject}${c.body ? `\n${c.body}` : ""}`)
+            .join("\n\n"),
+        }
+      : {}),
     files,
     pinnedCode,
     cards,
     findings,
     concepts,
+    // Issue #168: absent until first fetched (menu or refresh); the agents
+    // see every fetched comment whether or not the diff shows them.
+    existingComments: (snap.existingComments ?? []).map((c) => ({
+      id: c.id,
+      ...(c.path !== undefined ? { path: c.path } : {}),
+      ...(c.line !== undefined ? { line: c.line } : {}),
+      ...(c.author !== undefined ? { author: c.author } : {}),
+      body: c.body,
+    })),
     log: snap.logTail,
     contributions: snap.contributions,
   };
@@ -306,6 +337,11 @@ export interface PromptsRouteDeps {
   promptsDir?: string;
   /** When absent, `?review=` answers 501 until wired. */
   snapshots?: SnapshotProvider;
+  /**
+   * Issue #160: stored settings, so the `?review=` expansion previews the
+   * L0 variant the setting selects. Absent → the lock-down preview.
+   */
+  settings?: { get(): { fullAccess: boolean } };
 }
 
 /** An expanded prompt with its layer spans (extends the shared contract). */
@@ -366,6 +402,9 @@ const PH = {
   claim: "(select a card or finding)",
   mentions: "(mentions resolve when the action runs)",
   contributions: "(no contributions yet)",
+  plotlines: "(the reader names plotlines when the guide runs)",
+  unassignedHunks: "(hunks the reader did not see are listed here after the guide runs)",
+  commits: "(the review's commits are listed here when the assign step runs)",
 };
 
 /**
@@ -417,14 +456,16 @@ function firstFindingCitedCode(snapshot: PromptReviewSnapshot): string {
 }
 
 /** Expand every template against the snapshot. Pure given the library. */
-export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot): ExpandedPrompt[] {
+export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, access: AccessMode = "lockdown"): ExpandedPrompt[] {
   const render = (name: string, values: RenderValues): string => {
     const t = lib.get(name);
     if (!t) throw new Error(`prompt template missing: ${name}`);
     return renderTemplate(t, values);
   };
 
-  const l0 = render("instructions", {});
+  // Issue #160: the L0 preview shows the variant the setting selects —
+  // the lock-down wording, or the full-access allowed/forbidden list.
+  const l0 = renderSystemPrompt(lib, access);
   // One ladder call (issue #107): the preview shows the same capped halves
   // the pipeline sends, from the same rung.
   const ladder = buildLadder(snapshot);
@@ -554,6 +595,14 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot):
       cached: false,
     },
   ]);
+  push("plotline_assign", [
+    {
+      layer: "L2",
+      label: "plotline_assign",
+      text: render("plotline_assign", { plotlines: PH.plotlines, hunks: PH.unassignedHunks, commits: PH.commits }),
+      cached: false,
+    },
+  ]);
   push("consolidate", [
     {
       layer: "L3",
@@ -625,7 +674,8 @@ export async function registerPrompts(
       }
       if (!snapshot) return reply.code(404).send({ error: `unknown review ${query.review}` });
       try {
-        (body as PromptsResponse & { expanded: ExpandedPrompt[] }).expanded = expandAll(lib, snapshot);
+        const access = deps.settings ? accessModeOf(deps.settings.get()) : "lockdown";
+        (body as PromptsResponse & { expanded: ExpandedPrompt[] }).expanded = expandAll(lib, snapshot, access);
       } catch (err) {
         return reply
           .code(500)

@@ -1,7 +1,7 @@
 ---
 role: system
 tier: main
-variables: []
+variables: [access_policy]
 ---
 
 # Unvibe instructions (L0)
@@ -60,10 +60,7 @@ already in front of you.
 - `pin_context(path, lines, why)`: keep an excerpt in the shared context.
   Only the reader session has this tool.
 
-You also have Read, Glob and Grep for the working copy. That is everything:
-there is no shell, no `gh`, no network and no edits — never try them. A
-refused or unreachable tool is a failed lookup: say so in the trailing
-`degraded` field (below), never in the body.
+{{access_policy}}
 
 ## Grounding rules
 
@@ -139,8 +136,8 @@ State the content itself instead.
 - Tables use GitHub Markdown syntax; lists may be ordered or unordered,
   one item per line.
 - The trailing block holds only the keys the task needs (`title`,
-  `finding`, `contribute`, `depth`, `hunk`, `secondOpinion`, `concepts`,
-  `pendingCards`, `anchor`, `degraded`):
+  `finding`, `contribute`, `depth`, `hunk`, `plotlines`,
+  `secondOpinion`, `concepts`, `pendingCards`, `anchor`, `degraded`):
   - `degraded`: one line saying what you could not do (a tool you could
     not reach, a lookup that came back empty, a refused call) and what
     the reply is weaker for. A usable answer is still shown, with a note
@@ -154,8 +151,12 @@ State the content itself instead.
     `reasoning`, and `missed` (anything the card missed).
   - `depth`: the `level` written (`simple`, `standard` or `deep`) and the
     `cardId`.
-  - `hunk`: `summary` plus `hiddenReason` (a one-line reason, or null when
-    the hunk is interesting).
+  - `hunk`: `summary`, `hiddenReason` (a one-line reason, or null when
+    the hunk is interesting), and `score` (one of `mechanical`,
+    `routine`, `substantive`, `needs-attention`).
+  - `plotlines`: the reader's threads — `id`, `name`, a one-line
+    `description`, and the `h:` `hunks` each covers (a hunk in exactly
+    one; hunks left out read as "other").
 - Example shape:
 
   ```markdown

@@ -27,6 +27,8 @@ export interface RunningService {
   /** Path of the tee'd service log (kept under test-results/ for CI upload). */
   logFile: string;
   stop: () => Promise<void>;
+  /** SIGKILL the child (restart journeys, #188 J6). */
+  killHard: () => void;
 }
 
 export interface StartServiceOptions {
@@ -40,6 +42,9 @@ export interface StartServiceOptions {
 
 /** Spawn the built service on an ephemeral port; parse origin + token. */
 export async function startService(dataDir: string, opts: StartServiceOptions = {}): Promise<RunningService> {
+  if (opts.agent !== undefined && opts.agent !== "none" && opts.agent !== "replay") {
+    throw new Error(`service-harness: refusing non-hermetic agent mode ${JSON.stringify(opts.agent)} (#188)`);
+  }
   if (!existsSync(SERVICE_ENTRY)) {
     throw new Error(`service not built: run \`mise run build\` first (missing ${SERVICE_ENTRY})`);
   }
@@ -57,6 +62,7 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
 
   const env: Record<string, string | undefined> = { ...process.env, ...opts.extraEnv };
   delete env.GITHUB_TOKEN;
+  delete env.UNVIBE_ALLOW_LIVE_AGENT;
   const proc = spawn(process.execPath, [SERVICE_ENTRY], {
     env: {
       ...env,
@@ -100,6 +106,7 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
     origin,
     token,
     logFile,
+    killHard: () => proc.kill("SIGKILL"),
     stop: () =>
       new Promise<void>((resolve) => {
         log(`--- stop at ${new Date().toISOString()} ---\n`);

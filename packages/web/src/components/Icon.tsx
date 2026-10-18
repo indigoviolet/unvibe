@@ -44,6 +44,12 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
   bookmark: (<path d="M4.5 2.5h7v11L8 10.5l-3.5 3z" />),
+  pin: (
+    <>
+      <path d="M8 1.8a4.2 4.2 0 014.2 4.2c0 3-4.2 8.2-4.2 8.2S3.8 9 3.8 6A4.2 4.2 0 018 1.8z" />
+      <circle cx="8" cy="6" r="1.5" />
+    </>
+  ),
   reply: (
     <>
       <path d="M6.5 4L3 7.5 6.5 11" />
@@ -97,6 +103,20 @@ const PATHS: Record<string, JSX.Element> = {
     <>
       <path d="M2.5 7L8 2.5 13.5 7" />
       <path d="M4 6.5V13.5h8V6.5" />
+    </>
+  ),
+  filter: (<path d="M2.5 3h11l-4.3 4.9v4.8L6.8 13.8V7.9z" />),
+  unified: (
+    <>
+      <path d="M3 3.5h10" />
+      <path d="M3 8h10" />
+      <path d="M3 12.5h10" />
+    </>
+  ),
+  split: (
+    <>
+      <path d="M8 2.5v11" />
+      <path d="M2.5 5h3M2.5 8h3M2.5 11h3M10.5 5h3M10.5 8h3M10.5 11h3" />
     </>
   ),
 };

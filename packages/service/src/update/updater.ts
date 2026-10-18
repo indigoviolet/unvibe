@@ -48,6 +48,11 @@ export interface RealUpdaterOptions {
   serviceVersion: string;
   /** Streams core lines; the helper passes its switch log. */
   log?: (line: string) => void;
+  /**
+   * Extra env for the npm spawns (issue #170): the login-shell-merged PATH.
+   * The detached helper passes the service's repaired PATH here explicitly.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 /**
@@ -61,6 +66,7 @@ export class RealUpdater implements Updater {
   private readonly serviceScriptPath: string | undefined;
   private readonly serviceVersion: string;
   private readonly log: (line: string) => void;
+  private readonly env: Record<string, string | undefined> | undefined;
 
   constructor(opts: RealUpdaterOptions) {
     this.runner = opts.runner ?? new RealCommandRunner();
@@ -68,6 +74,7 @@ export class RealUpdater implements Updater {
     this.serviceScriptPath = opts.serviceScriptPath;
     this.serviceVersion = opts.serviceVersion;
     this.log = opts.log ?? (() => {});
+    this.env = opts.env;
   }
 
   async listChannels(): Promise<UpdateChannel[]> {
@@ -83,6 +90,7 @@ export class RealUpdater implements Updater {
       serviceVersion: this.serviceVersion,
       channel: ref,
       ...(opts?.restoreBackupOf ? { restoreBackupOf: opts.restoreBackupOf } : {}),
+      env: this.env,
       log: this.log,
     });
     if (result.code === 2) throw new Error(`unknown update channel "${ref}"`);

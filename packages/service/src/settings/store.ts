@@ -15,9 +15,11 @@ export const DEFAULT_SETTINGS: Settings = {
   // so the fallback never warns "not offered"; they surface only when no
   // listing is known (offline, adapter down) or no allowed family is
   // offered, where readiness reports them plainly.
-  main: { provider: "claude", model: "claude-opus-5-5" },
-  small: { provider: "claude", model: "claude-haiku-5-5" },
-  secondOpinion: { provider: "codex", model: "gpt-6.1-sol" },
+  // Effort is "" (Default) for every role: the adapter's own thinking
+  // level stands unless the owner picks one (issue #172).
+  main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
+  small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
+  secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
   sessionsPerProvider: 4,
   inlineBudgetTokens: 40_000,
   rebuildSupersededRatio: 0.2,
@@ -32,12 +34,21 @@ export const DEFAULT_SETTINGS: Settings = {
    * use — PRD §16), so it stays opt-in.
    */
   versionPickerEnabled: false,
+  /**
+   * Issue #160: full access for agent sessions. Off by default; enabling
+   * requires the warning acknowledgement in the same update (enforced in
+   * `validateSettings`, so the API refuses without it, not only the web).
+   */
+  fullAccess: false,
+  fullAccessAcknowledgedAt: null,
 };
 
 function isModelPick(v: unknown): v is ModelPick {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
-  return typeof o["provider"] === "string" && typeof o["model"] === "string";
+  return (
+    typeof o["provider"] === "string" && typeof o["model"] === "string" && typeof o["effort"] === "string"
+  );
 }
 
 /** Validate a partial update; returns error messages (empty = valid). */
@@ -77,6 +88,21 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   const picker = patch["versionPickerEnabled"];
   if (picker !== undefined && typeof picker !== "boolean") {
     errors.push("versionPickerEnabled must be a boolean");
+  }
+  // Issue #160: full access is opt-in with a stored acknowledgement. The
+  // service refuses to enable without it (not only the web): enabling
+  // requires the acknowledgement timestamp in the SAME update, and turning
+  // the setting off clears the stored acknowledgement (see `update`).
+  const fullAccess = patch["fullAccess"];
+  if (fullAccess !== undefined && typeof fullAccess !== "boolean") {
+    errors.push("fullAccess must be a boolean");
+  }
+  const ack = patch["fullAccessAcknowledgedAt"];
+  if (ack !== undefined && ack !== null && (!Number.isInteger(ack) || (ack as number) < 0)) {
+    errors.push("fullAccessAcknowledgedAt must be null or a non-negative integer epoch ms");
+  }
+  if (fullAccess === true && (ack === undefined || ack === null)) {
+    errors.push("fullAccess needs the warning acknowledgement: send fullAccessAcknowledgedAt with the update");
   }
   for (const key of Object.keys(patch)) {
     if (!(key in DEFAULT_SETTINGS)) errors.push(`unknown setting: ${key}`);
@@ -121,7 +147,11 @@ export class SettingsStore {
     const stmt = this.db.prepare(
       "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     );
-    for (const [key, value] of Object.entries(patch)) {
+    // Issue #160: turning full access off clears the acknowledgement, so
+    // turning it on again asks again.
+    const effective: Record<string, unknown> = { ...patch };
+    if (patch.fullAccess === false) effective["fullAccessAcknowledgedAt"] = null;
+    for (const [key, value] of Object.entries(effective)) {
       if (value !== undefined) stmt.run(key, JSON.stringify(value));
     }
     return { settings: this.get() };

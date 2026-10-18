@@ -107,12 +107,14 @@ function turnBlocks(
 }
 
 /**
- * Access modes for answer turns. On `main` every session runs with the
- * ACP `readOnly` flag on; #160's full-access branch adds the second
- * entry (`{ name: "full-access", readOnly: false }`) when it lands —
- * the wording-kept expectation is identical in both modes.
+ * Access modes for answer turns: lock-down by default, full access with
+ * the #160 setting on. The wording-kept expectation is identical in both
+ * modes — the mode is applied to settings before the turn runs.
  */
-const ACCESS_MODES: { name: string; readOnly: boolean }[] = [{ name: "read-only", readOnly: true }];
+const ACCESS_MODES: { name: string; readOnly: boolean }[] = [
+  { name: "read-only", readOnly: true },
+  { name: "full-access", readOnly: false },
+];
 
 describe("answers are never judged by wording (#180)", () => {
   for (const mode of ACCESS_MODES) {
@@ -129,6 +131,10 @@ describe("answers are never judged by wording (#180)", () => {
       ]);
       const { app, ctx, id } = await openDemo(agents);
       try {
+        if (!mode.readOnly) {
+          const enabled = ctx.settings.update({ fullAccess: true, fullAccessAcknowledgedAt: Date.now() });
+          expect(enabled.errors).toBeUndefined();
+        }
         const { annotationId, jobId } = await runExplain(app, ctx, id);
         expect(jobId).toBeTruthy();
         expect(ctx.jobs.get(jobId!)?.state).toBe("done");

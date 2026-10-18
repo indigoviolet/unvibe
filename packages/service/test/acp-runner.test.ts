@@ -262,6 +262,119 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
+  it("full access (#160): sessions with instructions get no shared first turn", async () => {
+    const state = createFakeState([]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "unvibe-instructions",
+      mcpServers: [],
+      readOnly: false,
+    });
+    // Full-access meta (no tool reduction) and no warmup turn: the
+    // shared first turn fires only for empty-system-prompt sessions.
+    expect(state.newMetas.get(s.id)).toMatchObject({ systemPrompt: "unvibe-instructions" });
+    expect(state.newMetas.get(s.id)).not.toHaveProperty("claudeCode");
+    expect(state.promptCalls.filter((c) => c.sessionId === s.id)).toEqual([]);
+    await runner.dispose();
+  });
+
+  it("full access (#160): empty-system-prompt sessions still share the first turn", async () => {
+    // The #177 trigger is posture-blind by design (background jobs are
+    // always lock-down after the posture rule, so a full-access "" start
+    // cannot happen through the pipeline — but the runner treats both
+    // postures the same if one ever does).
+    const state = createFakeState([
+      { match: "The task for this session arrives", chunks: [{ text: "ready" }] },
+      { match: "hunk C", chunks: [{ text: "ans C" }] },
+    ]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const s = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "",
+      mcpServers: [],
+      readOnly: false,
+    });
+    const events = await collect(runner, s, "hunk C please");
+    const calls = state.promptCalls.filter((c) => c.sessionId === s.id).map((c) => c.text);
+    expect(calls[0]).toBe(SHARED_CACHE_FIRST_TURN);
+    expect(events[events.length - 1]).toEqual({ type: "done", stopReason: "end_turn" });
+    await runner.dispose();
+  });
+
+  it("#172: effort is sent on new, fork, resume and load (claude)", async () => {
+    const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const base = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "unvibe-instructions",
+      mcpServers: [],
+      effort: "low",
+    });
+    const effortFor = (id: string): string[] =>
+      state.setConfigCalls.filter((c) => c.sessionId === id && c.configId === "effort").map((c) => c.value);
+    // New: the effort value is applied after session creation.
+    expect(effortFor(base.id)).toEqual(["low"]);
+    // Fork: the child carries the parent's effort explicitly.
+    const fork = await runner.fork(base);
+    expect(effortFor(fork.id)).toEqual(["low"]);
+    // A forked session that needs resume still carries the effort.
+    expect(state.resumeMetas.length).toBeGreaterThan(0);
+    // Load: reopening re-applies the effort.
+    await runner.close(base);
+    await runner.load(base.id);
+    expect(effortFor(base.id)).toEqual(["low", "low"]);
+    await runner.dispose();
+  });
+
+  it("#172: Default effort sends no thinking option; codex uses reasoning_effort", async () => {
+    const claudeState = createFakeState([]);
+    const codexState = createFakeState([]);
+    const runner = new AcpAgentRunner({
+      settleMs: 0,
+      factories: { claude: fakeTransportFactory(claudeState), codex: fakeTransportFactory(codexState) },
+    });
+    const plain = await runner.start({
+      provider: "claude",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "s",
+      mcpServers: [],
+    });
+    expect(claudeState.setConfigCalls.filter((c) => c.sessionId === plain.id)).toEqual(
+      expect.arrayContaining([{ sessionId: plain.id, configId: "model", value: "default" }]),
+    );
+    expect(claudeState.setConfigCalls.some((c) => c.sessionId === plain.id && c.configId === "effort")).toBe(false);
+    const cx = await runner.start({
+      provider: "codex",
+      model: "default",
+      cwd: "/tmp",
+      systemPrompt: "s",
+      mcpServers: [],
+      effort: "high",
+    });
+    expect(
+      codexState.setConfigCalls.filter((c) => c.sessionId === cx.id).map((c) => `${c.configId}=${c.value}`),
+    ).toContain("reasoning_effort=high");
+    await runner.dispose();
+  });
+
+  it("#172: listThinking surfaces the adapter's effort selector", async () => {
+    const state = createFakeState([]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
+    const thinking = await runner.listThinking("claude");
+    expect(thinking).toHaveLength(1);
+    expect(thinking[0]?.configId).toBe("effort");
+    expect(thinking[0]?.options.map((o) => o.value)).toEqual(["low", "high"]);
+    await runner.dispose();
+  });
+
   it("#121: session/resume and session/load carry the same _meta as session/new", async () => {
     const state = createFakeState([{ match: "q", chunks: [{ text: "ans" }] }]);
     const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });

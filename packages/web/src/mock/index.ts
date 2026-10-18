@@ -22,10 +22,13 @@ import type {
   Contribution,
   CreateReviewRequest,
   CreateReviewResponse,
+  DiffFilter,
+  HunkScoreLevel,
   HunkState,
   Job,
   ModelsResponse,
   PickFolderResponse,
+  Plotline,
   PromptExpanded,
   PromptsResponse,
   PromptTemplate,
@@ -47,6 +50,7 @@ import type {
   SwitchOutcome,
   UpdateBuildInfo,
   UpdateChannel,
+  UpdateDiffFilterRequest,
   UpdateHunkRequest,
   UpdatePendingSwitch,
   UpdateReviewResponse,
@@ -57,7 +61,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { freshBlockId, parseGitHubRepoInput } from "@unvibe/shared";
+import { freshBlockId, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -153,18 +157,36 @@ const MOCK_REVIEW: Review = {
 
 function seedHunkStates(): Map<string, HunkState> {
   const map = new Map<string, HunkState>();
+  // Issue #169: every hunk carries a canned score (the hunk pass's
+  // interestingness level); plotline assignment rides the same states.
+  const scores: Record<string, HunkScoreLevel> = {};
+  const plotlines: Record<string, string> = {};
   for (const f of MOCK_FILES) {
     f.hunks.forEach((h, i) => {
-      // Mirror the prototype's mid-use seed: one reviewed+folded hunk, one note.
+      scores[h.contentHash] =
+        f.path === "src/urllib3/connection.py"
+          ? "substantive"
+          : f.path === "test/test_connection.py" && i === 2
+            ? "routine"
+            : f.path === "test/with_dummyserver/test_socketlevel.py" && i === 1
+              ? "substantive"
+              : f.path === "changelog/1362.bugfix.rst"
+                ? "routine"
+                : "mechanical";
+      if (f.path === "src/urllib3/connection.py") plotlines[h.contentHash] = "unfold";
+      else if (f.path === "test/test_connection.py") plotlines[h.contentHash] = "unfold-tests";
+      else if (f.path === "test/with_dummyserver/test_socketlevel.py" && i === 1) {
+        plotlines[h.contentHash] = "unfold-tests";
+      }
+      // The socket-level import and the changelog entry stay unassigned:
+      // they read as "other" in the filter.
+    });
+  }
+  for (const f of MOCK_FILES) {
+    f.hunks.forEach((h, i) => {
+      // Mirror the prototype's mid-use seed: one reviewed+folded hunk.
       if (f.path === "test/test_connection.py" && i === 2) {
         map.set(h.contentHash, { contentHash: h.contentHash, folded: true, reviewed: true });
-      } else if (f.path === "src/urllib3/connection.py" && i === 1) {
-        map.set(h.contentHash, {
-          contentHash: h.contentHash,
-          folded: false,
-          reviewed: false,
-          note: "Only call site; everything else is the helper.",
-        });
       }
       // Issue #138: one idle hunk summary to activate in tests.
       if (f.path === "src/urllib3/connection.py" && i === 0) {
@@ -175,10 +197,35 @@ function seedHunkStates(): Map<string, HunkState> {
           summary: "Unfolds folded header values before reading.",
         });
       }
+      const prev = map.get(h.contentHash) ?? { contentHash: h.contentHash, folded: false, reviewed: false };
+      map.set(h.contentHash, {
+        ...prev,
+        score: scores[h.contentHash] ?? "routine",
+        ...(plotlines[h.contentHash] !== undefined ? { plotline: plotlines[h.contentHash] } : {}),
+      });
     });
   }
   return map;
 }
+
+/**
+ * Issue #169: the demo's plotlines — what the reader would name for the
+ * bundled change. The socket-level import and the changelog entry stay
+ * unassigned, so they read as "other".
+ */
+const MOCK_PLOTLINES: Plotline[] = [
+  {
+    id: "unfold",
+    name: "Unfold folded values",
+    description: "Normalize obsolete folds before reading headers.",
+  },
+  {
+    id: "unfold-tests",
+    name: "Prove the unfolding works",
+    description: "Unit and socket-level coverage for the new behaviour.",
+    buildsOn: "unfold",
+  },
+];
 
 /**
  * Mock description: the generated fixture's description (stable paragraph
@@ -519,10 +566,38 @@ function changesFetchError(): string | null {
 }
 
 let rev = 1;
+/** Per-review diff view preferences (issue #168): the mock persists them. */
+let mockViewPrefs: import("@unvibe/shared").ReviewViewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
 const hunkStates = seedHunkStates();
-let annotations: import("@unvibe/shared").Annotation[] = JSON.parse(
-  JSON.stringify(MOCK_ANNOTATIONS),
-) as import("@unvibe/shared").Annotation[];
+/** Per-file fold state (issue #162): the mock persists it like the service. */
+const fileStates = new Map<string, import("@unvibe/shared").FileState>();
+/** Issue #169: the diff's score/plotline filter, remembered with the review. */
+let mockDiffFilter: DiffFilter | undefined;
+/** Issue #167: pinned card ids persist across a reload, like the service. */
+const PINNED_KEY = "unvibe.mock.pinned";
+function readPinnedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(PINNED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+function writePinnedIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Non-fatal.
+  }
+}
+function seedAnnotations(): import("@unvibe/shared").Annotation[] {
+  const list = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS)) as import("@unvibe/shared").Annotation[];
+  const pinned = readPinnedIds();
+  for (const a of list) a.pinned = pinned.has(a.id);
+  return list;
+}
+let annotations: import("@unvibe/shared").Annotation[] = seedAnnotations();
 let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
   JSON.stringify(MOCK_PAGES),
 ) as import("@unvibe/shared").Page[];
@@ -550,25 +625,73 @@ function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
 }
 seedMockD2Diagrams(mockPages);
 let description = { ...MOCK_DESCRIPTION };
-let existingComments: import("@unvibe/shared").ExistingReviewComment[] = [
-  {
-    id: 101,
-    path: "src/urllib3/connection.py",
-    line: 82,
-    side: "RIGHT",
-    body: "Already on GitHub: consider covering bare LF here too.",
-    author: "teammate",
-    createdAt: "2026-09-01T12:00:00Z",
-    htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r101",
-  },
-];
+function seedExistingComments(): import("@unvibe/shared").ExistingReviewComment[] {
+  const made = (
+    c: Omit<import("@unvibe/shared").ExistingReviewComment, "bodyHtml">,
+  ): import("@unvibe/shared").ExistingReviewComment => ({ ...c, bodyHtml: renderUntrustedMarkdown(c.body) });
+  return [
+    made({
+      id: 101,
+      path: "src/urllib3/connection.py",
+      line: 82,
+      side: "RIGHT",
+      body: "Already on GitHub: consider covering bare LF here too.",
+      author: "teammate",
+      createdAt: "2026-09-01T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r101",
+    }),
+    made({
+      id: 102,
+      path: "src/urllib3/connection.py",
+      line: 82,
+      side: "RIGHT",
+      body: "Good point — the fast path only checks for `\\r\\n`.",
+      author: "author",
+      replyTo: 101,
+      createdAt: "2026-09-01T12:30:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r102",
+    }),
+    made({
+      id: 103,
+      path: "src/urllib3/connection.py",
+      line: 500,
+      side: "RIGHT",
+      body: "Outdated remark: this line moved since the comment.",
+      author: "teammate",
+      createdAt: "2026-08-20T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r103",
+    }),
+    made({
+      id: 104,
+      path: "src/urllib3/retired.py",
+      line: 10,
+      side: "RIGHT",
+      body: "Remark on a file no longer in the diff.",
+      author: "review-bot",
+      createdAt: "2026-08-10T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r104",
+    }),
+    made({
+      id: 105,
+      path: "src/example/very/long/path/to/a/deeply/nested/module/with/a/long/name.py",
+      line: 42,
+      side: "RIGHT",
+      body: "A made-up long comment for the menu: `some_function_with_a_rather_long_name(argument_one, argument_two)` plus a superlongunbrokenwordthatwouldotherwiseforcethemenuwiderthanthepanel and several more sentences so the body runs well past two lines in the menu at its minimum width.\n\nA second paragraph with **emphasis** and a list:\n\n- first point\n- second point",
+      author: "teammate",
+      createdAt: "2026-09-02T12:00:00Z",
+      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r105",
+    }),
+  ];
+}
+
+let existingComments: import("@unvibe/shared").ExistingReviewComment[] = seedExistingComments();
 
 const SETTINGS_KEY = "unvibe.mock.settings";
 
 const DEFAULT_MOCK_SETTINGS: Settings = {
-  main: { provider: "claude", model: "mock-main" },
-  small: { provider: "claude", model: "mock-small" },
-  secondOpinion: { provider: "codex", model: "mock-second" },
+  main: { provider: "claude", model: "mock-main", effort: "" },
+  small: { provider: "claude", model: "mock-small", effort: "" },
+  secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
   sessionsPerProvider: 4,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -577,6 +700,8 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
   versionPickerEnabled: false,
+  fullAccess: false,
+  fullAccessAcknowledgedAt: null,
 };
 
 function getMockSettings(): Settings {
@@ -590,6 +715,7 @@ function seedJobs(): Job[] {
       kind: "reader",
       provider: "claude",
       model: "mock-main",
+      effort: "",
       reviewId: "demo",
       priority: 10,
       state: "done",
@@ -604,6 +730,7 @@ function seedJobs(): Job[] {
       kind: "ask",
       provider: "claude",
       model: "mock-main",
+      effort: "",
       reviewId: "demo",
       priority: 100,
       state: "running",
@@ -622,6 +749,7 @@ function seedJobs(): Job[] {
       kind: "hunk-pass",
       provider: "codex",
       model: "mock-small",
+      effort: "",
       reviewId: "demo",
       priority: 10,
       state: "queued",
@@ -632,6 +760,7 @@ function seedJobs(): Job[] {
       kind: "critic",
       provider: "claude",
       model: "mock-main",
+      effort: "",
       reviewId: "demo",
       priority: 50,
       state: "backing-off",
@@ -776,27 +905,19 @@ export function resetMockState(): void {
   }
   hunkStates.clear();
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
-  annotations = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS));
+  fileStates.clear();
+  mockViewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
+  annotations = seedAnnotations();
   mockPages = JSON.parse(JSON.stringify(MOCK_PAGES));
   seedMockD2Diagrams(mockPages);
   description = { ...MOCK_DESCRIPTION };
-  existingComments = [
-    {
-      id: 101,
-      path: "src/urllib3/connection.py",
-      line: 82,
-      side: "RIGHT",
-      body: "Already on GitHub: consider covering bare LF here too.",
-      author: "teammate",
-      createdAt: "2026-09-01T12:00:00Z",
-      htmlUrl: "https://github.com/urllib3/urllib3/pull/5020#discussion_r101",
-    },
-  ];
+  existingComments = seedExistingComments();
   mockJobs = seedJobs();
   mockContributions = seedContributions();
   mockUpdatePending = null;
   mockUpdateDown = false;
   mockSoSeq = 0;
+  mockDiffFilter = undefined;
   for (const p of pendingSecondOpinions) window.clearTimeout(p.timer);
   pendingSecondOpinions = [];
   try {
@@ -980,17 +1101,33 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     pages: reviewId === "demo" ? mockPages : MOCK_PAGES,
     annotations,
     hunkStates: stale && viewing === 2 ? staleHunkStates() : [...hunkStates.values()],
+    fileStates: [...fileStates.values()],
+    viewPrefs: { ...mockViewPrefs },
     jobs: mockJobs.filter((j) => j.reviewId === reviewId || (reviewId === "demo" && !j.reviewId)),
     contributions: reviewId === "demo" ? mockContributions : [],
     logTail: [],
     rev,
     existingComments,
+    plotlines: [...MOCK_PLOTLINES],
+    ...(mockDiffFilter !== undefined ? { diffFilter: { ...mockDiffFilter } } : {}),
   };
   if (stale && viewing === 2) base.versionStatus = staleVersionStatus();
   return base;
 }
 
-/** Emit a state patch through the same path WS patches use. */
+/** Emit the file fold list through the WS-patch path (tab switches keep it). */
+function emitFileStates(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [{ op: "replace", path: "/fileStates", value: [...fileStates.values()] }],
+  });
+}
+
+/** Emit the hunk-states list through the WS-patch path. */
 function emitHunkStates(): void {
   const baseRev = rev;
   rev += 1;
@@ -999,6 +1136,22 @@ function emitHunkStates(): void {
     baseRev,
     headRev: rev,
     ops: [{ op: "replace", path: "/hunkStates", value: [...hunkStates.values()] }],
+  });
+}
+
+/** Issue #169: emit the diff filter through the WS-patch path. */
+function emitDiffFilter(): void {
+  const baseRev = rev;
+  rev += 1;
+  useReview.getState().applyEvent({
+    type: "patch",
+    baseRev,
+    headRev: rev,
+    ops: [
+      mockDiffFilter === undefined
+        ? { op: "remove", path: "/diffFilter" }
+        : { op: "replace", path: "/diffFilter", value: { ...mockDiffFilter } },
+    ],
   });
 }
 
@@ -1011,8 +1164,7 @@ function findHunkKey(hash: string): string | null {
 }
 
 /** Emit the annotations list through the WS-patch path (drafts survive). */
-function emitAnnotations(): void {
-  const baseRev = rev;
+function emitAnnotations(): void {  const baseRev = rev;
   rev += 1;
   useReview.getState().applyEvent({
     type: "patch",
@@ -1072,6 +1224,7 @@ function trackMockJob(
     kind,
     provider: "claude",
     model: "mock-main",
+    effort: "",
     reviewId: "demo",
     priority: 100,
     state: "running",
@@ -1189,6 +1342,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
       version: 1,
     },
     open: true,
+    pinned: false,
     messages: [],
     post: false,
     working: null,
@@ -1578,6 +1732,8 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -1604,6 +1760,8 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -1950,6 +2108,8 @@ export const mockApi = {
         pages: [],
         annotations: [],
         hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2003,6 +2163,8 @@ export const mockApi = {
         pages: [],
         annotations: [],
         hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2129,6 +2291,8 @@ export const mockApi = {
             pages: [],
             annotations: [],
             hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
             jobs: [],
             contributions: [],
             logTail: [],
@@ -2158,6 +2322,8 @@ export const mockApi = {
             pages: [],
             annotations: [],
             hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
             jobs: [],
             contributions: [],
             logTail: [],
@@ -2410,8 +2576,16 @@ export const mockApi = {
       // Annotation deletion (expansions + threads via the actions route).
       const annIdx = annotations.findIndex((x) => x.id === target);
       if (annIdx >= 0) {
-        annotations.splice(annIdx, 1);
+        const [removed] = annotations.splice(annIdx, 1);
         emitAnnotations();
+        // Deleting a hunk card removes its stored summary too (#161).
+        if (removed.anchor.host.kind === "hunk") {
+          const st = hunkStates.get(removed.anchor.host.contentHash);
+          if (st?.summary !== undefined) {
+            hunkStates.set(removed.anchor.host.contentHash, { ...st, summary: undefined });
+            emitHunkStates();
+          }
+        }
         return { accepted: true, annotationId: target };
       }
       throw new Error(`DELETE actions ${target}: 404 {"error":"unknown annotation"}`);
@@ -2452,10 +2626,16 @@ export const mockApi = {
             suffix: "",
             position: 0,
             version: 1,
+            // Issue #166: keep the client's recorded selection offsets so
+            // mock-placed marks use them, like the service.
+            ...(a.kind === "ask" && a.offsets !== undefined
+              ? { startOffset: a.offsets.start, endOffset: a.offsets.end }
+              : {}),
           },
           // Ask cards open in place everywhere, like Explain (no
           // closed-thread legacy).
           open: true,
+          pinned: false,
           messages: [],
           post: false,
           working: "Thinking…",
@@ -2570,8 +2750,14 @@ export const mockApi = {
           suffix: "",
           position: 0,
           version: 1,
+          // Issue #166: keep the client's recorded selection offsets so
+          // mock-placed marks use them, like the service.
+          ...(a.kind === "explain" && a.offsets !== undefined
+            ? { startOffset: a.offsets.start, endOffset: a.offsets.end }
+            : {}),
         },
         open: true,
+        pinned: false,
         messages: [],
         post: false,
         working: "Thinking…",
@@ -2694,6 +2880,7 @@ export const mockApi = {
           version: 1,
         },
         open: true,
+        pinned: false,
         messages: [],
         post: false,
         working: "Writing answer…",
@@ -2875,18 +3062,54 @@ export const mockApi = {
     return { accepted: false };
   },
 
-  // Mirrors the service PATCH semantics: null clears note/summary.
+  // Mirrors the service PATCH semantics: null clears the summary.
   updateHunk: async (_id: string, hash: string, body: UpdateHunkRequest): Promise<{ ok: boolean }> => {
     const prev = hunkStates.get(hash) ?? { contentHash: hash, folded: false, reviewed: false };
     const next: HunkState = { ...prev };
     if (body.folded !== undefined) next.folded = body.folded;
     if (body.reviewed !== undefined) next.reviewed = body.reviewed;
-    if (body.note === null) delete next.note;
-    else if (body.note !== undefined) next.note = body.note;
     if (body.summary === null) delete next.summary;
     else if (body.summary !== undefined) next.summary = body.summary;
     hunkStates.set(hash, next);
     emitHunkStates();
+    return { ok: true };
+  },
+
+  // Mirrors the service file-fold PATCH (issue #162): fold state lives on
+  // the snapshot, so it survives tab switches and reloads.
+  updateFile: async (
+    _id: string,
+    fileKey: string,
+    body: import("@unvibe/shared").UpdateFileRequest,
+  ): Promise<{ ok: boolean }> => {
+    const prev = fileStates.get(fileKey) ?? { fileKey, folded: false };
+    fileStates.set(fileKey, { ...prev, ...(body.folded !== undefined ? { folded: body.folded } : {}) });
+    emitFileStates();
+    return { ok: true };
+  },
+
+  // Mirrors the service view PATCH (issue #168).
+  updateView: async (
+    _id: string,
+    body: import("@unvibe/shared").UpdateViewRequest,
+  ): Promise<{ ok: boolean }> => {
+    if (body.showExistingComments !== undefined || body.existingCommentsCollapsed !== undefined) {
+      mockViewPrefs = {
+        ...mockViewPrefs,
+        ...(body.showExistingComments !== undefined ? { showExistingComments: body.showExistingComments } : {}),
+        ...(body.existingCommentsCollapsed !== undefined
+          ? { existingCommentsCollapsed: body.existingCommentsCollapsed }
+          : {}),
+      };
+      const baseRev = rev;
+      rev += 1;
+      useReview.getState().applyEvent({
+        type: "patch",
+        baseRev,
+        headRev: rev,
+        ops: [{ op: "replace", path: "/viewPrefs", value: { ...mockViewPrefs } }],
+      });
+    }
     return { ok: true };
   },
 
@@ -2899,6 +3122,28 @@ export const mockApi = {
     hunkStates.set(hash, { ...prev, summary });
     emitHunkStates();
     return { jobId: `mock-${hash}` };
+  },
+
+  // Issue #169: mirrors the service PATCH semantics (null clears a field;
+  // unknown plotlines and levels are refused).
+  updateDiffFilter: async (_id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> => {
+    const { plotline, score } = body;
+    if (plotline !== undefined && plotline !== null) {
+      const ids = new Set([...MOCK_PLOTLINES.map((p) => p.id), "other"]);
+      if (!ids.has(plotline)) throw new Error(`unknown plotline ${plotline}`);
+    }
+    if (score !== undefined && score !== null) {
+      const levels: readonly string[] = ["mechanical", "routine", "substantive", "needs-attention"];
+      if (!levels.includes(score)) throw new Error(`unknown score ${score}`);
+    }
+    const next: DiffFilter = { ...(mockDiffFilter ?? {}) };
+    if (plotline === null) delete next.plotline;
+    else if (plotline !== undefined) next.plotline = plotline;
+    if (score === null) delete next.score;
+    else if (score !== undefined) next.score = score;
+    mockDiffFilter = Object.keys(next).length === 0 ? undefined : next;
+    emitDiffFilter();
+    return { ok: true };
   },
 
   fileSlice: async (
@@ -2943,8 +3188,14 @@ export const mockApi = {
         suffix: body.suffix ?? "",
         position: body.position ?? 0,
         version: 1,
+        // Issue #166: keep the client's recorded selection offsets, like
+        // the service.
+        ...(body.offsets !== undefined
+          ? { startOffset: body.offsets.start, endOffset: body.offsets.end }
+          : {}),
       },
       open: host.kind === "block" ? false : true,
+      pinned: false,
       messages: body.text ? [{ who: "you", text: body.text }] : [],
       // Mirrors the service: a Comment is for the PR by default; an Ask
       // is a conversation card, never a thread.
@@ -2977,6 +3228,13 @@ export const mockApi = {
     // comment-only.
     if (thread.type === "conversation") {
       if (body.open !== undefined) thread.open = body.open;
+      if (body.pinned !== undefined) {
+        thread.pinned = body.pinned;
+        const ids = readPinnedIds();
+        if (body.pinned) ids.add(thread.id);
+        else ids.delete(thread.id);
+        writePinnedIds(ids);
+      }
       if (body.post !== undefined || body.draft !== undefined) {
         throw new Error(`annotation ${commentId} is not a thread`);
       }
@@ -2986,6 +3244,7 @@ export const mockApi = {
       return { ok: true };
     }
     if (thread.type !== "comment") throw new Error("unknown comment");
+    if (body.pinned !== undefined) throw new Error(`annotation ${commentId} is not a conversation`);
     if (body.post !== undefined) {
       thread.post = body.post;
       if (body.post) thread.open = true;
@@ -3073,9 +3332,18 @@ export const mockApi = {
   settings: async (): Promise<Settings> => getMockSettings(),
 
   saveSettings: async (body: Partial<Settings>): Promise<Settings> => {
-    const next = { ...getMockSettings(), ...body };
+    // Mirror the service rule (issue #160): enabling full access needs the
+    // acknowledgement in the same update; turning it off clears it.
+    if (body.fullAccess === true && body.fullAccessAcknowledgedAt == null) {
+      throw new Error(
+        'PUT /api/settings: 400 {"errors":["fullAccess needs the warning acknowledgement: send fullAccessAcknowledgedAt with the update"]}',
+      );
+    }
+    const merged: Partial<Settings> = { ...body };
+    if (body.fullAccess === false) merged.fullAccessAcknowledgedAt = null;
+    const next = { ...getMockSettings(), ...merged };
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(body));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
     } catch {
       // Non-fatal.
     }
@@ -3102,6 +3370,17 @@ export const mockApi = {
     }
     return { provider, models };
   },
+
+  thinking: async (provider: string): Promise<import("@unvibe/shared").ThinkingResponse> => ({
+    provider,
+    label: "Effort",
+    options: [
+      { value: "low", name: "Low" },
+      { value: "medium", name: "Medium" },
+      { value: "high", name: "High" },
+    ],
+    current: "medium",
+  }),
 
   prompts: async (reviewId?: string): Promise<PromptsResponse> => {
     const templates: PromptTemplate[] = MOCK_TEMPLATES;

@@ -9,6 +9,7 @@
  */
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
+import { selectText } from "./select-text.js";
 
 const CONN = "src-urllib3-connection.py";
 
@@ -19,6 +20,14 @@ async function gotoReview(page: Page): Promise<void> {
   );
   // Webfonts shift layout; settle before pixel-precise hovers.
   await page.evaluate(() => document.fonts.ready).catch(() => {});
+}
+
+/**
+ * Issue #167: the demo seeds an open floating card under C-problem that
+ * overlays the controls below it — close it first, as a reader would.
+ */
+async function closeSeedCard(page: Page): Promise<void> {
+  await page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" }).click();
 }
 
 /**
@@ -92,6 +101,60 @@ async function openPopover(page: Page): Promise<void> {
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
 }
 
+test("pinning a card survives a reload; unpinning does too (#167)", async ({ page }) => {
+  await gotoReview(page);
+  const card = page.locator("#C-problem [data-expansion]").first();
+  await expect(card).toHaveClass(/floating/);
+  await card.getByRole("button", { name: "Pin into the page" }).click();
+  await expect(card).not.toHaveClass(/floating/);
+  await page.reload();
+  await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers");
+  const pinnedCard = page.locator("#C-problem [data-expansion]").first();
+  await expect(pinnedCard).not.toHaveClass(/floating/);
+  await pinnedCard.getByRole("button", { name: /Unpin/ }).click();
+  await expect(pinnedCard).toHaveClass(/floating/);
+  await page.reload();
+  await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers");
+  await expect(page.locator("#C-problem [data-expansion]").first()).toHaveClass(/floating/);
+});
+
+test("Ask inside a floating card opens a floating child above it; pinning puts it inline (#186)", async ({ page }) => {
+  await gotoReview(page);
+  const parent = page.locator("#B-x-seed");
+  await expect(parent).toHaveClass(/floating/);
+  // Select answer text inside the floating card: the toolbar appears.
+  await selectText(page, "#B-x-seed [data-answer]", "HTTP/1.1 originally let a server continue");
+  await page.locator('#selbar [data-act="ask"]').click();
+  const composer = page.locator("#B-x-seed .ithread[data-pending-thread]");
+  await expect(composer).toBeVisible();
+  await composer.locator("textarea").fill("Why does this matter?");
+  await composer.getByRole("button", { name: "Ask" }).click();
+  const child = page.locator("#B-x-seed [data-expansion]", { hasText: "Why does this matter?" });
+  await expect(child).toContainText("Mock explanation", { timeout: 8000 });
+  await expect(child).toHaveClass(/floating/);
+  // The child paints above the parent: the point at its centre hits the
+  // child, not the parent underneath.
+  const above = await page.evaluate(() => {
+    const childEl = document.querySelector("#B-x-seed [data-expansion]")!;
+    const r = childEl.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 30);
+    return hit ? childEl.contains(hit) && hit !== childEl : false;
+  });
+  expect(above).toBe(true);
+  await expect(parent).toHaveClass(/floating/);
+  // Pinning the child inserts it inline inside the parent.
+  await child.getByRole("button", { name: "Pin into the page" }).click();
+  await expect(child).not.toHaveClass(/floating/);
+  await expect(parent).toHaveClass(/floating/);
+  // Closing it leaves the parent floating, as it was. Scroll the
+  // pinned child into view inside the parent's own scroller first.
+  await child.evaluate((el) => el.scrollIntoView({ block: "nearest" }));
+  await child.getByRole("button", { name: "Close" }).click();
+  await expect(child).toBeHidden();
+  await expect(parent).toBeVisible();
+  await expect(parent).toHaveClass(/floating/);
+});
+
 test("root page renders cards, contents and generated go-deeper cards", async ({ page }) => {
   await gotoReview(page);
   await expect(page.locator("#page h1.title")).toBeVisible();
@@ -114,7 +177,10 @@ test("root page renders cards, contents and generated go-deeper cards", async ({
 test("dotted-link hover preview: timing and content", async ({ page }) => {
   await gotoReview(page);
   const link = page.locator('#page a.cx[data-link="concept:obs-fold"]').first();
-  await link.hover();
+  // Deterministic hover (the plotlines box can leave the link below the
+  // fold, and a plain hover() would scroll with the pointer already over
+  // the target — which the popover must ignore).
+  await hoverFresh(page, link);
   // Not instant: opens after ~0.2 s.
   await expect(page.locator("#pop")).toBeHidden({ timeout: 100 }).catch(() => {});
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
@@ -160,6 +226,7 @@ test("after a scroll, hover is ignored until the pointer moves", async ({ page }
 
 test("citation click reveals the canonical diff location", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   const seen = page.evaluate(
     () =>
       new Promise<string>((resolve) => {
@@ -180,6 +247,7 @@ test("citation click reveals the canonical diff location", async ({ page }) => {
 
 test("citation hover previews real cited lines", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   await hoverFresh(page, page.locator("#C-central .lk[data-refs]").first());
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
   await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:");
@@ -206,6 +274,7 @@ test("navigation, trail and browser back", async ({ page }) => {
 
 test("collapse chevron hides the card body; contents still lists it", async ({ page }) => {
   await gotoReview(page);
+  await closeSeedCard(page);
   const card = page.locator("#C-central");
   await card.locator("> .chead").getByRole("button", { name: "Collapse" }).click();
   await expect(card).toHaveClass(/collapsed/);

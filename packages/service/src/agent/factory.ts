@@ -34,6 +34,7 @@ import type { AgentRunner } from "@unvibe/shared";
 import { NoAgentRunner } from "./none.js";
 import { ReplayAgentRunner } from "../replay/runner.js";
 import { createAcpRunner } from "./acp-runner.js";
+import { assertLiveAgentAllowed } from "./live-guard.js";
 
 export interface CreateRunnerOptions {
   env?: NodeJS.ProcessEnv;
@@ -93,13 +94,30 @@ export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
   }
   if (isReplayEnv(env)) {
     const dir = opts.fixturesDir ?? resolveFixturesDir();
+    // Test/drill-only pacing overrides (issue #126 timing runs): stream
+    // the recordings at a chosen chunk size and delay. Never read by the
+    // UI; production stays at the 5 ms default.
+    const envDelay = Number(env["UNVIBE_REPLAY_DELAY_MS"] ?? "");
+    const envChunks = Number(env["UNVIBE_REPLAY_CHUNK_CHARS"] ?? "");
     return new ReplayAgentRunner({
       fixturesDir: dir,
-      ...(opts.chunkChars !== undefined ? { chunkChars: opts.chunkChars } : {}),
-      ...(opts.delayMs !== undefined ? { delayMs: opts.delayMs } : { delayMs: 5 }),
+      ...(opts.chunkChars !== undefined
+        ? { chunkChars: opts.chunkChars }
+        : Number.isSafeInteger(envChunks) && envChunks > 0
+          ? { chunkChars: envChunks }
+          : {}),
+      ...(opts.delayMs !== undefined
+        ? { delayMs: opts.delayMs }
+        : Number.isSafeInteger(envDelay) && envDelay >= 0
+          ? { delayMs: envDelay }
+          : { delayMs: 5 }),
     });
   }
-  return createAcpRunner();
+  // Real fall-through (#188): any other value (unset or mistyped) would
+  // start real agents and spend tokens, so it fails loudly unless the
+  // product entry or a test:live:* task set UNVIBE_ALLOW_LIVE_AGENT=1.
+  assertLiveAgentAllowed(env);
+  return createAcpRunner({ env });
 }
 
 /** True when the runner serves recordings (replay/demo path). */

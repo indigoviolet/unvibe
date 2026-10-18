@@ -29,6 +29,7 @@ import { useReview } from "../state/store.js";
 import { descriptionPaneName } from "../source/description/paneName.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
 import { threadPostText } from "./threads.js";
+import { groupGithubComments, isOutdatedComment, requestGithubThread, type GithubThread } from "./GithubThreads.js";
 
 const plain = (s: string): string => s.replace(/<[^>]+>/g, "");
 
@@ -272,6 +273,52 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
 
   const list = filter === "pr" ? forPr : threads;
 
+  // Existing GitHub threads grouped by file, in fetch order (issue #168).
+  const githubGroups = useMemo(() => {
+    if (!snapshot || !existing) return [];
+    const groups = new Map<string, { label: string; threads: GithubThread[] }>();
+    for (const t of groupGithubComments(existing)) {
+      const label = t.root.path ?? "General";
+      const g = groups.get(label) ?? { label, threads: [] };
+      g.threads.push(t);
+      groups.set(label, g);
+    }
+    return [...groups.values()];
+  }, [snapshot, existing]);
+
+  // Issue #183 addition: the section follows the diff's show/hide setting
+  // (`showExistingComments`). Hidden collapses it to its heading with a
+  // count, and clicking the heading shows them again (here and in the
+  // diff). While shown, the heading's chevron folds the section alone,
+  // remembered in `existingCommentsCollapsed`.
+  const ghShown = snapshot?.viewPrefs.showExistingComments ?? true;
+  const ghCollapsed = snapshot?.viewPrefs.existingCommentsCollapsed ?? false;
+  const ghCount = existing?.length ?? 0;
+  const ghOpen = ghShown && !ghCollapsed;
+  const onGhHead = (): void => {
+    const body = !ghShown
+      ? { showExistingComments: true }
+      : { existingCommentsCollapsed: !ghCollapsed };
+    api.updateView(reviewId, body).catch(() => {
+      toast("Couldn't save that change");
+    });
+  };
+
+  const jumpExisting = (thread: GithubThread): void => {
+    const snap = useReview.getState().snapshot;
+    if (!snap) return;
+    setOpen(false);
+    const file = thread.root.path ? snap.files.find((f) => f.path === thread.root.path) : undefined;
+    const outdated = isOutdatedComment(snap.files, thread.root);
+    if (file && thread.root.line !== undefined && !outdated) {
+      revealSource(`diff:${file.fileKey}:${thread.root.line}`);
+    } else if (file) {
+      revealSource(`diff:${file.fileKey}`);
+    }
+    // Expands the thread in the diff (and scrolls to it when shown).
+    requestGithubThread(thread.root.id);
+  };
+
   return (
     <span ref={rootRef} style={{ position: "relative" }}>
       <button
@@ -327,10 +374,17 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             <span className="hint">These are drafts. Nothing reaches GitHub until you use Submit review.</span>
           ) : null}
           <div>
-            <h3 className="hint" style={{ margin: "6px 0 2px" }}>
-              Already on GitHub
-            </h3>
-            {existing === null ? (
+            <button
+              className="ghhead"
+              type="button"
+              data-ghhead=""
+              aria-expanded={ghOpen}
+              onClick={onGhHead}
+            >
+              <Icon name={ghOpen ? "down" : "right"} />
+              <span>{ghShown ? "Already on GitHub" : `Already on GitHub · ${ghCount} hidden`}</span>
+            </button>
+            {!ghOpen ? null : existing === null ? (
               <p className="hint" style={{ margin: 4 }}>
                 Loading comments from GitHub…
               </p>
@@ -339,15 +393,47 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
                 No review comments on GitHub yet.
               </p>
             ) : (
-              existing.map((c) => (
-                <div className="ci" key={`existing-${c.id}`}>
-                  <span className="cj">
-                    <span className="cw">
-                      {c.path ?? "General"}
-                      {c.line ? `:${c.line}` : ""} · {c.author ?? "GitHub"}
-                    </span>
-                    <span className="cx2">{c.body.slice(0, 140)}</span>
-                  </span>
+              githubGroups.map((g) => (
+                <div key={g.label}>
+                  <span className="ghgroup">{g.label}</span>
+                  {g.threads.map((t) => {
+                    const snap = snapshot;
+                    const outdated = snap ? isOutdatedComment(snap.files, t.root) : false;
+                    const count = 1 + t.replies.length;
+                    const where =
+                      t.root.path && t.root.line !== undefined
+                        ? `${t.root.path.split("/").pop()}:${t.root.line}`
+                        : "General";
+                    return (
+                      <div className="ci" key={`existing-${t.root.id}`}>
+                        <button
+                          className="cj"
+                          type="button"
+                          data-ghjump={t.root.id}
+                          onClick={() => jumpExisting(t)}
+                        >
+                          <span className="cw">
+                            {where} · {t.root.author ?? "GitHub"} · {count}{" "}
+                            {count === 1 ? "comment" : "comments"}
+                            {outdated ? " · outdated" : ""}
+                          </span>
+                          <span className="cx2 ghmenu" dangerouslySetInnerHTML={{ __html: t.root.bodyHtml }} />
+                        </button>
+                        {t.root.htmlUrl ? (
+                          <a
+                            className="ib"
+                            href={t.root.htmlUrl}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            data-tip="Open on GitHub"
+                            aria-label="Open on GitHub"
+                          >
+                            <Icon name="open" />
+                          </a>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               ))
             )}

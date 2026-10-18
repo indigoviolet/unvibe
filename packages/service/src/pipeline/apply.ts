@@ -29,6 +29,12 @@ export interface ReaderApply {
   cards: { id: string; title: string | null; blocks: Block[] }[];
   pendingCards: { id: string; label: string; why: string }[];
   concepts: { slug: string; title: string; summary: string }[];
+  /**
+   * Issue #169: the reader's raw plotline payload (validated against the
+   * review's hunk IDs by the caller — unknown IDs dropped, first
+   * plotline wins a hunk claimed twice).
+   */
+  plotlines: { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[];
 }
 
 /**
@@ -101,7 +107,16 @@ export function readerApply(
       summary: c.summary ?? "",
     }),
   ).filter((c) => c.slug);
-  return { cards, pendingCards, concepts };
+  const plotlines = (
+    (data?.["plotlines"] as { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[] | undefined) ?? []
+  ).map((p) => ({
+    ...(p.id !== undefined ? { id: p.id } : {}),
+    ...(p.name !== undefined ? { name: p.name } : {}),
+    ...(p.description !== undefined ? { description: p.description } : {}),
+    ...(p.buildsOn !== undefined ? { buildsOn: p.buildsOn } : {}),
+    ...(p.hunks !== undefined ? { hunks: p.hunks } : {}),
+  }));
+  return { cards, pendingCards, concepts, plotlines };
 }
 
 export interface CriticApply {
@@ -170,6 +185,7 @@ export function suggestedAnnotation(
       version,
     },
     open: true,
+    pinned: false,
     messages: [{ who: "ai", suggested: true, text }],
     post: false,
   };

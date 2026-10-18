@@ -3,7 +3,7 @@
  *
  * (a) rebase onto a moved base, no conflicts → zero changed hunks, state
  *     and anchors preserved, version recorded but not stale.
- * (b) amend changing one hunk → reviewed cleared, note kept+flagged, its
+ * (b) amend changing one hunk → reviewed cleared, its
  *     comment outdated, citing cards stale, everything else untouched.
  * (c) new commit adding a file + shifting lines → anchors moved by offsets.
  * (d) file rename → anchors/citations follow the rename.
@@ -81,9 +81,9 @@ describe("refresh integration", () => {
       const { id, snap } = await openReview(app, dir, "feature");
       const { fileKey, hash } = hunkHashFor(snap, "a.py");
 
-      // Reader state to preserve: reviewed hunk + note + diff comment + card citation.
+      // Reader state to preserve: reviewed hunk + diff comment + card citation.
       await ctx.reviews.mutate(id, (draft) => {
-        draft.hunkStates.push({ contentHash: hash, folded: false, reviewed: true, summary: "adds y", note: "looks good" });
+        draft.hunkStates.push({ contentHash: hash, folded: false, reviewed: true, summary: "adds y" });
         draft.annotations.push({
           id: "ann-1",
           type: "thread",
@@ -122,7 +122,7 @@ describe("refresh integration", () => {
       const after = ctx.reviews.getSnapshot(id)!;
       expect(after.version.n).toBe(2);
       expect(after.versionStatus?.stale).toBe(false);
-      // State preserved: still reviewed, note unflagged, comment moved not outdated.
+      // State preserved: still reviewed, comment moved not outdated.
       expect(after.hunkStates.find((s) => s.contentHash === hash)?.reviewed).toBe(true);
       const ann = after.annotations.find((a) => a.id === "ann-1")!;
       expect(ann.outdated).not.toBe(true);
@@ -137,7 +137,7 @@ describe("refresh integration", () => {
     }
   });
 
-  it("(b) amend changing one hunk → cleared review, flagged note, outdated comment, stale card", async () => {
+  it("(b) amend changing one hunk → cleared review, outdated comment, stale card", async () => {
     const dir = await initRepo();
     fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 0\n");
     await git(dir, "add", ".");
@@ -162,7 +162,7 @@ describe("refresh integration", () => {
       const aKey = hunkHashFor(snap2, "a.py").fileKey;
 
       await ctx.reviews.mutate(id, (draft) => {
-        draft.hunkStates.push({ contentHash: aHash, folded: false, reviewed: true, summary: "tweaks z", note: "check z" });
+        draft.hunkStates.push({ contentHash: aHash, folded: false, reviewed: true, summary: "tweaks z" });
         draft.hunkStates.push({ contentHash: bHash, folded: false, reviewed: true, summary: "adds b" });
         draft.annotations.push({
           id: "ann-a",
@@ -198,13 +198,14 @@ describe("refresh integration", () => {
       expect(res.json()).toMatchObject({ newVersion: true });
 
       const after = ctx.reviews.getSnapshot(id)!;
-      // The changed hunk's carried state: reviewed cleared, note kept+flagged.
+      // The changed hunk's carried state: reviewed cleared, summary kept
+      // and flagged for regeneration.
       const changedNew = after.versionStatus?.changedNewIds ?? [];
       expect(changedNew.length).toBeGreaterThan(0);
       const carried = after.hunkStates.find((s) => changedNew.includes(`h:${hunkHashFor(after, "a.py").fileKey}:${s.contentHash}`));
       expect(carried?.reviewed).toBe(false);
-      expect(carried?.note).toBe("check z");
-      expect(carried?.noteStale).toBe(true);
+      expect(carried?.summary).toBe("tweaks z");
+      expect(carried?.needsSummary).toBe(true);
       // Untouched hunk keeps its reviewed flag.
       expect(after.hunkStates.find((s) => s.contentHash === bHash)?.reviewed).toBe(true);
       // Its comment is outdated with the snippet kept.

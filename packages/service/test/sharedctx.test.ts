@@ -742,7 +742,7 @@ describe("base growth observability (PRD §4.14, §9.3)", () => {
     try {
       const settings = setup.ctx.settings.get();
       const guideRev = guideRevisionForSnapshot(setup.ctx.reviews.getSnapshot(setup.reviewId)!);
-      const baseKey = `${setup.reviewId}|v1|${guideRev}|${settings.main.provider}|${settings.main.model}`;
+      const baseKey = `${setup.reviewId}|v1|${guideRev}|${settings.main.provider}|${settings.main.model}|${settings.main.effort ?? ""}|lockdown`;
       await setup.ctx.sessions.getBase({
         key: {
           reviewId: setup.reviewId,
@@ -750,9 +750,12 @@ describe("base growth observability (PRD §4.14, §9.3)", () => {
           guideRevision: guideRev,
           provider: settings.main.provider,
           model: settings.main.model,
+          access: "lockdown",
+          effort: settings.main.effort ?? "",
         },
         cwd: "/tmp",
         systemPrompt: "s",
+        readOnly: true,
         mcpServers: [],
         pack: "BASE PACK (test)",
       });

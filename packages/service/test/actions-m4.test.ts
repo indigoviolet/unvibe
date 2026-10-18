@@ -4,7 +4,7 @@
  * With the replay runner and scripted fakes: every action over HTTP
  * (`POST /api/reviews/:id/actions`) on the demo review, asserting the
  * patches and final state — depth round-trip without a second agent
- * call, undo preserving annotations, promote, cancel-on-close, dedupe,
+ * call, undo preserving annotations, promote, close-keeps-answer, dedupe,
  * ask follow-up reusing the session, malformed reply and retryable-error
  * paths, concurrent actions on different cards.
  */
@@ -572,7 +572,7 @@ describe("M4 actions on the demo review (replay)", () => {
   });
 });
 
-describe("M4 dedupe + cancel-on-close (gated replay)", () => {
+describe("M4 dedupe + close-keeps-answer / delete-cancels (gated runners)", () => {
   beforeEach(() => {
     process.env.UNVIBE_REPO_ROOTS = "";
   });
@@ -629,14 +629,78 @@ describe("M4 dedupe + cancel-on-close (gated replay)", () => {
       expect(second.json.jobId).toBe(jobId);
       expect(ctx.reviews.getSnapshot(id)!.annotations.length).toBe(countBefore);
 
-      // Closing cancels the job: no spinner forever, no error state.
-      const closed = await postAction(app, id, { kind: "close", annotationId });
-      expect(closed.status).toBe(200);
+      // Deleting still cancels the job and removes the card.
+      const deleted = await postAction(app, id, { kind: "delete", targetId: annotationId });
+      expect(deleted.status).toBe(200);
       await waitForJob(ctx, jobId);
       expect(ctx.jobs.get(jobId)?.state).toBe("cancelled");
-      const after = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!;
-      expect(after.open).toBe(false);
-      expect(after.error).toBeNull();
+      expect(ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("close while a turn runs keeps the job: it fills, and reopening shows the answer", { timeout: 60000 }, async () => {
+    // Fake runner whose explain turn waits on a gate the test releases.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    class GatedFake extends FakeAgentRunner {
+      override async *prompt(
+        session: Session,
+        text: string,
+        signal?: AbortSignal,
+      ): AsyncIterable<AgentEvent> {
+        if (text.includes("## The question\n\nExplain this.")) await gate;
+        yield* super.prompt(session, text, signal);
+      }
+    }
+    const agents = new GatedFake([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+      { match: "## The question\n\nExplain this.", events: textEvents(VALID_EXPLAIN) },
+    ]);
+    const { app, ctx } = await createApp("tok", { agents });
+    try {
+      const id = await createDemoReview(app);
+      await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
+      const first = await postAction(app, id, {
+        kind: "explain",
+        quote: "raw CRLF",
+        anchor: { where: "block", blockId: "b1" },
+      });
+      expect(first.status).toBe(200);
+      const annotationId = first.json.annotationId as string;
+      const jobId = first.json.jobId as string;
+      await waitFor(() => ctx.jobs.get(jobId)?.state === "running");
+
+      // Close mid-turn: only hides the card. The job is not cancelled and
+      // the working marker stays, so a reopened card shows it is working.
+      const closed = await postAction(app, id, { kind: "close", annotationId });
+      expect(closed.status).toBe(200);
+      const whileClosed = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!;
+      expect(whileClosed.open).toBe(false);
+      expect(whileClosed.working).not.toBeNull();
+      expect(ctx.jobs.get(jobId)?.state).not.toBe("cancelled");
+
+      release();
+      expect(await waitForJob(ctx, jobId)).toBe("done");
+      const filled = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!;
+      expect(filled.open).toBe(false);
+      expect((filled.turns ?? [])[0]?.blocks.length).toBeGreaterThan(0);
+
+      // Reopening (the comments route the web uses) shows the answer.
+      const reopened = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/comments/${annotationId}`,
+        headers: authed,
+        payload: { open: true },
+      } as never);
+      expect(reopened.statusCode).toBe(200);
+      const shown = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!;
+      expect(shown.open).toBe(true);
+      expect((shown.turns ?? [])[0]?.blocks.length).toBeGreaterThan(0);
     } finally {
       await app.close();
     }

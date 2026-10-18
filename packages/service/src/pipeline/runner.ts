@@ -18,6 +18,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  AccessMode,
   AgentRunner,
   Block,
   Job,
@@ -27,7 +28,8 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, parseCards, parseCardsPartial, parseHunkReply, parseId, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
+import { postureFor } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { DegradedConnError, DegradedTurnError, RetryableError } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
@@ -37,6 +39,7 @@ import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import { NoAgentError } from "../agent/none.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildLadder, DEFAULT_HUNK_PASS_FANOUT_LIMIT } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
+import { renderSystemPrompt } from "../prompts/access.js";
 import type { SessionManager } from "../sessions/manager.js";
 import { baseKeyString } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
@@ -75,13 +78,27 @@ export interface PipelineOptions {
 
 type Session = { id: string; provider: string; model: string };
 
+/**
+ * Role identity for jobs and sessions (issue #172): provider + model +
+ * the role's effort, always passed explicitly ("" = adapter default).
+ * Spread into `jobs.enqueue` (effort shows on the Debug page next to the
+ * model) and `runner.start` (the adapter applies it).
+ */
+export function roleFields(pick: { provider: string; model: string; effort: string }): {
+  provider: string;
+  model: string;
+  effort: string;
+} {
+  return { provider: pick.provider, model: pick.model, effort: pick.effort };
+}
+
 async function collectStreaming(
   runner: AgentRunner,
   session: Session,
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
-  onTool?: () => void,
+  onTool?: (name: string, detail?: string) => void,
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   let afterTool = false;
@@ -97,7 +114,7 @@ async function collectStreaming(
     } else if (ev.type === "tool") {
       if (ev.status === "start") {
         afterTool = true;
-        onTool?.();
+        onTool?.(ev.name, ev.detail);
       }
     } else if (ev.type === "usage") {
       usage.inputTokens += ev.inputTokens;
@@ -115,6 +132,28 @@ async function collectStreaming(
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Issue #194: run one agent turn inside the job's turn timings. */
+async function timedTurn<T>(
+  ctx: { beginTurn(label: string): void; endTurn(): void },
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  ctx.beginTurn(label);
+  try {
+    return await fn();
+  } finally {
+    ctx.endTurn();
+  }
+}
+
+/** Optional tool-call relay for contexts that may not report tools. */
+function reportToolFrom(ctx?: {
+  reportTool?: (name: string, detail?: string) => void;
+}): ((name: string, detail?: string) => void) | undefined {
+  const fn = ctx?.reportTool;
+  return fn ? (name, detail) => fn(name, detail) : undefined;
 }
 
 /**
@@ -350,6 +389,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const provider = settings.main.provider;
     const model = settings.main.model;
+    const effort = settings.main.effort;
     // #122: enqueue before awaiting the base, so the click gets its job id
     // at once. The base seq for the change list is read synchronously from
     // the current base (absent → 0, a safe under-approximation: the fork may
@@ -362,6 +402,8 @@ export class Pipeline {
           guideRevision: guideRevisionForSnapshot(snapshot),
           provider,
           model,
+          access: postureFor(settings),
+          effort,
         }),
       )?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
@@ -385,6 +427,7 @@ export class Pipeline {
       kind: o.kind,
       provider,
       model,
+      effort,
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
@@ -415,7 +458,8 @@ export class Pipeline {
             // Per-attempt evidence: a retry must observe *its own* turn's
             // tool activity, not the previous attempt's.
             const mcpBefore = this.opts.mcp.activitySnapshot(o.reviewId);
-            const { text, usage } = await collectStreaming(
+            const { text, usage } = await timedTurn(ctx, "first", () =>
+              collectStreaming(
               this.opts.runner,
               forked.session,
               prompt,
@@ -432,6 +476,8 @@ export class Pipeline {
                   }
                 }
               },
+              (name, detail) => ctx.reportTool(name, detail),
+              ),
             );
             const first = this.parseAndValidate(o.reviewId, text, o.echoCandidates);
             // Facts only (#180): the reply's wording is never judged. A
@@ -467,8 +513,11 @@ export class Pipeline {
                   .join("\n") +
                 anchorProblem +
                 `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
-              const repair = await collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
-                ctx.reportText(d),
+              const repair = await timedTurn(ctx, "repair", () =>
+                collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail) => ctx.reportTool(name, detail),
+                ),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -578,6 +627,11 @@ export class Pipeline {
     const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     const provider = settings.small.provider;
     const model = settings.small.model;
+    // Background small-model jobs always run locked down (owner decision
+    // #160): the session posture and the job stamp below both say so,
+    // regardless of the setting.
+    const access = postureFor(settings, o.kind);
+    const effort = settings.small.effort;
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -591,11 +645,13 @@ export class Pipeline {
       kind: o.kind,
       provider,
       model,
+      effort,
       priority: o.priority,
       ...(o.dedupeKey ? { dedupe: o.dedupeKey } : {}),
       ...(o.cardId ? { cardId: o.cardId } : {}),
       ...(o.annotationId ? { annotationId: o.annotationId } : {}),
       promptSnapshot: prompt,
+      accessMode: access,
       run: async (ctx) => {
         for (let attempt = 0; ; attempt++) {
           try {
@@ -603,14 +659,19 @@ export class Pipeline {
             const session = await this.opts.runner.start({
               provider,
               model,
+              effort,
               cwd: this.worktreeOf(o.reviewId),
               systemPrompt: "",
+              readOnly: access !== "full",
               mcpServers: [],
             });
             ctx.setSessionId(session.id);
             try {
-              const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
-                ctx.reportText(d),
+              const { text, usage } = await timedTurn(ctx, "first", () =>
+                collectStreaming(this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail) => ctx.reportTool(name, detail),
+                ),
               );
               const first = this.parseAndValidate(o.reviewId, text);
               let finalText = text;
@@ -627,8 +688,11 @@ export class Pipeline {
                     .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                     .join("\n") +
                   `\nReply with the same one-line summary and corrected citations. End with the same trailing JSON block.`;
-                const repair = await collectStreaming(this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
-                  ctx.reportText(d),
+                const repair = await timedTurn(ctx, "repair", () =>
+                  collectStreaming(this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
+                    ctx.reportText(d),
+                    (name, detail) => ctx.reportTool(name, detail),
+                  ),
                 );
                 usage.inputTokens += repair.usage.inputTokens;
                 usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -758,6 +822,10 @@ export class Pipeline {
         if (stages.critic !== "done") jobIds.push(...(await this.enqueueCritic(reviewId)).map((j) => j.id));
         if (stages.concepts !== "done") jobIds.push(...(await this.enqueueConcepts(reviewId)).map((j) => j.id));
         if (stages["hunk-pass"] !== "done") jobIds.push(...(await this.enqueueHunkPass(reviewId)).map((j) => j.id));
+        // Issue #169: the plotline assign step is not a stage; resume it
+        // like the demo fill below (no-op unless the reader named
+        // plotlines on a degraded rung with hunks still unassigned).
+        jobIds.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)).map((j) => j.id));
         // Demo auto-fill is part of enqueueAfterReader, not a stage: a
         // restart after the base finished would otherwise leave pending
         // placeholders unfilled. No-op when nothing is pending.
@@ -780,8 +848,7 @@ export class Pipeline {
       return this.opts.jobs.enqueue({
         reviewId,
         kind: "concept",
-        provider: effective.main.provider,
-        model: effective.main.model,
+        ...roleFields(effective.main),
         priority: JOB_PRIORITY.userRequested,
         run: async () => {},
       });
@@ -799,8 +866,7 @@ export class Pipeline {
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "concept",
-      provider: settings.main.provider,
-      model: settings.main.model,
+      ...roleFields(settings.main),
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `concept:${slug}`, requestKind: "concept-page", baseVersion: `v${snapshot.version.n}` },
       cardId: `cc-${slug}`,
@@ -810,6 +876,7 @@ export class Pipeline {
         ctx.setSessionId(forked.session.id);
         const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
           ctx.reportText(d),
+          (name, detail) => ctx.reportTool(name, detail),
         );
         ctx.reportUsage(usage);
         await this.recordUsage(reviewId, usage);
@@ -834,6 +901,7 @@ export class Pipeline {
           "standard",
           blocks,
           (u) => ctx.reportUsage(u),
+          (name, detail) => ctx.reportTool(name, detail),
         );
         await this.opts.reviews.mutate(reviewId, (draft) => {
           let page = draft.pages.find((p) => p.id === `c-${slug}`);
@@ -888,23 +956,24 @@ export class Pipeline {
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "summarize",
-      provider: settings.small.provider,
-      model: settings.small.model,
+      ...roleFields(settings.small),
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `hunk:${contentHash}`, requestKind: "summarize", baseVersion: `v${snapshot.version.n}` },
+      accessMode: postureFor(settings, "summarize"),
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const session = await this.opts.runner.start({
-          provider: settings.small.provider,
-          model: settings.small.model,
+          ...roleFields(settings.small),
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
+          readOnly: postureFor(settings, "summarize") !== "full",
           mcpServers: [],
         });
         ctx.setSessionId(session.id);
         try {
           const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
+            (name, detail) => ctx.reportTool(name, detail),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
@@ -926,13 +995,20 @@ export class Pipeline {
    * hunk-pass stage (the two copied parse blocks). A missing summary stores
    * nothing, so the hunk shows the Summarize action again instead of
    * garbage. Guide-cited and one-line hunks are never hidden.
+   *
+   * Issue #169: the score is stored alongside, resolved against the
+   * deterministic rules (`resolveHunkScore`): an unusable value reads as
+   * routine, and a one-line change is never mechanical. Hiding still
+   * follows `hiddenReason` alone — the score never hides or unhides.
    */
   private async applyHunkSummary(reviewId: string, contentHash: string, result: HunkReplyResult): Promise<void> {
     let hiddenReason = result.hiddenReason;
     const live = this.opts.reviews.getSnapshot(reviewId);
-    if (live && (this.isCitedByGuide(reviewId, contentHash) || this.isOneLineChange(live, contentHash))) {
+    const isOneLine = live ? this.isOneLineChange(live, contentHash) : false;
+    if (live && (this.isCitedByGuide(reviewId, contentHash) || isOneLine)) {
       hiddenReason = null;
     }
+    const score = resolveHunkScore(result.score, { isOneLine });
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let state = draft.hunkStates.find((s) => s.contentHash === contentHash);
       if (!state) {
@@ -942,6 +1018,7 @@ export class Pipeline {
       if (result.summary !== undefined) {
         state.summary = result.summary;
       }
+      state.score = score;
       const fileHunk = draft.files.flatMap((f) => f.hunks).find((h) => h.contentHash === contentHash);
       if (fileHunk) {
         if (hiddenReason) fileHunk.hiddenReason = hiddenReason;
@@ -1099,10 +1176,11 @@ export class Pipeline {
     level: string,
     blocks: Block[],
     onUsage?: (u: TokenUsage) => void,
+    onTool?: (name: string, detail?: string) => void,
   ): Promise<Block[]> {
     const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
     if (!first.needsRepair) return first.blocks;
-    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage);
+    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage, onTool);
   }
 
   /**
@@ -1123,6 +1201,7 @@ export class Pipeline {
     level: string,
     first: { blocks: Block[]; messages: string[] },
     onUsage?: (u: TokenUsage) => void,
+    onTool?: (name: string, detail?: string) => void,
   ): Promise<Block[]> {
     const actx = this.actionContextFor(reviewId);
     try {
@@ -1133,6 +1212,7 @@ export class Pipeline {
         this.render("diagram", variables),
         signal,
         () => {},
+        onTool,
       );
       onUsage?.(usage);
       await this.recordUsage(reviewId, usage);
@@ -1214,9 +1294,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructionsTpl = lib.get("instructions");
-    if (!instructionsTpl) throw new Error("missing instructions template");
-    const instructions = renderTemplate(instructionsTpl, {});
+    const instructions = renderSystemPrompt(lib, postureFor(settings));
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
     // The base pack instructs the agent to answer "ready" (SessionManager
     // waits for it). buildBasePack's user is L1+L1b+L2; prefix the ready
@@ -1228,6 +1306,8 @@ export class Pipeline {
       guideRevision: guideRevisionForSnapshot(snapshot),
       provider: settings.main.provider,
       model: settings.main.model,
+      access: postureFor(settings),
+      effort: settings.main.effort,
     };
     const mcp = this.opts.mcp.issueSession(reviewId, `base-${reviewId}`, "session");
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
@@ -1235,6 +1315,7 @@ export class Pipeline {
       key,
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
+      readOnly: postureFor(settings) !== "full",
       mcpServers,
       pack: packText,
     });
@@ -1335,6 +1416,8 @@ export class Pipeline {
             guideRevision: guideRevisionForSnapshot(snapshot),
             provider: settings.main.provider,
             model: settings.main.model,
+            access: postureFor(settings),
+            effort: settings.main.effort,
           },
           forked.viaFork,
         );
@@ -1352,9 +1435,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructionsTpl = lib.get("instructions");
-    if (!instructionsTpl) throw new Error("missing instructions template");
-    const instructions = renderTemplate(instructionsTpl, {});
+    const instructions = renderSystemPrompt(lib, postureFor(settings));
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
     const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
     const base = await this.opts.sessions.getBase({
@@ -1364,9 +1445,12 @@ export class Pipeline {
         guideRevision: guideRevisionForSnapshot(snapshot),
         provider: settings.main.provider,
         model: settings.main.model,
+        access: postureFor(settings),
+        effort: settings.main.effort,
       },
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
+      readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}/api/mcp/fallback` }],
       pack: packText,
     });
@@ -1381,10 +1465,10 @@ export class Pipeline {
     }
     const mcp = this.opts.mcp.issueSession(reviewId, `fork-${Date.now()}`, "session");
     const session = await runner.start({
-      provider: settings.main.provider,
-      model: settings.main.model,
+      ...roleFields(settings.main),
       cwd: this.worktreeOf(reviewId),
       systemPrompt: instructions,
+      readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
     });
     for await (const ev of runner.prompt(session, packText)) {
@@ -1407,7 +1491,7 @@ export class Pipeline {
     const source = ladder.source;
     const diff = ladder.diff;
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructions = renderTemplate(lib.get("instructions")!, {});
+    const instructions = renderSystemPrompt(lib, postureFor(settings));
     let prompt = renderTemplate(lib.get("reader")!, {
       source,
       diff_inline: diff.text,
@@ -1418,8 +1502,7 @@ export class Pipeline {
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "reader",
-      provider: settings.main.provider,
-      model: settings.main.model,
+      ...roleFields(settings.main),
       priority: JOB_PRIORITY.visible,
       dedupe: { anchor: "guide", requestKind: "reader", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
@@ -1438,10 +1521,10 @@ export class Pipeline {
         for (let attempt = 0; ; attempt++) {
           const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
           const session = await this.opts.runner.start({
-            provider: settings.main.provider,
-            model: settings.main.model,
+            ...roleFields(settings.main),
             cwd: this.worktreeOf(reviewId),
             systemPrompt: instructions,
+            readOnly: postureFor(settings) !== "full",
             mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
           });
           ctx.setSessionId(session.id);
@@ -1449,7 +1532,8 @@ export class Pipeline {
             let buffer = "";
             const streamed = new Set<number>();
             const mcpBefore = this.opts.mcp.activitySnapshot(reviewId);
-            const { usage } = await collectStreaming(
+            const { usage } = await timedTurn(ctx, "first", () =>
+              collectStreaming(
               this.opts.runner,
               session,
               prompt,
@@ -1473,11 +1557,13 @@ export class Pipeline {
                   // ignore mid-stream
                 }
               },
-              () => {
+              (name, detail) => {
                 // Text written before a tool call and before any card heading
                 // is the agent narrating its exploration, not card content.
+                ctx.reportTool(name, detail);
                 if (!/^## /m.test(buffer)) buffer = "";
               },
+              ),
             );
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
@@ -1518,8 +1604,11 @@ export class Pipeline {
               // it on the job's stored prompt — the Debug page then shows
               // what failed (prompt wording, an ID shape, or the validator).
               ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
-              const repair = await collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
-                ctx.reportText(d),
+              const repair = await timedTurn(ctx, "repair", () =>
+                collectStreaming(this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail) => ctx.reportTool(name, detail),
+                ),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -1558,6 +1647,7 @@ export class Pipeline {
               "standard",
               flat,
               (u) => ctx.reportUsage(u),
+              (name, detail) => ctx.reportTool(name, detail),
             );
             const withDiagrams = splitFinalizedBlocks(finalCards, finalized);
             await this.applyReaderResult(reviewId, withDiagrams, finalData, finalValidation);
@@ -1665,6 +1755,23 @@ export class Pipeline {
       cards.map((c) => ({ title: c.title, blocks: c.blocks })),
       (data ?? null) as Record<string, unknown> | null,
     );
+    // Issue #169: validate the reader's plotline hunk IDs like any other
+    // ID before storing. Unknown IDs are dropped, a twice-claimed hunk
+    // keeps its first plotline; hunks left out stay unassigned ("other").
+    const knownPlotHunks = new Set<string>();
+    for (const f of this.opts.reviews.getSnapshot(reviewId)?.files ?? []) {
+      for (const h of f.hunks) knownPlotHunks.add(`h:${f.fileKey}:${h.contentHash}`);
+    }
+    const plotlines = normalizePlotlines(applied.plotlines, knownPlotHunks);
+    const dropped = plotlines.dropped;
+    if (dropped.unknown.length > 0 || dropped.duplicates.length > 0 || dropped.extraPlotlines > 0) {
+      console.warn(
+        `[reader] ${reviewId}: plotlines dropped ` +
+          `${dropped.unknown.length} unknown hunk IDs` +
+          (dropped.unknown.length > 0 ? ` (${dropped.unknown.slice(0, 5).join(", ")})` : "") +
+          `, ${dropped.duplicates.length} duplicates, ${dropped.extraPlotlines} extra plotlines`,
+      );
+    }
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
@@ -1739,6 +1846,18 @@ export class Pipeline {
           ],
         });
       }
+      // Issue #169: store the validated plotlines; per-hunk assignment
+      // rides `HunkState.plotline` (content-hash keyed, like summaries).
+      draft.plotlines = plotlines.plotlines;
+      for (const [hid, pid] of Object.entries(plotlines.assignment)) {
+        const hash = hid.slice(hid.lastIndexOf(":") + 1);
+        let state = draft.hunkStates.find((s) => s.contentHash === hash);
+        if (!state) {
+          state = { contentHash: hash, folded: false, reviewed: false };
+          draft.hunkStates.push(state);
+        }
+        state.plotline = pid;
+      }
       this.markFirstCard(draft);
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
       draft.logTail.push({
@@ -1771,6 +1890,10 @@ export class Pipeline {
     if (hunkCount > DEFAULT_HUNK_PASS_FANOUT_LIMIT) {
       out.push(...(await this.enqueueHunkPass(reviewId)));
     }
+    // Issue #169: on degraded reader rungs the follow-up assign step
+    // places the hunks the reader never saw; otherwise left-outs stay
+    // "other".
+    out.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)));
     if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
       out.push(...(await this.enqueueDemoFill(reviewId)));
     }
@@ -1793,8 +1916,7 @@ export class Pipeline {
       return this.opts.jobs.enqueue({
         reviewId,
         kind: "critic",
-        provider: settings.main.provider,
-        model: settings.main.model,
+        ...roleFields(settings.main),
         priority: JOB_PRIORITY.background,
         dedupe: { anchor: `finding:${key}`, requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
         run: async (ctx) => {
@@ -1806,6 +1928,7 @@ export class Pipeline {
           try {
             const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
               ctx.reportText(d),
+              (name, detail) => ctx.reportTool(name, detail),
             );
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
@@ -1923,8 +2046,7 @@ export class Pipeline {
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "concept",
-      provider: settings.main.provider,
-      model: settings.main.model,
+      ...roleFields(settings.main),
       priority: JOB_PRIORITY.background,
       dedupe: { anchor: "concepts", requestKind: "concept-stubs", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
@@ -1936,6 +2058,7 @@ export class Pipeline {
         try {
           const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
+            (name, detail) => ctx.reportTool(name, detail),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
@@ -2016,8 +2139,9 @@ export class Pipeline {
       return [];
     }
     this.hunkPassCompleted.set(reviewId, 0);
+    const hunkPassAccess = postureFor(settings, "hunk-pass");
     return targets.map(({ file, hunk }) =>
-      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length),
+      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length, hunkPassAccess),
     );
   }
 
@@ -2026,8 +2150,9 @@ export class Pipeline {
     snapshot: ReviewSnapshot,
     file: ReviewSnapshot["files"][number],
     hunk: ReviewSnapshot["files"][number]["hunks"][number],
-    small: { provider: string; model: string },
+    small: { provider: string; model: string; effort: string },
     expectedJobs: number,
+    access: AccessMode,
   ): Job {
     const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
     const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
@@ -2040,23 +2165,24 @@ export class Pipeline {
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "hunk-pass",
-      provider: small.provider,
-      model: small.model,
+      ...roleFields(small),
       priority: JOB_PRIORITY.background,
       dedupe: { anchor: `hunk:${hunk.contentHash}`, requestKind: "hunk-pass", baseVersion: `v${snapshot.version.n}` },
+      accessMode: access,
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
         const session = await this.opts.runner.start({
-          provider: small.provider,
-          model: small.model,
+          ...roleFields(small),
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
+          readOnly: access !== "full",
           mcpServers: [],
         });
         ctx.setSessionId(session.id);
         try {
           const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
+            (name, detail) => ctx.reportTool(name, detail),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
@@ -2096,6 +2222,159 @@ export class Pipeline {
     }
   }
 
+  /**
+   * Issue #169 large-PR fallback (#107): the reader names plotlines and
+   * assigns the hunks it saw, by hunk ID in one go. On degraded rungs it
+   * never saw every ID (uninteresting files collapse to one line, then
+   * files-only/counts-only drop hunk rows), so one small-model step
+   * assigns the hunks whose IDs stayed invisible. Hunks the reader saw
+   * and left out stay "other" by choice; past `PLOTLINE_ASSIGN_CAP`
+   * invisible hunks the rest also stay "other" — classifying thousands
+   * of hunks would cost a second hunk pass, exactly what the fan-out
+   * limit refuses to pay. At most one attempt per review version (a
+   * finished job is never re-enqueued; an errored one retries through
+   * resume).
+   */
+  private async maybeEnqueuePlotlineAssign(reviewId: string): Promise<Job[]> {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) return [];
+    const plotlines = snapshot.plotlines ?? [];
+    if (plotlines.length === 0) return [];
+    const attempted = this.opts.jobs
+      .listByReview(reviewId)
+      .some(
+        (j) =>
+          j.kind === "plotline-assign" &&
+          (j.state === "queued" || j.state === "running" || j.state === "backing-off" || j.state === "done"),
+      );
+    if (attempted) return [];
+    const assigned = new Set(
+      snapshot.hunkStates.filter((s) => s.plotline !== undefined).map((s) => s.contentHash),
+    );
+    const settings = await this.effectiveSettings();
+    // The ladder is deterministic: rebuild it to learn exactly which hunk
+    // IDs the reader saw (inlined + summarized). Anything assigned or
+    // visible stays out of the follow-up.
+    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
+    const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    const seen = new Set([...ladder.inlinedHunkIds, ...ladder.summarizedHunkIds]);
+    const unassigned = snapshot.files.flatMap((f) =>
+      f.hunks
+        .filter((h) => !assigned.has(h.contentHash) && !seen.has(`h:${f.fileKey}:${h.contentHash}`))
+        .map((h) => ({ file: f, hunk: h })),
+    );
+    if (unassigned.length === 0) return [];
+    if (unassigned.length > PLOTLINE_ASSIGN_CAP) {
+      console.warn(
+        `[reader] ${reviewId}: ${unassigned.length} hunks left out of plotlines past the assign cap (${PLOTLINE_ASSIGN_CAP}); leaving them in "other"`,
+      );
+      return [];
+    }
+    const plotlineList = plotlines
+      .map(
+        (p) =>
+          `- ${p.id}: ${p.name}${p.description ? ` — ${p.description}` : ""}${p.buildsOn ? ` (builds on ${p.buildsOn})` : ""}`,
+      )
+      .join("\n");
+    const hunkList = unassigned
+      .map(({ file, hunk }) => {
+        const summary = snapshot.hunkStates.find((s) => s.contentHash === hunk.contentHash)?.summary;
+        return `- h:${file.fileKey}:${hunk.contentHash} ${file.path}: ${summary ?? hunk.header}`;
+      })
+      .join("\n");
+    // Issue #193: commit evidence for closest-fit (subject + its hunks).
+    const commitList =
+      (snapshot.commits ?? []).length > 0
+        ? (snapshot.commits ?? [])
+            .map(
+              (c) =>
+                `- \`${c.sha.slice(0, 7)}\` ${c.subject.replace(/\s+/g, " ").trim()}${c.hunks.length > 0 ? ` — hunks: ${c.hunks.join(", ")}` : ""}`,
+            )
+            .join("\n")
+        : "(no commit list)";
+    const prompt = this.render("plotline_assign", { plotlines: plotlineList, hunks: hunkList, commits: commitList });
+    const job = this.opts.jobs.enqueue({
+      reviewId,
+      kind: "plotline-assign",
+      provider: settings.small.provider,
+      model: settings.small.model,
+      effort: settings.small.effort,
+      accessMode: postureFor(settings, "plotline-assign"),
+      priority: JOB_PRIORITY.background,
+      dedupe: { anchor: "plotlines", requestKind: "plotline-assign", baseVersion: `v${snapshot.version.n}` },
+      run: async (ctx) => {
+        ctx.setPromptSnapshot(prompt);
+        const session = await this.opts.runner.start({
+          provider: settings.small.provider,
+          model: settings.small.model,
+          effort: settings.small.effort,
+          cwd: this.worktreeOf(reviewId),
+          systemPrompt: "",
+          readOnly: postureFor(settings, "plotline-assign") !== "full",
+          mcpServers: [],
+        });
+        ctx.setSessionId(session.id);
+        try {
+          const { text, usage } = await collectStreaming(this.opts.runner, session, prompt, ctx.signal, (d) =>
+            ctx.reportText(d),
+          );
+          ctx.reportUsage(usage);
+          await this.recordUsage(reviewId, usage);
+          // Malformed trailing JSON fails the job (visible on Debug);
+          // a missing block or zero usable assignments keeps "other".
+          const { data } = this.parseAndValidate(reviewId, text);
+          const raw = (data as Record<string, unknown> | null)?.["assignments"];
+          const live = this.opts.reviews.getSnapshot(reviewId);
+          if (typeof raw !== "object" || raw === null || Array.isArray(raw) || !live) return;
+          const ids = new Set(plotlines.map((p) => p.id));
+          const known = new Set<string>();
+          for (const f of live.files) for (const h of f.hunks) known.add(`h:${f.fileKey}:${h.contentHash}`);
+          const taken = new Set(
+            live.hunkStates.filter((s) => s.plotline !== undefined).map((s) => s.contentHash),
+          );
+          let applied = 0;
+          let dropped = 0;
+          await this.opts.reviews.mutate(reviewId, (draft) => {
+            for (const [hid, pid] of Object.entries(raw as Record<string, unknown>)) {
+              const parsed = parseId(hid);
+              if (parsed?.kind !== "h") {
+                dropped += 1;
+                continue;
+              }
+              const canonical = `h:${parsed.fileKey}:${parsed.contentHash}`;
+              if (!known.has(canonical) || typeof pid !== "string" || !ids.has(pid)) {
+                dropped += 1;
+                continue;
+              }
+              if (taken.has(parsed.contentHash)) {
+                dropped += 1;
+                continue;
+              }
+              taken.add(parsed.contentHash);
+              let state = draft.hunkStates.find((s) => s.contentHash === parsed.contentHash);
+              if (!state) {
+                state = { contentHash: parsed.contentHash, folded: false, reviewed: false };
+                draft.hunkStates.push(state);
+              }
+              state.plotline = pid;
+              applied += 1;
+            }
+          });
+          if (dropped > 0) {
+            console.warn(`[reader] ${reviewId}: plotline assign step applied ${applied}, dropped ${dropped}`);
+          }
+        } finally {
+          try {
+            await this.opts.runner.close(session);
+          } catch {
+            // ignore
+          }
+        }
+      },
+    });
+    return [job];
+  }
+
   private async enqueueDemoFill(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
@@ -2111,8 +2390,7 @@ export class Pipeline {
         this.opts.jobs.enqueue({
           reviewId,
           kind: "go-deeper",
-          provider: effective.main.provider,
-          model: effective.main.model,
+          ...roleFields(effective.main),
           priority: JOB_PRIORITY.background,
           dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
           run: async (ctx) => {
@@ -2129,7 +2407,12 @@ export class Pipeline {
     cardId: string,
     signal: AbortSignal | undefined,
     onText: (delta: string) => void,
-    ctx?: { setPromptSnapshot: (s: string) => void; setSessionId: (s: string) => void; reportUsage: (u: TokenUsage) => void },
+    ctx?: {
+      setPromptSnapshot: (s: string) => void;
+      setSessionId: (s: string) => void;
+      reportUsage: (u: TokenUsage) => void;
+      reportTool?: (name: string, detail?: string) => void;
+    },
   ): Promise<void> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
@@ -2146,7 +2429,9 @@ export class Pipeline {
     void base;
     const forked = await this.forkFor(reviewId);
     ctx?.setSessionId(forked.session.id);
-    const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, signal, onText);
+    const { text, usage } = await collectStreaming(this.opts.runner, forked.session, prompt, signal, onText, (name, detail) =>
+      ctx?.reportTool?.(name, detail),
+    );
     ctx?.reportUsage(usage);
     await this.recordUsage(reviewId, usage);
     // Issue #50: match the placeholder label (the card's future title).
@@ -2166,6 +2451,7 @@ export class Pipeline {
       "standard",
       blocks,
       (u) => ctx?.reportUsage(u),
+      reportToolFrom(ctx),
     );
     const title = (data?.["title"] as string | undefined) ?? card.pending.label;
     await this.opts.reviews.mutate(reviewId, (draft) => {
@@ -2548,58 +2834,53 @@ export class Pipeline {
   }
 
   updateRunner(): {
-    runUpdatePrompt: (prompt: string, opts: { reviewId: string; toVersion: number; signal?: AbortSignal }) => Promise<string>;
+    runUpdatePrompt: (
+      prompt: string,
+      opts: {
+        reviewId: string;
+        toVersion: number;
+        signal?: AbortSignal;
+        hooks?: {
+          setSessionId(id: string): void;
+          reportText(delta: string): void;
+          reportTool(name: string, detail?: string): void;
+          reportUsage(usage: TokenUsage): void;
+        };
+      },
+    ) => Promise<string>;
   } {
     return {
-      // The versions module renders `update_pass.md` already; run the
-      // rendered prompt in a fork of the new base as an `update-pass` job.
+      // The versions module renders `update_pass.md` already and encloses
+      // this call in the single `update-pass` job. Run directly in that
+      // job — enqueuing a second update-pass job here deadlocked on the
+      // enclosing job's dedupe key (issue #194: RUNNING forever, no
+      // token counts). Retryable errors retry the turn in place.
       runUpdatePrompt: async (prompt, opts) => {
-        const settings = await this.effectiveSettings();
-        let resolveText!: (s: string) => void;
-        let rejectText!: (e: Error) => void;
-        const done = new Promise<string>((res, rej) => {
-          resolveText = res;
-          rejectText = rej;
-        });
-        this.opts.jobs.enqueue({
-          reviewId: opts.reviewId,
-          kind: "update-pass",
-          provider: settings.main.provider,
-          model: settings.main.model,
-          priority: JOB_PRIORITY.userRequested,
-          dedupe: { anchor: "update", requestKind: "update-pass", baseVersion: `v${opts.toVersion}` },
-          promptSnapshot: prompt,
-          run: async (ctx) => {
-            for (let attempt = 0; ; attempt++) {
-              try {
-                ctx.setPromptSnapshot(prompt);
-                const base = await this.ensureBase(opts.reviewId);
-                void base;
-                const forked = await this.forkFor(opts.reviewId);
-                ctx.setSessionId(forked.session.id);
-                const { text, usage } = await collectStreaming(
-                  this.opts.runner,
-                  forked.session,
-                  prompt,
-                  opts.signal ?? ctx.signal,
-                  (d) => ctx.reportText(d),
-                );
-                ctx.reportUsage(usage);
-                await this.recordUsage(opts.reviewId, usage);
-                resolveText(text);
-                return;
-              } catch (err) {
-                if (err instanceof RetryableError && attempt < 3) {
-                  await sleepMs(50 * (attempt + 1));
-                  continue;
-                }
-                rejectText(err as Error);
-                throw err;
-              }
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const base = await this.ensureBase(opts.reviewId);
+            void base;
+            const forked = await this.forkFor(opts.reviewId);
+            opts.hooks?.setSessionId(forked.session.id);
+            const { text, usage } = await collectStreaming(
+              this.opts.runner,
+              forked.session,
+              prompt,
+              opts.signal,
+              (d) => opts.hooks?.reportText(d),
+              (name, detail) => opts.hooks?.reportTool(name, detail),
+            );
+            opts.hooks?.reportUsage(usage);
+            await this.recordUsage(opts.reviewId, usage);
+            return text;
+          } catch (err) {
+            if (err instanceof RetryableError && attempt < 3) {
+              await sleepMs(50 * (attempt + 1));
+              continue;
             }
-          },
-        });
-        return done;
+            throw err;
+          }
+        }
       },
     };
   }

@@ -25,16 +25,23 @@ import type {
   Session,
   TokenUsage,
 } from "@unvibe/shared";
+import type { AccessMode } from "@unvibe/shared";
 import { RetryableError } from "../jobs/errors.js";
 import type { Clock } from "../jobs/clock.js";
 import { RealClock } from "../jobs/clock.js";
 import type { SessionStore } from "./store.js";
 
 /**
- * Base identity: (review, review version, guide revision, model). Per-model
- * caches. The review id is part of the key: every new review starts at `v1`
- * with the same (empty) guide revision, so without it reviews would share
- * one base session.
+ * Base identity: (review, review version, guide revision, model, effort, access).
+ * Per-model caches. The review id is part of the key: every new review
+ * starts at `v1` with the same (empty) guide revision, so without it
+ * reviews would share one base session.
+ *
+ * Issue #160: the agent-access posture is part of the key. Flipping the
+ * setting keys a new base with the new posture; live sessions keep the
+ * posture they started with until they close or rebuild.
+ * Effort is part of the key (#172): a changed thinking level builds a
+ * new base instead of reusing one that runs at another level.
  */
 export interface BaseKey {
   reviewId: string;
@@ -42,10 +49,13 @@ export interface BaseKey {
   guideRevision: string;
   provider: string;
   model: string;
+  access: AccessMode;
+  /** Thinking level ("": adapter default). */
+  effort: string;
 }
 
 export function baseKeyString(key: BaseKey): string {
-  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model].join("|");
+  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.effort, key.access].join("|");
 }
 
 /** Review id of a base key string (its first component). */
@@ -57,6 +67,8 @@ export interface BaseBuild {
   key: BaseKey;
   cwd: string;
   systemPrompt: string;
+  /** Issue #160: posture for the session (false = full access). */
+  readOnly: boolean;
   mcpServers: McpServerConfig[];
   /** Base pack text (L1 + L1b + L2); the agent answers "ready". */
   pack: string;
@@ -88,7 +100,7 @@ interface BaseRecord {
   key: BaseKey;
   keyString: string;
   session: Session;
-  build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[] };
+  build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: McpServerConfig[]; effort: string };
   pack: string;
   logSeq: number;
   live: boolean;
@@ -107,6 +119,14 @@ interface ConversationRecord {
   lastSeenSeq: number;
   live: boolean;
   lastUsedAt: number;
+  /**
+   * Issue #160: the posture this session started with. A follow-up
+   * continues the stored session only when it matches the current
+   * setting; on a mismatch the probe drops it and forks fresh.
+   * Undefined on rows persisted before posture tracking — treated as a
+   * mismatch (fork fresh once, then re-anchored).
+   */
+  readOnly?: boolean;
 }
 
 export interface SessionManagerOptions {
@@ -136,9 +156,24 @@ export class SessionManager {
     this.restored = true;
     const { bases, conversations } = this.store.loadAll();
     for (const b of bases) {
+      // A row whose data does not match its kind (a session id reused
+      // across processes wrote conversation data under a base row, or
+      // vice versa) cannot be told apart per review: forget it, it
+      // rebuilds from the pack. Never crash startup over a stored row.
+      if (!b.key || typeof b.key !== "object" || !b.build || typeof b.build !== "object" || !b.session?.id) {
+        this.store.remove(b.session?.id ?? "");
+        continue;
+      }
       // Bases persisted before the key carried a review id cannot be told
       // apart per review: forget them, they rebuild from the pack.
       if (!b.key.reviewId) {
+        this.store.remove(b.session.id);
+        continue;
+      }
+      // No backward compatibility (issues #160/#172): rows stored before
+      // the access posture or effort existed cannot name their variant —
+      // drop them so the sessions rebuild under an explicit key.
+      if (!b.key.access || typeof b.build.readOnly !== "boolean" || typeof (b.key as { effort?: unknown }).effort !== "string" || typeof (b.build as { effort?: unknown }).effort !== "string") {
         this.store.remove(b.session.id);
         continue;
       }
@@ -155,6 +190,18 @@ export class SessionManager {
       });
     }
     for (const c of conversations) {
+      // Rows whose data does not match their kind (see bases above) are
+      // forgotten the same way, never a startup crash.
+      if (!c.session?.id || typeof c.baseKey !== "string") {
+        this.store.remove(c.session?.id ?? "");
+        continue;
+      }
+      // Conversations keyed to a pre-#160/#172 base (fewer than 7 parts)
+      // belong to a dropped base: forget them, the next turn forks fresh.
+      if (c.baseKey.split("|").length < 7) {
+        this.store.remove(c.session.id);
+        continue;
+      }
       this.conversations.set(c.session.id, {
         session: c.session,
         baseKey: c.baseKey,
@@ -212,7 +259,7 @@ export class SessionManager {
       }
     }
     const session = await this.openBaseSession(
-      { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
+      { cwd: build.cwd, systemPrompt: build.systemPrompt, readOnly: build.readOnly, mcpServers: build.mcpServers, effort: build.key.effort },
       build.pack,
       build.signal,
       build.key,
@@ -221,7 +268,7 @@ export class SessionManager {
       key: build.key,
       keyString: baseKeyString(build.key),
       session,
-      build: { cwd: build.cwd, systemPrompt: build.systemPrompt, mcpServers: build.mcpServers },
+      build: { cwd: build.cwd, systemPrompt: build.systemPrompt, readOnly: build.readOnly, mcpServers: build.mcpServers, effort: build.key.effort },
       pack: build.pack,
       logSeq: closed?.logSeq ?? 0,
       live: true,
@@ -236,7 +283,7 @@ export class SessionManager {
 
   /** Start a session and send the base pack, waiting for "ready". */
   private async openBaseSession(
-    build: { cwd: string; systemPrompt: string; mcpServers: McpServerConfig[] },
+    build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: McpServerConfig[]; effort: string },
     pack: string,
     signal: AbortSignal | undefined,
     key: BaseKey,
@@ -246,7 +293,9 @@ export class SessionManager {
       model: key.model,
       cwd: build.cwd,
       systemPrompt: build.systemPrompt,
+      readOnly: build.readOnly,
       mcpServers: build.mcpServers,
+      effort: build.effort,
     });
     const { text } = await this.sendText(session, pack, signal);
     if (!/ready/i.test(text)) {
@@ -344,7 +393,9 @@ export class SessionManager {
         model: base.key.model,
         cwd: base.build.cwd,
         systemPrompt: base.build.systemPrompt,
+        readOnly: base.build.readOnly,
         mcpServers: base.build.mcpServers,
+        effort: base.key.effort,
       });
       await this.sendText(session, base.pack, opts.signal);
     }
@@ -356,6 +407,7 @@ export class SessionManager {
       lastSeenSeq: base.logSeq,
       live: true,
       lastUsedAt: this.clock.now(),
+      readOnly: base.build.readOnly,
     };
     this.conversations.set(session.id, record);
     this.persistConversation(record);
@@ -388,6 +440,9 @@ export class SessionManager {
       lastSeenSeq: base?.logSeq ?? 0,
       live: true,
       lastUsedAt: this.clock.now(),
+      // The fork inherits its base's posture. A missing base should not
+      // happen here (the caller just ensured it); fall back to lockdown.
+      readOnly: base?.build.readOnly ?? true,
     };
     this.conversations.set(session.id, record);
     this.persistConversation(record);
@@ -407,6 +462,16 @@ export class SessionManager {
       this.persistConversation(record);
     }
     return { ...out, rebuilt: ensured.rebuilt };
+  }
+
+  /**
+   * The posture a tracked conversation session started with (issue
+   * #160), or undefined when unknown (rows persisted before posture
+   * tracking, or untracked ids). The follow-up probe treats unknown as
+   * a mismatch and forks fresh once.
+   */
+  conversationAccess(sessionId: string): boolean | undefined {
+    return this.conversations.get(sessionId)?.readOnly;
   }
 
   /**
@@ -442,6 +507,7 @@ export class SessionManager {
         record.session = rebuilt;
         record.live = true;
         record.lastUsedAt = this.clock.now();
+        record.readOnly = base.build.readOnly;
         this.conversations.delete(sessionId);
         this.conversations.set(rebuilt.id, record);
         this.persistConversation(record);
@@ -544,7 +610,9 @@ export class SessionManager {
       model: base.key.model,
       cwd: base.build.cwd,
       systemPrompt: base.build.systemPrompt,
+      readOnly: base.build.readOnly,
       mcpServers: base.build.mcpServers,
+      effort: base.key.effort,
     });
     await this.drainEvents(session, base.pack);
     return session;
@@ -629,6 +697,7 @@ export class SessionManager {
       lastSeenSeq: record.lastSeenSeq,
       live: record.live,
       updatedAt: record.lastUsedAt,
+      ...(record.readOnly !== undefined ? { readOnly: record.readOnly } : {}),
     });
   }
 }

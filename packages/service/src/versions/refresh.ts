@@ -21,6 +21,7 @@ import type {
   PinnedCode,
   ReviewFile,
   ReviewSnapshot,
+  TimedStep,
   Version,
   VersionComparison,
   VersionStatus,
@@ -29,10 +30,13 @@ import { assertReadySnapshot, summarizeComparison } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import {
   baseRefCandidates,
+  buildReviewCommits,
   classifyFile,
   fileKeyForPath,
   hashHunkLines,
   parseUnifiedDiff,
+  readCommitDiffs,
+  readCommitMessages,
   resolveHead,
   resolvePrMergeBase,
 } from "../ingest/index.js";
@@ -275,12 +279,19 @@ export async function refreshReview(
 ): Promise<RefreshResult> {
   // #92: routes refuse loading/failed first; assert here for the type narrowing.
   assertReadySnapshot(snapshot);
+  // Issue #194: non-agent refresh steps, timed for the Debug page.
+  const steps: TimedStep[] = [];
+  const fetchStep: TimedStep = { label: "Fetch", startedAt: Date.now() };
+  steps.push(fetchStep);
   const head = await resolveHead(deps.runner, repoPath, {
     ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
   });
+  fetchStep.finishedAt = Date.now();
   if (!head.headSha || head.headSha === snapshot.version.headSha) {
     return { moved: false };
   }
+  const buildStep: TimedStep = { label: "Building the new version", startedAt: Date.now() };
+  steps.push(buildStep);
 
   const oldVersion = snapshot.version;
   const oldFiles = snapshot.files;
@@ -306,8 +317,17 @@ export async function refreshReview(
   );
   if (!diff.ok) throw new Error(`git diff failed for ${head.headSha}`);
   const newFiles = await buildFiles(deps.runner, repoPath, head.headSha, diff.stdout);
+  // Issue #193: refresh the commit evidence for the new range.
+  const newCommitMessages = await readCommitMessages(deps.runner, repoPath, newBaseSha, head.headSha);
+  const newCommits = buildReviewCommits(
+    newCommitMessages,
+    await readCommitDiffs(deps.runner, repoPath, newCommitMessages),
+    newFiles,
+  );
 
   const cmp = compareHunks(oldFiles, newFiles);
+  const rangeStep: TimedStep = { label: "Range diff", startedAt: Date.now() };
+  steps.push(rangeStep);
   const rangeDiff = await getRangeDiff(
     deps.runner,
     repoPath,
@@ -316,6 +336,7 @@ export async function refreshReview(
     newBaseSha,
     head.headSha,
   );
+  rangeStep.finishedAt = Date.now();
   const comparison = compareVersions({
     oldFiles,
     newFiles,
@@ -394,9 +415,12 @@ export async function refreshReview(
     }
   }
 
+  buildStep.finishedAt = Date.now();
+
   // One mutate so the UI gets one patch (PRD §8.4).
   await deps.reviews.mutate(reviewId, (draft) => {
     draft.files = newFiles as ReviewSnapshot["files"];
+    draft.commits = newCommits;
     draft.version = { ...version };
     draft.review.versions = [...draft.review.versions, { ...version }];
     draft.review.currentVersion = version.n;
@@ -413,7 +437,6 @@ export async function refreshReview(
       if (nh === undefined) continue;
       s.stale = true;
       s.needsSummary = true;
-      if (s.note !== undefined) s.noteStale = true;
       s.supersededBy = nh;
     }
     for (const c of comparison.changed) {
@@ -425,15 +448,17 @@ export async function refreshReview(
         folded: prev.folded,
         reviewed: false,
         ...(prev.summary !== undefined ? { summary: prev.summary } : {}),
-        ...(prev.note !== undefined ? { note: prev.note } : {}),
         stale: true,
         needsSummary: true,
-        ...(prev.note !== undefined ? { noteStale: true as const } : {}),
       });
     }
     // Reviewed flags on changed hunks live on the carried entries above;
     // entries keyed by the old hash keep history for old-version views.
 
+    // Issue #194: remap sub-steps, timed inside the one mutate.
+    const remapSteps: TimedStep[] = [];
+    const anchorsStep: TimedStep = { label: "Remapping anchors", startedAt: Date.now() };
+    remapSteps.push(anchorsStep);
     // Annotations on code: moved or outdated.
     for (const ann of draft.annotations) {
       if (ann.anchor.host.kind !== "diff-line") continue;
@@ -452,6 +477,9 @@ export async function refreshReview(
       }
     }
 
+    anchorsStep.finishedAt = Date.now();
+    const citationsStep: TimedStep = { label: "Remapping citations", startedAt: Date.now() };
+    remapSteps.push(citationsStep);
     // Cards + findings: remap citations, flag stale / recheck.
     const ctx = { comparison: cmp, oldFiles, newHeadSha: head.headSha };
     for (const page of draft.pages) {
@@ -474,6 +502,9 @@ export async function refreshReview(
       }
     }
 
+    citationsStep.finishedAt = Date.now();
+    const pinsStep: TimedStep = { label: "Remapping pins", startedAt: Date.now() };
+    remapSteps.push(pinsStep);
     // Pinned code: found again by content, else flagged for re-pinning.
     // Empty-text pins (persisted before text was stored, or never
     // resolvable) have nothing to match: flag them instead of running
@@ -520,6 +551,9 @@ export async function refreshReview(
         remapPinByContent(pin, untouched, head.headSha);
       }
     }
+
+    pinsStep.finishedAt = Date.now();
+    draft.refreshTimings = { at: Date.now(), steps: [...steps, ...remapSteps] };
 
     // Threads in progress: the change list notes moved anchors / changed
     // code via one log line (change lists include global entries).

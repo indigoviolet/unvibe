@@ -42,17 +42,58 @@ async function scrollDiffToBottom(page: Page): Promise<void> {
 test.skip("fold and unfold a hunk", async ({ page }) => {
   const conn = page.locator(connFile);
   await conn.getByRole("button", { name: "Fold code" }).first().click();
-  await expect(conn.getByText("changed lines folded · show")).toBeVisible();
-  await conn.getByText("changed lines folded · show").click();
+  // One unfold control only: the header chevron, no placeholder row.
+  await expect(conn.getByRole("button", { name: "Show code" })).toBeVisible();
   await expect(conn.getByText("changed lines folded · show")).toHaveCount(0);
+  await conn.getByRole("button", { name: "Show code" }).click();
+  await expect(conn.getByRole("button", { name: "Show code" })).toHaveCount(0);
+});
+
+test("reviewed progress fills the toolbar bottom border; counts only in its label", async ({ page }) => {
+  const bar = page.getByRole("progressbar");
+  await expect(bar).toHaveAttribute("aria-label", "1 of 8 hunks reviewed");
+  // Poll: the fill has a short width transition.
+  await expect
+    .poll(async () =>
+      bar.evaluate((el) => {
+        const fill = el.querySelector("i")!;
+        return fill.getBoundingClientRect().width / el.getBoundingClientRect().width;
+      }),
+    )
+    .toBeCloseTo(1 / 8, 1);
+  expect(await bar.getAttribute("data-tip")).toBe("1 of 8 hunks reviewed");
+  // No text line for the counts anywhere.
+  await expect(page.getByText(/\d+\/8 hunks reviewed/)).toHaveCount(0);
+  await page.locator(connFile).getByRole("checkbox", { name: "Mark reviewed" }).first().click();
+  await expect(bar).toHaveAttribute("aria-label", "2 of 8 hunks reviewed");
+  await expect
+    .poll(async () =>
+      bar.evaluate((el) => {
+        const fill = el.querySelector("i")!;
+        return fill.getBoundingClientRect().width / el.getBoundingClientRect().width;
+      }),
+    )
+    .toBeCloseTo(2 / 8, 1);
+});
+
+test("the toolbar stays on one row at a narrow pane width", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  const rows = await page.locator(".dtool").evaluate((el) => {
+    const tops = new Set(
+      [...el.children]
+        .filter((c) => !c.classList.contains("rprog"))
+        .map((c) => { const r = (c as HTMLElement).getBoundingClientRect(); return Math.round(r.top + r.height / 2); }),
+    );
+    return { tops: tops.size, height: el.getBoundingClientRect().height };
+  });
+  expect(rows.tops).toBe(1);
 });
 
 // DISABLED(#119): same as the DiffView.test.tsx progress test (also in real-service.spec.ts)
 test.skip("mark reviewed advances the hunks-reviewed progress", async ({ page }) => {
-  await page.getByRole("button", { name: "Show file list" }).click();
-  await expect(page.getByText("1/8 hunks reviewed")).toBeVisible();
-  await page.locator(connFile).getByRole("button", { name: "Mark reviewed" }).first().click();
-  await expect(page.getByText("2/8 hunks reviewed")).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "1 of 8 hunks reviewed");
+  await page.locator(connFile).getByRole("checkbox", { name: "Mark reviewed" }).first().click();
+  await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "2 of 8 hunks reviewed");
 });
 
 test("hide uninteresting collapses runs to one row per run", async ({ page }) => {
@@ -88,27 +129,39 @@ test("file filter dropdown filters by type with counts and an active state", asy
   await page.getByRole("button", { name: "Show file list" }).click();
   const filter = page.getByRole("button", { name: "File filters" });
   await expect(filter).toBeVisible();
-  // Default: no active badge.
+  // Default: no active state, and no count badge anywhere.
+  await expect(filter).toHaveAttribute("aria-pressed", "false");
   await expect(filter.locator(".count")).toHaveCount(0);
   await filter.click();
   const menu = page.getByRole("menu", { name: "File filters" });
   await expect(menu).toBeVisible();
-  // Five categories plus Reviewed, each a checkable row with a count.
-  await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(6);
-  for (const name of ["Code", "Tests", "Docs", "Config", "Generated", "Reviewed"]) {
+  // File types only (#184): Reviewed and GitHub comments left this menu.
+  await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(5);
+  for (const name of ["Code", "Tests", "Docs", "Config", "Generated"]) {
     await expect(menu.getByRole("menuitemcheckbox", { name: new RegExp(name) })).toBeVisible();
   }
+  await expect(menu.getByRole("menuitemcheckbox", { name: /Reviewed|GitHub/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // The toolbar's second filter holds Reviewed and GitHub comments.
+  const reviewFilter = page.getByRole("button", { name: "Review filters" });
+  await reviewFilter.click();
+  const reviewMenu = page.getByRole("menu", { name: "Review filters" });
+  await expect(reviewMenu.getByRole("menuitemcheckbox")).toHaveCount(2);
+  await expect(reviewMenu.getByRole("menuitemcheckbox", { name: /Reviewed/ })).toBeVisible();
+  await expect(reviewMenu.getByRole("menuitemcheckbox", { name: /GitHub comments/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await filter.click();
   // Deselect Tests: its files hide and the button shows the active count.
   await menu.getByRole("menuitemcheckbox", { name: /Tests/ }).click();
   await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
   await expect(filter).toHaveAttribute("aria-pressed", "true");
-  await expect(filter.locator(".count")).toHaveText("1");
+  await expect(filter).toHaveAttribute("data-tip", "Hiding: Tests");
   // Stored prefs survive a reload.
   await page.reload();
   await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "File filters" }).locator(".count")).toHaveText("1");
+  await expect(page.getByRole("button", { name: "File filters" })).toHaveAttribute("data-tip", "Hiding: Tests");
 });
 
 test("file filter dropdown is keyboard-usable and closes on Escape", async ({ page }) => {
@@ -145,12 +198,38 @@ test("revealSource unhides a hidden hunk and highlights the line", async ({ page
 test.skip("revealSource unfolds a folded hunk and highlights the range", async ({ page }) => {
   const conn = page.locator(connFile);
   await conn.getByRole("button", { name: "Fold code" }).nth(1).click();
-  await expect(conn.getByText("3 changed lines folded · show")).toBeVisible();
+  await expect(conn.getByRole("button", { name: "Show code" })).toBeVisible();
   const ok = await page.evaluate((key) => window.__revealSource?.(`diff:${key}:650-651`), CONN);
   expect(ok).toBe(true);
   await expect(page.locator(`[id="L-${CONN}-650"].hl`)).toBeVisible();
   await expect(page.locator(`[id="L-${CONN}-651"].hl`)).toBeVisible();
-  await expect(conn.getByText("3 changed lines folded · show")).toHaveCount(0);
+  await expect(conn.getByRole("button", { name: "Show code" })).toHaveCount(0);
+});
+
+// Issue #162: file fold survives a tab switch, and file reviewed derives
+// from hunks with a partial state.
+test("file fold survives a tab switch; file reviewed derives from hunks", async ({ page }) => {
+  const conn = page.locator(connFile);
+  await conn.getByRole("button", { name: "Collapse file" }).click();
+  await expect(conn.locator(".dbody")).toHaveCount(0);
+  // To the description tab and back: the fold must survive.
+  await page.getByRole("tab", { name: "PR description" }).click();
+  await expect(conn).toHaveCount(0);
+  await page.getByRole("tab", { name: "Diff" }).click();
+  await expect(page.locator(connFile).locator(".dbody")).toHaveCount(0);
+  await page.locator(connFile).getByRole("button", { name: "Expand file" }).click();
+  await expect(page.locator(connFile).locator(".dbody")).toHaveCount(1);
+  // File reviewed derives from hunks: mark the file, unmark one hunk.
+  const file = page.locator(connFile);
+  await expect(file.getByText("0/2")).toBeVisible();
+  await file.getByRole("checkbox", { name: "Mark file reviewed" }).click();
+  await expect(file.getByText("2/2")).toBeVisible();
+  await expect(file.getByRole("checkbox", { name: "Mark file not reviewed" })).toBeChecked();
+  await file.getByRole("checkbox", { name: "Mark not reviewed" }).first().click();
+  await expect(file.getByText("1/2")).toBeVisible();
+  const partial = file.getByRole("checkbox", { name: "Mark file reviewed" });
+  await expect(partial).not.toBeChecked();
+  expect(await partial.evaluate((el) => (el as HTMLInputElement).indeterminate)).toBe(true);
 });
 
 // DISABLED(#119): not a diff test; repeats start.spec.ts demo-row tests

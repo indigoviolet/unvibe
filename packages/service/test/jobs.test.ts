@@ -87,6 +87,7 @@ const spec = (over: Partial<Parameters<JobQueue["enqueue"]>[0]> = {}) => ({
   kind: "explain" as const,
   provider: "claude",
   model: "m",
+  effort: "",
   priority: JOB_PRIORITY.background,
   run: async () => {},
   ...over,
@@ -490,6 +491,17 @@ describe("card scope (#62)", () => {
     expect(interrupted[0].cardId).toBe("c-central");
     gate.resolve();
   });
+
+  it("carries effort on the job and persists it (#172); Default is stored as empty", async () => {
+    const { queue, store } = makeQueue({ persist: true });
+    const job = queue.enqueue(spec({ reviewId: "r1", effort: "high", run: async () => {} }));
+    expect(job.effort).toBe("high");
+    expect(queue.get(job.id)?.effort).toBe("high");
+    expect(store?.get(job.id)?.effort).toBe("high");
+    const plain = queue.enqueue(spec({ reviewId: "r1", run: async () => {} }));
+    expect(queue.get(plain.id)?.effort).toBe("");
+    await queue.drain();
+  });
 });
 
 describe("persistence and restart recovery", () => {
@@ -620,5 +632,37 @@ describe("persistence and restart recovery", () => {
     expect(q.listByReview("r1")).toHaveLength(1);
     expect(q.listByReview("r1")[0].promptSnapshot).toBeUndefined();
     expect(q.get(job.id)?.promptSnapshot).toBe("P".repeat(1000));
+  });
+});
+
+describe("timings (#194)", () => {
+  it("stamps queued/started/finished, attempts, turns and tools", async () => {
+    const { queue, clock } = makeQueue({ persist: true });
+    const gate = deferred();
+    const job = queue.enqueue(
+      spec({
+        run: async (ctx: JobContext) => {
+          ctx.beginTurn("first");
+          ctx.reportTool("Read", "a.py");
+          await gate.promise;
+          ctx.endTurn();
+        },
+      }),
+    );
+    expect(queue.get(job.id)?.queuedAt).toBe(0);
+    await flush();
+    expect(queue.get(job.id)?.startedAt).toBe(0);
+    await clock.advance(5000);
+    gate.resolve();
+    await flush();
+    const done = queue.get(job.id);
+    expect(done?.state).toBe("done");
+    expect(done?.finishedAt).toBe(5000);
+    expect(done?.attemptTimings).toEqual([{ attempt: 1, startedAt: 0, finishedAt: 5000 }]);
+    expect(done?.turns).toEqual([{ label: "first", startedAt: 0, finishedAt: 5000 }]);
+    expect(done?.tools?.[0]).toMatchObject({ name: "Read", startedAt: 0 });
+    // Persisted through the store as well.
+    const listed = queue.listByReview("r1");
+    expect(listed[0]?.finishedAt).toBe(5000);
   });
 });

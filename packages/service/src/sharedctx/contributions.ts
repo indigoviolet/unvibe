@@ -242,5 +242,14 @@ export function formatContributionLine(c: Pick<Contribution, "id" | "status" | "
 
 /** Every contribution for the consolidate call, one per line. */
 export function formatContributionLines(cs: Pick<Contribution, "id" | "status" | "replaces" | "items">[]): string {
-  return cs.map(formatContributionLine).join("\n");
+  return cs
+    .map((c) => ({
+      ...c,
+      // Issue #181: dismissed questions stay out of agent context (they
+      // stay stored, so re-raises dedupe against them).
+      items: c.items.filter((i) => i.status !== "dismissed"),
+    }))
+    .filter((c) => c.items.length > 0)
+    .map(formatContributionLine)
+    .join("\n");
 }

@@ -22,6 +22,7 @@ import { useReviewIdentity } from "../shell/reviewIdentity.js";
 import { TabPanel, Tabs, useQueryTab } from "../tabs/Tabs.js";
 import { ExpandedPrompts } from "./ExpandedPrompts.js";
 import { JobsSection } from "./JobsSection.js";
+import { FullAccessMarker } from "../shell/FullAccessMarker.js";
 import { RedoGuideSection } from "./RedoGuideSection.js";
 import { SharedContext } from "./SharedContext.js";
 
@@ -89,6 +90,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
             </p>
           ) : null}
           <Tabs label="Debug sections" tabs={DEBUG_TABS} active={tab} onSelect={setTab} idPrefix="debug" />
+          <FullAccessMarker />
           <TabPanel idPrefix="debug" id="jobs" active={tab === "jobs"}>
             <JobsSection reviewId={reviewId} />
           </TabPanel>

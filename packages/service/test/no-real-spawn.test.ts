@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { FakeAgentRunner } from "../src/agent/fake.js";
+import { AcpAgentRunner } from "../src/agent/acp/runner.js";
+import { createAgentRunner } from "../src/agent/factory.js";
 import { buildApp, isTestProcess } from "../src/app.js";
 import { FakeCommandRunner, TestCommandGuard } from "../src/exec/index.js";
 import { openDatabase } from "../src/store/db.js";
@@ -91,6 +93,26 @@ describe("no real agents or GitHub in unit tests (#119)", () => {
       await expect(guard.run(cmd, { args: ["auth", "status"] })).rejects.toThrow(/FakeCommandRunner/);
     }
     expect(inner.calls.map((c) => c.cmd)).toEqual(["git"]);
+  });
+
+  it("factory throws without the live flag (unset and mistyped UNVIBE_AGENT) (#188)", () => {
+    expect(() => createAgentRunner({ env: {} as NodeJS.ProcessEnv })).toThrow(/UNVIBE_ALLOW_LIVE_AGENT/);
+    expect(() =>
+      createAgentRunner({ env: { UNVIBE_AGENT: "replayy" } as NodeJS.ProcessEnv }),
+    ).toThrow(/UNVIBE_ALLOW_LIVE_AGENT/);
+    // replay/none never need the flag
+    expect(() => createAgentRunner({ env: { UNVIBE_AGENT: "none" } as NodeJS.ProcessEnv })).not.toThrow();
+  });
+
+  it("direct AcpAgentRunner construction throws without the flag, passes with a fake (#188)", () => {
+    expect(() => new AcpAgentRunner({ env: {} as NodeJS.ProcessEnv })).toThrow(/UNVIBE_ALLOW_LIVE_AGENT/);
+    expect(
+      () =>
+        new AcpAgentRunner({
+          env: {} as NodeJS.ProcessEnv,
+          factories: { claude: async () => { throw new Error("unused"); } },
+        }),
+    ).not.toThrow();
   });
 
   it("GET /api/settings on a default app spawns no claude/codex/gh", async () => {

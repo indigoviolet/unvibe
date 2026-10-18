@@ -44,11 +44,11 @@ describe("normalizeQuote / validSelectionQuote", () => {
     expect(normalizeQuote("  foo\n  bar\tbaz ")).toBe("foo bar baz");
   });
 
-  test("length bounds match the prototype (2..300)", () => {
+  test("length bounds (2..10000)", () => {
     expect(validSelectionQuote("x")).toBe(false);
     expect(validSelectionQuote("xy")).toBe(true);
-    expect(validSelectionQuote("x".repeat(300))).toBe(true);
-    expect(validSelectionQuote("x".repeat(301))).toBe(false);
+    expect(validSelectionQuote("x".repeat(10_000))).toBe(true);
+    expect(validSelectionQuote("x".repeat(10_001))).toBe(false);
   });
 });
 

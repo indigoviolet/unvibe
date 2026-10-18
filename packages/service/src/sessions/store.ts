@@ -13,8 +13,8 @@ import type { BaseKey } from "./manager.js";
 export interface PersistedBase {
   key: BaseKey;
   session: Session;
-  /** Build params needed to restart the session (cwd, system prompt, MCP). */
-  build: { cwd: string; systemPrompt: string; mcpServers: unknown[] };
+  /** Build params needed to restart the session (cwd, system prompt, posture, MCP, effort). */
+  build: { cwd: string; systemPrompt: string; readOnly: boolean; mcpServers: unknown[]; effort: string };
   pack: string;
   logSeq: number;
   live: boolean;
@@ -28,6 +28,8 @@ export interface PersistedConversation {
   lastSeenSeq: number;
   live: boolean;
   updatedAt: number;
+  /** Issue #160: posture the session started with; absent on older rows. */
+  readOnly?: boolean;
 }
 
 export class SessionStore {
@@ -46,7 +48,7 @@ export class SessionStore {
     this.db
       .prepare(
         `INSERT INTO sessions (session_id, kind, base_key, data) VALUES (?, 'base', ?, ?)
-         ON CONFLICT(session_id) DO UPDATE SET base_key = excluded.base_key, data = excluded.data`,
+         ON CONFLICT(session_id) DO UPDATE SET kind = excluded.kind, base_key = excluded.base_key, data = excluded.data`,
       )
       .run(record.session.id, JSON.stringify(record.key), JSON.stringify(record));
   }
@@ -55,7 +57,7 @@ export class SessionStore {
     this.db
       .prepare(
         `INSERT INTO sessions (session_id, kind, base_key, data) VALUES (?, 'conv', ?, ?)
-         ON CONFLICT(session_id) DO UPDATE SET base_key = excluded.base_key, data = excluded.data`,
+         ON CONFLICT(session_id) DO UPDATE SET kind = excluded.kind, base_key = excluded.base_key, data = excluded.data`,
       )
       .run(record.session.id, record.baseKey, JSON.stringify(record));
   }

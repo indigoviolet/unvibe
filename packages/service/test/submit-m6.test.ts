@@ -247,7 +247,8 @@ describe("submit", () => {
       cmd: "gh",
       args: ["api", `repos/${OWNER}/${REPO_NAME}/pulls/${PR_NUMBER}/comments`],
       stdout: JSON.stringify([
-        { id: 11, path: "a.py", line: 2, side: "RIGHT", body: "already there", user: { login: " alice " }, created_at: "2026-01-01", html_url: "https://x/11" },
+        { id: 11, path: "a.py", line: 2, side: "RIGHT", body: "already **there**", user: { login: " alice " }, created_at: "2026-01-01", html_url: "https://x/11" },
+        { id: 12, path: "a.py", line: 2, side: "RIGHT", body: "a reply <b>with html</b>", in_reply_to_id: 11, user: { login: "bob" } },
       ]),
       stderr: "",
       code: 0,
@@ -259,10 +260,18 @@ describe("submit", () => {
         headers: authed,
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { comments: Array<{ id: number; body: string }> };
-      expect(body.comments).toHaveLength(1);
-      expect(body.comments[0].body).toBe("already there");
-      expect(ctx.reviews.getSnapshot(reviewId)?.existingComments).toHaveLength(1);
+      const body = res.json() as { comments: Array<{ id: number; body: string; bodyHtml: string; replyTo?: number }> };
+      expect(body.comments).toHaveLength(2);
+      expect(body.comments[0].body).toBe("already **there**");
+      // Rendered once at fetch with the shared sanitiser: Markdown
+      // renders, raw HTML from GitHub never passes through.
+      expect(body.comments[0].bodyHtml).toContain("<strong>there</strong>");
+      expect(body.comments[1].bodyHtml).toContain("&lt;b&gt;with html&lt;/b&gt;");
+      expect(body.comments[1].bodyHtml).not.toContain("<b>");
+      // Replies group under their root.
+      expect(body.comments[1].replyTo).toBe(11);
+      expect(body.comments[0].replyTo).toBeUndefined();
+      expect(ctx.reviews.getSnapshot(reviewId)?.existingComments).toHaveLength(2);
     } finally {
       await app.close();
     }

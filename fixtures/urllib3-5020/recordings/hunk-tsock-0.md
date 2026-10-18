@@ -4,7 +4,8 @@ Imports `HTTPResponse` for an isinstance check. [[diff:tsock:40]]
 {
   "hunk": {
     "summary": "Imports `HTTPResponse` for an isinstance check.",
-    "hiddenReason": null
+    "hiddenReason": null,
+    "score": "mechanical"
   }
 }
 ```

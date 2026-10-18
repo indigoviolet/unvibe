@@ -7,13 +7,16 @@
  * before pending cards. Finding pages get the rust-accent `.finding`
  * class.
  */
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { Card, Page } from "@unvibe/shared";
-import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle } from "@unvibe/shared";
+import type { Card, Page, Plotline } from "@unvibe/shared";
+import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
+import { api } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
+import { toast } from "../floating/Toast.js";
 import { Icon } from "../components/Icon.js";
 import { isLiveJobState, useReview } from "../state/store.js";
+import { revealSource } from "../source/reveal.js";
 import { performAction, performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
@@ -56,6 +59,119 @@ function RecheckStatus({ page }: { page: Page }) {
 /** Display form of a page title: the default shows as "Guide". */
 function displayTitle(title: string): string {
   return isDefaultGuideTitle(title) ? DEFAULT_GUIDE_TITLE : title;
+}
+
+/**
+ * Issue #169: the reader's plotlines on the guide root — a small list
+ * between Contents and the cards. Each row jumps to its first hunk in
+ * the diff; hunks no plotline claimed read as "Other".
+ */
+function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
+  const snapshot = useReview((s) => s.snapshot);
+  const plotlines: Plotline[] = snapshot?.plotlines ?? [];
+  if (plotlines.length === 0) return null;
+  const files = snapshot?.files ?? [];
+  const states = new Map((snapshot?.hunkStates ?? []).map((s) => [s.contentHash, s]));
+  const firstRefOf = (plotId: string | undefined): string | null => {
+    for (const f of files) {
+      for (const h of f.hunks) {
+        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID)) {
+          return `diff:${f.fileKey}:${h.newStart}`;
+        }
+      }
+    }
+    return null;
+  };
+  const countOf = (plotId: string | undefined): number => {
+    let n = 0;
+    for (const f of files) {
+      for (const h of f.hunks) {
+        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID)) n += 1;
+      }
+    }
+    return n;
+  };
+  const otherCount = countOf(undefined);
+  const nameOf = (id: string | undefined): string | undefined =>
+    id === undefined ? undefined : (plotlines.find((p) => p.id === id)?.name ?? id);
+  const rows = [
+    ...plotlines.map((p, i) => ({
+      id: p.id,
+      order: i + 1,
+      name: p.name,
+      desc: p.description,
+      buildsOnName: nameOf(p.buildsOn),
+      count: countOf(p.id),
+      ref: firstRefOf(p.id),
+    })),
+    ...(otherCount > 0
+      ? [
+          {
+            id: PLOTLINE_OTHER_ID,
+            order: undefined as number | undefined,
+            name: "Other",
+            desc: "Hunks no plotline claimed.",
+            buildsOnName: undefined as string | undefined,
+            count: otherCount,
+            ref: firstRefOf(undefined),
+          },
+        ]
+      : []),
+  ];
+  return (
+    <section className="plotlines" aria-label="Plotlines">
+      <h2>Plotlines</h2>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.id}>
+            {r.ref ? (
+              <button
+                type="button"
+                className={snapshot?.diffFilter?.plotline === r.id ? "sel" : undefined}
+                aria-pressed={snapshot?.diffFilter?.plotline === r.id}
+                data-plotpick={r.id}
+                data-tip={snapshot?.diffFilter?.plotline === r.id ? "Show all hunks" : `Show only ${r.name}`}
+                onClick={() => {
+                  const active = snapshot?.diffFilter?.plotline === r.id;
+                  const body = {
+                    plotline: active ? null : r.id,
+                    score: snapshot?.diffFilter?.score ?? null,
+                  };
+                  api
+                    .updateDiffFilter(reviewId, body)
+                    .then(() => {
+                      // A plotline pick is a filter action (#190):
+                      // jump to its first hunk without clearing the
+                      // file tree's own filters.
+                      if (!active) revealSource(r.ref as string, { keepFilters: true });
+                    })
+                    .catch(() => {
+                      toast("Couldn't save the filter");
+                    });
+                }}
+              >
+                {r.order !== undefined ? <span className="plorder">{r.order}. </span> : null}
+                <span className="plname">{r.name}</span>
+                {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
+                <span className="plcount">
+                  {r.count} {r.count === 1 ? "hunk" : "hunks"}
+                </span>
+                {r.buildsOnName ? <span className="plbuilds">Builds on {r.buildsOnName}</span> : null}
+              </button>
+            ) : (
+              <span>
+                {r.order !== undefined ? <span className="plorder">{r.order}. </span> : null}
+                <span className="plname">{r.name}</span>
+                {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
+                <span className="plcount">no hunks</span>
+                {r.buildsOnName ? <span className="plbuilds">Builds on {r.buildsOnName}</span> : null}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard }: Props) {
@@ -237,6 +353,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           </div>
         ) : null}
       </nav>
+      {page.kind === "root" ? <Plotlines reviewId={reviewId} /> : null}
       {page.cards.map(renderCard)}
     </div>
   );

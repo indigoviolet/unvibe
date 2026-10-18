@@ -13,6 +13,7 @@ const TERMINAL: ReadonlySet<JobState> = new Set(["done", "error", "cancelled"]);
 
 interface JobData {
   provider?: string;
+  effort: string;
   promptSnapshot?: string;
   usage?: Job["usage"];
   cacheHitRate?: number;
@@ -24,6 +25,16 @@ interface JobData {
   nextRetryAt?: number;
   cardId?: string;
   annotationId?: string;
+  /** Issue #160: posture stamp, tool record, checkout-reset flag. */
+  accessMode?: Job["accessMode"];
+  tools?: Job["tools"];
+  checkoutReset?: boolean;
+  /** Issue #194: timing stamps. */
+  queuedAt?: number;
+  startedAt?: number;
+  finishedAt?: number;
+  attemptTimings?: Job["attemptTimings"];
+  turns?: Job["turns"];
 }
 
 export interface JobPersistence {
@@ -52,6 +63,7 @@ function rowToJob(row: {
     kind: row.kind as Job["kind"],
     model: row.model,
     ...(data.provider !== undefined ? { provider: data.provider } : {}),
+    effort: data.effort,
     ...(row.review_id ? { reviewId: row.review_id } : {}),
     priority: row.priority,
     state: row.state as JobState,
@@ -67,6 +79,14 @@ function rowToJob(row: {
     ...(data.nextRetryAt !== undefined ? { nextRetryAt: data.nextRetryAt } : {}),
     ...(data.cardId !== undefined ? { cardId: data.cardId } : {}),
     ...(data.annotationId !== undefined ? { annotationId: data.annotationId } : {}),
+    ...(data.accessMode !== undefined ? { accessMode: data.accessMode } : {}),
+    ...(data.tools !== undefined ? { tools: data.tools } : {}),
+    ...(data.checkoutReset !== undefined ? { checkoutReset: data.checkoutReset } : {}),
+    ...(data.queuedAt !== undefined ? { queuedAt: data.queuedAt } : {}),
+    ...(data.startedAt !== undefined ? { startedAt: data.startedAt } : {}),
+    ...(data.finishedAt !== undefined ? { finishedAt: data.finishedAt } : {}),
+    ...(data.attemptTimings !== undefined ? { attemptTimings: data.attemptTimings } : {}),
+    ...(data.turns !== undefined ? { turns: data.turns } : {}),
   };
 }
 
@@ -76,6 +96,7 @@ export class JobStore implements JobPersistence {
   save(job: Job): void {
     const data: JobData = {
       ...(job.provider !== undefined ? { provider: job.provider } : {}),
+      effort: job.effort,
       ...(job.promptSnapshot !== undefined ? { promptSnapshot: job.promptSnapshot } : {}),
       ...(job.usage !== undefined ? { usage: job.usage } : {}),
       ...(job.cacheHitRate !== undefined ? { cacheHitRate: job.cacheHitRate } : {}),
@@ -87,6 +108,14 @@ export class JobStore implements JobPersistence {
       ...(job.nextRetryAt !== undefined ? { nextRetryAt: job.nextRetryAt } : {}),
       ...(job.cardId !== undefined ? { cardId: job.cardId } : {}),
       ...(job.annotationId !== undefined ? { annotationId: job.annotationId } : {}),
+      ...(job.accessMode !== undefined ? { accessMode: job.accessMode } : {}),
+      ...(job.tools !== undefined ? { tools: job.tools } : {}),
+      ...(job.checkoutReset !== undefined ? { checkoutReset: job.checkoutReset } : {}),
+      ...(job.queuedAt !== undefined ? { queuedAt: job.queuedAt } : {}),
+      ...(job.startedAt !== undefined ? { startedAt: job.startedAt } : {}),
+      ...(job.finishedAt !== undefined ? { finishedAt: job.finishedAt } : {}),
+      ...(job.attemptTimings !== undefined ? { attemptTimings: job.attemptTimings } : {}),
+      ...(job.turns !== undefined ? { turns: job.turns } : {}),
     };
     this.db
       .prepare(

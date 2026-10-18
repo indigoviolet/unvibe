@@ -235,6 +235,9 @@ test.describe("reader journey over the real service (replay)", () => {
     await expect(marker.first()).toBeVisible({ timeout: 30_000 });
     await marker.first().click();
     await expect(page.locator('#right [role="tab"][aria-selected="true"]')).toContainText("Diff", { timeout: 10_000 });
+    // Issue #167: the Ask card floats above the content below it — close
+    // it before reaching under it, as a reader would.
+    await card.first().getByRole("button", { name: "Close" }).click();
 
     // Go deeper: generate when a placeholder is still pending, else assert
     // the filled card; then use a follow-up suggestion.

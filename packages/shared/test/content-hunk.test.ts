@@ -27,33 +27,35 @@ describe("parseHunkReply", () => {
     expect(parse(`${SUMMARY}\n\n\`\`\`json\n${bare(SUMMARY, HIDDEN)}\n\`\`\`\n`)).toEqual({
       summary: SUMMARY,
       hiddenReason: HIDDEN,
+      score: null,
     });
   });
 
   it("reads fenced json with no md line", () => {
-    expect(parse(`\`\`\`json\n${bare(SUMMARY, HIDDEN)}\n\`\`\`\n`)).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN });
+    expect(parse(`\`\`\`json\n${bare(SUMMARY, HIDDEN)}\n\`\`\`\n`)).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN, score: null });
   });
 
   it("reads an untagged fence with no md line", () => {
-    expect(parse(`\`\`\`\n${bare(SUMMARY, null)}\n\`\`\`\n`)).toEqual({ summary: SUMMARY, hiddenReason: null });
+    expect(parse(`\`\`\`\n${bare(SUMMARY, null)}\n\`\`\`\n`)).toEqual({ summary: SUMMARY, hiddenReason: null, score: null });
   });
 
   it("reads bare json with no fence and no md line", () => {
-    expect(parse(bare(SUMMARY, HIDDEN))).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN });
+    expect(parse(bare(SUMMARY, HIDDEN))).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN, score: null });
   });
 
   it("reads bare json after an md line", () => {
-    expect(parse(`${SUMMARY}\n${bare(SUMMARY, HIDDEN)}`)).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN });
+    expect(parse(`${SUMMARY}\n${bare(SUMMARY, HIDDEN)}`)).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN, score: null });
   });
 
   it("reads bare json with trailing prose after it", () => {
-    expect(parse(`${bare(SUMMARY, HIDDEN)}\nHope this helps!\n`)).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN });
+    expect(parse(`${bare(SUMMARY, HIDDEN)}\nHope this helps!\n`)).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN, score: null });
   });
 
   it("reads fenced json with trailing prose after it", () => {
     expect(parse(`${SUMMARY}\n\n\`\`\`json\n${bare(SUMMARY, HIDDEN)}\n\`\`\`\nThanks!\n`)).toEqual({
       summary: SUMMARY,
       hiddenReason: HIDDEN,
+      score: null,
     });
   });
 
@@ -66,7 +68,7 @@ describe("parseHunkReply", () => {
   it("recovers hiddenReason even when the summary must come from the md line", () => {
     // hunk object without a usable summary: hiddenReason still recovered.
     const r = parse(`${SUMMARY}\n${JSON.stringify({ hunk: { hiddenReason: HIDDEN } })}`);
-    expect(r).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN });
+    expect(r).toEqual({ summary: SUMMARY, hiddenReason: HIDDEN, score: null });
   });
 
   it("falls back to the md line as plain text, without link tokens", () => {
@@ -89,6 +91,7 @@ describe("parseHunkReply", () => {
     const r = parse(`{"hunk": {"summary": "Maps the Nav 2 Conversations item to the label`);
     expect(r.summary).toBeUndefined();
     expect(r.hiddenReason).toBeNull();
+    expect(r.score).toBeNull();
   });
 
   it("stores no summary for an empty reply", () => {
@@ -99,6 +102,17 @@ describe("parseHunkReply", () => {
     const r = parse(JSON.stringify({ hunk: { summary: 42, hiddenReason: 7 } }));
     expect(r.summary).toBeUndefined();
     expect(r.hiddenReason).toBeNull();
+  });
+
+  it("reads the score level (issue #169)", () => {
+    const withScore = (score: unknown): string =>
+      `${SUMMARY}\n\n\`\`\`json\n${JSON.stringify({ hunk: { summary: SUMMARY, hiddenReason: null, score } })}\n\`\`\`\n`;
+    expect(parse(withScore("substantive")).score).toBe("substantive");
+    expect(parse(withScore("Needs Attention")).score).toBe("needs-attention");
+    expect(parse(withScore("needs_attention")).score).toBeNull();
+    expect(parse(withScore("hot")).score).toBeNull();
+    expect(parse(withScore(3)).score).toBeNull();
+    expect(parse(withScore(null)).score).toBeNull();
   });
 });
 

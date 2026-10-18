@@ -50,10 +50,14 @@ import type {
   SubmitReviewRequest,
   SubmitReviewResponse,
   SummarizeHunkResponse,
+  ThinkingResponse,
   UpdateChannelsResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
+  UpdateDiffFilterRequest,
+  UpdateFileRequest,
   UpdateHunkRequest,
+  UpdateViewRequest,
   UpdateReviewResponse,
   UpdateStatusResponse,
   UpdateSwitchRequest,
@@ -326,6 +330,27 @@ const realApi = {
   summarizeHunk: (id: string, hash: string): Promise<SummarizeHunkResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/hunks/${encodeURIComponent(hash)}/summarize`),
 
+  /** Per-file fold state (issue #162): persisted on the review. */
+  updateFile: (id: string, fileKey: string, body: UpdateFileRequest): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/files/${encodeURIComponent(fileKey)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  /** Per-review diff view preferences (issue #168): persisted on the review. */
+  updateView: (id: string, body: UpdateViewRequest): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/view`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  /** The diff's score/plotline filter, remembered with the review. */
+  updateDiffFilter: (id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/diff-filter`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
   /** Raw file lines at a commit (issue #133: diff expansion). */
   fileSlice: (
     id: string,
@@ -381,6 +406,9 @@ const realApi = {
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
   models: (provider: string): Promise<ModelsResponse> =>
     get(`/api/models?provider=${encodeURIComponent(provider)}`),
+  /** Thinking levels the provider's adapter offers (Default when none). */
+  thinking: (provider: string): Promise<ThinkingResponse> =>
+    get(`/api/thinking?provider=${encodeURIComponent(provider)}`),
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
 

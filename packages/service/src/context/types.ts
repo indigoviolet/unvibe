@@ -53,6 +53,26 @@ export interface PinnedExcerpt {
   text: string;
 }
 
+/** Issue #193: one commit as plotline evidence in the reader's context. */
+export interface PromptCommit {
+  sha: string;
+  subject: string;
+  body: string;
+  files: string[];
+  /** Canonical `h:<fileKey>:<hash>` PR hunk IDs this commit touches. */
+  hunks: string[];
+}
+
+/** One existing GitHub review comment, as the agents see it (issue #168). */
+export interface ExistingCommentInput {
+  id: number;
+  path?: string;
+  line?: number;
+  author?: string;
+  /** Plain-text body (the rendered HTML stays in the UI). */
+  body: string;
+}
+
 /** One guide card's standard-depth prose, already rendered to Markdown. */
 export interface GuideCardInput {
   id: string;
@@ -110,11 +130,15 @@ export interface PromptReviewSnapshot {
   descriptionParagraphs?: DescriptionParagraph[];
   /** Branch-only reviews: commit messages, read-only. */
   commitLog?: string;
+  /** Issue #193: commits in landing order with files/hunks each touched. */
+  commits?: PromptCommit[];
   files: ContextFile[];
   pinnedCode: PinnedExcerpt[];
   cards: GuideCardInput[];
   findings: FindingInput[];
   concepts: ConceptIndexEntry[];
+  /** Existing GitHub review comments, oldest first (issue #168). */
+  existingComments: ExistingCommentInput[];
   /** Append-only log, ascending seq (PRD §9.3). */
   log: LogEntry[];
   /**

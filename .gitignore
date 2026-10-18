@@ -8,6 +8,7 @@ packages/*/node_modules/
 .DS_Store
 test-results/
 playwright-report/
+visual-tour/
 
 # Release artifacts (mise run release)
 release/

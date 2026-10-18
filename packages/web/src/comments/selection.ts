@@ -51,9 +51,12 @@ export function normalizeQuote(raw: string): string {
   return raw.trim().replace(/\s+/g, " ");
 }
 
-/** Prototype rule: quotes shorter than 2 or longer than 300 chars are ignored. */
+/** Longest selection the toolbar acts on (owner: cross-hunk and long-line selections must work). */
+export const MAX_QUOTE_CHARS = 10_000;
+
+/** Quotes shorter than 2 or longer than MAX_QUOTE_CHARS are not acted on. */
 export function validSelectionQuote(quote: string): boolean {
-  return quote.length >= 2 && quote.length <= 300;
+  return quote.length >= 2 && quote.length <= MAX_QUOTE_CHARS;
 }
 
 export interface ParsedLineId {

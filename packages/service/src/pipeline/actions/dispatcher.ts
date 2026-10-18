@@ -115,7 +115,11 @@ export async function dispatchAction(
       case "explain": {
         need(ctx);
         if (typeof action.quote !== "string" || !action.anchor) return bad(reply, "quote and anchor are required");
-        const res = await explainAction(ctx, { quote: action.quote, anchor: action.anchor });
+        const res = await explainAction(ctx, {
+          quote: action.quote,
+          anchor: action.anchor,
+          ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
+        });
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
@@ -127,7 +131,12 @@ export async function dispatchAction(
         if (typeof action.quote !== "string" || !action.anchor || typeof action.message !== "string") {
           return bad(reply, "quote, anchor and message are required");
         }
-        const res = await askAction(ctx, { quote: action.quote, anchor: action.anchor, message: action.message });
+        const res = await askAction(ctx, {
+          quote: action.quote,
+          anchor: action.anchor,
+          message: action.message,
+          ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
+        });
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
@@ -141,6 +150,7 @@ export async function dispatchAction(
           quote: action.quote,
           anchor: action.anchor,
           ...(action.text !== undefined ? { text: action.text } : {}),
+          ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
         });
         return { accepted: true, annotationId: res.annotationId } satisfies ActionResponse;
       }

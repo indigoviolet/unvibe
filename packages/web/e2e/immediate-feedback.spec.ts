@@ -91,6 +91,9 @@ test("follow-up click disables the chip and shows the answer working state", asy
 test("second opinion shows dots on its control plus a card working state", async ({ page }) => {
   await gotoReview(page);
   await armObserver(page);
+  // Issue #167: the demo seeds an open floating card under C-problem that
+  // overlays the controls below it — close it first, as a reader would.
+  await page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" }).click();
   await page.locator("#C-central [data-so-ctl] button").first().click();
   // The control itself goes busy and the card shows where the verdict lands.
   await expect(page.locator('#C-central [data-so-ctl] button[aria-busy="true"]')).toBeVisible({

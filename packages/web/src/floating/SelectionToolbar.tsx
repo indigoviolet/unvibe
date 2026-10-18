@@ -2,7 +2,9 @@
  * Text-selection toolbar (comments owner; PRD §4.6).
  *
  * Ported from `prototype.html` (behaviour + `#selbar` styles, not code):
- * - works in the guide, the PR description and diff code;
+ * - works in the guide, the PR description, diff code and read-only
+ *   GitHub threads (issue #168: anchored on the thread's diff line;
+ *   Comment quotes the selection into the reviewer's own comment);
  * - the selection snaps to whole words with leading/trailing spaces
  *   trimmed, and the highlight updates to match;
  * - offers Explain, Ask… and Comment;
@@ -46,8 +48,9 @@ import type { ActionAnchor, ReviewSnapshot } from "@unvibe/shared";
 import { githubFileUrl } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
+import { selectionOffsetsIn } from "../comments/anchor.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
-import { parseLineElementId, snapWordOffsets, normalizeQuote, validSelectionQuote } from "../comments/selection.js";
+import { parseLineElementId, snapWordOffsets, normalizeQuote, MAX_QUOTE_CHARS } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { showGuidePane } from "../shell/panes.js";
@@ -64,6 +67,13 @@ export interface NewThreadRequest {
   kind: "comment" | "ask";
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
+  /**
+   * Issue #166: the selection's character offsets within its host's text,
+   * recorded at the moment of selection. Attached only when the request
+   * anchor is the selection's own host (never for a remapped comment
+   * anchor); the service stores them on the anchor for offset placement.
+   */
+  offsets?: { start: number; end: number };
 }
 
 /** Ask a host to open a pending thread composer for this selection. */
@@ -92,14 +102,78 @@ export function isRevealedElement(el: HTMLElement): boolean {
 }
 
 /**
+ * Element whose plain text the selection's offsets are recorded against
+ * (issue #166): the same element placement later searches, so the text
+ * models match. Null where no selection host applies (second-opinion
+ * reasoning, gutter-only hits).
+ */
+export function selectionScopeElement(el: HTMLElement): Element | null {
+  if (el.closest("[data-so]")) return null;
+  // Issue #163: offsets record within the suggestion text (placement
+  // falls back to text match on the comment's host — the quote comes
+  // from the suggestion, not the host).
+  const sugScope = el.closest("[data-ai-comment]");
+  if (sugScope) return sugScope as Element;
+  const hunkEl = el.closest("[data-hunksum]");
+  if (hunkEl) return hunkEl;
+  const td = el.closest("#right table.diff td.c");
+  if (td) return td;
+  const top = el.closest("#page [data-top], #right [data-top]");
+  if (top) {
+    // Description marks land in the paragraph body (issue #101): record
+    // against the body, not the segment around it.
+    if (top.closest("#right .desc")) {
+      return top.querySelector(".dseg-body") ?? top;
+    }
+    return top;
+  }
+  const descNode = el.closest("#right .desc [id]");
+  if (descNode && el.closest("#right .desc")) {
+    const named = descNode as HTMLElement;
+    return named.querySelector(".dseg-body") ?? named;
+  }
+  return null;
+}
+
+/**
  * Resolve a selection anchor element to an `ActionAnchor`. Exported for
  * reuse (Explain cards resolve the same hosts).
  */
+/**
+ * Issue #186: whether a selection target sits in a selectable host.
+ * Floating cards render in a floating layer — in the diff that layer
+ * sits at the hunk level, outside the diff table — so `.exp-float`
+ * (and the whole `.dhunk`) counts, or selections inside a floating
+ * card never show the toolbar even though they resolve fine.
+ */
+export function inSelectionScope(el: Element): boolean {
+  return (
+    el.closest(
+      "#page, .exp-float, #right .desc:not(.editing), #right table.diff, #right .dhunk, #right .ghfile",
+    ) !== null
+  );
+}
+
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // Second-opinion reasoning is attached content, not a host (#116): its
   // blocks live on the result, not on any card or answer, so the
   // service has no block to anchor to. No toolbar there.
   if (el.closest("[data-so]")) return null;
+  // Issue #163: a selection inside an agent-suggested comment anchors to
+  // the comment itself (its own anchor) — the suggestion text is agent
+  // text, not a stable host. The toolbar's Ask/Explain/Comment then act
+  // on the comment.
+  const sug = el.closest("[data-ai-comment]");
+  if (sug) {
+    const id = (sug as HTMLElement).dataset.aiComment ?? "";
+    const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
+    const host = found && found.type === "comment" ? found.anchor.host : null;
+    if (!host) return null;
+    if (host.kind === "block") return { anchor: { where: "block", blockId: host.blockId } };
+    if (host.kind === "description") return { anchor: { where: "description", paragraphId: host.paragraphId } };
+    if (host.kind === "diff-line") return { anchor: { where: "diff-line", fileKey: host.fileKey, line: host.line } };
+    return null;
+  }
   // Issue #136: inside a conversation answer the owning unit is the
   // answer, found from the answer wrapper's attribute — not from
   // `section.card[id]`, which names the whole card.
@@ -146,6 +220,18 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
     const ref = parseHunkAttr(hunkEl.dataset.hunksum);
     if (ref) return { anchor: { where: "hunk", fileKey: ref.fileKey, contentHash: ref.contentHash } };
     return null;
+  }
+  // Issue #168: a selection inside a read-only GitHub thread anchors on
+  // the thread's diff line, so Explain, Ask and Comment all work there.
+  // (Outdated threads carry no line and offer no toolbar.)
+  const ghEl = el.closest("[data-gh-thread]") as HTMLElement | null;
+  if (ghEl) {
+    const raw = ghEl.dataset.ghThread ?? "";
+    const sep = raw.lastIndexOf(":");
+    const fileKey = sep > 0 ? raw.slice(0, sep) : "";
+    const line = Number(raw.slice(sep + 1));
+    if (!fileKey || !Number.isSafeInteger(line) || line < 1) return null;
+    return { anchor: { where: "diff-line", fileKey, line } };
   }
   const td = el.closest("#right table.diff td.c");
   if (!td) return null;
@@ -204,6 +290,11 @@ function snapLiveSelection(sel: Selection): void {
 interface Pending {
   quote: string;
   anchor: ActionAnchor;
+  /**
+   * Issue #166: the selection's character offsets within its host's
+   * text, recorded at the moment of selection (absent when unrecordable).
+   */
+  offsets?: { start: number; end: number };
   /**
    * Issue #133: true when the selection sits in revealed context around
    * a hunk. Explain, Ask and GitHub stay; Comment hides (it could never
@@ -351,6 +442,9 @@ export const SCROLL_GRACE_MS = 500;
 
 export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
+  // Over-cap selections show a plain note in the bar instead of the
+  // bar silently never appearing.
+  const [notice, setNotice] = useState<string | null>(null);
   const readOnly = useIsReadOnlyVersion();
   const snapshot = useReview((s) => s.snapshot);
   const navigate = useNavigate();
@@ -386,13 +480,14 @@ export function SelectionToolbar() {
 
   useEffect(() => {
     const bar = (): HTMLElement | null => barRef.current;
-    const hide = (): void => setPending(null);
+    const hide = (): void => {
+      setPending(null);
+      setNotice(null);
+    };
 
     const onMouseUp = (e: MouseEvent): void => {
       if ((e.target as Element | null)?.closest?.("#selbar")) return;
-      const scope = (e.target as Element | null)?.closest?.(
-        "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk .fwrap",
-      );
+      const scope = (e.target as Element | null) !== null && inSelectionScope(e.target as Element);
       if (
         !scope ||
         (e.target as Element | null)?.closest?.("button, a, input, textarea") ||
@@ -410,12 +505,34 @@ export function SelectionToolbar() {
         snapLiveSelection(sel);
         const quote = normalizeQuote(sel.toString());
         const anchorNode = sel.anchorNode;
-        const host = resolveSelectionHost(elementOf(anchorNode) ?? document.body);
-        if (!quote || !validSelectionQuote(quote) || !host) {
+        const anchorEl = elementOf(anchorNode) ?? document.body;
+        const host = resolveSelectionHost(anchorEl);
+        if (!quote || quote.length < 2 || !host) {
           hide();
           return;
         }
+        if (quote.length > MAX_QUOTE_CHARS) {
+          setPending(null);
+          setNotice("That selection is too long. Select less text to Explain, Ask or Comment.");
+          shownAt.current = Date.now();
+          window.setTimeout(place, 0);
+          return;
+        }
+        // Issue #166: record where the selection sits in its host's text
+        // at this moment; placement prefers these offsets.
+        const scope = selectionScopeElement(anchorEl);
+        const offsets = scope ? (selectionOffsetsIn(scope, sel) ?? undefined) : undefined;
         const cardAnchor = commentCardAnchor(host.anchor);
+        // Issue #168: a Comment on text selected inside a read-only
+        // GitHub thread quotes the selection into the reviewer's own
+        // comment (a reply on GitHub is out of scope).
+        const inGhThread =
+          host.anchor.where === "diff-line" && anchorEl.closest?.("[data-gh-thread]") != null;
+        // Issue #163: a selection inside a suggested comment comments on
+        // the comment's own anchor (quoting the selection into the user's
+        // own comment) — the suggestion text is not a host.
+        const inSuggested = anchorEl.closest("[data-ai-comment]") !== null;
+        const commentAnchor = inSuggested ? host.anchor : cardAnchor;
         // Issue #138: a hunk anchor needs the touched rows mapped from
         // the hunk itself (the summary is no table row): Comment lands on
         // the hunk's first changed line without activating the summary,
@@ -436,15 +553,27 @@ export function SelectionToolbar() {
           const touched = diffRangeForSelection(sel);
           if (touched && touched.fileKey === host.anchor.fileKey) diffRange = touched;
         }
+        // Issue #189: carry the selection's last line so the stored
+        // anchor knows its full range (the reopen marker needs it).
+        const endLine =
+          host.anchor.where === "diff-line" && diffRange && diffRange.newLines.length > 0
+            ? Math.max(...diffRange.newLines)
+            : undefined;
         setPending({
           quote,
-          anchor: host.anchor,
+          anchor:
+            endLine !== undefined && host.anchor.where === "diff-line" && endLine > host.anchor.line
+              ? { ...host.anchor, endLine }
+              : host.anchor,
+          ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
-          ...(cardAnchor ? { commentAnchor: cardAnchor } : {}),
+          ...(commentAnchor ? { commentAnchor } : {}),
+          ...(inGhThread && host.anchor.where === "diff-line" ? { commentAnchor: host.anchor } : {}),
           ...(hunkComment ? { commentAnchor: hunkComment } : {}),
           ...(diffRange ? { diffRange } : {}),
           ...(hunkRange ? { diffRange: hunkRange } : {}),
         });
+        setNotice(null);
         shownAt.current = Date.now();
         // Position after render (needs the bar's size).
         window.setTimeout(place, 0);
@@ -503,6 +632,7 @@ export function SelectionToolbar() {
 
   const dismiss = (): void => {
     setPending(null);
+    setNotice(null);
     window.getSelection()?.removeAllRanges();
   };
 
@@ -547,7 +677,12 @@ export function SelectionToolbar() {
     // request returns.
     performAction(
       reviewId,
-      { kind: "explain", quote: current.quote, anchor: current.anchor },
+      {
+        kind: "explain",
+        quote: current.quote,
+        anchor: current.anchor,
+        ...(current.offsets ? { offsets: current.offsets } : {}),
+      },
       { toast: false },
     )
       .then((res) => {
@@ -575,6 +710,9 @@ export function SelectionToolbar() {
     }
     dismiss();
     if (kind === "comment" && current.commentAnchor) {
+      // Remapped anchor (the card's own, not the selection's host):
+      // offsets recorded against the selection's host would misplace, so
+      // they are dropped — the thread places by text match.
       requestNewThread({
         anchor: current.commentAnchor,
         quote: current.quote,
@@ -583,26 +721,37 @@ export function SelectionToolbar() {
       });
       return;
     }
-    requestNewThread({ anchor: current.anchor, quote: current.quote, kind });
+    requestNewThread({
+      anchor: current.anchor,
+      quote: current.quote,
+      kind,
+      ...(current.offsets ? { offsets: current.offsets } : {}),
+    });
   };
 
   return (
-    <div id="selbar" ref={barRef} hidden={pending === null || readOnly}>
-      <button type="button" data-act="explain" onClick={onExplain}>
-        Explain
-      </button>
-      <span className="sep" />
-      <button type="button" data-act="ask" onClick={() => onAskNote("ask")}>
-        Ask…
-      </button>
-      {pending?.revealed ? null : (
-        <button type="button" data-act="note" onClick={() => onAskNote("comment")}>
-          Comment
-        </button>
+    <div id="selbar" ref={barRef} hidden={(pending === null && notice === null) || readOnly}>
+      {notice !== null ? (
+        <span className="sel-note">{notice}</span>
+      ) : (
+        <>
+          <button type="button" data-act="explain" onClick={onExplain}>
+            Explain
+          </button>
+          <span className="sep" />
+          <button type="button" data-act="ask" onClick={() => onAskNote("ask")}>
+            Ask…
+          </button>
+          {pending?.revealed ? null : (
+            <button type="button" data-act="note" onClick={() => onAskNote("comment")}>
+              Comment
+            </button>
+          )}
+          {pending?.diffRange ? (
+            <GithubAction snapshot={snapshot} repo={githubRepo} diffRange={pending.diffRange} onOpen={dismiss} />
+          ) : null}
+        </>
       )}
-      {pending?.diffRange ? (
-        <GithubAction snapshot={snapshot} repo={githubRepo} diffRange={pending.diffRange} onOpen={dismiss} />
-      ) : null}
     </div>
   );
 }

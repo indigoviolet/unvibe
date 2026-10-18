@@ -5,6 +5,7 @@
  * - `GET /api/readiness?force=1` — bypass the cache and re-probe now.
  */
 import type { FastifyInstance } from "fastify";
+import { NoAgentRunner } from "../agent/none.js";
 import { getReadiness } from "../readiness/index.js";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
@@ -24,11 +25,10 @@ export async function registerReadiness(
     const { DEFAULT_SETTINGS } = await import("../settings/store.js");
     const settingsStore =
       full.settings ?? ({ get: () => DEFAULT_SETTINGS } as unknown as RouteDeps["settings"]);
-    let agents = full.agents;
-    if (!agents) {
-      const { createAgentRunner } = await import("../agent/factory.js");
-      agents = createAgentRunner();
-    }
+    // Never call the factory here (#188): a scaffold context without a
+    // composed runner must not spawn a real CLI. buildApp always supplies
+    // agents in production; the no-agent runner keeps the shape stable.
+    const agents = full.agents ?? new NoAgentRunner();
     return getReadiness(
       {
         runner: full.runner,

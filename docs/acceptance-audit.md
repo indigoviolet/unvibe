@@ -418,7 +418,10 @@ needed (that deviation is closed, not added).
   and content”).
 - Citations (`<>` + count; hover previews lines; click opens source pane
   at spot w/ unfold + filter clear) — met (`guide-service.spec.ts`
-  “citations reveal over the real API”, `validate/*`).
+  “citations reveal over the real API”, `validate/*`). Chips flow inline
+  with their text and never wrap alone onto a line (issue #165); lists
+  carry per-item chips with no repeated block-level count row
+  (`guide/BlockView.list.test.tsx`).
 - Inline code chips behave as citations — met (`reply-format.md` §1,
   `guide/citations.test.ts`).
 - Unverified citations dimmed + tooltip — met (`validate/validate.ts`
@@ -459,14 +462,27 @@ needed (that deviation is closed, not added).
   `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
   `comments.spec.ts` “GitHub action links diff lines”).
 
-### §4.7 Explanations — all met (#136 slices 1+2, #152)
+### §4.7 Explanations — all met (#136 slices 1+2, #152, #167)
 
-- Conversation card under the source block, highlight; header (quote,
-  Open as page, Delete, Close) + one answer view per turn, each with the
+- Conversation card on the source block's anchor, highlight; header (quote,
+  Pin, Open as page, Delete, Close) + one answer view per turn, each with the
   card controls acting on that answer alone, plus a reply box answered in
   the same conversation — met (`actions/conversation.ts`,
   `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
   `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
+  Issue #167: a clicked card floats persistently above the content under
+  it (zero-height `.exp-float` placeholder, no reflow; scrolls with the
+  page; pin inserts it inline; the pin is stored on the conversation
+  annotation (`pinned`, default false, set through the comment PATCH),
+  so it survives a reload; hunk-hosted cards stay inline;
+  ×/Escape close; diff floaters render at the hunk level outside the
+  hunk scroller so `.dwrap` never clips them, above the gutter and
+  below the pinned file/hunk headers, and are shifted to their anchored
+  row (`AnchoredFloat`, #185) so a card deep in a long hunk floats just
+  below its line, not at the hunk top) — met (`FloatingCard.test.tsx`,
+  `docs/screenshots/167-floating-guide.png`,
+  `167-pinned-guide.png`, `167-floating-diff.png`; e2e specs that reach
+  under the seeded open card close it first).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with
@@ -515,6 +531,17 @@ needed (that deviation is closed, not added).
   unique within each stored body (multi-card replies dedupe to `-c2`…,
   inserts take fresh IDs; matching is exact on owner + block), so one
   anchor draws exactly one card.
+- Paragraph-by-paragraph answers, experiment (#126): completed
+  paragraphs render from the live stream while the turn fills (never
+  half sentences; fences, directives and the trailer stay held), marked
+  "Still writing…" with citations dimmed-pending beside the fixed
+  working label; the stored turn replaces them at done, a repair
+  replaces cleanly, errors clear them (retry intact); kill switch
+  `unvibe:no-stream-paragraphs` — met (`shared/content/stream.ts` +
+  `content-stream.test.ts`, `streamedAnswer.ts` +
+  `StreamedAnswer.test.tsx`, `docs/screenshots/126-first-paragraph.png`,
+  paced-replay timing in the #126 comment: first paragraph ~8.3 s,
+  done ~19 s vs ~18.4 s today).
 - Deliberately off-prototype (`prototype.html` is look-and-behaviour
   reference, not code): Explain and Ask share one teal conversation
   card — the prototype's separate sand Ask thread (`.ithread`) is gone;
@@ -573,6 +600,20 @@ needed (that deviation is closed, not added).
   opens with the source pane closed) — met (`comments-service.spec.ts`
   “mark for PR, edit the draft, submit posts exactly one review”;
   `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
+- Already on GitHub (issue #168) — met: existing review comments load
+  with the review and reload on refresh (read-only `gh api`, stubbed in
+  tests), render as collapsed read-only threads on their diff lines
+  (author + count, Open on GitHub, Markdown rendered with the shared
+  untrusted renderer), outdated ones at their file and removed-file ones
+  at the diff's end; the menu groups them by file and thread with
+  rendered bodies and jumps to them; selecting their text offers
+  Explain/Ask/Comment (quoting into the reviewer's own comment); one
+  filter-menu control hides them in the diff (remembered with the
+  review) without removing them from the agents' context, where they
+  arrive framed as other people's material, never instructions
+  (`comments/GithubThreads.test.tsx`,
+  `source/diff/DiffView.github.test.tsx`, `e2e/comments.spec.ts`
+  GitHub-thread cases, `service/test/context.test.ts` framing cases).
 
 ### §4.9 Findings — all met
 
@@ -585,6 +626,28 @@ needed (that deviation is closed, not added).
 - Suggested comments (“Agent · suggested comment”, not for PR, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
+  Issue #163: no reply box on suggestions; the selection toolbar works
+  inside the suggestion text (anchored to the comment) and Ask opens the
+  usual Ask card on it; “Ask the agent about this” as on user comments;
+  accept / edit / dismiss unchanged — met (`ThreadView.tsx`,
+  `SelectionToolbar.tsx` ai-comment scope, `ThreadView.test.tsx`
+  suggested cases, `SelectionToolbar.test.tsx` ai-comment resolution,
+  `e2e/comments.spec.ts` “AI-suggested comments carry no reply box”,
+  `docs/screenshots/163-suggested-comment.png`).
+- Open questions as suggestions (issue #181): a kept `open_questions`
+  contribution becomes one AI-suggested comment on the turn's source
+  (card anchor verbatim, hunk to its first line, card's first block,
+  else the guide's first block), tagged “Suggested question”, drafted
+  until accepted + submitted; same question twice is offered once
+  (anchor + stored text); dismissing marks the item dismissed (re-raises
+  dedupe, consolidate and Debug skip it) — met
+  (`comments/questions.ts`, `sharedctx-wire.ts` ingest hook,
+  `threads.ts` dismissal, `close.ts` unify, `ThreadView.tsx` tag,
+  `service/test/open-questions-181.test.ts` 7 tests,
+  `ThreadView.test.tsx` question cases,
+  `docs/screenshots/181-suggested-question.png`, one live run on the
+  demo: answer states what is not known with no “filed” narration, the
+  question suggestion created end to end).
 
 ### §4.10 Second opinion — all met
 
@@ -684,17 +747,21 @@ needed (that deviation is closed, not added).
   Measured stack 149px (strip 41 + bar 43 + file 34 + hunk 31); no compact
   pinned variant — the hunk header is already one 31px line, pure CSS
   cannot restyle only-while-pinned, and every control must stay usable.
-- Files panel (name filter + Filter dropdown with per-type counts and a
-  Reviewed row, active count on the button, hunk progress, compacting tree
+- Files panel (name filter + Filter dropdown with per-type counts, a
+  Reviewed row and a GitHub-comments visibility row, active count on the button, hunk progress, compacting tree
   + counts, click-scroll) — met (`diff.spec.ts` "file filter dropdown …",
   `source/diff/DiffView.test.tsx` stored-prefs + active-state + keyboard
   cases, `source/diff/diffLogic.test.ts` 19 tests; issues #56/#57: the
   comments panel keeps a 360–420px min-width anchored to its button so
   tabs/paths no longer wrap).
-- File header (chevron, path, +/−, reviewed count, toggle) — met.
+- File header (chevron, path, +/−, reviewed count, reviewed checkbox with
+  indeterminate partial state) — met (issue #162). File fold persists on
+  the snapshot (`fileStates`), so tab switches keep it; reviewed is
+  derived from hunks (mark-file marks every hunk), never stored.
 - Git's own hunks (≤3 context, merged runs); header format + raw `@@` on
-  hover; fold/Summarize/note/reviewed actions; hunk card (summary+note,
-  Delete); folding hides code only — met (`shared/src/diff.ts` +
+  hover; fold/Summarize/reviewed actions; hunk card (summary,
+  Delete); folding hides code only, unfolded through the header chevron
+  alone (no placeholder row, issue #162) — met (`shared/src/diff.ts` +
   `diffLogic.test.ts`, `diff.spec.ts` “fold and unfold”). Summaries are
   content cards (#138): idle text with one attribute mounts nothing per
   hunk (large-diff fixture: identical DOM node counts before/after,
@@ -702,11 +769,18 @@ needed (that deviation is closed, not added).
   toolbar on a hunk anchor; the first interaction activates a real
   conversation card on `h:<fileKey>:<contentHash>` from the stored text
   with no agent call, then the action runs nested; Comment lands on the
-  first changed line without activating; deleting the card returns the
-  idle text — met (`service/test/hunk-cards.test.ts`,
+  first changed line without activating; the idle text is the card's
+  collapsed state, so deleting the card removes the stored summary too,
+  leaving no summary (owner decision on #161) — met (`service/test/hunk-cards.test.ts`,
   `source/diff/hunkAnchor.test.ts`,
   `source/diff/HunkCardActivation.test.tsx`,
-  `e2e/hunk-summary.spec.ts`). A hunk card opened as a page keeps its
+  `e2e/hunk-summary.spec.ts`). Issue #161: idle summaries carry no icons
+  and no controls at all (avatar + Delete removed; deleting the stored
+  summary text is no longer offered in the UI), and an activated card is
+  one card at the hunk's level with no `.fcard`/`.fwrap` wrapper
+  (`HunkCardActivation.test.tsx` idle/activated cases,
+  `docs/screenshots/161-idle-summary.png`,
+  `161-activated-card.png`, `hunk-summary.spec.ts` green). A hunk card opened as a page keeps its
   summary text plus a page-link chip; the summary's click/Explain/Ask
   open that page instead of a second card, and a hunk whose page is gone
   reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
@@ -721,8 +795,12 @@ needed (that deviation is closed, not added).
   sites); JSON-looking text is never stored and long fallbacks cut on a
   word boundary (the stored-row cleanup for pre-fix rows was removed
   under #137 — a stored JSON-looking summary is now reused/shown as-is).
-- Fold all summarizes+folds non-hidden; Unfold keeps summaries — met
-  (per-hunk `summarize` jobs, deduped; `docs/pipeline.md` “Fold-all choice”).
+- Fold all folds non-hidden and summarizes only hunks still missing a
+  summary (quiet tooltip when all have one); Unfold keeps summaries —
+  met (issue #162; per-hunk `summarize` jobs, deduped;
+  `docs/pipeline.md` “Fold-all choice”). Hunk notes are removed (issue
+  #162): no stored note, no UI; a private remark is a Comment kept off
+  the PR instead.
   The Summarize dots clear when the summary lands by patch — any landed
   summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
   effect, `source/diff/summarizeBusy.test.tsx`).
@@ -780,7 +858,11 @@ needed (that deviation is closed, not added).
   `GET /api/models` ran 200). Switching a role's provider only browses that
   provider's list and saves nothing; choosing a model saves provider + model
   together, with no false “no longer offered” alert mid-browse (issue #87;
-  `ModelsSection.test.tsx`).
+  `ModelsSection.test.tsx`). Issue #172 adds one effort control per role
+  next to its model: values come from the adapter (`GET /api/thinking`),
+  Default first (the adapter's own setting stands); a model change whose
+  provider does not offer the saved effort resets to Default with a notice
+  (`ModelsSection.test.tsx` "effort per role").
 - Model display names (#21) — met: `GET /api/models` carries `name` +
   `description` from the adapters; pickers show display name beside the id
   with description as secondary text (Claude + Codex); readiness, Doctor,
@@ -817,6 +899,21 @@ needed (that deviation is closed, not added).
   renamed the old `threadId`). Evidence:
   `service/test/jobs.test.ts` "finished jobs stay listed after a restart",
   `scripts/restart-resilience.mjs` step 2b, PRD §4.14 + §16).
+  Issue #172 adds the effort each job ran with next to the model
+  (`jobs.test.ts` "carries effort on the job and persists it"; required,
+  "" = adapter default).
+  Issue #194 adds timings: each job shows queued/started/finished in
+  local time plus duration (live while running), per-attempt and
+  per-turn (first/repair/update) timings, and tool-call start times; a
+  job running over 3× its kind's median finished duration is marked.
+  The refresh's non-agent steps (fetch, building the new version, range
+  diff, remapping anchors/citations/pins) are timed and shown on the
+  Debug page from the snapshot's `refreshTimings`. The update pass no
+  longer enqueues a nested update-pass job (it deadlocked on the
+  enclosing job's dedupe key and sat RUNNING with no token counts); it
+  runs directly in the one job. Evidence: `jobs.test.ts` "timings
+  (#194)", `versionUtils.test.ts` "timing helpers (#194)", journey
+  `j16-refresh-carryover.spec.ts`, visual-tour `debug` scene.
 - Shared context debug page (issue #32; per-review `/review/:id/debug`,
   not in Settings): base keys + stats + current pack, log lines
   verbatim in fenced blocks under in-base/ready/waiting headings (issue
@@ -892,6 +989,31 @@ needed (that deviation is closed, not added).
   (`agent/acp/permissions.ts` deny-by-default; Claude tools allowlist +
   `workspace-write` + sandbox for Codex; `docs/acp-runner.md`; unit
   permission tests in `acp-runner.test.ts` 14 tests).
+- Full-access opt-in (issue #160, this branch): setting off by default
+  with a stored warning acknowledgement (the service refuses to enable
+  without it); two system-prompt variants (`access-lockdown` byte-
+  identical to the old wording — the golden file is unchanged — plus
+  `access-full`); Claude drops the tool reduction with an allow-all
+  handler, Codex uses `agent-full-access` mode (re-applied on fork/load);
+  posture rides every session (`readOnly`), the base key (`access`), and
+  each job (`accessMode`). Owner decisions since: automatic background
+  small-model jobs (hunk pass, summarize, consolidate) always run
+  locked down — one rule (`BACKGROUND_JOB_KINDS` + `postureFor` in
+  `@unvibe/shared`, stamped `lockdown` on those jobs); a follow-up
+  continues its stored session only on a posture match, else closes it
+  and forks fresh with the transcript (both directions; the applier
+  re-anchors). Cheap checks, all three built: post-job checkout
+  verify-and-reset recorded on the job, per-job tool records on the
+  Debug page, markers on the review bar + Debug page. Adapter env:
+  lock-down spawns the base env unchanged; full access removes named
+  secrets and keeps named provider auth (`adapterEnvFor`, per-posture
+  subprocesses). Evidence: `test/full-access-160.test.ts` 34 tests
+  (posture per provider and second opinion, flip follow-ups both ways,
+  background lockdown, conn-retry posture, env rule, fs/terminal
+  refusal); live measurements in the #160 reports (small, sandboxed,
+  costs reported). Prompt-wording proof is measurement, not a gate —
+  stated in the reports. Enforced-vs-instructed lists in PRD §6.1,
+  `docs/acp-runner.md`, and the AGENTS.md submit-rule note.
 - `load` drain, `cancel` → cancelled, crash → retryable + transparent
   restart — met (`acp-runner.test.ts`: load replay drain, cancel
   mid-reply, crash/restart).
@@ -937,7 +1059,19 @@ needed (that deviation is closed, not added).
 
 - Content-tied anchors (position + quote + prefix/suffix + hunk hash) —
   met (`versions/anchors.ts`, `versions-anchors.test.ts` incl. rebase/amend
-  fixtures).
+  fixtures). Issue #166: anchors from a live selection also keep the
+  selection's character offsets; marks place by offsets (verified
+  against the quote), fall back to the nearest text match only when the
+  host text changed, draw in the anchor's own host block only (strict
+  scope: never a nested or other card), and retry boundedly after the
+  host re-renders — met (`comments/anchor.ts` spot API + retry,
+  `anchor.test.ts` offset/scope/repass cases, `SelectionToolbar.test.ts`
+  scope cases, `service/test/comments-m6.test.ts` offset storage,
+  `docs/screenshots/166-anchor-mark.png`; e2e anchor + interaction +
+  comments + diff specs green). Stored anchors without offsets (older
+  reviews, ask-about, follow-ups, hunk cards, suggestions) place by text
+  match as before; no migration — reset for exact anchors on old
+  reviews.
 - New head SHA → version + ID mapping; old versions viewable — met
   (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
   the selector rendered once in the review bar per #120 with the current
@@ -1122,10 +1256,22 @@ needed (that deviation is closed, not added).
   what they need — met (`settings.models`, `runSmall` no-fork). All
   role consumers (readiness, pipeline, second-opinion runner, shared
   context) resolve the same effective settings as Settings (#88).
+  Issue #172 adds the thinking level per role: the setting rides
+  `AgentRunner.start` (any runner can honour it); the ACP runner applies
+  it at start and re-applies it on fork and load; base keys carry it (a
+  changed level rebuilds the base); second-opinion reuse matches on it;
+  each job records it. Small stays at the adapter default unless changed.
+  Evidence: `acp-runner.test.ts` "effort is sent on new, fork, resume and
+  load" + "Default effort sends no thinking option", live
+  "a non-default effort reaches the session" per provider (tiny: one
+  one-word turn each, no pack).
 - Second-opinion isolation (own base L0+L1, never guide text/findings/
-  contributions/pins beyond cited) — met (structural: `secondopinion/base.ts`;
-  tool-level: `registry.ts:286` restricted search/resolve; e2e asserts the
-  real prompt has no guide text).
+  contributions/pins beyond cited) — met (structural under the lock-down:
+  `secondopinion/base.ts`; tool-level: `registry.ts:286` restricted
+  search/resolve; e2e asserts the real prompt has no guide text). Under
+  full access (issue #160) the isolation is a prompt rule only — a shell
+  can read the data directory — stated in PRD §12, `docs/acp-runner.md`,
+  and the base-module header.
 - Per-provider cap (setting `sessionsPerProvider`, default 4) applied
   separately to main-model and small-model jobs, read live — met (#182;
   `jobs/queue.ts`, `jobs.test.ts` cap cases incl. N-at-once and live raise).
@@ -1133,8 +1279,11 @@ needed (that deviation is closed, not added).
   `jobs.test.ts` ordering).
 - Backoff on rate limits + shown on job — met (`backoff.ts`,
   `isRetryableError` 429/quota in `agent/acp/errors.ts`, `backing-off` state).
-- Cancel on card close (`session/cancel`) — met (`actions/close.ts`,
-  `cancelAnnotationJob`; abort path in queue; `acp-runner.test.ts` cancel).
+- Cancel on card delete (`session/cancel`) — met (`actions/close.ts`
+  `deleteAction`, `cancelAnnotationJob`; abort path in queue;
+  `acp-runner.test.ts` cancel). Closing a card only hides it: its running
+  job keeps filling the turn and `working` stays set, so the answer is
+  there on reopen (`actions-m4.test.ts` close-keeps-answer).
 - Dedupe identical requests — met (queue dedupe + `findActiveJob`;
   dedupe freed on interrupt — this branch).
 - Idle close + `load` reopen — met (`sessions/manager.ts:430 sweepIdle`,
@@ -1163,10 +1312,15 @@ needed (that deviation is closed, not added).
 
 - Files with front matter (role/tier/variables) — met (`prompts/*.md` 17
   templates: `ask.md` first turns, `ask_turn.md` follow-ups, `explain.md`
-  deleted under #136 slice 2; `prompts/loader.ts`).
+  deleted under #136 slice 2; `prompts/loader.ts`). Issue #160 adds two
+  `{{access_policy}}` fragments (`access-lockdown.md`, `access-full.md`,
+  validated like templates but outside the §13 table) filling the new
+  instructions variable.
 - Deterministic rendering (stable order, no timestamps, golden files) —
   met (`prompt-goldens.test.ts`, `prompts.test.ts`). Goldens cover
   `ask` + `ask_turn` (the old `explain` golden went with the template).
+  The instructions golden renders the lock-down variant and its file is
+  unchanged by #160 — the default stays byte-for-byte the old wording.
 - All 17 template rows present — met (17 files cover every row;
   `routes/prompts.ts` serves template + expanded).
 - Settings shows the template; the debug page shows the per-review
@@ -1308,7 +1462,11 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Description round-trip (unedited paragraphs byte-identical) — met
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
-  `gh-writes.test.ts`, doctor/readiness share the wrapper). Managed-clone
+  `gh-writes.test.ts`, doctor/readiness share the wrapper). Under full
+  access (issue #160) agents' own `gh` runs as the user via the keyring:
+  adapter subprocesses inherit a scrubbed environment with
+  `GITHUB_TOKEN`/`GH_TOKEN` removed (`scrubAdapterEnv`), and Unvibe's own
+  `gh` calls above are unchanged. Managed-clone
   refresh (#27) is `git fetch origin` on managed checkouts only, before
   changes listings and review ingest/refresh (best effort, 30 s freshness +
   in-flight sharing; failures degrade to stale data with a `fetchError`
@@ -1348,6 +1506,13 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - Privacy: loopback-only enforced at three layers (browser CSP + suite
   network tripwires + static guards + subprocess allowlist —
   `network-*.test.ts`, `subprocess-allowlist.test.ts`, all in `check`).
+  Issue #160 adds the enforced-vs-instructed split: lock-down agents
+  cannot run commands, `gh`, or the network (enforced); full-access
+  agents can (prompt-instructed only), with the scrubbed adapter env,
+  post-job checkout reset, and tool records as the remaining enforcement.
+  What an unrestricted agent can still reach (keyring `gh` login, SSH
+  keys, the data directory) is stated in PRD §6.1 and
+  `docs/acp-runner.md`, not prevented.
   Dev-only exception (issue #29): with a Sentry DSN in the env the service
   and the Vite dev server report errors to Sentry. Releases carry neither
   SDK nor DSN (`sentry.test.ts`, dist scan in `network-guards.test.ts`).
@@ -1407,7 +1572,13 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 3. Suggested-comment links are app-built `comment-link` blocks, not
    agent-written inline text — `docs/reply-format.md` §7b.
 4. `UNVIBE_AGENT` (`replay`/`none`/ACP) runner selection — test/demo seam
-   with no PRD counterpart; production default is ACP.
+   with no PRD counterpart; production default is ACP. Since #188 the real
+   fall-through (unset or mistyped value, or direct `AcpAgentRunner`
+   construction with no fake transport) throws unless
+   `UNVIBE_ALLOW_LIVE_AGENT=1`, which only `serve()` and the
+   `test:live:*` tasks set; the readiness route never calls the factory.
+   Real-service journeys J1–J7 live in `packages/web/e2e/journeys/` under
+   `mise run journeys` (with the visual tour, J8).
 5. Queued jobs come back *interrupted* after restart, not orphaned
    (this branch): nothing rebinds runs, and orphans blocked resume via
    dedupe. Retry paths are `resumeReview` + action rebuilds.
@@ -1448,6 +1619,26 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
     PRD shape; only oversized reviews see the degraded tiers.
 
 ## Open list
+
+### Full access opt-in (branch `feat/160-full-access-opt-in`, issue #160)
+
+Global setting, off by default, with a stored warning acknowledgement;
+two prompt variants; user-facing work unrestricted when on (Claude: full
+tool set + allow-all handler; Codex: `agent-full-access` mode), while
+automatic background small-model jobs (hunk pass, summarize,
+consolidate) always stay locked down; posture on sessions, base keys
+and jobs; follow-ups never continue a session from the other mode
+(close + fresh fork with transcript, both directions); tool records +
+checkout verify-and-reset on the Debug page; markers on the review bar
++ Debug page; enforced-vs-instructed lists in PRD §6.1,
+`docs/acp-runner.md`, and the AGENTS.md submit-rule note. REPORT, not
+decided: whether the setting stays global only or can also be chosen
+per review or per repository (built global only; the natural use is "on
+for my team's repositories, off for strangers' PRs"). Open: prompt
+wording is measured by live checks, not proven; #124 (Codex forks
+without review tools) stays open; sandbox work (#104) lands under this
+when it exists; #169's plotline-assign must join `BACKGROUND_JOB_KINDS`
+when it lands.
 
 ### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
 
@@ -1515,8 +1706,30 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
  listing shells out through `gh` under the user's login (opt-in gate,
  concurrent per-ref fetch); the new static-guard entries are the
  helper's loopback health probe, the `npm` literal, and the bundle shape.
- Open: helper restart on macOS still needs the human pass in
- `docs/macos-testing.md` (see #6).
+  Open: helper restart on macOS still needs the human pass in
+  `docs/macos-testing.md` (see #6).
+
+### Fixed on this branch: version switch with mise-managed Node (issue #170)
+
+  mise wraps each Node version's `npm` so a global install runs
+  `mise reshim` afterwards (a bare `mise` call). The updater ran that npm
+  with a PATH missing `mise`, so old wrappers exited 127 after the install
+  had finished, and the switch rolled back into the same failure with the
+  app left stopped. npm now runs with the login-shell-merged PATH (same
+  merge as for agents) on both the CLI (`unvibe update`) and in-app paths;
+  the switch route snapshots the service's repaired PATH into the helper
+  args and the detached helper restores it before running npm (covers
+  login-started instances, whose units deliberately carry no PATH). A
+  nonzero npm exit with the target build verifiably in place (channel
+  changed, or the published commit now reported) continues with a plain
+  note instead of rolling back; a genuine failure names the mise wrapper
+  cause plus the terminal recovery (`unvibe update <ref>`, then
+  `unvibe start`). No reshim-skipping variable is set, so shims stay
+  fresh. Evidence: `test/update-mise-path.test.ts` (fake wrapper-shaped
+  npm through the real runner with/without `mise` on PATH, repaired-PATH
+  threading, landed/failed/same-channel classification, non-mise failures
+  unchanged) plus the `update-routes` helper-args PATH assertion. Open:
+  macOS + real mise still needs the human pass (owner's machine).
 
 ### Fixed on this branch: managed clones (#27, complete)
 
@@ -1917,6 +2130,59 @@ items noticed while passing through (not verified, listed only):
    report.
 7. **Diagrams**: D2 decision already noted (§13); PRD text itself still
    contradicts (§13/§19.4) — fixed in #18, not here.
+
+### Hunk scores + plotlines experiment (#169, branch `feat/169-hunk-scores-plotlines`, try-and-decide)
+
+Not a PRD requirement: an experiment the owner tries on a preview and
+adopts or drops. Hunk-pass scores (mechanical / routine / substantive /
+needs attention, deterministic rules on top: one-line never mechanical,
+hiding still follows `hiddenReason` alone) shown as colour-blind-safe
+dots on hunk headers (each dot's tooltip names its level); reader plotlines (2–8,
+hunk IDs validated, first wins, rest reads "other", large-PR assign step
+under a 200-hunk cap) as header tags + guide-root box; filtering by
+plotline and/or score, remembered with the review, ANDed with all
+existing filters. Owner direction after the first preview: the dots and
+chips are the selectors — clicking a score dot (hunk header, Files list
+or legend) or a plotline chip (hunk header or guide Plotlines entry)
+toggles that filter, the guide entry also reveals the first hunk, and
+the pinned actions bar shows one active-filter chip ("Plotline: name ·
+N hidden ×") per active dimension. The filter menu keeps only its
+checkbox rows; the stored `diffFilter` state and persistence are
+unchanged. Owner guidance after trying plotlines: a plotline is a
+thread of change with its own purpose (the unit of a separate commit
+or stacked PR), never a file type — tests, docs and config belong to
+the thread they serve. The reader prompt (`prompts/reader.md`, and
+`plotline_assign.md` for the fallback) defines this with a good and a
+bad example; each stored plotline carries an optional `buildsOn`
+and is listed in landing order. The guide Plotlines box shows the
+order and a short "Builds on" line. Toolbar and file tree (#184): the
+file list's filter is an icon menu of file types only; the reviewed
+progress line, score legend and per-file dots left the tree (progress
+is now the pinned toolbar's bottom border, counts only in its tooltip
+and accessible label); Hide uninteresting, Fold all, Unfold all,
+Unified/Split and Refresh are icon buttons; a second toolbar filter
+icon holds Reviewed and GitHub comments. Scoring + classification behind
+`packages/shared/src/scores.ts` so a later source replaces them without
+touching UI or stored shape (`HunkState.score/plotline`,
+snapshot `plotlines`/`diffFilter`; pre-feature reviews reset, no second
+shape). Plotlines from commits (#193): ingest stores the PR/branch
+commits (subjects, bodies, files, PR hunks each touched, by range overlap
+or shared changed lines) on snapshot `commits`; L1 renders a compact
+Commits section for the reader and the assign fallback gets the same
+list. The prompts treat commits as evidence, not the answer (clean
+commits may map one-to-one, squashed/wip/fix subjects yield to content,
+fixups fold into the thread they fix). Evidence: `test/commits-193.test.ts`,
+refreshed prompt goldens, and the #193 live run (clean two-commit PR →
+one plotline folding tests+changelog into the fix; single-commit PR →
+two content-split plotlines with `buildsOn`). Evidence: `test/hunk-plotlines-169.test.ts` (fake runner: score
+valid/invalid, rules on top, plotlines valid/unknown/empty/>8,
+fallback fires/capped, stored shape, filter PATCH),
+`packages/shared/test/scores.test.ts`, `DiffView.scorePlotline.test.tsx`,
+`PageView.plotlines.test.tsx`, `e2e/score-plotline.spec.ts`,
+`docs/screenshots/169-*.png`, live findings on #169 (demo + 3 public
+PRs, costs per job kind). Open: owner tries the preview and decides;
+a small-PR reader degraded failure seen live (code citations outside
+hunk coverage) is reported for a separate issue, not fixed here.
 
 ## Addendum: #91 / #92 / #93 (branch `fix/91-92-93-open-pr`)
 

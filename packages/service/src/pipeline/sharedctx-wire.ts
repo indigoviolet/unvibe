@@ -29,6 +29,7 @@ import type { ReviewLookup } from "../validate/lookup.js";
 import { loadTemplatesDirSync } from "../prompts/index.js";
 import { processContribute } from "../sharedctx/contributions.js";
 import type { SharedContextService } from "../sharedctx/service.js";
+import { suggestOpenQuestionsInDraft, type KeptQuestion } from "../comments/questions.js";
 
 export interface TurnWireDeps {
   reviews: ReviewStore;
@@ -96,6 +97,8 @@ export interface IngestTurnResult {
   contributionsKept: number;
   contributionsDropped: number;
   grownBatches: number;
+  /** Issue #181: open-question suggestions offered this turn. */
+  questionsOffered: number;
 }
 
 /**
@@ -108,7 +111,7 @@ export async function ingestAgentTurn(
   reviewId: string,
   opts: IngestTurnOptions,
 ): Promise<IngestTurnResult> {
-  const out: IngestTurnResult = { contributionsKept: 0, contributionsDropped: 0, grownBatches: 0 };
+  const out: IngestTurnResult = { contributionsKept: 0, contributionsDropped: 0, grownBatches: 0, questionsOffered: 0 };
   if (!deps.sharedctx) return out;
 
   if (opts.data?.contribute) {
@@ -140,6 +143,25 @@ export async function ingestAgentTurn(
           const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
           draft.logTail.push({ seq, kind: entry.kind, payload: entry.payload, scope: entry.scope });
         }
+        // Issue #181: kept open questions become AI-suggested comments in
+        // the same mutate (atomic with the contributions, so concurrent
+        // turns cannot double-offer). The anchor is the turn's source.
+        const questions: KeptQuestion[] = [];
+        for (const c of outcome.kept) {
+          c.items.forEach((item, itemIndex) => {
+            if (item.kind === "open_question") {
+              questions.push({ text: item.text, contributionId: c.id, itemIndex });
+            }
+          });
+        }
+        out.questionsOffered = suggestOpenQuestionsInDraft(draft, {
+          snapshot: opts.snapshot,
+          ctx: {
+            ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
+            ...(opts.cardId ? { cardId: opts.cardId } : {}),
+          },
+          questions,
+        }).length;
       });
     }
   }

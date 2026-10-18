@@ -329,6 +329,14 @@ export async function registerUpdate(
       logPath: path.join(updateDir(ctx.dataDir), `switch-${Date.now()}.log`),
       scriptPath,
       serviceVersion: routeServiceVersion(deps),
+      // Issue #170: the service repaired its PATH from the login shell at
+      // boot (`serve.ts`), which is what finds `mise` for mise-managed
+      // Node. Snapshot it for the detached helper, which restores it
+      // before running npm (it runs after this process has exited and
+      // cannot rely on re-probing from a headless context). This is what
+      // keeps updates from a login-started instance (minimal PATH, issue
+      // #108) working: the unit files deliberately carry no PATH.
+      effectivePath: process.env.PATH ?? "",
       // Restart through the service manager when login-managed (issue
       // #108 follow-up): detected here from the real HOME; tests use the
       // fake HOME through the same path.

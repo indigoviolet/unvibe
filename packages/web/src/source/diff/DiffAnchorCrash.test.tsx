@@ -140,7 +140,6 @@ function Harness({ tokens }: { tokens?: Tokens }): React.JSX.Element {
           folded={false}
           eager
           busy={{}}
-          editingNote={{}}
           slots={lineSlots}
           commentedLines={new Set()}
           highlight={null}

@@ -26,8 +26,9 @@ earlier answers.
 - Every claim about the change gets a citation. If the answer needs code
   beyond the base, fetch it with `get_hunk` or `get_code` first.
 - If the question has no answer in the code (maintainer intent, unseen
-  behaviour), say what you checked and file it as an `open_questions`
-  contribution instead of guessing.
+  behaviour), say what you checked and what is not known instead of
+  guessing. Record the question in the trailing block's `open_questions`
+  without mentioning that in the answer.
 - If a diagram helps, use a fenced `d2` block per the D2 convention
   (prompts/includes/d2-convention.md), as in the first turn.
 - You may end with a `Follow-ups` section suggesting what to ask next.

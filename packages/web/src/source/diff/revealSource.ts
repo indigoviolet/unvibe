@@ -98,9 +98,11 @@ export function refreshDiffPinned(): void {
   const strip = measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
   const bar = measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
   const file = measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK);
+  const hunk = measuredHeight(pane.querySelector(".dhunk-h"), DHUNK_FALLBACK);
   pane.style.setProperty("--diffbar-top", `${strip}px`);
   pane.style.setProperty("--dfile-top", `${strip + bar}px`);
   pane.style.setProperty("--dhunk-top", `${strip + bar + file}px`);
+  pane.style.setProperty("--dhunk-h", `${hunk}px`);
 }
 
 /**
@@ -115,7 +117,46 @@ export function observeDiffPinned(): () => void {
   const pane = diffPane();
   if (!pane || typeof ResizeObserver === "undefined") return () => {};
   refreshDiffPinned();
-  const ro = new ResizeObserver(refreshDiffPinned);
+  // Stuck marking (owner's floating-card rule): a file/hunk header may
+  // paint above a floating card only while it is actually stuck in its
+  // pinned slot; in place, later sections stay below the card. CSS
+  // cannot select "stuck", so mark it from the same live measurements
+  // as the sticky offsets: a header is stuck when its top sits at its
+  // sticky offset (±1px). Recomputed on scroll (rAF-throttled) and on
+  // every resize refresh.
+  const updateStuck = (): void => {
+    const paneTop = pane.getBoundingClientRect().top;
+    const strip = measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
+    const bar = measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
+    const file = measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK);
+    const hunk = measuredHeight(pane.querySelector(".dhunk-h"), DHUNK_FALLBACK);
+    // The pinned band: from the actions bar's bottom to the hunk
+    // slot's bottom. Every header intersecting it — stuck, incoming
+    // (a few px short of sticking) or outgoing (being pushed out) —
+    // is marked `.stuck` and so paints above floating cards. The
+    // band is then always covered by headers, never card text, at
+    // every scroll offset including mid hand-off between files.
+    const bandTop = paneTop + strip + bar;
+    const bandBottom = bandTop + file + hunk;
+    pane.querySelectorAll(".dfile-h, .dhunk-h").forEach((h) => {
+      const r = h.getBoundingClientRect();
+      h.classList.toggle("stuck", r.bottom > bandTop && r.top < bandBottom);
+    });
+  };
+  let raf = 0;
+  const onScroll = (): void => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      updateStuck();
+    });
+  };
+  pane.addEventListener("scroll", onScroll, { passive: true });
+  updateStuck();
+  const ro = new ResizeObserver(() => {
+    refreshDiffPinned();
+    updateStuck();
+  });
   ro.observe(pane);
   const stick = pane.querySelector(".rstick");
   const bar = pane.querySelector(".dtool");
@@ -124,7 +165,11 @@ export function observeDiffPinned(): () => void {
   if (typeof document !== "undefined" && document.fonts) {
     document.fonts.ready.then(refreshDiffPinned).catch(() => {});
   }
-  return () => ro.disconnect();
+  return () => {
+    pane.removeEventListener("scroll", onScroll);
+    if (raf) cancelAnimationFrame(raf);
+    ro.disconnect();
+  };
 }
 
 /**
@@ -163,10 +208,20 @@ export function ensureDiffVisible(el: HTMLElement): void {
   }
 }
 
-type Listener = (ref: string, target: RevealTarget) => void;
+export interface RevealOptions {
+  /**
+   * Filter actions that also jump (a guide plotline pick, #190) keep
+   * every active filter as it is: the reveal scrolls but never clears
+   * the file-type, name, reviewed or score/plotline filters. Citation
+   * reveals leave this off — their promise is that the line shows.
+   */
+  keepFilters?: boolean;
+}
+
+type Listener = (ref: string, target: RevealTarget, opts: RevealOptions) => void;
 
 const listeners = new Set<Listener>();
-let pending: string | null = null;
+let pending: { ref: string; keepFilters: boolean } | null = null;
 
 /** Subscribe to reveal requests. Returns an unsubscribe function. */
 export function onRevealSource(fn: Listener): () => void {
@@ -177,20 +232,20 @@ export function onRevealSource(fn: Listener): () => void {
 }
 
 /** Reveal a `diff:` location in the diff pane. See module docs. */
-export function revealSource(ref: string): boolean {
+export function revealSource(ref: string, opts: RevealOptions = {}): boolean {
   const target = parseDiffRef(ref);
   if (!target) return false;
-  pending = ref;
-  for (const fn of [...listeners]) fn(ref, target);
+  pending = { ref, keepFilters: opts.keepFilters ?? false };
+  for (const fn of [...listeners]) fn(ref, target, opts);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref } }));
   }
   return true;
 }
 
-/** Take the reveal ref waiting for a freshly mounted DiffView, if any. */
-export function takePendingReveal(): string | null {
-  const ref = pending;
+/** Take the reveal waiting for a freshly mounted DiffView, if any. */
+export function takePendingReveal(): { ref: string; keepFilters: boolean } | null {
+  const p = pending;
   pending = null;
-  return ref;
+  return p;
 }

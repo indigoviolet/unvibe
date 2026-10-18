@@ -5,10 +5,15 @@
  *   link; hover previews, click expands in place). On a comment it closes
  *   the comment (guide: back to its marker; diff: comment icon on the line).
  * - `delete` removes the annotation entirely (and closes its session).
- * - A running fill job is cancelled on close/delete (PRD §12); comments
+ *   On a hunk card it also removes the hunk's stored summary: the idle
+ *   summary is the card's collapsed state (#161).
+ * - Close only hides the card: a running fill job keeps going and fills
+ *   its turn, and `working` stays set so a reopened card still shows it
+ *   is working. Only `delete` cancels a running job (PRD §12); comments
  *   never carry jobs.
  */
 import type { Annotation } from "@unvibe/shared";
+import { deleteInDraft } from "../../comments/threads.js";
 import { recordInteraction } from "../../interaction/index.js";
 import { getSnapshotOrThrow, type ActionContext } from "./common.js";
 import { cancelConversationJob, holdsFillableTurns } from "./conversation.js";
@@ -22,18 +27,14 @@ export async function closeAction(
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
   if (!found) throw new Error(`unknown annotation ${annotationId}`);
-  if (holdsFillableTurns(found)) {
-    cancelConversationJob(ctx, snapshot, annotationId);
-  }
+  // Close only hides the card (owner request): the running job is NOT
+  // cancelled and `working` is NOT cleared, so the turn still fills and
+  // a reopened card shows the answer (and that it was working).
 
   await reviews.mutate(reviewId, (draft) => {
     const ann = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
     if (!ann) throw new Error(`unknown annotation ${annotationId}`);
     ann.open = false;
-    ann.working = null;
-    if (holdsFillableTurns(ann)) {
-      for (const turn of ann.turns ?? []) turn.working = null;
-    }
     // Closing keeps content for the dotted-link preview; a working job
     // that finishes later still fills the (closed) turn.
   });
@@ -74,9 +75,10 @@ export async function deleteAction(
   }
 
   await reviews.mutate(reviewId, (draft) => {
-    const idx = (draft.annotations as unknown as Annotation[]).findIndex((a) => a.id === targetId);
-    if (idx < 0) throw new Error(`unknown annotation ${targetId}`);
-    (draft.annotations as unknown as Annotation[]).splice(idx, 1);
+    // Shared with the comments route (issue #181 dismissal marking rides
+    // along for question suggestions on every delete path; deleting a
+    // hunk card also removes its stored summary there, #161).
+    deleteInDraft(draft, targetId);
   });
   // A deleted item that had been shared leaves a one-line deletion entry
   // (PRD §9.3); unshared working states simply vanish.

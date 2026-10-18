@@ -13,6 +13,8 @@ export type {
   SplitResult,
 } from "./types.js";
 export { splitReply } from "./split.js";
+export { splitStreamText } from "./stream.js";
+export type { StreamSplit } from "./stream.js";
 export {
   HUNK_SUMMARY_MAX,
   looksLikeJson,
@@ -58,4 +60,5 @@ export {
   freshBlockId,
   liveBlockLists,
 } from "./blocks.js";
+export { renderUntrustedMarkdown } from "./untrusted.js";
 export type { BlockSnapshot } from "./blocks.js";

@@ -14,6 +14,7 @@ function thread(over: Partial<Annotation> = {}): Annotation {
     type: "comment",
     anchor: { host: { kind: "block", blockId: "c#b" }, quotedText: "q", prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
+    pinned: false,
     messages: [],
     post: false,
     ...over,

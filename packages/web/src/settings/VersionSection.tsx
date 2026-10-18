@@ -251,9 +251,9 @@ export function VersionSection({
             Couldn&apos;t load version info: {error}
           </p>
         ) : null}
+        <CurrentVersion row={currentRow} build={status?.build ?? null} fallback={healthVersion} />
         {!enabled ? null : (
           <>
-            <CurrentVersion row={currentRow} build={status?.build ?? null} fallback={healthVersion} />
             {status && !status.build ? (
               <p className="warnline" data-testid="update-not-installed">
                 Switching only works when Unvibe was installed with npm. This service runs from a source checkout or an older build, so you can only list channels here. To switch, run <code>unvibe update</code> in a terminal.

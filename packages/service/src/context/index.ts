@@ -20,8 +20,10 @@ export {
   type BasePackOptions,
 } from "./base.js";
 export {
+  buildCommitsSection,
   buildConceptsSection,
   buildDiffSection,
+  buildExistingCommentsSection,
   buildGuideSection,
   buildHiddenHunksSection,
   buildHunkSummaries,
@@ -96,6 +98,7 @@ export type {
   FindingInput,
   GuideCardInput,
   PinnedExcerpt,
+  PromptCommit,
   PromptReviewSnapshot,
   SessionCursor,
 } from "./types.js";

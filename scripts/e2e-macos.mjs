@@ -72,13 +72,15 @@ const ENV = {
   UNVIBE_DATA_DIR: DATA,
   UNVIBE_PORT: String(PORT),
   UNVIBE_IDLE_MS: "3000",
+  UNVIBE_AGENT: "none",
 };
 // Scrubbed env: the dispatched helper starts the service with defaults.
 const DEFAULT_ENV = { ...process.env };
-for (const k of ["UNVIBE_PORT", "UNVIBE_DATA_DIR", "UNVIBE_IDLE_MS", "UNVIBE_AGENT", "UNVIBE_REPO_ROOTS"]) {
+for (const k of ["UNVIBE_PORT", "UNVIBE_DATA_DIR", "UNVIBE_IDLE_MS", "UNVIBE_REPO_ROOTS"]) {
   delete DEFAULT_ENV[k];
 }
 DEFAULT_ENV.HOME = process.env.HOME ?? os.homedir();
+DEFAULT_ENV.UNVIBE_AGENT = "none";
 
 let failures = 0;
 function assert(cond, msg) {

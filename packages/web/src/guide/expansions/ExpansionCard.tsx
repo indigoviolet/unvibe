@@ -21,7 +21,7 @@
  *   untouched.
  */
 import type { Annotation, Page, Turn } from "@unvibe/shared";
-import { Fragment } from "react";
+import { Fragment, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { GuideBlockThreads } from "../../comments/GuideThreads.js";
 import { ReplyBox } from "../../comments/ReplyBox.js";
 import { Icon } from "../../components/Icon.js";
@@ -33,10 +33,12 @@ import { blockThreads } from "../annotations.js";
 import { BlockView } from "../BlockView.js";
 import { DepthControl } from "../DepthControl.js";
 import { busyForCard, busyForConversation, inflightLabel, isFollowupAnswer, type BusyState } from "../inflight.js";
+import { useFloatingCard } from "./cardFloat.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
 import { conversationTurns, isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } from "./expansionUtils.js";
 import { expansionsForBlock } from "./ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansionUtils.js";
+import { useProvisionalBlocks } from "./streamedAnswer.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
 type Depth = (typeof DEPTH_ORDER)[number];
@@ -49,7 +51,7 @@ function ControlButton({
   pressed,
   busy,
 }: {
-  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open";
+  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open" | "pin";
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -183,7 +185,9 @@ function AnswerView({
   const depthBusy = busyKind === "depth";
   // Controls that need the text stay off until it arrives (issue #97).
   const contentReady = turn.blocks.length > 0 && !controlsBusy;
-  // The latest answer shows its controls; earlier answers reveal them on
+  // Issue #126 (experiment): completed paragraphs from the live stream,
+  // shown while this turn fills and replaced by the stored turn.
+  const provisional = useProvisionalBlocks(card.id, turn, showWorking && !errorText);  // The latest answer shows its controls; earlier answers reveal them on
   // hover or keyboard focus (cheap layout choice, easy to change).
   const olderClass = isLatest ? "" : " ans-older";
   // A later turn's question reads as its heading; the first turn's answer
@@ -252,7 +256,29 @@ function AnswerView({
           </button>
         </div>
       ) : null}
-      <div className="exp-b">
+      <div className={`exp-b${provisional ? " streaming" : ""}`}>
+        {provisional?.map((block) => (
+          <BlockView
+            key={block.id}
+            block={block}
+            level={turn.level}
+            threads={[]}
+            lookupPage={lookupPage}
+            cardId={turn.id}
+            onOpenPage={onOpenPage}
+            onFollowUp={(blockId, index) => onFollowUp(turn.id, blockId, index)}
+          />
+        ))}
+        {provisional ? (
+          <div className="stream-live" role="status">
+            <span className="dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span>Still writing…</span>
+          </div>
+        ) : null}
         {turn.blocks.map((block) => {
           // Annotations on text inside this answer render under their
           // block exactly like page-card annotations do: threads (open
@@ -333,12 +359,150 @@ function fixedTurnLabel(
 export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onFollowUp, ancestorIds }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
+  const floating = useFloatingCard(expansion);
+  // A card opened from inside a floating card (#186) is clipped by its
+  // parent's own scrolling box, so the diff rows paint where its lower
+  // half should be. When nested inside another floating card, the card
+  // is taken out of that clip with fixed positioning synced to its
+  // zero-height placeholder: it stays next to its anchor inside the
+  // parent, paints above the diff (it stays in the parent's stacking
+  // context), and follows the parent on any scroll.
+  const floatWrapRef = useRef<HTMLDivElement>(null);
+  const [nestedPos, setNestedPos] = useState<CSSProperties | undefined>(undefined);
+  const nestedPosRef = useRef<CSSProperties | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!floating) return;
+    const el = floatWrapRef.current;
+    if (!el || !el.parentElement?.closest(".card.child.floating")) return;
+    // Measuring synchronously in this effect (it runs after every
+    // render) can cascade: a changed measure re-renders, which
+    // measures again. While an answer streams, the placeholder's rect
+    // genuinely moves (parent scroll resets, reflow above it, scroll
+    // anchoring around the parent's sticky header), and the cascade
+    // hits React's update-depth limit (#185) and the card dies. So
+    // measures are frame-throttled — at most one per frame, never
+    // inside the render cascade — and a runaway streak (the value
+    // changing on dozens of consecutive frames) freezes the sync
+    // until the next real scroll or resize.
+    let raf = 0;
+    let frozen = false;
+    let rapidChanges = 0;
+    let lastChangeAt = 0;
+    const computeNext = (): CSSProperties | null => {
+      const r = el.getBoundingClientRect();
+      // Indent by shrinking, never by shifting past the edge: the
+      // placeholder sits inside the parent, so the same width at its
+      // left would overshoot the parent's right edge — and the
+      // viewport's. Cap the right edge at the parent's (and 8px
+      // inside the viewport).
+      const parent = el.closest(".card.child.floating")?.getBoundingClientRect();
+      const rightLimit = Math.min(parent ? parent.right : window.innerWidth, window.innerWidth - 8);
+      // Whole px: sub-pixel float jitter must not read as movement.
+      const width = Math.round(Math.max(160, Math.min(r.width, rightLimit - r.left)));
+      return { position: "fixed", top: Math.round(r.top), left: Math.round(r.left), width, right: "auto", boxSizing: "border-box" };
+    };
+    const applyMeasure = (): void => {
+      raf = 0;
+      if (frozen) return;
+      const next = computeNext();
+      if (!next) return;
+      const prev = nestedPosRef.current;
+      if (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width) {
+        rapidChanges = 0;
+        return;
+      }
+      const now = performance.now();
+      rapidChanges = now - lastChangeAt < 100 ? rapidChanges + 1 : 0;
+      lastChangeAt = now;
+      if (rapidChanges > 30) {
+        frozen = true;
+        return;
+      }
+      nestedPosRef.current = next;
+      setNestedPos(next);
+    };
+    const schedule = (): void => {
+      if (!raf && !frozen) raf = requestAnimationFrame(applyMeasure);
+    };
+    const onEvent = (): void => {
+      frozen = false;
+      rapidChanges = 0;
+      schedule();
+    };
+    schedule();
+    window.addEventListener("resize", onEvent);
+    document.addEventListener("scroll", onEvent, true);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onEvent);
+      document.removeEventListener("scroll", onEvent, true);
+    };
+  });
+  const sectionElRef = useRef<HTMLElement | null>(null);
+  const headerElRef = useRef<HTMLDivElement | null>(null);
+  // Issue #192, in the pane: the sticky header sticks at the card's own
+  // top, but when the card's top slides under the diff pane's pinned
+  // stack (or out of any pane), the header would hide behind the
+  // stack with the controls unreachable. Shift it down (a transform —
+  // no layout, no state, no re-render) so it rests just below the
+  // pinned band, or at the pane's top edge where there is no band.
+  // Frame-throttled like the nested position sync, and it only ever
+  // writes a DOM style, so it cannot feed a render loop.
+  useLayoutEffect(() => {
+    if (!floating) return;
+    let raf = 0;
+    const apply = (): void => {
+      raf = 0;
+      const card = sectionElRef.current;
+      const head = headerElRef.current;
+      if (!card || !head) return;
+      const pane = card.closest(".col");
+      let limit = pane ? pane.getBoundingClientRect().top : 0;
+      if (pane?.id === "right") {
+        // The pinned stack's true bottom: the band's backing can sit
+        // a few px above a stuck header's lower edge, so rest below
+        // the lowest of band, stuck headers and bars.
+        for (const el of pane.querySelectorAll(".dband, .dfile-h.stuck, .dhunk-h.stuck, .dtool, .rstick")) {
+          limit = Math.max(limit, el.getBoundingClientRect().bottom);
+        }
+      }
+      const shift = Math.max(0, Math.round(limit - card.getBoundingClientRect().top));
+      const next = shift > 0 ? `translateY(${shift}px)` : "";
+      if (head.style.transform !== next) head.style.transform = next;
+    };
+    const schedule = (): void => {
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    schedule();
+    window.addEventListener("resize", schedule);
+    document.addEventListener("scroll", schedule, true);
+    // The pinned stack's membership changes as headers stick and
+    // unstick during a hand-off; re-apply when it does, or the header
+    // can be left resting under a newly stuck header.
+    const pane = sectionElRef.current?.closest(".col");
+    let observer: MutationObserver | null = null;
+    if (pane && typeof MutationObserver !== "undefined") {
+      observer = new MutationObserver(schedule);
+      observer.observe(pane, { attributes: true, attributeFilter: ["class"], subtree: true });
+    }
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", schedule);
+      document.removeEventListener("scroll", schedule, true);
+      observer?.disconnect();
+    };
+  });
+
   const jobs = snapshot?.jobs ?? [];
   const turns = conversationTurns(expansion);
   if (expansion.type !== "conversation") return null;
 
   const stale = isAnchorStale(expansion);
   const cardBusy = busyForConversation(inflight, jobs, snapshot, expansion);
+  // Issue #167: floating is the default; pinning puts the card inline.
+  // Hunk-hosted cards stay inline (they replace their idle summary text)
+  // and get no pin control. The rule itself lives in `cardFloat.ts`.
+  const pinnable = expansion.anchor.host.kind !== "hunk";
 
   const onPromote = (): void => {
     void api
@@ -361,7 +525,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   };
 
   const onClose = (): void => {
-    // Cancel-on-close: the service cancels the annotation's job.
+    // Close only hides the card; a running job keeps filling its turn.
     void api
       .action(reviewId, { kind: "close", annotationId: expansion.id })
       .catch(() => {
@@ -371,38 +535,82 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       });
   };
 
+  // Issue #167: the pin control. Floating (default) → "Pin into the
+  // page" inserts the card inline; pinned → unpin returns it to floating.
+  // The pin is stored on the annotation through the comment PATCH, so it
+  // survives a reload; the card flips when the updated snapshot lands.
+  const pinButton = pinnable ? (
+    <ControlButton
+      icon="pin"
+      label={floating ? "Pin into the page" : "Unpin (float above the content)"}
+      pressed={!floating}
+      onClick={() => void api.updateComment(reviewId, expansion.id, { pinned: floating }).catch(() => {})}
+    />
+  ) : null;
+
+  // Issue #167: a floating card stays reachable by keyboard (Tab order is
+  // unchanged — the card keeps its place in the DOM) and Escape closes it
+  // like ×, except from inside its own inputs where Escape keeps its
+  // local meaning.
+  const onSectionKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape") return;
+    const t = e.target;
+    if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
+    e.stopPropagation();
+    onClose();
+  };
+
   if (expansion.collapsed) {
-    return (
+    const section = (
       <section
-        className="card child collapsed"
+        ref={sectionElRef}
+        className={`card child collapsed${floating ? " floating" : ""}`}
         id={`B-${expansion.id}`}
         data-expansion={expansion.id}
+        style={floating ? nestedPos : undefined}
+        {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
       >
-        <div className="exp-h">
+        <div className="exp-h" ref={headerElRef}>
           <ControlButton icon="right" label="Expand" onClick={() => void performAction(reviewId, { kind: "collapse", cardId: expansion.id, collapsed: false }).catch(() => {})} />
           {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
           {stale ? <span className="hint">from an earlier wording</span> : null}
           <span className="sp" />
+          {pinButton}
           <ControlButton icon="open" label="Open as page" onClick={onPromote} />
           <ControlButton icon="trash" label="Delete" onClick={onDelete} />
           <ControlButton icon="x" label="Close" onClick={onClose} />
         </div>
       </section>
     );
+    // A floating card takes no space in the flow: the zero-height
+    // placeholder keeps its DOM position (reading + Tab order, anchor
+    // proximity) while the card overlays the content below it and scrolls
+    // with the page. Pinned cards render exactly as today.
+    return floating ? (
+      <div className="exp-float" data-float={expansion.id} ref={floatWrapRef}>
+        {section}
+      </div>
+    ) : (
+      section
+    );
   }
 
   const below = [...(ancestorIds ?? []), expansion.id];
-  return (
+  const section = (
     <section
-      className={`card child${cardBusy?.rewriting ? " rewriting" : ""}`}
+      ref={sectionElRef}
+      className={`card child${cardBusy?.rewriting ? " rewriting" : ""}${floating ? " floating" : ""}`}
       id={`B-${expansion.id}`}
       data-expansion={expansion.id}
+      style={floating ? nestedPos : undefined}
       aria-busy={cardBusy ? true : undefined}
+      {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
     >
-      <div className="exp-h">
+      <div className="exp-h" ref={headerElRef}>
         {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
         {stale ? <span className="hint">from an earlier wording</span> : null}
         <span className="sp" />
+        {pinButton}
         <ControlButton icon="open" label="Open as page" onClick={onPromote} />
         <ControlButton icon="trash" label="Delete" onClick={onDelete} />
         <ControlButton icon="x" label="Close" onClick={onClose} />
@@ -436,6 +644,13 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         onDiscard={() => api.updateComment(reviewId, expansion.id, { reply: null })}
       />
     </section>
+  );
+  return floating ? (
+    <div className="exp-float" data-float={expansion.id} ref={floatWrapRef}>
+      {section}
+    </div>
+  ) : (
+    section
   );
 }
 

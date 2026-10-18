@@ -4,7 +4,8 @@ Imports the two new helpers for testing. [[diff:tconn:14-21]]
 {
   "hunk": {
     "summary": "Imports the two new helpers for testing.",
-    "hiddenReason": "imports"
+    "hiddenReason": "imports",
+    "score": "mechanical"
   }
 }
 ```

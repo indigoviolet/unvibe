@@ -12,7 +12,9 @@ import type {
   Contribution,
   DepthLevel,
   ExistingReviewComment,
+  FileState,
   HunkState,
+  ReviewViewPrefs,
   Job,
   LogEntry,
   Page,
@@ -20,8 +22,10 @@ import type {
   ReviewDescription,
   ReviewFile,
   Repo,
+  SelectionOffsets,
   Version,
 } from "./entities.js";
+import type { DiffFilter, HunkScoreLevel, Plotline, ReviewCommit } from "./scores.js";
 
 /** Health is the only unauthenticated route. */
 export interface HealthResponse {
@@ -254,11 +258,31 @@ export interface ReviewSnapshot {
   pages: Page[];
   annotations: Annotation[];
   hunkStates: HunkState[];
+  /**
+   * Issue #162: per-file fold state, keyed by file key. Reviewed is
+   * derived from the file's hunks, never stored here.
+   */
+  fileStates: FileState[];
+  /** Issue #168: per-review diff view preferences. */
+  viewPrefs: ReviewViewPrefs;
   jobs: Job[];
   contributions: Contribution[];
   logTail: LogEntry[];
   /** Monotonic revision of this snapshot; WS patches carry baseRev/headRev. */
   rev: number;
+  /** Issue #193: PR/branch commits in landing order, as plotline evidence. Absent on pre-#193 snapshots. */
+  commits?: ReviewCommit[];
+  /**
+   * Issue #169: the reader's plotlines (empty/absent = none named yet;
+   * every hunk reads as "other"). Per-hunk assignment lives on
+   * `HunkState.plotline`, keyed by content hash.
+   */
+  plotlines?: Plotline[];
+  /**
+   * Issue #169: the diff's score/plotline filter, remembered with the
+   * review. Absent = all hunks (no filtering).
+   */
+  diffFilter?: DiffFilter;
   /**
    * M3 pipeline (PRD §16): per-review token totals + cache-hit rate.
    * Updated by the pipeline after every job; absent on pre-M3 snapshots.
@@ -290,6 +314,12 @@ export interface ReviewSnapshot {
    * `GET /api/reviews/:id/pr-comments`; absent until first fetch.
    */
   existingComments?: ExistingReviewComment[];
+  /**
+   * Issue #194: timed non-agent steps of the most recent refresh that
+   * created a version (fetch, range diff, building, remapping). Shown on
+   * the Debug page; absent until a refresh moves the head.
+   */
+  refreshTimings?: { at: number; steps: import("./entities.js").TimedStep[] };
 }
 
 export type ReviewResponse = ReviewSnapshot;
@@ -439,10 +469,10 @@ export interface UpdateReviewResponse {
  * route by `kind` and later agents can add variants without new endpoints.
  */
 export type ReviewAction =
-  | { kind: "explain"; quote: string; anchor: ActionAnchor }
+  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets }
   /** Issue #136 slice 2: same request; creates a conversation card whose first question is the message. */
-  | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string }
-  | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string }
+  | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string; offsets?: SelectionOffsets }
+  | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
    * Issue #136: `cardId` is a page-card id or one conversation answer's
    * `ans_…` id. Depth, examples, diagram, undo and second opinion act on
@@ -500,7 +530,14 @@ export type ActionAnchor =
    */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
-  | { where: "diff-line"; fileKey: string; line: number }
+  | {
+      where: "diff-line";
+      fileKey: string;
+      line: number;
+      /** Issue #189: last line of a multi-line selection (range marker). */
+      endLine?: number;
+      side?: "LEFT" | "RIGHT";
+    }
   /**
    * Issue #138: a hunk, addressed `h:<fileKey>:<contentHash>`. Explain
    * and Ask with a hunk anchor first turn the hunk's idle summary into a
@@ -653,13 +690,22 @@ export interface FileOutlineResponse {
 export interface UpdateHunkRequest {
   folded?: boolean;
   reviewed?: boolean;
-  /** Set to change the note; explicit null clears it (M1 addition). */
-  note?: string | null;
   /**
    * Set/replace the agent summary, or delete it with `null`.
    * Added for M1-web (hunk cards carry Delete for the summary).
    */
   summary?: string | null;
+}
+
+/** PATCH /api/reviews/:id/files/:fileKey — per-file diff state (issue #162). */
+export interface UpdateFileRequest {
+  folded?: boolean;
+}
+
+/** PATCH /api/reviews/:id/view — per-review diff view preferences (issue #168). */
+export interface UpdateViewRequest {
+  showExistingComments?: boolean;
+  existingCommentsCollapsed?: boolean;
 }
 
 export interface SummarizeHunkResponse {
@@ -672,6 +718,17 @@ export interface SummarizeHunkResponse {
   reused?: boolean;
   /** Present when `reused` is true: the stored summary. */
   summary?: string;
+}
+
+/**
+ * Issue #169: `PATCH /api/reviews/:id/diff-filter` — the diff's
+ * score/plotline filter, remembered with the review. Each field is a
+ * plotline id (or "other") / score level; explicit null clears it.
+ * Unknown plotline ids and levels are refused (400).
+ */
+export interface UpdateDiffFilterRequest {
+  plotline?: string | null;
+  score?: HunkScoreLevel | null;
 }
 
 /**
@@ -719,6 +776,8 @@ export interface UpdateCommentRequest {
   open?: boolean;
   /** M6: unsent reply-box content (survives re-renders); null clears it. */
   reply?: string | null;
+  /** Issue #167: pin a conversation card into the page (conversations only). */
+  pinned?: boolean;
 }
 
 /** POST /api/reviews/:id/comments — create a thread (M6). */
@@ -732,6 +791,8 @@ export interface CreateCommentRequest {
   suffix?: string;
   /** Best-effort position at creation (line/offset). */
   position?: number;
+  /** Issue #166: selection offsets within the host's text, when selected. */
+  offsets?: SelectionOffsets;
   /** Initial user text (first message when present). */
   text?: string;
   /**
@@ -841,6 +902,12 @@ export interface SubmitReviewResponse {
 export interface ModelPick {
   provider: string;
   model: string;
+  /**
+   * Thinking level for the role (issue #172): an adapter-offered effort
+   * value (Claude `effort`, Codex `reasoning_effort`). "" means Default —
+   * leave the adapter's own setting alone.
+   */
+  effort: string;
 }
 
 export interface Settings {
@@ -870,6 +937,19 @@ export interface Settings {
    * opt-in.
    */
   versionPickerEnabled: boolean;
+  /**
+   * Issue #160: full access for agent sessions (shell, `git`, `gh`, web,
+   * file tools unrestricted). Off by default; the lock-down stays until
+   * this is turned on WITH `fullAccessAcknowledgedAt` in the same update
+   * (the service refuses to enable without the acknowledgement).
+   */
+  fullAccess: boolean;
+  /**
+   * Issue #160: epoch ms the full-access warning was acknowledged, stored
+   * with the setting. Null when never acknowledged. Turning full access
+   * off clears it, so turning it on again asks again.
+   */
+  fullAccessAcknowledgedAt: number | null;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
@@ -889,6 +969,27 @@ export interface ModelInfo {
 export interface ModelsResponse {
   provider: string;
   models: ModelInfo[];
+}
+
+/** One thinking-level value an adapter offers (issue #172). */
+export interface ThinkingOption {
+  /** Adapter config value (e.g. "low", "high"). Persisted in settings. */
+  value: string;
+  /** Display name beside the value (e.g. "High"). */
+  name?: string;
+  /** Secondary text. */
+  description?: string;
+}
+
+/** GET /api/thinking?provider=:id — thinking levels the adapter offers. */
+export interface ThinkingResponse {
+  provider: string;
+  /** Values the adapter offers for its effort selector; empty when none. */
+  options: ThinkingOption[];
+  /** Display name for the option values above (e.g. "Effort"). */
+  label?: string;
+  /** The adapter's own current value (what Default leaves alone). */
+  current?: string;
 }
 
 // --- diagnostics (issue #20) ---------------------------------------------

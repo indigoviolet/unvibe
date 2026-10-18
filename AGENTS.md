@@ -9,6 +9,8 @@ Details live in `DEVELOPMENT.md` (setup, tasks, tests, releases) and `ARCHITECTU
 - **mise** owns the environment, tools and tasks. Run things as `mise run <task>` (see `DEVELOPMENT.md` for the list).
 - Node + TypeScript (strict, ESM), **npm workspaces**. No pnpm/yarn/bun.
 - Tests: **vitest**. UI behaviour tests: Playwright (only where a milestone asks for it).
+- UI behaviour is tested against the **real service** (built app + bundled demo + browser, the `*-service.spec.ts` pattern and `mise run visual-tour`); mock-mode tests are only for quick component checks. Do not write a million unit tests for UI behaviour — prefer real testing. Before publishing any preview that changes UI, run `mise run visual-tour` and look at every screenshot.
+- A feature or fix that changes what the user sees adds or extends a journey against the real service (`packages/web/e2e/journeys/`), not a new unit test, and the visual tour covers any screen it touches. Unit tests are for pure logic.
 - SQLite through the built-in `node:sqlite` (no native addons, so `npm install -g` needs no compiler).
 - Must work on **macOS and Linux**. No platform-only shell tricks, no GNU-only flags, use `node:path`/`node:os`, never hard-code `/home/...`.
 
@@ -28,7 +30,7 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 ## Rules
 
 - Nothing outside `packages/service/src/agent/acp/` may import ACP. Everything else uses the `AgentRunner` interface (PRD §6).
-- Nothing is posted to GitHub except by the Submit review path (crash-safe via in-flight leases in `src/submit/lease.ts`). Tests never hit real GitHub or real agents: use the fake `AgentRunner` and stub `gh`/`git` through an injectable command runner. Only tasks named `test:live:*` may use real logins (and spend tokens). See `DEVELOPMENT.md` for the test rules and the full task list.
+- Nothing is posted to GitHub except by the Submit review path (crash-safe via in-flight leases in `src/submit/lease.ts`). That rule covers Unvibe's own code, and it stays true there. Under the full-access opt-in (issue #160) it does NOT cover what an agent session does with its own shell: the agent can run `gh` as the user, and only the system prompt forbids it from posting — nothing enforces it. Live checks therefore run with no real credentials available to the session (scratch HOME, fake `gh` that refuses writes, or a local fake endpoint) and assert on the attempt, never on a successful write. Tests never hit real GitHub or real agents: use the fake `AgentRunner` and stub `gh`/`git` through an injectable command runner. Only tasks named `test:live:*` may use real logins (and spend tokens). See `DEVELOPMENT.md` for the test rules and the full task list.
 - Run `gh` with `GITHUB_TOKEN` unset (PRD §15).
 - Secrets come from the 1Password Environment through `mise run op -- <cmd>` (see `DEVELOPMENT.md`). Never print their values and never commit `.env`.
 - API types live in `packages/shared`; service and web both import them. Change the contract there first.

@@ -14,6 +14,22 @@ export interface FakeScript {
 export class FakeAgentRunner implements AgentRunner {
   readonly sessions = new Map<string, Session>();
   readonly prompts: { sessionId: string; text: string }[] = [];
+  /** Every `start` call, in order (posture + system-prompt assertions). */
+  readonly starts: {
+    provider: string;
+    model: string;
+    cwd: string;
+    systemPrompt: string;
+    readOnly: boolean;
+    mcpServers: McpServerConfig[];
+  }[] = [];
+  /**
+   * Start options per session, in order (tests assert the effort sent).
+   * Named to avoid colliding with subclasses' own `starts` recordings
+   * (e.g. conversation-mcp-turns' MCP-server log): both push here and
+   * there independently.
+   */
+  readonly startCalls: { sessionId: string; provider: string; model: string; effort: string }[] = [];
   private nextId = 1;
 
   constructor(private scripts: FakeScript[] = []) {}
@@ -28,6 +44,8 @@ export class FakeAgentRunner implements AgentRunner {
     cwd: string;
     systemPrompt: string;
     mcpServers: McpServerConfig[];
+    readOnly?: boolean;
+    effort?: string;
   }): Promise<Session> {
     const session: Session = {
       id: `fake-${this.nextId++}`,
@@ -35,6 +53,20 @@ export class FakeAgentRunner implements AgentRunner {
       model: opts.model,
     };
     this.sessions.set(session.id, session);
+    this.starts.push({
+      provider: opts.provider,
+      model: opts.model,
+      cwd: opts.cwd,
+      systemPrompt: opts.systemPrompt,
+      readOnly: opts.readOnly ?? true,
+      mcpServers: opts.mcpServers,
+    });
+    this.startCalls.push({
+      sessionId: session.id,
+      provider: opts.provider,
+      model: opts.model,
+      effort: opts.effort ?? "",
+    });
     return session;
   }
 

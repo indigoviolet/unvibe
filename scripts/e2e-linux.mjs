@@ -47,6 +47,7 @@ const ENV = {
   UNVIBE_DATA_DIR: DATA,
   UNVIBE_PORT: String(PORT),
   UNVIBE_IDLE_MS: "3000",
+  UNVIBE_AGENT: "none",
 };
 // Interruption net: stop only our own daemon (via its lock file under our
 // DATA), then remove only our own root. Never kills by pattern or port.

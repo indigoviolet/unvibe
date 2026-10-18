@@ -64,6 +64,7 @@ describe("HTTP auth gate", () => {
       { method: "POST", url: "/api/reviews/r1/resume", status: 404 },
       { method: "POST", url: "/api/reviews/r1/hunks/abc/summarize", status: 404 },
       { method: "PATCH", url: "/api/reviews/r1/hunks/abc", status: 400 },
+      { method: "PATCH", url: "/api/reviews/r1/view", status: 400 },
       { method: "GET", url: "/api/settings", status: 200 },
       // Merged here from the dropped /api/prompts test (#119): the listing
       // itself is covered by prompts-route.test.ts + snapshot.test.ts.

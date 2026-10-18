@@ -95,14 +95,18 @@ describe("renderTemplate determinism", () => {
 describe("repo prompts/ directory", () => {
   it("loads all 17 PRD §13 templates with valid front matter", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
-    expect([...lib.keys()].sort()).toEqual([...PROMPT_TEMPLATE_NAMES].sort());
-    for (const name of PROMPT_TEMPLATE_NAMES) {
+    // Issue #160 adds two `{{access_policy}}` fragments (not §13 table
+    // templates) that fill the instructions variant.
+    expect([...lib.keys()].sort()).toEqual([...PROMPT_TEMPLATE_NAMES, "access-full", "access-lockdown"].sort());
+    for (const name of [...PROMPT_TEMPLATE_NAMES, "access-full", "access-lockdown"]) {
       const t = lib.get(name);
       expect(t, name).toBeDefined();
       expect(t?.role.length).toBeGreaterThan(0);
       // Every used placeholder is declared (enforced by the loader).
       expect(t?.usedVariables.every((v) => t.variables.includes(v))).toBe(true);
     }
+    expect(lib.get("access-full")?.variables).toEqual([]);
+    expect(lib.get("access-lockdown")?.variables).toEqual([]);
   });
 
   it("reader prompts describe content, not how to read the guide (#175)", () => {

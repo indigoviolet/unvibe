@@ -42,6 +42,19 @@ test("clicking the idle summary opens it as a card with no agent call", async ({
   await expect(card.locator(".exp-b")).toContainText("Unfolds folded header values", { timeout: 5000 });
 });
 
+test("deleting the activated hunk card leaves no summary (#161)", async ({ page }) => {
+  await gotoDiff(page);
+  const idle = page.locator("p[data-hunksum]").first();
+  await expect(idle).toBeVisible({ timeout: 8000 });
+  await idle.click();
+  const card = page.locator(".dhunk [data-expansion]").first();
+  await expect(card).toBeVisible({ timeout: 5000 });
+  await card.getByRole("button", { name: "Delete" }).click();
+  // The card and its collapsed state — the idle summary — are both gone.
+  await expect(page.locator(".dhunk [data-expansion]")).toHaveCount(0);
+  await expect(page.locator("p[data-hunksum]")).toHaveCount(0);
+});
+
 test("a Comment on a summary lands on the line and never activates", async ({ page }) => {
   await gotoDiff(page);
   await selectText(page, "p[data-hunksum]", "folded header values");

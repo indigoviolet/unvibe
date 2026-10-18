@@ -186,8 +186,11 @@ test("headers still pin and code columns line up with expansion revealed", async
   const tconn = page.locator(tconnFile);
   await tconn.getByRole("button", { name: "Show all 4 lines" }).click();
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(4);
-  // A revealed row scrolls under the pinned file + hunk headers.
-  await scrollPaneTo(page, `[id="L-${CONN}-60"]`, 500);
+  // A revealed row scrolls under the pinned file + hunk headers. Scroll
+  // to a line deep enough in the hunk that its header is genuinely stuck
+  // at the slot (not merely sitting near it in normal flow — file-top
+  // groups like the GitHub outdated threads legitimately move that).
+  await scrollPaneTo(page, `[id="L-${CONN}-90"]`, 400);
   await expect.poll(async () => pinnedFile(page), { timeout: 5000 }).toBe("connection.py");
   await expect.poll(async () => pinnedHunk(page), { timeout: 5000 }).toContain("Hunk 1 of 2");
   // Code columns start at the same x across the file's hunk tables

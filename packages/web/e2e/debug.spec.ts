@@ -196,3 +196,9 @@ test("debug page links back to the review", async ({ page }) => {
     .click();
   await expect(page).toHaveURL("/review/demo");
 });
+
+test("no full-access marker while the setting is off", async ({ page }) => {
+  await page.goto("/review/demo/debug");
+  await expect(page.getByRole("tablist", { name: "Debug sections" })).toBeVisible();
+  await expect(page.getByTestId("full-access-marker")).toHaveCount(0);
+});

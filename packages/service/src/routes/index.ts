@@ -21,6 +21,7 @@ import { registerSubmit } from "./submit.js";
 import { registerViewer } from "./viewer.js";
 import { registerDiagnostics } from "./diagnostics.js";
 import { registerUpdate } from "./update.js";
+import { registerView } from "./view.js";
 
 /**
  * One route module per area; each registers its PRD §14.1 endpoints.
@@ -55,6 +56,7 @@ export async function registerRoutes(
   await registerSettings(app, deps);
   await registerDiagnostics(app, ctx, deps);
   await registerUpdate(app, ctx, deps);
+  await registerView(app, ctx);
   await registerPrompts(app, {
     snapshots: {
       getSnapshot: async (reviewId: string) => {
@@ -62,6 +64,7 @@ export async function registerRoutes(
         return snap ? toPromptSnapshot(snap) : null;
       },
     },
+    ...(full.settings ? { settings: full.settings } : {}),
   });
   await registerJobs(app, deps);
   await registerEvents(app, ctx.bus);

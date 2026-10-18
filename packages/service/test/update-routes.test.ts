@@ -282,6 +282,9 @@ describe("update switch", () => {
       });
       // The installed build is identified from the service entry path.
       expect(args["scriptPath"]).toBe(process.argv[1]);
+      // The detached helper inherits the service's repaired PATH (issue
+      // #170), so npm wrappers find mise after the service has exited.
+      expect(args["effectivePath"]).toBe(process.env.PATH);
       expect(await waitFor(() => h.shutdownCalls() === 1, UPDATE_SHUTDOWN_DELAY_MS + 2500)).toBe(true);
 
       // A second switch while pending is refused.
@@ -299,6 +302,7 @@ describe("update switch", () => {
       kind: "reader",
       provider: "claude",
       model: "m",
+      effort: "",
       reviewId: "r",
       priority: 1,
       run: () => new Promise<never>(() => {}),
@@ -332,6 +336,7 @@ describe("update switch", () => {
         kind: "reader",
         provider: "claude",
         model: "m",
+        effort: "",
         reviewId: `r-${i}`,
         priority: 1,
         run: () => new Promise<never>(() => {}),
@@ -355,6 +360,7 @@ describe("update switch", () => {
       kind: "explain",
       provider: "claude",
       model: "m",
+      effort: "",
       reviewId: "r",
       priority: 1,
       run: () => new Promise<never>(() => {}),

@@ -18,6 +18,7 @@
  * diff pane shows its Summarize action again for those hunks).
  */
 import type { ReplyData } from "./types.js";
+import { normalizeHunkScore, type HunkScoreLevel } from "../scores.js";
 import { findFences } from "./split.js";
 
 /** Model instruction budget for the summary line (prompt `hunk_pass.md`). */
@@ -27,6 +28,12 @@ export interface HunkReplyResult {
   /** Absent when no usable summary could be read: store none, not garbage. */
   summary?: string;
   hiddenReason: string | null;
+  /**
+   * Issue #169: the agent's score level, or null when it sent none (or
+   * an invented one). The caller resolves it against the deterministic
+   * rules (`resolveHunkScore`), so this stays the raw reading.
+   */
+  score: HunkScoreLevel | null;
 }
 
 /**
@@ -53,12 +60,16 @@ function usableHiddenReason(value: unknown): string | null {
 }
 
 /** Null when the value holds no `hunk` object at all. */
-function hunkFromObject(obj: unknown): { summary?: string; hiddenReason?: string | null } | null {
+function hunkFromObject(obj: unknown): { summary?: string; hiddenReason?: string | null; score?: HunkScoreLevel | null } | null {
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return null;
   const hunk = (obj as Record<string, unknown>)["hunk"];
   if (typeof hunk !== "object" || hunk === null || Array.isArray(hunk)) return null;
   const rec = hunk as Record<string, unknown>;
-  return { summary: usableSummary(rec["summary"]), hiddenReason: usableHiddenReason(rec["hiddenReason"]) };
+  return {
+    summary: usableSummary(rec["summary"]),
+    hiddenReason: usableHiddenReason(rec["hiddenReason"]),
+    score: normalizeHunkScore(rec["score"]),
+  };
 }
 
 /** Balanced-brace scan from `text[start] === "{"`; null when unbalanced. */
@@ -156,9 +167,10 @@ function fallbackSummary(text: string): string | undefined {
 export function parseHunkReply(text: string, data?: ReplyData | null): HunkReplyResult {
   const fromData = data ? hunkFromObject(data) : null;
   if (fromData?.summary !== undefined) {
-    return { summary: fromData.summary, hiddenReason: fromData.hiddenReason ?? null };
+    return { summary: fromData.summary, hiddenReason: fromData.hiddenReason ?? null, score: fromData.score ?? null };
   }
   let hiddenReason = fromData?.hiddenReason ?? null;
+  let score = fromData?.score ?? null;
   const attempt = (candidate: string): string | undefined => {
     let parsed: unknown;
     try {
@@ -169,6 +181,7 @@ export function parseHunkReply(text: string, data?: ReplyData | null): HunkReply
     const found = hunkFromObject(parsed);
     if (!found) return undefined;
     if (found.hiddenReason != null && hiddenReason == null) hiddenReason = found.hiddenReason;
+    if (found.score != null && score == null) score = found.score;
     return found.summary;
   };
   // Earlier fenced blocks first (last-to-first, agreeing with splitReply's
@@ -179,13 +192,13 @@ export function parseHunkReply(text: string, data?: ReplyData | null): HunkReply
     .reverse();
   for (const candidate of fenced) {
     const summary = attempt(candidate);
-    if (summary !== undefined) return { summary, hiddenReason };
+    if (summary !== undefined) return { summary, hiddenReason, score };
   }
   for (const candidate of bareJsonCandidates(text)) {
     const summary = attempt(candidate);
-    if (summary !== undefined) return { summary, hiddenReason };
+    if (summary !== undefined) return { summary, hiddenReason, score };
   }
   const fallback = fallbackSummary(text);
-  if (fallback === undefined) return { hiddenReason };
-  return { summary: fallback, hiddenReason };
+  if (fallback === undefined) return { hiddenReason, score };
+  return { summary: fallback, hiddenReason, score };
 }
