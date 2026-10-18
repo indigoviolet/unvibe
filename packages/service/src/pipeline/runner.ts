@@ -31,7 +31,7 @@ import type {
 import { canonicalizeTarget, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
-import { DegradedConnError, DegradedTurnError, RetryableError } from "../jobs/errors.js";
+import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
@@ -103,31 +103,49 @@ async function collectStreaming(
   let text = "";
   let afterTool = false;
   const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
-  for await (const ev of runner.prompt(session, prompt, signal)) {
-    if (ev.type === "text") {
-      // Text on either side of a tool call arrives with nothing between it
-      // ("…my restatement.Only two files…"): make it a paragraph break.
-      const delta = afterTool && text && !text.endsWith("\n\n") ? `\n\n${ev.delta}` : ev.delta;
-      afterTool = false;
-      text += delta;
-      onDelta(delta);
-    } else if (ev.type === "tool") {
-      if (ev.status === "start") {
-        afterTool = true;
-        onTool?.(ev.name, ev.detail);
+  try {
+    for await (const ev of runner.prompt(session, prompt, signal)) {
+      if (ev.type === "text") {
+        // Text on either side of a tool call arrives with nothing between it
+        // ("…my restatement.Only two files…"): make it a paragraph break.
+        const delta = afterTool && text && !text.endsWith("\n\n") ? `\n\n${ev.delta}` : ev.delta;
+        afterTool = false;
+        text += delta;
+        onDelta(delta);
+      } else if (ev.type === "tool") {
+        if (ev.status === "start") {
+          afterTool = true;
+          onTool?.(ev.name, ev.detail);
+        }
+      } else if (ev.type === "usage") {
+        usage.inputTokens += ev.inputTokens;
+        usage.cachedReadTokens += ev.cachedReadTokens;
+        usage.cachedWriteTokens += ev.cachedWriteTokens;
+        usage.outputTokens += ev.outputTokens;
+      } else if (ev.type === "error") {
+        if (ev.retryable) throw new RetryableError(ev.message);
+        throw new Error(ev.message);
       }
-    } else if (ev.type === "usage") {
-      usage.inputTokens += ev.inputTokens;
-      usage.cachedReadTokens += ev.cachedReadTokens;
-      usage.cachedWriteTokens += ev.cachedWriteTokens;
-      usage.outputTokens += ev.outputTokens;
-    } else if (ev.type === "error") {
-      if (ev.retryable) throw new RetryableError(ev.message);
-      throw new Error(ev.message);
+      if (signal?.aborted) throw new Error("aborted");
     }
-    if (signal?.aborted) throw new Error("aborted");
+  } catch (err) {
+    // Issue #151: a turn that ends early keeps the usage it already
+    // counted on the thrown error, so the job can record it.
+    throw attachPartialUsage(err, usage, text);
   }
   return { text, usage };
+}
+
+/** Append one more sent prompt to a job's snapshot (issue #151). */
+function appendPromptSnapshot(
+  ctx: { setPromptSnapshot(text: string): void },
+  current: string,
+  label: string,
+  next: string,
+): string {
+  const out = `${current}\n\n--- ${label} ---\n${next}`;
+  ctx.setPromptSnapshot(out);
+  return out;
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -439,9 +457,12 @@ export class Pipeline {
         // A continued session stays across attempts — except the
         // connection retry, which forks fresh (see below).
         let continuedId = o.continueSessionId;
+        // Issue #151: the snapshot accumulates every prompt sent, in
+        // order (first, repair, connection-retry), like the reader's.
+        let snapshotText = prompt;
         for (let attempt = 0; ; attempt++) {
           try {
-            ctx.setPromptSnapshot(prompt);
+            ctx.setPromptSnapshot(snapshotText);
             // #122: the base builds here, inside the job — after the job id
             // went out. forkFor ensures the same base again (a live-cache hit).
             const base = await this.ensureBase(o.reviewId);
@@ -491,8 +512,14 @@ export class Pipeline {
               first.data,
               first.cards.flatMap((c) => c.blocks).length,
             );
-            if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
-            if (firstDisp.kind === "fail-empty") throw new DegradedTurnError(firstDisp.message);
+            if (firstDisp.kind === "fail-conn" || firstDisp.kind === "fail-empty") {
+              // The turn did stream (and spend) before failing on facts:
+              // keep its usage like any other attempt (#151).
+              ctx.reportUsage(usage);
+              await this.recordUsage(o.reviewId, usage);
+              if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
+              throw new DegradedTurnError(firstDisp.message);
+            }
             if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
             let finalText = text;
             let finalCards = first.cards;
@@ -513,6 +540,7 @@ export class Pipeline {
                   .join("\n") +
                 anchorProblem +
                 `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
+              snapshotText = appendPromptSnapshot(ctx, snapshotText, "repair turn", repairPrompt);
               const repair = await timedTurn(ctx, "repair", () =>
                 collectStreaming(this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                   ctx.reportText(d),
@@ -534,8 +562,12 @@ export class Pipeline {
                 second.data,
                 second.cards.flatMap((c) => c.blocks).length,
               );
-              if (secondDisp.kind === "fail-conn") throw new DegradedConnError(secondDisp.message);
-              if (secondDisp.kind === "fail-empty") throw new DegradedTurnError(secondDisp.message);
+              if (secondDisp.kind === "fail-conn" || secondDisp.kind === "fail-empty") {
+                ctx.reportUsage(usage);
+                await this.recordUsage(o.reviewId, usage);
+                if (secondDisp.kind === "fail-conn") throw new DegradedConnError(secondDisp.message);
+                throw new DegradedTurnError(secondDisp.message);
+              }
               if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
             if (degradedReason !== undefined) {
@@ -577,6 +609,8 @@ export class Pipeline {
             );
             return;
           } catch (err) {
+            // Issue #151: keep whatever the failed turn already spent.
+            await this.reportPartialUsage(ctx, o.reviewId, err);
             // One retry on a fresh session when the turn observably hit a
             // dead review-MCP URL (#51: transient, e.g. slow-starting
             // server). A continued conversation falls back to a fresh fork
@@ -598,6 +632,7 @@ export class Pipeline {
                   this.render(o.retryTemplate, retryVars),
                   o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined,
                 );
+                snapshotText = `${snapshotText}\n\n--- retry turn ---\n${prompt}`;
               }
               continue;
             }
@@ -653,9 +688,10 @@ export class Pipeline {
       promptSnapshot: prompt,
       accessMode: access,
       run: async (ctx) => {
+        let snapshotText = prompt;
         for (let attempt = 0; ; attempt++) {
           try {
-            ctx.setPromptSnapshot(prompt);
+            ctx.setPromptSnapshot(snapshotText);
             const session = await this.opts.runner.start({
               provider,
               model,
@@ -688,6 +724,7 @@ export class Pipeline {
                     .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                     .join("\n") +
                   `\nReply with the same one-line summary and corrected citations. End with the same trailing JSON block.`;
+                snapshotText = appendPromptSnapshot(ctx, snapshotText, "repair turn", repairPrompt);
                 const repair = await timedTurn(ctx, "repair", () =>
                   collectStreaming(this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                     ctx.reportText(d),
@@ -725,6 +762,7 @@ export class Pipeline {
             }
             return;
           } catch (err) {
+            await this.reportPartialUsage(ctx, o.reviewId, err);
             if (err instanceof RetryableError && attempt < 3) {
               await sleepMs(50 * (attempt + 1));
               continue;
@@ -1454,10 +1492,23 @@ export class Pipeline {
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}/api/mcp/fallback` }],
       pack: packText,
     });
+    const baseKey = {
+      reviewId,
+      reviewVersion: `v${snapshot.version.n}`,
+      guideRevision: guideRevisionForSnapshot(snapshot),
+      provider: settings.main.provider,
+      model: settings.main.model,
+      access: postureFor(settings),
+      effort: settings.main.effort,
+    };
     const runner = this.opts.runner;
     if (typeof runner.fork === "function") {
       try {
         const session = await runner.fork(base.session);
+        // Issue #143: every fork is registered, one-shot forks included,
+        // so it is tracked, persisted and idle-swept instead of
+        // accumulating in the adapter process until it restarts.
+        this.opts.sessions.registerConversation(session, baseKey, true);
         return { session, viaFork: true };
       } catch {
         // fall through
@@ -1475,6 +1526,7 @@ export class Pipeline {
       if (ev.type === "error" && ev.retryable) throw new RetryableError(ev.message);
       if (ev.type === "error") throw new Error(ev.message);
     }
+    this.opts.sessions.registerConversation(session, baseKey, false);
     return { session, viaFork: false };
   }
 
@@ -1670,6 +1722,9 @@ export class Pipeline {
           // apply drops whatever the winning attempt did not reproduce.
           // Usage already reported + recorded per attempt above lands in the
           // totals exactly once per attempt — never twice, never lost.
+          // A turn that died mid-stream carries its counted usage on the
+          // error (#151): record that too, once, before any retry.
+          await this.reportPartialUsage(ctx, reviewId, err);
           if (err instanceof DegradedConnError && attempt < 1) continue;
           // Terminal. The stage error is reader-facing (plain words, #45:
           // no MCP, no tool names); the raw reason stays on the job error
@@ -2028,6 +2083,7 @@ export class Pipeline {
             this.warmBase(reviewId);
             this.maybeMarkStageDone(reviewId, "critic", 2);
           } catch (err) {
+            await this.reportPartialUsage(ctx, reviewId, err);
             this.setStage(reviewId, "critic", "error", (err as Error).message);
             throw err;
           }
@@ -2106,6 +2162,7 @@ export class Pipeline {
           // #122: stubs changed the guide — rebuild the base ahead.
           this.warmBase(reviewId);
         } catch (err) {
+          await this.reportPartialUsage(ctx, reviewId, err);
           this.setStage(reviewId, "concepts", "error", (err as Error).message);
           throw err;
         }
@@ -2190,6 +2247,7 @@ export class Pipeline {
           await this.applyHunkSummary(reviewId, hunk.contentHash, parseHunkReply(text, data));
           this.markHunkPassComplete(reviewId, expectedJobs);
         } catch (err) {
+          await this.reportPartialUsage(ctx, reviewId, err);
           this.setStage(reviewId, "hunk-pass", "error", (err as Error).message);
           throw err;
         } finally {
@@ -2716,6 +2774,25 @@ export class Pipeline {
     } catch {
       // best-effort
     }
+  }
+
+  /**
+   * Issue #151: record a failed/aborted turn's already-counted usage
+   * (carried on the error by `collectStreaming`) on the job and the
+   * review totals, exactly once however often the error is rethrown.
+   */
+  async reportPartialUsage(
+    ctx: { reportUsage(usage: Partial<TokenUsage>): void },
+    reviewId: string,
+    err: unknown,
+  ): Promise<void> {
+    const usage = partialUsageOf(err);
+    if (!usage) return;
+    const carrier = err as PartialUsageCarrier;
+    if (carrier.partialUsageReported) return;
+    carrier.partialUsageReported = true;
+    ctx.reportUsage(usage);
+    await this.recordUsage(reviewId, usage);
   }
 
   private async recordUsage(reviewId: string, usage: TokenUsage): Promise<void> {

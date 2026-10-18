@@ -43,7 +43,7 @@ import {
   renderMarkdown,
   splitReply,
 } from "@unvibe/shared";
-import { RetryableError } from "../jobs/errors.js";
+import { attachPartialUsage, RetryableError } from "../jobs/errors.js";
 import { mirrorPromotedAnswer } from "../interaction/index.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
@@ -273,22 +273,26 @@ async function collectStreaming(
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
-  for await (const ev of runner.prompt(session, prompt, signal)) {
-    if (ev.type === "text") {
-      text += ev.delta;
-      onDelta(ev.delta);
-    } else if (ev.type === "tool") {
-      if (ev.status === "start") onTool?.(ev.name, ev.detail);
-    } else if (ev.type === "usage") {
-      usage.inputTokens += ev.inputTokens;
-      usage.cachedReadTokens += ev.cachedReadTokens;
-      usage.cachedWriteTokens += ev.cachedWriteTokens;
-      usage.outputTokens += ev.outputTokens;
-    } else if (ev.type === "error") {
-      if (ev.retryable) throw new RetryableError(ev.message);
-      throw new Error(ev.message);
+  try {
+    for await (const ev of runner.prompt(session, prompt, signal)) {
+      if (ev.type === "text") {
+        text += ev.delta;
+        onDelta(ev.delta);
+      } else if (ev.type === "tool") {
+        if (ev.status === "start") onTool?.(ev.name, ev.detail);
+      } else if (ev.type === "usage") {
+        usage.inputTokens += ev.inputTokens;
+        usage.cachedReadTokens += ev.cachedReadTokens;
+        usage.cachedWriteTokens += ev.cachedWriteTokens;
+        usage.outputTokens += ev.outputTokens;
+      } else if (ev.type === "error") {
+        if (ev.retryable) throw new RetryableError(ev.message);
+        throw new Error(ev.message);
+      }
+      if (signal?.aborted) throw new Error("aborted");
     }
-    if (signal?.aborted) throw new Error("aborted");
+  } catch (err) {
+    throw attachPartialUsage(err, usage, text);
   }
   return { text, usage };
 }
@@ -590,6 +594,7 @@ export async function requestSecondOpinion(
                 : `${req.cardId}:${req.mode}`;
             repairPrompt = withReplayMark(repairPrompt, { kind: "second-opinion", key: replayKey });
           }
+          ctx.setPromptSnapshot(`${turn}\n\n--- repair turn ---\n${repairPrompt}`);
           const repair = await collectStreaming(deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
             ctx.reportText(d),
             (name, detail) => ctx.reportTool(name, detail),

@@ -41,6 +41,37 @@ export class DegradedConnError extends DegradedTurnError {
   }
 }
 
+/**
+ * Partial usage of a turn that ended early (issue #151): a streaming
+ * collector attaches the usage it already counted (and the text it
+ * already streamed) to the error it throws, so the job layer can record
+ * it instead of losing the tokens. `partialUsageReported` is set by
+ * whoever records it, so a rethrow never double-counts.
+ */
+export interface PartialUsageCarrier {
+  partialUsage?: { inputTokens: number; cachedReadTokens: number; cachedWriteTokens: number; outputTokens: number };
+  partialText?: string;
+  partialUsageReported?: boolean;
+}
+
+export function attachPartialUsage(
+  err: unknown,
+  usage: { inputTokens: number; cachedReadTokens: number; cachedWriteTokens: number; outputTokens: number },
+  text?: string,
+): Error {
+  const e = (err instanceof Error ? err : new Error(String(err))) as Error & PartialUsageCarrier;
+  e.partialUsage = { ...usage };
+  if (text !== undefined) e.partialText = text;
+  return e;
+}
+
+export function partialUsageOf(err: unknown): PartialUsageCarrier["partialUsage"] {
+  if (typeof err !== "object" || err === null) return undefined;
+  const u = (err as PartialUsageCarrier).partialUsage;
+  if (!u || (u.inputTokens === 0 && u.cachedReadTokens === 0 && u.cachedWriteTokens === 0 && u.outputTokens === 0)) return undefined;
+  return u;
+}
+
 /** True for aborts (`AbortError` DOMExceptions and Node's `AbortError`). */
 export function isAbortError(err: unknown): boolean {
   return (

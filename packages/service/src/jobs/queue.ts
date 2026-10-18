@@ -29,7 +29,7 @@ import {
 } from "@unvibe/shared";
 import { computeBackoffDelay } from "./backoff.js";
 import { MathRandom, RealClock, type Clock, type RandomSource } from "./clock.js";
-import { isAbortError, RetryableError } from "./errors.js";
+import { isAbortError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "./errors.js";
 import type { JobPersistence } from "./store.js";
 import { reportError } from "../telemetry/sentry.js";
 
@@ -555,6 +555,14 @@ export class JobQueue {
       if (!controller.signal.aborted) await this.runAfterHook(entry);
       this.settle(entry, controller, controller.signal.aborted ? "cancelled" : "done");
     } catch (err) {
+      // Issue #151 backstop: a turn that ended early carries its counted
+      // usage on the error; record it on the job unless the run already
+      // did (marked on the error, so never twice).
+      const partial = partialUsageOf(err);
+      if (partial && !(err as PartialUsageCarrier).partialUsageReported) {
+        (err as PartialUsageCarrier).partialUsageReported = true;
+        ctx.reportUsage(partial);
+      }
       if (controller.signal.aborted || isAbortError(err)) {
         this.settle(entry, controller, "cancelled");
         return;
