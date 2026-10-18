@@ -28,6 +28,19 @@ describe("SettingsStore", () => {
     expect(res.settings?.main).toEqual(DEFAULT_SETTINGS.main);
   });
 
+  it("persists the UI theme and rejects unknown themes (issue #196)", () => {
+    const store = makeStore();
+    expect(store.get().uiTheme).toBe("default");
+    const res = store.update({ uiTheme: "midnight" });
+    expect(res.errors).toBeUndefined();
+    expect(res.settings?.uiTheme).toBe("midnight");
+    expect(store.get().uiTheme).toBe("midnight");
+    expect(store.update({ uiTheme: "nope" as never }).errors).toMatchObject([
+      expect.stringContaining("uiTheme"),
+    ]);
+    expect(store.get().uiTheme).toBe("midnight");
+  });
+
   it("rejects invalid updates", () => {
     const store = makeStore();
     expect(store.update({ sessionsPerProvider: 0 }).errors).toMatchObject([

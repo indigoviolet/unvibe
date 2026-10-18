@@ -910,7 +910,29 @@ export interface ModelPick {
   effort: string;
 }
 
+/**
+ * UI theme (issue #196): a named look selected on `<html data-ui-theme>`,
+ * independent of light/dark (`data-theme` / `prefers-color-scheme`).
+ * Each theme supplies both a light and a dark set. `"default"` is the
+ * look the app shipped with; `"midnight"` is a placeholder second theme
+ * proving switching works (Studio/Console under #164 are follow-ups).
+ */
+export const UI_THEME_IDS = ["default", "midnight"] as const;
+export type UiThemeId = (typeof UI_THEME_IDS)[number];
+export const DEFAULT_UI_THEME: UiThemeId = "default";
+
+export const UI_THEMES: { id: UiThemeId; label: string; hint: string }[] = [
+  { id: "default", label: "Default", hint: "The current Unvibe look." },
+  { id: "midnight", label: "Midnight", hint: "Placeholder second theme: deep blue surfaces, warm accent, sharper corners." },
+];
+
+export function isUiThemeId(v: unknown): v is UiThemeId {
+  return typeof v === "string" && (UI_THEME_IDS as readonly string[]).includes(v);
+}
+
 export interface Settings {
+  /** UI theme (issue #196); persisted like every other setting. */
+  uiTheme: UiThemeId;
   main: ModelPick;
   small: ModelPick;
   secondOpinion: ModelPick;
