@@ -844,7 +844,13 @@ needed (that deviation is closed, not added).
   unit tests, `docs/screenshots/133-expand-unit.png`); empty chains and
   unreadable files degrade to expand-by-lines; grammars ship as plain
   `.wasm` beside the bundle (7.4 MB, 0.79 MB gzipped; no install
-  script), asserted by the release and global-install checks.
+  script), asserted by the release and global-install checks. The
+  global-install check also proves a grammar loads from the installed
+  package — one outline request against the installed service must
+  answer `how: "parser"` (not the heuristic fallback) — and its
+  no-bundled-platform-binary assertion names the current platform's
+  packages (darwin on macOS), not only the Linux ones (#157;
+  `scripts/global-install-lib.mjs`, `global-install-lib.test.ts`).
 - No file content (issue #133): reviews whose commits resolve nowhere
   (the demo) answer `no-content`, and the diff hides every expansion
   control on it instead of showing load errors (service
@@ -2063,7 +2069,9 @@ those tools are manager shims (the command runner spawns whatever
 Fixed at the runner, not at the ~20 call sites (whose fake-runner seams
 stay keyed on the `git`/`gh` literals): the production command runner
 (`ShimResolvingCommandRunner` in `exec/shim-resolve.ts`, wired in
-`app.ts`, the updater and the CLI) resolves `git`/`gh` once per PATH —
+`app.ts` and the CLI update path; the self-contained update helper
+keeps its plain runner to stay inside its bundle allowlist) resolves
+`git`/`gh` once per PATH —
 through `mise which` / `asdf which` from home when the candidate is a
 shim, cached until Reload environment — and runs the real executables,
 with their directories first on the child PATH so nested lookups (`gh`

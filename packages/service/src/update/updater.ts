@@ -16,7 +16,6 @@ import fs from "node:fs";
 import type { UpdateChannel } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { RealCommandRunner } from "../exec/runner.js";
-import { ShimResolvingCommandRunner } from "../exec/shim-resolve.js";
 import { listChannels as listRealChannels, readInstalledBuild } from "./channels.js";
 import { runSwitchCore } from "./switch.js";
 import { fakeChannelsPath, readCurrentRef, writeCurrentRef } from "./state.js";
@@ -70,7 +69,12 @@ export class RealUpdater implements Updater {
   private readonly env: Record<string, string | undefined> | undefined;
 
   constructor(opts: RealUpdaterOptions) {
-    this.runner = opts.runner ?? new ShimResolvingCommandRunner(new RealCommandRunner());
+    // Default stays the plain runner: this module is bundled into the
+    // self-contained update helper (allowlist in
+    // `update-helper-bundle.slow.test.ts`), so it must not pull in shim
+    // resolution. Callers outside the helper (app.ts, CLI) pass the
+    // shim-resolving runner explicitly (issue #109).
+    this.runner = opts.runner ?? new RealCommandRunner();
     this.dataDir = opts.dataDir;
     this.serviceScriptPath = opts.serviceScriptPath;
     this.serviceVersion = opts.serviceVersion;
