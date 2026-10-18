@@ -25,6 +25,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { RealCommandRunner } from "../exec/runner.js";
+import { ShimResolvingCommandRunner } from "../exec/shim-resolve.js";
 import { readLock } from "../cli/lock.js";
 import { FakeUpdater, RealUpdater, type Updater } from "./updater.js";
 import { clearPendingSwitch, updateDir, writeSwitchOutcome } from "./state.js";
@@ -228,7 +229,7 @@ async function main(): Promise<number> {
     process.env.UNVIBE_UPDATER_BACKEND === "fake"
       ? new FakeUpdater(args.dataDir)
       : new RealUpdater({
-          runner: new RealCommandRunner(),
+          runner: new ShimResolvingCommandRunner(new RealCommandRunner()),
           dataDir: args.dataDir,
           serviceScriptPath: args.scriptPath,
           serviceVersion: args.serviceVersion,

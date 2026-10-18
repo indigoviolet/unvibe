@@ -1029,8 +1029,8 @@ needed (that deviation is closed, not added).
   failures read in plain words with the `UNVIBE_*_BIN` fix
   (`exec/shim-resolve.ts`, `diagnostics/tools.ts`, `agent/acp/`,
   `agent-shim-mise.test.ts`, `shim-resolve.test.ts`).
-  Open: same exposure for `git`/`gh`-as-shims (open list); final check
-  needs a Mac with mise (`docs/macos-testing.md` step 10).
+  The same exposure for `git`/`gh`-as-shims is fixed under #109 (below);
+  final check needs a Mac with mise (`docs/macos-testing.md` step 10).
 
 ## §7 Data model and IDs — all met
 
@@ -2042,9 +2042,9 @@ start-page Update-looking tag, Debug tip survival. Left for the owner:
 the Version-tab running-jobs sentence (18), the "PR description" tab on
 branch reviews (22).
 
-### Version-manager shims for git/gh (follow-up to #105, found not fixed)
+### Version-manager shims for git/gh (#109, fixed on this branch)
 
-The service's own `git`/`gh` calls have the same exposure class when
+The service's own `git`/`gh` calls had the same exposure class when
 those tools are manager shims (the command runner spawns whatever
 `cwd` the caller sets, and several callers set a review copy):
 
@@ -2060,13 +2060,20 @@ those tools are manager shims (the command runner spawns whatever
   untrusted like the worktree; user checkouts hold the user's own
   (trusted) config.
 
-Not fixed here on purpose: `git`/`gh` go through `runner.run("git"/"gh",
-…)` PATH-literal lookups at ~20 call sites with fake-runner seams keyed
-on those literals, so "resolve once, call the real path" is not the same
-small shape as the agent-CLI fix (one choice point in `diagnoseTool`
-consumed by adapter startup, readiness and Doctor). No failure of this
-kind has been reported (`git`/`gh`-via-mise is rare; `claude`-via-mise
-is the reported case).
+Fixed at the runner, not at the ~20 call sites (whose fake-runner seams
+stay keyed on the `git`/`gh` literals): the production command runner
+(`ShimResolvingCommandRunner` in `exec/shim-resolve.ts`, wired in
+`app.ts`, the updater and the CLI) resolves `git`/`gh` once per PATH —
+through `mise which` / `asdf which` from home when the candidate is a
+shim, cached until Reload environment — and runs the real executables,
+with their directories first on the child PATH so nested lookups (`gh`
+as git's credential helper) also bypass the shim. An unresolvable shim
+falls back to the candidate as before. Doctor now probes `git`/`gh`
+from a worktree-shaped directory too and shows the resolved paths
+(`diagnostics/tools.ts`, Doctor page, `unvibe doctor`).
+Tests: `git-gh-shim.test.ts` (fake mise shims that fail in a marked
+worktree; real spawn end-to-end). Still needs a Mac with mise to verify
+against the real manager (labelled `needs-mac`).
 
 ### Fixed in this branch (done, in `check`)
 
