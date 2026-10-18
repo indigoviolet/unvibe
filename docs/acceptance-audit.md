@@ -846,10 +846,12 @@ needed (that deviation is closed, not added).
   `.wasm` beside the bundle (7.4 MB, 0.79 MB gzipped; no install
   script), asserted by the release and global-install checks.
 - No file content (issue #133): reviews whose commits resolve nowhere
-  (the demo) answer `no-content`, and the diff hides every expansion
-  control on it instead of showing load errors (service
+  and which have no on-disk files answer `no-content`, and the diff hides
+  every expansion control on it instead of showing load errors (service
   `outline-route.test.ts` no-content case, `FileExpansion.test.tsx`
-  hiding case).
+  hiding case). The demo is no longer one of these: its head files are
+  materialized from the fixture diff into its working copy (#176), so
+  `get_code` and diff expansion serve real code there.
 
 ### §4.14 Settings — all met
 

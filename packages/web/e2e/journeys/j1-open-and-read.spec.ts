@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { createDemoReview, createScratchReview, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, createDemoReview, createScratchReview, makeScratchRepo } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -22,6 +22,44 @@ test.describe("J1 open and read the guide", () => {
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
     rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("demo reader finishes non-degraded and its working copy serves code beyond the diff (#176)", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    // The reader job ends `done` with no degraded reason kept on it.
+    type JobRow = { kind: string; state: string; degradedReason?: string; error?: string };
+    let reader: JobRow | undefined;
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const res = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
+      reader = (res.json as { jobs: JobRow[] }).jobs.find((j) => j.kind === "reader");
+      if (reader && (reader.state === "done" || reader.state === "error")) break;
+      if (Date.now() > deadline) throw new Error(`reader did not settle: ${JSON.stringify(reader)}`);
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    expect(reader.state).toBe("done");
+    expect(reader.degradedReason).toBeUndefined();
+    expect(reader.error).toBeUndefined();
+
+    // The working copy serves real head code (the new helper the guide
+    // cites), through the same file route diff expansion uses. Before
+    // #176 this answered 404 `no-content` (empty working copy).
+    const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const headSha = (snap.json as { version: { headSha: string } }).version.headSha;
+    const slice = await apiJson(
+      svc,
+      "GET",
+      `/api/reviews/${reviewId}/file?path=src/urllib3/connection.py&commit=${headSha}&start=91&end=95`,
+    );
+    expect(slice.status).toBe(200);
+    expect(JSON.stringify(slice.json)).toContain("_normalize_header_value");
+
+    // No degraded note rides the guide in the browser.
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Some references in this answer could not be linked to the code.")).toHaveCount(0);
+    await page.screenshot({ path: "test-results/j1-demo-176.png", fullPage: true });
   });
 
   test("demo guide reads, citation reveals diff, reload keeps it; scratch repo opens with no agent", async ({ page }) => {
