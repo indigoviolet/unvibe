@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { selectDiffRows } from "../select-text.js";
 import { apiJson, createDemoReview } from "./journey-helpers.js";
 
@@ -12,6 +13,7 @@ const CONN = "src-urllib3-connection.py";
 const TCONN = "test-test_connection.py";
 const TSOCK = "test-with_dummyserver-test_socketlevel.py";
 
+test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
 test.describe("J4 diff work", () => {
   let dataDir = "";
   let svc: RunningService | null = null;

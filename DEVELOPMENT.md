@@ -111,6 +111,13 @@ not something to paper over.
 
 ## Reproducing a CI failure locally
 
+- **Timing races that only fail on the runner:** the GitHub runner is
+  ~4x slower than a dev machine. Throttle the browser to match with
+  `UNVIBE_E2E_CPU_THROTTLE=4` (CDP `Emulation.setCPUThrottlingRate`,
+  wired into the specs that have needed it via
+  `e2e/cpu-throttle.ts`; a no-op when unset) and run the spec
+  repeatedly, e.g.
+  `UNVIBE_E2E_CPU_THROTTLE=6 UNVIBE_E2E_WORKERS=2 npx playwright test e2e/reply-draft-service.spec.ts --repeat-each=10`.
 - **Vite never reachable (`Timed out ... from config.webServer`):** bare
   `vite` listens on `localhost`, which is resolution-order-dependent. Force
   the runner's order with
@@ -212,6 +219,7 @@ Rules:
 | `UNVIBE_TEST_SUITE` | both | `fast` / `slow`: run one vitest suite directly (`npm run test:fast` / `test:slow` set it). |
 | `UNVIBE_TEST_WORKERS` | `min(8, cores-1)` | Cap on vitest workers. |
 | `UNVIBE_E2E_WORKERS` | `min(4, cores/2)` | Cap on Playwright workers (`=8` when the machine is known to be free). |
+| `UNVIBE_E2E_CPU_THROTTLE` | unset | CDP CPU-throttling rate for test pages (e.g. `=4` to mimic the slower CI runner when reproducing timing races); no-op when unset. |
 | `UNVIBE_UPDATER_BACKEND` | live (not wired) | `fake` selects the test-only update backend: channels from `<dataDir>/update/fake-channels.json` (else a built-in seed), installed ref in `<dataDir>/update/current-ref`. Never touches npm, git or the network. |
 | `UNVIBE_UPDATE_FAKE_FAIL` | — | Fake failure injection for switch drills: `install:<ref>` (install throws) or `health:<ref>` (install "succeeds" without advancing, so the new build never reports the target version). Test-only. |
 | `UNVIBE_UPDATE_EXIT_WAIT_MS` / `UNVIBE_UPDATE_HEALTH_TIMEOUT_MS` / `UNVIBE_UPDATE_POLL_MS` / `UNVIBE_UPDATE_STOP_WAIT_MS` | `30000` / `120000` / `500` / `10000` | Detached-helper timeout overrides. Test-only. |

@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { selectDiffRows, selectText } from "./select-text.js";
+import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 
 const exec = promisify(execFile);
@@ -42,6 +43,7 @@ let dataDir = "";
 let svc: RunningService | null = null;
 let reviewId = "";
 
+test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
 test.beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-data-"));
@@ -599,6 +601,21 @@ async function checkEmptyAboveHunk(page: Page, step: string): Promise<void> {
   expect(bad, `${step}: empty block ${bad ?? ""}`).toBeNull();
 }
 
+/**
+ * Close a floating card and wait until that exact card is gone.
+ * Close is fire-and-forget (an async action; the card hides when the
+ * snapshot patch lands), so a click alone guarantees nothing: on a
+ * slow runner the previous card is still floating when the next one
+ * opens, and `.first()` picks the wrong card (#195). Never swallow
+ * the click — a card that will not close is a real failure here.
+ */
+async function closeFloating(page: Page, card: Locator): Promise<void> {
+  const id = await card.getAttribute("data-expansion");
+  await card.getByRole("button", { name: "Close" }).click();
+  const gone = id ? page.locator(`[data-expansion="${id}"]`) : card;
+  await expect(gone).toBeHidden({ timeout: 15_000 });
+}
+
 async function shot(page: Page, name: string, suffix: string, expectedText?: string): Promise<void> {
   // Never screenshot an empty or still-loading scene: each scene
   // names one piece of real content that must be visible first.
@@ -606,6 +623,26 @@ async function shot(page: Page, name: string, suffix: string, expectedText?: str
     await expect(page.getByText(expectedText).first(), `${name}: expected visible text "${expectedText}"`).toBeVisible({ timeout: 15_000 });
   }
   await page.screenshot({ path: path.join(SHOTS, `${name}-${suffix}.png`) });
+}
+
+/**
+ * Wait until the diff pane's scroll geometry is unchanged across two
+ * samples. Selections made while the pane is still re-rendering
+ * (Unfold all, cards arriving) lose their toolbar: any scroll after
+ * the grace period dismisses it, so a busy pane starves the
+ * select-then-Explain steps under load (#195).
+ */
+async function waitPaneQuiet(page: Page): Promise<void> {
+  let last = "";
+  for (let i = 0; i < 15; i++) {
+    const now = await page.evaluate(() => {
+      const p = document.getElementById("right");
+      return p ? `${p.scrollTop}:${p.scrollHeight}:${p.querySelectorAll("table.diff tr").length}` : "";
+    });
+    if (now === last && i > 0) break;
+    last = now;
+    await page.waitForTimeout(300);
+  }
 }
 
 async function stepChecks(page: Page, step: string): Promise<void> {
@@ -673,8 +710,8 @@ for (const combo of [
     await expect(guideChild).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "guide-nested");
     await shot(page, "guide-nested", suffix, "Why does this matter?");
-    await guideChild.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
-    await seedCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await closeFloating(page, guideChild);
+    await closeFloating(page, seedCard);
 
     // Diff, unified.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
@@ -696,8 +733,11 @@ for (const combo of [
     await expect(diffChild).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-nested");
     await shot(page, "diff-nested", suffix, "Why is this here?");
-    await diffChild.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
-    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await closeFloating(page, diffChild);
+    await closeFloating(page, page.locator(".dhunk .card.child.floating").first());
+    // No floating diff card may survive into the next step: the long
+    // card below is read through `.first()`, by DOM order.
+    await expect(page.locator(".dhunk .card.child.floating")).toHaveCount(0, { timeout: 15_000 });
 
     // Top-level diff card with a LONG answer (the dedicated replay
     // recording), scrolled to its middle and then its bottom inside
@@ -719,7 +759,7 @@ for (const combo of [
     await longCard.evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await stepChecks(page, "diff-long-bottom");
     await shot(page, "diff-long-bottom", suffix, "In short: read first");
-    await longCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await closeFloating(page, longCard);
 
     // Same long card in split view, scrolled inside its card.
     await page.getByRole("button", { name: "Split" }).click();
@@ -733,7 +773,7 @@ for (const combo of [
     await splitCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
     await stepChecks(page, "diff-long-split");
     await shot(page, "diff-long-split", suffix);
-    await splitCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await closeFloating(page, splitCard);
     await page.getByRole("button", { name: "Unified" }).click();
 
     // Long card anchored in the file's LAST hunk (the call site at
@@ -761,12 +801,13 @@ for (const combo of [
     await page.waitForTimeout(300);
     await stepChecks(page, "diff-long-file-h2");
     await shot(page, "diff-long-file-h2", suffix);
-    await fileCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await closeFloating(page, fileCard);
 
     // Closed multi-line Explain keeps a visible reopen marker (#189):
     // select across three rows, Explain, close — the range stays
     // tinted with a gutter marker, and clicking it reopens the card.
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
+    await waitPaneQuiet(page);
     await selectDiffRows(page, "src-urllib3-connection.py", 86, 88);
     await page.locator('#selbar [data-act="explain"]').click();
     const mlCard = page.locator(".dhunk .card.child.floating").first();
@@ -778,9 +819,21 @@ for (const combo of [
     await expect(mlMarker).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-multiline-closed");
     await shot(page, "diff-multiline-closed", suffix, "↪");
-    await mlMarker.click();
-    await expect(mlCard).toBeVisible({ timeout: 15_000 });
-    await mlCard.getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    // One-shot DOM clicks, retried until the card is actually back:
+    // the marker remounts when the card reopens, so a retried
+    // Playwright click can land twice (open, then the retry toggles
+    // it shut) and starve on detach under load (#195).
+    await expect
+      .poll(
+        async () => {
+          if (await mlCard.isVisible().catch(() => false)) return true;
+          await mlMarker.evaluate((el) => (el as HTMLElement).click()).catch(() => {});
+          return mlCard.isVisible().catch(() => false);
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    await closeFloating(page, mlCard);
 
     // Sideways-scrolled hunk: the line-number gutter — and the #189
     // reopen marker in its first cell — sticks to the pane's left
@@ -798,7 +851,7 @@ for (const combo of [
     await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-deep");
     await shot(page, "diff-deep", suffix, "fold-mixed-repeated");
-    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click({ timeout: 5_000 }).catch(() => {});
+    await closeFloating(page, page.locator(".dhunk .card.child.floating").first());
 
     // Split.
     await page.getByRole("button", { name: "Split" }).click();

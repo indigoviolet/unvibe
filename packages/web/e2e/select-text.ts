@@ -35,7 +35,14 @@ export async function selectDiffRows(page: Page, fileKey: string, fromLine: numb
             const startCell = document.querySelector(`[id="L-${fileKey}-${fromLine}"] td.c`);
             const endCell = document.querySelector(`[id="L-${fileKey}-${toLine}"] td.c`);
             if (!startCell || !endCell) return false;
-            startCell.scrollIntoView({ block: "center" });
+            // Scroll only when the row is actually off-screen: the
+            // scroll event dismisses the selection toolbar, so an
+            // unconditional scrollIntoView can hide the bar the
+            // mouseup below just raised, forever on a busy loop (#195).
+            const sr = startCell.getBoundingClientRect();
+            if (sr.top < 0 || sr.bottom > window.innerHeight) {
+              startCell.scrollIntoView({ block: "center" });
+            }
             const edgeText = (root: Element, last: boolean): Text | null => {
               const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
               let found: Text | null = null;
@@ -65,8 +72,14 @@ export async function selectDiffRows(page: Page, fileKey: string, fromLine: numb
           { fileKey, fromLine, toLine },
         );
         if (!found) return "not-found";
-        await page.waitForTimeout(150);
-        return (await page.locator("#selbar").isVisible()) ? "shown" : "hidden-again";
+        // Wait for the toolbar to actually appear (a slow loop needs
+        // longer than a fixed tick to render it), not a fixed sleep.
+        const shown = await page
+          .locator("#selbar")
+          .waitFor({ state: "visible", timeout: 2000 })
+          .then(() => true)
+          .catch(() => false);
+        return shown ? "shown" : "hidden-again";
       },
       { timeout: 15000 },
     )
@@ -163,9 +176,14 @@ export async function selectText(
           { rootSelector, text, startIn, endIn },
         );
         if (!found) return "not-found";
-        // Let a late scroll land before reading the bar.
-        await page.waitForTimeout(150);
-        if (!(await page.locator("#selbar").isVisible())) return "hidden-again";
+        // Wait for the toolbar to actually appear (a slow loop needs
+        // longer than a fixed tick to render it), not a fixed sleep.
+        const shown = await page
+          .locator("#selbar")
+          .waitFor({ state: "visible", timeout: 2000 })
+          .then(() => true)
+          .catch(() => false);
+        if (!shown) return "hidden-again";
         // Re-read after the toolbar snapped the live selection to whole words.
         lastQuote =
           (await page.evaluate(() =>
