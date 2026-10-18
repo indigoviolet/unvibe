@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
+import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { selectText } from "./select-text.js";
 
@@ -42,6 +43,7 @@ async function apiJson(
   return JSON.parse(stdout);
 }
 
+test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
 test.describe("reply drafts over the real service", () => {
   let dataDir = "";
   let svc: RunningService | null = null;
