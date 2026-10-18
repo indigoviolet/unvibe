@@ -61,6 +61,9 @@ export function ReplyBox({
   const [draft, setDraft] = useState(serverReply ?? "");
   const [sending, setSending] = useState(false);
   const saveTimer = useRef<number | undefined>(undefined);
+  // A persist whose debounce already fired and whose PATCH is on the
+  // wire: a send/discard must wait it out (see `consumeDraft`).
+  const persistPromiseRef = useRef<Promise<unknown> | undefined>(undefined);
   // Keystroke generation: bumped on every change; a successful send or
   // discard records the generation it settled, and a debounce tick from
   // an earlier generation is stale and must not persist (it would write
@@ -106,25 +109,51 @@ export function ReplyBox({
   const persistReply = (value: string, seq: number): void => {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      // A send or discard settled after this keystroke: the text is
+      // A send or discard consumed this keystroke: the text is
       // consumed, never persist it back.
       if (seq <= clearedSeqRef.current) return;
-      api.updateComment(reviewId, annotationId, { reply: value }).catch(() => {
+      const sent = api.updateComment(reviewId, annotationId, { reply: value }).catch(() => {
         // Local draft stays; a toast on every keystroke would be noise.
+      });
+      persistPromiseRef.current = sent;
+      void sent.then(() => {
+        if (persistPromiseRef.current === sent) persistPromiseRef.current = undefined;
       });
     }, 400);
   };
 
+  // Consume the current text for a send or discard. The generation is
+  // marked consumed *now*, not when the send settles: a slow send
+  // otherwise leaves a window where the 400ms tick fires mid-flight
+  // and its PATCH (or one already on the wire) lands after the
+  // server-side clear, resurrecting the sent text as a draft (#195).
+  // Waiting out an in-flight persist makes the caller's action —
+  // whose server side clears the draft — the last write.
+  const consumeDraft = (): Promise<void> | null => {
+    window.clearTimeout(saveTimer.current);
+    clearedSeqRef.current = seqRef.current;
+    const inFlight = persistPromiseRef.current;
+    return inFlight ? inFlight.then(() => undefined) : null;
+  };
+
+  // A failed send/discard keeps the text: re-arm its persist.
+  const restoreDraftPersist = (): void => {
+    clearedSeqRef.current = seqRef.current - 1;
+    persistReply(draftRef.current, seqRef.current);
+  };
+
   const handleDiscard = (): void => {
     if (sending) return;
-    window.clearTimeout(saveTimer.current);
     setSendingBoth(true);
-    onDiscard()
+    const wait = consumeDraft();
+    const attempt = wait ? wait.then(() => onDiscard()) : onDiscard();
+    attempt
       .then(() => {
         clearedSeqRef.current = seqRef.current;
         setDraft("");
       })
       .catch((err: unknown) => {
+        restoreDraftPersist();
         toast(`Couldn't clear the reply: ${friendlyError(err)}`);
       })
       .finally(() => setSendingBoth(false));
@@ -134,12 +163,15 @@ export function ReplyBox({
     const text = draft.trim();
     if (!text || sending) return;
     setSendingBoth(true);
-    onSend(text)
+    const wait = consumeDraft();
+    const attempt = wait ? wait.then(() => onSend(text)) : onSend(text);
+    attempt
       .then(() => {
         clearedSeqRef.current = seqRef.current;
         setDraft("");
       })
       .catch((err: unknown) => {
+        restoreDraftPersist();
         toast(`Couldn't send the reply: ${friendlyError(err)}`);
       })
       .finally(() => setSendingBoth(false));
