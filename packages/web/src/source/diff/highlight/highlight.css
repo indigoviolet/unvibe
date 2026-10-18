@@ -20,7 +20,7 @@
   --shk-link: #0b6e78;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-ui-theme="midnight"]) {
+  :root:not([data-theme="light"]):not([data-ui-theme="studio"]):not([data-ui-theme="console"]) {
     --shk-kw: #ff7b72;
     --shk-str: #a5d6ff;
     --shk-com: #9198a1;
@@ -30,7 +30,7 @@
     --shk-link: #56c2cb;
   }
 }
-:root[data-theme="dark"]:not([data-ui-theme="midnight"]) {
+:root[data-theme="dark"]:not([data-ui-theme="studio"]):not([data-ui-theme="console"]) {
   --shk-kw: #ff7b72;
   --shk-str: #a5d6ff;
   --shk-com: #9198a1;
@@ -39,37 +39,19 @@
   --shk-param: #ffa657;
   --shk-link: #56c2cb;
 }
-/* Midnight (issue #196): token colours follow the theme's accent where
-   the default palette tied them to it; the rest shift warmer. */
-:root[data-ui-theme="midnight"] {
-  --shk-kw: #b42318;
-  --shk-str: #0b4f8a;
-  --shk-com: #5b6b84;
-  --shk-fn: #7c3aed;
-  --shk-const: #0550ae;
-  --shk-param: #953800;
-  --shk-link: #c2410c;
-}
+/* Studio and Console (issues #196/#164): the references carry no
+   syntax palette, so only the link colour - the one token the default
+   palette ties to the accent - follows each theme's accent. */
+:root[data-ui-theme="studio"] { --shk-link: #6b4fbb; }
 @media (prefers-color-scheme: dark) {
-  :root[data-ui-theme="midnight"]:not([data-theme="light"]) {
-    --shk-kw: #ff9d8a;
-    --shk-str: #a5d6ff;
-    --shk-com: #93a5c4;
-    --shk-fn: #d2a8ff;
-    --shk-const: #79c0ff;
-    --shk-param: #ffa657;
-    --shk-link: #ffa257;
-  }
+  :root[data-ui-theme="studio"]:not([data-theme="light"]) { --shk-link: #b39ddb; }
 }
-:root[data-ui-theme="midnight"][data-theme="dark"] {
-  --shk-kw: #ff9d8a;
-  --shk-str: #a5d6ff;
-  --shk-com: #93a5c4;
-  --shk-fn: #d2a8ff;
-  --shk-const: #79c0ff;
-  --shk-param: #ffa657;
-  --shk-link: #ffa257;
+:root[data-ui-theme="studio"][data-theme="dark"] { --shk-link: #b39ddb; }
+:root[data-ui-theme="console"] { --shk-link: #0a7fb5; }
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-theme="console"]:not([data-theme="light"]) { --shk-link: #4cc2ff; }
 }
+:root[data-ui-theme="console"][data-theme="dark"] { --shk-link: #4cc2ff; }
 
 table.diff td.c .shk-kw { color: var(--shk-kw); }
 table.diff td.c .shk-str { color: var(--shk-str); }
