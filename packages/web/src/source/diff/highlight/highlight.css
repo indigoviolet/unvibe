@@ -42,19 +42,38 @@
   --shk-param: #ffa657;
   --shk-link: #56c2cb;
 }
-/* Studio and Console (issues #196/#164): the references carry no
-   syntax palette, so only the link colour - the one token the default
-   palette ties to the accent - follows each theme's accent. */
-:root[data-ui-theme="studio"] { --shk-link: #6b4fbb; }
-@media (prefers-color-scheme: dark) {
-  :root[data-ui-theme="studio"]:not([data-theme="light"]) { --shk-link: #b39ddb; }
+/* Studio and Console (issues #196/#164): each theme's syntax palette
+   is built from that reference's own colours (accent, add/del ink,
+   note, muted), in light and dark, keeping every token readable on
+   surface, add and del rows (checked by the tour's contrast floor). */
+:root[data-ui-theme="studio"] {
+  --shk-kw: #b23f3c; --shk-str: #1f7a55; --shk-com: #6f6b82; --shk-fn: #6b4fbb;
+  --shk-const: #946200; --shk-param: #a3520a; --shk-link: #6b4fbb;
 }
-:root[data-ui-theme="studio"][data-theme="dark"] { --shk-link: #b39ddb; }
-:root[data-ui-theme="console"] { --shk-link: #0a7fb5; }
 @media (prefers-color-scheme: dark) {
-  :root[data-ui-theme="console"]:not([data-theme="light"]) { --shk-link: #4cc2ff; }
+  :root[data-ui-theme="studio"]:not([data-theme="light"]) {
+    --shk-kw: #f0908a; --shk-str: #8fd9b5; --shk-com: #a49fb9; --shk-fn: #b39ddb;
+    --shk-const: #e7b65c; --shk-param: #ffa657; --shk-link: #b39ddb;
+  }
 }
-:root[data-ui-theme="console"][data-theme="dark"] { --shk-link: #4cc2ff; }
+:root[data-ui-theme="studio"][data-theme="dark"] {
+  --shk-kw: #f0908a; --shk-str: #8fd9b5; --shk-com: #a49fb9; --shk-fn: #b39ddb;
+  --shk-const: #e7b65c; --shk-param: #ffa657; --shk-link: #b39ddb;
+}
+:root[data-ui-theme="console"] {
+  --shk-kw: #b8471c; --shk-str: #176b2f; --shk-com: #5b6673; --shk-fn: #0a7fb5;
+  --shk-const: #a66a0e; --shk-param: #953800; --shk-link: #0a7fb5;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-theme="console"]:not([data-theme="light"]) {
+    --shk-kw: #ff9f6e; --shk-str: #7ee787; --shk-com: #8b96a3; --shk-fn: #4cc2ff;
+    --shk-const: #f0b35c; --shk-param: #ffa657; --shk-link: #4cc2ff;
+  }
+}
+:root[data-ui-theme="console"][data-theme="dark"] {
+  --shk-kw: #ff9f6e; --shk-str: #7ee787; --shk-com: #8b96a3; --shk-fn: #4cc2ff;
+  --shk-const: #f0b35c; --shk-param: #ffa657; --shk-link: #4cc2ff;
+}
 
 table.diff td.c .shk-kw { color: var(--shk-kw); }
 table.diff td.c .shk-str { color: var(--shk-str); }
