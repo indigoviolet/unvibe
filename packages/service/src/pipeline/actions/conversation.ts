@@ -827,7 +827,7 @@ export async function replyAction(
     if (target) target.reply = "";
   });
   const probe = await probeConversationSessionFor(ctx, card);
-  const live = probe.continueSessionId !== undefined;
+  const live = probe.continueSessionId !== undefined && !probe.rebuilt;
   const res = await runConversationTurn(ctx, annotationId, turnId, {
     anchor: card.anchor,
     template: live ? "ask_turn" : "ask",
@@ -865,14 +865,14 @@ export async function retryAction(
   if (!last.error && !found.error) throw new Error(`conversation ${annotationId} has no failed turn to retry`);
   const firstTurn = last.question === null;
   const probe = await probeConversationSessionFor(ctx, found);
-  const live = probe.continueSessionId !== undefined && !firstTurn;
+  const live = probe.continueSessionId !== undefined && !firstTurn && !probe.rebuilt;
   const message = last.question ?? DEFAULT_QUESTION;
   const res = await runConversationTurn(ctx, annotationId, last.id, {
     anchor: found.anchor,
     template: firstTurn ? "ask" : live ? "ask_turn" : "ask",
     message,
     ...(probe.transcript !== undefined && !live && !firstTurn ? { transcript: probe.transcript } : {}),
-    ...(live && probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+    ...(probe.continueSessionId && (live || probe.rebuilt) ? { continueSessionId: probe.continueSessionId } : {}),
     skipDedupe: true,
     echoCandidates: questionEchoCandidates(found.anchor.quotedText, message),
     replayKind: firstTurn ? "explain" : "ask",

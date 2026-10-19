@@ -31,7 +31,7 @@ async function dropSessionId(ctx: ActionContext, cardId: string): Promise<void> 
 export async function probeConversationSessionFor(
   ctx: ActionContext,
   card: Annotation,
-): Promise<{ continueSessionId?: string; transcript?: string }> {
+): Promise<{ continueSessionId?: string; transcript?: string; rebuilt?: boolean }> {
   const { reviews, reviewId, sessions } = ctx;
   // Re-read: the card passed in may predate a just-pushed turn; only the
   // session id and the stored turns matter here.
@@ -61,7 +61,11 @@ export async function probeConversationSessionFor(
         const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === card.id);
         if (target) target.sessionId = ensured.session.id;
       });
-      return { transcript };
+      // Issue #143: the rebuilt session is reused for this turn (the
+      // caller sends the full prompt with the transcript on it), so the
+      // context is rebuilt exactly once and later turns continue short
+      // — never a second fork, never the whole thread again.
+      return { continueSessionId: ensured.session.id, transcript, rebuilt: true };
     }
     return { continueSessionId: sessionId };
   } catch {

@@ -131,10 +131,21 @@ export async function forkSecondOpinionBase(
   const { packText, version } = await buildSecondOpinionBaseText(deps, reviewId);
   const instructions = renderInstructions(deps.promptsDir, postureFor(settings));
   const base = await ensureSecondOpinionBase(deps, reviewId);
+  const baseKey = {
+    reviewId,
+    reviewVersion: `v${snapshot.version.n}`,
+    guideRevision: `so-${descriptionRevisionForSnapshot(snapshot)}`,
+    provider: settings.secondOpinion.provider,
+    model: settings.secondOpinion.model,
+    access: postureFor(settings),
+    effort: settings.secondOpinion.effort,
+  };
   const runner = deps.runner;
   if (typeof runner.fork === "function") {
     try {
       const session = await runner.fork(base.session);
+      // Issue #143: registered like every other fork, so it is swept.
+      deps.sessions.registerConversation(session, baseKey, true);
       return { session, viaFork: true, version };
     } catch {
       // fall through to fresh-session fallback
@@ -155,5 +166,6 @@ export async function forkSecondOpinionBase(
     if (ev.type === "error" && ev.retryable) throw new RetryableError(ev.message);
     if (ev.type === "error") throw new Error(ev.message);
   }
+  deps.sessions.registerConversation(session, baseKey, false);
   return { session, viaFork: false, version };
 }

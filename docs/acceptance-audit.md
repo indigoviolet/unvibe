@@ -1294,8 +1294,17 @@ needed (that deviation is closed, not added).
   there on reopen (`actions-m4.test.ts` close-keeps-answer).
 - Dedupe identical requests — met (queue dedupe + `findActiveJob`;
   dedupe freed on interrupt — this branch).
-- Idle close + `load` reopen — met (`sessions/manager.ts:430 sweepIdle`,
+- Idle close + `load` reopen — met (`sessions/manager.ts sweepIdle`,
   `ensureConversation`; restart script proves reopen-or-rebuild).
+  Every fork (conversation and one-shot, second opinions included) is
+  registered from creation (#143), `sweepIdle` runs in production on a
+  30 s cadence against the `cacheLifetimeMs` setting (`server.ts`), a
+  restored conversation keeps its posture so a post-restart reply can
+  `load` it, and a rebuilt session is reused with the stored transcript
+  exactly once (later turns send only what is new). Job records keep
+  every prompt sent (first, repair, connection-retry) and the usage a
+  turn counted before an abort/error (#151;
+  `test/sessions-jobs-143-151.test.ts`, journey J15).
 - “Reuse results for identical requests, keyed by (anchor, kind, depth,
   base version)” — met (audit-10): stored-result reuse with `reused:true`,
   no job, no tokens (`shared/src/api.ts` `ActionResponse.reused`,

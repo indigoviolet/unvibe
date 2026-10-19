@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
-import { createDemoReview } from "./journey-helpers.js";
+import { apiJson, createDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -65,6 +65,32 @@ test.describe("J15 multi-turn conversation", () => {
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 60_000 });
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 30_000 });
+    // Both earlier turns are still in the one card after the restart.
+    await expect(card.locator(".exp-b")).toHaveCount(2, { timeout: 30_000 });
+    await expect(card).toContainText("What is line folding?");
+    await expect(card).toContainText("Does a cookie header change this?");
+
+    // Turn 3 (post-restart): the agent gets the card's earlier turns, so
+    // the answer lands in context — the job's prompt (Debug's record)
+    // carries the earlier questions, and the card keeps all three turns.
+    await followUp("What about ordering?");
+    await expect(card.locator(".exp-b")).toHaveCount(3, { timeout: 30_000 });
+    if (!svc) throw new Error("no service");
+    const jobsRes = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
+    const askJobs = ((jobsRes.json as { jobs?: { id: string; kind: string }[] }).jobs ?? []).filter((j) => j.kind === "ask");
+    expect(askJobs.length).toBeGreaterThanOrEqual(3);
+    const lastAsk = askJobs[askJobs.length - 1]!;
+    const promptRes = await apiJson(svc, "GET", `/api/jobs/${lastAsk.id}/prompt`);
+    const promptText = (promptRes.json as { promptSnapshot?: string }).promptSnapshot ?? "";
+    // Rebuilt-or-loaded, the post-restart turn's context includes the
+    // earlier turns of this card (never a fresh, context-less start).
+    expect(promptText).toContain("What is line folding?");
+    // The Debug page lists that job for the review.
+    await page.goto(`${svc.origin}/review/${reviewId}/debug?token=${svc.token}`);
+    await expect(page.getByRole("tab", { name: "Jobs" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("body")).toContainText(/ask/i, { timeout: 30_000 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(card).toBeVisible({ timeout: 60_000 });
 
     // Access-mode change in between: turn full access on, then keep talking.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
@@ -75,7 +101,7 @@ test.describe("J15 multi-turn conversation", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(card).toBeVisible({ timeout: 60_000 });
 
-    // Turn 3: the same card still answers.
+    // Turn 4: the same card still answers.
     await followUp("And does the regex stay fast?");
   });
 });

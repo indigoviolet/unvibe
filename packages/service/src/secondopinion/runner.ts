@@ -43,7 +43,7 @@ import {
   renderMarkdown,
   splitReply,
 } from "@unvibe/shared";
-import { RetryableError } from "../jobs/errors.js";
+import { attachPartialUsage, RetryableError } from "../jobs/errors.js";
 import { mirrorPromotedAnswer } from "../interaction/index.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
@@ -273,24 +273,46 @@ async function collectStreaming(
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
-  for await (const ev of runner.prompt(session, prompt, signal)) {
-    if (ev.type === "text") {
-      text += ev.delta;
-      onDelta(ev.delta);
-    } else if (ev.type === "tool") {
-      if (ev.status === "start") onTool?.(ev.name, ev.detail);
-    } else if (ev.type === "usage") {
-      usage.inputTokens += ev.inputTokens;
-      usage.cachedReadTokens += ev.cachedReadTokens;
-      usage.cachedWriteTokens += ev.cachedWriteTokens;
-      usage.outputTokens += ev.outputTokens;
-    } else if (ev.type === "error") {
-      if (ev.retryable) throw new RetryableError(ev.message);
-      throw new Error(ev.message);
+  try {
+    for await (const ev of runner.prompt(session, prompt, signal)) {
+      if (ev.type === "text") {
+        text += ev.delta;
+        onDelta(ev.delta);
+      } else if (ev.type === "tool") {
+        if (ev.status === "start") onTool?.(ev.name, ev.detail);
+      } else if (ev.type === "usage") {
+        usage.inputTokens += ev.inputTokens;
+        usage.cachedReadTokens += ev.cachedReadTokens;
+        usage.cachedWriteTokens += ev.cachedWriteTokens;
+        usage.outputTokens += ev.outputTokens;
+      } else if (ev.type === "error") {
+        if (ev.retryable) throw new RetryableError(ev.message);
+        throw new Error(ev.message);
+      }
+      if (signal?.aborted) throw new Error("aborted");
     }
-    if (signal?.aborted) throw new Error("aborted");
+  } catch (err) {
+    throw attachPartialUsage(err, usage, text);
   }
   return { text, usage };
+}
+
+/** `collectStreaming` with the session marked in use (never swept mid-turn). */
+async function collectTracked(
+  sessions: SessionManager,
+  runner: AgentRunner,
+  session: { id: string; provider: string; model: string },
+  prompt: string,
+  signal: AbortSignal | undefined,
+  onDelta: (delta: string) => void,
+  onTool?: (name: string, detail?: string) => void,
+): Promise<{ text: string; usage: TokenUsage }> {
+  sessions.beginSessionUse(session.id);
+  try {
+    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool);
+  } finally {
+    sessions.endSessionUse(session.id);
+  }
 }
 
 function worktreeOf(dataDir: string, reviewId: string): string {
@@ -552,8 +574,7 @@ export async function requestSecondOpinion(
       );
       ctx.setSessionId(forked.session.id);
       try {
-        const { text, usage } = await collectStreaming(
-          deps.runner,
+        const { text, usage } = await collectTracked(deps.sessions, deps.runner,
           forked.session,
           turn,
           req.signal ?? ctx.signal,
@@ -592,7 +613,8 @@ export async function requestSecondOpinion(
                 : `${req.cardId}:${req.mode}`;
             repairPrompt = withReplayMark(repairPrompt, { kind: "second-opinion", key: replayKey });
           }
-          const repair = await collectStreaming(deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
+          ctx.setPromptSnapshot(`${turn}\n\n--- repair turn ---\n${repairPrompt}`);
+          const repair = await collectTracked(deps.sessions, deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
             ctx.reportText(d),
             (name, detail) => ctx.reportTool(name, detail),
           );
