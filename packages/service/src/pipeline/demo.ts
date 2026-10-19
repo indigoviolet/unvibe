@@ -53,6 +53,38 @@ export function demoFixtureName(body: { demo?: boolean | string }): string {
   return "urllib3-5020";
 }
 
+/**
+ * Materialize the demo PR's head-side files into the working copy (#176).
+ *
+ * The fixture carries only the diff, so a file is rebuilt from its hunks:
+ * context + added lines land at their new-side line numbers, and lines the
+ * fixture does not know stay empty. Every line the tools can be asked for
+ * about this change (helpers, call sites, tests) is therefore real code at
+ * the real line number; an unknown range reads as blank, never as invented
+ * code. Without this the working copy was an empty directory and every
+ * `get_code` / Read / Grep beyond the diff failed, degrading the reader.
+ */
+export function writeHeadFiles(worktreePath: string, files: ReviewFile[]): void {
+  for (const f of files) {
+    if (f.isBinary || f.isDeleted) continue;
+    const byLine = new Map<number, string>();
+    let last = 0;
+    for (const h of f.hunks) {
+      for (const l of h.lines) {
+        if (l.kind === "del" || l.newLine === undefined) continue;
+        byLine.set(l.newLine, l.text);
+        if (l.newLine > last) last = l.newLine;
+      }
+    }
+    if (last === 0) continue;
+    const out: string[] = [];
+    for (let n = 1; n <= last; n++) out.push(byLine.get(n) ?? "");
+    const dest = path.join(worktreePath, f.path);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, `${out.join("\n")}\n`);
+  }
+}
+
 /** Ingest the fixture diff + description (no git/gh). */
 export function ingestDemo(fixturesDir: string, reviewId: string = newReviewId(), dataDir?: string): DemoIngested {
   const read = (p: string): string => fs.readFileSync(path.join(fixturesDir, p), "utf8");
@@ -92,7 +124,10 @@ export function ingestDemo(fixturesDir: string, reviewId: string = newReviewId()
   const description: ReviewDescription = { html: rendered.html, rev: "1", source: "pr", editable: false };
   const worktreePath = dataDir ? path.join(dataDir, "worktrees", reviewId) : path.join(fixturesDir);
   try {
-    if (dataDir) fs.mkdirSync(worktreePath, { recursive: true });
+    if (dataDir) {
+      fs.mkdirSync(worktreePath, { recursive: true });
+      writeHeadFiles(worktreePath, files);
+    }
   } catch {
     // ignore
   }

@@ -6,8 +6,8 @@
  * `get_hunk`/`search_review`/`resolve`, plus the worktree path for
  * `get_code`. Worktrees live at `<dataDir>/worktrees/<reviewId>` (see
  * `ingest/source.ts` `ensureWorktree`); demo reviews reuse the same layout
- * (their files are the fixture diff, served from the snapshot, and
- * `get_code` falls back to null when no worktree exists).
+ * (their head files are materialized from the fixture diff, #176, and
+ * `get_code` serves them from disk — see `read.ts`).
  */
 import fs from "node:fs";
 import path from "node:path";

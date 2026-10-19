@@ -47,9 +47,10 @@ export function cwdForReview(ctx: ServiceContext, reviewId: string, repoId: stri
 
 /**
  * True when `commit` resolves in `cwd` (the review carries file content
- * there). Reviews without any git history behind them (the demo, whose
- * worktree is an empty directory) fail this — callers answer `no-content`
- * so the UI hides expansion instead of showing load errors.
+ * there). Reviews with no resolvable commit and no on-disk files fail
+ * this — callers answer `no-content` so the UI hides expansion instead of
+ * showing load errors. (The demo's files are materialized on disk, #176,
+ * so its slices resolve before this is consulted.)
  */
 export async function commitResolves(ctx: ServiceContext, cwd: string, commit: string): Promise<boolean> {
   try {
@@ -95,7 +96,7 @@ export async function registerFileSlices(app: FastifyInstance, ctx: ServiceConte
       if (slice.error === "not-found") {
         // Decided by a service-known fact, not by "is demo": when the
         // commit itself resolves nowhere, the review has no file content
-        // to read (the demo's empty worktree). The UI hides expansion on
+        // to read. The UI hides expansion on
         // `no-content` instead of showing load errors.
         if (!(await commitResolves(ctx, cwd, commit))) {
           return sendError(reply, 404, "this review has no file content to read", "no-content");

@@ -852,10 +852,12 @@ needed (that deviation is closed, not added).
   packages (darwin on macOS), not only the Linux ones (#157;
   `scripts/global-install-lib.mjs`, `global-install-lib.test.ts`).
 - No file content (issue #133): reviews whose commits resolve nowhere
-  (the demo) answer `no-content`, and the diff hides every expansion
-  control on it instead of showing load errors (service
+  and which have no on-disk files answer `no-content`, and the diff hides
+  every expansion control on it instead of showing load errors (service
   `outline-route.test.ts` no-content case, `FileExpansion.test.tsx`
-  hiding case).
+  hiding case). The demo is no longer one of these: its head files are
+  materialized from the fixture diff into its working copy (#176), so
+  `get_code` and diff expansion serve real code there.
 
 ### §4.14 Settings — all met
 

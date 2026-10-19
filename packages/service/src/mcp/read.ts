@@ -5,6 +5,8 @@
  * MCP server only ever reads through it (plus the worktree path for
  * `get_code`). Shapes are structural and minimal so the adapter is small.
  */
+import fs from "node:fs";
+import path from "node:path";
 import type { CommandRunner } from "../exec/index.js";
 
 export interface McpHunk {
@@ -79,6 +81,34 @@ export type CodeSliceError = "not-found" | "out-of-range" | "binary";
  * check the path stays inside the repo first
  * (`McpRegistry.checkPathInRepo`).
  */
+/**
+ * Whole text at `rev`, or null when git cannot serve it. A working copy
+ * that is not a git checkout at all (the bundled demo, #176: its files are
+ * materialized from the fixture diff and there is no commit to show) has
+ * exactly one content source — the files on disk, which are the head tree
+ * by construction — so serve those. A real git worktree never takes this
+ * path: when git is present, a failed `git show` stays `not-found`.
+ */
+async function readTextAtRev(
+  commands: CommandRunner,
+  cwd: string,
+  rev: string,
+  relPath: string,
+): Promise<{ text: string; fromDisk: boolean } | null> {
+  try {
+    const res = await commands.run("git", { args: ["show", `${rev}:${relPath}`], cwd });
+    if (res.code === 0) return { text: res.stdout, fromDisk: false };
+  } catch {
+    // Fall through to the on-disk source below.
+  }
+  try {
+    if (fs.existsSync(path.join(cwd, ".git"))) return null;
+    return { text: fs.readFileSync(path.join(cwd, relPath), "utf8"), fromDisk: true };
+  } catch {
+    return null;
+  }
+}
+
 export async function readCodeSlice(
   commands: CommandRunner,
   cwd: string,
@@ -87,14 +117,9 @@ export async function readCodeSlice(
   start: number,
   end: number,
 ): Promise<{ text: string; totalLines: number } | { error: CodeSliceError; totalLines?: number }> {
-  let stdout: string;
-  try {
-    const res = await commands.run("git", { args: ["show", `${rev}:${relPath}`], cwd });
-    if (res.code !== 0) return { error: "not-found" };
-    stdout = res.stdout;
-  } catch {
-    return { error: "not-found" };
-  }
+  const found = await readTextAtRev(commands, cwd, rev, relPath);
+  if (found === null) return { error: "not-found" };
+  const stdout = found.text;
   if (stdout.includes("\0")) return { error: "binary" };
   const all = stdout.split("\n");
   // `git show` ends output with a newline: drop the split artifact so a
@@ -103,7 +128,13 @@ export async function readCodeSlice(
   if (all.length > 0 && all[all.length - 1] === "") all.pop();
   const totalLines = all.length;
   if (start < 1 || end > totalLines) return { error: "out-of-range", totalLines };
-  return { text: all.slice(start - 1, end).join("\n"), totalLines };
+  const text = all.slice(start - 1, end).join("\n");
+  // On-disk materialized files (#176) pad lines the fixture does not know
+  // with blanks: a slice with no known line has no content to serve, so
+  // it stays `not-found` instead of presenting blanks as real code (the
+  // diff's content probe then hides expansion on such reviews, as before).
+  if (found.fromDisk && text.trim() === "") return { error: "not-found" };
+  return { text, totalLines };
 }
 
 /**
@@ -119,14 +150,9 @@ export async function readFileText(
   rev: string,
   relPath: string,
 ): Promise<{ text: string; totalLines: number } | { error: CodeSliceError }> {
-  let stdout: string;
-  try {
-    const res = await commands.run("git", { args: ["show", `${rev}:${relPath}`], cwd });
-    if (res.code !== 0) return { error: "not-found" };
-    stdout = res.stdout;
-  } catch {
-    return { error: "not-found" };
-  }
+  const found = await readTextAtRev(commands, cwd, rev, relPath);
+  if (found === null) return { error: "not-found" };
+  const stdout = found.text;
   if (stdout.includes("\0")) return { error: "binary" };
   const all = stdout.split("\n");
   if (all.length > 0 && all[all.length - 1] === "") all.pop();
