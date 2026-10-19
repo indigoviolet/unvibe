@@ -965,6 +965,20 @@ for (const combo of [
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
     await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // The theme's bundled fonts actually render (issue #196): each
+    // family the theme names must be loaded, not fallen back.
+    const fontFamilies =
+      combo.theme === "studio" ? ["Fraunces", "Nunito Sans", "DM Mono"] : ["Fira Sans", "Fira Code"];
+    for (const family of fontFamilies) {
+      const loaded = await page.evaluate(async (f) => {
+        try {
+          await document.fonts.load(`16px "${f}"`);
+          await document.fonts.load(`600 16px "${f}"`);
+        } catch { /* check below reports it */ }
+        return document.fonts.check(`16px "${f}"`);
+      }, family);
+      expect(loaded, `${combo.name}: font ${family} loaded`).toBe(true);
+    }
     await checkNoPageOverflow(page, `theme-${combo.theme}-guide`);
     await shot(page, `theme-${combo.theme}-guide`, suffix, "Unfold obsolete folded response headers");
 
@@ -973,6 +987,25 @@ for (const combo of [
     await checkNoPageOverflow(page, `theme-${combo.theme}-diff`);
     await checkTokenContrast(page, `theme-${combo.theme}-diff`);
     await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
+    // Styling-only theme variables (issue #196): Console's hatched
+    // empty cells and thin scrollbars, Studio's none/auto.
+    await page.getByRole("button", { name: "Split" }).click();
+    await page.waitForSelector("table.diff.split td.empty", { timeout: 15_000 }).catch(() => {});
+    const styling = await page.evaluate(() => {
+      const empty = document.querySelector("table.diff td.empty");
+      return {
+        hatch: empty ? getComputedStyle(empty).backgroundImage : "(no empty cell)",
+        scrollbar: getComputedStyle(document.documentElement).scrollbarWidth,
+      };
+    });
+    if (combo.theme === "console") {
+      expect(styling.hatch, `${combo.name}: hatched empty cells`).toContain("repeating-linear-gradient");
+      expect(styling.scrollbar, `${combo.name}: thin scrollbars`).toBe("thin");
+    } else {
+      expect(styling.hatch, `${combo.name}: no hatching`).toBe("none");
+      expect(styling.scrollbar, `${combo.name}: default scrollbars`).toBe("auto");
+    }
+    await page.getByRole("button", { name: "Unified" }).click();
 
     await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible({ timeout: 15_000 });
