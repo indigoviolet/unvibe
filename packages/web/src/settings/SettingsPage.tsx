@@ -25,11 +25,13 @@ import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
 import { PromptsSection } from "./PromptsSection.js";
 import { VersionSection } from "./VersionSection.js";
+import { AppearanceSection } from "./AppearanceSection.js";
 import { RepositoriesSection } from "./RepositoriesSection.js";
 import { Toast } from "../floating/Toast.js";
 import "./settings.css";
 
 const SETTING_TABS = [
+  { id: "appearance", label: "Appearance" },
   { id: "repositories", label: "Repos" },
   { id: "models", label: "Models" },
   { id: "access", label: "Access" },
@@ -107,6 +109,9 @@ export function SettingsPage(): React.JSX.Element {
                 onSelect={setTab}
                 idPrefix="settings"
               />
+              <TabPanel idPrefix="settings" id="appearance" active={tab === "appearance"}>
+                <AppearanceSection settings={settings} onSaved={setSettings} />
+              </TabPanel>
               <TabPanel idPrefix="settings" id="repositories" active={tab === "repositories"}>
                 <RepositoriesSection />
               </TabPanel>

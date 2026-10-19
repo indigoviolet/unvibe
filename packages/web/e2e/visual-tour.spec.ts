@@ -32,6 +32,14 @@ const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
+// Full Chromium, not the headless shell (issue #196 review): the
+// shell's font shaping inflates some families' glyph advances at text
+// sizes (Nunito Sans "T" shaped 10px at 13px instead of its true
+// 7.8px), which made Studio text look broken in tour screenshots
+// while real Chrome renders it correctly. `channel: "chromium"` is
+// Playwright's full build in the new headless mode.
+test.use({ channel: "chromium" });
+
 async function apiJson(origin: string, token: string, method: string, urlPath: string, body?: unknown): Promise<unknown> {
   const args = ["-s", "-X", method, `${origin}${urlPath}`, "-H", `Authorization: Bearer ${token}`, "-H", "content-type: application/json"];
   if (body !== undefined) args.push("-d", JSON.stringify(body));
@@ -76,6 +84,47 @@ async function checkNoPageOverflow(page: Page, step: string): Promise<void> {
     return Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) - window.innerWidth;
   });
   expect(overflow, `${step}: horizontal page overflow ${overflow}px`).toBeLessThanOrEqual(1);
+}
+
+
+/**
+ * Syntax-token contrast (issue #196 review): a string/comment token in
+ * a diff row must read against its row background in every theme and
+ * scheme. The light palette on a dark add row scores ~1-2, the correct
+ * dark palette ~5+, so a ratio floor of 3 catches a mis-scoped palette.
+ */
+async function checkTokenContrast(page: Page, step: string): Promise<void> {
+  await page.waitForSelector("table.diff td.c .shk-str", { timeout: 15_000 });
+  const found = await page.evaluate(() => {
+    const lum = (rgb: string): number => {
+      const m = rgb.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0];
+      const f = (v: number): number => {
+        const c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * f(m[0] ?? 0) + 0.7152 * f(m[1] ?? 0) + 0.0722 * f(m[2] ?? 0);
+    };
+    const out: { cls: string; color: string; bg: string; ratio: number }[] = [];
+    for (const cls of ["shk-str", "shk-com"]) {
+      const el = document.querySelector(`table.diff td.c .${cls}`);
+      if (!el) continue;
+      const color = getComputedStyle(el).color;
+      let bg = "rgba(0, 0, 0, 0)";
+      let node: Element | null = el.closest("td");
+      while (node) {
+        const b = getComputedStyle(node).backgroundColor;
+        if (b && b !== "rgba(0, 0, 0, 0)" && b !== "transparent") { bg = b; break; }
+        node = node.parentElement;
+      }
+      const [hi, lo] = [lum(color), lum(bg)].sort((a, b) => b - a);
+      out.push({ cls, color, bg, ratio: (hi + 0.05) / (lo + 0.05) });
+    }
+    return out;
+  });
+  expect(found.length, `${step}: no syntax tokens found`).toBeGreaterThan(0);
+  for (const t of found) {
+    expect(t.ratio, `${step}: ${t.cls} ${t.color} on ${t.bg} ratio ${t.ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+  }
 }
 
 /** Generic check: menus/popovers fully in the viewport and topmost. */
@@ -717,6 +766,7 @@ for (const combo of [
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-unified");
+    await checkTokenContrast(page, "diff-unified");
     await shot(page, "diff-unified", suffix, "_OBSOLETE_FOLD_RE");
 
     // Floating card + nested card in the diff.
@@ -890,5 +940,103 @@ for (const combo of [
     await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });
     await checkNoPageOverflow(page, "settings-version");
     await shot(page, "settings-version", suffix, "Installed:");
+  });
+}
+
+// Studio and Console themes (issues #196/#164): one scene set per
+// theme in light and dark at 1440px, applied before first paint
+// through the boot script's localStorage mirror. The default theme's
+// scenes are the four passes above.
+for (const combo of [
+  { theme: "studio", name: "studio-1440-light", dark: false },
+  { theme: "studio", name: "studio-1440-dark", dark: true },
+  { theme: "console", name: "console-1440-light", dark: false },
+  { theme: "console", name: "console-1440-dark", dark: true },
+] as const) {
+  test(`visual tour theme (${combo.name})`, async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+    // Persist the theme server-side (the source of truth) and mirror
+    // it locally, exactly as Settings -> Appearance leaves the browser.
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+    await page.addInitScript((theme) => {
+      try {
+        localStorage.setItem("unvibe:ui-theme", theme);
+      } catch {
+        // Boot falls back to the default theme; the assert below fails.
+      }
+    }, combo.theme);
+    const suffix = combo.name;
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // The theme's bundled fonts actually render (issue #196): each
+    // family the theme names must be loaded, not fallen back.
+    const fontFamilies =
+      combo.theme === "studio" ? ["Fraunces", "Nunito Sans", "DM Mono"] : ["Fira Sans", "Fira Code"];
+    for (const family of fontFamilies) {
+      const loaded = await page.evaluate(async (f) => {
+        try {
+          await document.fonts.load(`16px "${f}"`);
+          await document.fonts.load(`600 16px "${f}"`);
+        } catch { /* check below reports it */ }
+        return document.fonts.check(`16px "${f}"`);
+      }, family);
+      expect(loaded, `${combo.name}: font ${family} loaded`).toBe(true);
+    }
+    // Shaped advances must match the font's true metrics (issue #196
+    // review): under the headless shell, Nunito Sans shaped "T" at
+    // 0.77em instead of 0.60em and "The" ran 9% wider than the stack's
+    // fallback. Full Chromium shapes the true advances.
+    const sansFamily = combo.theme === "studio" ? "Nunito Sans" : "Fira Sans";
+    const shaped = await page.evaluate((fam) => {
+      const ctx = document.createElement("canvas").getContext("2d");
+      if (!ctx) return { tPerEm: 99, theRatio: 99 };
+      ctx.font = `13px "${fam}"`;
+      const t = ctx.measureText("T").width;
+      const the = ctx.measureText("The").width;
+      ctx.font = `13px "IBM Plex Sans"`;
+      const fallbackThe = ctx.measureText("The").width;
+      return { tPerEm: t / 13, theRatio: the / fallbackThe };
+    }, sansFamily);
+    expect(shaped.tPerEm, `${combo.name}: shaped T advance per em`).toBeLessThanOrEqual(0.68);
+    expect(shaped.theRatio, `${combo.name}: "The" width vs fallback`).toBeLessThanOrEqual(1.05);
+    await checkNoPageOverflow(page, `theme-${combo.theme}-guide`);
+    await shot(page, `theme-${combo.theme}-guide`, suffix, "Unfold obsolete folded response headers");
+
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    await checkNoPageOverflow(page, `theme-${combo.theme}-diff`);
+    await checkTokenContrast(page, `theme-${combo.theme}-diff`);
+    await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
+    // Styling-only theme variables (issue #196): Console's hatched
+    // empty cells and thin scrollbars, Studio's none/auto.
+    await page.getByRole("button", { name: "Split" }).click();
+    await page.waitForSelector("table.diff.split td.empty", { timeout: 15_000 }).catch(() => {});
+    const styling = await page.evaluate(() => {
+      const empty = document.querySelector("table.diff td.empty");
+      return {
+        hatch: empty ? getComputedStyle(empty).backgroundImage : "(no empty cell)",
+        scrollbar: getComputedStyle(document.documentElement).scrollbarWidth,
+      };
+    });
+    if (combo.theme === "console") {
+      expect(styling.hatch, `${combo.name}: hatched empty cells`).toContain("repeating-linear-gradient");
+      expect(styling.scrollbar, `${combo.name}: thin scrollbars`).toBe("thin");
+    } else {
+      expect(styling.hatch, `${combo.name}: no hatching`).toBe("none");
+      expect(styling.scrollbar, `${combo.name}: default scrollbars`).toBe("auto");
+    }
+    await page.getByRole("button", { name: "Unified" }).click();
+
+    await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);
+    await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="ui-theme"]')).toHaveValue(combo.theme, { timeout: 15_000 });
+    await checkNoPageOverflow(page, `theme-${combo.theme}-settings`);
+    await shot(page, `theme-${combo.theme}-settings`, suffix, "Theme");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
   });
 }

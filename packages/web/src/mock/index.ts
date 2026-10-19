@@ -689,6 +689,7 @@ let existingComments: import("@unvibe/shared").ExistingReviewComment[] = seedExi
 const SETTINGS_KEY = "unvibe.mock.settings";
 
 const DEFAULT_MOCK_SETTINGS: Settings = {
+  uiTheme: "default",
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
   secondOpinion: { provider: "codex", model: "mock-second", effort: "" },

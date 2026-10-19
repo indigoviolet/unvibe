@@ -1,4 +1,7 @@
+import { useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { api } from "./api/client.js";
+import { syncUiThemeFromSettings } from "./theme/theme.js";
 import { RouteShellBoundary } from "./components/ErrorBoundary.js";
 import { DebugPageRoute } from "./debug/DebugPage.js";
 import { ReviewRoute } from "./ReviewRoute.js";
@@ -7,6 +10,23 @@ import { StartPage } from "./start/StartPage.js";
 import { DoctorPage } from "./doctor/DoctorPage.js";
 
 export function App() {
+  // UI theme (issue #196): the boot script applied the mirrored theme
+  // before first paint; reconcile with the persisted setting once known
+  // (a theme saved in another browser, or a cleared mirror, wins here).
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .settings()
+      .then((s) => {
+        if (!cancelled) syncUiThemeFromSettings(s.uiTheme);
+      })
+      .catch(() => {
+        // Settings unreachable: the boot theme stands.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   return (
     <BrowserRouter>
       <RouteShellBoundary>
