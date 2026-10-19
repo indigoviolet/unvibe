@@ -21,7 +21,10 @@ export {
   isResolvableShim,
   isVersionManagerTrustFailure,
   miseIgnoreEnv,
+  resolveServiceToolPath,
   resolveShimTarget,
+  ShimResolvingCommandRunner,
+  shimManagerForCandidate,
   shimManagerResolvable,
 } from "./shim-resolve.js";
-export type { ResolveShimOptions } from "./shim-resolve.js";
+export type { ResolveServiceToolOptions, ResolveShimOptions } from "./shim-resolve.js";

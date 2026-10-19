@@ -25,7 +25,7 @@ import type { CommandRunner } from "../exec/runner.js";
 import { RealCommandRunner } from "../exec/runner.js";
 import type { DiagnosticCandidate, DiagnosticTool } from "@unvibe/shared";
 import { agentBinSpec, compareVersions, type AgentProvider } from "../exec/agent-bins.js";
-import { isResolvableShim, resolveShimTarget } from "../exec/shim-resolve.js";
+import { isResolvableShim, resolveShimTarget, shimManagerForCandidate } from "../exec/shim-resolve.js";
 import { D2_MIN } from "../diagrams/bins.js";
 
 export interface ToolSpec {
@@ -42,9 +42,10 @@ export interface ToolSpec {
   installHint: string;
   /**
    * Probe candidates from a directory shaped like a review worktree and
-   * resolve manager shims to the real executable (issue #105). Set for
-   * the agent CLIs only: their sessions run with a review copy as cwd,
-   * so the check must exercise the candidate the way a session will.
+   * resolve manager shims to the real executable (issues #105, #109).
+   * Set for the agent CLIs and for the service's own `git`/`gh`: sessions
+   * and service calls run with a review copy as cwd, so the check must
+   * exercise the candidate the way those calls will.
    */
   probeFromWorktreeLike?: boolean;
 }
@@ -56,6 +57,7 @@ export const TOOL_SPECS: ToolSpec[] = [
     overrideEnvs: [],
     versionArgs: ["--version"],
     installHint: "Install git and ensure it is on your login-shell PATH.",
+    probeFromWorktreeLike: true,
   },
   {
     tool: "gh",
@@ -63,6 +65,7 @@ export const TOOL_SPECS: ToolSpec[] = [
     overrideEnvs: [],
     versionArgs: ["--version"],
     installHint: "Install gh (https://cli.github.com) and ensure it is on your login-shell PATH.",
+    probeFromWorktreeLike: true,
   },
   {
     tool: "claude",
@@ -139,25 +142,7 @@ function readLinkChain(p: string): { isSymlink: boolean; target?: string } {
 }
 
 function sniffShimManager(absPath: string, symlinkTarget?: string): string | undefined {
-  const hay = `${absPath}\n${symlinkTarget ?? ""}`.toLowerCase();
-  if (hay.includes("/mise/shims/") || hay.includes(".local/share/mise")) return "mise";
-  if (hay.includes("/.asdf/shims/") || hay.includes("/.asdf/")) return "asdf";
-  if (hay.includes("/.nvm/versions/node/") || hay.includes("/.nvm/")) return "nvm";
-  if (hay.includes("/cellar/") || hay.includes("/opt/homebrew/") || hay.includes("/usr/local/homebrew")) return "homebrew";
-  if (hay.includes("node_modules/.bin") || hay.includes("/lib/node_modules/")) return "npm-global";
-  // Content sniff for shims (mise/asdf shims are small shell wrappers).
-  try {
-    const st = fs.statSync(symlinkTarget ?? absPath);
-    if (st.isFile() && st.size < 32 * 1024) {
-      const head = fs.readFileSync(symlinkTarget ?? absPath, "utf8").slice(0, 4000).toLowerCase();
-      if (head.includes("mise")) return "mise";
-      if (head.includes("asdf")) return "asdf";
-      if (head.includes("nvm")) return "nvm";
-    }
-  } catch {
-    // ignore: content sniff is best-effort
-  }
-  return undefined;
+  return shimManagerForCandidate(absPath, symlinkTarget);
 }
 
 function describeKind(absPath: string): { kind: string; symlinkTarget?: string; shimManager?: string } {
@@ -275,7 +260,7 @@ function resolutionReason(
   }
   const manager = c.shimManager ? `${c.shimManager} ` : "";
   if (skipped === 0) {
-    return `first on PATH is a ${manager}shim; the agent runs what it resolves to (${good.path}) ${versionPart}`;
+    return `first on PATH is a ${manager}shim; the service runs what it resolves to (${good.path}) ${versionPart}`;
   }
   return (
     `candidate ${skipped + 1} of ${candidates.length} (${c.path}, ${manager}shim) ` +
@@ -295,10 +280,10 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
   const warnings: string[] = [];
   const candidates: DiagnosticCandidate[] = [];
 
-  // Agent CLIs run their sessions with a review copy as cwd, so their
-  // candidates are probed from a worktree-shaped directory (unless an
-  // explicit override wins, which is honoured unchanged). Other tools
-  // keep today's behaviour.
+  // Agent CLIs (sessions) and the service's own git/gh run with a review
+  // copy as cwd, so their candidates are probed from a worktree-shaped
+  // directory (unless an explicit override wins, which is honoured
+  // unchanged). Other tools keep today's behaviour.
   const hasExplicitOverride = spec.overrideEnvs.some((n) => (env[n] ?? "").trim() !== "");
   const probeCwd = spec.probeFromWorktreeLike === true && !hasExplicitOverride ? makeWorktreeLikeDir() : undefined;
   // Verified versions of resolved real paths (shim path → real version),
@@ -426,10 +411,10 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
       }
     }
 
-    // Shim resolution (issue #105): a manager shim is never what a session
-    // runs. Ask the manager for the real executable from a neutral
-    // directory and verify it runs from the worktree-shaped directory;
-    // sessions (and the choice below) use the real path instead.
+    // Shim resolution (issues #105, #109): a manager shim is never what a
+    // session or a service git/gh call runs. Ask the manager for the real
+    // executable from a neutral directory and verify it runs from the
+    // worktree-shaped directory; the choice below uses the real path.
     if (probeCwd !== undefined) {
       for (const c of candidates) {
         if (!isResolvableShim(c) || !c.shimManager) continue;
@@ -534,7 +519,7 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
   }
   for (const c of candidates) {
     if (c.resolvedPath) {
-      warnings.push(`${spec.tool} at ${c.path} is a ${c.kind}; the agent runs ${c.resolvedPath} instead.`);
+      warnings.push(`${spec.tool} at ${c.path} is a ${c.kind}; the service runs ${c.resolvedPath} instead.`);
     } else if (c.kind.startsWith("shim") && !c.runs) {
       warnings.push(`A ${c.kind} at ${c.path} does not run (exit ${c.exitCode}) — likely a broken manager shim; the next working entry is used.`);
     }
