@@ -32,6 +32,14 @@ const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
+// Full Chromium, not the headless shell (issue #196 review): the
+// shell's font shaping inflates some families' glyph advances at text
+// sizes (Nunito Sans "T" shaped 10px at 13px instead of its true
+// 7.8px), which made Studio text look broken in tour screenshots
+// while real Chrome renders it correctly. `channel: "chromium"` is
+// Playwright's full build in the new headless mode.
+test.use({ channel: "chromium" });
+
 async function apiJson(origin: string, token: string, method: string, urlPath: string, body?: unknown): Promise<unknown> {
   const args = ["-s", "-X", method, `${origin}${urlPath}`, "-H", `Authorization: Bearer ${token}`, "-H", "content-type: application/json"];
   if (body !== undefined) args.push("-d", JSON.stringify(body));
@@ -979,6 +987,23 @@ for (const combo of [
       }, family);
       expect(loaded, `${combo.name}: font ${family} loaded`).toBe(true);
     }
+    // Shaped advances must match the font's true metrics (issue #196
+    // review): under the headless shell, Nunito Sans shaped "T" at
+    // 0.77em instead of 0.60em and "The" ran 9% wider than the stack's
+    // fallback. Full Chromium shapes the true advances.
+    const sansFamily = combo.theme === "studio" ? "Nunito Sans" : "Fira Sans";
+    const shaped = await page.evaluate((fam) => {
+      const ctx = document.createElement("canvas").getContext("2d");
+      if (!ctx) return { tPerEm: 99, theRatio: 99 };
+      ctx.font = `13px "${fam}"`;
+      const t = ctx.measureText("T").width;
+      const the = ctx.measureText("The").width;
+      ctx.font = `13px "IBM Plex Sans"`;
+      const fallbackThe = ctx.measureText("The").width;
+      return { tPerEm: t / 13, theRatio: the / fallbackThe };
+    }, sansFamily);
+    expect(shaped.tPerEm, `${combo.name}: shaped T advance per em`).toBeLessThanOrEqual(0.68);
+    expect(shaped.theRatio, `${combo.name}: "The" width vs fallback`).toBeLessThanOrEqual(1.05);
     await checkNoPageOverflow(page, `theme-${combo.theme}-guide`);
     await shot(page, `theme-${combo.theme}-guide`, suffix, "Unfold obsolete folded response headers");
 

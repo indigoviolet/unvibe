@@ -29,7 +29,7 @@
   --rail-accent-width: 3px;
   --diff-edge-add: none; --diff-edge-del: none;
   --focus-width: 2px; --focus-offset: 2px;
-  --weight-label: 600; --weight-button: 500;
+  --weight-label: 600; --weight-button: 500; --ligatures: normal;
   --bg-finding-card: var(--surface); --empty-hatch: none;
   --sb-width: auto; --sb-color: auto;
   --bar-margin: 0; --bar-radius: 0; --bar-shadow: none; --radius-mini: 4px;
@@ -484,6 +484,7 @@ table.diff td.n.new:hover { color: var(--note); text-decoration: underline; }
 table.diff td.n.hc { color: var(--note); }
 table.diff td.n.hc .ic { width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
 table.diff td.add, table.diff tr.add td { background: var(--add); }
+table.diff td.c { font-variant-ligatures: var(--ligatures); }
 table.diff tr.add td.c { box-shadow: var(--diff-edge-add); }
 table.diff tr.del td.c { box-shadow: var(--diff-edge-del); }
 table.diff td.del, table.diff tr.del td { background: var(--del); }
