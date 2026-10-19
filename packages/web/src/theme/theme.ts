@@ -9,8 +9,30 @@ import { DEFAULT_UI_THEME, isUiThemeId, type UiThemeId } from "@unvibe/shared";
 
 export const UI_THEME_STORAGE_KEY = "unvibe:ui-theme";
 
+/**
+ * Per-theme font bundles (issue #196): dynamic imports, so a theme's
+ * @fontsource CSS and woff2 files load only when that theme is
+ * selected. The Default theme's fonts stay in the main bundle.
+ */
+const fontLoaders: Partial<Record<UiThemeId, () => Promise<unknown>>> = {
+  studio: () => import("./fonts-studio.js"),
+  console: () => import("./fonts-console.js"),
+};
+const fontsRequested = new Set<UiThemeId>();
+
+export function ensureThemeFonts(theme: UiThemeId): void {
+  const load = fontLoaders[theme];
+  if (!load || fontsRequested.has(theme)) return;
+  fontsRequested.add(theme);
+  void load().catch(() => {
+    // Fonts failing to load fall back to the stack's system families.
+    fontsRequested.delete(theme);
+  });
+}
+
 /** Apply a theme to <html> now and mirror it for the boot script. */
 export function applyUiTheme(theme: UiThemeId): void {
+  ensureThemeFonts(theme);
   document.documentElement.setAttribute("data-ui-theme", theme);
   try {
     localStorage.setItem(UI_THEME_STORAGE_KEY, theme);
