@@ -2306,3 +2306,27 @@ hunk coverage) is reported for a separate issue, not fixed here.
   failed + retry + remove, restart, dedupe, pipeline-after-ingest, old-row
   ready), `GuideLoading.test.tsx`, `e2e/open-review.spec.ts` (mock loading
   → guide, failing → Retry).
+
+## Addendum: #178 / #112 (branch `fix/178-112-code-citations`)
+
+- **#178 (§10):** `code:` citations are validated against the real file
+  at the cited commit, not hunk coverage. The pipeline (reader, forks,
+  small turns, second opinions) resolves each distinct cited file's
+  length through `git show` (the `get_code` source) before validating,
+  so a valid citation to a file outside the diff — including one a
+  `get_code` call issued in this review — validates instead of burning
+  the one repair turn or landing dimmed. Unreadable, binary or missing
+  files still come back unverified. Decision: accept real files/lines
+  at the review's commit per PRD §10 ("inside the file at that
+  commit"); no separate issued-ID allowlist. Evidence:
+  `test/code-citations-178-112.test.ts` (fake-runner reader on a small
+  PR citing outside the hunks: no repair turn, citations verified).
+- **#112 (§8):** on refresh, a `code:` citation whose file is outside
+  the new diff is re-anchored by content like pins (#52): unchanged
+  text keeps the lines, moved text remaps, both as a new ID at the new
+  head; gone or unreadable text keeps the old ID (still pointing at
+  the earlier commit) and is flagged unverified with the card marked
+  stale. Evidence: `test/versions-refresh.test.ts` (n/o/p),
+  `test/code-citations-178-112.test.ts`, journey
+  `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
+  the shifted line after refresh, chip verified).

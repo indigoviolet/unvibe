@@ -49,7 +49,7 @@ import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
 import { isReplayRunner } from "../agent/factory.js";
 import { withReplayMark } from "../pipeline/replayMark.js";
-import { lookupForSnapshot } from "../pipeline/lookup.js";
+import { lookupForSnapshot, resolveCodeFileLengths } from "../pipeline/lookup.js";
 import { validateReply } from "../validate/index.js";
 import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
 import { renderSystemPrompt } from "../prompts/access.js";
@@ -129,10 +129,10 @@ function aliasesForReview(snapshot: ReviewSnapshot, fixturesDir?: string): Recor
   }
 }
 
-function lookupWithAliases(snapshot: ReviewSnapshot, fixturesDir?: string): ReturnType<typeof lookupForSnapshot> {
+function lookupWithAliases(snapshot: ReviewSnapshot, fixturesDir?: string, fileLengths?: Record<string, number>): ReturnType<typeof lookupForSnapshot> {
   const aliases = aliasesForReview(snapshot, fixturesDir);
-  if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot);
-  const base = lookupForSnapshot(snapshot);
+  if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot, { fileLengths });
+  const base = lookupForSnapshot(snapshot, { fileLengths });
   const inner = base.resolveFileKey.bind(base);
   return {
     ...base,
@@ -568,8 +568,10 @@ export async function requestSecondOpinion(
         const cards = parseCards(body);
         const live = deps.reviews.getSnapshot(req.reviewId);
         if (!live) throw new Error(`unknown review ${req.reviewId}`);
-        const lookup = lookupWithAliases(live, deps.fixturesDir);
         const blocks = cards.flatMap((c) => c.blocks);
+        const soCollected = collectTargets(blocks);
+        const soLengths = await resolveCodeFileLengths(deps.commands, await getWorktreePath(deps, req.reviewId) ?? worktreeOf(deps.dataDir, req.reviewId), live.version.headSha, [...soCollected.citations, ...soCollected.links]);
+        const lookup = lookupWithAliases(live, deps.fixturesDir, soLengths);
         const validation = validateReply(blocks, lookup);
         let finalText = text;
         let finalBlocks = blocks;
@@ -605,10 +607,10 @@ export async function requestSecondOpinion(
           finalText = repair.text;
           finalBlocks = parseCards(secondSplit.body).flatMap((c) => c.blocks);
           finalData = secondSplit.ok ? secondSplit.data : null;
-          const secondValidation = validateReply(
-            finalBlocks,
-            lookupWithAliases(deps.reviews.getSnapshot(req.reviewId)!, deps.fixturesDir),
-          );
+          const soCollected2 = collectTargets(finalBlocks);
+          const soLive2 = deps.reviews.getSnapshot(req.reviewId)!;
+          const soLengths2 = await resolveCodeFileLengths(deps.commands, await getWorktreePath(deps, req.reviewId) ?? worktreeOf(deps.dataDir, req.reviewId), soLive2.version.headSha, [...soCollected2.citations, ...soCollected2.links]);
+          const secondValidation = validateReply(finalBlocks, lookupWithAliases(soLive2, deps.fixturesDir, soLengths2));
           finalValidation = secondValidation;
         }
         const so = (finalData as unknown as { secondOpinion?: { verdict?: unknown; reasoning?: unknown; missed?: unknown } } | null)?.secondOpinion;

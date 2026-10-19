@@ -621,6 +621,141 @@ describe("refresh integration", () => {
     }
   });
 
+  it("(n) #112 code citation in untouched file unchanged → new ID at new head, not stale", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    fs.writeFileSync(path.join(dir, "helper.py"), "alpha = 1\nbeta = 2\ngamma = 3\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change a");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        draft.pages.push({
+          id: "p-root", kind: "root", title: "Guide", saved: false,
+          cards: [{
+            id: "c-code", pageId: "p-root", title: "Helper", level: "standard", read: false, collapsed: false,
+            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
+            undoStack: [],
+          }],
+        });
+      });
+      fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\n");
+      await git(dir, "commit", "-am", "change a again");
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      expect(after.files.some((f) => f.path === "helper.py")).toBe(false);
+      const card = after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-code")!;
+      expect(card.stale).not.toBe(true);
+      const cit = card.blocks[0].type === "paragraph" ? card.blocks[0].citations[0] : undefined;
+      expect(cit).toEqual({ target: `code:helper.py:2@${after.version.headSha}` });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(o) #112 code citation in untouched file moved upstream → remapped lines", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    fs.writeFileSync(path.join(dir, "helper.py"), "alpha = 1\nbeta = 2\ngamma = 3\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change a");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        draft.pages.push({
+          id: "p-root", kind: "root", title: "Guide", saved: false,
+          cards: [{
+            id: "c-code", pageId: "p-root", title: "Helper", level: "standard", read: false, collapsed: false,
+            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
+            undoStack: [],
+          }],
+        });
+      });
+      await git(dir, "checkout", "main");
+      fs.writeFileSync(path.join(dir, "helper.py"), "top1\ntop2\nalpha = 1\nbeta = 2\ngamma = 3\n");
+      await git(dir, "commit", "-am", "upstream helper");
+      await git(dir, "checkout", "feature");
+      await git(dir, "rebase", "main");
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      expect(after.files.some((f) => f.path === "helper.py")).toBe(false);
+      const card = after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-code")!;
+      expect(card.stale).not.toBe(true);
+      const cit = card.blocks[0].type === "paragraph" ? card.blocks[0].citations[0] : undefined;
+      expect(cit).toEqual({ target: `code:helper.py:4@${after.version.headSha}` });
+      // The remapped lines really hold the cited text at the new head.
+      const shown = await real.run("git", { args: ["show", `${after.version.headSha}:helper.py`], cwd: dir });
+      expect(shown.stdout.split("\n")[3]).toBe("beta = 2");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("(p) #112 code citation text gone / file deleted upstream → unverified + stale, no throw", async () => {
+    const dir = await initRepo();
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    fs.writeFileSync(path.join(dir, "helper.py"), "alpha = 1\nbeta = 2\ngamma = 3\n");
+    fs.writeFileSync(path.join(dir, "gone.py"), "gone = 1\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change a");
+
+    const { app, ctx } = await createApp("tok", { runner: real, autoPipeline: false });
+    try {
+      const { id, snap } = await openReview(app, dir, "feature");
+      await ctx.reviews.mutate(id, (draft) => {
+        draft.pages.push({
+          id: "p-root", kind: "root", title: "Guide", saved: false,
+          cards: [
+            {
+              id: "c-gone-text", pageId: "p-root", title: "GoneText", level: "standard", read: false, collapsed: false,
+              revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
+              undoStack: [],
+            },
+            {
+              id: "c-gone-file", pageId: "p-root", title: "GoneFile", level: "standard", read: false, collapsed: false,
+              revision: 1, blocks: [{ type: "paragraph", id: "b2", text: { standard: "uses gone" }, citations: [{ target: `code:gone.py:1@${snap.version.headSha}` }] }],
+              undoStack: [],
+            },
+          ],
+        });
+      });
+      await git(dir, "checkout", "main");
+      fs.writeFileSync(path.join(dir, "helper.py"), "alpha = 1\ngamma = 3\n");
+      await git(dir, "rm", "-q", "gone.py");
+      await git(dir, "commit", "-am", "upstream removes");
+      await git(dir, "checkout", "feature");
+      await git(dir, "rebase", "main");
+      const res = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ newVersion: true });
+      const after = ctx.reviews.getSnapshot(id)!;
+      for (const cid of ["c-gone-text", "c-gone-file"]) {
+        const card = after.pages.flatMap((p) => p.cards).find((c) => c.id === cid)!;
+        expect(card.stale, cid).toBe(true);
+        const cit = card.blocks[0].type === "paragraph" ? card.blocks[0].citations[0] : undefined;
+        expect(cit?.unverified, cid).toBe(true);
+        expect(cit?.target, cid).toContain(`@${snap.version.headSha}`);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it("(m) #52 remap keeps excerpt text consistent with the new range", async () => {
     const dir = await initRepo();
     fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");

@@ -78,4 +78,111 @@ test.describe("J12 refresh with new commits", () => {
     await expect(page.locator(appFile).getByText(/return 11\b/)).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0, { timeout: 15_000 });
   });
+
+  test("#112 a code citation outside the diff is re-anchored after refresh", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    // helper.py lands on main and feature rebases onto it: at both heads
+    // it is outside the PR diff (the PR only touches src-app.py).
+    await git(repoDir, "checkout", "main");
+    writeFileSync(path.join(repoDir, "helper.py"), "alpha = 1\nbeta = 2\ngamma = 3\n");
+    await git(repoDir, "add", "helper.py");
+    await git(repoDir, "commit", "-m", "add helper");
+    await git(repoDir, "checkout", "feature");
+    await git(repoDir, "rebase", "main");
+    const seeded = await apiJson(svc, "POST", `/api/reviews/${reviewId}/refresh`);
+    expect(seeded.status).toBe(200);
+    const before = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const beforeSnap = before.json as unknown as {
+      version: { headSha: string; n: number };
+      files: { path: string }[];
+    };
+    expect(beforeSnap.files.some((f) => f.path === "helper.py")).toBe(false);
+    const oldHead = beforeSnap.version.headSha;
+
+    // Seed a guide card citing beta (line 2) outside the diff, through
+    // the snapshot DB while the service is stopped (same technique as
+    // the diagram journeys).
+    await svc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(reviewId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const snap = JSON.parse(row.snapshot) as {
+        pages: { id: string; kind: string; title: string; saved: boolean; cards: unknown[] }[];
+      };
+      let root = snap.pages.find((p) => p.id === "root");
+      if (!root) {
+        root = { id: "root", kind: "root", title: "Guide", saved: false, cards: [] };
+        snap.pages.unshift(root);
+      }
+      root.cards.push({
+        id: "c-helper",
+        pageId: "root",
+        title: "Helper card",
+        level: "standard",
+        read: false,
+        collapsed: false,
+        revision: 1,
+        blocks: [
+          {
+            type: "paragraph",
+            id: "b-helper",
+            text: { standard: "Uses the helper beta value." },
+            citations: [{ target: `code:helper.py:2@${oldHead}` }],
+          },
+        ],
+        undoStack: [],
+      });
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(snap),
+        reviewId,
+      );
+    } finally {
+      db.close();
+    }
+    svc = await startService(dataDir, { agent: "none" });
+
+    // Upstream moves beta down two lines; feature rebases again.
+    await git(repoDir, "checkout", "main");
+    writeFileSync(path.join(repoDir, "helper.py"), "top1 = 0\ntop2 = 0\nalpha = 1\nbeta = 2\ngamma = 3\n");
+    await git(repoDir, "add", "helper.py");
+    await git(repoDir, "commit", "-m", "shift helper");
+    await git(repoDir, "checkout", "feature");
+    await git(repoDir, "rebase", "main");
+
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+
+    // The citation now points at beta's new line under the new head.
+    const deadline = Date.now() + 60_000;
+    let target = "";
+    let unverified: boolean | undefined;
+    let newHead = "";
+    for (;;) {
+      const after = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+      const snap = after.json as unknown as {
+        version: { headSha: string };
+        pages: { cards: { id: string; stale?: boolean; blocks: { citations?: { target: string; unverified?: boolean }[] }[] }[] }[];
+      };
+      newHead = snap.version.headSha;
+      const card = snap.pages.flatMap((p) => p.cards).find((c) => c.id === "c-helper");
+      const cit = card?.blocks.flatMap((b) => b.citations ?? [])[0];
+      target = cit?.target ?? "";
+      unverified = cit?.unverified;
+      if (target === `code:helper.py:4@${newHead}` && newHead !== oldHead) break;
+      if (Date.now() > deadline) throw new Error(`citation not re-anchored: ${target} (head ${newHead})`);
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(unverified).not.toBe(true);
+    // And in the UI the marker is a normal (verified) citation chip.
+    await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#C-c-helper .lk[data-refs]")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#C-c-helper .lk.unverified")).toHaveCount(0);
+  });
 });
