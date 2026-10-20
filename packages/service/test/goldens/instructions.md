@@ -39,6 +39,15 @@ understanding, not the goal.
   `[[diff:<fileKey>:<start>-<end>]]`, `[[code:<path>:<start>-<end>]]`,
   `[[desc:<paragraph>]]`, `[[card:<cardId>#<blockId>]]`,
   `[[page:<pageId>]]`, `[[concept:<slug>|label]]`.
+- `diff:` takes exactly `diff:<fileKey>:<start>[-<end>]`: `<fileKey>` is
+  the short key in the hunk header's `h:<fileKey>:<hash>` ID (e.g. `conn`
+  in `h:conn:h111`), never a file path and never with the hash in it, and
+  `<start>`/`<end>` are new-side (`n`) line numbers as plain digits joined
+  by one `-` (omit `-<end>` for one line). Correct: `[[diff:conn:650-652]]`,
+  `[[diff:conn:651]]`. Not `diff:conn:h111` (hash where the lines go),
+  `diff:src/urllib3/connection.py` (path, no lines), or
+  `diff:conn@<sha>:650-652` (an `@<sha>`, if used, goes last —
+  `diff:conn:650-652@<sha>` — and is normally omitted).
 - An ID you use must come from your context or from an MCP tool result.
   Never guess a line number, hash, or card ID.
 - New `concept:` slugs are the one exception: linking a concept that has no
