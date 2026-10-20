@@ -17,7 +17,9 @@
 // FRESH isolated npm cache, then verified from OUTSIDE the repo: bin link,
 // doctor, start/status/stop, prompts + web shell, demo pipeline end to end,
 // readiness (agent executables), adapter bundles present, no lifecycle
-// script ran, no agent platform binary downloaded, install time + size.
+// script ran, no agent platform binary for this platform downloaded, one
+// outline request that must be answered by a loaded grammar (issue #157),
+// install time + size.
 //
 // The release tree needs no build and defines no lifecycle scripts, so npm's
 // git-URL handling (dangling symlinks / preparation races on npm 10/11 for
@@ -29,6 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRunRoot, onExit, removeDir } from "./tmp-guard.mjs";
+import { isParserOutline, platformBinaryPackages } from "./global-install-lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -125,7 +128,10 @@ function checkAdapterBundles(installedPkgDir, label) {
     const full = path.join(installedPkgDir, f);
     assert(fs.existsSync(full), `${label}: ships ${f}`);
   }
-  for (const pkg of ["@openai/codex-linux-x64", "@anthropic-ai/claude-agent-sdk-linux-x64"]) {
+  // Issue #157: name the current platform's packages (darwin on macOS,
+  // win32 on Windows), not only the Linux ones — on macOS the Linux names
+  // can never be present, so that assertion checked nothing there.
+  for (const pkg of platformBinaryPackages(process.platform, process.arch)) {
     const [scope, name] = pkg.split("/");
     assert(
       !fs.existsSync(path.join(installedPkgDir, "node_modules", scope, name)),
@@ -239,6 +245,116 @@ function simpleGet(port, getPath, headers) {
       })
       .on("error", () => resolve({ code: 0, body: "" }));
   });
+}
+
+const OUTLINE_PY = [
+  "class Store:",
+  '    """Keep things."""',
+  "",
+  "    def get(self, key):",
+  "        return self._data[key]",
+  "",
+  "    def put(self, key, value):",
+  "        self._data[key] = value",
+].join("\n");
+
+function gitIn(dir, env, ...gitArgs) {
+  const r = spawnSync("git", gitArgs, { cwd: dir, env, encoding: "utf8", timeout: 60_000 });
+  if (r.status !== 0) throw new Error(`git ${gitArgs.join(" ")}: ${(r.stderr ?? "").trim()}`);
+}
+
+/** A tiny local repo (base + one changed line on `feature`) for the outline check. */
+function makeOutlineRepo(label, env) {
+  const dir = path.join(TMP, `outline-repo-${label}`);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "store.py"), `${OUTLINE_PY}\n`);
+  gitIn(dir, env, "init", "-b", "main");
+  gitIn(dir, env, "config", "user.email", "check@example.com");
+  gitIn(dir, env, "config", "user.name", "Install Check");
+  gitIn(dir, env, "add", ".");
+  gitIn(dir, env, "commit", "-m", "base");
+  gitIn(dir, env, "checkout", "-b", "feature");
+  fs.writeFileSync(path.join(dir, "store.py"), `${OUTLINE_PY.replace("return self._data[key]", "return self._data.get(key)")}\n`);
+  gitIn(dir, env, "add", "-A");
+  gitIn(dir, env, "commit", "-m", "change");
+  return dir;
+}
+
+/**
+ * Issue #157: prove a grammar actually loads from the installed package.
+ * `checkGrammarFiles` only proves the `.wasm` files are present; this
+ * opens a review of a local Python repo in the installed service and
+ * asks for the enclosing units of a method body. The answer must come
+ * from the parser (`how: "parser"` with the real chain), not the
+ * indentation heuristic fallback that runs when a grammar fails to load.
+ */
+async function checkInstalledOutline({ port, token, label, env }) {
+  let repoDir;
+  try {
+    repoDir = makeOutlineRepo(label, env);
+  } catch (e) {
+    assert(false, `${label}: outline sample repo created (${e instanceof Error ? e.message : String(e)})`);
+    return;
+  }
+  const added = await api(port, token, "POST", "/api/repos", { path: repoDir });
+  let repoId = null;
+  try {
+    const repos = JSON.parse(added.body)?.repos ?? [];
+    repoId = repos[repos.length - 1]?.id ?? null;
+  } catch {
+    repoId = null;
+  }
+  assert(!!repoId, `${label}: installed service adds the outline sample repo`);
+  if (!repoId) return;
+  const created = await api(port, token, "POST", "/api/reviews", { repoId, branch: "feature" });
+  assert([201, 202].includes(created.code), `${label}: installed service opens the outline sample review`);
+  let reviewId = null;
+  try {
+    reviewId = JSON.parse(created.body)?.review?.id ?? null;
+  } catch {
+    reviewId = null;
+  }
+  if (typeof reviewId !== "string") {
+    assert(false, `${label}: outline sample review has an id`);
+    return;
+  }
+  let headSha = null;
+  for (let i = 0; i < 60 && !headSha; i++) {
+    const got = await api(port, token, "GET", `/api/reviews/${reviewId}`);
+    try {
+      const snap = JSON.parse(got.body);
+      if ((snap.ingest?.status ?? "ready") === "failed") break;
+      if ((snap.ingest?.status ?? "ready") === "ready" && snap.version?.headSha) headSha = snap.version.headSha;
+    } catch {
+      // keep polling
+    }
+    if (!headSha) await new Promise((r) => setTimeout(r, 500));
+  }
+  assert(typeof headSha === "string", `${label}: outline sample review finishes loading`);
+  if (!headSha) return;
+  const outline = await api(
+    port,
+    token,
+    "GET",
+    `/api/reviews/${reviewId}/outline?path=store.py&commit=${headSha}&start=5&end=5`,
+  );
+  let body = null;
+  try {
+    body = JSON.parse(outline.body);
+  } catch {
+    body = null;
+  }
+  assert(
+    outline.code === 200 && isParserOutline(body),
+    `${label}: installed service loads a grammar (outline answers how=parser, got ${body?.how ?? outline.code}; a heuristic answer would mean the packaged .wasm did not load)`,
+  );
+  if (body && isParserOutline(body)) {
+    assert(body.language === "python", `${label}: outline reports the python grammar`);
+    assert(
+      body.chain.map((u) => u.name).join(",") === "get,Store",
+      `${label}: outline chain is the parsed units (get inside Store)`,
+    );
+  }
 }
 
 /**
@@ -407,6 +523,8 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
     }
     assert(done, `${label}: demo snapshot ends complete (60s budget)`);
   }
+
+  await checkInstalledOutline({ port, token, label, env: ENV });
 
   const status = runInstalled(["status"]);
   assert(status.code === 0 && status.out.includes("running"), `${label}: status reports running`);

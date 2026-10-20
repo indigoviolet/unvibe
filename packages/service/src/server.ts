@@ -90,6 +90,12 @@ export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
     idleMs?: number | null;
     hasJobs?: () => boolean;
     onIdleExit?: () => void | Promise<void>;
+    /**
+     * Issue #143: idle-session sweep cadence in ms (production wiring
+     * for `SessionManager.sweepIdle`, using the `cacheLifetimeMs`
+     * setting as the idle threshold). Non-positive disables.
+     */
+    sessionSweepMs?: number;
   };
 }
 
@@ -340,6 +346,24 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   // The timer is unref'd so it never keeps the process alive by itself.
   // Default hasJobs uses the real job queue (M3), so `serve()` idle-exits
   // correctly without passing hasJobs explicitly.
+  // Issue #143: close idle agent sessions on a cadence in production.
+  // The idle threshold is the provider cache lifetime setting, read
+  // fresh each tick; sessions reopen lazily via load/rebuild.
+  const sessionSweepMs = opts.lifecycle?.sessionSweepMs ?? 30_000;
+  if (sessionSweepMs > 0) {
+    const sweepTimer = setInterval(() => {
+      void (async () => {
+        try {
+          await ctx.sessions.sweepIdle(Date.now(), ctx.settings.get().cacheLifetimeMs);
+        } catch {
+          // Sweeping is best-effort; the next tick retries.
+        }
+      })();
+    }, sessionSweepMs);
+    sweepTimer.unref?.();
+    app.addHook("onClose", async () => clearInterval(sweepTimer));
+  }
+
   const idleMs = opts.lifecycle?.idleMs ?? DEFAULT_IDLE_MS;
   if (idleMs > 0) {
     const monitor = new IdleMonitor({

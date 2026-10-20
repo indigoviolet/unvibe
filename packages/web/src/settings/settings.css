@@ -13,8 +13,8 @@
 .setgrid input[type="number"],
 .setgrid input[type="text"],
 .setgrid select {
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-6);
   padding: 3px 8px;
   font: 13px var(--sans);
   background: var(--surface);
@@ -40,7 +40,7 @@
 mark.tm {
   background: var(--accent-soft);
   color: var(--accent);
-  border-radius: 3px;
+  border-radius: var(--radius-3);
   padding: 0 3px;
   font-family: var(--mono);
   font-size: 0.86em;
@@ -92,7 +92,7 @@ mark.tm {
   gap: 2px 12px;
   align-items: center;
   padding: 5px 0;
-  border-top: 1px solid var(--line);
+  border-top: var(--border-width) solid var(--line);
 }
 .ver-name {
   font-family: var(--mono);
@@ -130,7 +130,7 @@ mark.tm {
   margin: 2px 0;
 }
 .ver-outcome {
-  border-top: 1px solid var(--line);
+  border-top: var(--border-width) solid var(--line);
   margin-top: 8px;
   padding-top: 6px;
 }

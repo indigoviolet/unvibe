@@ -186,7 +186,7 @@ describe("outline route", () => {
     }
   });
 
-  it("reports no-content for reviews with no file history", async () => {
+  it("serves the demo's materialized files, and no-content for a missing one (#176)", async () => {
     const { app } = await createApp("tok", {
       runner: real,
       agents: new FakeAgentRunner(),
@@ -205,20 +205,29 @@ describe("outline route", () => {
       const snap = (created.json() as ReviewSnapshot).review && await app.inject({ method: "GET", url: `/api/reviews/${demoId}`, headers: authed });
       expect(snap.statusCode).toBe(200);
       const demoSnap = snap.json() as ReviewSnapshot;
+      // #176: the demo's working copy now carries the head files, so a
+      // known path serves content instead of `no-content`.
       const res = await app.inject({
         method: "GET",
         url: outlineUrl(demoId, `path=src/urllib3/connection.py&commit=${demoSnap.version.headSha}&start=80&end=82`),
         headers: authed,
       });
-      expect(res.statusCode).toBe(404);
-      expect(res.json()).toMatchObject({ code: "no-content" });
+      expect(res.statusCode).toBe(200);
       const slice = await app.inject({
         method: "GET",
-        url: `/api/reviews/${demoId}/file?path=src/urllib3/connection.py&commit=${demoSnap.version.headSha}&start=80&end=82`,
+        url: `/api/reviews/${demoId}/file?path=src/urllib3/connection.py&commit=${demoSnap.version.headSha}&start=91&end=95`,
         headers: authed,
       });
-      expect(slice.statusCode).toBe(404);
-      expect(slice.json()).toMatchObject({ code: "no-content" });
+      expect(slice.statusCode).toBe(200);
+      expect(JSON.stringify(slice.json())).toContain("_normalize_header_value");
+      // A file the fixture does not carry still answers `no-content`.
+      const missing = await app.inject({
+        method: "GET",
+        url: `/api/reviews/${demoId}/file?path=src/urllib3/fields.py&commit=${demoSnap.version.headSha}&start=1&end=2`,
+        headers: authed,
+      });
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json()).toMatchObject({ code: "no-content" });
     } finally {
       await app.close();
     }

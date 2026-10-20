@@ -12,6 +12,27 @@ export interface CitationCtx {
   comparison: HunkComparison;
   oldFiles: ReviewFile[];
   newHeadSha: string;
+  /**
+   * #112: file contents at the old and new heads for `code:` citations
+   * whose file is outside the new diff, keyed by the cited (old) path.
+   * `null` means unreadable at that head. When an entry is present the
+   * citation is re-anchored by content, like pins (#52): found text keeps
+   * or moves the citation to a new ID at the new head; gone or unreadable
+   * text keeps the old ID and flags the citation unverified + stale.
+   */
+  codeFiles?: Map<string, { oldLines: string[] | null; newLines: string[] | null; newPath: string }>;
+}
+
+function findBlockIn(lines: string[], block: string[]): { start: number; end: number } | null {
+  if (block.length === 0 || lines.length === 0) return null;
+  const eq = (a: string, b: string): boolean => a === b || a.replace(/\s+/g, "") === b.replace(/\s+/g, "");
+  outer: for (let start = 1; start + block.length - 1 <= lines.length; start++) {
+    for (let i = 0; i < block.length; i++) {
+      if (!eq(lines[start - 1 + i] ?? "", block[i] ?? "")) continue outer;
+    }
+    return { start, end: start + block.length - 1 };
+  }
+  return null;
 }
 
 const oldById = (c: HunkComparison): Map<string, "unchanged" | "changed" | "removed"> => {
@@ -46,7 +67,10 @@ function findOldHunk(fileKey: string, start: number, end: number, oldFiles: Revi
  * Remap one citation target. Returns the new target plus whether the cited
  * hunk changed (stale signal). Unknown kinds pass through unchanged.
  */
-export function remapCitationTarget(target: string, ctx: CitationCtx): { target: string; changed: boolean } {
+export function remapCitationTarget(
+  target: string,
+  ctx: CitationCtx,
+): { target: string; changed: boolean; unverified?: boolean } {
   const parsed = parseId(target);
   if (!parsed) return { target, changed: false };
   const statusById = oldById(ctx.comparison);
@@ -109,6 +133,22 @@ export function remapCitationTarget(target: string, ctx: CitationCtx): { target:
   }
 
   if (parsed.kind === "code") {
+    // #112: outside the new diff, re-anchor by content at the new head
+    // (preloaded by refresh, like pins in #52). A new ID at the new head
+    // is issued when the cited text is found; the old ID is kept and
+    // flagged unverified when it is gone or unreadable.
+    const content = ctx.codeFiles?.get(parsed.path);
+    if (content) {
+      if (!content.oldLines || !content.newLines) return { target, changed: true, unverified: true };
+      const cited = content.oldLines.slice(parsed.start - 1, parsed.end);
+      if (cited.length === 0) return { target, changed: true, unverified: true };
+      const hit = findBlockIn(content.newLines, cited);
+      if (!hit) return { target, changed: true, unverified: true };
+      return {
+        target: formatId({ kind: "code", path: content.newPath, start: hit.start, end: hit.end, sha: ctx.newHeadSha }),
+        changed: false,
+      };
+    }
     // Rename-aware path update + SHA bump; overlap with a changed hunk flags stale.
     let newPath = parsed.path;
     for (const r of ctx.comparison.renames) {
@@ -177,8 +217,12 @@ export function cardCitations(card: Card): Citation[] {
 export function remapCardCitations(card: Card, ctx: CitationCtx): number {
   let changed = 0;
   const fix = (c: Citation): void => {
-    const r = remapCitationTarget(c.target, ctx);
+    const before = c.target;
+    const r = remapCitationTarget(before, ctx);
     c.target = r.target;
+    const parsedBefore = parseId(before);
+    if (r.unverified) c.unverified = true;
+    else if (parsedBefore?.kind === "code" && ctx.codeFiles?.has(parsedBefore.path)) delete c.unverified;
     if (r.changed) changed += 1;
   };
   const walk = (blocks: Block[]): void => {

@@ -27,7 +27,8 @@ function settings(fullAccess: boolean): Awaited<ReturnType<typeof api.settings>>
     logBatchTokens: 2000,
     cacheLifetimeMs: 300000,
     idleExitMinutes: 10,
-    versionPickerEnabled: false,
+    uiTheme: "default",
+  versionPickerEnabled: false,
     fullAccess,
     fullAccessAcknowledgedAt: fullAccess ? 1 : null,
   };

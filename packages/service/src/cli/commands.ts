@@ -199,6 +199,7 @@ async function cmdDoctorCmd(args: string[]): Promise<number> {
 async function cmdUpdate(args: string[]): Promise<number> {
   const { UPDATE_USAGE, runUpdateChannelFlow, runUpdateListFlow } = await import("./update-flows.js");
   const { RealCommandRunner } = await import("../exec/runner.js");
+  const { ShimResolvingCommandRunner } = await import("../exec/shim-resolve.js");
   const { SERVICE_VERSION } = await import("../server.js");
   if (args.includes("--help") || args.includes("-h")) {
     console.log(UPDATE_USAGE);
@@ -206,7 +207,7 @@ async function cmdUpdate(args: string[]): Promise<number> {
   }
   const config = loadConfig();
   const deps = {
-    runner: new RealCommandRunner(),
+    runner: new ShimResolvingCommandRunner(new RealCommandRunner()),
     dataDir: config.dataDir,
     cliScriptPath: process.argv[1],
     serviceVersion: SERVICE_VERSION,

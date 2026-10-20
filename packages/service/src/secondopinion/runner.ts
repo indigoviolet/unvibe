@@ -43,13 +43,13 @@ import {
   renderMarkdown,
   splitReply,
 } from "@unvibe/shared";
-import { RetryableError } from "../jobs/errors.js";
+import { attachPartialUsage, RetryableError } from "../jobs/errors.js";
 import { mirrorPromotedAnswer } from "../interaction/index.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
 import { isReplayRunner } from "../agent/factory.js";
 import { withReplayMark } from "../pipeline/replayMark.js";
-import { lookupForSnapshot } from "../pipeline/lookup.js";
+import { lookupForSnapshot, resolveCodeFileLengths } from "../pipeline/lookup.js";
 import { validateReply } from "../validate/index.js";
 import { loadTemplatesDirSync, renderTemplate } from "../prompts/index.js";
 import { renderSystemPrompt } from "../prompts/access.js";
@@ -129,10 +129,10 @@ function aliasesForReview(snapshot: ReviewSnapshot, fixturesDir?: string): Recor
   }
 }
 
-function lookupWithAliases(snapshot: ReviewSnapshot, fixturesDir?: string): ReturnType<typeof lookupForSnapshot> {
+function lookupWithAliases(snapshot: ReviewSnapshot, fixturesDir?: string, fileLengths?: Record<string, number>): ReturnType<typeof lookupForSnapshot> {
   const aliases = aliasesForReview(snapshot, fixturesDir);
-  if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot);
-  const base = lookupForSnapshot(snapshot);
+  if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot, { fileLengths });
+  const base = lookupForSnapshot(snapshot, { fileLengths });
   const inner = base.resolveFileKey.bind(base);
   return {
     ...base,
@@ -273,24 +273,46 @@ async function collectStreaming(
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
-  for await (const ev of runner.prompt(session, prompt, signal)) {
-    if (ev.type === "text") {
-      text += ev.delta;
-      onDelta(ev.delta);
-    } else if (ev.type === "tool") {
-      if (ev.status === "start") onTool?.(ev.name, ev.detail);
-    } else if (ev.type === "usage") {
-      usage.inputTokens += ev.inputTokens;
-      usage.cachedReadTokens += ev.cachedReadTokens;
-      usage.cachedWriteTokens += ev.cachedWriteTokens;
-      usage.outputTokens += ev.outputTokens;
-    } else if (ev.type === "error") {
-      if (ev.retryable) throw new RetryableError(ev.message);
-      throw new Error(ev.message);
+  try {
+    for await (const ev of runner.prompt(session, prompt, signal)) {
+      if (ev.type === "text") {
+        text += ev.delta;
+        onDelta(ev.delta);
+      } else if (ev.type === "tool") {
+        if (ev.status === "start") onTool?.(ev.name, ev.detail);
+      } else if (ev.type === "usage") {
+        usage.inputTokens += ev.inputTokens;
+        usage.cachedReadTokens += ev.cachedReadTokens;
+        usage.cachedWriteTokens += ev.cachedWriteTokens;
+        usage.outputTokens += ev.outputTokens;
+      } else if (ev.type === "error") {
+        if (ev.retryable) throw new RetryableError(ev.message);
+        throw new Error(ev.message);
+      }
+      if (signal?.aborted) throw new Error("aborted");
     }
-    if (signal?.aborted) throw new Error("aborted");
+  } catch (err) {
+    throw attachPartialUsage(err, usage, text);
   }
   return { text, usage };
+}
+
+/** `collectStreaming` with the session marked in use (never swept mid-turn). */
+async function collectTracked(
+  sessions: SessionManager,
+  runner: AgentRunner,
+  session: { id: string; provider: string; model: string },
+  prompt: string,
+  signal: AbortSignal | undefined,
+  onDelta: (delta: string) => void,
+  onTool?: (name: string, detail?: string) => void,
+): Promise<{ text: string; usage: TokenUsage }> {
+  sessions.beginSessionUse(session.id);
+  try {
+    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool);
+  } finally {
+    sessions.endSessionUse(session.id);
+  }
 }
 
 function worktreeOf(dataDir: string, reviewId: string): string {
@@ -552,8 +574,7 @@ export async function requestSecondOpinion(
       );
       ctx.setSessionId(forked.session.id);
       try {
-        const { text, usage } = await collectStreaming(
-          deps.runner,
+        const { text, usage } = await collectTracked(deps.sessions, deps.runner,
           forked.session,
           turn,
           req.signal ?? ctx.signal,
@@ -568,8 +589,10 @@ export async function requestSecondOpinion(
         const cards = parseCards(body);
         const live = deps.reviews.getSnapshot(req.reviewId);
         if (!live) throw new Error(`unknown review ${req.reviewId}`);
-        const lookup = lookupWithAliases(live, deps.fixturesDir);
         const blocks = cards.flatMap((c) => c.blocks);
+        const soCollected = collectTargets(blocks);
+        const soLengths = await resolveCodeFileLengths(deps.commands, await getWorktreePath(deps, req.reviewId) ?? worktreeOf(deps.dataDir, req.reviewId), live.version.headSha, [...soCollected.citations, ...soCollected.links]);
+        const lookup = lookupWithAliases(live, deps.fixturesDir, soLengths);
         const validation = validateReply(blocks, lookup);
         let finalText = text;
         let finalBlocks = blocks;
@@ -590,7 +613,8 @@ export async function requestSecondOpinion(
                 : `${req.cardId}:${req.mode}`;
             repairPrompt = withReplayMark(repairPrompt, { kind: "second-opinion", key: replayKey });
           }
-          const repair = await collectStreaming(deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
+          ctx.setPromptSnapshot(`${turn}\n\n--- repair turn ---\n${repairPrompt}`);
+          const repair = await collectTracked(deps.sessions, deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
             ctx.reportText(d),
             (name, detail) => ctx.reportTool(name, detail),
           );
@@ -605,10 +629,10 @@ export async function requestSecondOpinion(
           finalText = repair.text;
           finalBlocks = parseCards(secondSplit.body).flatMap((c) => c.blocks);
           finalData = secondSplit.ok ? secondSplit.data : null;
-          const secondValidation = validateReply(
-            finalBlocks,
-            lookupWithAliases(deps.reviews.getSnapshot(req.reviewId)!, deps.fixturesDir),
-          );
+          const soCollected2 = collectTargets(finalBlocks);
+          const soLive2 = deps.reviews.getSnapshot(req.reviewId)!;
+          const soLengths2 = await resolveCodeFileLengths(deps.commands, await getWorktreePath(deps, req.reviewId) ?? worktreeOf(deps.dataDir, req.reviewId), soLive2.version.headSha, [...soCollected2.citations, ...soCollected2.links]);
+          const secondValidation = validateReply(finalBlocks, lookupWithAliases(soLive2, deps.fixturesDir, soLengths2));
           finalValidation = secondValidation;
         }
         const so = (finalData as unknown as { secondOpinion?: { verdict?: unknown; reasoning?: unknown; missed?: unknown } } | null)?.secondOpinion;

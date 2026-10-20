@@ -22,6 +22,7 @@ import { collectDiagnostics, formatDiagnosticsText } from "../diagnostics/report
 import type { DiagnosticsResponse } from "@unvibe/shared";
 import { ghAuthStatus as sharedGhAuth, gitVersion as sharedGitVersion } from "../readiness/checks.js";
 import { RealCommandRunner } from "../exec/runner.js";
+import { ShimResolvingCommandRunner } from "../exec/shim-resolve.js";
 import { checkLoginUnit } from "../update/service-manager.js";
 
 export interface DoctorCheck {
@@ -141,7 +142,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
     detail: `${process.version} (Unvibe needs Node 24 or newer) at ${process.execPath}`,
   });
 
-  const runner = new RealCommandRunner();
+  const runner = new ShimResolvingCommandRunner(new RealCommandRunner());
   const git = await sharedGitVersion(runner);
   checks.push({ name: "git", status: git ? "ok" : "fail", detail: git ?? "not on PATH" });
 
@@ -163,7 +164,20 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
   if (diag) {
     for (const t of diag.tools) {
       if (t.tool === "node") continue; // already reported above
-      if (t.tool === "git" || t.tool === "gh") continue; // already reported above
+      if (t.tool === "git" || t.tool === "gh") {
+        // Already reported above; add the path the service runs (issue
+        // #109: the resolved real executable when the PATH entry is a
+        // version-manager shim), so doctor shows it here too, not only
+        // on the Doctor page.
+        const existing = checks.find((c) => c.name === t.tool);
+        if (existing && t.chosen) {
+          const shim = t.candidates.find((c) => c.resolvedPath && c.resolvedPath === t.chosen);
+          existing.detail += shim
+            ? `; runs the real executable ${t.chosen} (the shim at ${shim.path} is not used in review copies)`
+            : `; runs ${t.chosen}`;
+        }
+        continue;
+      }
       const status = t.chosen ? (t.warnings.length > 0 ? "ok" : "ok") : "warn";
       // A tool with warnings but a working choice is still ok (doctor is
       // informational); the detail names the choice + why + warnings.

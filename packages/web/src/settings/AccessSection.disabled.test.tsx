@@ -28,7 +28,8 @@ function settingsWith(fullAccess: boolean): Settings {
     logBatchTokens: 2000,
     cacheLifetimeMs: 300000,
     idleExitMinutes: 10,
-    versionPickerEnabled: false,
+    uiTheme: "default",
+  versionPickerEnabled: false,
     fullAccess,
     fullAccessAcknowledgedAt: fullAccess ? 123 : null,
   };

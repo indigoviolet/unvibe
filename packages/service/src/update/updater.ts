@@ -69,6 +69,11 @@ export class RealUpdater implements Updater {
   private readonly env: Record<string, string | undefined> | undefined;
 
   constructor(opts: RealUpdaterOptions) {
+    // Default stays the plain runner: this module is bundled into the
+    // self-contained update helper (allowlist in
+    // `update-helper-bundle.slow.test.ts`), so it must not pull in shim
+    // resolution. Callers outside the helper (app.ts, CLI) pass the
+    // shim-resolving runner explicitly (issue #109).
     this.runner = opts.runner ?? new RealCommandRunner();
     this.dataDir = opts.dataDir;
     this.serviceScriptPath = opts.serviceScriptPath;

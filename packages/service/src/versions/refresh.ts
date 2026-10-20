@@ -44,9 +44,10 @@ import { uninterestingReason } from "../ingest/index.js";
 import type { DatabaseSync } from "../store/index.js";
 import { transaction } from "../store/index.js";
 import type { ReviewStore } from "../state/store.js";
+import { parseId } from "@unvibe/shared";
 import { remapAnchor } from "./anchors.js";
 import { compareHunks, compareVersions } from "./compare.js";
-import { remapCardCitations } from "./citations.js";
+import { cardCitations, remapCardCitations } from "./citations.js";
 import { loadVersionFiles, saveVersionFiles } from "./files.js";
 import { getRangeDiff } from "./rangeDiff.js";
 
@@ -415,6 +416,37 @@ export async function refreshReview(
     }
   }
 
+  // #112: `code:` citations to files outside the new diff need the same
+  // content decision as pins. Preload old/new file lines (async, before
+  // the sync mutate) for every distinct outside-diff cited path.
+  const codeFiles = new Map<string, { oldLines: string[] | null; newLines: string[] | null; newPath: string }>();
+  {
+    const live = deps.reviews.getSnapshot(reviewId) ?? snapshot;
+    const citedPaths = new Map<string, string>();
+    for (const page of live.pages) {
+      for (const card of page.cards) {
+        for (const cit of cardCitations(card)) {
+          const parsed = parseId(cit.target);
+          if (parsed?.kind !== "code" || citedPaths.has(parsed.path)) continue;
+          let newPath = parsed.path;
+          for (const r of comparison.renames) {
+            if (r.oldPath === parsed.path) {
+              newPath = r.newPath;
+              break;
+            }
+          }
+          citedPaths.set(parsed.path, newPath);
+        }
+      }
+    }
+    for (const [oldPath, newPath] of citedPaths) {
+      if (newFiles.some((f) => f.path === newPath)) continue;
+      const oldLines = await loadFileLinesAtHead(deps.runner, repoPath, oldVersion.headSha, oldPath);
+      const newLines = await loadFileLinesAtHead(deps.runner, repoPath, head.headSha, newPath);
+      codeFiles.set(oldPath, { oldLines, newLines, newPath });
+    }
+  }
+
   buildStep.finishedAt = Date.now();
 
   // One mutate so the UI gets one patch (PRD §8.4).
@@ -481,7 +513,7 @@ export async function refreshReview(
     const citationsStep: TimedStep = { label: "Remapping citations", startedAt: Date.now() };
     remapSteps.push(citationsStep);
     // Cards + findings: remap citations, flag stale / recheck.
-    const ctx = { comparison: cmp, oldFiles, newHeadSha: head.headSha };
+    const ctx = { comparison: cmp, oldFiles, newHeadSha: head.headSha, codeFiles };
     for (const page of draft.pages) {
       for (const card of page.cards) {
         const changedCount = remapCardCitations(card, ctx);

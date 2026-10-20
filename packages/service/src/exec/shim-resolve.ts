@@ -28,7 +28,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { CommandRunner } from "./runner.js";
+import type { CommandRunner, RunOptions, RunResult } from "./runner.js";
 import { RealCommandRunner } from "./runner.js";
 import { agentBinSpec, findBinOnPath, type AgentProvider } from "./agent-bins.js";
 
@@ -73,10 +73,153 @@ function isExecutableFile(p: string): boolean {
 }
 
 const cache = new Map<string, string | null>();
+const serviceToolCache = new Map<string, string | null>();
 
 /** Clear cached resolutions (Reload environment). Exported for the reload route. */
 export function clearShimResolutionCache(): void {
   cache.clear();
+  serviceToolCache.clear();
+}
+
+/**
+ * Which version manager a candidate belongs to, when detectable: path
+ * markers (`…/mise/shims/`, `…/.asdf/`, …), then a content sniff of small
+ * wrapper scripts. Shared with the diagnostics module so doctor and the
+ * service classify a candidate the same way (issues #105, #109).
+ */
+export function shimManagerForCandidate(absPath: string, symlinkTarget?: string): string | undefined {
+  const hay = `${absPath}\n${symlinkTarget ?? ""}`.toLowerCase();
+  if (hay.includes("/mise/shims/") || hay.includes(".local/share/mise")) return "mise";
+  if (hay.includes("/.asdf/shims/") || hay.includes("/.asdf/")) return "asdf";
+  if (hay.includes("/.nvm/versions/node/") || hay.includes("/.nvm/")) return "nvm";
+  if (hay.includes("/cellar/") || hay.includes("/opt/homebrew/") || hay.includes("/usr/local/homebrew")) return "homebrew";
+  if (hay.includes("node_modules/.bin") || hay.includes("/lib/node_modules/")) return "npm-global";
+  try {
+    const st = fs.statSync(symlinkTarget ?? absPath);
+    if (st.isFile() && st.size < 32 * 1024) {
+      const head = fs.readFileSync(symlinkTarget ?? absPath, "utf8").slice(0, 4000).toLowerCase();
+      if (head.includes("mise")) return "mise";
+      if (head.includes("asdf")) return "asdf";
+      if (head.includes("nvm")) return "nvm";
+    }
+  } catch {
+    // ignore: content sniff is best-effort
+  }
+  return undefined;
+}
+
+function symlinkTargetOf(p: string): string | undefined {
+  try {
+    if (!fs.lstatSync(p).isSymbolicLink()) return undefined;
+    const next = fs.readlinkSync(p);
+    return path.isAbsolute(next) ? next : path.resolve(path.dirname(p), next);
+  } catch {
+    return undefined;
+  }
+}
+
+export interface ResolveServiceToolOptions {
+  /** Effective PATH the candidate is found on. */
+  pathValue: string;
+  runner?: CommandRunner;
+  timeoutMs?: number;
+  /** Neutral directory to resolve from (tests); default: home, else tmp. */
+  neutralDir?: string;
+  /** Candidate already located by the caller (absolute or path-like). */
+  candidatePath?: string;
+}
+
+/**
+ * The executable the service itself should run for `git`/`gh` (issue
+ * #109): the first candidate on `pathValue`, resolved through its version
+ * manager when it is a mise/asdf shim, else the candidate as-is. Null when
+ * the tool is not on the PATH at all. Never throws — an unresolvable shim
+ * falls back to the candidate, exactly the pre-#109 behaviour, and doctor
+ * reports the failure. Cached per tool/candidate/PATH; Reload environment
+ * clears it via {@link clearShimResolutionCache}.
+ */
+export async function resolveServiceToolPath(
+  tool: string,
+  opts: ResolveServiceToolOptions,
+): Promise<string | null> {
+  const candidate = opts.candidatePath ?? findBinOnPath(tool, opts.pathValue);
+  if (!candidate) return null;
+  if (!isExecutableFile(candidate)) return candidate;
+  const key = `${tool}\0${candidate}\0${opts.pathValue}`;
+  const cached = serviceToolCache.get(key);
+  if (cached !== undefined) return cached;
+  let resolved: string | null = candidate;
+  const manager = shimManagerForCandidate(candidate, symlinkTargetOf(candidate));
+  if (manager && shimManagerResolvable(manager)) {
+    resolved =
+      (await resolveShimTarget({
+        tool,
+        candidatePath: candidate,
+        manager,
+        pathValue: opts.pathValue,
+        ...(opts.runner ? { runner: opts.runner } : {}),
+        ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+        ...(opts.neutralDir !== undefined ? { neutralDir: opts.neutralDir } : {}),
+      })) ?? candidate;
+  }
+  serviceToolCache.set(key, resolved);
+  return resolved;
+}
+
+/**
+ * Command runner that runs the service's own `git`/`gh` through their
+ * resolved real executables (issue #109), so a call made with a review
+ * worktree as cwd never goes through a version-manager shim that would
+ * read the reviewed repo's config. Every other command, and every
+ * explicitly injected runner elsewhere, is untouched. Resolution happens
+ * once per tool (cached in {@link resolveServiceToolPath}); the resolved
+ * tools' directories also go first on the child's PATH, so a tool the
+ * other spawns (`gh` as git's credential helper, git under `gh`) finds
+ * the real binary too. Never throws for resolution: failures fall back
+ * to the command as given.
+ */
+export class ShimResolvingCommandRunner implements CommandRunner {
+  constructor(
+    private readonly inner: CommandRunner,
+    private readonly opts: { pathValue?: string; timeoutMs?: number; neutralDir?: string } = {},
+  ) {}
+
+  async run(cmd: string, opts: RunOptions): Promise<RunResult> {
+    const tool = path.basename(cmd);
+    if (tool !== "git" && tool !== "gh") return this.inner.run(cmd, opts);
+    try {
+      const pathValue = opts.env?.PATH ?? this.opts.pathValue ?? process.env.PATH ?? "";
+      const resolveOpts = {
+        pathValue,
+        runner: this.inner,
+        ...(this.opts.timeoutMs !== undefined ? { timeoutMs: this.opts.timeoutMs } : {}),
+        ...(this.opts.neutralDir !== undefined ? { neutralDir: this.opts.neutralDir } : {}),
+      };
+      const isPathLike = path.isAbsolute(cmd) || cmd.includes(path.sep);
+      const gitPath = await resolveServiceToolPath("git", resolveOpts);
+      const ghPath = await resolveServiceToolPath("gh", resolveOpts);
+      const wanted = isPathLike
+        ? await resolveServiceToolPath(tool, { ...resolveOpts, candidatePath: cmd })
+        : tool === "git"
+          ? gitPath
+          : ghPath;
+      if (!wanted) return this.inner.run(cmd, opts);
+      const dirs: string[] = [];
+      for (const p of [gitPath, ghPath]) {
+        if (!p) continue;
+        const dir = path.dirname(p);
+        if (!dirs.includes(dir)) dirs.push(dir);
+      }
+      const base = pathValue.split(path.delimiter).filter(Boolean);
+      const mergedPath = [...dirs, ...base.filter((d) => !dirs.includes(d))].join(path.delimiter);
+      return this.inner.run(wanted, {
+        ...opts,
+        env: { ...opts.env, PATH: mergedPath },
+      });
+    } catch {
+      return this.inner.run(cmd, opts);
+    }
+  }
 }
 
 export interface ResolveShimOptions {

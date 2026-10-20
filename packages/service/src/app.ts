@@ -42,6 +42,7 @@ import type { DatabaseSync } from "./store/db.js";
 import { EventBus } from "./events.js";
 import type { CommandRunner } from "./exec/index.js";
 import { RealCommandRunner, TestCommandGuard } from "./exec/runner.js";
+import { ShimResolvingCommandRunner } from "./exec/shim-resolve.js";
 import { JobQueue, JobStore } from "./jobs/index.js";
 import { McpRegistry } from "./mcp/index.js";
 import { StoreReviewReader } from "./mcp/reviewReader.js";
@@ -270,7 +271,13 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   // replaced with the fake.
   const underTest = isTestProcess();
   const needsTestAgents = underTest && (process.env.UNVIBE_AGENT ?? "") === "";
-  const runner = opts.runner ?? (underTest ? new TestCommandGuard(new RealCommandRunner()) : new RealCommandRunner());
+  // Issue #109: the production runner runs the service's own git/gh
+  // through their resolved real executables, never a version-manager shim
+  // that would read a review worktree's config. Injected runners (tests,
+  // doctor diagnostics) are used exactly as given.
+  const runner =
+    opts.runner ??
+    (underTest ? new TestCommandGuard(new RealCommandRunner()) : new ShimResolvingCommandRunner(new RealCommandRunner()));
   const bus = opts.bus ?? new EventBus();
   const repos = new RepoStore(opts.db);
   const reviews = new ReviewStore(opts.db, bus);

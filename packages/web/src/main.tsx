@@ -13,9 +13,13 @@ import "@fontsource/source-serif-4/latin-400.css";
 import "@fontsource/source-serif-4/latin-400-italic.css";
 import "@fontsource/source-serif-4/latin-600.css";
 import "./styles/prototype.css";
+import { currentUiTheme, ensureThemeFonts } from "./theme/theme.js";
 
 initSentry();
 initTokenFromUrl();
+// Start the selected theme's font bundle before first render (issue
+// #196); the boot script has already set `data-ui-theme` on <html>.
+ensureThemeFonts(currentUiTheme());
 
 // Installable web app (PRD §14): cache the app shell + offline page.
 // Moved here from an inline <script> so the HTML shell can serve a strict

@@ -844,12 +844,20 @@ needed (that deviation is closed, not added).
   unit tests, `docs/screenshots/133-expand-unit.png`); empty chains and
   unreadable files degrade to expand-by-lines; grammars ship as plain
   `.wasm` beside the bundle (7.4 MB, 0.79 MB gzipped; no install
-  script), asserted by the release and global-install checks.
+  script), asserted by the release and global-install checks. The
+  global-install check also proves a grammar loads from the installed
+  package — one outline request against the installed service must
+  answer `how: "parser"` (not the heuristic fallback) — and its
+  no-bundled-platform-binary assertion names the current platform's
+  packages (darwin on macOS), not only the Linux ones (#157;
+  `scripts/global-install-lib.mjs`, `global-install-lib.test.ts`).
 - No file content (issue #133): reviews whose commits resolve nowhere
-  (the demo) answer `no-content`, and the diff hides every expansion
-  control on it instead of showing load errors (service
+  and which have no on-disk files answer `no-content`, and the diff hides
+  every expansion control on it instead of showing load errors (service
   `outline-route.test.ts` no-content case, `FileExpansion.test.tsx`
-  hiding case).
+  hiding case). The demo is no longer one of these: its head files are
+  materialized from the fixture diff into its working copy (#176), so
+  `get_code` and diff expansion serve real code there.
 
 ### §4.14 Settings — all met
 
@@ -886,6 +894,16 @@ needed (that deviation is closed, not added).
   `GET /api/prompts` ran 200 from the global install).
 - Limits/budgets (sessions per provider, inline budget, rebuild
   thresholds) — met (`settings.spec.ts` “limits persist across reload”).
+- UI theme (issue #196) — met: the current look is the named `default`
+  theme in `prototype.css` (every themeable colour, radius, shadow and
+  base font size is a CSS variable; light/dark stays a separate axis),
+  Settings → Appearance picks `Settings.uiTheme` (`UI_THEME_IDS` in
+  shared, validated in the settings store), applied before first paint
+  by `public/theme-init.js` from its localStorage mirror, with the
+  `studio` and `console` themes (#164 references, bundled OFL-1.1
+  fonts loaded per theme) proving switching end to end
+  (`theme.test.ts`, `settings.test.ts`, J11, visual-tour theme scenes
+  with font, token-contrast, hatching and scrollbar checks).
 - Jobs (running/queued, prompt link, tokens, cache-hit, provider) — met
   (issue #32; on the per-review debug page's Jobs tab now, relocated
   unchanged from Settings apart from the redundant divider: `e2e/debug.spec.ts`,
@@ -1029,8 +1047,8 @@ needed (that deviation is closed, not added).
   failures read in plain words with the `UNVIBE_*_BIN` fix
   (`exec/shim-resolve.ts`, `diagnostics/tools.ts`, `agent/acp/`,
   `agent-shim-mise.test.ts`, `shim-resolve.test.ts`).
-  Open: same exposure for `git`/`gh`-as-shims (open list); final check
-  needs a Mac with mise (`docs/macos-testing.md` step 10).
+  The same exposure for `git`/`gh`-as-shims is fixed under #109 (below);
+  final check needs a Mac with mise (`docs/macos-testing.md` step 10).
 
 ## §7 Data model and IDs — all met
 
@@ -1286,8 +1304,17 @@ needed (that deviation is closed, not added).
   there on reopen (`actions-m4.test.ts` close-keeps-answer).
 - Dedupe identical requests — met (queue dedupe + `findActiveJob`;
   dedupe freed on interrupt — this branch).
-- Idle close + `load` reopen — met (`sessions/manager.ts:430 sweepIdle`,
+- Idle close + `load` reopen — met (`sessions/manager.ts sweepIdle`,
   `ensureConversation`; restart script proves reopen-or-rebuild).
+  Every fork (conversation and one-shot, second opinions included) is
+  registered from creation (#143), `sweepIdle` runs in production on a
+  30 s cadence against the `cacheLifetimeMs` setting (`server.ts`), a
+  restored conversation keeps its posture so a post-restart reply can
+  `load` it, and a rebuilt session is reused with the stored transcript
+  exactly once (later turns send only what is new). Job records keep
+  every prompt sent (first, repair, connection-retry) and the usage a
+  turn counted before an abort/error (#151;
+  `test/sessions-jobs-143-151.test.ts`, journey J15).
 - “Reuse results for identical requests, keyed by (anchor, kind, depth,
   base version)” — met (audit-10): stored-result reuse with `reused:true`,
   no job, no tokens (`shared/src/api.ts` `ActionResponse.reused`,
@@ -2042,9 +2069,9 @@ start-page Update-looking tag, Debug tip survival. Left for the owner:
 the Version-tab running-jobs sentence (18), the "PR description" tab on
 branch reviews (22).
 
-### Version-manager shims for git/gh (follow-up to #105, found not fixed)
+### Version-manager shims for git/gh (#109, fixed on this branch)
 
-The service's own `git`/`gh` calls have the same exposure class when
+The service's own `git`/`gh` calls had the same exposure class when
 those tools are manager shims (the command runner spawns whatever
 `cwd` the caller sets, and several callers set a review copy):
 
@@ -2060,13 +2087,22 @@ those tools are manager shims (the command runner spawns whatever
   untrusted like the worktree; user checkouts hold the user's own
   (trusted) config.
 
-Not fixed here on purpose: `git`/`gh` go through `runner.run("git"/"gh",
-…)` PATH-literal lookups at ~20 call sites with fake-runner seams keyed
-on those literals, so "resolve once, call the real path" is not the same
-small shape as the agent-CLI fix (one choice point in `diagnoseTool`
-consumed by adapter startup, readiness and Doctor). No failure of this
-kind has been reported (`git`/`gh`-via-mise is rare; `claude`-via-mise
-is the reported case).
+Fixed at the runner, not at the ~20 call sites (whose fake-runner seams
+stay keyed on the `git`/`gh` literals): the production command runner
+(`ShimResolvingCommandRunner` in `exec/shim-resolve.ts`, wired in
+`app.ts` and the CLI update path; the self-contained update helper
+keeps its plain runner to stay inside its bundle allowlist) resolves
+`git`/`gh` once per PATH —
+through `mise which` / `asdf which` from home when the candidate is a
+shim, cached until Reload environment — and runs the real executables,
+with their directories first on the child PATH so nested lookups (`gh`
+as git's credential helper) also bypass the shim. An unresolvable shim
+falls back to the candidate as before. Doctor now probes `git`/`gh`
+from a worktree-shaped directory too and shows the resolved paths
+(`diagnostics/tools.ts`, Doctor page, `unvibe doctor`).
+Tests: `git-gh-shim.test.ts` (fake mise shims that fail in a marked
+worktree; real spawn end-to-end). Still needs a Mac with mise to verify
+against the real manager (labelled `needs-mac`).
 
 ### Fixed in this branch (done, in `check`)
 
@@ -2289,3 +2325,27 @@ hunk coverage) is reported for a separate issue, not fixed here.
   failed + retry + remove, restart, dedupe, pipeline-after-ingest, old-row
   ready), `GuideLoading.test.tsx`, `e2e/open-review.spec.ts` (mock loading
   → guide, failing → Retry).
+
+## Addendum: #178 / #112 (branch `fix/178-112-code-citations`)
+
+- **#178 (§10):** `code:` citations are validated against the real file
+  at the cited commit, not hunk coverage. The pipeline (reader, forks,
+  small turns, second opinions) resolves each distinct cited file's
+  length through `git show` (the `get_code` source) before validating,
+  so a valid citation to a file outside the diff — including one a
+  `get_code` call issued in this review — validates instead of burning
+  the one repair turn or landing dimmed. Unreadable, binary or missing
+  files still come back unverified. Decision: accept real files/lines
+  at the review's commit per PRD §10 ("inside the file at that
+  commit"); no separate issued-ID allowlist. Evidence:
+  `test/code-citations-178-112.test.ts` (fake-runner reader on a small
+  PR citing outside the hunks: no repair turn, citations verified).
+- **#112 (§8):** on refresh, a `code:` citation whose file is outside
+  the new diff is re-anchored by content like pins (#52): unchanged
+  text keeps the lines, moved text remaps, both as a new ID at the new
+  head; gone or unreadable text keeps the old ID (still pointing at
+  the earlier commit) and is flagged unverified with the card marked
+  stale. Evidence: `test/versions-refresh.test.ts` (n/o/p),
+  `test/code-citations-178-112.test.ts`, journey
+  `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
+  the shifted line after refresh, chip verified).

@@ -15,8 +15,13 @@
     "test:slow": "VITE_MOCK=1 UNVIBE_TEST_SUITE=slow vitest run"
   },
   "dependencies": {
+    "@fontsource/dm-mono": "^5.3.0",
+    "@fontsource/fira-code": "^5.3.0",
+    "@fontsource/fira-sans": "^5.3.0",
+    "@fontsource/fraunces": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@fontsource/nunito-sans": "^5.3.0",
     "@fontsource/source-serif-4": "^5.3.0",
     "@unvibe/shared": "0.0.6",
     "react": "^18.3.1",
