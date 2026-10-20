@@ -42,7 +42,7 @@ function fakeReply(newHash: string): string {
       confidence: "medium",
       summary: "new code risk",
       cards: [{
-        id: "c-new", pageId: "f-new", title: "New", level: "standard", read: false, collapsed: false,
+        id: "c-new", pageId: "f-new", title: "New", level: "standard", collapsed: false,
         revision: 1, blocks: [], undoStack: [],
       }],
     }],
@@ -106,7 +106,7 @@ describe("update pass", () => {
         draft.pages.push({
           id: "p-root", kind: "root", title: "Guide", saved: false,
           cards: [{
-            id: "c-a", pageId: "p-root", title: "A", level: "standard", read: false, collapsed: false,
+            id: "c-a", pageId: "p-root", title: "A", level: "standard", collapsed: false,
             revision: 1,
             blocks: [{ type: "paragraph", id: "b1", text: { standard: "old prose" }, citations: [{ target: hk }] }],
             undoStack: [],
@@ -123,7 +123,7 @@ describe("update pass", () => {
           rangeDiff: "", fetchedAt: Date.now(),
         };
       });
-      (globalThis as { __snap?: ReviewSnapshot }).__snap = ctx.reviews.getSnapshot(id);
+      (globalThis as { __snap?: ReviewSnapshot }).__snap = ctx.reviews.getSnapshot(id) ?? undefined;
 
       const enq = await app.inject({ method: "POST", url: `/api/reviews/${id}/update`, headers: authed });
       expect(enq.statusCode).toBe(202);

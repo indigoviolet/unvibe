@@ -86,12 +86,12 @@ describe("refresh integration", () => {
         draft.hunkStates.push({ contentHash: hash, folded: false, reviewed: true, summary: "adds y" });
         draft.annotations.push({
           id: "ann-1",
-          type: "thread",
+          type: "comment",
           anchor: { host: { kind: "diff-line", fileKey, line: 2 }, quotedText: "y = 2", prefix: "x = 1", suffix: "", position: 2, version: 1, hunkHash: hash },
           open: true,
+          pinned: false,
           messages: [{ who: "you", text: "why?" }],
           post: false,
-          note: true,
         });
         draft.pages.push({
           id: "p-root",
@@ -99,7 +99,7 @@ describe("refresh integration", () => {
           title: "Guide",
           saved: false,
           cards: [{
-            id: "c1", pageId: "p-root", title: "Change", level: "standard", read: false, collapsed: false,
+            id: "c1", pageId: "p-root", title: "Change", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "adds y" }, citations: [{ target: `h:${fileKey}:${hash}` }] }],
             undoStack: [],
           }],
@@ -166,12 +166,12 @@ describe("refresh integration", () => {
         draft.hunkStates.push({ contentHash: bHash, folded: false, reviewed: true, summary: "adds b" });
         draft.annotations.push({
           id: "ann-a",
-          type: "thread",
+          type: "comment",
           anchor: { host: { kind: "diff-line", fileKey: aKey, line: 3 }, quotedText: "z = 9", prefix: "y = 2", suffix: "", position: 3, version: snap2.version.n, hunkHash: aHash },
           open: true,
+          pinned: false,
           messages: [{ who: "you", text: "z?" }],
           post: false,
-          note: true,
         });
         draft.pages.push({
           id: "p-root",
@@ -179,11 +179,11 @@ describe("refresh integration", () => {
           title: "Guide",
           saved: false,
           cards: [{
-            id: "c-a", pageId: "p-root", title: "A", level: "standard", read: false, collapsed: false,
+            id: "c-a", pageId: "p-root", title: "A", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "touches a" }, citations: [{ target: `h:${aKey}:${aHash}` }] }],
             undoStack: [],
           }, {
-            id: "c-b", pageId: "p-root", title: "B", level: "standard", read: false, collapsed: false,
+            id: "c-b", pageId: "p-root", title: "B", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b2", text: { standard: "touches b" }, citations: [{ target: `h:${hunkHashFor(snap2, "b.py").fileKey}:${bHash}` }] }],
             undoStack: [],
           }],
@@ -237,12 +237,12 @@ describe("refresh integration", () => {
       await ctx.reviews.mutate(id, (draft) => {
         draft.annotations.push({
           id: "ann-tail",
-          type: "thread",
+          type: "comment",
           anchor: { host: { kind: "diff-line", fileKey, line: 21 }, quotedText: "tail = 1", prefix: "line20", suffix: "", position: 21, version: 1, hunkHash: hash },
           open: true,
+          pinned: false,
           messages: [{ who: "you", text: "tail?" }],
           post: false,
-          note: true,
         });
       });
 
@@ -285,12 +285,12 @@ describe("refresh integration", () => {
       await ctx.reviews.mutate(id, (draft) => {
         draft.annotations.push({
           id: "ann-r",
-          type: "thread",
+          type: "comment",
           anchor: { host: { kind: "diff-line", fileKey, line: 3 }, quotedText: "z = 3", prefix: "y = 2", suffix: "", position: 3, version: 1, hunkHash: hash },
           open: true,
+          pinned: false,
           messages: [{ who: "you", text: "z?" }],
           post: false,
-          note: true,
         });
       });
 
@@ -303,8 +303,9 @@ describe("refresh integration", () => {
       expect(after.versionStatus?.renamedFiles).toMatchObject([{ oldPath: "old.py", newPath: "new.py" }]);
       const ann = after.annotations.find((a) => a.id === "ann-r")!;
       expect(ann.outdated).not.toBe(true);
-      if (ann.anchor.host.kind === "diff-line") {
-        const f = after.files.find((x) => x.fileKey === ann.anchor.host.fileKey);
+      const host = ann.anchor.host;
+      if (host.kind === "diff-line") {
+        const f = after.files.find((x) => x.fileKey === host.fileKey);
         expect(f?.path).toBe("new.py");
       }
     } finally {
@@ -638,7 +639,7 @@ describe("refresh integration", () => {
         draft.pages.push({
           id: "p-root", kind: "root", title: "Guide", saved: false,
           cards: [{
-            id: "c-code", pageId: "p-root", title: "Helper", level: "standard", read: false, collapsed: false,
+            id: "c-code", pageId: "p-root", title: "Helper", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
             undoStack: [],
           }],
@@ -676,7 +677,7 @@ describe("refresh integration", () => {
         draft.pages.push({
           id: "p-root", kind: "root", title: "Guide", saved: false,
           cards: [{
-            id: "c-code", pageId: "p-root", title: "Helper", level: "standard", read: false, collapsed: false,
+            id: "c-code", pageId: "p-root", title: "Helper", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
             undoStack: [],
           }],
@@ -722,12 +723,12 @@ describe("refresh integration", () => {
           id: "p-root", kind: "root", title: "Guide", saved: false,
           cards: [
             {
-              id: "c-gone-text", pageId: "p-root", title: "GoneText", level: "standard", read: false, collapsed: false,
+              id: "c-gone-text", pageId: "p-root", title: "GoneText", level: "standard", collapsed: false,
               revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
               undoStack: [],
             },
             {
-              id: "c-gone-file", pageId: "p-root", title: "GoneFile", level: "standard", read: false, collapsed: false,
+              id: "c-gone-file", pageId: "p-root", title: "GoneFile", level: "standard", collapsed: false,
               revision: 1, blocks: [{ type: "paragraph", id: "b2", text: { standard: "uses gone" }, citations: [{ target: `code:gone.py:1@${snap.version.headSha}` }] }],
               undoStack: [],
             },

@@ -4,7 +4,7 @@
  * outside-diff fallback with a note, deleted-side lines, renames.
  */
 import { describe, expect, it } from "vitest";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Annotation, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
 import {
   locatePendingThreads,
   locateThread,
@@ -21,6 +21,8 @@ function snapshotWith(annotations: Annotation[], files = [sourceFile()], pages: 
     pages,
     annotations,
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -38,6 +40,8 @@ function diffThread(fileKey: string, line: number, text = "body", extra: Partial
     messages: [{ who: "you", text }],
     post: true,
     ...extra,
+    // `extra` is a Partial, so its `pinned` may be absent; Annotation requires it.
+    pinned: extra.pinned ?? false,
   };
 }
 
@@ -74,7 +78,7 @@ describe("locateThread", () => {
   it("falls back to the nearest commentable line with a note", () => {
     // Old-side context line (old 2 -> new 12): no exact LEFT/RIGHT match,
     // but inside the old hunk range, so we move + say so.
-    const file = {
+    const file: ReviewFile = {
       fileKey: "m-py",
       path: "m.py",
       category: "source" as const,
@@ -128,7 +132,6 @@ describe("locateThread", () => {
             pageId: "p1",
             title: "C",
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: [
@@ -144,6 +147,7 @@ describe("locateThread", () => {
       type: "comment",
       anchor: { host: { kind: "block", blockId: "b1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
+      pinned: false,
       messages: [{ who: "you", text: "guide q" }],
       post: true,
     };
@@ -164,7 +168,6 @@ describe("locateThread", () => {
             pageId: "p1",
             title: "C",
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: [{ type: "paragraph", id: "b9", text: { standard: "no cites" }, citations: [] }],
@@ -178,6 +181,7 @@ describe("locateThread", () => {
       type: "comment",
       anchor: { host: { kind: "block", blockId: "b9" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
+      pinned: false,
       messages: [{ who: "you", text: "g" }],
       post: true,
     };
@@ -186,6 +190,7 @@ describe("locateThread", () => {
       type: "comment",
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
+      pinned: false,
       messages: [{ who: "you", text: "d" }],
       post: true,
     };
@@ -208,6 +213,7 @@ describe("locateThread", () => {
       type: "comment",
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
+      pinned: false,
       messages: [
         { who: "ai", text: "suggested", suggested: true },
         { who: "you", text: "mine" },

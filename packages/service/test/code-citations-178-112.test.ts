@@ -122,7 +122,6 @@ describe("#112 remapCitationTarget (content re-anchor)", () => {
       pageId: "root",
       title: "T",
       level: "standard",
-      read: false,
       collapsed: false,
       revision: 1,
       blocks: [
@@ -200,6 +199,8 @@ describe("#178 reader with code citations outside the hunks (fake runner)", () =
         pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
         annotations: [],
         hunkStates: [],
+        fileStates: [],
+        viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
         jobs: [],
         contributions: [],
         logTail: [],
