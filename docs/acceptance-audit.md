@@ -1572,6 +1572,16 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   +361 B/annotation (200 annotations measured); jobs lists omit prompt
   snapshots (per-job fetch) — `GET` stays reasonable after hundreds of
   annotations and jobs (this branch).
+- Debug Output (issue #207): every job keeps per-turn records
+  (`Job.turnRecords`: prompt, streamed output, tool calls with truncated
+  results, derived + raw usage verbatim) in every state, not only
+  failures. Capped per turn (prompt/output 20k chars, tool arguments
+  and results 2k, marker names the original length). Job lists and WS
+  events omit them; `GET /api/jobs/:id/output` serves them per job and
+  the Debug page shows a collapsible turn list. Fake/replay runners
+  emit the same tool and raw-usage shapes as ACP
+  (`job-turn-records-207.test.ts`, J14 journey, visual tour
+  `debug-output` scene).
 
 ## §17 Milestones — all met
 
