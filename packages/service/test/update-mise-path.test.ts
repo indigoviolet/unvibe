@@ -21,9 +21,10 @@ import { describe, expect, it } from "vitest";
 import { FakeCommandRunner, RealCommandRunner } from "../src/exec/runner.js";
 import type { RunOptions, RunResult } from "../src/exec/runner.js";
 import { installRef } from "../src/update/install.js";
-import { runSwitchCore } from "../src/update/switch.js";
+import { isReshimOnlyFailure, runSwitchCore } from "../src/update/switch.js";
 import { applyEffectivePath } from "../src/update/helper.js";
-import { resolveUpdatePathEnv } from "../src/update/update-env.js";
+import { findMiseBin, miseStaticCandidates, resolveUpdatePathEnv } from "../src/update/update-env.js";
+import { findMiseBinStatic } from "../src/update/mise-find.js";
 
 function tmpDir(prefix: string): string {
   return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -170,13 +171,16 @@ describe("mise-wrapper npm through the updater", () => {
     }
   });
 
-  it("falls back to the inherited PATH when no shell answers", async () => {
+  it("falls back to the inherited PATH when no shell answers and no mise is found", async () => {
     const binDir = tmpDir("unvibe-probed-silent-");
     const silent = makeExecutable(binDir, "silentsh", "#!/bin/sh\nexit 0\n");
     const env = await resolveUpdatePathEnv({
       candidates: [silent],
       inheritedPath: "/only/inherited",
       timeoutMs: 1000,
+      env: {},
+      homeDir: "/home/none",
+      exists: () => false,
     });
     expect(env).toEqual({ PATH: "/only/inherited" });
   });
@@ -248,7 +252,7 @@ describe("switch core with a wrapper-hook failure", () => {
     expect(text).toContain("0.0.1-preview.feat-x.abc1234");
   });
 
-  it("names the mise wrapper cause and the terminal recovery when the install did not land", async () => {
+  it("still fails when npm's success line did not land at our prefix (landing verification gates reshim-only success)", async () => {
     const dataDir = tmpDir("unvibe-core-genuine-");
     fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
     const { scriptPath } = makeInstall(tmpDir("unvibe-core-genuine-installed-"), {
@@ -275,11 +279,44 @@ describe("switch core with a wrapper-hook failure", () => {
     });
     expect(result.code).toBe(1);
     const text = result.lines.join("\n");
-    expect(text).toMatch(/mise wrapper could not find the mise command/);
-    expect(text).toContain("unvibe update preview/feat-x");
-    expect(text).toContain("unvibe start");
+    // The build at our prefix is still the old channel: npm installed
+    // elsewhere (or not at all), so the switch refuses despite the
+    // wrapper's success line.
+    expect(text).toMatch(/npm installed elsewhere/);
+    expect(text).toContain("npm install -g github:indigoviolet/unvibe#preview/feat-x");
     // The live database is untouched and the backup survives.
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("release-db");
+  });
+
+  it("names the mise wrapper cause and the terminal recovery when there is no npm success line", async () => {
+    const dataDir = tmpDir("unvibe-core-noline-");
+    fs.writeFileSync(path.join(dataDir, "unvibe.db"), "release-db");
+    const { scriptPath } = makeInstall(tmpDir("unvibe-core-noline-installed-"), {
+      name: "unvibe",
+      version: "0.0.1",
+      unvibe: { channel: "release" },
+    });
+    const runner = new FakeCommandRunner();
+    runner.enqueue({
+      cmd: "gh",
+      args: ["api", "repos/indigoviolet/unvibe/contents/package.json?ref=preview/feat-x"],
+      stdout: contentsStdout(NEW_PKG),
+      stderr: "",
+      code: 0,
+    });
+    // mise not found, but npm never reported the install done: a real
+    // failure, not a reshim-only one.
+    runner.enqueue({ cmd: "npm", stdout: "", stderr: "npm: line 76: mise: command not found", code: 127 });
+    const result = await runSwitchCore({
+      runner,
+      dataDir,
+      serviceScriptPath: scriptPath,
+      serviceVersion: "0.0.1",
+      channel: "preview/feat-x",
+      log: () => {},
+    });
+    expect(result.code).toBe(1);
+    expect(result.lines.join("\n")).toMatch(/mise wrapper could not find the mise command/);
   });
 
   it("keeps a non-mise failure generic", async () => {
@@ -339,18 +376,13 @@ describe("switch core with a wrapper-hook failure", () => {
     });
     expect(ok.code).toBe(0);
 
-    // Published commit unreadable: the hook failure cannot be verified, so it fails.
+    // Published commit unreadable, but npm reported the install done
+    // and only the reshim step failed (issue #170 reopened): npm's
+    // success line is authoritative, the channel in place matches, so
+    // the reinstall counts as done without the published commit.
     const blindDir = tmpDir("unvibe-core-same-blind-");
     const blind = makeInstall(tmpDir("unvibe-core-same-blind-installed-"), installedPkg);
-    const blindRunner = new FakeCommandRunner();
-    blindRunner.enqueue({
-      cmd: "gh",
-      args: ["api", "repos/indigoviolet/unvibe/contents/package.json?ref=preview/feat-x"],
-      stdout: "",
-      stderr: "not found",
-      code: 1,
-    });
-    blindRunner.enqueue({ cmd: "npm", ...failedWrapperResult() });
+    const blindRunner = new WrapperHookRunner(blind.packagePath, landedPkg, {});
     const blindResult = await runSwitchCore({
       runner: blindRunner,
       dataDir: blindDir,
@@ -359,7 +391,71 @@ describe("switch core with a wrapper-hook failure", () => {
       channel: "preview/feat-x",
       log: () => {},
     });
-    expect(blindResult.code).toBe(1);
+    expect(blindResult.code).toBe(0);
+    expect(blindResult.lines.join("\n")).toMatch(/reshim/);
+  });
+});
+
+describe("finding mise without a shell (issue #170, reopened)", () => {
+  it("prefers MISE_BIN / MISE_INSTALL_PATH, then well-known locations", async () => {
+    const exists = (p: string) => p === "/custom/mise" || p === "/home/u/.local/bin/mise";
+    expect(await findMiseBin({ env: { MISE_BIN: "/custom/mise" }, homeDir: "/home/u", exists, probeInteractive: false })).toBe(
+      "/custom/mise",
+    );
+    expect(findMiseBinStatic({ env: {}, homeDir: "/home/u", exists })).toBe("/home/u/.local/bin/mise");
+    expect(miseStaticCandidates({ MISE_INSTALL_PATH: "/opt/mise" }, "/home/u")).toContain("/opt/mise/bin/mise");
+    expect(findMiseBinStatic({ env: {}, homeDir: "/home/none", exists: () => false })).toBeNull();
+  });
+
+  it("uses the interactive-shell PATH only as a last resort", async () => {
+    const found = await findMiseBin({
+      env: {},
+      homeDir: "/home/none",
+      exists: (p) => p === "/interactive/bin/mise",
+      inheritedPath: "/usr/bin:/bin",
+      interactivePath: "/interactive/bin:/usr/bin",
+    });
+    expect(found).toBe("/interactive/bin/mise");
+  });
+
+  it("isReshimOnlyFailure requires npm's success line and a mise reshim failure", () => {
+    expect(
+      isReshimOnlyFailure({ stdout: "changed 169 packages in 2s", stderr: "npm: line 76: mise: command not found", code: 127 }),
+    ).toBe(true);
+    expect(isReshimOnlyFailure({ stdout: "added 5 packages", stderr: "mise reshim failed", code: 1 })).toBe(true);
+    expect(isReshimOnlyFailure({ stdout: "", stderr: "mise: command not found", code: 127 })).toBe(false);
+    expect(isReshimOnlyFailure({ stdout: "changed 169 packages", stderr: "network down", code: 1 })).toBe(false);
+    expect(isReshimOnlyFailure({ stdout: "changed 169 packages", stderr: "", code: 0 })).toBe(false);
+  });
+
+  it("under a launchd-like env, the updater PATH finds mise in ~/.local/bin and the wrapper succeeds", async () => {
+    // launchd-like: minimal PATH, HOME set, no shell rc involvement.
+    const home = tmpDir("unvibe-launchd-home-");
+    const miseDir = path.join(home, ".local", "bin");
+    fs.mkdirSync(miseDir, { recursive: true });
+    makeExecutable(miseDir, "mise", "#!/bin/sh\nexit 0\n");
+    const npmDir = tmpDir("unvibe-launchd-npm-");
+    makeWrapperNpm(npmDir);
+    const silentDir = tmpDir("unvibe-launchd-shell-");
+    const silent = makeExecutable(silentDir, "silentsh", "#!/bin/sh\nexit 0\n");
+    const inheritedPath = [npmDir, "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
+    const updateEnv = await resolveUpdatePathEnv({
+      candidates: [silent],
+      inheritedPath,
+      homeDir: home,
+      env: { HOME: home },
+      timeoutMs: 1000,
+    });
+    expect(updateEnv.PATH.split(":")[0]).toBe(miseDir);
+    const prevPath = process.env.PATH;
+    process.env.PATH = inheritedPath;
+    try {
+      const res = await installRef(new RealCommandRunner(), "preview/feat-x", { env: updateEnv });
+      expect(res.code).toBe(0);
+      expect(res.stdout).toContain("changed 169 packages");
+    } finally {
+      process.env.PATH = prevPath;
+    }
   });
 });
 
