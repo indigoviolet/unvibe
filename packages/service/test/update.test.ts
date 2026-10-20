@@ -36,7 +36,7 @@ import {
   shortCommit,
 } from "../src/update/channels.js";
 import type { InstalledBuild, UpdateChannel } from "../src/update/channels.js";
-import { installPrefixForPackage, installRef, installSpec } from "../src/update/install.js";
+import { installPrefixForPackage, installRef, installSpec, stableNpmCwd } from "../src/update/install.js";
 
 function tmpDir(prefix: string): string {
   // realpath: macOS's tmpdir is a symlink (/var -> /private/var) and the code under test resolves it.
@@ -104,10 +104,21 @@ describe("channel names + install specs", () => {
     runner.enqueue({ cmd: "npm", stdout: "added 1 package", stderr: "", code: 0 });
     const res = await installRef(runner, "preview/feat-x");
     expect(res.code).toBe(0);
+    // Stable cwd (issue #42 regression): npm must not inherit a cwd
+    // inside the package it is replacing, which it deletes mid-install.
     expect(runner.calls).toEqual([
-      { cmd: "npm", opts: { args: ["install", "-g", "github:indigoviolet/unvibe#preview/feat-x"] } },
+      {
+        cmd: "npm",
+        opts: { args: ["install", "-g", "github:indigoviolet/unvibe#preview/feat-x"], cwd: stableNpmCwd() },
+      },
     ]);
     await expect(installRef(runner, "main")).rejects.toThrow();
+  });
+
+  it("picks a stable npm cwd that survives the install", () => {
+    expect(stableNpmCwd("/home/u")).toBe("/home/u");
+    expect(stableNpmCwd("")).toBe(os.tmpdir());
+    expect(path.isAbsolute(stableNpmCwd())).toBe(true);
   });
 
   it("pins --prefix when asked", async () => {

@@ -9,7 +9,20 @@
  */
 import type { CommandRunner, RunResult } from "../exec/index.js";
 import { UNVIBE_REPO, channelRef, isChannelName } from "./channels.js";
+import os from "node:os";
 import path from "node:path";
+
+/**
+ * Cwd for the npm spawn: somewhere stable that outlives the install.
+ * The caller's cwd can be inside the package being replaced (the
+ * service's own working directory during an in-app switch), which npm
+ * deletes mid-reify; a child launched from there can then die before
+ * it starts (`ENOENT uv_cwd`, issue #42 regression). The home dir is
+ * not npm's to move; tmpdir is the fallback when it is unknown.
+ */
+export function stableNpmCwd(homeDir: string = os.homedir()): string {
+  return homeDir || os.tmpdir();
+}
 
 /**
  * Test-only install-source override (`UNVIBE_UPDATE_INSTALL_SOURCE` = an
@@ -48,7 +61,7 @@ export async function installRef(
 ): Promise<RunResult> {
   const args = ["install", "-g", installSpec(channel)];
   if (opts.prefix) args.push("--prefix", opts.prefix);
-  return runner.run("npm", { args, env: opts.env });
+  return runner.run("npm", { args, cwd: stableNpmCwd(), env: opts.env });
 }
 
 /**

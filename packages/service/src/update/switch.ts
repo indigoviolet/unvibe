@@ -29,7 +29,7 @@ import {
   shortCommit,
   type InstalledBuild,
 } from "./channels.js";
-import { installPrefixForPackage, installRef, installSpec } from "./install.js";
+import { installPrefixForPackage, installRef, installSpec, stableNpmCwd } from "./install.js";
 
 export interface SwitchCoreRequest {
   runner: CommandRunner;
@@ -340,7 +340,7 @@ async function runSameChannelReinstall(
 /** `npm prefix -g` for mismatch messages; never throws. */
 async function npmGlobalPrefix(runner: CommandRunner, env?: Record<string, string | undefined>): Promise<string> {
   try {
-    const res = await runner.run("npm", { args: ["prefix", "-g"], env });
+    const res = await runner.run("npm", { args: ["prefix", "-g"], cwd: stableNpmCwd(), env });
     const out = res.stdout.trim();
     return out || "(empty)";
   } catch {
