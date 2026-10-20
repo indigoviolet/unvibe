@@ -121,6 +121,8 @@ export interface VersionStatus {
   rangeDiff: string;
   /** Epoch ms when the new version was fetched. */
   fetchedAt: number;
+  /** #179: the new version's diff is empty (no hunks to review). */
+  empty?: boolean;
 }
 
 /** Reader-pinned excerpt stored in the snapshot (PRD §8 "Pinned code"). */

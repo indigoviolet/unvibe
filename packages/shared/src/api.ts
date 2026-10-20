@@ -210,10 +210,10 @@ export interface CreateReviewRequest {
  * first. Only a step name, no progress protocol.
  */
 export interface IngestStatus {
-  status: "ready" | "loading" | "failed";
+  status: "ready" | "loading" | "failed" | "empty";
   /** What is being done while loading: "fetching" | "reading diff". */
   step?: string;
-  /** Failure text when status is "failed". */
+  /** Failure text when status is "failed"; the friendly message when "empty" (#179). */
   error?: string;
 }
 
@@ -238,6 +238,7 @@ export function assertReadySnapshot(snap: ReviewSnapshot): void {
   const st = ingestStatusOf(snap);
   if (st === "loading") throw new Error("the review is still opening");
   if (st === "failed") throw new Error(snap.ingest?.error ?? "the review couldn't be opened");
+  if (st === "empty") throw new Error(snap.ingest?.error ?? "No changes to review: the diff is empty.");
   throw new Error("the review is still opening");
 }
 
@@ -365,7 +366,7 @@ export interface ReviewSummary {
    * their marker, reopen to the loading/failed page, and can be removed
    * (failed: retry).
    */
-  ingestStatus: "ready" | "loading" | "failed";
+  ingestStatus: "ready" | "loading" | "failed" | "empty";
   /** #92: loading step ("fetching" | "reading diff") while ingestStatus is loading. */
   ingestStep?: string;
   /** #92: failure text while ingestStatus is failed. */

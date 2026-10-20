@@ -44,7 +44,7 @@ export function RedoGuideSection({ reviewId }: { reviewId: string }): React.JSX.
   if (repoId === null || ingestStatus === null) return null;
   // Never offered for the demo review; the review page's Retry owns
   // reviews that failed to open.
-  if (repoId === "demo" || ingestStatus === "failed") return null;
+  if (repoId === "demo" || ingestStatus === "failed" || ingestStatus === "empty") return null;
 
   const redo = async (): Promise<void> => {
     setBusy(true);

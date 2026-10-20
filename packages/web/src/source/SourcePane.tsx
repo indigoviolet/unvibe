@@ -71,11 +71,15 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
 
   // #92: no diff/description/comments while loading or failed (service also
   // 409s). After all hooks so the hook order never changes.
-  if (ingestStatus === "loading" || ingestStatus === "failed") {
+  if (ingestStatus === "loading" || ingestStatus === "failed" || ingestStatus === "empty") {
     return (
       <div className="doc">
         <p className="hint">
-          {ingestStatus === "loading" ? "The diff appears here once the review opens." : "No diff — the review couldn't be opened."}
+          {ingestStatus === "loading"
+            ? "The diff appears here once the review opens."
+            : ingestStatus === "empty"
+              ? "No diff — there are no changes to review."
+              : "No diff — the review couldn't be opened."}
         </p>
       </div>
     );
