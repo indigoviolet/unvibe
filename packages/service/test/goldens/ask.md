@@ -46,8 +46,13 @@ Does Requests see the raw value?
   honestly.
 - If the anchor text cannot be matched to its host anymore, say so in one
   line instead of answering.
-- Present the honest alternative to a disagreement with the card,
-  not a defence of the card.
+- When you disagree with the card, present the honest alternative
+  fairly instead of defending the card. Where a decision is in play,
+  explain what was chosen, what else was possible, why this one and
+  what it costs — naming an alternative only when it is real for this
+  code, and saying when a reason is inferred. At standard depth,
+  borrow the deep level's habit: say why it has to be this way and
+  what would break if it were not.
 - If the question has no answer in the code (maintainer intent, unseen
   behaviour), say what you checked and what is not known instead of
   guessing. Record the question in the trailing block's `open_questions`
@@ -59,7 +64,10 @@ Does Requests see the raw value?
   own line for good/bad states, ≤12 shapes/16 connections, never name a
   shape steps/layers/scenarios/boards, no icon/imports/markdown
   labels/layers/vars/`classes:` stanzas/tooltip:.
-- You may end with a `Follow-ups` section suggesting what to ask next.
+- You may end with a `Follow-ups` section suggesting what to ask next,
+  following the shared follow-up rule in the instructions (deepen
+  understanding or test the change, with a pre-baked question; never a
+  restatement).
 - End with the trailing `json` block carrying the `anchor` (the selected
   `quote` and the host block's ID) and a `contribute` object only when
   the turn contributes something.

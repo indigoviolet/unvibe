@@ -1215,8 +1215,12 @@ needed (that deviation is closed, not added).
 1. Ingest (PR detection, fetch, merge-base diff, IDs, classification,
    budget check, worktree) — met (`ingest/*`; 300-file ingest 0.15 s —
    ran).
-2. Reader (explore, problem/central/directions, hidden concepts,
-   `pin_context`) — met (`pipeline/runner.ts:879`, demo 17 cards — ran).
+2. Reader (explore, plotlines settled first, then problem / central idea
+   (one per plotline when several) / "How it's built up" / "Decisions and
+   alternatives" / directions, hidden concepts, `pin_context`) — met
+   (`pipeline/runner.ts:879`, demo 19 cards — ran; #198 explain-first:
+   L0 mission in `prompts/instructions.md`, neutral decisions card,
+   verdicts stay with the critic).
    Root cards stored once (#28): streamed cards and the final apply share
    one id scheme (`readerCardId`), the final reply replaces whatever was
    streamed, and text before the first `## ` card is dropped — met

@@ -1,9 +1,12 @@
 # Plotline assign
 
 The reader named the change's plotlines but did not see every hunk, so
-some hunks have no plotline yet. A plotline is a thread of change with
-its own purpose — the unit of a separate commit or stacked PR — never a
-file type: tests, docs and config belong to the thread they serve.
+some hunks have no plotline yet. A plotline's job is pedagogic: the
+plotlines split the change into a logical progression that shows how
+the feature is built up, step by step, so each unit can be understood
+on its own. A plotline is a thread of change with its own purpose —
+the unit of a separate commit or stacked PR — never a file type:
+tests, docs and config belong to the thread they serve.
 Assign each hunk below to exactly one of the plotlines, by closest fit
 to that purpose. You see only these hunks: do not rename the plotlines
 or invent new ones. A hunk that serves no thread (mechanical churn:

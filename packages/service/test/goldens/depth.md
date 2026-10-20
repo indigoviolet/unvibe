@@ -22,7 +22,10 @@ deep
 - `simple`: shorter sentences, no jargon without an immediate gloss, one
   idea per paragraph, and no assumed domain knowledge.
 - `standard`: the default — precise, cites the code, assumes a working
-  engineer.
+  engineer. Where the card explains a decision, keep what else was
+  possible and why this one (saying when a reason is inferred); borrow
+  the deep level's habit of saying why it has to be this way and what
+  would break if it were not.
 - `deep`: first principles — the underlying rule or invariant, why it has
   to be this way, what would break if it were not. At this level you may
   add one `::: principle` block after the paragraphs.

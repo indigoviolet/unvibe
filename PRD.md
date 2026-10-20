@@ -35,7 +35,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 ## 2. Goals and non-goals
 
 **Goals**
-1. Restate a change so the reader grasps the problem and the central idea within minutes.
+1. Explain a change so the reader grasps the problem and the central idea within minutes. Explanation comes first in everything the agents produce: the architecture the change builds on or changes, the decisions it makes, and the alternatives that were not taken, with why. A reason the author never stated is marked as inferred; a rationale is never invented. Explaining a decision is neutral — judging it belongs to the critic's findings, not to the explanation.
 2. Let the reader dig into anything (a phrase, a concept, a hunk), at whatever depth they need, without losing their place.
 3. Tie every explanation back to the exact code or text it came from, with links that are checked.
 4. Keep everything the reader and agents produce as a linked set of pages that later questions build on.
@@ -219,7 +219,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 
 **Files panel** (it scrolls with the diff):
 - a filter-as-you-type name box with a **Filter** dropdown beside it: one checkable row per file type (Source, Tests, Docs, Config, Generated, each with its file count), a **Reviewed** row and a **GitHub comments** visibility row; the button shows an active count whenever a non-default filter applies;
-- hunk interestingness scores and plotlines (#169, experiment): each score dot (hunk header, Files list, legend) and each plotline chip (hunk header, guide Plotlines box) is a selector — clicking it filters the diff to that score or plotline, clicking the active one again clears it, and a guide Plotlines entry also reveals the plotline's first hunk. While a score or plotline filter is on, the pinned toolbar shows an active-filter chip per dimension ("Plotline: <name> · N hidden ×" / "Score: <level> · N hidden ×") whose × clears that dimension. The filter state is remembered with the review; a reveal target the filter would hide still clears it. A plotline is a thread of change with its own purpose — the unit of a separate commit or stacked PR, never a file type (tests, docs and config belong to the thread they serve). Plotlines are listed in landing order, with a short "builds on" in the guide's Plotlines box when one depends on an earlier plotline;
+- hunk interestingness scores and plotlines (#169, experiment): each score dot (hunk header, Files list, legend) and each plotline chip (hunk header, guide Plotlines box) is a selector — clicking it filters the diff to that score or plotline, clicking the active one again clears it, and a guide Plotlines entry also reveals the plotline's first hunk. While a score or plotline filter is on, the pinned toolbar shows an active-filter chip per dimension ("Plotline: <name> · N hidden ×" / "Score: <level> · N hidden ×") whose × clears that dimension. The filter state is remembered with the review; a reveal target the filter would hide still clears it. A plotline is a thread of change with its own purpose — the unit of a separate commit or stacked PR, never a file type (tests, docs and config belong to the thread they serve). Its job is pedagogic: the plotlines split the change into a logical progression showing how it is built up, each unit understandable on its own, and each plotline's description says what that step adds to the progression. Plotlines are listed in landing order, with a short "builds on" in the guide's Plotlines box when one depends on an earlier plotline;
 - a progress bar of hunks reviewed;
 - a folder tree that compacts single-child folders, with +/− counts and reviewed/total per file. Clicking a file scrolls to it.
 
@@ -518,7 +518,7 @@ A new base is built when any of these happens:
    - create or reuse the worktree.
 2. **Reader** (main model, one session, cards streamed as they finish):
    - explores the repo;
-   - writes the problem card, the central-change card, and the "Go deeper" directions (title plus why);
+   - settles the plotlines first (a pedagogic progression: how the change is built up, each unit understandable on its own), then writes the problem card (including how the system worked before), the central-idea card (one per plotline when there are several), the "How it's built up" card walking the plotlines in landing order, the "Decisions and alternatives" card (each key choice, what else was possible, why this one, what it costs — neutral explanation; verdicts stay with the critic), and the "Go deeper" directions (title plus why);
    - makes a **hidden concept pass** (slug, title, one line, where mentioned);
    - **pins code** with a `pin_context(path, lines, why)` tool, the one tool only the reader gets.
 3. **Build the base** (§9.2).
@@ -573,6 +573,8 @@ A new base is built when any of these happens:
 **Diagrams:** decided as D2, rendered on the service by a user-installed `d2` binary; citations as `link:` on shapes (see `docs/d2-diagrams.md`). Superseded proposal (kept as history): agents were to write Mermaid, rendered on the page, with citation tokens allowed in node labels; the prototype used hand-drawn SVG.
 
 **Shared instructions:** `instructions` (L0) carries guidance shared by every task: every page card has a short title (§4.4), and replies never repeat what the reader already sees — no echo of the selection, the question, the card title or a diagram's caption. As a backstop the parser drops a leading body line that exactly echoes them (no retry, no repair turn).
+
+**Explanation first (the L0 mission):** every agent output helps the reader understand and critically evaluate the change. Explanation — the architecture behind the change, the decisions it makes, and the alternatives not taken, with why — comes before restatement detail. An alternative is named only when it is real for the code (a nearby pattern, an existing helper, an obvious other design), cited where it can be grounded; when the author's reason is not stated, the reply says it is inferred, and never invents one. Follow-up suggestions follow one shared rule: the next question that deepens understanding or tests the change, with a pre-baked question — never a restatement.
 
 ---
 

@@ -107,7 +107,7 @@ export interface Plotline {
   id: string;
   /** Short display name. */
   name: string;
-  /** One-line description. */
+  /** One line: what this step adds to the progression (issue #197). */
   description: string;
   /** Id of an earlier plotline this one builds on, when it depends on one. */
   buildsOn?: string;

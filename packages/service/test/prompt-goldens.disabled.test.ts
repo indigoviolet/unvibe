@@ -51,7 +51,11 @@ function goldenValues(): Record<string, RenderValues> {
     reader: { source, diff_inline: diff, repo_path: "/tmp/unvibe-wt/branch" },
     base_pack: { source, diff_inline: diff, pinned_code: pinned, guide, concepts, hunk_summaries: hunkSummaries },
     critic: {},
-    hunk_pass: { hunk: formatHunk(firstHunk), path: snap.files[0].path },
+    hunk_pass: {
+      hunk: formatHunk(firstHunk),
+      path: snap.files[0].path,
+      plotline: "Unfold folded values — normalize folded values before the headers are read",
+    },
     plotline_assign: {
       plotlines: "- retry-logic: Retry failed uploads — retries with backoff",
       hunks: "- h:conn:h111 src/conn.py: Adds a fast path that skips values without CRLF.",
