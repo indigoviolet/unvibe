@@ -618,6 +618,22 @@ async function checkEmptyAboveHunk(page: Page, step: string): Promise<void> {
   const bad = await page.evaluate(() => {
     const pane = document.getElementById("right");
     if (!pane || !pane.querySelector("table.diff")) return null;
+    // Issue #202: the pinned band backing (`.dband`) must never cover a
+    // file or hunk header — a header under it reads as a blank band
+    // above the first hunk, with no file header shown. (The filtered,
+    // split and tab-switch cases are covered end to end in J19.)
+    const band = pane.querySelector(".dband");
+    if (band) {
+      const br = band.getBoundingClientRect();
+      for (const h of pane.querySelectorAll(".dfile-h, .dhunk-h")) {
+        const r = h.getBoundingClientRect();
+        if (r.bottom <= br.top || r.top >= br.bottom) continue;
+        const hit = document.elementFromPoint(r.left + Math.min(200, r.width / 2), r.top + r.height / 2);
+        if (hit && band.contains(hit)) {
+          return `header covered by the pinned band backing in ${h.closest(".dfile")?.id ?? "?"}: ${h.className.toString().slice(0, 40)}`;
+        }
+      }
+    }
     const isEmptyBlock = (el: Element): boolean => {
       const r = el.getBoundingClientRect();
       if (r.height <= 8 || r.width <= 40) return false;
