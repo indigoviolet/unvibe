@@ -16,12 +16,21 @@
 // (`npx --yes npm@10`; `--npms 11,10` selects), into a temp prefix with a
 // FRESH isolated npm cache, then verified from OUTSIDE the repo: bin link,
 // doctor, start/status/stop, prompts + web shell, demo pipeline end to end,
-// readiness (agent executables), adapter bundles present, no lifecycle
-// script ran, no agent platform binary for this platform downloaded, one
-// outline request that must be answered by a loaded grammar (issue #157),
-// install time + size.
+// readiness (agent executables), adapter bundles present, no agent platform
+// binary for this platform downloaded, one outline request that must be
+// answered by a loaded grammar (issue #157), install time + size.
 //
-// The release tree needs no build and defines no lifecycle scripts, so npm's
+// Issue #42: the install runs with a fake HOME, a temp data dir and
+// `UNVIBE_POSTINSTALL_SETUP=1` (the install check "asks for" postinstall
+// setup despite CI), so the release `postinstall` must place the
+// `unvibe://` handler and the start-at-login unit under that home —
+// asserted by `checkSetupPlaced` — without running `unvibe setup` by
+// hand and without touching the real home. A final tarball phase with
+// `--ignore-scripts` asserts the install still succeeds (and places no
+// helper) when scripts are off; npm runs no script then, so no hint can
+// print — the manual `unvibe setup` path covers it.
+//
+// The release tree needs no build and defines no `prepare`, so npm's
 // git-URL handling (dangling symlinks / preparation races on npm 10/11 for
 // packages with `prepare`) is out of the picture by construction.
 import { spawnSync } from "node:child_process";
@@ -124,7 +133,7 @@ function s(secMs) {
  * node_modules anymore.)
  */
 function checkAdapterBundles(installedPkgDir, label) {
-  for (const f of ["packages/service/dist/index.js", "packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/codex.js", "packages/service/dist/update-helper.js"]) {
+  for (const f of ["packages/service/dist/index.js", "packages/service/dist/postinstall.js", "packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/codex.js", "packages/service/dist/update-helper.js"]) {
     const full = path.join(installedPkgDir, f);
     assert(fs.existsSync(full), `${label}: ships ${f}`);
   }
@@ -159,6 +168,40 @@ function checkGrammarFiles(installedPkgDir, label) {
   ]) {
     assert(fs.existsSync(path.join(installedPkgDir, f)), `${label}: ships ${f}`);
   }
+}
+
+/**
+ * Issue #42: after a plain `npm install -g` (no `unvibe setup` by hand),
+ * the postinstall must have placed the `unvibe://` handler and the
+ * start-at-login unit under the fake HOME, baked with the installed CLI
+ * path, and created the per-install token in the data dir.
+ */
+function checkSetupPlaced({ installedPkg, home, dataDir, label }) {
+  const cliPath = path.join(installedPkg, "packages/service/dist/index.js");
+  const read = (p) => {
+    try {
+      return fs.readFileSync(p, "utf8");
+    } catch {
+      return "";
+    }
+  };
+  if (process.platform === "darwin") {
+    const plist = path.join(home, "Applications", "Unvibe.app", "Contents", "Info.plist");
+    assert(fs.existsSync(plist), `${label}: postinstall placed the macOS helper app`);
+    assert(read(plist).includes("<string>unvibe</string>"), `${label}: helper app registers unvibe://`);
+    const unit = path.join(home, "Library", "LaunchAgents", "com.unvibe.service.plist");
+    assert(fs.existsSync(unit), `${label}: postinstall placed the launchd login unit`);
+    assert(read(unit).includes(cliPath), `${label}: launchd unit bakes the installed CLI path`);
+  } else {
+    const desktop = path.join(home, ".local", "share", "applications", "unvibe-open.desktop");
+    assert(fs.existsSync(desktop), `${label}: postinstall placed the Linux link handler`);
+    assert(read(desktop).includes(cliPath), `${label}: link handler bakes the installed CLI path`);
+    const unit = path.join(home, ".config", "systemd", "user", "unvibe.service");
+    assert(fs.existsSync(unit), `${label}: postinstall placed the systemd login unit`);
+    assert(read(unit).includes(cliPath), `${label}: systemd unit bakes the installed CLI path`);
+  }
+  const token = path.join(dataDir, "token");
+  assert(fs.existsSync(token) && read(token).trim().length > 0, `${label}: postinstall created the install token`);
 }
 
 /** No platform-binary tarball may have been fetched into this install's isolated cache. */
@@ -366,9 +409,9 @@ async function checkInstalledOutline({ port, token, label, env }) {
  * start/status/stop outside the repo, prompts + web shell, readiness agent
  * executables, demo pipeline end to end, adapter bundles, size + time.
  */
-async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
-  const HOME = path.join(TMP, `home-${label}`);
-  const DATA = path.join(TMP, `data-${label}`);
+async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, dataDir }) {
+  const HOME = home;
+  const DATA = dataDir;
   fs.mkdirSync(HOME, { recursive: true });
   const ENV = {
     ...process.env,
@@ -377,6 +420,9 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
     UNVIBE_PORT: String(port),
     UNVIBE_IDLE_MS: "0",
     UNVIBE_AGENT: "replay",
+    // No user session bus in the sandbox: the login unit is managed on
+    // disk, but start/stop exercise the direct-spawn fallback.
+    XDG_RUNTIME_DIR: path.join(TMP, "no-runtime"),
     PATH: `${path.join(prefix, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
   };
   const UNVIBE = path.join(prefix, "bin", "unvibe");
@@ -390,19 +436,22 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
     const real = fs.existsSync(installedPkg);
     assert(!isLink && real, `${label}: installed package is a real dir, not a symlink`);
   }
-  // No lifecycle scripts: the release package.json defines none, and npm
-  // must not have run any (would print `> pkg@ver <script>` lines).
+  // Lifecycle scripts: exactly the postinstall (issue #42), nothing else.
   let installedVersion = null;
   try {
     const pj = JSON.parse(fs.readFileSync(installedPkgJson, "utf8"));
     installedVersion = pj.version ?? null;
-    assert(!pj.scripts || Object.keys(pj.scripts).length === 0, `${label}: release package.json defines no scripts`);
+    assert(
+      JSON.stringify(pj.scripts) === JSON.stringify({ postinstall: "node packages/service/dist/postinstall.js" }),
+      `${label}: release package.json defines only the postinstall script`,
+    );
     assert(!pj.workspaces, `${label}: release package.json defines no workspaces`);
     assert(!pj.devDependencies, `${label}: release package.json has no devDependencies`);
   } catch {
     assert(false, `${label}: installed package.json parses`);
   }
-  assert(!/^> \S+ (postinstall|prepare|preinstall|install)\b/m.test(npmOut), `${label}: no lifecycle script ran during install`);
+  assert(!/^> \S+ (prepare|preinstall|prepack|install)\b/m.test(npmOut), `${label}: no prepare/preinstall ran during install`);
+  checkSetupPlaced({ installedPkg, home: HOME, dataDir: DATA, label });
   // The built service bundle must report the release version (for tag
   // builds the bundle is patched from the source version to the tag).
   if (installedVersion) {
@@ -542,22 +591,48 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut }) {
  * Run one literal install command with an isolated npm cache, timing it.
  * Returns { code, out, ms }.
  */
-function installLiteral({ npmMajor, installArgs, prefix, label }) {
+function installLiteral({ npmMajor, installArgs, prefix, label, home, dataDir, port, ignoreScripts = false, installLinks = false }) {
   const cacheDir = path.join(TMP, `cache-${label}`);
   fs.mkdirSync(cacheDir, { recursive: true });
+  fs.mkdirSync(home, { recursive: true });
   const [cmd, ...rest] = npmArgv(npmMajor);
   const ENV = {
     ...process.env,
     npm_config_cache: cacheDir,
-    PATH: `${path.join(prefix, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
+    HOME: home,
+    UNVIBE_DATA_DIR: dataDir,
+    UNVIBE_PORT: String(port),
+    // Issue #42: the check asks for postinstall setup despite CI, with a
+    // fake HOME so nothing lands in the real one. No session bus, so the
+    // login unit is written but no service is started by the manager.
+    UNVIBE_POSTINSTALL_SETUP: "1",
+    XDG_RUNTIME_DIR: path.join(TMP, "no-runtime"),
+    // The real node bin first: with a fake HOME, a version-manager shim
+    // later in PATH cannot resolve its toolset and `node` in lifecycle
+    // scripts fails to start (seen in npm's git-dep preparation, whose
+    // nested install inherits this env).
+    PATH: `${path.join(prefix, "bin")}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? ""}`,
   };
   const t0 = Date.now();
-  const r = spawnSync(cmd, [...rest, "install", "-g", ...installArgs, "--prefix", prefix], {
-    cwd: os.tmpdir(),
-    env: ENV,
-    encoding: "utf8",
-    timeout: 600_000,
-  });
+  const r = spawnSync(
+    cmd,
+    [
+      ...rest,
+      "install",
+      "-g",
+      ...installArgs,
+      "--prefix",
+      prefix,
+      ...(ignoreScripts ? ["--ignore-scripts"] : []),
+      ...(installLinks ? ["--install-links=true"] : []),
+    ],
+    {
+      cwd: os.tmpdir(),
+      env: ENV,
+      encoding: "utf8",
+      timeout: 600_000,
+    },
+  );
   const ms = Date.now() - t0;
   return { code: r.status ?? 1, out: (r.stdout ?? "") + (r.stderr ?? ""), ms, cacheDir };
 }
@@ -566,6 +641,8 @@ async function phaseTarball(npmMajor, tarballPath, port) {
   const label = `tarball-npm${npmMajor}`;
   console.log(`--- ${label}: npm ${npmVersion(npmMajor, process.env)} ---`);
   const PREFIX = path.join(TMP, `prefix-${label}`);
+  const home = path.join(TMP, `home-${label}`);
+  const dataDir = path.join(TMP, `data-${label}`);
   fs.mkdirSync(PREFIX, { recursive: true });
   // Literal README command (tarball URL variant).
   const { code, out, ms, cacheDir } = installLiteral({
@@ -573,12 +650,15 @@ async function phaseTarball(npmMajor, tarballPath, port) {
     installArgs: [tarballPath],
     prefix: PREFIX,
     label,
+    home,
+    dataDir,
+    port,
   });
   if (code !== 0) console.error(out.slice(-3000));
   assert(code === 0, `${label}: npm install -g <tarball> --prefix (exit ${code})`);
   if (code !== 0) return;
   console.log(`${label}: install time ${s(ms)}`);
-  await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out });
+  await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out, home, dataDir });
   fs.rmSync(PREFIX, { recursive: true, force: true });
 }
 
@@ -586,20 +666,69 @@ async function phaseGit(npmMajor, bareRepo, port) {
   const label = `git-${RELEASE_REF}-npm${npmMajor}`;
   console.log(`--- ${label}: npm ${npmVersion(npmMajor, process.env)} (ref ${RELEASE_REF}) ---`);
   const PREFIX = path.join(TMP, `prefix-${label}`);
+  const home = path.join(TMP, `home-${label}`);
+  const dataDir = path.join(TMP, `data-${label}`);
   fs.mkdirSync(PREFIX, { recursive: true });
   // Literal README command (git-ref variant); git+file://<bare>#<ref>
   // stands in for github:<org>/unvibe#<ref> with no network to GitHub.
+  // --install-links=true is check-only: a local git+file source is
+  // otherwise *symlinked* into the prefix once the package carries an
+  // install script (npm's directory-dep handling), and the link target
+  // — the preparation clone — is deleted on cleanup, leaving a dangling
+  // install. Remote git (what github: uses) always copies, as does the
+  // tarball; this flag makes the local stand-in behave the same way.
+  // Users' own commands keep no extra flags.
   const { code, out, ms, cacheDir } = installLiteral({
     npmMajor,
     installArgs: [`git+file://${bareRepo}#${RELEASE_REF}`],
     prefix: PREFIX,
     label,
+    home,
+    dataDir,
+    port,
+    installLinks: true,
   });
   if (code !== 0) console.error(out.slice(-3000));
   assert(code === 0, `${label}: npm install -g git+file://<bare>#${RELEASE_REF} --prefix (exit ${code})`);
   if (code !== 0) return;
   console.log(`${label}: install time ${s(ms)}`);
-  await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out });
+  await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out, home, dataDir });
+  fs.rmSync(PREFIX, { recursive: true, force: true });
+}
+
+/**
+ * Issue #42: with `--ignore-scripts` npm runs no postinstall, so the
+ * install must still succeed and the binary must work; no helper is
+ * placed (the user runs `unvibe setup` by hand — npm prints no hint
+ * because no script ran to print one). One npm-11 tarball install only.
+ */
+async function phaseIgnoreScripts(tarballPath, port) {
+  const label = "tarball-ignore-scripts";
+  console.log(`--- ${label}: npm ${npmVersion("11", process.env)} ---`);
+  const PREFIX = path.join(TMP, `prefix-${label}`);
+  const home = path.join(TMP, `home-${label}`);
+  const dataDir = path.join(TMP, `data-${label}`);
+  fs.mkdirSync(PREFIX, { recursive: true });
+  const { code, out } = installLiteral({
+    npmMajor: "11",
+    installArgs: [tarballPath],
+    prefix: PREFIX,
+    label,
+    home,
+    dataDir,
+    port,
+    ignoreScripts: true,
+  });
+  if (code !== 0) console.error(out.slice(-3000));
+  assert(code === 0, `${label}: npm install -g --ignore-scripts exits 0 (exit ${code})`);
+  if (code !== 0) return;
+  const bin = path.join(PREFIX, "bin", "unvibe");
+  assert(fs.existsSync(bin), `${label}: unvibe bin linked with scripts ignored`);
+  const handler =
+    process.platform === "darwin"
+      ? path.join(home, "Applications", "Unvibe.app")
+      : path.join(home, ".local", "share", "applications", "unvibe-open.desktop");
+  assert(!fs.existsSync(handler), `${label}: no helper placed with scripts ignored (run \`unvibe setup\`)`);
   fs.rmSync(PREFIX, { recursive: true, force: true });
 }
 
@@ -639,6 +768,10 @@ const main = async () => {
       await phaseGit(npmMajor, BARE, port);
       port += 10;
     }
+  }
+  if (PHASES.includes("tarball")) {
+    await phaseIgnoreScripts(tarballPath, port);
+    port += 10;
   }
   if (failures > 0) {
     console.error(`${failures} assertion(s) failed (work dir removed: ${TMP})`);
