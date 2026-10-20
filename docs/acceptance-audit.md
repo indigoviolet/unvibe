@@ -2325,6 +2325,17 @@ hunk coverage) is reported for a separate issue, not fixed here.
   failed + retry + remove, restart, dedupe, pipeline-after-ingest, old-row
   ready), `GuideLoading.test.tsx`, `e2e/open-review.spec.ts` (mock loading
   → guide, failing → Retry).
+- **#179 (empty diff):** ingest with no hunks (and no binary change) ends
+  in a distinct `ingest: {status: "empty"}` outcome — "No changes to
+  review" with the PR-merged / branch-equals-base reason — instead of a
+  ready review with 0 hunks. The pipeline never starts for an empty diff;
+  Retry (re-ingest) and Remove work as for #92's failed state, and the
+  start page shows the message with a "no changes" tag. A refresh that
+  empties the diff records `versionStatus.empty`, shows the same message
+  in the banner and diff (no Update offered), and the update pass refuses
+  with 409 so no agent time is spent. Evidence:
+  `test/reviews-empty-diff.test.ts`, `GuideLoading.test.tsx` (EmptyOpen),
+  `e2e/journeys/j18-empty-diff.spec.ts`.
 
 ## Addendum: #178 / #112 (branch `fix/178-112-code-citations`)
 
