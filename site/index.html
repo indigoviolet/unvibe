@@ -25,8 +25,8 @@
 <h2 id="install">Install</h2>
 <p>You need Node 24 or newer, <code>git</code>, and <code>gh</code> logged in (for pull requests and submitting; local branches work without it). For the guide itself, the <code>claude</code> and/or <code>codex</code> command-line tools, installed and logged in. Diagrams need the <code>d2</code> program; without it everything else works. Unvibe runs on macOS and Linux.</p>
 <pre><code>npm install -g github:indigoviolet/unvibe#release
-unvibe setup</code></pre>
-<p><code>setup</code> starts the service at every login and prints a link with your token — open it once to connect the browser, then bookmark the plain address:</p>
+unvibe open</code></pre>
+<p>The install runs setup itself: it starts the service at every login and places the <code>unvibe://</code> link handler. <code>unvibe open</code> prints a link with your token — open it once to connect the browser, then bookmark the plain address:</p>
 <pre><code>http://unvibe.localhost:4517</code></pre>
 <p>The bookmark keeps working across browser restarts.</p>
 
