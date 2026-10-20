@@ -1008,7 +1008,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const hunkText = this.formatHunkForPrompt(snapshot, found.file.fileKey, found.hunk.contentHash);
     const prompt = withReplayMark(
-      this.render("hunk_pass", { hunk: hunkText, path: found.file.path }),
+      this.render("hunk_pass", { hunk: hunkText, path: found.file.path, plotline: this.plotlineForHunk(snapshot, contentHash) }),
       isReplayRunner(this.opts.runner)
         ? { kind: "hunk", key: this.replayKeyForHunk(snapshot, found.file.fileKey, contentHash) ?? undefined }
         : undefined,
@@ -2276,7 +2276,7 @@ export class Pipeline {
     const body = cited ? `${hunkText}\n\nCITED-BY-GUIDE` : hunkText;
     const replayKey = this.replayKeyForHunk(snapshot, file.fileKey, hunk.contentHash);
     const prompt = withReplayMark(
-      this.render("hunk_pass", { hunk: body, path: file.path }),
+      this.render("hunk_pass", { hunk: body, path: file.path, plotline: this.plotlineForHunk(snapshot, hunk.contentHash) }),
       isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
     );
     return this.opts.jobs.enqueue({
@@ -2663,6 +2663,18 @@ export class Pipeline {
   }
 
   // -- helpers --------------------------------------------------------
+
+  /**
+   * Issue #198: the hunk's plotline name and purpose for the hunk-pass
+   * prompt, when the reader has assigned one; a plain "none yet" line
+   * otherwise (the ingest-time pass runs before the reader).
+   */
+  private plotlineForHunk(snapshot: ReviewSnapshot, contentHash: string): string {
+    const id = snapshot.hunkStates.find((s) => s.contentHash === contentHash)?.plotline;
+    const plotline = id ? (snapshot.plotlines ?? []).find((p) => p.id === id) : undefined;
+    if (!plotline) return "(none assigned yet)";
+    return plotline.description ? `${plotline.name} — ${plotline.description}` : plotline.name;
+  }
 
   private formatHunkForPrompt(snapshot: ReviewSnapshot, fileKey: string, contentHash: string): string {
     const file = snapshot.files.find((f) => f.fileKey === fileKey);

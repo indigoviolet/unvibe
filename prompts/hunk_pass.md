@@ -1,7 +1,7 @@
 ---
 role: user
 tier: small
-variables: [hunk, path]
+variables: [hunk, path, plotline]
 ---
 
 # Hunk pass
@@ -13,6 +13,14 @@ change.
 ## File
 
 {{path}}
+
+## Plotline
+
+{{plotline}}
+
+When a plotline is named, let the summary say the hunk's role in that
+step of the progression where that fits in one line; when none is named
+yet, summarise the hunk on its own.
 
 ## Hunk
 

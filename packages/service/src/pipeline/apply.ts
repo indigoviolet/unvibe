@@ -43,12 +43,14 @@ export interface ReaderApply {
  * card a second time (#28).
  */
 export function readerCardId(index: number, cardIds: string[] = []): string {
-  return cardIds[index] ?? (index === 0 ? "problem" : index === 1 ? "central" : `reader-${index}`);
+  // Issue #198: the reader's settled order is problem, central idea(s),
+  // "How it's built up", "Decisions and alternatives".
+  return cardIds[index] ?? (index === 0 ? "problem" : index === 1 ? "central" : index === 2 ? "buildup" : index === 3 ? "decisions" : `reader-${index}`);
 }
 
 /** True for ids `readerCardId` hands out when the reply names none. */
 export function isDefaultReaderCardId(id: string): boolean {
-  return id === "problem" || id === "central" || /^reader-\d+$/.test(id);
+  return id === "problem" || id === "central" || id === "buildup" || id === "decisions" || /^reader-\d+$/.test(id);
 }
 
 /**
