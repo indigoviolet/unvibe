@@ -55,7 +55,7 @@ const SECOND_ANSWER = `Second answer body about ordering.
 
 /** Fake that records the MCP servers handed to every started session. */
 class RecordingFake extends FakeAgentRunner {
-  starts: { sessionId: string; mcpServers: McpServerConfig[] }[] = [];
+  mcpStarts: { sessionId: string; mcpServers: McpServerConfig[] }[] = [];
   override async start(opts: {
     provider: string;
     model: string;
@@ -64,15 +64,15 @@ class RecordingFake extends FakeAgentRunner {
     mcpServers: McpServerConfig[];
   }): Promise<Session> {
     const session = await super.start(opts);
-    this.starts.push({ sessionId: session.id, mcpServers: opts.mcpServers });
+    this.mcpStarts.push({ sessionId: session.id, mcpServers: opts.mcpServers });
     return session;
   }
   override async fork(session: Session): Promise<Session> {
     // ACP forks inherit the parent's MCP servers (#124); mirror that so
     // the recorded fork start carries the fork's MCP URL like production.
     const child = await super.fork(session);
-    const parent = this.starts.find((s) => s.sessionId === session.id);
-    const rec = this.starts.find((s) => s.sessionId === child.id);
+    const parent = this.mcpStarts.find((s) => s.sessionId === session.id);
+    const rec = this.mcpStarts.find((s) => s.sessionId === child.id);
     if (rec && parent) rec.mcpServers = parent.mcpServers;
     return child;
   }
@@ -182,7 +182,7 @@ describe("conversation MCP connection across turns", () => {
       expect(sessionId).toBeTruthy();
       // The fork's own secret (not the reader's per-attempt one, which
       // is revoked when its job ends).
-      const forkStart = agents.starts.find((s) => s.sessionId === sessionId);
+      const forkStart = agents.mcpStarts.find((s) => s.sessionId === sessionId);
       const forkSecret = forkStart ? secretOf(forkStart.mcpServers) : null;
       expect(forkSecret).toBeTruthy();
       // Issue #174: the fork shares the base's secret (ACP forks inherit

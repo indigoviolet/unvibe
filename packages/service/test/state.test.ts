@@ -62,6 +62,8 @@ function makeSnapshot(rev = 1): ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],

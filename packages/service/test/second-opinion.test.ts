@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { AddressInfo } from "node:net";
-import type { ReviewSnapshot } from "@unvibe/shared";
+import type { Job, ReviewSnapshot } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { FakeCommandRunner } from "../src/exec/runner.js";
 import { McpRegistry } from "../src/mcp/index.js";
@@ -31,6 +31,12 @@ import { setupReview } from "./m6-helpers.js";
 const SECOND_REPLY = (verdict: string): string =>
   `Independent check. The helper handles the fold. [[diff:a-py:1-2]]\n\n` +
   `\`\`\`json\n{"secondOpinion": {"verdict": "${verdict}", "reasoning": "Checked the helper.", "missed": "Nothing."}}\n\`\`\`\n`;
+
+/** These tests expect a fresh (or deduped) job, never a stored-result reuse. */
+function freshJob(job: Job | { reused: true }): Job {
+  if (!("id" in job)) throw new Error("expected a job, got a reused second opinion");
+  return job;
+}
 
 function fakeWithVerdict(verdict = "agrees"): FakeAgentRunner {
   return new FakeAgentRunner([
@@ -59,7 +65,6 @@ function cardSnapshot(): ReviewSnapshot["pages"] {
           pageId: "root",
           title: "Central",
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: [
@@ -109,7 +114,6 @@ describe("blind topic (PRD §4.10)", () => {
               pageId: "f-lf",
               title: "Evidence",
               level: "standard",
-              read: false,
               collapsed: false,
               revision: 1,
               blocks: [
@@ -127,7 +131,6 @@ describe("blind topic (PRD §4.10)", () => {
               pageId: "f-lf",
               title: "Assessment",
               level: "standard",
-              read: false,
               collapsed: false,
               revision: 1,
               blocks: [
@@ -201,7 +204,6 @@ describe("context isolation (PRD §12)", () => {
               pageId: "root",
               title: "Central GUIDE-PROBE-XYZ",
               level: "standard",
-              read: false,
               collapsed: false,
               revision: 1,
               blocks: [
@@ -230,7 +232,6 @@ describe("context isolation (PRD §12)", () => {
               pageId: "f-other",
               title: "Evidence",
               level: "standard",
-              read: false,
               collapsed: false,
               revision: 1,
               blocks: [
@@ -285,7 +286,7 @@ describe("MCP search_review restriction (PRD §12)", () => {
           headSha: "abc123",
           hunks: [],
           cards: [{ id: "c-central", title: "Central change", text: "GUIDE-SECRET backoff in src/conn.py" }],
-          annotations: [{ id: "a1", type: "thread", anchorSummary: "src/conn.py:148", text: "THREAD-SECRET why backoff?" }],
+          annotations: [{ id: "a1", type: "comment", anchorSummary: "src/conn.py:148", text: "THREAD-SECRET why backoff?" }],
           contributions: [{ id: "k1", sourceSession: "s1", text: "CONTRIB-SECRET fact" }],
           description: [{ id: "d1", text: "DESC-VISIBLE this PR adds backoff" }],
         }),
@@ -393,7 +394,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
     };
     const files = [sourceFile()];
     const description = descriptionFor("First para.\n\nSecond para.\n");
-    writeReviewRows(ctx.db, repo.id, { review, version, files, description, worktreePath: "/tmp" });
+    writeReviewRows(ctx.db, repo.id, { review, version, files, description, commits: [], title: review.branch, worktreePath: "/tmp" });
     ctx.reviews.putSnapshot(reviewId, {
       review,
       version,
@@ -403,6 +404,8 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
       pages,
       annotations: [],
       hunkStates: [],
+      fileStates: [],
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
       jobs: [],
       contributions: [],
       logTail: [],
@@ -435,7 +438,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
     try {
       const agents = fakeWithVerdict("agrees");
       const deps = depsFor(s, agents);
-      const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      const job = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
       if (!("id" in job)) throw new Error("first run should enqueue a job");
       expect(job.kind).toBe("second-opinion");
       expect(job.provider).toBe(s.ctx.settings.get().secondOpinion.provider);
@@ -505,7 +508,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
           Promise.resolve({ models: (p === "claude" ? liveClaude : liveCodex).map(norm), defaultId: null }),
       };
       const deps = { ...depsFor(s, agents), models };
-      const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      const job = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
       if (!("id" in job)) throw new Error("expected a job");
       expect(job.provider).toBe("codex");
       expect(job.model).toBe("gpt-6-sol");
@@ -523,7 +526,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
     const s = await setup();
     try {
       const deps = depsFor(s, fakeWithVerdict("partly"));
-      const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "blind" });
+      const job = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "blind" }));
       await s.ctx.jobs.drain(10000);
       const done = s.ctx.jobs.get(job.id);
       if (done?.state !== "done") console.log("second-opinion job error:", done?.error);
@@ -565,11 +568,11 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
     try {
       const agents = fakeWithVerdict();
       const deps = depsFor(s, agents);
-      const j1 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
-      const j2 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      const j1 = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
+      const j2 = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
       expect(j2.id).toBe(j1.id);
       // Different mode is a different job.
-      const j3 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "blind" });
+      const j3 = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "blind" }));
       expect(j3.id).not.toBe(j1.id);
       await s.ctx.jobs.drain(10000);
     } finally {
@@ -602,7 +605,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
         yield { type: "done", stopReason: "end_turn" };
       }) as FakeAgentRunner["prompt"];
       const deps = depsFor(s, agents);
-      const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      const job = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
       await new Promise((r) => setTimeout(r, 60));
       s.ctx.jobs.cancel(job.id);
       await s.ctx.jobs.drain(10000).catch(() => {});
@@ -650,7 +653,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
       const pipeline = { opts: deps } as unknown as Parameters<typeof removeSecondOpinionAction>[0];
 
       // First run completes and stores its result.
-      const j1 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      const j1 = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
       if (!("id" in j1)) throw new Error("first run should enqueue a job");
       await s.ctx.jobs.drain(10000);
       expect(s.ctx.jobs.get(j1.id)?.state).toBe("done");
@@ -666,7 +669,7 @@ describe("result storage, replacement, survival, dedupe, cancel", () => {
         secondOpinion: { provider: cur.secondOpinion.provider, model: `${cur.secondOpinion.model}-rerun`, effort: cur.secondOpinion.effort },
       });
       holdRerun = true;
-      const j2 = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+      const j2 = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
       if (!("id" in j2)) throw new Error("re-run should enqueue a job, not reuse");
       const start = Date.now();
       while (!rerunTurnStarted) {
@@ -771,7 +774,7 @@ describe("reasoning diagrams (#145)", () => {
     };
     const files = [sourceFile()];
     const description = descriptionFor("First para.\n\nSecond para.\n");
-    writeReviewRows(ctx.db, repo.id, { review, version, files, description, worktreePath: "/tmp" });
+    writeReviewRows(ctx.db, repo.id, { review, version, files, description, commits: [], title: review.branch, worktreePath: "/tmp" });
     ctx.reviews.putSnapshot(reviewId, {
       review,
       version,
@@ -781,6 +784,8 @@ describe("reasoning diagrams (#145)", () => {
       pages: cardSnapshot(),
       annotations: [],
       hunkStates: [],
+      fileStates: [],
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
       jobs: [],
       contributions: [],
       logTail: [],
@@ -825,7 +830,7 @@ describe("reasoning diagrams (#145)", () => {
       const { s, turnAgents, appAgents } = await setupWithTurn(soEvents(SO_BAD_DIAGRAM), soEvents(SO_FIXED_DIAGRAM));
       try {
         const deps = depsForDiagram(s, turnAgents);
-        const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+        const job = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
         if (!("id" in job)) throw new Error("expected a job");
         await s.ctx.jobs.drain(30000);
         expect(s.ctx.jobs.get(job.id)?.state, `job error: ${s.ctx.jobs.get(job.id)?.error}`).toBe("done");
@@ -867,7 +872,7 @@ describe("reasoning diagrams (#145)", () => {
       );
       try {
         const deps = depsForDiagram(s, turnAgents);
-        const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" });
+        const job = freshJob(await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "central", mode: "check" }));
         if (!("id" in job)) throw new Error("expected a job");
         await s.ctx.jobs.drain(30000);
         expect(s.ctx.jobs.get(job.id)?.state, `job error: ${s.ctx.jobs.get(job.id)?.error}`).toBe("done");

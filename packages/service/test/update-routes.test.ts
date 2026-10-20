@@ -357,7 +357,7 @@ describe("update switch", () => {
   it("force: true skips the jobs refusal and records the interrupted count", async () => {
     const jobs = new JobQueue();
     jobs.enqueue({
-      kind: "explain",
+      kind: "ask",
       provider: "claude",
       model: "m",
       effort: "",

@@ -82,7 +82,6 @@ function card(id: string, standard: string): Card {
     pageId: "root",
     title: id,
     level: "standard",
-    read: false,
     collapsed: false,
     revision: 1,
     blocks: [{ type: "paragraph", id: `b-${id}-1`, text: { standard }, citations: [] }],
@@ -93,7 +92,7 @@ function card(id: string, standard: string): Card {
 function thread(id: string, agentText: string, open = true): Annotation {
   return {
     id,
-    type: "thread",
+    type: "comment",
     anchor: {
       host: { kind: "diff-line", fileKey: "a-py", line: 2 },
       quotedText: "y = 2",
@@ -108,7 +107,7 @@ function thread(id: string, agentText: string, open = true): Annotation {
       { who: "ai", text: agentText },
     ],
     post: false,
-    note: false,
+    pinned: false,
   };
 }
 
@@ -143,7 +142,7 @@ async function setupSharedCtx(
   };
   const files = opts.files ?? [sourceFile()];
   const description = descriptionFor("First para.\n\nSecond para.\n");
-  writeReviewRows(ctx.db, repo.id, { review, version, files, description, worktreePath: "/tmp" });
+  writeReviewRows(ctx.db, repo.id, { review, version, files, description, commits: [], title: review.branch, worktreePath: "/tmp" });
   const snapshot: ReviewSnapshot = {
     review,
     version,
@@ -155,6 +154,8 @@ async function setupSharedCtx(
     ],
     annotations: opts.annotations ?? [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -363,8 +364,8 @@ describe("batch append vs change list: forks before/after a batch", () => {
       { match: "", events: [{ type: "done", stopReason: "end_turn" }] },
     ]);
     const mgr = new SessionManager({ runner: agents, clock: new ManualClock(1000) });
-    const key = { reviewId: "r1", reviewVersion: "v1", guideRevision: "g1", provider: "p", model: "m" };
-    const base = await mgr.getBase({ key, cwd: "/r", systemPrompt: "s", mcpServers: [], pack: "BASE PACK" });
+    const key = { reviewId: "r1", reviewVersion: "v1", guideRevision: "g1", provider: "p", model: "m", access: "lockdown" as const, effort: "" };
+    const base = await mgr.getBase({ key, cwd: "/r", systemPrompt: "s", readOnly: true, mcpServers: [], pack: "BASE PACK" });
 
     const forkBefore = await mgr.forkConversation(base.key, "hello");
     expect(mgr.lastSeen(forkBefore.session.id)).toBe(0);
@@ -866,7 +867,6 @@ describe("isolation (PRD §12)", () => {
               pageId: "root",
               title: "T",
               level: "standard",
-              read: false,
               collapsed: false,
               revision: 1,
               blocks: [
@@ -884,6 +884,8 @@ describe("isolation (PRD §12)", () => {
       ],
       annotations: [],
       hunkStates: [],
+      fileStates: [],
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
       jobs: [],
       contributions: [
         {
@@ -895,6 +897,7 @@ describe("isolation (PRD §12)", () => {
       ],
       logTail: [{ seq: 1, kind: "thread-summary", payload: { summary: "LOG-PROBE settled-thread summary line" }, scope: { scope: "global" } }],
       rev: 1,
+      ingest: { status: "ready" },
     });
     const expanded = expandAll(lib, snap);
     for (const name of ["second_opinion_blind", "second_opinion_check"]) {
@@ -992,6 +995,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
             type: "comment",
             anchor: { host: { kind: "diff-line", fileKey: firstFile.fileKey, line }, quotedText: "q", prefix: "", suffix: "", position: line, version: 1 },
             open: false,
+            pinned: false,
             messages: [
               { who: "you", text: "What about A?" },
               { who: "ai", text: "SETTLED-A-SUMMARY the A thread concluded first.", suggested: true },
@@ -1003,6 +1007,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
             type: "comment",
             anchor: { host: { kind: "diff-line", fileKey: firstFile.fileKey, line }, quotedText: "q", prefix: "", suffix: "", position: line, version: 1 },
             open: false,
+            pinned: false,
             messages: [
               { who: "you", text: "What about B?" },
               { who: "ai", text: "SETTLED-B-SUMMARY the B thread concluded second.", suggested: true },

@@ -267,6 +267,8 @@ describe("pipeline failure paths (scripted fakes)", () => {
       pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
       annotations: [],
       hunkStates: [],
+      fileStates: [],
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
       jobs: [],
       contributions: [],
       logTail: [],
@@ -506,7 +508,6 @@ describe("pipeline failure paths (scripted fakes)", () => {
           pageId: "root",
           title: "Central",
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: [{ type: "paragraph", id: "b1", text: { standard: "Does [[diff:a-py:1-2]]" }, citations: [{ target: "diff:a-py:1-2" }] }],
@@ -514,6 +515,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
         });
       });
       const job = await ctx.pipeline.summarizeHunk(id, "h111");
+      if (!("id" in job)) throw new Error("expected a fresh summarize job");
       await ctx.jobs.drain(5000);
       expect(ctx.jobs.get(job.id)?.state).toBe("done");
       const snap = ctx.reviews.getSnapshot(id)!;
@@ -539,6 +541,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
     try {
       const id = await makeDemoReview(ctx);
       const job = await ctx.pipeline.summarizeHunk(id, "h111");
+      if (!("id" in job)) throw new Error("expected a fresh summarize job");
       if (!("id" in job)) throw new Error("expected a job");
       expect(job.provider).toBe("codex");
       expect(job.model).toBe("gpt-6-luna");
@@ -693,6 +696,8 @@ describe("reader pinned code (#37)", () => {
           version,
           files,
           description,
+          commits: [],
+          title: review.branch,
           worktreePath: os.tmpdir(),
         });
         ctx.reviews.putSnapshot(reviewId, {
@@ -704,6 +709,8 @@ describe("reader pinned code (#37)", () => {
           pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
           annotations: [],
           hunkStates: [],
+          fileStates: [],
+          viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
           jobs: [],
           contributions: [],
           logTail: [],
@@ -825,6 +832,8 @@ describe("reader pinned code (#37)", () => {
           version,
           files,
           description,
+          commits: [],
+          title: review.branch,
           worktreePath: os.tmpdir(),
         });
         ctx.reviews.putSnapshot(reviewId, {
@@ -832,9 +841,12 @@ describe("reader pinned code (#37)", () => {
           version,
           files,
           description,
+          ingest: { status: "ready" },
           pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
           annotations: [],
           hunkStates: [],
+          fileStates: [],
+          viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
           jobs: [],
           contributions: [],
           logTail: [],

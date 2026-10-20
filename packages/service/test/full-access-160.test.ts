@@ -338,16 +338,11 @@ describe("ACP sessions per posture (fake transport)", () => {
     const runner = new AcpAgentRunner({
       settleMs: 0,
       factories: {
-        claude: (async (provider, readOnly) => {
-          const t = (await inner(provider, readOnly)) as unknown as {
-            caller: unknown;
-            onDeath: Promise<void>;
-            dispose: () => void;
-            agentRequest: (method: string, params: unknown) => Promise<unknown>;
-          };
+        claude: async (provider, readOnly) => {
+          const t = await inner(provider, readOnly);
           seen.push(t);
           return t;
-        }),
+        },
       },
     });
     // A live full-access session on this transport: the permission
@@ -495,6 +490,7 @@ describe("queue: access stamp, tool record, after-run hook", () => {
       provider: "claude",
       model: "m",
       priority: 10,
+      effort: "",
       run: async (ctx) => {
         ctx.reportTool("Bash", "git log");
         ctx.reportTool("Read");
@@ -525,6 +521,7 @@ describe("queue: access stamp, tool record, after-run hook", () => {
       provider: "claude",
       model: "m",
       priority: 10,
+      effort: "",
       run: async () => {},
     });
     expect(job.accessMode).toBeUndefined();
@@ -559,7 +556,7 @@ describe("verifyCheckoutAfterJob", () => {
     const wt = path.join(dataDir, "worktrees", "rv1");
     fs.mkdirSync(wt, { recursive: true });
     const commands = new FakeCommandRunner();
-    const job: Job = { id: "j", kind: "ask", model: "m", priority: 1, state: "running" };
+    const job: Job = { id: "j", kind: "ask", model: "m", effort: "", priority: 1, state: "running" };
     await verifyCheckoutAfterJob(depsFor(store, dataDir, commands), "rv1", job);
     expect(commands.calls).toEqual([]);
     expect(job.checkoutReset).toBeUndefined();
@@ -568,7 +565,7 @@ describe("verifyCheckoutAfterJob", () => {
   it("skips reviews with no worktree", async () => {
     const { store, dataDir } = stores(true);
     const commands = new FakeCommandRunner();
-    const job: Job = { id: "j", kind: "ask", model: "m", priority: 1, state: "running" };
+    const job: Job = { id: "j", kind: "ask", model: "m", effort: "", priority: 1, state: "running" };
     await verifyCheckoutAfterJob(depsFor(store, dataDir, commands), "rv1", job);
     expect(commands.calls).toEqual([]);
   });
@@ -580,7 +577,7 @@ describe("verifyCheckoutAfterJob", () => {
     const commands = new FakeCommandRunner();
     commands.enqueue({ cmd: "git", args: ["-C", wt, "status", "--porcelain=v1", "-uall"], stdout: "", stderr: "", code: 0 });
     commands.enqueue({ cmd: "git", args: ["-C", wt, "rev-parse", "HEAD"], stdout: `${HEAD_SHA}\n`, stderr: "", code: 0 });
-    const job: Job = { id: "j", kind: "ask", model: "m", priority: 1, state: "running" };
+    const job: Job = { id: "j", kind: "ask", model: "m", effort: "", priority: 1, state: "running" };
     await verifyCheckoutAfterJob(depsFor(store, dataDir, commands), "rv1", job);
     expect(commands.calls.map((c) => c.opts.args.slice(2, 4))).toEqual([["status", "--porcelain=v1"], ["rev-parse", "HEAD"]]);
     expect(job.checkoutReset).toBeUndefined();
@@ -595,7 +592,7 @@ describe("verifyCheckoutAfterJob", () => {
     commands.enqueue({ cmd: "git", args: ["-C", wt, "rev-parse", "HEAD"], stdout: `${HEAD_SHA}\n`, stderr: "", code: 0 });
     commands.enqueue({ cmd: "git", args: ["-C", wt, "reset", "--hard", HEAD_SHA], stdout: "", stderr: "", code: 0 });
     commands.enqueue({ cmd: "git", args: ["-C", wt, "clean", "-fdq"], stdout: "", stderr: "", code: 0 });
-    const job: Job = { id: "j", kind: "ask", model: "m", priority: 1, state: "running" };
+    const job: Job = { id: "j", kind: "ask", model: "m", effort: "", priority: 1, state: "running" };
     await verifyCheckoutAfterJob(depsFor(store, dataDir, commands), "rv1", job);
     expect(commands.calls).toHaveLength(4);
     expect(job.checkoutReset).toBe(true);
@@ -610,7 +607,7 @@ describe("verifyCheckoutAfterJob", () => {
     commands.enqueue({ cmd: "git", args: ["-C", wt, "rev-parse", "HEAD"], stdout: `${"c".repeat(40)}\n`, stderr: "", code: 0 });
     commands.enqueue({ cmd: "git", args: ["-C", wt, "reset", "--hard", HEAD_SHA], stdout: "", stderr: "", code: 0 });
     commands.enqueue({ cmd: "git", args: ["-C", wt, "clean", "-fdq"], stdout: "", stderr: "", code: 0 });
-    const job: Job = { id: "j", kind: "ask", model: "m", priority: 1, state: "running" };
+    const job: Job = { id: "j", kind: "ask", model: "m", effort: "", priority: 1, state: "running" };
     await verifyCheckoutAfterJob(depsFor(store, dataDir, commands), "rv1", job);
     expect(job.checkoutReset).toBe(true);
   });
@@ -693,6 +690,7 @@ describe("restart across the shape change", () => {  it("pre-#160 session rows (
         provider: string;
         model: string;
         access: "lockdown";
+        effort: string;
       },
       session: { id: "old-base", provider: "claude", model: "m" },
       build: { cwd: "/", systemPrompt: "s", mcpServers: [] } as unknown as {
@@ -700,6 +698,7 @@ describe("restart across the shape change", () => {  it("pre-#160 session rows (
         systemPrompt: string;
         readOnly: boolean;
         mcpServers: unknown[];
+        effort: string;
       },
       pack: "BASE",
       logSeq: 0,

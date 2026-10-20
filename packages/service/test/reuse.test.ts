@@ -81,7 +81,6 @@ function pagesFor(): ReviewSnapshot["pages"] {
           pageId: "root",
           title: "Central",
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: [
@@ -105,7 +104,6 @@ function pagesFor(): ReviewSnapshot["pages"] {
           pageId: "root",
           title: null,
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: [],
@@ -148,6 +146,8 @@ async function setupWithAgents(agents: FakeAgentRunner) {
       baseMarkdown: "Hi\n",
       paragraphSources: {},
     },
+    commits: [],
+    title: review.branch,
     worktreePath: "/tmp",
   });
   const snapshot: ReviewSnapshot = {
@@ -165,6 +165,8 @@ async function setupWithAgents(agents: FakeAgentRunner) {
     pages: pagesFor(),
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],

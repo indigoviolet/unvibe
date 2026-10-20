@@ -13,7 +13,7 @@
  * Fake `AgentRunner` throughout; no real agents, no real GitHub.
  */
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, ReviewSnapshot } from "@unvibe/shared";
+import type { AgentEvent, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { isRetryableError } from "../src/agent/acp/errors.js";
 import {
@@ -243,10 +243,10 @@ async function makeBigReview(
     )
     .run(id, 1, "abc1234def5678abc1234def5678abc1234def5", "0000000", "main", Date.now(), JSON.stringify({}));
   const hashes: string[] = [];
-  const files = [];
+  const files: ReviewFile[] = [];
   const perFile = 25;
   for (let f = 0; f * perFile < total; f++) {
-    const hunks = [];
+    const hunks: ReviewFile["hunks"] = [];
     for (let h = 0; h < perFile && f * perFile + h < total; h++) {
       const n = f * perFile + h;
       const hash = `hx${n}`;
@@ -294,7 +294,6 @@ async function makeBigReview(
             pageId: "root",
             title: `Card ${i}`,
             level: "standard",
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: [
@@ -312,6 +311,8 @@ async function makeBigReview(
     ],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -414,7 +415,8 @@ describe("hunk pass fan-out limit (#107)", () => {
       const { id, hashes } = await makeBigReview(ctx, DEFAULT_HUNK_PASS_FANOUT_LIMIT + 10);
       const first = await ctx.pipeline.summarizeHunk(id, hashes[7]);
       const second = await ctx.pipeline.summarizeHunk(id, hashes[7]);
-      expect("id" in first && "id" in second && first.id).toBe(second.id);
+      if (!("id" in first) || !("id" in second)) throw new Error("expected jobs, got reused summaries");
+      expect(first.id).toBe(second.id);
       const jobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "summarize");
       expect(jobs).toHaveLength(1);
       await ctx.jobs.drain(10000);
