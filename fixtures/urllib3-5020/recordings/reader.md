@@ -65,7 +65,11 @@ Normalize once, at the boundary, then prove the invariant at that boundary. Each
 
 ## Decisions and alternatives
 
-Three choices carry the change. First, normalize both views of the headers — urllib3's `HTTPHeaderDict` and the original `HTTPMessage` — instead of only the view urllib3 owns: code reading either one then sees the same clean values, at the cost of rewriting a message object urllib3 does not own (the reason is inferred from the two consumers the code serves; the description states the outcome, not the motive). [[diff:conn:650-651]] [[desc:d-p2]] Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate. [[concept:obs-fold|obsolete line folding]] Third, guard the pattern so it stays [[concept:regex-performance|linear-time]] and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. [[diff:conn:80-88]]
+Three choices carry the change:
+
+- First, normalize both views of the headers — urllib3's `HTTPHeaderDict` and the original `HTTPMessage` — instead of only the view urllib3 owns: code reading either one then sees the same clean values, at the cost of rewriting a message object urllib3 does not own (the reason is inferred from the two consumers the code serves; the description states the outcome, not the motive). [[diff:conn:650-651]] [[desc:d-p2]]
+- Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate (see [[concept:obs-fold|obsolete line folding]]).
+- Third, guard the pattern so it stays [[concept:regex-performance|linear-time]] and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. [[diff:conn:80-88]]
 
 ::: simple
 Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.

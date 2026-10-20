@@ -1251,10 +1251,39 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "Three choices carry the change. First, normalize both views of the headers — urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> — instead of only the view urllib3 owns: code reading either one then sees the same clean values, at the cost of rewriting a message object urllib3 does not own (the reason is inferred from the two consumers the code serves; the description states the outcome, not the motive).   Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate. <a class=\"cx\" data-link=\"concept:obs-fold\">obsolete line folding</a> Third, guard the pattern so it stays <a class=\"cx\" data-link=\"concept:regex-performance\">linear-time</a> and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. ",
-                "simple": "Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.",
-                "deep": "Each choice trades a local simplicity for a global property: one normalization point (both views equal by construction), standards-mandated tolerance (unfold, never reject), and a cost bound on untrusted input (linear time, with a fast path for the common case)."
+                "standard": "Three choices carry the change:"
               },
+              "citations": []
+            },
+            {
+              "type": "list",
+              "id": "b2",
+              "ordered": false,
+              "items": [
+                {
+                  "html": "First, normalize both views of the headers — urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> — instead of only the view urllib3 owns: code reading either one then sees the same clean values, at the cost of rewriting a message object urllib3 does not own (the reason is inferred from the two consumers the code serves; the description states the outcome, not the motive).  ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:650-651"
+                    },
+                    {
+                      "target": "desc:d-p2"
+                    }
+                  ]
+                },
+                {
+                  "html": "Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate (see <a class=\"cx\" data-link=\"concept:obs-fold\">obsolete line folding</a>).",
+                  "citations": []
+                },
+                {
+                  "html": "Third, guard the pattern so it stays <a class=\"cx\" data-link=\"concept:regex-performance\">linear-time</a> and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:80-88"
+                    }
+                  ]
+                }
+              ],
               "citations": [
                 {
                   "target": "diff:src-urllib3-connection.py:650-651"
@@ -1266,6 +1295,15 @@
                   "target": "diff:src-urllib3-connection.py:80-88"
                 }
               ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": {
+                "standard": "Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.",
+                "deep": "Each choice trades a local simplicity for a global property: one normalization point (both views equal by construction), standards-mandated tolerance (unfold, never reject), and a cost bound on untrusted input (linear time, with a fast path for the common case)."
+              },
+              "citations": []
             }
           ],
           "undoStack": []
