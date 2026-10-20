@@ -264,7 +264,18 @@ const releasePkg = {
   // handler, start-at-login unit) after a global install, is guarded
   // (non-global/CI/root/running service/pending switch all skip), and
   // always exits 0 — see `src/cli/setup/postinstall.ts`.
-  scripts: { postinstall: "node packages/service/dist/postinstall.js" },
+  // Cwd-proof (issue #42 regression): node resolving a relative main
+  // path calls process.cwd(), which throws `ENOENT uv_cwd` when npm
+  // launches the script from a directory it has already deleted (the
+  // old package during an in-app switch, or a git preparation clone).
+  // That failed the whole install on the owner's Mac. So: cd to the
+  // installed package first — `npm_package_json` always names it, on
+  // npm 10 and 11 — and if anything at all fails, print the setup hint
+  // and exit 0. npm runs lifecycle scripts with sh on macOS/Linux.
+  scripts: {
+    postinstall:
+      'cd "$(dirname "$npm_package_json")" 2>/dev/null && node ./packages/service/dist/postinstall.js || echo \'unvibe: setup was not run; run `unvibe setup` to finish installing.\'',
+  },
   dependencies: deps,
   engines: { node: ">=24" },
   // Provenance for `unvibe update --list` (and the later in-app picker):
