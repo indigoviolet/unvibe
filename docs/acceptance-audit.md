@@ -329,7 +329,11 @@ needed (that deviation is closed, not added).
    that names only the card gets one repair turn carrying the reason
    (`validate.test.ts`). The reader's citation-repair prompt (naming the
    failed citations) is kept on the job's stored prompt, so the Debug
-   page shows what failed (#124).
+   page shows what failed (#124). The instructions and reader prompts
+   now state the exact `diff:<fileKey>:<start>[-<end>]` grammar with
+   bundled-demo examples, so malformed `diff:` IDs (the 6 failures in
+   the #124 re-measure) are less likely to need a repair turn
+   (`prompts.test.ts` pins every concrete `diff:` example to the parser).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”). While a depth change runs,

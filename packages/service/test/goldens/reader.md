@@ -194,5 +194,9 @@ genuinely needs its own page.
 - The problem card comes first and carries the central idea. Do not bury
   the point in background.
 - Citations on every paragraph that states something about the change.
+  For `diff:` use exactly `diff:<fileKey>:<start>[-<end>]` with the
+  `<fileKey>` from the hunk header's `h:` ID and new-side line numbers,
+  e.g. `[[diff:conn:650-652]]` (see "IDs and link tokens" in the
+  instructions).
 - Use `search_review` before introducing a concept the guide may already
   cover.

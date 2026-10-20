@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROMPT_TEMPLATE_NAMES } from "@unvibe/shared";
+import { parseId, PROMPT_TEMPLATE_NAMES, tokenizeLinks } from "@unvibe/shared";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -117,6 +117,30 @@ describe("repo prompts/ directory", () => {
     expect(reader).not.toContain("need to read on");
     expect(instructions).toContain("Never address the reader about how to read the guide");
     expect(instructions).toContain('"TL;DR" framings');
+  });
+
+  it("every concrete diff: example in the prompts parses (#124)", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const bodies = [...lib.values()].map((t) => t.body).join("\n");
+    // Citation examples appear as [[diff:...]] tokens or D2 link: "diff:...".
+    const fromTokens = tokenizeLinks(bodies)
+      .map((t) => t.idText)
+      .filter((id) => id.startsWith("diff:"));
+    const fromLinks = [...bodies.matchAll(/link:\s*"(diff:[^"]+)"/g)].map((m) => m[1]);
+    // Placeholders (<fileKey>, diff:...) are grammar templates, not examples.
+    const concrete = [...fromTokens, ...fromLinks].filter((id) => !/[<>\u2026]/.test(id));
+    expect(concrete.length).toBeGreaterThanOrEqual(4);
+    expect(concrete).toContain("diff:conn:650-652");
+    expect(concrete).toContain("diff:conn:651");
+    for (const id of concrete) {
+      expect(parseId(id), id).toMatchObject({ kind: "diff" });
+    }
+    // The malformed shapes the grammar warns against must not parse.
+    const instructions = lib.get("instructions")?.body ?? "";
+    for (const bad of ["diff:conn:h111", "diff:src/urllib3/connection.py"]) {
+      expect(instructions).toContain(bad);
+      expect(parseId(bad), bad).toBeNull();
+    }
   });
 
   it("resolvePromptsDir finds the repo prompts from the service package", () => {
