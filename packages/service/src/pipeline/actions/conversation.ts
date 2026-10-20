@@ -160,7 +160,7 @@ export async function ensureHunkCard(
         version,
       },
       open: true,
-      pinned: false,
+      pinned: true,
       messages: [],
       post: false,
       turns: [turn],
@@ -225,7 +225,8 @@ export async function createConversationCard(
       type: "conversation",
       anchor,
       open: true,
-      pinned: false,
+      // Issue #204: new Explain/Ask cards open pinned inline.
+      pinned: true,
       messages: [],
       post: false,
       turns: [turn],

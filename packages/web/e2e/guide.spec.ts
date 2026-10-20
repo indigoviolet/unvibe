@@ -23,7 +23,7 @@ async function gotoReview(page: Page): Promise<void> {
 }
 
 /**
- * Issue #167: the demo seeds an open floating card under C-problem that
+ * Issue #167: the demo seeds an open pinned card under C-problem that
  * overlays the controls below it — close it first, as a reader would.
  */
 async function closeSeedCard(page: Page): Promise<void> {
@@ -101,28 +101,24 @@ async function openPopover(page: Page): Promise<void> {
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
 }
 
-test("pinning a card survives a reload; unpinning does too (#167)", async ({ page }) => {
+test("a card is pinned inline and stays so across a reload; there is no pin or unpin control (#204)", async ({ page }) => {
   await gotoReview(page);
   const card = page.locator("#C-problem [data-expansion]").first();
-  await expect(card).toHaveClass(/floating/);
-  await card.getByRole("button", { name: "Pin into the page" }).click();
   await expect(card).not.toHaveClass(/floating/);
+  await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
   await page.reload();
   await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers");
-  const pinnedCard = page.locator("#C-problem [data-expansion]").first();
-  await expect(pinnedCard).not.toHaveClass(/floating/);
-  await pinnedCard.getByRole("button", { name: /Unpin/ }).click();
-  await expect(pinnedCard).toHaveClass(/floating/);
-  await page.reload();
-  await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers");
-  await expect(page.locator("#C-problem [data-expansion]").first()).toHaveClass(/floating/);
+  const after = page.locator("#C-problem [data-expansion]").first();
+  await expect(after).toBeVisible({ timeout: 8000 });
+  await expect(after).not.toHaveClass(/floating/);
+  await expect(after.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
 });
 
-test("Ask inside a floating card opens a floating child above it; pinning puts it inline (#186)", async ({ page }) => {
+test("Ask inside a pinned card opens a pinned child inline inside it (#204)", async ({ page }) => {
   await gotoReview(page);
   const parent = page.locator("#B-x-seed");
-  await expect(parent).toHaveClass(/floating/);
-  // Select answer text inside the floating card: the toolbar appears.
+  await expect(parent).not.toHaveClass(/floating/);
+  // Select answer text inside the pinned card: the toolbar appears.
   await selectText(page, "#B-x-seed [data-answer]", "HTTP/1.1 originally let a server continue");
   await page.locator('#selbar [data-act="ask"]').click();
   const composer = page.locator("#B-x-seed .ithread[data-pending-thread]");
@@ -131,28 +127,14 @@ test("Ask inside a floating card opens a floating child above it; pinning puts i
   await composer.getByRole("button", { name: "Ask" }).click();
   const child = page.locator("#B-x-seed [data-expansion]", { hasText: "Why does this matter?" });
   await expect(child).toContainText("Mock explanation", { timeout: 8000 });
-  await expect(child).toHaveClass(/floating/);
-  // The child paints above the parent: the point at its centre hits the
-  // child, not the parent underneath.
-  const above = await page.evaluate(() => {
-    const childEl = document.querySelector("#B-x-seed [data-expansion]")!;
-    const r = childEl.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 30);
-    return hit ? childEl.contains(hit) && hit !== childEl : false;
-  });
-  expect(above).toBe(true);
-  await expect(parent).toHaveClass(/floating/);
-  // Pinning the child inserts it inline inside the parent.
-  await child.getByRole("button", { name: "Pin into the page" }).click();
   await expect(child).not.toHaveClass(/floating/);
-  await expect(parent).toHaveClass(/floating/);
-  // Closing it leaves the parent floating, as it was. Scroll the
-  // pinned child into view inside the parent's own scroller first.
+  await expect(parent).not.toHaveClass(/floating/);
+  // Closing the child leaves the parent pinned in place.
   await child.evaluate((el) => el.scrollIntoView({ block: "nearest" }));
   await child.getByRole("button", { name: "Close" }).click();
   await expect(child).toBeHidden();
   await expect(parent).toBeVisible();
-  await expect(parent).toHaveClass(/floating/);
+  await expect(parent).not.toHaveClass(/floating/);
 });
 
 test("root page renders cards, contents and generated go-deeper cards", async ({ page }) => {

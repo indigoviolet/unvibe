@@ -19,6 +19,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Anchor, Annotation, Page } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
+import { api } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations } from "../guide/citations.js";
@@ -60,8 +61,17 @@ function successorTarget(successor: Anchor): string | null {
   return null;
 }
 
-function previewThread(thread: Annotation | undefined): string {
+function previewThread(thread: Annotation | undefined, openable = false): string {
   if (!thread) return "";
+  const inner = previewThreadInner(thread);
+  // Issue #205: each item of a comment marker's preview opens just its
+  // own comment (the marker itself opens them all).
+  return openable
+    ? `<button class="pv-item" type="button" data-open-thread="${esc(thread.id)}">${inner}</button>`
+    : inner;
+}
+
+function previewThreadInner(thread: Annotation): string {
   const outdated = thread.outdated
     ? `<div class="pv outdated"><div class="q">Outdated · the code changed</div>` +
       (thread.originalSnippet
@@ -158,8 +168,8 @@ export function HoverPopover() {
       const ids = ds.threads.split("|");
       content =
         ids
-          .map((id) => previewThread(snap.annotations.find((a) => a.id === id)))
-          .join("") + `<span class="hint">Click to open</span>`;
+          .map((id) => previewThread(snap.annotations.find((a) => a.id === id), true))
+          .join("") + `<span class="hint">Click an item to open it, or the marker to open all</span>`;
     } else if (ds.cprev || ds.cjump) {
       const id = ds.cprev ?? ds.cjump ?? "";
       content =
@@ -175,7 +185,12 @@ export function HoverPopover() {
             ? `${pagePreview(page)}<span class="hint">Click to open</span>`
             : `<b>${esc(found.anchor.quotedText)}</b><span class="hint">Click to open</span>`;
         } else {
-          content = previewExpansion(found) + `<span class="hint">Click to open here</span>`;
+          // Issue #204: the peek is floating only; clicking it (or the
+          // mark) pins the card in place.
+          content =
+            `<button class="pv-item" type="button" data-open-expansion="${esc(found.id)}">` +
+            previewExpansion(found) +
+            `<span class="hint">Click to pin here</span></button>`;
         }
       }
     } else if (anchor.matches("a.cx[data-node], a.cx[data-link]")) {
@@ -297,6 +312,32 @@ export function HoverPopover() {
       hidden={html === null}
       onClick={(e) => {
         const target = e.target as Element;
+        // Issue #205: a preview item opens just its own comment.
+        const openThread = target.closest?.("[data-open-thread]");
+        if (openThread && reviewId) {
+          const id = (openThread as HTMLElement).dataset.openThread ?? "";
+          if (id) {
+            api.updateComment(reviewId, id, { open: true }).catch(() => {});
+            hideRef.current();
+            window.setTimeout(() => {
+              document.getElementById(id)?.scrollIntoView({ block: "nearest" });
+            }, 120);
+          }
+          return;
+        }
+        // Issue #204: clicking the peek pins the card in place.
+        const openExp = target.closest?.("[data-open-expansion]");
+        if (openExp && reviewId) {
+          const id = (openExp as HTMLElement).dataset.openExpansion ?? "";
+          if (id) {
+            api.updateComment(reviewId, id, { open: true, pinned: true }).catch(() => {});
+            hideRef.current();
+            window.setTimeout(() => {
+              document.getElementById(`B-${id}`)?.scrollIntoView({ block: "nearest" });
+            }, 120);
+          }
+          return;
+        }
         const src = target.closest?.("[data-src]");
         if (src) {
           revealSource(src.getAttribute("data-src") ?? "");

@@ -27,7 +27,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { clearMarks, placeAnchorSpot, repassUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
+import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../../comments/readOnly.js";
 import { showGuidePane } from "../../shell/panes.js";
@@ -41,6 +41,7 @@ import { requestGuideBlock, performFollowUp } from "../../guide/actions.js";
 import { DescriptionExpansions } from "../../guide/expansions/DescriptionExpansions.js";
 import { inflightForAnchor, inflightLabel } from "../../guide/inflight.js";
 import { useReview } from "../../state/store.js";
+import { hostLabel, recordUnplacedAnchors } from "../../guide/unplacedAnchors.js";
 import { cleanEditedHtml, DescriptionEditor as DefaultEditor } from "./DescriptionEditor.js";
 import { canEditDescription } from "./canEdit.js";
 import { splitDescriptionHtml } from "./segments.js";
@@ -323,7 +324,23 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
     // Issue #166: retry boundedly when a paragraph body isn't there yet.
     const allIds = [...byPara.values()].flat().map((t) => t.id);
     let pending = new Set<string>(allIds);
-    let retryCleanup: (() => void) | null = null;
+    const retry = retryUntilSettled({ isSettled: () => pending.size === 0, repass: () => runPass(), attempts: 3, delayMs: 250, onGiveUp: () => recordGaveUp() });
+    function recordGaveUp(): void {
+      recordUnplacedAnchors(
+        "Description threads",
+        [...byPara.entries()].flatMap(([pid, threads]) => {
+          let body: Element | null = null;
+          try {
+            body = root!.querySelector(`[data-top="${CSS.escape(pid)}"] .dseg-body`);
+          } catch {
+            body = null;
+          }
+          return threads
+            .filter((t) => pending.has(t.id))
+            .map((t) => ({ id: t.id, kind: t.type, host: hostLabel(t.anchor), reason: body ? ("quote-not-found" as const) : ("host-missing" as const) }));
+        }),
+      );
+    }
     const runPass = (): void => {
       pending = new Set<string>([...byPara.values()].flat().map((t) => t.id));
       withPreservedSelection(root, () => {
@@ -342,16 +359,13 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         }
         setHighlighted((prev: ReadonlySet<string>) => (sameSet(prev, found) ? prev : found));
       });
-      retryCleanup?.();
-      retryCleanup = null;
-      if (pending.size > 0) {
-        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
-      }
+      if (pending.size === 0) recordUnplacedAnchors("Description threads", []);
+      else retry.schedule();
     };
     const timer = window.setTimeout(runPass, 0);
     return () => {
       window.clearTimeout(timer);
-      retryCleanup?.();
+      retry.cancel();
     };
   }, [byPara, segments, setHighlighted]);
 

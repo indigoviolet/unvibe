@@ -238,14 +238,9 @@ export function markTextInElement(el: Element, quote: string, make: () => Elemen
  *   this is idempotent per maker and works on the same opaque-host model
  *   (issue #101).
  */
-export function placeAnchorSpot(host: Element, spot: AnchorSpot, make: () => Element): number {
-  if (!spot.quote) return 0;
-  const probe = make();
-  unwrapOwnMarks(host, probe);
-  if (typeof (host as Element).normalize === "function") (host as Element).normalize();
-  const nodes = collectTextNodes(host);
-  if (nodes.length === 0) return 0;
-  const texts = nodes.map((n) => n.data);
+/** Segments `spot` would occupy in `texts`, or null when it cannot be placed. */
+function locateSpotSegments(texts: string[], spot: AnchorSpot): QuoteSegment[] | null {
+  if (!spot.quote) return null;
   const total = texts.reduce((s, t) => s + t.length, 0);
   const s = spot.startOffset;
   const e = spot.endOffset;
@@ -263,13 +258,35 @@ export function placeAnchorSpot(host: Element, spot: AnchorSpot, make: () => Ele
       segs &&
       normalizeForCompare(coveredSegmentsText(texts, segs)) === normalizeForCompare(spot.quote)
     ) {
-      return wrapSegments(nodes, segs, make);
+      return segs;
     }
     // Recorded slice no longer matches: the text changed — fall through
     // to the nearest text match.
   }
   const near = s !== undefined && Number.isInteger(s) && s >= 0 ? s : 0;
-  const segs = locateNearestQuoteSegments(texts, spot.quote, near);
+  return locateNearestQuoteSegments(texts, spot.quote, near);
+}
+
+/**
+ * Issue #206: would `placeAnchorSpot` land in `host`? Pure probe — it
+ * never touches the DOM, so a pass can tell whether re-marking would
+ * change anything before clearing any marks.
+ */
+export function probeAnchorSpot(host: Element, spot: AnchorSpot): boolean {
+  if (!spot.quote) return false;
+  const nodes = collectTextNodes(host);
+  if (nodes.length === 0) return false;
+  return locateSpotSegments(nodes.map((n) => n.data), spot) !== null;
+}
+
+export function placeAnchorSpot(host: Element, spot: AnchorSpot, make: () => Element): number {
+  if (!spot.quote) return 0;
+  const probe = make();
+  unwrapOwnMarks(host, probe);
+  if (typeof (host as Element).normalize === "function") (host as Element).normalize();
+  const nodes = collectTextNodes(host);
+  if (nodes.length === 0) return 0;
+  const segs = locateSpotSegments(nodes.map((n) => n.data), spot);
   if (!segs) return 0;
   return wrapSegments(nodes, segs, make);
 }
@@ -286,6 +303,30 @@ export function placeAnchorSpot(host: Element, spot: AnchorSpot, make: () => Ele
  * host block only, never in a nested or other card, even when block ids
  * repeat. Bare scopes (unknown card) keep today's first-match behaviour.
  */
+function anchorHosts(root: ParentNode, top: string): Element[] {
+  let hosts: NodeListOf<Element>;
+  try {
+    hosts = root.querySelectorAll(`[data-top="${CSS.escape(top)}"]`);
+  } catch {
+    return [];
+  }
+  const strict = root instanceof Element && root.closest("section.card[id], [data-answer]") === root;
+  return [...hosts].filter(
+    (host) => !strict || host.closest("section.card[id], [data-answer]") === root,
+  );
+}
+
+/** True when any `[data-top="top"]` host for this anchor is on the page. */
+export function anchorHostExists(root: ParentNode, top: string): boolean {
+  return anchorHosts(root, top).length > 0;
+}
+
+/** Issue #206: pure probe form of `highlightAnchorInRoot` (no DOM writes). */
+export function probeAnchorInRoot(root: ParentNode, top: string, spot: AnchorSpot): boolean {
+  if (!spot.quote) return false;
+  return anchorHosts(root, top).some((host) => probeAnchorSpot(host, spot));
+}
+
 export function highlightAnchorInRoot(
   root: ParentNode,
   top: string,
@@ -293,15 +334,7 @@ export function highlightAnchorInRoot(
   make: () => Element,
 ): boolean {
   if (!spot.quote) return false;
-  let hosts: NodeListOf<Element>;
-  try {
-    hosts = root.querySelectorAll(`[data-top="${CSS.escape(top)}"]`);
-  } catch {
-    return false;
-  }
-  const strict = root instanceof Element && root.closest("section.card[id], [data-answer]") === root;
-  for (const host of hosts) {
-    if (strict && host.closest("section.card[id], [data-answer]") !== root) continue;
+  for (const host of anchorHosts(root, top)) {
     if (placeAnchorSpot(host, spot, make) > 0) return true;
   }
   return false;
@@ -551,6 +584,88 @@ export function repassUntilSettled(
     if (timer) window.clearTimeout(timer);
     timer = 0;
   };
+}
+
+export interface RetryHandle {
+  /** Ask for one more re-pass; a no-op once scheduled or out of budget. */
+  schedule: () => void;
+  cancel: () => void;
+}
+
+/**
+ * Issue #206: a retry budget for one effect run, bounded overall.
+ *
+ * The old shape — each pass arming a fresh `repassUntilSettled(…,
+ * runPass)` whose re-pass armed another — reset the three-attempt bound
+ * on every pass, so one anchor that could never be placed re-ran the
+ * clear-and-re-mark pass every 250 ms forever (the blinking highlight).
+ * Here `schedule()` may be called from inside `repass` itself (the next
+ * pass asking again) without ever resetting the budget: at most
+ * `attempts` re-passes happen per handle, then `onGiveUp` fires once.
+ */
+export function retryUntilSettled(opts: {
+  isSettled: () => boolean;
+  repass: () => void;
+  attempts?: number;
+  delayMs?: number;
+  onGiveUp?: () => void;
+}): RetryHandle {
+  const attempts = opts.attempts ?? 3;
+  const delayMs = opts.delayMs ?? 250;
+  let left = attempts;
+  let timer = 0;
+  let gaveUp = false;
+  const cancel = (): void => {
+    if (timer) window.clearTimeout(timer);
+    timer = 0;
+  };
+  const schedule = (): void => {
+    if (timer || gaveUp) return;
+    if (left <= 0) {
+      gaveUp = true;
+      try {
+        opts.onGiveUp?.();
+      } catch {
+        // Recording must never break highlighting.
+      }
+      return;
+    }
+    timer = window.setTimeout(() => {
+      timer = 0;
+      let done = true;
+      try {
+        done = opts.isSettled();
+      } catch {
+        done = true;
+      }
+      if (done) return;
+      left -= 1;
+      try {
+        opts.repass();
+      } catch {
+        // A failing re-pass must not break the handle.
+      }
+      // `repass` (or the pass it ran) calls `schedule()` again when it
+      // still has unplaced anchors; that call sees the spent budget.
+      if (left <= 0 && !gaveUp) {
+        let settledNow = true;
+        try {
+          settledNow = opts.isSettled();
+        } catch {
+          settledNow = true;
+        }
+        if (!settledNow) {
+          gaveUp = true;
+          try {
+            opts.onGiveUp?.();
+          } catch {
+            // Recording must never break highlighting.
+          }
+        }
+      }
+    }, delayMs);
+  };
+  return { schedule, cancel };
 }
 
 /** True when `el` was created by the same maker as `probe`. */function isOwnMark(el: Element, probe: Element): boolean {

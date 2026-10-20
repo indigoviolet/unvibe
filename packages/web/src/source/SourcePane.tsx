@@ -122,7 +122,6 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
           <DiffView
             reviewId={reviewId}
             lineSlots={lineSlots}
-            floatingExpansions={diffExpansions.floatingByHunk}
             commentedLines={commentedLines}
             onLineClick={diffComments.onLineClick}
             lookupPage={lookupPage}

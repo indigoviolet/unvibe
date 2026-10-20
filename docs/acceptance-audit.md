@@ -434,7 +434,17 @@ needed (that deviation is closed, not added).
 - Comment marker (bubble + count, only never-quoted) + footnote chips
   sharing the citations line (issue #72) — met (`guide/Markers.test.tsx`
   quoted-vs-unquoted + footnote chips; `e2e/anchor-footnotes-service.spec.ts`
-  chip on the citations row).
+  chip on the citations row). Clicking the marker opens every comment
+  on the block, stacked; clicking one item of its hover preview opens
+  just that comment (issue #205, guide and PR description alike) — met
+  (`guide/Markers.test.tsx` “opens every comment”, journey J9 “marker
+  opens all”). Highlight passes retry placement with an overall bound
+  per change and leave the DOM alone when a pass would change nothing,
+  so one unplaceable anchor no longer re-marks the page every 250 ms
+  (issue #206); anchors that stay unplaced are listed with the reason
+  (host not on the page vs quote not found) on the review's Debug page
+  — met (`comments/anchor.test.ts` probe + bounded retry, journey
+  J206 MutationObserver stability + Debug record).
 - Hover timing (~0.2 s), close on scroll/Escape/blur/resize/pointer-leave,
   hover-ignore-until-move — met (`e2e/guide.spec.ts` popover timing +
   close cases, `floating/Tooltip/Toast.test.tsx`).
@@ -469,24 +479,27 @@ needed (that deviation is closed, not added).
 ### §4.7 Explanations — all met (#136 slices 1+2, #152, #167)
 
 - Conversation card on the source block's anchor, highlight; header (quote,
-  Pin, Open as page, Delete, Close) + one answer view per turn, each with the
+  Open as page, Delete, Close) + one answer view per turn, each with the
   card controls acting on that answer alone, plus a reply box answered in
   the same conversation — met (`actions/conversation.ts`,
   `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
   `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
-  Issue #167: a clicked card floats persistently above the content under
-  it (zero-height `.exp-float` placeholder, no reflow; scrolls with the
-  page; pin inserts it inline; the pin is stored on the conversation
-  annotation (`pinned`, default false, set through the comment PATCH),
-  so it survives a reload; hunk-hosted cards stay inline;
-  ×/Escape close; diff floaters render at the hunk level outside the
-  hunk scroller so `.dwrap` never clips them, above the gutter and
-  below the pinned file/hunk headers, and are shifted to their anchored
-  row (`AnchoredFloat`, #185) so a card deep in a long hunk floats just
-  below its line, not at the hunk top) — met (`FloatingCard.test.tsx`,
-  `docs/screenshots/167-floating-guide.png`,
-  `167-pinned-guide.png`, `167-floating-diff.png`; e2e specs that reach
-  under the seeded open card close it first).
+  Issue #204 (revising #167): new Explain/Ask cards open pinned inline
+  in the guide, the description and the diff; there is no pin/unpin
+  control and no floating open state — floating survives only as the
+  hover peek on a closed card's mark, and clicking the mark (or the
+  peek) pins the card in place. Close collapses the card back to its
+  mark; delete removes card and mark. The pin is stored on the
+  conversation annotation (`pinned`, set at creation and on reopen
+  through the comment PATCH), so it survives a reload; a card stored
+  unpinned by older data renders inline when open. While a turn is
+  being written it shows only the header and the writing state; the
+  answer toolbar and the reply box appear when the answer arrives,
+  and a failed turn shows Retry (issue #203; a conversation job
+  interrupted by a restart settles its turn as failed at startup, so
+  Retry is what it shows) — met
+  (`ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
+  guide-pinned/guide-writing/diff scenes).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with

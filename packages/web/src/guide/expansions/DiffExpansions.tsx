@@ -3,7 +3,7 @@
  *
  * Additive bindings over the diff pane's line-slot registry (reusing the
  * slot APIs like `DiffComments`):
- * - open expansions render under their line (slot row, pinned width);
+ * - open expansions render pinned under their line (slot row, pinned width);
  * - from the diff, Open as page navigates to the new page (the pane
  *   listener navigates; the slot unmounts with the annotation type flip);
  * - closed expansions highlight their quote in the diff row as a dotted
@@ -13,15 +13,15 @@
  * - anchor-stale shows the collapsed card fallback in the slot.
  */
 import { useEffect, useMemo, useReducer } from "react";
-import type { Annotation, Page, ReviewFile } from "@unvibe/shared";
+import type { Annotation, Page } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { clearMarks, placeAnchorSpot, repassUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
+import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
 import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionCard } from "./ExpansionCard.js";
-import { shouldFloatConversation } from "./cardFloat.js";
+import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
 function makeExpMark(id: string, closed: boolean): HTMLElement {
@@ -29,30 +29,6 @@ function makeExpMark(id: string, closed: boolean): HTMLElement {
   mark.className = closed ? "anc exl" : "anc ex";
   mark.dataset.jump = id;
   return mark;
-}
-
-/**
- * Index of the hunk containing a new-side `line` (issue #167: floating
- * diff cards render at their hunk, outside the hunk's sideways scroller).
- * Falls back to the old-side range (pure deletions anchor forward), then
- * to the first hunk. Null when the file has no hunks.
- */
-export function hunkIndexForLine(file: ReviewFile, line: number): number | null {
-  if (file.hunks.length === 0) return null;
-  for (let i = 0; i < file.hunks.length; i++) {
-    const h = file.hunks[i];
-    if (line >= h.newStart && line <= h.newEnd) return i;
-  }
-  for (let i = 0; i < file.hunks.length; i++) {
-    const h = file.hunks[i];
-    if (line >= h.oldStart && line <= h.oldEnd) return i;
-  }
-  return 0;
-}
-
-/** Key for a hunk-level floating card list (issue #167). */
-export function floatingHunkKey(fileKey: string, hunkIndex: number): string {
-  return `${fileKey}:${hunkIndex}`;
 }
 
 /**
@@ -86,16 +62,8 @@ export function useDiffExpansionBindings(
 ): {
   lineSlots: LineSlots;
   expandedLines: ReadonlySet<string>;
-  /**
-   * Issue #167: open floating cards by hunk (`floatingHunkKey`), rendered
-   * at the hunk level outside the hunk's sideways scroller (an overlay
-   * inside the table would be clipped by `.dwrap`). Pinned cards stay in
-   * `lineSlots`, exactly today's inline position under their line.
-   */
-  floatingByHunk: ReadonlyMap<string, Annotation[]>;
 } {
   const annotations = useReview((s) => s.snapshot?.annotations);
-  const files = useReview((s) => s.snapshot?.files);
 
   const byLine = useMemo(() => {
     const map = new Map<string, Annotation[]>();
@@ -137,7 +105,19 @@ export function useDiffExpansionBindings(
     // bodies, highlight upgrades replacing cells).
     const allIds = [...byLine.values()].flat().map((a) => a.id);
     let pending = new Set<string>(allIds);
-    let retryCleanup: (() => void) | null = null;
+    const retry = retryUntilSettled({ isSettled: () => pending.size === 0, repass: () => runPass(), attempts: 3, delayMs: 250, onGiveUp: () => recordGaveUp() });
+    function recordGaveUp(): void {
+      recordUnplacedAnchors(
+        "Diff expansions",
+        (annotations ?? [])
+          .filter((a) => pending.has(a.id) && a.anchor.host.kind === "diff-line")
+          .map((a) => {
+            const host = a.anchor.host as { fileKey: string; line: number };
+            const row = document.getElementById(`L-${host.fileKey}-${host.line}`);
+            return { id: a.id, kind: a.type, host: hostLabel(a.anchor), reason: row ? ("quote-not-found" as const) : ("host-missing" as const) };
+          }),
+      );
+    }
     const runPass = (): void => {
       pending = new Set<string>([...byLine.values()].flat().map((a) => a.id));
       const scope = document.body;
@@ -211,11 +191,8 @@ export function useDiffExpansionBindings(
           }
         }
       });
-      retryCleanup?.();
-      retryCleanup = null;
-      if (pending.size > 0) {
-        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
-      }
+      if (pending.size === 0) recordUnplacedAnchors("Diff expansions", []);
+      else retry.schedule();
     };
     const timer = window.setTimeout(runPass, 0);
     // Lazy hunk bodies render long after the bounded repass gives up,
@@ -260,7 +237,7 @@ export function useDiffExpansionBindings(
       window.clearTimeout(timer);
       if (scheduled) window.clearTimeout(scheduled);
       observer?.disconnect();
-      retryCleanup?.();
+      retry.cancel();
     };
   }, [byLine, annotations, hlTick]);
 
@@ -280,7 +257,7 @@ export function useDiffExpansionBindings(
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found || found.anchor.host.kind !== "diff-line") return;
       if (found.type === "conversation" && !found.open) {
-        api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
+        api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
       }
@@ -295,12 +272,8 @@ export function useDiffExpansionBindings(
   const lineSlots = useMemo<LineSlots>(() => {
     const slots: LineSlots = {};
     for (const [key, exps] of byLine) {
-      // Issue #167: floating cards leave the slot row for the hunk-level
-      // overlay (`floatingByHunk` below); pinned cards stay here, exactly
-      // today's inline position under their line.
-      const open = exps.filter(
-        (a) => a.type === "conversation" && a.open && !shouldFloatConversation(a, a.pinned),
-      );
+      // Issue #204: open cards are pinned inline under their line.
+      const open = exps.filter((a) => a.type === "conversation" && a.open);
       if (open.length === 0) continue;
       slots[key] = (
         <>
@@ -320,26 +293,7 @@ export function useDiffExpansionBindings(
     return slots;
   }, [byLine, reviewId, lookupPage, onOpenPage, onFollowUp]);
 
-  const floatingByHunk = useMemo<ReadonlyMap<string, Annotation[]>>(() => {
-    const map = new Map<string, Annotation[]>();
-    for (const a of annotations ?? []) {
-      if (a.type !== "conversation" || !a.open || a.promotedToPage) continue;
-      if (a.anchor.host.kind !== "diff-line") continue;
-      if (!shouldFloatConversation(a, a.pinned)) continue;
-      const host = a.anchor.host;
-      const file = (files ?? []).find((f) => f.fileKey === host.fileKey);
-      if (!file) continue;
-      const index = hunkIndexForLine(file, host.line);
-      if (index === null) continue;
-      const key = floatingHunkKey(file.fileKey, index);
-      const list = map.get(key) ?? [];
-      list.push(a);
-      map.set(key, list);
-    }
-    return map;
-  }, [annotations, files]);
-
   const expandedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 
-  return { lineSlots, expandedLines, floatingByHunk };
+  return { lineSlots, expandedLines };
 }

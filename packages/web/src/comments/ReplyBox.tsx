@@ -85,7 +85,14 @@ export function ReplyBox({
     }
   }, [serverReply]);
 
-  // Flush an unsent draft on unmount so debounced text is never lost.
+  // Flush an unsent draft on unmount so debounced text is never lost —
+  // but never a consumed one: since #203 the box unmounts while a sent
+  // turn is being written, often before the send settles, and flushing
+  // the sent text would write it back over the server-side clear, so
+  // the remounted box (answer arrived) would hold the sent text again.
+  // The check is the #195 generation rule: the current keystroke
+  // generation has been consumed by a send/discard that has not since
+  // failed (a failure re-arms the persist, lowering clearedSeq).
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const serverReplyRef = useRef(serverReply);
@@ -94,7 +101,8 @@ export function ReplyBox({
     () => () => {
       window.clearTimeout(saveTimer.current);
       const current = draftRef.current;
-      if (current !== (serverReplyRef.current ?? "") && current.trim() !== "") {
+      const consumed = clearedSeqRef.current >= seqRef.current && seqRef.current > 0;
+      if (!consumed && current !== (serverReplyRef.current ?? "") && current.trim() !== "") {
         api.updateComment(reviewId, annotationId, { reply: current }).catch(() => {});
       }
     },
