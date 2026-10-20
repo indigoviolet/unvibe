@@ -633,17 +633,40 @@ export class AcpAgentRunner implements AgentRunner {
           // (shell command, URL, …) when the adapter sends arguments with
           // the call. Adapters that send none record the name only.
           const detail = formatToolDetail(u.rawInput ?? u.input);
-          if (detail !== undefined) yield { type: "tool", name, status: "start", detail };
-          else yield { type: "tool", name, status: "start" };
+          const result = formatToolResult((u as { content?: unknown }).content);
+          yield {
+            type: "tool",
+            name,
+            status: "start",
+            ...(u.toolCallId ? { id: u.toolCallId } : {}),
+            ...(detail !== undefined ? { detail } : {}),
+            ...(result !== undefined ? { result } : {}),
+          };
         } else if (kind === "tool_call_update") {
           const status = (u.status ?? "") as string;
           const name = u.title || u.name || u.toolCallId || "tool";
+          const result = formatToolResult((u as { content?: unknown }).content);
+          const detail = formatToolDetail(u.rawInput ?? u.input);
           if (status === "completed" || status === "failed") {
-            yield { type: "tool", name, status: "end" };
+            yield {
+              type: "tool",
+              name,
+              status: "end",
+              ...(u.toolCallId ? { id: u.toolCallId } : {}),
+              ...(detail !== undefined ? { detail } : {}),
+              ...(result !== undefined ? { result } : {}),
+            };
             if (u.toolCallId) seenTools.delete(u.toolCallId);
           } else if (u.toolCallId && !seenTools.has(u.toolCallId)) {
             seenTools.add(u.toolCallId);
-            yield { type: "tool", name, status: "start" };
+            yield {
+              type: "tool",
+              name,
+              status: "start",
+              id: u.toolCallId,
+              ...(detail !== undefined ? { detail } : {}),
+              ...(result !== undefined ? { result } : {}),
+            };
           }
         } else {
           // usage_update, plan, notices, etc.: not streamed; the final
@@ -783,6 +806,10 @@ export class AcpAgentRunner implements AgentRunner {
       cachedReadTokens: report.cachedReadTokens,
       cachedWriteTokens: report.cachedWriteTokens,
       outputTokens: report.outputTokens,
+      // Issue #207: the adapter's payload verbatim (`usage` + `_meta`,
+      // quota figures included), for the Debug page's raw view. The
+      // derived counts above may be delta-ized/aggregated; this is not.
+      raw: { usage: r?.usage ?? null, _meta: r?._meta ?? null },
     };
     yield { type: "done", stopReason };
   }
@@ -932,6 +959,38 @@ export class AcpAgentRunner implements AgentRunner {
  * pass through; objects stringify; anything else records nothing.
  * Truncated: the job record names the tool, it is not a transcript.
  */
+/**
+ * Issue #207: a tool call's result text from its `content` collection.
+ * Text blocks pass through; diffs contribute their new text; anything
+ * else contributes a short marker. Untruncated here — the job record
+ * truncates with the original length.
+ */
+export function formatToolResult(content: unknown): string | undefined {
+  if (!Array.isArray(content)) {
+    const single = content as { type?: string; text?: string } | null;
+    if (single?.type === "text" && typeof single.text === "string") return single.text;
+    return undefined;
+  }
+  const parts: string[] = [];
+  for (const item of content as Array<Record<string, unknown>>) {
+    if (item.type === "content") {
+      const inner = item.content as { type?: string; text?: string } | undefined;
+      if (inner?.type === "text" && typeof inner.text === "string") parts.push(inner.text);
+      else if (inner) parts.push(`[${inner.type ?? "content"}]`);
+    } else if (item.type === "diff") {
+      const path = typeof item.path === "string" ? item.path : "file";
+      const newText = typeof item.newText === "string" ? item.newText : "";
+      parts.push(newText ? `diff ${path}:\n${newText}` : `diff ${path}`);
+    } else if (item.type === "terminal") {
+      parts.push(`[terminal ${typeof item.terminalId === "string" ? item.terminalId : ""}]`);
+    } else if (typeof item.type === "string") {
+      parts.push(`[${item.type}]`);
+    }
+  }
+  if (parts.length === 0) return undefined;
+  return parts.join("\n");
+}
+
 export function formatToolDetail(input: unknown): string | undefined {
   if (input === undefined || input === null) return undefined;
   const text = typeof input === "string" ? input : safeJson(input);
