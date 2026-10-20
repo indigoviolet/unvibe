@@ -109,8 +109,9 @@ export function refreshDiffPinned(): void {
  * Keep the pinned-offset variables equal to the rows' live heights (a
  * `ResizeObserver`, never a scroll listener: sticky positioning does the
  * pinning). The observer watches the pane plus the two top rows; header
- * heights are re-sampled on every fire, and `refreshDiffPinned` covers DOM
- * insertions (snapshot load, view switch) that don't resize the pane.
+ * heights are re-sampled on every fire, and a MutationObserver re-marks
+ * the stuck headers on DOM insertions (snapshot load, view switch,
+ * filter change) that neither resize the pane nor scroll it.
  * Returns a disconnect function; a no-op when the pane isn't mounted.
  */
 export function observeDiffPinned(): () => void {
@@ -138,20 +139,42 @@ export function observeDiffPinned(): () => void {
     // every scroll offset including mid hand-off between files.
     const bandTop = paneTop + strip + bar;
     const bandBottom = bandTop + file + hunk;
+    // The band backing (`.dband`) sits in flow directly before the
+    // first file, pulled over that file's headers by its negative
+    // margin. A header under the backing's own box must paint above
+    // it — the backing is opaque and would otherwise hide the first
+    // visible file's header entirely (issue #202, seen with the file
+    // list open pushing the headers below the pinned band, and on
+    // loads where this marking had not run since the headers mounted).
+    const bandEl = pane.querySelector(".dband");
+    const bandRect = bandEl ? bandEl.getBoundingClientRect() : null;
     pane.querySelectorAll(".dfile-h, .dhunk-h").forEach((h) => {
       const r = h.getBoundingClientRect();
-      h.classList.toggle("stuck", r.bottom > bandTop && r.top < bandBottom);
+      const inBand = r.bottom > bandTop && r.top < bandBottom;
+      const underBacking = bandRect !== null && r.bottom > bandRect.top && r.top < bandRect.bottom;
+      h.classList.toggle("stuck", inBand || underBacking);
     });
   };
   let raf = 0;
-  const onScroll = (): void => {
+  const scheduleStuck = (): void => {
     if (raf) return;
     raf = requestAnimationFrame(() => {
       raf = 0;
       updateStuck();
     });
   };
+  const onScroll = (): void => {
+    scheduleStuck();
+  };
   pane.addEventListener("scroll", onScroll, { passive: true });
+  // Headers mount and remount without any scroll or resize — a filter
+  // change, a tab switch back to the diff, lazy file bodies landing.
+  // Re-mark on DOM changes too, or a freshly mounted first header can
+  // sit under the band backing until the reader happens to scroll
+  // (issue #202's intermittency). Class toggles are attribute changes,
+  // which this childList-only observer never sees, so it cannot loop.
+  const mo = typeof MutationObserver !== "undefined" ? new MutationObserver(scheduleStuck) : null;
+  mo?.observe(pane, { childList: true, subtree: true });
   updateStuck();
   const ro = new ResizeObserver(() => {
     refreshDiffPinned();
@@ -168,6 +191,7 @@ export function observeDiffPinned(): () => void {
   return () => {
     pane.removeEventListener("scroll", onScroll);
     if (raf) cancelAnimationFrame(raf);
+    mo?.disconnect();
     ro.disconnect();
   };
 }
