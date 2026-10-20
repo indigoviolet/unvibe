@@ -48,7 +48,6 @@ function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations:
           pageId: "root",
           title: "Central",
           level: "standard",
-          read: false,
           collapsed: false,
           revision: 1,
           blocks: [
@@ -116,9 +115,9 @@ async function setupWith(pages: ReviewSnapshot["pages"], annotations: ReviewSnap
   const review = { id: reviewId, repoId: repo.id, branch: "feature", prNumber: 7, versions: [version], currentVersion: 1, createdAt: 1 };
   const files = [sourceFile()];
   const description = descriptionFor("First para.\n\nSecond para.\n");
-  writeReviewRows(ctx.db, repo.id, { review, version, files, description, worktreePath: "/tmp" });
+  writeReviewRows(ctx.db, repo.id, { review, version, files, description, commits: [], title: review.branch, worktreePath: "/tmp" });
   ctx.reviews.putSnapshot(reviewId, {
-    review, version, files, description, pages, annotations, hunkStates: [], jobs: [], contributions: [], logTail: [], rev: 1, ingest: { status: "ready" },
+    review, version, files, description, pages, annotations, hunkStates: [], fileStates: [], viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false }, jobs: [], contributions: [], logTail: [], rev: 1, ingest: { status: "ready" },
   });
   return { app, ctx, reviewId, agents };
 }
@@ -159,6 +158,7 @@ describe("M4 web fixes", () => {
         dataDir: s.ctx.dataDir, promptsDir: s.ctx.promptsDir, mcpBaseUrl: "http://127.0.0.1:4517",
       };
       const job = await requestSecondOpinion(deps, { reviewId: s.reviewId, cardId: "ans_exp1", mode: "check" });
+      if (!("id" in job)) throw new Error("expected a job, got a reused second opinion");
       await s.ctx.jobs.drain(10000);
       expect(s.ctx.jobs.get(job.id)?.state).toBe("done");
       const stored = s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!;
