@@ -172,11 +172,13 @@ describe("issue #97: one box while working", () => {
       // Exactly one working indicator, labelled for the Explain…
       expect(screen.getAllByRole("status")).toHaveLength(1);
       expect(screen.getByRole("status")).toHaveTextContent("Writing explanation…");
-      // …and content-needing controls are not offered on the empty card.
+      // …and content-needing controls are absent (not just disabled) on
+      // the still-empty card — issue #203: header + writing state only.
       const exp = document.querySelector('[data-expansion="ann_x"]') as HTMLElement;
       expect(exp).not.toBeNull();
-      expect(within(exp).getByRole("button", { name: "Use examples" })).toBeDisabled();
-      expect(within(exp).getByRole("button", { name: "Simpler" })).toBeDisabled();
+      expect(within(exp).queryByRole("button", { name: "Use examples" })).toBeNull();
+      expect(within(exp).queryByRole("button", { name: "Simpler" })).toBeNull();
+      expect(exp.querySelector(".ctl")).toBeNull();
       // The request returns and retargets: still exactly one box.
       act(() => {
         held.resolveAction({ accepted: true, annotationId: "ann_x" });

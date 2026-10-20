@@ -1,7 +1,9 @@
 /**
- * Floating conversation cards (issue #167): clicked cards float above the
- * content by default, pinning inserts them inline, hunk-hosted cards stay
- * inline, and floating cards are keyboard reachable + closable.
+ * Pinned conversation cards (issue #204, revising #167): Explain/Ask
+ * cards open pinned inline in the flow; there is no floating open state
+ * and no pin/unpin control. Floating survives only as the hover peek on
+ * a closed card's mark (HoverPopover). Close collapses to the mark and
+ * Delete removes the card (the mark goes with its annotation).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -9,11 +11,9 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
-import { hunkIndexForLine } from "./DiffExpansions.js";
-import { shouldFloatConversation } from "./cardFloat.js";
 import { ExpansionCard } from "./ExpansionCard.js";
 
-const REVIEW_ID = "float-card-test";
+const REVIEW_ID = "pinned-card-test";
 
 function para(id: string, text: string): Record<string, unknown> {
   return { type: "paragraph", id, text: { standard: text }, citations: [] };
@@ -33,7 +33,7 @@ function turn(id: string, over: Record<string, unknown> = {}): Record<string, un
 
 function card(over: Record<string, unknown> = {}): Annotation {
   return {
-    id: "ann_float",
+    id: "ann_pin",
     type: "conversation",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
@@ -44,7 +44,7 @@ function card(over: Record<string, unknown> = {}): Annotation {
       version: 1,
     },
     open: true,
-    pinned: false,
+    pinned: true,
     messages: [],
     post: false,
     turns: [turn("ans_1")],
@@ -101,19 +101,6 @@ function seedSnapshot(annotations: Annotation[]): void {
   } as unknown as ReviewSnapshot);
 }
 
-/** Simulate the service PATCH: set `pinned` on the stored annotation. */
-function mockPinPatch(): void {
-  vi.spyOn(api, "updateComment").mockImplementation(async (_id: string, commentId: string, body: { pinned?: boolean }) => {
-    const snap = useReview.getState().snapshot;
-    if (!snap) throw new Error("no snapshot");
-    useReview.getState().setSnapshot({
-      ...snap,
-      annotations: snap.annotations.map((a) => (a.id === commentId ? { ...a, pinned: body.pinned ?? a.pinned } : a)),
-    } as never);
-    return { ok: true };
-  });
-}
-
 function show(c: Annotation): void {
   render(
     <ExpansionCard
@@ -136,69 +123,34 @@ afterEach(() => {
   useReview.getState().clear();
 });
 
-describe("shouldFloatConversation", () => {
-  test("block, description and diff-line cards float when unpinned", () => {
-    const hosts = [
-      { kind: "block", blockId: "c1#b1" },
-      { kind: "description", paragraphId: "p1" },
-      { kind: "diff-line", fileKey: "conn", line: 82 },
-    ] as const;
-    for (const host of hosts) {
-      expect(shouldFloatConversation({ id: "a", anchor: { host } } as never, false)).toBe(true);
-    }
-  });
-
-  test("a pinned card never floats", () => {
-    expect(
-      shouldFloatConversation({ id: "a", anchor: { host: { kind: "block", blockId: "c1#b1" } } } as never, true),
-    ).toBe(false);
-  });
-
-  test("a hunk-hosted card never floats, even unpinned", () => {
-    expect(
-      shouldFloatConversation(
-        { id: "a", anchor: { host: { kind: "hunk", fileKey: "conn", contentHash: "h" } } } as never,
-        false,
-      ),
-    ).toBe(false);
-  });
-});
-
-describe("floating conversation card", () => {
-  test("an open card floats by default, with a pin control", () => {
+describe("pinned conversation card (#204)", () => {
+  test("an open card renders inline with no pin or unpin control", () => {
     const c = card();
     seedSnapshot([c]);
     show(c);
-    const section = document.getElementById("B-ann_float")!;
-    expect(section.className).toContain("floating");
-    // Zero-height placeholder: the card takes no space in the flow.
-    expect(section.parentElement?.className).toBe("exp-float");
-    const pin = screen.getByRole("button", { name: "Pin into the page" });
-    expect(pin).toHaveAttribute("aria-pressed", "false");
-  });
-
-  test("pin inserts the card inline; unpin returns it to floating", () => {
-    const c = card();
-    seedSnapshot([c]);
-    mockPinPatch();
-    show(c);
-    fireEvent.click(screen.getByRole("button", { name: "Pin into the page" }));
-    const section = document.getElementById("B-ann_float")!;
+    const section = document.getElementById("B-ann_pin")!;
     expect(section.className).not.toContain("floating");
     expect(section.parentElement?.className).not.toBe("exp-float");
-    const unpin = screen.getByRole("button", { name: /Unpin/ });
-    expect(unpin).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(unpin);
-    expect(document.getElementById("B-ann_float")!.className).toContain("floating");
-    expect(screen.getByRole("button", { name: "Pin into the page" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Pin into the page|Unpin/ })).toBeNull();
   });
 
-  test("a collapsed card floats too and keeps its pin control", () => {
+  test("a card stored unpinned (pre-#204 data) also renders inline when open", () => {
+    const c = card({ pinned: false });
+    seedSnapshot([c]);
+    show(c);
+    const section = document.getElementById("B-ann_pin")!;
+    expect(section.className).not.toContain("floating");
+    expect(section.parentElement?.className).not.toBe("exp-float");
+    expect(screen.queryByRole("button", { name: /Pin into the page|Unpin/ })).toBeNull();
+  });
+
+  test("a collapsed card is inline too and keeps its expand control", () => {
     const c = card({ collapsed: true });
     seedSnapshot([c]);
     show(c);
-    expect(document.getElementById("B-ann_float")!.className).toContain("floating");
-    expect(screen.getByRole("button", { name: "Pin into the page" })).toBeDefined();
+    expect(document.getElementById("B-ann_pin")!.className).not.toContain("floating");
+    expect(screen.getByRole("button", { name: "Expand" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Pin into the page|Unpin/ })).toBeNull();
   });
 
   test("a hunk-hosted card is inline with no pin control", () => {
@@ -207,81 +159,24 @@ describe("floating conversation card", () => {
     show(c);
     const section = document.getElementById("B-ann_hunk")!;
     expect(section.className).not.toContain("floating");
-    expect(section.parentElement?.className).not.toBe("exp-float");
     expect(screen.queryByRole("button", { name: /Pin into the page|Unpin/ })).toBeNull();
   });
 
-  test("× closes a floating card as today", () => {
+  test("× closes the card (it collapses back to its mark)", () => {
     const c = card();
     seedSnapshot([c]);
     const spy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true });
     show(c);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "close", annotationId: "ann_float" });
+    expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "close", annotationId: "ann_pin" });
   });
 
-  test("Escape closes a floating card, but not from its reply box", () => {
+  test("Delete removes the card through the delete action", () => {
     const c = card();
     seedSnapshot([c]);
     const spy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true });
     show(c);
-    const section = document.getElementById("B-ann_float")!;
-    fireEvent.keyDown(section, { key: "Escape" });
-    expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "close", annotationId: "ann_float" });
-    spy.mockClear();
-    const box = screen.getByLabelText("Ask a follow-up");
-    fireEvent.keyDown(box, { key: "Escape" });
-    expect(spy).not.toHaveBeenCalled();
-  });
-
-  test("a card stored pinned renders inline (pin survives a reload)", () => {
-    const c = card({ pinned: true });
-    seedSnapshot([c]);
-    show(c);
-    const section = document.getElementById("B-ann_float")!;
-    expect(section.className).not.toContain("floating");
-    expect(section.parentElement?.className).not.toBe("exp-float");
-    expect(screen.getByRole("button", { name: /Unpin/ })).toBeDefined();
-  });
-
-  test("a pinned card has no Escape-to-close (× still works)", () => {
-    const c = card();
-    seedSnapshot([c]);
-    mockPinPatch();
-    const spy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true });
-    show(c);
-    fireEvent.click(screen.getByRole("button", { name: "Pin into the page" }));
-    fireEvent.keyDown(document.getElementById("B-ann_float")!, { key: "Escape" });
-    expect(spy).not.toHaveBeenCalled();
-  });
-});
-
-describe("hunkIndexForLine", () => {
-  const file = {
-    fileKey: "conn",
-    hunks: [
-      { newStart: 10, newEnd: 20, oldStart: 10, oldEnd: 18 },
-      { newStart: 40, newEnd: 50, oldStart: 38, oldEnd: 48 },
-    ],
-  } as never;
-
-  test("finds the hunk by new-side lines", () => {
-    expect(hunkIndexForLine(file, 12)).toBe(0);
-    expect(hunkIndexForLine(file, 45)).toBe(1);
-  });
-
-  test("falls back to the old-side range, then the first hunk", () => {
-    // Old-side-only line inside the second hunk's old range but outside
-    // every new range.
-    const del = {
-      fileKey: "conn",
-      hunks: [{ newStart: 10, newEnd: 12, oldStart: 10, oldEnd: 20 }],
-    } as never;
-    expect(hunkIndexForLine(del, 18)).toBe(0);
-    expect(hunkIndexForLine(file, 999)).toBe(0);
-  });
-
-  test("null with no hunks", () => {
-    expect(hunkIndexForLine({ fileKey: "x", hunks: [] } as never, 5)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(spy).toHaveBeenCalledWith(REVIEW_ID, { kind: "delete", targetId: "ann_pin" });
   });
 });

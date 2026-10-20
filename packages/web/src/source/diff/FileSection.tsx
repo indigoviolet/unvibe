@@ -21,7 +21,7 @@
  * mounts ~300 headers instead of 5k hunks. `eager` bypasses the lazy gate
  * (above-the-fold files, file jumps, `revealSource` targets).
  */
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Annotation, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
 import { HUNK_SCORE_LABELS, hunkMatchesFilter } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
@@ -30,7 +30,6 @@ import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { performAction } from "../../guide/actions.js";
 import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
-import { floatingHunkKey } from "../../guide/expansions/DiffExpansions.js";
 import {
   fileStats,
   groupHunks,
@@ -127,15 +126,6 @@ interface SectionProps {
    * page id. The hunk keeps its summary text plus a page-link chip.
    */
   promotedHunks?: ReadonlyMap<string, string>;
-  /**
-   * Issue #167: open floating conversation cards by hunk
-   * (`floatingHunkKey`). Rendered at the hunk level, outside the hunk's
-   * sideways scroller so the overlay is never clipped by `.dwrap`, and
-   * shifted to the card's anchored row by `AnchoredFloat` (#185). Only
-   * floating cards land here (pinning one moves it to its line slot,
-   * exactly today's inline position).
-   */
-  floatingExpansions?: ReadonlyMap<string, Annotation[]>;
   /** Page lookup + navigation + follow-ups for activated hunk cards. */
   lookupPage?: (pageId: string) => Page | undefined;
   onOpenPage?: (pageId: string) => void;
@@ -529,52 +519,6 @@ function HiddenRow({
   );
 }
 
-/**
- * Issue #185: a floating card in the diff floats at its anchored row,
- * not at the top of its hunk. The card layer renders at the hunk level
- * (outside the hunk's sideways scroller, so the overlay is never
- * clipped); this zero-height wrapper measures the anchored row
- * (`#L-<fileKey>-<line>`, present in unified and split rows) and shifts
- * itself — and the card with it — down to just below that row. It takes
- * no space in the flow, so the page never reflows, and it recomputes on
- * every render, on resize and when webfonts land.
- */
-function AnchoredFloat({ fileKey, line, children }: { fileKey: string; line: number; children: ReactNode }): ReactNode {
-  const ref = useRef<HTMLDivElement>(null);
-  const [top, setTop] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = (): void => {
-      const row = document.getElementById(`L-${fileKey}-${line}`);
-      if (!row) {
-        setTop((t) => (t === 0 ? t : 0));
-        return;
-      }
-      // The wrapper's natural (unshifted) top sits at the hunk top;
-      // shift it so the card's top meets the anchored row's bottom.
-      const natural = el.getBoundingClientRect().top - top;
-      const next = Math.max(0, Math.round(row.getBoundingClientRect().bottom - natural));
-      setTop((t) => (t === next ? t : next));
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    let cancelled = false;
-    document.fonts?.ready.then(() => {
-      if (!cancelled) measure();
-    }).catch(() => {});
-    return () => {
-      cancelled = true;
-      window.removeEventListener("resize", measure);
-    };
-  });
-  return (
-    <div ref={ref} className="dhunk-float" style={{ top }}>
-      {children}
-    </div>
-  );
-}
-
 function HunkBlock(
   props: SectionProps & {
     index: number;
@@ -737,21 +681,6 @@ function HunkBlock(
           onChange={() => props.actions.toggleReviewed(h.contentHash, reviewed)}
         />
       </div>
-      {(props.floatingExpansions?.get(floatingHunkKey(file.fileKey, index)) ?? []).map((a) => (
-        <AnchoredFloat
-          key={a.id}
-          fileKey={a.anchor.host.kind === "diff-line" ? a.anchor.host.fileKey : file.fileKey}
-          line={a.anchor.host.kind === "diff-line" ? a.anchor.host.line : 0}
-        >
-          <ExpansionCard
-            reviewId={props.reviewId}
-            expansion={a}
-            lookupPage={props.lookupPage ?? (() => undefined)}
-            onOpenPage={props.onOpenPage ?? (() => {})}
-            onFollowUp={props.onFollowUp ?? (() => {})}
-          />
-        </AnchoredFloat>
-      ))}
       {showOpenHunkCard ? (
         hunkCardNode
       ) : summary !== undefined || hunkCardState !== undefined ? (

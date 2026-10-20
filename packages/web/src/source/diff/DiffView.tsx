@@ -102,12 +102,6 @@ export interface DiffViewProps {
   reviewId: string;
   /** Extra rows under a diff line, keyed `${fileKey}:${newSideLine}`. */
   lineSlots?: LineSlots;
-  /**
-   * Issue #167: open floating conversation cards by hunk
-   * (`floatingHunkKey`), rendered at the hunk level outside the hunk's
-   * sideways scroller. Optional so DiffView stays usable standalone.
-   */
-  floatingExpansions?: ReadonlyMap<string, import("@unvibe/shared").Annotation[]>;
   /** New-side lines that already have a comment (shows the comment icon). */
   commentedLines?: ReadonlySet<string>;
   /** "Start a comment" hook: fired when a new-side line number is clicked. */
@@ -129,7 +123,7 @@ interface Highlight {
   nonce: number;
 }
 
-export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLines, onLineClick, lookupPage, onOpenPage, onFollowUp }: DiffViewProps): ReactNode {
+export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, lookupPage, onOpenPage, onFollowUp }: DiffViewProps): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
   const setSnapshot = useReview((s) => s.setSnapshot);
   const [prefs, setPrefs] = useState<DiffPrefs>(loadPrefs);
@@ -1064,7 +1058,6 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
               states={states}
               hunkCards={hunkCards}
               promotedHunks={promotedHunks}
-              floatingExpansions={floatingExpansions}
               lookupPage={lookupPage ?? (() => undefined)}
               onOpenPage={onOpenPage ?? (() => {})}
               onFollowUp={onFollowUp ?? (() => {})}

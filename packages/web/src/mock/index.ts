@@ -573,28 +573,10 @@ const hunkStates = seedHunkStates();
 const fileStates = new Map<string, import("@unvibe/shared").FileState>();
 /** Issue #169: the diff's score/plotline filter, remembered with the review. */
 let mockDiffFilter: DiffFilter | undefined;
-/** Issue #167: pinned card ids persist across a reload, like the service. */
-const PINNED_KEY = "unvibe.mock.pinned";
-function readPinnedIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(PINNED_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
-  } catch {
-    return new Set();
-  }
-}
-function writePinnedIds(ids: Set<string>): void {
-  try {
-    localStorage.setItem(PINNED_KEY, JSON.stringify([...ids]));
-  } catch {
-    // Non-fatal.
-  }
-}
 function seedAnnotations(): import("@unvibe/shared").Annotation[] {
   const list = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS)) as import("@unvibe/shared").Annotation[];
-  const pinned = readPinnedIds();
-  for (const a of list) a.pinned = pinned.has(a.id);
+  // Issue #204: conversation cards are pinned, like the service creates them.
+  for (const a of list) if (a.type === "conversation") a.pinned = true;
   return list;
 }
 let annotations: import("@unvibe/shared").Annotation[] = seedAnnotations();
@@ -1343,7 +1325,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
       version: 1,
     },
     open: true,
-    pinned: false,
+    pinned: true,
     messages: [],
     post: false,
     working: null,
@@ -2636,7 +2618,7 @@ export const mockApi = {
           // Ask cards open in place everywhere, like Explain (no
           // closed-thread legacy).
           open: true,
-          pinned: false,
+          pinned: true,
           messages: [],
           post: false,
           working: "Thinking…",
@@ -2758,7 +2740,7 @@ export const mockApi = {
             : {}),
         },
         open: true,
-        pinned: false,
+        pinned: true,
         messages: [],
         post: false,
         working: "Thinking…",
@@ -2881,7 +2863,7 @@ export const mockApi = {
           version: 1,
         },
         open: true,
-        pinned: false,
+        pinned: true,
         messages: [],
         post: false,
         working: "Writing answer…",
@@ -3229,13 +3211,7 @@ export const mockApi = {
     // comment-only.
     if (thread.type === "conversation") {
       if (body.open !== undefined) thread.open = body.open;
-      if (body.pinned !== undefined) {
-        thread.pinned = body.pinned;
-        const ids = readPinnedIds();
-        if (body.pinned) ids.add(thread.id);
-        else ids.delete(thread.id);
-        writePinnedIds(ids);
-      }
+      if (body.pinned !== undefined) thread.pinned = body.pinned;
       if (body.post !== undefined || body.draft !== undefined) {
         throw new Error(`annotation ${commentId} is not a thread`);
       }
