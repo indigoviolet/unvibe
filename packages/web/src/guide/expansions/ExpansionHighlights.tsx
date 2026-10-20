@@ -26,7 +26,8 @@ import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
 import { useReview } from "../../state/store.js";
-import { anchorScope, highlightAnchorInRoot, withPreservedSelection, clearMarks, repassUntilSettled, spotFromAnchor } from "../../comments/anchor.js";
+import { anchorHostExists, anchorScope, highlightAnchorInRoot, probeAnchorInRoot, retryUntilSettled, withPreservedSelection, clearMarks, spotFromAnchor } from "../../comments/anchor.js";
+import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
 function makeExpMark(id: string, closed: boolean): HTMLElement {
@@ -52,8 +53,8 @@ export function ExpansionHighlights() {
   useEffect(() => {
     const root = document.getElementById("page");
     if (!root) return;
-    // Issue #166: anchors whose host text isn't there yet are retried
-    // boundedly (same shape as GuideThreads).
+    // Issue #166: anchors whose host text isn't there yet are retried —
+    // bounded overall per effect run (#206), never re-armed per pass.
     const placeable = (annotations ?? []).filter(
       (a) =>
         (a.type === "conversation" || a.type === "link") &&
@@ -62,8 +63,95 @@ export function ExpansionHighlights() {
         a.anchor.host.kind === "block",
     );
     let pending = new Set<string>(placeable.map((a) => a.id));
-    let retryCleanup: (() => void) | null = null;
+
+    // Where each anchor would land, probed without touching the DOM
+    // (#206): a pass whose result is already on the page leaves the DOM
+    // alone, so placed marks never blink.
+    const desiredOf = (a: (typeof placeable)[number]): { placed: boolean; sig: string | null; hostMissing: boolean } => {
+      if (a.anchor.host.kind !== "block") return { placed: false, sig: null, hostMissing: true };
+      const scope = anchorScope(root, a.anchor.host.blockId);
+      const spot = spotFromAnchor(a.anchor);
+      const pageId = a.promotedToPage ?? (a.type === "link" ? a.promotedToPage : undefined);
+      const { cardId, block } = splitBlock(a.anchor.host.blockId);
+      const tops =
+        a.type === "link" || pageId
+          ? cardId
+            ? [`${cardId}#${block}`, block, a.anchor.host.blockId]
+            : [block, a.anchor.host.blockId]
+          : [a.anchor.host.blockId, block];
+      const hostMissing = !tops.some((top) => anchorHostExists(scope, top));
+      const placed = tops.some((top) => probeAnchorInRoot(scope, top, spot));
+      if (a.type === "link" || pageId) return { placed, sig: placed ? `pg:${pageId ?? ""}` : null, hostMissing };
+      return { placed, sig: placed ? (!a.open ? "exl" : "ex") : null, hostMissing };
+    };
+
+    const recordGaveUp = (): void => {
+      recordUnplacedAnchors(
+        "Guide expansions",
+        placeable
+          .filter((a) => pending.has(a.id))
+          .map((a) => ({
+            id: a.id,
+            kind: a.type,
+            host: hostLabel(a.anchor),
+            reason: desiredOf(a).hostMissing ? ("host-missing" as const) : ("quote-not-found" as const),
+          })),
+      );
+    };
+    const retry = retryUntilSettled({
+      isSettled: () => pending.size === 0,
+      repass: () => runPass(),
+      attempts: 3,
+      delayMs: 250,
+      onGiveUp: recordGaveUp,
+    });
+
     const runPass = (): void => {
+      pending = new Set<string>(placeable.map((a) => a.id));
+      // #206: skip the DOM surgery entirely when the marks and chips
+      // already match what this pass would produce.
+      const desired = new Map(placeable.map((a) => [a.id, desiredOf(a)]));
+      const current = new Map<string, string>();
+      for (const el of root.querySelectorAll(
+        "mark.anc.ex[data-jump]:not(.fnote), mark.anc.exl[data-jump]:not(.fnote)",
+      )) {
+        const id = (el as HTMLElement).dataset.jump ?? "";
+        if (id) current.set(id, el.classList.contains("exl") ? "exl" : "ex");
+      }
+      for (const el of root.querySelectorAll("a.cx.pg[data-node]:not(.fnote)")) {
+        const node = (el as HTMLElement).dataset.node ?? "";
+        if (node) current.set(`pg:${node}`, `pg:${node}`);
+      }
+      // Normalised desired marks: annotation id -> mark kind, or
+      // `pg:<page>` -> itself for promoted page links.
+      const desiredMarks = new Map<string, string>();
+      for (const a of placeable) {
+        const d = desired.get(a.id)!;
+        if (!d.placed || d.sig === null) continue;
+        if (a.type === "link" || a.promotedToPage) desiredMarks.set(d.sig, d.sig);
+        else desiredMarks.set(a.id, d.sig);
+        pending.delete(a.id);
+      }
+      let same =
+        desiredMarks.size === current.size &&
+        [...desiredMarks].every(([k, v]) => current.get(k) === v);
+      if (same) {
+        for (const el of root.querySelectorAll("[data-fallback]")) {
+          const id = (el as HTMLElement).dataset.fallback ?? "";
+          if (!id) continue;
+          // A chip shows exactly when its anchor did not land.
+          const wantHidden = desired.has(id) ? desired.get(id)!.placed : false;
+          if ((el as HTMLElement).hidden !== wantHidden) {
+            same = false;
+            break;
+          }
+        }
+      }
+      if (same) {
+        if (pending.size === 0) recordUnplacedAnchors("Guide expansions", []);
+        else retry.schedule();
+        return;
+      }
       pending = new Set<string>(placeable.map((a) => a.id));
       // Idempotent re-mark (issue #15): drop our own stale marks first
       // (deleted / anchor-stale / quote-gone annotations are skipped below
@@ -97,10 +185,7 @@ export function ExpansionHighlights() {
             continue;
           }
           const closed = !a.open;
-          const { cardId, block } = splitBlock(a.anchor.host.blockId);
-          // Match the same block-matching rule as the card list so marks land
-          // on the host the card renders under.
-          void cardId;
+          const { block } = splitBlock(a.anchor.host.blockId);
           const tops = [a.anchor.host.blockId, block];
           for (const top of tops) {
             if (highlightAnchorInRoot(anchorScope(root, a.anchor.host.blockId), top, spotFromAnchor(a.anchor), () => makeExpMark(a.id, closed))) {
@@ -116,20 +201,15 @@ export function ExpansionHighlights() {
           if (id && !highlighted.has(id)) (el as HTMLElement).hidden = false;
           else if (id && highlighted.has(id)) (el as HTMLElement).hidden = true;
         }
-        // Open expansions always have their card in place; their fallback
-        // stays hidden.
         void pages;
       });
-      retryCleanup?.();
-      retryCleanup = null;
-      if (pending.size > 0) {
-        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
-      }
+      if (pending.size === 0) recordUnplacedAnchors("Guide expansions", []);
+      else retry.schedule();
     };
     const timer = window.setTimeout(runPass, 0);
     return () => {
       window.clearTimeout(timer);
-      retryCleanup?.();
+      retry.cancel();
     };
   }, [annotations, pages, pathname]);
 
@@ -143,7 +223,7 @@ export function ExpansionHighlights() {
       const found = snap?.annotations.find((x) => x.id === id);
       if (!reviewId || !found) return;
       if (found.type === "conversation" && !found.open) {
-        api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
+        api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
       }
