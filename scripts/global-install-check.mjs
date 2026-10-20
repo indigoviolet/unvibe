@@ -1,4 +1,4 @@
-/*global console process setTimeout Buffer */
+/*global console process setTimeout clearTimeout Buffer */
 // Global-install check (PRD §14 install path), run as:
 //   mise run check-global-install
 // which first runs `mise run release` (self-contained tree + tarball +
