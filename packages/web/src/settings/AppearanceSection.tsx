@@ -45,7 +45,7 @@ export function AppearanceSection({
 
   return (
     <section aria-label="Appearance">
-      <div className="card" style={{ padding: "8px 14px" }}>
+      <div className="ui-card">
         <div className="setgrid">
           <label htmlFor="ui-theme">Theme</label>
           <div className="fld">

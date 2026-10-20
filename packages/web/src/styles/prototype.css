@@ -148,6 +148,40 @@
   --accent: #4cc2ff; --accent-soft: #10303f; --note: #f0b35c; --note-soft: #2a2212; --note-mark: #4a3a16;
   --add: #12301c; --add-ink: #7ee787; --del: #3a1a1f; --del-ink: #ff8a8a; --warn: #ff9f6e; --warn-soft: #382416;
   --ok: #7ee787; color-scheme: dark; }
+
+/* #201 scales: spacing, control heights, radii, type, text greys (per theme below) */
+:root, :root[data-ui-theme="default"] {
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  --control-sm: 28px; --control-md: 34px; --control-lg: 40px;
+  --radius-control: var(--radius-6); --radius-card: var(--radius-8);
+  --text-xs: 11px; --text-sm: 12.5px; --text-md: 14px; --text-lg: 16px; --text-xl: 21px;
+  --weight-normal: 400; --weight-medium: 500; --weight-semibold: 600; --weight-bold: 700;
+  --text-primary: var(--ink); --text-secondary: var(--muted); --text-muted: color-mix(in srgb, var(--ink) 55%, var(--bg)); --text-disabled: color-mix(in srgb, var(--ink) 35%, var(--bg));
+  --focus-ring: var(--accent);
+}
+:root[data-ui-theme="studio"] {
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 18px; --space-5: 26px; --space-6: 36px; --space-7: 52px; --space-8: 72px;
+  --control-sm: 30px; --control-md: 38px; --control-lg: 44px;
+  --radius-control: 10px; --radius-card: 14px;
+  --text-xs: 11.5px; --text-sm: 13px; --text-md: 15px; --text-lg: 17px; --text-xl: 22px;
+  --weight-normal: 400; --weight-medium: 600; --weight-semibold: 700; --weight-bold: 800;
+  --text-primary: var(--ink); --text-secondary: var(--muted); --text-muted: color-mix(in srgb, var(--ink) 55%, var(--bg)); --text-disabled: color-mix(in srgb, var(--ink) 35%, var(--bg));
+  --focus-ring: var(--accent);
+}
+:root[data-ui-theme="console"] {
+  --space-1: 3px; --space-2: 6px; --space-3: 10px; --space-4: 14px; --space-5: 20px; --space-6: 28px; --space-7: 40px; --space-8: 56px;
+  --control-sm: 26px; --control-md: 30px; --control-lg: 36px;
+  --radius-control: 3px; --radius-card: 4px;
+  --text-xs: 10.5px; --text-sm: 12px; --text-md: 13px; --text-lg: 15px; --text-xl: 17px;
+  --weight-normal: 400; --weight-medium: 500; --weight-semibold: 600; --weight-bold: 700;
+  --text-primary: var(--ink); --text-secondary: var(--muted); --text-muted: color-mix(in srgb, var(--ink) 55%, var(--bg)); --text-disabled: color-mix(in srgb, var(--ink) 35%, var(--bg));
+  --focus-ring: var(--accent);
+}
+:focus-visible { outline: var(--focus-width,2px) solid var(--focus-ring); outline-offset: var(--focus-offset,2px); }
+/* #201 card surfaces: one variable set for a card and all its parts. */
+:root { --card-surface: var(--surface); --card-child-surface: var(--bg-child); --card-header-surface: var(--card-child-surface); --card-reply-surface: var(--card-child-surface); --card-input-surface: var(--card-child-surface); --popover-surface: var(--surface); --popover-border: var(--line); --popover-radius: var(--radius-8); --popover-shadow: var(--shadow-pop); }
+::placeholder { font-family: var(--sans); color: var(--text-muted); opacity: 1; }
+
 html, body { height: 100%; }
 /* Elements toggled with the hidden attribute must stay hidden even when their own rule sets display. */
 [hidden] { display: none !important; }
@@ -288,7 +322,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .av.ai { background: var(--accent-soft); color: var(--accent); }
 .hl { background: var(--note-mark) !important; }
 .composer { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.composer textarea { min-width: 0; resize: vertical; border: var(--border-width) solid var(--line); border-radius: var(--radius-6); padding: 6px 8px; font: 13px/1.4 var(--sans); background: var(--surface); color: var(--ink); }
+.card.child .composer textarea { background: var(--card-input-surface); }
+textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320px; }
+.composer textarea { min-width: 120px; max-width: 100%; min-height: 44px; max-height: 240px; resize: vertical; border: var(--border-width) solid var(--line); border-radius: var(--radius-6); padding: 6px 8px; font: 13px/1.4 var(--sans); background: var(--surface); color: var(--ink); }
 .composer .row { display: flex; gap: 6px; justify-content: flex-end; }
 .msg { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; margin: 5px 0; }
 .msg .who { font-size: 11px; color: var(--muted); }
@@ -390,10 +426,11 @@ code { font-family: var(--mono); font-size: .86em; }
 .fchip button:hover { background: var(--line); color: var(--ink); }
 /* Files rows: the dot is its own button beside the jump button. */
 .fr .fr-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
-.ci { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; padding: 6px; border-radius: var(--radius-6); }
+.ci { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; padding: var(--space-3); border-top: var(--border-width) solid var(--line); }
 .ci:hover { background: var(--sunk); }
 .cj { border: 0; background: none; text-align: left; padding: 0; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.cj .cw { font: 11px var(--mono); color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cj .cw { font: var(--text-xs) var(--sans); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cj .cw .mono{font-family:var(--mono)}
 /* Start page (#94): the PR label links out but keeps its quiet meta look. */
 .cw a { color: inherit; text-decoration: none; }
 .cw a:hover, .cw a:focus-visible { text-decoration: underline; }
@@ -403,8 +440,8 @@ code { font-family: var(--mono); font-size: .86em; }
 .cj-open:disabled { cursor: default; }
 /* Start page (#100): diff size in the row meta line, add/delete colours as in the diff. */
 .cw .a { color: var(--add-ink); } .cw .d { color: var(--del-ink); }
-.cj .cx2 { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.ci textarea { grid-column: 1 / -1; border: var(--border-width) solid var(--line); border-radius: var(--radius-4); font: 12.5px/1.4 var(--sans); padding: 5px; resize: vertical; min-height: 56px; background: var(--surface); color: var(--ink); }
+.cj .cx2 { font-size: var(--text-md); color: var(--text-primary); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ci textarea { min-width: 120px; max-width: 100%; max-height: 240px; grid-column: 1 / -1; border: var(--border-width) solid var(--line); border-radius: var(--radius-4); font: 12.5px/1.4 var(--sans); padding: 5px; resize: vertical; min-height: 56px; background: var(--surface); color: var(--ink); }
 .prtag { font-size: 10.5px; color: var(--note); border: 1px solid var(--note); border-radius: var(--radius-pill); padding: 0 6px; white-space: nowrap; }
 /* Suggested open questions (issue #181): quiet tag telling them apart
    from finding suggestions. */
@@ -600,7 +637,7 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
    still names the state). The working-dots / job-pill rule below is owned
    by #144 and untouched. */
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
-.card { background: var(--surface); border: var(--border-width) solid var(--line); border-radius: var(--radius-10); padding: var(--pad-card); box-shadow: var(--shadow-raised); margin: 14px 0; position: relative; }
+.card { background: var(--card-surface); border: var(--border-width) solid var(--line); border-radius: var(--radius-10); padding: var(--pad-card); box-shadow: var(--shadow-raised); margin: 14px 0; position: relative; }
 .chead { display: flex; align-items: center; gap: 4px; margin-left: -10px; }
 .chead h2.ct { font-family: var(--serif); font-size: var(--text-card-title); font-weight: 600; margin: 0; text-wrap: balance; flex: 1; min-width: 0; }
 .card.collapsed { padding-block: 8px; }
@@ -608,7 +645,7 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .cprev { flex: 1; min-width: 0; margin: 0; font-family: var(--serif); font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A finding's own page carries the same warning accent as its card in the guide. */
 .doc.finding > .card { border-left: var(--rail-accent-width) solid var(--warn); background: var(--bg-finding-card); }
-.card.child { margin: 8px 0 14px 10px; border-left: var(--rail-accent-width) solid var(--accent); background: var(--bg-child); padding: 8px 14px; }
+.card.child { margin: 8px 0 14px 10px; border-left: var(--rail-accent-width) solid var(--accent); background: var(--card-child-surface); padding: 8px 14px; }
 /* One answer inside a conversation card: later answers keep a divider so
    turns stay scannable, and their question reads as a muted heading. */
 .card.child .ans + .ans { border-top: 1px dashed var(--line); margin-top: 8px; padding-top: 8px; }
@@ -1058,7 +1095,7 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 #selbar a[data-act]:hover { background: var(--on-ink-hover); }
 #selbar .sep { width: 1px; background: var(--on-ink-sep); margin: 3px 2px; }
 #selbar .sel-note { color: var(--text-selbar); font-size: 12.5px; padding: 4px 9px; white-space: normal; max-width: 320px; }
-#pop { position: fixed; z-index: 35; width: max-content; max-width: min(420px, calc(100vw - 16px)); background: var(--surface); border: var(--border-width) solid var(--line); border-radius: var(--radius-8); box-shadow: var(--shadow-pop); padding: 8px 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
+#pop { position: fixed; z-index: 35; width: max-content; max-width: min(420px, calc(100vw - 16px)); background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: 8px 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
 .cite { display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left; border: 0; background: none; padding: 2px 6px; border-radius: var(--radius-4); }
 .cite:hover { background: var(--sunk); }
 .cite .loc { font: 11px var(--mono); color: var(--accent); }

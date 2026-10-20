@@ -7,20 +7,26 @@
 import { useState } from "react";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { Button } from "../ui/index.js";
 
 export interface Field {
   key: keyof Settings;
   label: string;
   hint: string;
   step?: string;
+  /** Stored as ms, edited in minutes (#201). */
+  minutes?: boolean;
 }
+/** ms -> minutes for the control; minutes -> ms on save. */
+export const msToMinutes = (ms: number): number => ms / 60000;
+export const minutesToMs = (minutes: number): number => Math.round(minutes * 60000);
 
 const FIELDS: Field[] = [
   { key: "sessionsPerProvider", label: "Agent sessions at once, per provider", hint: "Up to this many main-model sessions and up to this many small-model sessions at once, for each provider. 1 to 32. Default 4." },
   { key: "inlineBudgetTokens", label: "Largest diff sent to the agent in full (tokens)", hint: "Larger diffs are sent as summaries and the agent fetches the rest when it needs it. Default 40,000." },
   { key: "rebuildSupersededRatio", label: "Rebuild the agent's context when this share of it is out of date", hint: "Above 0, up to 1. Default 0.2.", step: "0.01" },
   { key: "rebuildAppendedTokens", label: "Rebuild the agent's context after this many added tokens", hint: "Default 10,000." },
-  { key: "cacheLifetimeMs", label: "Close idle agent sessions after (ms)", hint: "Default 300,000 (5 minutes)." },
+  { key: "cacheLifetimeMs", label: "Close idle agent sessions after (minutes)", hint: "Default 5 min.", minutes: true },
   { key: "idleExitMinutes", label: "Stop the service when idle for (minutes)", hint: "0 means never. Default 10." },
 ];
 
@@ -36,8 +42,11 @@ export function LimitsSection({
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
-  const value = (f: Field): string =>
-    draft[f.key] ?? String(settings[f.key] as number);
+  const value = (f: Field): string => {
+    if (draft[f.key] !== undefined) return draft[f.key];
+    const raw = settings[f.key] as number;
+    return String(f.minutes ? msToMinutes(raw) : raw);
+  };
 
   const save = async (): Promise<void> => {
     setSaving(true);
@@ -53,7 +62,7 @@ export function LimitsSection({
         setSaving(false);
         return;
       }
-      patch[f.key] = n;
+      patch[f.key] = f.minutes ? minutesToMs(n) : n;
     }
     try {
       const next = await api.saveSettings(patch);
@@ -69,7 +78,7 @@ export function LimitsSection({
 
   return (
     <section aria-label="Limits">
-      <div className="card" style={{ padding: "8px 14px" }}>
+      <div className="ui-card setgrid-form">
         {FIELDS.map((f) => (
           <div className="setgrid" key={f.key}>
             <label htmlFor={`limit-${f.key}`}>{f.label}</label>
@@ -100,9 +109,9 @@ export function LimitsSection({
             </p>
           ))}
         <div className="frow" style={{ gap: 8, marginTop: 8 }}>
-          <button className="btn" type="button" disabled={saving} onClick={() => void save()}>
+          <Button variant="primary" type="button" disabled={saving} onClick={() => void save()}>
             {saving ? "Saving…" : "Save limits"}
-          </button>
+          </Button>
           {savedAt ? <span className="hint">{savedAt}</span> : null}
         </div>
       </div>

@@ -245,7 +245,7 @@ export function VersionSection({
           Show channels and allow switching
         </label>
       </div>
-      <div className="card" style={{ padding: "8px 14px" }}>
+      <div className="ui-card">
         {error ? (
           <p className="err" role="alert">
             Couldn&apos;t load version info: {error}
@@ -287,7 +287,7 @@ export function VersionSection({
           <p className="warnline" data-testid="update-pending">
             A switch to {status.pending.to} is in progress (started {timeAgoIso(status.pending.startedAt) ?? "recently"}
             ).{" "}
-            <button className="btn ghost" type="button" onClick={() => {
+            <button className="ui-btn" data-variant="secondary" type="button" onClick={() => {
               const to = status.pending?.to;
               if (!to) return;
               const target = channels?.find((c) => c.ref === to)?.version ?? null;
@@ -395,7 +395,7 @@ function VersionList({
     <div className="ver-list">
       <div className="ver-listhead">
         <span className="hint">Channels</span>
-        <button className="btn ghost" type="button" disabled={refreshing} onClick={onRefresh} data-testid="update-refresh">
+        <button className="ui-btn" data-variant="secondary" type="button" disabled={refreshing} onClick={onRefresh} data-testid="update-refresh">
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
@@ -475,11 +475,11 @@ function VersionRow({
         ) : null}
         {confirming ? (
           <>
-            <button className="btn" type="button" aria-label={`Confirm ${verb} to ${c.ref}`} onClick={() => onConfirm(c.ref)}>
+            <button className="ui-btn" data-variant="primary" type="button" aria-label={`Confirm ${verb} to ${c.ref}`} onClick={() => onConfirm(c.ref)}>
               Confirm
             </button>
             <button
-              className="btn ghost"
+              className="ui-btn" data-variant="secondary"
               type="button"
               aria-label={`Cancel ${verb} to ${c.ref}`}
               onClick={onCancel}
@@ -488,12 +488,12 @@ function VersionRow({
             </button>
           </>
         ) : newerAvailable && build && c.current && !switchingTo ? (
-          <button className="btn ghost" type="button" aria-label={`Update ${c.ref}`} onClick={() => onSwitch(c.ref)}>
+          <button className="ui-btn" data-variant="secondary" type="button" aria-label={`Update ${c.ref}`} onClick={() => onSwitch(c.ref)}>
             Update
           </button>
         ) : !c.current && !switchingTo && !isBlocked ? (
           <button
-            className="btn ghost"
+            className="ui-btn" data-variant="secondary"
             type="button"
             aria-label={`Switch to ${c.ref}`}
             onClick={() => onSwitch(c.ref)}
@@ -547,11 +547,11 @@ function BlockedPanel({
       ) : null}
       {/* Buttons stay together on one line when the panel wraps. */}
       <span style={{ display: "inline-flex", gap: 6 }}>
-        <button className="btn" type="button" onClick={() => onForceConfirm(blocked.ref)}>
+        <button className="ui-btn" data-variant="primary" type="button" onClick={() => onForceConfirm(blocked.ref)}>
           Switch anyway
         </button>
         <button
-          className="btn ghost"
+          className="ui-btn" data-variant="secondary"
           type="button"
           aria-label={`Cancel switch to ${blocked.ref}`}
           onClick={onCancel}

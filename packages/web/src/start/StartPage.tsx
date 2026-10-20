@@ -60,6 +60,7 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
+import { Button } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
@@ -735,7 +736,8 @@ export function StartPage(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") openPrInput();
           }}
-          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+          className="ui-input"
+          style={{ flex: "1 1 220px" }}
         />
         <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
           Open PR
@@ -886,14 +888,12 @@ export function StartPage(): React.JSX.Element {
                     <Link className="tbtn" to="/doctor">
                       Doctor
                     </Link>
+                    <Button variant="quiet" size="sm" type="button" onClick={() => void recheck()} disabled={checking}>
+                      {checking ? "Checking…" : "Re-check"}
+                    </Button>
                   </div>
                 </div>
               ))}
-              <div>
-                <button className="mini" type="button" onClick={() => void recheck()} disabled={checking}>
-                  {checking ? "Checking…" : "Re-check"}
-                </button>
-              </div>
             </div>
           ) : null}
 

@@ -51,7 +51,7 @@ export function AccessSection({
           </p>
           <p className="hint">Automatic hunk summaries always run locked down.</p>
           <button
-            className="btn"
+            className="ui-btn" data-variant="primary"
             type="button"
             disabled={saving}
             onClick={() => void save({ fullAccess: false })}
@@ -66,7 +66,7 @@ export function AccessSection({
             It cannot run commands, use git or gh, reach the web, or change files.
           </p>
           {!confirming ? (
-            <button className="btn" type="button" disabled={saving} onClick={() => setConfirming(true)}>
+            <button className="ui-btn" data-variant="primary" type="button" disabled={saving} onClick={() => setConfirming(true)}>
               Turn on full access…
             </button>
           ) : (
@@ -74,11 +74,11 @@ export function AccessSection({
               <p>{FULL_ACCESS_WARNING}</p>
               <div className="frow" style={{ gap: 8 }}>
                 <span className="sp" />
-                <button className="btn ghost" type="button" disabled={saving} onClick={() => setConfirming(false)}>
+                <button className="ui-btn" data-variant="secondary" type="button" disabled={saving} onClick={() => setConfirming(false)}>
                   Cancel
                 </button>
                 <button
-                  className="btn"
+                  className="ui-btn" data-variant="primary"
                   type="button"
                   disabled={saving}
                   onClick={() =>

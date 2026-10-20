@@ -9,6 +9,7 @@
  *   sliding under a stationary cursor must not re-open the card).
  */
 import { useEffect, useRef } from "react";
+import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 
 const OPEN_DELAY_MS = 180;
 
@@ -31,13 +32,27 @@ export function Tooltip(): React.JSX.Element {
 
     const show = (): void => {
       if (!anchor || !anchor.isConnected) return;
-      tip.textContent = (anchor as HTMLElement).dataset.tip ?? "";
+      const anchorEl = anchor;
+      tip.textContent = (anchorEl as HTMLElement).dataset.tip ?? "";
       tip.hidden = false;
-      const r = anchor.getBoundingClientRect();
-      let top = r.top - tip.offsetHeight - 6;
-      if (top < 4) top = r.bottom + 6;
-      tip.style.left = `${Math.max(4, Math.min(window.innerWidth - tip.offsetWidth - 4, r.left + r.width / 2 - tip.offsetWidth / 2))}px`;
-      tip.style.top = `${top}px`;
+      // Floating UI (#201): offset + flip + shift, so the tip never leaves
+      // the viewport. Card toolbar tips also avoid the card header: if the
+      // flipped/shifted top placement would overlap the header, place below.
+      void (async () => {
+        const middleware = [offset(6), flip({ padding: 4 }), shift({ padding: 4 })];
+        let pos = await computePosition(anchorEl, tip, { placement: "top", middleware });
+        if (anchorEl.isConnected && !tip.hidden) {
+          const header = anchorEl.closest(".card")?.querySelector(":scope > .exp-h");
+          if (header && pos.placement === "top") {
+            const h = header.getBoundingClientRect();
+            const overlaps = pos.y < h.bottom && pos.y + tip.offsetHeight > h.top && pos.x < h.right && pos.x + tip.offsetWidth > h.left;
+            if (overlaps) pos = await computePosition(anchorEl, tip, { placement: "bottom", middleware });
+          }
+        }
+        if (!anchorEl.isConnected || tip.hidden) return;
+        tip.style.left = `${pos.x}px`;
+        tip.style.top = `${pos.y}px`;
+      })();
     };
 
     const onMouseOver = (e: MouseEvent): void => {

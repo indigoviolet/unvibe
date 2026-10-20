@@ -212,7 +212,7 @@ function ModelPicker({
   };
 
   return (
-    <div className="card" style={{ padding: "8px 14px" }} data-testid={`model-${role}`}>
+    <div className="ui-card" data-testid={`model-${role}`}>
       <div className="frow" style={{ gap: 8 }}>
         <b style={{ minWidth: 110 }}>{label}</b>
         <span className="hint">{blurb}</span>
@@ -313,7 +313,7 @@ function ModelPicker({
             </span>
           ) : null}
         </div>
-        <label htmlFor={`effort-${role}`}>{thinking?.label ?? "Effort"}</label>
+        <label htmlFor={`effort-${role}`}>{"Effort"}</label>
         <div className="fld">
           {thinkingError ? (
             <span className="hint" role="status">
@@ -341,7 +341,7 @@ function ModelPicker({
                 )}
                 {thinking.options.map((o) => (
                   <option key={o.value} value={o.value} title={o.description ?? undefined}>
-                    {o.name ? `${o.name} (${o.value})` : o.value}
+                    {o.name ?? o.value}
                   </option>
                 ))}
               </select>

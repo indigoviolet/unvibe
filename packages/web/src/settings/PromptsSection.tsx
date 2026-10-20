@@ -44,7 +44,7 @@ export function PromptsSection(): React.JSX.Element {
 function PromptCard({ template }: { template: PromptTemplate }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   return (
-    <div className="card" style={{ padding: "8px 14px" }} data-testid={`prompt-${template.name}`}>
+    <div className="ui-card" data-testid={`prompt-${template.name}`}>
       <div className="frow" style={{ gap: 8 }}>
         <button
           className="ib"
