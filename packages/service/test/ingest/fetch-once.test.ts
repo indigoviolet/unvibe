@@ -117,9 +117,7 @@ describe("#123 one fetch at ingest", () => {
       }
     })();
 
-    const t0 = Date.now();
     const out = await ingestReview({ runner, dataDir }, { repoPath: work, pr: 42 }, undefined, refreshP);
-    const elapsed = Date.now() - t0;
 
     expect(out.version.headSha).toBe(head);
     expect(out.version.mergeBaseSha).toBe(base);
@@ -128,12 +126,12 @@ describe("#123 one fetch at ingest", () => {
     expect(fetches).toEqual([
       ["-c", "credential.https://github.com.helper=!gh auth git-credential", "fetch", "origin", "refs/pull/42/head", "main"],
     ]);
-    // gh and the refresh overlapped (sequentially they would take 600 ms+).
+    // gh and the refresh overlapped. The spans prove it; a wall-clock
+    // bound flaked on the slower macOS runner (597 ms against 550).
     const gh = spans.find((s) => s.label === "gh")!;
     const rf = spans.find((s) => s.label === "refresh")!;
     expect(gh.start).toBeLessThan(rf.end);
     expect(rf.start).toBeLessThan(gh.end);
-    expect(elapsed).toBeLessThan(550);
   });
 
   it("#139: a failed fetch reports the fetch failure, not 'commit not found'", async () => {
