@@ -1,0 +1,73 @@
+{
+  "label": "codex-2",
+  "model": {
+    "provider": "codex",
+    "model": "gpt-5.6-terra"
+  },
+  "port": 4624,
+  "startedAt": "2026-10-20T04:54:49.652Z",
+  "opens": [
+    {
+      "open": 1,
+      "forkTurns": [],
+      "reader": {
+        "job": {
+          "id": "ec3e37b2-8c9d-4dc7-95fd-f0a23cd67b28",
+          "kind": "reader",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 14329,
+            "cachedReadTokens": 57600,
+            "cachedWriteTokens": 0,
+            "outputTokens": 2245
+          },
+          "cacheHitRate": 0.8007896675888724,
+          "queuedAt": 1792472093112,
+          "startedAt": 1792472093119,
+          "finishedAt": 1792472111128,
+          "turns": [
+            {
+              "label": "first",
+              "ms": 17769
+            }
+          ],
+          "tools": [
+            "mcp.unvibe.search_review",
+            "mcp.unvibe.search_review",
+            "mcp.unvibe.search_review",
+            "mcp.unvibe.search_review"
+          ]
+        },
+        "repairTurnRan": false,
+        "repairMs": null,
+        "firstTurnMs": 17769,
+        "firstPromptChars": 16591,
+        "repairPromptChars": 0,
+        "repairPromptShareOfStored": 0,
+        "failedCitationKinds": {},
+        "failedCitationCount": 0
+      },
+      "base": {
+        "rawKeys": [
+          "reviewId",
+          "base",
+          "log",
+          "contributions"
+        ],
+        "packTokens": 3863,
+        "note": "pack text scrubbed by harness fix"
+      },
+      "jobs": [],
+      "reviewId": "rv_527cfe0fc84b",
+      "readerDoneMs": 1792472111553
+    }
+  ],
+  "totals": {
+    "estCostUsdUpperBound": 1.3028,
+    "finishedAt": "2026-10-20T04:56:11.870Z"
+  },
+  "budgetUsd": 1.3,
+  "aborted": "BUDGET-ABORT est $1.303 > $1.3"
+}

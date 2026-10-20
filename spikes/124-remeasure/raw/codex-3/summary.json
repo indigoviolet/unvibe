@@ -1,0 +1,352 @@
+{
+  "label": "codex-3",
+  "model": {
+    "provider": "codex",
+    "model": "gpt-5.6-terra"
+  },
+  "port": 4624,
+  "startedAt": "2026-10-20T04:58:08.321Z",
+  "opens": [
+    {
+      "open": 1,
+      "forkTurns": [],
+      "reader": {
+        "job": {
+          "id": "49bf5c61-b18b-4d16-b3d4-952042bd74b6",
+          "kind": "reader",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 26888,
+            "cachedReadTokens": 99328,
+            "cachedWriteTokens": 0,
+            "outputTokens": 4095
+          },
+          "cacheHitRate": 0.7869683716802941,
+          "queuedAt": 1792472291864,
+          "startedAt": 1792472291870,
+          "finishedAt": 1792472362264,
+          "turns": [
+            {
+              "label": "first",
+              "ms": 51888
+            },
+            {
+              "label": "repair",
+              "ms": 18217
+            }
+          ],
+          "tools": [
+            "mcp.unvibe.search_review",
+            "mcp.unvibe.search_review",
+            "mcp.unvibe.search_review"
+          ]
+        },
+        "repairTurnRan": true,
+        "repairMs": 18217,
+        "firstTurnMs": 51888,
+        "firstPromptChars": 16591,
+        "repairPromptChars": 932,
+        "repairPromptShareOfStored": 0.053,
+        "failedCitationKinds": {
+          "diff: malformed id": 6
+        },
+        "failedCitationCount": 6
+      },
+      "base": null,
+      "jobs": [
+        {
+          "id": "49bf5c61-b18b-4d16-b3d4-952042bd74b6",
+          "kind": "reader",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 26888,
+            "cachedReadTokens": 99328,
+            "cachedWriteTokens": 0,
+            "outputTokens": 4095
+          },
+          "cacheHitRate": 0.7869683716802941,
+          "queuedAt": 1792472291864,
+          "startedAt": 1792472291870,
+          "finishedAt": 1792472362264,
+          "turns": [
+            {
+              "label": "first",
+              "ms": 51888
+            },
+            {
+              "label": "repair",
+              "ms": 18217
+            }
+          ],
+          "tools": [
+            "mcp.unvibe.search_review",
+            "mcp.unvibe.search_review",
+            "mcp.unvibe.search_review"
+          ]
+        },
+        {
+          "id": "8ca6a435-c403-49da-81fa-13792a407533",
+          "kind": "hunk-pass",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 6431,
+            "cachedReadTokens": 11008,
+            "cachedWriteTokens": 0,
+            "outputTokens": 54
+          },
+          "cacheHitRate": 0.6312288548655313,
+          "queuedAt": 1792472291902,
+          "startedAt": 1792472291907,
+          "finishedAt": 1792472296655,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "c2988077-2289-4621-86b5-6c85ccdbcae7",
+          "kind": "hunk-pass",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 6154,
+            "cachedReadTokens": 11008,
+            "cachedWriteTokens": 0,
+            "outputTokens": 52
+          },
+          "cacheHitRate": 0.6414170842559143,
+          "queuedAt": 1792472291915,
+          "startedAt": 1792472291918,
+          "finishedAt": 1792472295285,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "c69e14a9-0f95-4335-a935-68845132d447",
+          "kind": "hunk-pass",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 6109,
+            "cachedReadTokens": 11008,
+            "cachedWriteTokens": 0,
+            "outputTokens": 41
+          },
+          "cacheHitRate": 0.64310334754922,
+          "queuedAt": 1792472291929,
+          "startedAt": 1792472291932,
+          "finishedAt": 1792472295620,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "2d79d8be-e6a0-48ce-851f-6c87eb2bd758",
+          "kind": "hunk-pass",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 6112,
+            "cachedReadTokens": 11008,
+            "cachedWriteTokens": 0,
+            "outputTokens": 49
+          },
+          "cacheHitRate": 0.6429906542056075,
+          "queuedAt": 1792472291939,
+          "startedAt": 1792472291942,
+          "finishedAt": 1792472296297,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "e27def4a-d1dc-4e08-9308-62101f924e92",
+          "kind": "hunk-pass",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 6519,
+            "cachedReadTokens": 11008,
+            "cachedWriteTokens": 0,
+            "outputTokens": 50
+          },
+          "cacheHitRate": 0.6280595652421977,
+          "queuedAt": 1792472291952,
+          "startedAt": 1792472295288,
+          "finishedAt": 1792472299273,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "5c9ddefe-370b-400e-88a5-504938b92239",
+          "kind": "hunk-pass",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 6117,
+            "cachedReadTokens": 11008,
+            "cachedWriteTokens": 0,
+            "outputTokens": 49
+          },
+          "cacheHitRate": 0.6428029197080292,
+          "queuedAt": 1792472291957,
+          "startedAt": 1792472295624,
+          "finishedAt": 1792472298954,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "b1b5cee5-fa30-40be-ab1a-d3a7f2dd98e3",
+          "kind": "hunk-pass",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 6846,
+            "cachedReadTokens": 11008,
+            "cachedWriteTokens": 0,
+            "outputTokens": 54
+          },
+          "cacheHitRate": 0.6165565139464546,
+          "queuedAt": 1792472291962,
+          "startedAt": 1792472296300,
+          "finishedAt": 1792472299442,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "dd0b0d15-b5ed-4159-8a3c-b80eb24dc65d",
+          "kind": "hunk-pass",
+          "state": "done",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": {
+            "inputTokens": 6138,
+            "cachedReadTokens": 11008,
+            "cachedWriteTokens": 0,
+            "outputTokens": 60
+          },
+          "cacheHitRate": 0.6420156304677476,
+          "queuedAt": 1792472291965,
+          "startedAt": 1792472296659,
+          "finishedAt": 1792472300357,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "26a84fc6-49e4-4e87-9938-f5e2044acb9c",
+          "kind": "critic",
+          "state": "running",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": null,
+          "cacheHitRate": null,
+          "queuedAt": 1792472362177,
+          "startedAt": 1792472362180,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "6c43caf9-a633-4817-84cd-2be495a05080",
+          "kind": "critic",
+          "state": "running",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": null,
+          "cacheHitRate": null,
+          "queuedAt": 1792472362187,
+          "startedAt": 1792472362190,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "cfa26ae9-a4f9-4e27-8db0-08f42d289f4f",
+          "kind": "concept",
+          "state": "running",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": null,
+          "cacheHitRate": null,
+          "queuedAt": 1792472362213,
+          "startedAt": 1792472362217,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "1c4f5a6b-1bb2-4098-84dc-5c68965287a1",
+          "kind": "go-deeper",
+          "state": "running",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": null,
+          "cacheHitRate": null,
+          "queuedAt": 1792472362239,
+          "startedAt": 1792472362269,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "bb3c8afb-8179-41ae-a785-f91bc559084b",
+          "kind": "go-deeper",
+          "state": "queued",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": null,
+          "cacheHitRate": null,
+          "queuedAt": 1792472362244,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "cec3209a-955d-456e-bb8a-a55ed1e49c98",
+          "kind": "go-deeper",
+          "state": "queued",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": null,
+          "cacheHitRate": null,
+          "queuedAt": 1792472362247,
+          "turns": [],
+          "tools": []
+        },
+        {
+          "id": "b4a29345-61c6-4e26-99cc-bfd50d089810",
+          "kind": "go-deeper",
+          "state": "queued",
+          "provider": "codex",
+          "model": "gpt-5.6-terra",
+          "usage": null,
+          "cacheHitRate": null,
+          "queuedAt": 1792472362251,
+          "turns": [],
+          "tools": []
+        }
+      ],
+      "reviewId": "rv_79e448e31ccb",
+      "readerDoneMs": 1792472363261,
+      "usageTotals": {
+        "inputTokens": 77314,
+        "cachedReadTokens": 187392,
+        "cachedWriteTokens": 0,
+        "outputTokens": 4504,
+        "createdAt": 1792472290543,
+        "firstCardAt": 1792472323383,
+        "cacheHitRate": 0.7079250186999917
+      },
+      "estCostUsdUpperBound": 0.5745
+    }
+  ],
+  "totals": {
+    "estCostUsdUpperBound": 0.5745,
+    "finishedAt": "2026-10-20T04:59:23.276Z"
+  },
+  "budgetUsd": 1.3,
+  "aborted": null
+}

@@ -14,6 +14,7 @@
     "test:live": "vitest run test/acp-live.test.ts",
     "test:live:fork-tools": "vitest run test/acp-live.test.ts -t \"a fork inherits the review tools\" --testTimeout 300000",
     "test:live:full-access": "vitest run test/full-access-live.test.ts --testTimeout 300000",
+    "test:live:124-fork-cache": "vitest run test/live-124-fork-cache.test.ts --testTimeout 300000",
     "lint": "eslint src test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node ./dist/index.js",

@@ -297,3 +297,7 @@ run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LI
 [tasks."test:live:fork-tools"]
 description = "Live #124 check: a Codex fork calls a review tool (needs codex login; tiny spend; never run by check)"
 run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 UNVIBE_LIVE_PROVIDERS=codex npm run test:live:fork-tools --workspace @unvibe/service"
+
+[tasks."test:live:124-fork-cache"]
+description = "Live #124 spike: Codex base + 5 fork turns, per-turn cache split (needs codex login; tiny spend; never run by check)"
+run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 UNVIBE_LIVE_PROVIDERS=codex npm run test:live:124-fork-cache --workspace @unvibe/service"
