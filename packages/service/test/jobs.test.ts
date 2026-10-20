@@ -75,7 +75,7 @@ function makeQueue(
     maxAttempts: opts.maxAttempts ?? 3,
     backoffBaseMs: opts.baseMs ?? 1000,
     backoffMaxMs: opts.maxMs ?? 8000,
-    getConcurrencyCap: typeof opts.cap === "function" ? opts.cap : () => opts.cap ?? 4,
+    getConcurrencyCap: (provider) => (typeof opts.cap === "function" ? opts.cap(provider) : opts.cap ?? 4),
     onEvent: (_review, e) => events.push(e),
     persist: store ?? null,
   });
@@ -84,7 +84,9 @@ function makeQueue(
 
 const spec = (over: Partial<Parameters<JobQueue["enqueue"]>[0]> = {}) => ({
   reviewId: "r1",
-  kind: "explain" as const,
+  // A real JobKind: "explain" is an action kind, not a job kind (the queue
+  // treats kind opaquely, so the tests passed with the stale value).
+  kind: "ask" as const,
   provider: "claude",
   model: "m",
   effort: "",
@@ -542,6 +544,7 @@ describe("persistence and restart recovery", () => {
       id: "q-1",
       kind: "ask",
       model: "m",
+      effort: "",
       provider: "claude",
       reviewId: "r9",
       priority: 10,
@@ -561,6 +564,7 @@ describe("persistence and restart recovery", () => {
       kind: "ask",
       provider: "claude",
       model: "m",
+      effort: "",
       priority: 10,
       dedupe: key,
       run: async () => void (ran = true),

@@ -144,7 +144,7 @@ const origLookup = dns.lookup;
 // --- global fetch ---------------------------------------------------------
 const origFetch = globalThis.fetch;
 if (typeof origFetch === "function") {
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
     const host = hostOfUrl(url);
     if (host && !isLoopbackHost(host)) {

@@ -57,6 +57,8 @@ function snapshot(): ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],

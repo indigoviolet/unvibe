@@ -107,6 +107,8 @@ async function makeReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"]): Pr
     pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],

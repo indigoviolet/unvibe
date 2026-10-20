@@ -152,6 +152,8 @@ export async function setupReview(
     version,
     files,
     description,
+    commits: [],
+    title: review.branch,
     worktreePath: os.tmpdir(),
   });
   const snapshot: ReviewSnapshot = {
@@ -163,6 +165,8 @@ export async function setupReview(
     pages: opts.pages ?? [],
     annotations: opts.annotations ?? [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -188,5 +192,7 @@ export function threadOnDiffLine(
     messages: [{ who: "you", text }],
     post: true,
     ...extra,
+    // `extra` is a Partial, so its `pinned` may be absent; Annotation requires it.
+    pinned: extra.pinned ?? false,
   };
 }
