@@ -13,7 +13,7 @@ import type { Annotation } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { anchorMatchesBlock } from "./guideUtils.js";
 
-export type OpenThreadHandler = (threadId: string, blockId: string) => void;
+export type OpenThreadHandler = (threadId: string, blockId: string, opts?: { scroll?: boolean }) => void;
 
 let openHandler: OpenThreadHandler | null = null;
 
@@ -28,6 +28,14 @@ export function onOpenBlockThread(fn: OpenThreadHandler): () => void {
 /** Default: no full thread UI yet — hovering the marker previews it. */
 export function openBlockThread(commentId: string, blockId: string): void {
   openHandler?.(commentId, blockId);
+}
+
+/**
+ * Issue #205: a block's comment marker opens every comment on the block,
+ * stacked in order (only the first scrolls into view).
+ */
+export function openBlockThreads(commentIds: string[], blockId: string): void {
+  commentIds.forEach((id, i) => openHandler?.(id, blockId, { scroll: i === 0 }));
 }
 
 /** All comment annotations anchored on a guide card + block. */

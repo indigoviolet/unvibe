@@ -7,8 +7,9 @@
  * citations line.
  */
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { Annotation } from "@unvibe/shared";
+import { onOpenBlockThread } from "./annotations.js";
 import { BlockMarkers } from "./Markers.js";
 import type { ResolvedCitation } from "./citations.js";
 
@@ -81,6 +82,34 @@ describe("BlockMarkers", () => {
     const marker = screen.getByRole("button", { name: "2 comments" });
     expect(marker).toHaveAttribute("data-threads", "t1|t2");
     expect(marker.textContent).toContain("2");
+  });
+
+  it("clicking the comment marker opens every comment on the block, in order (#205)", () => {
+    const threads: Annotation[] = ["t1", "t2", "t3"].map((id) => ({
+      id,
+      type: "comment",
+      anchor: {
+        host: { kind: "block", blockId: "b" },
+        quotedText: "",
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version: 1,
+      },
+      open: false,
+      pinned: false,
+      messages: [{ who: "you", text: `note ${id}` }],
+      post: false,
+    }));
+    const opened: string[] = [];
+    const off = onOpenBlockThread((id) => opened.push(id));
+    try {
+      render(<BlockMarkers citations={[]} threads={threads} blockId="b" />);
+      fireEvent.click(screen.getByRole("button", { name: "3 comments" }));
+      expect(opened).toEqual(["t1", "t2", "t3"]);
+    } finally {
+      off();
+    }
   });
 
   it("quoted threads get footnote chips, not the bubble marker", () => {
