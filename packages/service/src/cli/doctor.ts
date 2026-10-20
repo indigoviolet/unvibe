@@ -24,6 +24,9 @@ import { ghAuthStatus as sharedGhAuth, gitVersion as sharedGitVersion } from "..
 import { RealCommandRunner } from "../exec/runner.js";
 import { ShimResolvingCommandRunner } from "../exec/shim-resolve.js";
 import { checkLoginUnit } from "../update/service-manager.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { assessBinReachability, binReachabilityAdvice } from "./setup/bin-reachability.js";
 
 export interface DoctorCheck {
   name: string;
@@ -242,6 +245,26 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
     checks.push({ name: "login start", status: "ok", detail: `starts at login (${login.unitPath})` });
   } else {
     checks.push({ name: "login start", status: "warn", detail: login.problems.join(" ") });
+  }
+
+  // Installed bin reachable by name from a fresh shell (#42: with
+  // mise-managed Node the global bin can land in one Node version's
+  // prefix, off PATH, while npm reports success). Uses the same
+  // interactive-shell PATH the diagnostics probe already collected.
+  const reach = assessBinReachability({
+    cliPath: path.join(path.dirname(fileURLToPath(import.meta.url)), "index.js"),
+    homeDir: os.homedir(),
+    interactivePathDirs: diag ? diag.path.effectivePath.split(":").filter(Boolean) : (process.env.PATH ?? "").split(":").filter(Boolean),
+    exists: (p) => fs.existsSync(p),
+  });
+  if (reach.installedLayout) {
+    checks.push({
+      name: "unvibe on PATH",
+      status: reach.reachable ? "ok" : "warn",
+      detail: reach.reachable
+        ? `runnable by name from a new shell (${reach.via === "mise-shims" ? `mise shim in ${reach.shimsDir}` : reach.binDir})`
+        : binReachabilityAdvice(reach).join(" "),
+    });
   }
 
   return checks;

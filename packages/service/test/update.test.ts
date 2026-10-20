@@ -729,6 +729,41 @@ describe("runUpdateChannelFlow", () => {
     expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
   });
 
+  it("runs the newly installed CLI's setup after a successful install (issue #42: install runs no setup)", async () => {
+    const dataDir = tmpDir("unvibe-update-setup-");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-update-setup-installed-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.older",
+      unvibe: { channel: "preview/feat-x", commit: "older1234full" },
+    });
+    const runner = new SwitchRunner(
+      packagePath,
+      {
+        name: "unvibe",
+        version: "0.0.1-preview.feat-x.abc1234",
+        unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+      },
+      {
+        "preview/feat-x": {
+          name: "unvibe",
+          version: "0.0.1-preview.feat-x.abc1234",
+          unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+        },
+      },
+    );
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      "preview/feat-x",
+    );
+    expect(out.code).toBe(0);
+    // The fake runner refuses the setup spawn (unexpected command); the
+    // flow treats setup as best-effort and still succeeds — but the
+    // attempt, via the installed CLI path, must be there.
+    const setupCall = runner.calls.find((c) => c.opts.args[1] === "setup");
+    expect(setupCall?.cmd).toBe(process.execPath);
+    expect(setupCall?.opts.args).toEqual([scriptPath, "setup"]);
+  });
+
   it("reinstalls the same channel when the published commit is unreadable", async () => {
     const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-reinstall-blind-"), {
       name: "unvibe",

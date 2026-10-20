@@ -35,6 +35,7 @@ import {
   stopManagedService,
 } from "./service-manager.js";
 import { runSwitchFlow, type HelperArgs, type ObservedHealth, applyEffectivePath } from "./helper.js";
+import { findMiseBinStatic } from "./mise-find.js";
 import type { SwitchOutcome } from "@unvibe/shared";
 
 function isPidAlive(pid: number): boolean {
@@ -219,7 +220,18 @@ async function main(): Promise<number> {
   // install). The helper outlives the service, so it inherits the snapshot
   // instead of re-probing from a detached, possibly headless context.
   applyEffectivePath(args.effectivePath);
-  log(`update PATH: ${args.effectivePath}`);
+  // Issue #170 (reopened): also find mise without a shell (well-known
+  // locations / current PATH) and put it first — the service's repaired
+  // PATH snapshot missed mise on the owner's Mac. Static only: the
+  // helper stays fast and headless-safe (no shell probe here).
+  let updatePath = args.effectivePath;
+  try {
+    const mise = findMiseBinStatic({ inheritedPath: process.env.PATH ?? "" });
+    if (mise) updatePath = [path.dirname(mise), updatePath].filter(Boolean).join(path.delimiter);
+  } catch {
+    // Finding mise must never stop a switch.
+  }
+  log(`update PATH: ${updatePath}`);
 
   // The installed build is identified from the service entry path in
   // the args — never from this copy's own location (it lives in the data
@@ -233,7 +245,7 @@ async function main(): Promise<number> {
           serviceScriptPath: args.scriptPath,
           serviceVersion: args.serviceVersion,
           log,
-          env: { PATH: args.effectivePath },
+          env: { PATH: updatePath },
         });
 
   const waitForExit = async (pid: number, timeoutMs: number): Promise<boolean> => {
@@ -467,6 +479,27 @@ async function main(): Promise<number> {
       nowIso: () => new Date().toISOString(),
     },
   );
+  // Issue #42: the release package declares no install scripts, so
+  // the switch runs setup itself once the new build
+  // is verified healthy — via the just-installed CLI, so it is the new
+  // version's setup (it also records the setup-version marker, making
+  // the next `unvibe start` a no-op). Best-effort and quiet: output
+  // goes to the switch log, and a failure never changes the outcome.
+  if (outcome.status === "ok") {
+    try {
+      const res = await new RealCommandRunner().run(process.execPath, {
+        args: [args.scriptPath, "setup"],
+        cwd: os.homedir() || os.tmpdir(),
+        timeoutMs: 120_000,
+      });
+      log(`setup after switch exited ${res.code}`);
+      for (const line of `${res.stdout}\n${res.stderr}`.split("\n")) {
+        if (line.trim()) log(`setup: ${line}`);
+      }
+    } catch (err) {
+      log(`setup after switch failed (${err instanceof Error ? err.message : String(err)}); run \`unvibe setup\``);
+    }
+  }
   void outcome;
   return 0;
 }
