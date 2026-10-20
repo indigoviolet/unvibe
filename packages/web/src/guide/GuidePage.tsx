@@ -188,6 +188,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
     return <FailedOpen reviewId={reviewId} prLabel={pr} error={error} />;
   }
+  if (ingestStatus === "empty") {
+    const error = snapshot.ingest?.error ?? "No changes to review: the diff is empty.";
+    const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
+    return <EmptyOpen reviewId={reviewId} prLabel={pr} error={error} />;
+  }
 
   const current = pageId === null ? pages.find((p) => p.kind === "root") ?? pages[0] : lookupPage(pageId);
   // Reviews whose guide is not built yet have no pages; the version
@@ -268,6 +273,45 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
         />
       </ErrorBoundary>
     </>
+  );
+}
+
+/** #179: empty diff — nothing to review, with Retry / Remove like #92. */
+export function EmptyOpen({ reviewId, prLabel, error }: { reviewId: string; prLabel: string; error: string }) {
+  const setSnapshot = useReview((s) => s.setSnapshot);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const onRetry = useCallback(async () => {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const snap = await api.retryReview(reviewId);
+      setSnapshot(snap);
+    } catch (err) {
+      setRetryError(friendlyError(err));
+    } finally {
+      setRetrying(false);
+    }
+  }, [reviewId, setSnapshot]);
+  return (
+    <div className="doc" data-testid="review-empty">
+      <h1 className="title">No changes to review</h1>
+      <p className="hint" data-testid="review-empty-message">
+        {error}
+      </p>
+      <p className="hint">{prLabel} has no diff to read, so no guide was started.</p>
+      <div className="frow" style={{ gap: 8 }}>
+        <button className="btn" type="button" disabled={retrying} onClick={() => void onRetry()}>
+          {retrying ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+      {retryError ? (
+        <p className="hint" role="alert">
+          Couldn&apos;t retry: {retryError}
+        </p>
+      ) : null}
+      <p className="hint">You can remove it from Reviews on the start page.</p>
+    </div>
   );
 }
 

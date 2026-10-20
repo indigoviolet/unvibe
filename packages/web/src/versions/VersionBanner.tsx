@@ -21,6 +21,8 @@ export interface BannerCounts {
   newHunks: number;
   removedHunks: number;
   rangeDiff: string;
+  /** #179: the new version's diff is empty. */
+  empty?: boolean;
 }
 
 export function statusToBanner(s: VersionStatus): BannerCounts {
@@ -31,6 +33,7 @@ export function statusToBanner(s: VersionStatus): BannerCounts {
     newHunks: s.newHunks,
     removedHunks: s.removedHunks,
     rangeDiff: s.rangeDiff,
+    ...(s.empty ? { empty: true } : {}),
   };
 }
 
@@ -45,6 +48,7 @@ export function comparisonToBanner(
     newHunks: c.newHunks,
     removedHunks: c.removedHunks,
     rangeDiff: c.rangeDiff,
+    ...(c.unchangedHunks + c.changedHunks + c.newHunks === 0 ? { empty: true } : {}),
   };
 }
 
@@ -117,6 +121,16 @@ export function VersionBanner({
   };
 
   const updating = phase.name === "updating" ? phase : null;
+
+  if (counts.empty) {
+    return (
+      <div className="dbar" data-testid="stale-banner" role="status">
+        <span className="hint" data-testid="empty-diff-message">
+          No changes to review — the diff is now empty. The branch is the same as its base, so there is nothing to update.
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="dbar" data-testid="stale-banner" role="status">

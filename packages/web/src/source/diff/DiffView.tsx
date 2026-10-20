@@ -1083,8 +1083,8 @@ export function DiffView({ reviewId, lineSlots, floatingExpansions, commentedLin
           </ErrorBoundary>
         ))
       ) : (
-        <p className="hint" style={{ padding: 16 }}>
-          No files match the filters.
+        <p className="hint" style={{ padding: 16 }} {...(snapshot.files.length === 0 ? { "data-testid": "diff-empty" } : {})}>
+          {snapshot.files.length === 0 ? "No changes to review — the diff is empty." : "No files match the filters."}
         </p>
       )}
       {gh.orphans ? (

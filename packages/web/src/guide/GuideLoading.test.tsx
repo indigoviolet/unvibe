@@ -7,7 +7,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach } from "vitest";
 import type { ReviewSummary } from "@unvibe/shared";
-import { FailedOpen } from "./GuidePage.js";
+import { EmptyOpen, FailedOpen } from "./GuidePage.js";
 import { ingestStepLabel } from "./stageLabels.js";
 import { SessionRow } from "../start/StartPage.js";
 
@@ -88,6 +88,40 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
     expect(screen.getByText("Couldn't open this review: the PR wasn't found")).toBeInTheDocument();
     expect(screen.getByText("couldn't open")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Remove PR title/ })).toBeInTheDocument();
+  });
+});
+
+describe("EmptyOpen (#179 empty diff)", () => {
+  test("shows no-changes message with Retry, not a failure", () => {
+    render(
+      <MemoryRouter>
+        <EmptyOpen reviewId="r1" prLabel="PR #42" error="No changes to review: this PR has been merged and its branch is now the same as its base, so the diff is empty." />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("review-empty")).toBeInTheDocument();
+    expect(screen.getByText("No changes to review")).toBeInTheDocument();
+    expect(screen.getByTestId("review-empty-message")).toHaveTextContent("No changes to review");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't open/)).not.toBeInTheDocument();
+  });
+
+  test("empty row shows the message and no-changes tag", () => {
+    const s = summary({ ingestStatus: "empty", ingestError: "No changes to review: the diff is empty." });
+    render(
+      <MemoryRouter>
+        <SessionRow
+          s={s}
+          opening={null}
+          deleting={null}
+          confirmDelete={null}
+          setConfirmDelete={() => {}}
+          removeSession={async () => {}}
+          onOpen={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("No changes to review: the diff is empty.")).toBeInTheDocument();
+    expect(screen.getByText("no changes")).toBeInTheDocument();
   });
 });
 
