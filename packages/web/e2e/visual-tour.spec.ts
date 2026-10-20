@@ -933,7 +933,8 @@ for (const combo of [
     await page.getByRole("button", { name: "Output" }).first().click();
     await expect(page.locator('[data-testid="job-output"]').first()).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Read", { timeout: 15_000 });
-    await page.locator('[data-testid="job-output"]').first().scrollIntoViewIfNeeded();
+    // Frame the whole job row, header (kind/state) above Turn 1.
+    await page.locator(".jobrow").first().scrollIntoViewIfNeeded();
     await checkNoPageOverflow(page, "debug-output");
     await shot(page, "debug-output", suffix, "Raw usage");
 

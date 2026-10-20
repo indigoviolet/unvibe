@@ -953,6 +953,16 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
   max-height: 320px;
   overflow: auto;
 }
+/* Issue #207: turn records (prompt, output, tool arguments/results, raw
+   usage) wrap long lines instead of running off the right edge. The
+   max-height + scroll above still bounds very long blocks. */
+[data-testid="job-output"] pre.code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+[data-testid="job-output"] .hint {
+  overflow-wrap: anywhere;
+}
 .st {
   font-size: 11px;
   letter-spacing: 0.04em;
