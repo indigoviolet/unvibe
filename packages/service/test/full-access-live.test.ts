@@ -30,9 +30,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { z } from "zod";
 import { AcpAgentRunner } from "../src/agent/acp/runner.js";
 import type { AgentEvent } from "@unvibe/shared";
 import { loadTemplatesDirSync } from "../src/prompts/index.js";
@@ -100,16 +100,23 @@ function gitStatus(dir: string): string {
 /** Minimal local review-tool server (one tool), mirroring acp-live.test.ts. */
 async function startToolServer(): Promise<{ url: string; calls: string[]; close: () => Promise<void> }> {
   const calls: string[] = [];
-  const server = new McpServer({ name: "unvibe-live-fa", version: "0.0.0" });
-  server.tool(
-    "get_note",
-    "Return a review note by id (live-test stub).",
-    { id: z.string() },
-    async ({ id }) => {
-      calls.push(id);
-      return { content: [{ type: "text" as const, text: `NOTE:${id}:quince-77` }] };
-    },
-  );
+  // Low-level Server (as in src/mcp/registry.ts): McpServer.tool's zod
+  // generic inference hits TS2589 (excessively deep) with this SDK + zod.
+  const server = new Server({ name: "unvibe-live-fa", version: "0.0.0" }, { capabilities: { tools: {} } });
+  server.setRequestHandler(ListToolsRequestSchema, () => ({
+    tools: [
+      {
+        name: "get_note",
+        description: "Return a review note by id (live-test stub).",
+        inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+      },
+    ],
+  }));
+  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    const id = String((req.params.arguments as { id?: unknown } | undefined)?.id ?? "");
+    calls.push(id);
+    return { content: [{ type: "text" as const, text: `NOTE:${id}:quince-77` }] };
+  });
   const { randomUUID } = await import("node:crypto");
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
   await server.connect(transport);

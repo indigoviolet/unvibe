@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Annotation } from "@unvibe/shared";
 import { FakeCommandRunner } from "../src/exec/index.js";
+import type { ScriptedResult } from "../src/exec/runner.js";
 import { HEAD_SHA, OWNER, PR_NUMBER, REPO_NAME, setupReview, threadOnDiffLine } from "./m6-helpers.js";
 
 const authed = { authorization: "Bearer tok" };
@@ -17,6 +18,7 @@ function descThread(text: string): Annotation {
     type: "comment",
     anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
+    pinned: false,
     messages: [{ who: "you", text }],
     post: true,
   };
@@ -363,14 +365,14 @@ describe("submit crash safety (in-flight lease)", () => {
       stdout: JSON.stringify({ headRefOid: HEAD_SHA, state: "OPEN" }),
       stderr: "",
       code: 0,
-    } as const;
-    const emptyReviews = {
+    } satisfies ScriptedResult;
+    const emptyReviews: ScriptedResult = {
       cmd: "gh",
       args: ["api", `repos/${OWNER}/${REPO_NAME}/pulls/${PR_NUMBER}/reviews`],
       stdout: "[]",
       stderr: "",
       code: 0,
-    } as const;
+    };
     try {
       // Fresh lease + nothing on GitHub: in progress, do not post.
       writeSubmitLease(ctx.db, leaseOf(Date.now()));

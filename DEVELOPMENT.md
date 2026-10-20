@@ -38,8 +38,8 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:slow:unit` | Slow vitest files (`*.slow.test.*`: need a build) | `build` (auto) |
 | `test:slow` | Slow suite: `test:slow:unit`, then Playwright (`test:e2e`) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `test` | Every automated test that needs no login (`test:fast`, then `test:slow`) | as above |
-| `typecheck:tests` | tsc over service `src` + `test` (non-blocking: 53 pre-existing errors, issue #119 follow-up) | — |
-| `check` | Fast suite: `lint` + `typecheck` in parallel, then `test:fast`; must pass from a clean tree with no `dist/` | — |
+| `typecheck:tests` | tsc over each workspace's tests (service `src` + `test`; shared `test`; web `src` incl. tests); blocking since issue #127 | — |
+| `check` | Fast suite: `lint` + `typecheck` + `typecheck:tests` in parallel, then `test:fast`; must pass from a clean tree with no `dist/` | — |
 | `gate` | Pre-merge gate: `check`, `build`, `test:slow`, `build-freshness`, shell e2e, `restart-resilience`, d2 seed check, `check-global-install`, one after another | everything (one full run at a time, see below) |
 | `restart-resilience` | SIGKILL mid-stage, restart, resume against the built service | `build` (auto) |
 | `start` | Run the built service | `build` (auto) |
@@ -152,7 +152,7 @@ How `packages/service/src/agent/factory.ts` picks the runner:
 ## Tests
 
 There are two suites (issue #119). The fast suite is `mise run check`
-(lint + typecheck + every vitest file not named `*.slow.test.*`): no
+(lint + typecheck + test typecheck (issue #127) + every vitest file not named `*.slow.test.*`): no
 build, no browser. The slow suite is `mise run test:slow` (build, then
 vitest `*.slow.test.*`, then all of `packages/web/e2e/`): everything
 that needs a `dist/` or a browser. `mise run test` is both;

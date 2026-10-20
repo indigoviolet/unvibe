@@ -4,7 +4,7 @@
  * lands on non-fixture repos.
  */
 import { describe, expect, it } from "vitest";
-import type { ReviewSnapshot } from "@unvibe/shared";
+import type { AgentRunner, ReviewSnapshot } from "@unvibe/shared";
 import { createAgentRunner, isNoneEnv, isNoneRunner, isReplayEnv } from "../src/agent/factory.js";
 import { NO_AGENT_MESSAGE, NoAgentRunner } from "../src/agent/none.js";
 import { createApp } from "../src/server.js";
@@ -17,12 +17,14 @@ function makeSnapshot(): ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
     rev: 1,
     ingest: { status: "ready" },
-  } as unknown as ReviewSnapshot;
+  };
 }
 
 describe("UNVIBE_AGENT=none", () => {
@@ -41,11 +43,17 @@ describe("UNVIBE_AGENT=none", () => {
   });
 
   it("every agent call fails fast with a clear message", async () => {
-    const runner = new NoAgentRunner();
-    await expect(runner.start({} as never)).rejects.toThrow(NO_AGENT_MESSAGE);
+    // Call through the AgentRunner interface: NoAgentRunner's methods take
+    // no arguments, but callers always pass them.
+    const runner: AgentRunner = new NoAgentRunner();
+    await expect(
+      runner.start({ provider: "claude", model: "m", cwd: "/", systemPrompt: "", mcpServers: [] }),
+    ).rejects.toThrow(NO_AGENT_MESSAGE);
     await expect(runner.load("s")).rejects.toThrow(NO_AGENT_MESSAGE);
-    await expect(runner.prompt({} as never, "hi").next()).rejects.toThrow(NO_AGENT_MESSAGE);
-    await expect(runner.close({} as never)).rejects.toThrow(NO_AGENT_MESSAGE);
+    await expect(runner.prompt({ id: "s", provider: "claude", model: "m" }, "hi")[Symbol.asyncIterator]().next()).rejects.toThrow(
+      NO_AGENT_MESSAGE,
+    );
+    await expect(runner.close({ id: "s", provider: "claude", model: "m" })).rejects.toThrow(NO_AGENT_MESSAGE);
   });
 
   it("startReview and resumeReview enqueue nothing and leave the snapshot alone", async () => {

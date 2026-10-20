@@ -617,6 +617,9 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
             verdict: "agrees",
             reasoning: "Checked the helper.",
             blocks: [],
+            effort: "",
+            version: 1,
+            createdAt: 0,
           },
         ];
       });

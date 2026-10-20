@@ -11,13 +11,13 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AgentEvent, McpServerConfig, ReviewSnapshot, Session } from "@unvibe/shared";
+import type { AgentEvent, Card, McpServerConfig, ParagraphBlock, ReviewSnapshot, SecondOpinionResult, Session } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { NO_AGENT_MESSAGE } from "../src/agent/none.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
 import { precheckD2Source } from "../src/diagrams/precheck.js";
-import { applyUndo, insertExamples, mergeDepthText, pushUndo } from "../src/interaction/cards.js";
+import { applyUndo, insertExamples, mergeDepthText, pushUndo, type CardTarget } from "../src/interaction/cards.js";
 import {
   getInteractionHandler,
   setInteractionHandler,
@@ -1127,18 +1127,19 @@ describe("M4 interaction pure logic", () => {
   });
 
   it("second opinions and accepted corrections survive depth rewrites and undo", () => {
-    const para = (id: string, standard: string, extra: Record<string, string> = {}) => ({
+    const para = (id: string, standard: string, extra: Record<string, string> = {}): ParagraphBlock => ({
       type: "paragraph",
       id,
       text: { standard, ...extra },
       citations: [],
     });
-    const opinion = {
+    const opinion: SecondOpinionResult = {
       id: "so-central-check-test-test",
       cardId: "central",
       mode: "check",
       provider: "test",
       model: "test",
+      effort: "",
       verdict: "agrees",
       reasoning: "Looks right.",
       blocks: [],
@@ -1146,7 +1147,7 @@ describe("M4 interaction pure logic", () => {
       createdAt: 0,
     };
     const corr = para("b-corr-ct_1", "Accepted suggestion (from ct_1): use spaces.");
-    const card = {
+    const card: Card = {
       id: "central",
       pageId: "root",
       title: "The central change",
@@ -1157,28 +1158,31 @@ describe("M4 interaction pure logic", () => {
       undoStack: [],
       secondOpinions: [opinion],
     };
-    const target = { kind: "page-card", pageId: "root", card } as never;
+    const target: CardTarget = { kind: "page-card", pageId: "root", card };
 
     // Agent depth rewrite with a correction paragraph present: the merge
     // fills per-level text positionally and never drops blocks; the
     // second-opinion array lives beside blocks and is untouched.
     const reply = [para("b1", "Ignored standard.", { simple: "Fresh simple one." })];
-    pushUndo(target as never, [...card.blocks] as never[], "standard");
-    const merged = mergeDepthText(card.blocks as never[], reply as never[], "simple") as typeof card.blocks;
+    pushUndo(target, [...card.blocks], "standard");
+    const merged = mergeDepthText(card.blocks, reply, "simple");
     card.blocks = merged;
     card.level = "simple";
     card.revision += 1;
-    expect(card.blocks.map((b: { id: string }) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
-    expect((card.blocks[0] as { text: { simple: string } }).text.simple).toBe("Fresh simple one.");
-    expect((card.blocks[1] as { text: { standard: string } }).text.standard).toContain("Accepted suggestion");
+    expect(card.blocks.map((b) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
+    const firstBlock = card.blocks[0];
+    const secondBlock = card.blocks[1];
+    if (firstBlock?.type !== "paragraph" || secondBlock?.type !== "paragraph") throw new Error("expected paragraphs");
+    expect(firstBlock.text.simple).toBe("Fresh simple one.");
+    expect(secondBlock.text.standard).toContain("Accepted suggestion");
     expect(card.secondOpinions).toHaveLength(1);
-    expect(card.secondOpinions[0].verdict).toBe("agrees");
+    expect(card.secondOpinions?.[0]?.verdict).toBe("agrees");
 
     // Undo restores the pre-rewrite blocks; opinions and corrections ride
     // along (annotations live outside cards regardless).
     expect(applyUndo(target)).toBe(true);
     expect(card.level).toBe("standard");
-    expect(card.blocks.map((b: { id: string }) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
+    expect(card.blocks.map((b) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
     expect(card.secondOpinions).toHaveLength(1);
   });
 });

@@ -6,7 +6,8 @@ import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
 import { JobQueue } from "../src/jobs/queue.js";
 import { createApp } from "../src/server.js";
-import { DEFAULT_SETTINGS, SettingsStore, StaticModelCatalog } from "../src/settings/index.js";
+import { DEFAULT_SETTINGS, SettingsStore, StaticModelCatalog, type ModelCatalog, type OfferedModels, type OfferedThinking } from "../src/settings/index.js";
+import type { ModelInfo } from "@unvibe/shared";
 
 function makeStore(): SettingsStore {
   const db = openDatabase(":memory:");
@@ -48,7 +49,7 @@ describe("SettingsStore", () => {
     ]);
     expect(store.update({ sessionsPerProvider: 33 }).errors).toHaveLength(1);
     expect(store.update({ rebuildSupersededRatio: 2 }).errors).toHaveLength(1);
-    expect(store.update({ main: { provider: "", model: "" } }).errors).toHaveLength(1);
+    expect(store.update({ main: { provider: "", model: "", effort: "" } }).errors).toHaveLength(1);
     expect(store.update({ nope: 1 } as never).errors).toMatchObject([
       expect.stringContaining("unknown setting"),
     ]);
@@ -66,18 +67,28 @@ describe("StaticModelCatalog", () => {
   });
 
   it("reports no live thinking offering", async () => {
-    expect(await new StaticModelCatalog().thinking("claude")).toBeNull();
+    // StaticModelCatalog.thinking takes no provider (it always answers null).
+    expect(await new StaticModelCatalog().thinking()).toBeNull();
   });
 });
 
 describe("effort settings (issue #172)", () => {
-  /** Catalog with a live model + thinking offering for validation tests. */
-  class ThinkingCatalog extends StaticModelCatalog {
-    override offered(provider: string): Promise<{ models: { id: string }[]; defaultId: string | null }> {
+  /** Catalog with a live model + thinking offering for validation tests.
+   * Implements ModelCatalog directly: StaticModelCatalog's offered/thinking
+   * are typed Promise<null>, so a subclass cannot widen them. */
+  class ThinkingCatalog implements ModelCatalog {
+    private readonly base = new StaticModelCatalog();
+    listModels(provider: string): ModelInfo[] {
+      return this.base.listModels(provider);
+    }
+    providers(): string[] {
+      return this.base.providers();
+    }
+    offered(provider: string): Promise<OfferedModels> {
       void provider;
       return Promise.resolve({ models: [{ id: "m1" }], defaultId: "m1" });
     }
-    override thinking(provider: string): Promise<{ label: string; options: { value: string }[]; current: string }> {
+    thinking(provider: string): Promise<OfferedThinking> {
       void provider;
       return Promise.resolve({ label: "Effort", options: [{ value: "low" }, { value: "high" }], current: "high" });
     }
@@ -225,7 +236,7 @@ describe("settings + jobs routes", () => {
     try {
       const job = queue.enqueue({
         reviewId: "r1",
-        kind: "explain",
+        kind: "ask",
         provider: "claude",
         model: "m",
         effort: "",

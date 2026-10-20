@@ -20,6 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import type { DiagramBlock, ParagraphBlock } from "@unvibe/shared";
 import {
   canonicalizeD2Source,
   diagramHash,
@@ -1540,8 +1541,8 @@ function rootDiagramOf(
 describe("reader inline diagrams (#145)", () => {
   it("splitFinalizedBlocks restores the per-card split, extras to the last card", async () => {
     const { splitFinalizedBlocks } = await import("../src/pipeline/apply.js");
-    const p = (id: string): { type: string; id: string } => ({ type: "paragraph", id });
-    const dg = (id: string): { type: string; id: string } => ({ type: "diagram", id });
+    const p = (id: string): ParagraphBlock => ({ type: "paragraph", id, text: { standard: "" }, citations: [] });
+    const dg = (id: string): DiagramBlock => ({ type: "diagram", id, source: "", citations: [] });
     const cards = [
       { title: "The problem", blocks: [p("b1"), dg("b2")] },
       { title: "The central change", blocks: [p("b1")] },

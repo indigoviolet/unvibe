@@ -97,6 +97,8 @@ function build(runnerScripts: Script[] = [], over: Partial<BaseBuild> = {}): { m
     mcpServers: [{ name: "unvibe", url: "http://127.0.0.1:1/api/mcp/abc" }],
     pack: basePack(),
     ...over,
+    // Partial<BaseBuild> spread makes readOnly boolean|undefined; BaseBuild requires it.
+    readOnly: over.readOnly ?? true,
   };
   return { mgr, runner, opts };
 }
