@@ -738,6 +738,14 @@ for (const combo of [
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // Explain-first guide (#198): the build-up and decisions cards sit
+    // after the central change in the settled reader order.
+    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
+    await page.locator("#C-decisions").scrollIntoViewIfNeeded();
+    await stepChecks(page, "guide-decisions");
+    await shot(page, "guide-decisions", suffix, "Decisions and alternatives");
+    await page.locator("#C-problem").scrollIntoViewIfNeeded();
     // Open a floating card the way a reader does: select guide text
     // and Explain it.
     await selectText(page, "#C-problem", "used to let a server continue");

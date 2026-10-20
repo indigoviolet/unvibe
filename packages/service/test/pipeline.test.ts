@@ -385,7 +385,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
         reviewId: id,
         kind: "hunk-pass",
         template: "hunk_pass",
-        variables: { hunk: "### [[h:a-py:h111]] a.py\n@@ -1,2 +1,3 @@\n x", path: "a.py" },
+        variables: { hunk: "### [[h:a-py:h111]] a.py\n@@ -1,2 +1,3 @@\n x", path: "a.py", plotline: "(none assigned yet)" },
         priority: JOB_PRIORITY.background,
       });
       expect(res.repaired).toBe(true);
@@ -417,7 +417,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
         reviewId: id,
         kind: "hunk-pass",
         template: "hunk_pass",
-        variables: { hunk: "h", path: "a.py" },
+        variables: { hunk: "h", path: "a.py", plotline: "(none assigned yet)" },
         priority: JOB_PRIORITY.background,
       });
       expect(calls).toBe(2);
@@ -606,7 +606,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
         reviewId: id,
         kind: "hunk-pass",
         template: "hunk_pass",
-        variables: { hunk: "h", path: "a.py" },
+        variables: { hunk: "h", path: "a.py", plotline: "(none assigned yet)" },
         priority: JOB_PRIORITY.background,
       });
       expect(small.data?.["hunk"]).toMatchObject({ summary: "Toy summary" });

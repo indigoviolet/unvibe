@@ -8,6 +8,14 @@ change.
 
 src/urllib3/connection.py
 
+## Plotline
+
+Unfold folded values — normalize folded values before the headers are read
+
+When a plotline is named, let the summary say the hunk's role in that
+step of the progression where that fits in one line; when none is named
+yet, summarise the hunk on its own.
+
 ## Hunk
 
 ### [[h:conn:h111]] `@@ -640,7 +650,7 @@ def getresponse(self):` in getresponse · lines 650–652 · +1 −1

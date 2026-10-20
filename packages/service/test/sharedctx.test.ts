@@ -939,7 +939,7 @@ describe("isolation (PRD §12)", () => {
         reviewId: setup.reviewId,
         kind: "hunk-pass",
         template: "hunk_pass",
-        variables: { hunk: "### [[h:a-py:h1]] a.py\n@@ -1,3 +1,4 @@\n x", path: "a.py" },
+        variables: { hunk: "### [[h:a-py:h1]] a.py\n@@ -1,3 +1,4 @@\n x", path: "a.py", plotline: "(none assigned yet)" },
         priority: JOB_PRIORITY.background,
       });
       const sent = agents.prompts.slice(before).map((p) => p.text).join("\n");
