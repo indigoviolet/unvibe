@@ -18,9 +18,9 @@ import { mkdtempSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { z } from "zod";
 import { AcpAgentRunner } from "../src/agent/acp/runner.js";
 import type { AgentEvent } from "@unvibe/shared";
 
@@ -56,17 +56,24 @@ interface HunkServer {
 
 async function startHunkServer(): Promise<HunkServer> {
   const calls: HunkServer["calls"] = [];
-  const makeServer = (): McpServer => {
-    const server = new McpServer({ name: "unvibe-live", version: "0.0.0" });
-    server.tool(
-      "get_hunk",
-      "Return the text of a review hunk by id (live-test stub).",
-      { id: z.string() },
-      async ({ id }) => {
-        calls.push({ at: new Date().toISOString(), id });
-        return { content: [{ type: "text" as const, text: `HUNK:${id}:live-fixed-content:alpha-bravo-42` }] };
-      },
-    );
+  // Low-level Server (as in src/mcp/registry.ts): McpServer.tool's zod
+  // generic inference hits TS2589 (excessively deep) with this SDK + zod.
+  const makeServer = (): Server => {
+    const server = new Server({ name: "unvibe-live", version: "0.0.0" }, { capabilities: { tools: {} } });
+    server.setRequestHandler(ListToolsRequestSchema, () => ({
+      tools: [
+        {
+          name: "get_hunk",
+          description: "Return the text of a review hunk by id (live-test stub).",
+          inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+        },
+      ],
+    }));
+    server.setRequestHandler(CallToolRequestSchema, async (req) => {
+      const id = String((req.params.arguments as { id?: unknown } | undefined)?.id ?? "");
+      calls.push({ at: new Date().toISOString(), id });
+      return { content: [{ type: "text" as const, text: `HUNK:${id}:live-fixed-content:alpha-bravo-42` }] };
+    });
     return server;
   };
   // Stateful transports, one per client connection (mirrors production
@@ -83,7 +90,9 @@ async function startHunkServer(): Promise<HunkServer> {
       onsessioninitialized: (sid) => {
         if (holder.transport) connections.set(sid, holder.transport);
       },
-      onsessionclosed: (sid) => connections.delete(sid),
+      onsessionclosed: (sid) => {
+        connections.delete(sid);
+      },
     });
     return holder.transport;
   };

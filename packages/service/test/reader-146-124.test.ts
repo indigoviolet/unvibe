@@ -12,7 +12,7 @@
  * `DegradedConnError`, and the reader must retry once on a fresh session.
  */
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, ReviewSnapshot, Session } from "@unvibe/shared";
+import type { AgentEvent, Job, ReviewSnapshot, Session } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import type { McpRegistry } from "../src/mcp/registry.js";
 import { createApp } from "../src/server.js";
@@ -133,16 +133,14 @@ async function openReview(
   return { app, ctx, id };
 }
 
-function readerJobOf(ctx: { jobs: { listByReview(id: string): { kind: string }[] } }, id: string): string {
+function readerJobOf(ctx: { jobs: { listByReview(id: string): Job[] } }, id: string): string {
   const jobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
   expect(jobs.length).toBeGreaterThan(0);
-  return (jobs[jobs.length - 1] as { id: string }).id;
+  return jobs[jobs.length - 1].id;
 }
 
 async function waitForJob(
-  ctx: {
-    jobs: { get(id: string): { state: string; error?: string; usage?: Record<string, number> } | undefined };
-  },
+  ctx: { jobs: { get(id: string): Job | undefined } },
   jobId: string,
   timeoutMs = 60000,
 ): Promise<void> {

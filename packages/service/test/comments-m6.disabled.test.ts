@@ -6,6 +6,7 @@
  * never in threads (#136 slice 2).
  */
 import { describe, expect, it } from "vitest";
+import type { Card, Page } from "@unvibe/shared";
 import { FakeCommandRunner } from "../src/exec/index.js";
 import {
   closeAnnotation,
@@ -50,7 +51,7 @@ describe("comment threads", () => {
   });
 
   it("creates a first message on a guide block (starts closed)", async () => {    const runner = new FakeCommandRunner();
-    const pages = [
+    const pages: Page[] = [
       {
         id: "p1",
         kind: "root" as const,
@@ -62,7 +63,6 @@ describe("comment threads", () => {
             pageId: "p1",
             title: "Card",
             level: "standard" as const,
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: [{ type: "paragraph", id: "b1", text: { standard: "the fast path is here" }, citations: [] }],
@@ -94,7 +94,7 @@ describe("comment threads", () => {
 
   it("stores the client's selection offsets on the anchor (issue #166)", async () => {
     const runner = new FakeCommandRunner();
-    const pages = [
+    const pages: Page[] = [
       {
         id: "p1",
         kind: "root" as const,
@@ -106,7 +106,6 @@ describe("comment threads", () => {
             pageId: "p1",
             title: "Card",
             level: "standard" as const,
-            read: false,
             collapsed: false,
             revision: 1,
             blocks: [{ type: "paragraph", id: "b1", text: { standard: "the fast path is here" }, citations: [] }],
@@ -164,18 +163,17 @@ describe("comment threads", () => {
 
   it("anchors a guide comment on one card when block ids repeat across cards (#78)", async () => {
     const runner = new FakeCommandRunner();
-    const card = (id: string, text: string) => ({
+    const card = (id: string, text: string): Card => ({
       id,
       pageId: "p1",
       title: id,
       level: "standard" as const,
-      read: false,
       collapsed: false,
       revision: 1,
       blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
       undoStack: [],
     });
-    const pages = [
+    const pages: Page[] = [
       {
         id: "p1",
         kind: "root" as const,

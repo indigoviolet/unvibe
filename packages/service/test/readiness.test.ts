@@ -134,7 +134,7 @@ describe("readiness checks", () => {
         {
           runner: versions(),
           agents: fakeAgents({ claude: ["a"] }, calls) as never,
-          settings: settingsStore({ main: { provider: "custom", model: "x" } }),
+          settings: settingsStore({ main: { provider: "custom", model: "x", effort: "" } }),
           loginPathValue: dir,
           timeoutMs: 2000,
         },
@@ -185,8 +185,8 @@ describe("readiness checks", () => {
         runner: real,
         agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
         settings: settingsStore({
-          main: { provider: "claude", model: "m" },
-          secondOpinion: { provider: "claude", model: "m" },
+          main: { provider: "claude", model: "m", effort: "" },
+          secondOpinion: { provider: "claude", model: "m", effort: "" },
         }),
         loginPathValue: "/nonexistent",
         timeoutMs: 1000,
@@ -200,8 +200,8 @@ describe("readiness checks", () => {
         runner: real,
         agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
         settings: settingsStore({
-          main: { provider: "claude", model: "m" },
-          secondOpinion: { provider: "codex", model: "m" },
+          main: { provider: "claude", model: "m", effort: "" },
+          secondOpinion: { provider: "codex", model: "m", effort: "" },
         }),
         loginPathValue: "/nonexistent",
         timeoutMs: 1000,
@@ -216,7 +216,7 @@ describe("readiness checks", () => {
       {
         runner: real,
         agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
-        settings: settingsStore({ secondOpinion: { provider: "codex", model: "" } }),
+        settings: settingsStore({ secondOpinion: { provider: "codex", model: "", effort: "" } }),
         loginPathValue: "/nonexistent",
         timeoutMs: 1000,
       },

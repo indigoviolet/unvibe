@@ -17,6 +17,8 @@ function emptySnapshot(id: string): ReviewSnapshot {
     pages: [],
     annotations: [],
     hunkStates: [],
+    fileStates: [],
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [],
     contributions: [],
     logTail: [],
