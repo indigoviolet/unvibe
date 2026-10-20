@@ -156,7 +156,7 @@ test.describe("J4 diff work", () => {
     };
     const explainAndClose = async (): Promise<void> => {
       await page.locator('#selbar [data-act="explain"]').click();
-      const card = page.locator(".dhunk .card.child.floating").first();
+      const card = page.locator(".dhunk .card.child[data-expansion]").first();
       await expect(card).toBeVisible({ timeout: 15_000 });
       await expect(card.locator(".working")).toHaveCount(0, { timeout: 30_000 });
       await card.getByRole("button", { name: "Close" }).click();
@@ -171,8 +171,8 @@ test.describe("J4 diff work", () => {
     await expect(page.locator(`[id="L-${CONN}-87"]`)).toHaveClass(/rng/);
     // The marker reopens the card.
     await marker.click();
-    await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
-    await page.locator(".dhunk .card.child.floating").first().getByRole("button", { name: "Close" }).click();
+    await expect(page.locator(".dhunk .card.child[data-expansion]").first()).toBeVisible({ timeout: 15_000 });
+    await page.locator(".dhunk .card.child[data-expansion]").first().getByRole("button", { name: "Close" }).click();
 
     // Across a hunk boundary, over long lines: the selection runs to
     // several hundred characters, well past the old 300-char cap.
@@ -182,6 +182,6 @@ test.describe("J4 diff work", () => {
     await expect(boundaryMarker).toBeVisible({ timeout: 15_000 });
     await expect(page.locator(`[id="L-${CONN}-650"]`)).toHaveClass(/rng/);
     await boundaryMarker.click();
-    await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".dhunk .card.child[data-expansion]").first()).toBeVisible({ timeout: 15_000 });
   });
 });
