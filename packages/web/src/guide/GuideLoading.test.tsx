@@ -7,7 +7,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach } from "vitest";
 import type { ReviewSummary } from "@unvibe/shared";
-import { EmptyOpen, FailedOpen } from "./GuidePage.js";
+import { EmptyOpen, EmptyVersionGuide, FailedOpen } from "./GuidePage.js";
 import { ingestStepLabel } from "./stageLabels.js";
 import { SessionRow } from "../start/StartPage.js";
 
@@ -100,9 +100,25 @@ describe("EmptyOpen (#179 empty diff)", () => {
     );
     expect(screen.getByTestId("review-empty")).toBeInTheDocument();
     expect(screen.getByText("No changes to review")).toBeInTheDocument();
-    expect(screen.getByTestId("review-empty-message")).toHaveTextContent("No changes to review");
+    // Heading says it once; the body only explains why.
+    expect(screen.getByTestId("review-empty-message")).toHaveTextContent(
+      "This PR has been merged and its branch is now the same as its base, so the diff is empty.",
+    );
+    expect(screen.getByTestId("review-empty-message")).not.toHaveTextContent("No changes to review");
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(screen.queryByText(/Couldn't open/)).not.toBeInTheDocument();
+  });
+
+  test("empty version guide says so and points at earlier versions", () => {
+    render(
+      <MemoryRouter>
+        <EmptyVersionGuide versionN={2} versionCount={2} hasGuide />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("guide-empty-version")).toBeInTheDocument();
+    expect(screen.getByTestId("guide-empty-version-message")).toHaveTextContent("This version's diff is empty");
+    expect(screen.getByText(/Earlier versions are still available in the version picker/)).toBeInTheDocument();
+    expect(screen.getByText(/pick one to read its guide and diff/)).toBeInTheDocument();
   });
 
   test("empty row shows the message and no-changes tag", () => {

@@ -73,7 +73,8 @@ test.describe("J18 empty diff (#179)", () => {
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.getByTestId("review-empty")).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByTestId("review-empty-message")).toContainText("No changes to review");
+    // Heading says "No changes to review" once; the body explains why.
+    await expect(page.getByTestId("review-empty-message")).toContainText('Branch "feature" is the same as its base');
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
     await page.screenshot({ path: "test-results/j18-empty-branch.png", fullPage: true });
 
@@ -103,13 +104,75 @@ test.describe("J18 empty diff (#179)", () => {
       await page.goto(`${svc2.origin}/review/${reviewId}?token=${svc2.token}`);
       await expect(page.getByText("y = 2")).toBeVisible({ timeout: 60_000 });
 
+      // Seed a v1 guide (same DB technique as J12) so the review has a
+      // guide before the refresh empties the diff.
+      await svc2.stop();
+      const { DatabaseSync } = await import("node:sqlite");
+      const db = new DatabaseSync(path.join(data2, "unvibe.db"));
+      try {
+        const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(reviewId) as
+          | { rev: number; snapshot: string }
+          | undefined;
+        if (!row) throw new Error("no snapshot row to seed");
+        const snap = JSON.parse(row.snapshot) as {
+          pages: { id: string; kind: string; title: string; saved: boolean; cards: unknown[] }[];
+        };
+        snap.pages = [
+          {
+            id: "root",
+            kind: "root",
+            title: "Guide",
+            saved: false,
+            cards: [
+              {
+                id: "c-seed",
+                pageId: "root",
+                title: "Seed guide card",
+                level: "standard",
+                read: false,
+                collapsed: false,
+                revision: 1,
+                blocks: [
+                  { type: "paragraph", id: "b-seed", text: { standard: "Seed guide text for v1." }, citations: [] },
+                ],
+                undoStack: [],
+              },
+            ],
+          },
+        ];
+        db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+          row.rev + 1,
+          JSON.stringify(snap),
+          reviewId,
+        );
+      } finally {
+        db.close();
+      }
+      svc2 = await startService(data2, { agent: "none" });
+      await page.goto(`${svc2.origin}/review/${reviewId}?token=${svc2.token}`);
+      await expect(page.getByText("Seed guide text for v1.")).toBeVisible({ timeout: 60_000 });
+
       await git(dir2, "checkout", "feature");
       await git(dir2, "reset", "--hard", "main");
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      // Diff pane: the empty message appears once (the banner), not twice.
       await expect(page.getByTestId("empty-diff-message")).toContainText("No changes to review", { timeout: 60_000 });
-      await expect(page.getByTestId("diff-empty")).toContainText("No changes to review");
+      await expect(page.getByTestId("diff-empty")).toHaveCount(0);
       await expect(page.getByTestId("stale-banner").getByRole("button", { name: "Update" })).toHaveCount(0);
+      // Guide pane: says this version is empty, not "diff is ready", and
+      // points at the earlier version (which still has its guide).
+      await expect(page.getByTestId("guide-empty-version")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("guide-empty-version-message")).toContainText("This version's diff is empty");
+      await expect(page.getByTestId("guide-empty-version")).toContainText("Earlier versions are still available");
+      // Submit stays available: work from earlier versions is not stranded.
+      await expect(page.getByRole("button", { name: /Submit review/ })).toBeVisible();
       await page.screenshot({ path: "test-results/j18-refresh-empty.png", fullPage: true });
+
+      // Picking v1 brings its guide and diff back.
+      await page.locator("#version-pick").selectOption("1");
+      await expect(page).toHaveURL(/version=1/);
+      await expect(page.getByText("Seed guide text for v1.")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("y = 2")).toBeVisible({ timeout: 30_000 });
     } finally {
       await svc2?.stop().catch(() => {});
       rmSync(dir2, { recursive: true, force: true });
