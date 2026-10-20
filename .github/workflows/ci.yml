@@ -85,7 +85,7 @@ jobs:
         run: mise install d2 || true
         timeout-minutes: 10
 
-      - name: Lint + typecheck + unit tests
+      - name: Lint + typecheck (incl. test typecheck, issue #127) + unit tests
         run: mise run check
         timeout-minutes: 20
 

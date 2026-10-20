@@ -218,9 +218,13 @@ run = "npx eslint ."
 description = "Typecheck all workspaces"
 run = "npm run build --workspace @unvibe/shared && npm run typecheck --workspaces --if-present"
 
+[tasks."typecheck:tests"]
+description = "Typecheck test files in all workspaces (blocking, issue #127; web tests live in src, so its tsconfig covers them)"
+run = "npm run build --workspace @unvibe/shared && npm run typecheck:tests --workspaces --if-present"
+
 [tasks.check]
-description = "Fast suite: lint + typecheck in parallel, then fast unit tests"
-depends = ["lint", "typecheck"]
+description = "Fast suite: lint + typecheck + test typecheck in parallel, then fast unit tests"
+depends = ["lint", "typecheck", "typecheck:tests"]
 run = "mise run test:fast"
 
 [tasks.start]
