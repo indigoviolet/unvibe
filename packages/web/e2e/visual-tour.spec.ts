@@ -1064,7 +1064,7 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     // Once the answer arrives, the toolbar and reply box appear.
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.locator("textarea")).toBeVisible({ timeout: 30_000 });
-    await page.screenshot({ path: path.join(SHOTS, "guide-pinned-1440-light.png") });
+    await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
     await slow.stop().catch(() => {});
     rmSync(dir, { recursive: true, force: true });

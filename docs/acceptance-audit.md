@@ -497,8 +497,8 @@ needed (that deviation is closed, not added).
   answer toolbar and the reply box appear when the answer arrives,
   and a failed turn shows Retry (issue #203; a conversation job
   interrupted by a restart settles its turn as failed at startup, so
-  Retry is what it shows) — met (`PinnedCard.test.tsx`,
-  `ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
+  Retry is what it shows) — met
+  (`ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
   guide-pinned/guide-writing/diff scenes).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
