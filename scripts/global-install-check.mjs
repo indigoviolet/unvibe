@@ -20,15 +20,17 @@
 // binary for this platform downloaded, one outline request that must be
 // answered by a loaded grammar (issue #157), install time + size.
 //
-// Issue #42: the install runs with a fake HOME, a temp data dir and
-// `UNVIBE_POSTINSTALL_SETUP=1` (the install check "asks for" postinstall
-// setup despite CI), so the release `postinstall` must place the
-// `unvibe://` handler and the start-at-login unit under that home —
-// asserted by `checkSetupPlaced` — without running `unvibe setup` by
-// hand and without touching the real home. A final tarball phase with
-// `--ignore-scripts` asserts the install still succeeds (and places no
-// helper) when scripts are off; npm runs no script then, so no hint can
-// print — the manual `unvibe setup` path covers it.
+// Issue #42: the release package declares no lifecycle scripts (a
+// script makes npm link a git install to its temporary preparation
+// clone and then delete the clone, dangling the bin), so a plain
+// install must land a real package whose bin target exists and runs.
+// Setup (the `unvibe://` handler, start-at-login unit, token) runs from
+// the CLI on first `unvibe start` — asserted by `checkSetupPlaced`
+// after start in every full phase, under a fake HOME with a temp data
+// dir so nothing touches the real home. A final tarball phase with
+// `--ignore-scripts` asserts the install still succeeds and places no
+// helper when scripts are off; the first-start/manual `unvibe setup`
+// path covers it.
 //
 // The release tree needs no build and defines no `prepare`, so npm's
 // git-URL handling (dangling symlinks / preparation races on npm 10/11 for
@@ -53,7 +55,7 @@ const NPMS = String(flag("--npms", process.env.UNVIBE_GLOBAL_CHECK_NPMS ?? "11,1
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
-const PHASES = String(flag("--phases", process.env.UNVIBE_GLOBAL_CHECK_PHASES ?? "tarball,git,doomed"))
+const PHASES = String(flag("--phases", process.env.UNVIBE_GLOBAL_CHECK_PHASES ?? "tarball,git,doomed,mise"))
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -133,7 +135,7 @@ function s(secMs) {
  * node_modules anymore.)
  */
 function checkAdapterBundles(installedPkgDir, label) {
-  for (const f of ["packages/service/dist/index.js", "packages/service/dist/postinstall.js", "packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/codex.js", "packages/service/dist/update-helper.js"]) {
+  for (const f of ["packages/service/dist/index.js", "packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/codex.js", "packages/service/dist/update-helper.js"]) {
     const full = path.join(installedPkgDir, f);
     assert(fs.existsSync(full), `${label}: ships ${f}`);
   }
@@ -171,10 +173,11 @@ function checkGrammarFiles(installedPkgDir, label) {
 }
 
 /**
- * Issue #42: after a plain `npm install -g` (no `unvibe setup` by hand),
- * the postinstall must have placed the `unvibe://` handler and the
- * start-at-login unit under the fake HOME, baked with the installed CLI
- * path, and created the per-install token in the data dir.
+ * Issue #42: the install itself runs no setup, so after the first
+ * `unvibe start` (no `unvibe setup` by hand) the handler and the
+ * start-at-login unit must be placed under the fake HOME, baked with
+ * the installed CLI path, the per-install token created, and the
+ * setup-version marker recorded (asserted at the call site).
  */
 function checkSetupPlaced({ installedPkg, home, dataDir, label }) {
   const cliPath = path.join(installedPkg, "packages/service/dist/index.js");
@@ -187,21 +190,21 @@ function checkSetupPlaced({ installedPkg, home, dataDir, label }) {
   };
   if (process.platform === "darwin") {
     const plist = path.join(home, "Applications", "Unvibe.app", "Contents", "Info.plist");
-    assert(fs.existsSync(plist), `${label}: postinstall placed the macOS helper app`);
+    assert(fs.existsSync(plist), `${label}: first start placed the macOS helper app`);
     assert(read(plist).includes("<string>unvibe</string>"), `${label}: helper app registers unvibe://`);
     const unit = path.join(home, "Library", "LaunchAgents", "com.unvibe.service.plist");
-    assert(fs.existsSync(unit), `${label}: postinstall placed the launchd login unit`);
+    assert(fs.existsSync(unit), `${label}: first start placed the launchd login unit`);
     assert(read(unit).includes(cliPath), `${label}: launchd unit bakes the installed CLI path`);
   } else {
     const desktop = path.join(home, ".local", "share", "applications", "unvibe-open.desktop");
-    assert(fs.existsSync(desktop), `${label}: postinstall placed the Linux link handler`);
+    assert(fs.existsSync(desktop), `${label}: first start placed the Linux link handler`);
     assert(read(desktop).includes(cliPath), `${label}: link handler bakes the installed CLI path`);
     const unit = path.join(home, ".config", "systemd", "user", "unvibe.service");
-    assert(fs.existsSync(unit), `${label}: postinstall placed the systemd login unit`);
+    assert(fs.existsSync(unit), `${label}: first start placed the systemd login unit`);
     assert(read(unit).includes(cliPath), `${label}: systemd unit bakes the installed CLI path`);
   }
   const token = path.join(dataDir, "token");
-  assert(fs.existsSync(token) && read(token).trim().length > 0, `${label}: postinstall created the install token`);
+  assert(fs.existsSync(token) && read(token).trim().length > 0, `${label}: first start created the install token`);
 }
 
 /** No platform-binary tarball may have been fetched into this install's isolated cache. */
@@ -436,26 +439,30 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
     const real = fs.existsSync(installedPkg);
     assert(!isLink && real, `${label}: installed package is a real dir, not a symlink`);
   }
-  // Lifecycle scripts: exactly the postinstall (issue #42), nothing else.
+  // The owner's dangling-bin failure (issue #42): the bin link exists
+  // but its target inside the package does not. Assert the target file
+  // itself, not just the link.
+  assert(
+    fs.existsSync(path.join(installedPkg, "packages/service/dist/index.js")),
+    `${label}: bin target packages/service/dist/index.js exists in the installed package`,
+  );
+  // No lifecycle scripts at all (issue #42): any install script makes
+  // npm link a git install to its temporary preparation clone and then
+  // delete the clone, leaving the bin dangling.
   let installedVersion = null;
   try {
     const pj = JSON.parse(fs.readFileSync(installedPkgJson, "utf8"));
     installedVersion = pj.version ?? null;
     assert(
-      JSON.stringify(pj.scripts) ===
-        JSON.stringify({
-          postinstall:
-            'cd "$(dirname "$npm_package_json")" 2>/dev/null && node ./packages/service/dist/postinstall.js || echo \'unvibe: setup was not run; run `unvibe setup` to finish installing.\'',
-        }),
-      `${label}: release package.json defines only the cwd-proof postinstall script`,
+      !pj.scripts || Object.keys(pj.scripts).length === 0,
+      `${label}: release package.json defines no lifecycle scripts`,
     );
     assert(!pj.workspaces, `${label}: release package.json defines no workspaces`);
     assert(!pj.devDependencies, `${label}: release package.json has no devDependencies`);
   } catch {
     assert(false, `${label}: installed package.json parses`);
   }
-  assert(!/^> \S+ (prepare|preinstall|prepack|install)\b/m.test(npmOut), `${label}: no prepare/preinstall ran during install`);
-  checkSetupPlaced({ installedPkg, home: HOME, dataDir: DATA, label });
+  assert(!/^> \S+ (prepare|preinstall|prepack|install|postinstall)\b/m.test(npmOut), `${label}: no lifecycle script ran during install`);
   // The built service bundle must report the release version (for tag
   // builds the bundle is patched from the source version to the tag).
   if (installedVersion) {
@@ -527,6 +534,17 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
   const start = runInstalled(["start"]);
   assert(start.code === 0, `${label}: unvibe start (${start.out.trim().split("\n")[0]})`);
   assert(await waitFor(port, true, 20_000, `${label} health`), `${label}: globally installed service answers`);
+  // Issue #42: that first start (not `unvibe setup`) completed setup.
+  checkSetupPlaced({ installedPkg, home: HOME, dataDir: DATA, label });
+  {
+    let marker = "";
+    try {
+      marker = fs.readFileSync(path.join(DATA, "setup-version"), "utf8").trim();
+    } catch {
+      marker = "";
+    }
+    assert(!installedVersion || marker === installedVersion, `${label}: first start recorded setup-version ${installedVersion} (got ${JSON.stringify(marker)})`);
+  }
   assert(start.out.includes(`http://unvibe.localhost:${port}/?token=`), `${label}: start prints the token URL`);
 
   const token = fs.readFileSync(path.join(DATA, "token"), "utf8").trim();
@@ -603,10 +621,8 @@ function installEnv({ cacheDir, prefix, home, dataDir, port }) {
     HOME: home,
     UNVIBE_DATA_DIR: dataDir,
     UNVIBE_PORT: String(port),
-    // Issue #42: the check asks for postinstall setup despite CI, with a
-    // fake HOME so nothing lands in the real one. No session bus, so the
-    // login unit is written but no service is started by the manager.
-    UNVIBE_POSTINSTALL_SETUP: "1",
+    // Fake HOME so nothing lands in the real one. No session bus, so
+    // the login unit is written but no service is started by the manager.
     XDG_RUNTIME_DIR: path.join(TMP, "no-runtime"),
     // The real node bin first: with a fake HOME, a version-manager shim
     // later in PATH cannot resolve its toolset and `node` in lifecycle
@@ -616,28 +632,20 @@ function installEnv({ cacheDir, prefix, home, dataDir, port }) {
   };
 }
 
-function installArgsFor({ installArgs, prefix, ignoreScripts, installLinks }) {
-  return [
-    "install",
-    "-g",
-    ...installArgs,
-    "--prefix",
-    prefix,
-    ...(ignoreScripts ? ["--ignore-scripts"] : []),
-    ...(installLinks ? ["--install-links=true"] : []),
-  ];
+function installArgsFor({ installArgs, prefix, ignoreScripts }) {
+  return ["install", "-g", ...installArgs, "--prefix", prefix, ...(ignoreScripts ? ["--ignore-scripts"] : [])];
 }
 
-function installLiteral({ npmMajor, installArgs, prefix, label, home, dataDir, port, ignoreScripts = false, installLinks = false }) {
+function installLiteral({ npmMajor, installArgs, prefix, label, home, dataDir, port, ignoreScripts = false, extraEnv = {} }) {
   const cacheDir = path.join(TMP, `cache-${label}`);
   fs.mkdirSync(cacheDir, { recursive: true });
   fs.mkdirSync(home, { recursive: true });
   const [cmd, ...rest] = npmArgv(npmMajor);
-  const ENV = installEnv({ cacheDir, prefix, home, dataDir, port });
+  const ENV = { ...installEnv({ cacheDir, prefix, home, dataDir, port }), ...extraEnv };
   const t0 = Date.now();
   const r = spawnSync(
     cmd,
-    [...rest, ...installArgsFor({ installArgs, prefix, ignoreScripts, installLinks })],
+    [...rest, ...installArgsFor({ installArgs, prefix, ignoreScripts })],
     {
       cwd: os.tmpdir(),
       env: ENV,
@@ -683,13 +691,10 @@ async function phaseGit(npmMajor, bareRepo, port) {
   fs.mkdirSync(PREFIX, { recursive: true });
   // Literal README command (git-ref variant); git+file://<bare>#<ref>
   // stands in for github:<org>/unvibe#<ref> with no network to GitHub.
-  // --install-links=true is check-only: a local git+file source is
-  // otherwise *symlinked* into the prefix once the package carries an
-  // install script (npm's directory-dep handling), and the link target
-  // — the preparation clone — is deleted on cleanup, leaving a dangling
-  // install. Remote git (what github: uses) always copies, as does the
-  // tarball; this flag makes the local stand-in behave the same way.
-  // Users' own commands keep no extra flags.
+  // No extra flags: with no lifecycle scripts in the release package,
+  // npm copies the prepared tree into the prefix (the owner's dangling
+  // bin came from the old postinstall forcing link mode). verifyInstall
+  // asserts the package is a real dir and the bin target exists.
   const { code, out, ms, cacheDir } = installLiteral({
     npmMajor,
     installArgs: [`git+file://${bareRepo}#${RELEASE_REF}`],
@@ -698,7 +703,6 @@ async function phaseGit(npmMajor, bareRepo, port) {
     home,
     dataDir,
     port,
-    installLinks: true,
   });
   if (code !== 0) console.error(out.slice(-3000));
   assert(code === 0, `${label}: npm install -g git+file://<bare>#${RELEASE_REF} --prefix (exit ${code})`);
@@ -709,10 +713,10 @@ async function phaseGit(npmMajor, bareRepo, port) {
 }
 
 /**
- * Issue #42: with `--ignore-scripts` npm runs no postinstall, so the
- * install must still succeed and the binary must work; no helper is
- * placed (the user runs `unvibe setup` by hand — npm prints no hint
- * because no script ran to print one). One npm-11 tarball install only.
+ * Issue #42: with `--ignore-scripts` the install must still succeed and
+ * the binary must work; no helper is placed at install time (setup runs
+ * on first `unvibe start`, or by hand with `unvibe setup`). One npm-11
+ * tarball install only.
  */
 async function phaseIgnoreScripts(tarballPath, port) {
   const label = "tarball-ignore-scripts";
@@ -744,55 +748,41 @@ async function phaseIgnoreScripts(tarballPath, port) {
   fs.rmSync(PREFIX, { recursive: true, force: true });
 }
 
-/** Handler + login-unit paths postinstall setup writes under a home. */
-function setupPaths(home) {
-  return process.platform === "darwin"
-    ? [path.join(home, "Applications", "Unvibe.app"), path.join(home, "Library", "LaunchAgents", "com.unvibe.service.plist")]
-    : [
-        path.join(home, ".local", "share", "applications", "unvibe-open.desktop"),
-        path.join(home, ".config", "systemd", "user", "unvibe.service"),
-      ];
-}
-
 /**
- * Issue #42 regression (owner, macOS): the in-app switch and
+ * Issue #42 regressions (owner, macOS): the in-app switch and
  * `unvibe update` spawn npm from the running service, whose cwd can be
  * inside the package npm is replacing — npm deletes that directory
- * mid-install, and a postinstall launched with a relative path then died
- * in node at `resolveMainPath` (`ENOENT uv_cwd`), failing the install.
- * This phase reproduces that path without the app: install once
- * normally, remove the handler/unit, then install again with npm's own
- * cwd inside the installed package dir. The second install must exit 0,
- * and postinstall setup must have run again (handler back) or printed
- * its one-line hint. Runs on npm 11 only (the mechanism is npm's, not
- * version-specific; npm 10/11 plain installs are covered above).
+ * mid-install. With a lifecycle script that killed the install
+ * (`ENOENT uv_cwd`, then the dangling-bin rollback); with none, the
+ * reinstall must simply succeed: exit 0, no `uv_cwd`, the package a
+ * real dir whose bin target exists and runs. This phase reproduces
+ * that path without the app: install once normally, then install again
+ * with npm's own cwd inside the installed package dir. Runs on npm 11
+ * only (npm 10/11 plain installs are covered above).
  */
-async function phaseDoomedCwd({ kind, installArgs, installLinks = false, secondInstallLinks, port }) {
+async function phaseDoomedCwd({ kind, installArgs, port }) {
   const label = `switch-cwd-${kind}`;
   console.log(`--- ${label}: npm ${npmVersion("11", process.env)} (npm cwd inside the package being replaced) ---`);
   const PREFIX = path.join(TMP, `prefix-${label}`);
   const home = path.join(TMP, `home-${label}`);
   const dataDir = path.join(TMP, `data-${label}`);
   fs.mkdirSync(PREFIX, { recursive: true });
-  const first = installLiteral({ npmMajor: "11", installArgs, prefix: PREFIX, label, home, dataDir, port, installLinks });
+  const first = installLiteral({ npmMajor: "11", installArgs, prefix: PREFIX, label, home, dataDir, port });
   if (first.code !== 0) console.error(first.out.slice(-3000));
   assert(first.code === 0, `${label}: first install exits 0 (exit ${first.code})`);
   if (first.code !== 0) return;
   const pkgDir = path.join(PREFIX, "lib", "node_modules", "unvibe");
   assert(fs.existsSync(path.join(pkgDir, "package.json")), `${label}: first install landed in the prefix`);
-  for (const p of setupPaths(home)) fs.rmSync(p, { recursive: true, force: true });
 
   const cacheDir = path.join(TMP, `cache-${label}-2`);
   fs.mkdirSync(cacheDir, { recursive: true });
   const [cmd, ...rest] = npmArgv("11");
   // npm starts with its cwd inside the package being replaced (the
   // running service's cwd on the owner's machine); npm's reify deletes
-  // and recreates that directory mid-install, so anything it launches
-  // that still relies on a live inherited cwd — the postinstall's
-  // relative script path, and for git refs the preparation clone npm
-  // runs scripts in and then deletes — hits the owner's `uv_cwd`.
+  // and recreates that directory mid-install. Nothing may rely on a
+  // live inherited cwd, and nothing may link to a deleted temp dir.
   const out = await new Promise((resolve) => {
-    const child = spawn(cmd, [...rest, ...installArgsFor({ installArgs, prefix: PREFIX, installLinks: secondInstallLinks ?? installLinks })], {
+    const child = spawn(cmd, [...rest, ...installArgsFor({ installArgs, prefix: PREFIX })], {
       cwd: pkgDir,
       env: installEnv({ cacheDir, prefix: PREFIX, home, dataDir, port }),
       stdio: ["ignore", "pipe", "pipe"],
@@ -812,27 +802,13 @@ async function phaseDoomedCwd({ kind, installArgs, installLinks = false, secondI
   });
   if (out.code !== 0) console.error(out.out.slice(-3000));
   assert(out.code === 0, `${label}: reinstall from inside the replaced package exits 0 (exit ${out.code})`);
-  assert(!/uv_cwd/.test(out.out), `${label}: no uv_cwd from the postinstall (the owner's error)`);
+  assert(!/uv_cwd/.test(out.out), `${label}: no uv_cwd (the owner's error)`);
   if (out.code !== 0) return;
-  if (kind === "git") {
-    // The local git+file stand-in without --install-links symlinks the
-    // (deleted) preparation clone into the prefix — an npm directory-dep
-    // artifact remote git never produces — so landing is asserted by
-    // the copy-mode git phase above. Here only the postinstall-cwd
-    // mechanism is under test: setup ran, or its hint was printed, or
-    // at minimum the install survived with no uv_cwd (asserted above).
-    const placedGit = setupPaths(home).every((p) => fs.existsSync(p));
-    assert(
-      placedGit || out.out.includes("unvibe setup") || out.code === 0,
-      `${label}: postinstall setup ran from a vanished cwd or printed its hint`,
-    );
-    fs.rmSync(PREFIX, { recursive: true, force: true });
-    return;
-  }
-  const placed = setupPaths(home).every((p) => fs.existsSync(p));
+  const st = fs.lstatSync(pkgDir, { throwIfNoEntry: false });
+  assert(!!st && !st.isSymbolicLink() && fs.existsSync(path.join(pkgDir, "package.json")), `${label}: package re-landed as a real dir`);
   assert(
-    placed || out.out.includes("unvibe setup"),
-    `${label}: postinstall setup ran from a vanished cwd (handler re-placed) or printed its hint`,
+    fs.existsSync(path.join(pkgDir, "packages/service/dist/index.js")),
+    `${label}: bin target exists after the switch-path install (no dangling bin)`,
   );
   const ver = spawnSync(process.execPath, [path.join(PREFIX, "bin", "unvibe"), "--version"], {
     cwd: os.tmpdir(),
@@ -842,6 +818,100 @@ async function phaseDoomedCwd({ kind, installArgs, installLinks = false, secondI
   });
   assert(ver.status === 0, `${label}: installed bin still runs after the switch-path install`);
   fs.rmSync(PREFIX, { recursive: true, force: true });
+}
+
+/**
+ * Issue #42 (owner's Mac): with mise-managed Node, npm's global prefix
+ * is one Node version's prefix and only the mise shims dir is on PATH,
+ * so the installed `unvibe` bin is not runnable by name until a reshim.
+ * Faithful stand-in with a temp HOME (the real mise config is never
+ * touched): a real node binary hardlinked under
+ * `~/.local/share/mise/installs/node/99.0.0`, npm beside it, only the
+ * shims dir on PATH, and a fake `mise` whose `reshim` links the
+ * version's bins into the shims. Asserts npm's prefix really is the
+ * version dir before installing (never install into a real prefix),
+ * that doctor names the exact fix, and that after `mise reshim` the
+ * bin runs by name.
+ */
+async function phaseMise(tarballPath, port) {
+  const label = "mise-managed-node";
+  console.log(`--- ${label}: stand-in (version prefix + shims-only PATH, temp HOME) ---`);
+  const home = path.join(TMP, `home-${label}`);
+  const dataDir = path.join(TMP, `data-${label}`);
+  const versionDir = path.join(home, ".local", "share", "mise", "installs", "node", "99.0.0");
+  const vbin = path.join(versionDir, "bin");
+  const shims = path.join(home, ".local", "share", "mise", "shims");
+  fs.mkdirSync(vbin, { recursive: true });
+  fs.mkdirSync(shims, { recursive: true });
+  fs.mkdirSync(path.join(home, ".local", "bin"), { recursive: true });
+  try {
+    fs.linkSync(process.execPath, path.join(vbin, "node"));
+  } catch {
+    fs.copyFileSync(process.execPath, path.join(vbin, "node"));
+  }
+  const realNpmDir = path.join(path.dirname(process.execPath), "..", "lib", "node_modules", "npm");
+  const npmCli = path.join(realNpmDir, "bin", "npm-cli.js");
+  assert(fs.existsSync(npmCli), `${label}: host npm layout found for the stand-in`);
+  if (!fs.existsSync(npmCli)) return;
+  fs.mkdirSync(path.join(versionDir, "lib", "node_modules"), { recursive: true });
+  fs.symlinkSync(realNpmDir, path.join(versionDir, "lib", "node_modules", "npm"), "dir");
+  fs.symlinkSync(npmCli, path.join(vbin, "npm"));
+  fs.symlinkSync(path.join(vbin, "node"), path.join(shims, "node"));
+  fs.symlinkSync(path.join(vbin, "npm"), path.join(shims, "npm"));
+  const miseBin = path.join(home, ".local", "bin", "mise");
+  fs.writeFileSync(
+    miseBin,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = reshim ]; then',
+      '  for f in "$HOME/.local/share/mise/installs/node"/*/bin/*; do ln -sf "$f" "$HOME/.local/share/mise/shims/"; done',
+      "fi",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const ENV = {
+    ...process.env,
+    HOME: home,
+    UNVIBE_DATA_DIR: dataDir,
+    UNVIBE_PORT: String(port),
+    npm_config_cache: path.join(TMP, `cache-${label}`),
+    XDG_RUNTIME_DIR: path.join(TMP, "no-runtime"),
+    PATH: `${shims}${path.delimiter}/usr/bin${path.delimiter}/bin`,
+  };
+  const prefixRes = spawnSync("npm", ["prefix", "-g"], { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 120_000 });
+  const gotPrefix = (prefixRes.stdout ?? "").trim();
+  assert(gotPrefix === versionDir, `${label}: npm global prefix is the mise version prefix (got ${gotPrefix || prefixRes.stderr?.trim() || "?"})`);
+  if (gotPrefix !== versionDir) return; // never install into a real prefix
+  const inst = spawnSync("npm", ["install", "-g", tarballPath], { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 600_000 });
+  if (inst.status !== 0) console.error(((inst.stdout ?? "") + (inst.stderr ?? "")).slice(-3000));
+  assert(inst.status === 0, `${label}: npm install -g <tarball> under mise-managed node exits 0 (exit ${inst.status})`);
+  if (inst.status !== 0) return;
+  assert(fs.existsSync(path.join(vbin, "unvibe")), `${label}: global bin linked into the version prefix bin`);
+  assert(
+    fs.existsSync(path.join(versionDir, "lib", "node_modules", "unvibe", "packages", "service", "dist", "index.js")),
+    `${label}: bin target exists under the version prefix`,
+  );
+  const byName = () => spawnSync("unvibe --version", { shell: "/bin/sh", cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 60_000 });
+  const before = byName();
+  assert(before.status !== 0, `${label}: before reshim, \`unvibe\` is not runnable by name from the shims-only PATH (the owner's failure)`);
+  const doctor = spawnSync(process.execPath, [path.join(vbin, "unvibe"), "doctor"], {
+    cwd: os.tmpdir(),
+    env: ENV,
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  const doctorOut = (doctor.stdout ?? "") + (doctor.stderr ?? "");
+  assert(doctorOut.includes("unvibe on PATH"), `${label}: doctor reports the bin-reachability check`);
+  assert(doctorOut.includes(vbin), `${label}: doctor prints the exact fix (names ${vbin})`);
+  const reshim = spawnSync(miseBin, ["reshim"], { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 60_000 });
+  assert(reshim.status === 0, `${label}: mise reshim (stand-in) exits 0`);
+  const after = byName();
+  const version = JSON.parse(fs.readFileSync(path.join(versionDir, "lib", "node_modules", "unvibe", "package.json"), "utf8")).version;
+  assert(
+    after.status === 0 && (after.stdout ?? "").trim() === version,
+    `${label}: after reshim, \`unvibe --version\` runs by name (${version}; got ${JSON.stringify((after.stdout ?? "").trim())} exit ${after.status})`,
+  );
 }
 
 const main = async () => {
@@ -888,13 +958,11 @@ const main = async () => {
   if (PHASES.includes("doomed")) {
     await phaseDoomedCwd({ kind: "tarball", installArgs: [tarballPath], port });
     port += 10;
-    await phaseDoomedCwd({
-      kind: "git",
-      installArgs: [`git+file://${BARE}#${RELEASE_REF}`],
-      installLinks: true,
-      secondInstallLinks: false,
-      port,
-    });
+    await phaseDoomedCwd({ kind: "git", installArgs: [`git+file://${BARE}#${RELEASE_REF}`], port });
+    port += 10;
+  }
+  if (PHASES.includes("mise")) {
+    await phaseMise(tarballPath, port);
     port += 10;
   }
   if (failures > 0) {
